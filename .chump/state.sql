@@ -8685,7 +8685,7 @@ gaps:
 - id: CREDIBLE-431
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-365: Implement halt-class-emit.sh wrapper script (CREDIBLE-108 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -8693,6 +8693,8 @@ gaps:
     - Wrapper accepts the same CLI arguments as existing halt-class emitters and forwards them unchanged
     - Invocation of the wrapper logs a timestamped entry to the standard log file
     - Unit test verifies that the script returns the same exit code as the underlying emitter
+  notes: |
+    [2026-09-01T11:46:48Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-432
   domain: CREDIBLE
@@ -10591,6 +10593,8 @@ gaps:
     - "FIX THE STALE REFERENCES IN THE SAME PASS: the 8 /dashboard/next mentions in ROADMAP.md, MASTER_MANUAL section 0, and REDESIGN-PLAN section 1 sign-off request. Otherwise any agent reading them builds in a retired route"
     - "TRUST BOUNDARY IN THE MCP CONTEXT: olive promise is \"Olive fills the cart; the user taps Buy. Olive never touches money.\" add_to_cart writes a real Kroger cart from inside a THIRD-PARTY assistant — a materially different consent surface from a click in olive own UI. Document how consent is obtained and what the key gates"
     - DO NOT ADD AN 18TH ROADMAP — same lesson as DOC-089. One track in the existing roadmap plus a README line
+  notes: |
+    Decomposed into 10 slices: DOC-117, DOC-118, DOC-119, DOC-120, DOC-121, DOC-122, DOC-123, DOC-124, DOC-125, DOC-126
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -11431,6 +11435,282 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: DOC-117
+  domain: DOC
+  title: "DOC: Audit documentation for stale /dashboard/next references (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Produce a list of all files and line numbers where '/dashboard/next' is mentioned
+    - Confirm that the list includes references in ROADMAP.md, OLIVE_PRODUCT_MASTER_MANUAL.md, and REDESIGN-PLAN.md
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-118
+  domain: DOC
+  title: "DOC: Update ROADMAP.md with two‑surface architecture and replace stale routes (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Top of ROADMAP.md contains a clear statement: \"Olive has two first‑class surfaces: web (/shop) and MCP API (/api/mcp). Monetisation is deferred.\""
+    - All eight occurrences of '/dashboard/next' are replaced with '/shop' or removed
+    - The document no longer references a single‑app sign‑off
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-119
+  domain: DOC
+  title: "DOC: Revise OLIVE_PRODUCT_MASTER_MANUAL.md section 0 to reflect current product (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Section 0 no longer claims the product is the hidden route '/dashboard/next'
+    - It describes the product as the web app at '/shop' plus the MCP API
+    - All stale mentions are removed
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-120
+  domain: DOC
+  title: "DOC: Correct REDESIGN-PLAN.md sign‑off request and stale references (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Section 1 no longer asks for sign‑off on \"one app, not two\""
+    - All references to '/dashboard/next' are removed or updated to '/shop'
+    - The plan now acknowledges the two‑surface architecture
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-121
+  domain: DOC
+  title: "DOC: Add MCP rail per‑tool status table to ROADMAP.md (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A table is added under the MCP rail description listing each tool (price_grocery_list, add_to_cart, send_feedback)
+    - "Each row shows the tool type (read‑only, key‑gated write) and its risk/status (e.g., \"stable\", \"requires key\", \"production ready\")"
+    - The table is formatted in Markdown and renders correctly
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-122
+  domain: DOC
+  title: "DOC: Add two‑surface architecture note to README.md (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "README.md includes a top‑level paragraph stating the two first‑class surfaces: web (/shop) and MCP API (/api/mcp)"
+    - It mentions that monetisation decisions are deferred
+    - No mention of '/dashboard/next' remains
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-123
+  domain: DOC
+  title: "DOC: Document consent and trust boundary for add_to_cart tool (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new subsection in OLIVE_PRODUCT_MASTER_MANUAL.md (or a dedicated consent doc) explains that add_to_cart writes a real Kroger cart from a third‑party assistant
+    - It describes how the user’s consent is obtained via the Olive key gate
+    - It clarifies that Olive never handles money directly
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-124
+  domain: DOC
+  title: "DOC: Capture live MCP API tool schemas (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Successful POST to https://shopolive.xyz/api/mcp/tools/list returns JSON schema"
+    - Schemas for price_grocery_list, add_to_cart, and send_feedback are saved in a temporary file
+    - HTTP 200 response confirmed for each tool
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-125
+  domain: DOC
+  title: "DOC: Add captured MCP tool schemas to documentation (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each tool’s schema is included in the appropriate doc (e.g., ROADMAP.md or a new API_REFERENCE.md)
+    - Schemas are formatted as fenced code blocks and labeled clearly
+    - Documentation links to the live endpoint for verification
+  depends_on: [DOC-124]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-126
+  domain: DOC
+  title: "DOC: Insert explicit monetisation‑deferred statement in docs (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Both ROADMAP.md and README.md contain the sentence: \"Monetisation (paid vs free) is explicitly deferred and not part of the current product definition.\""
+    - The statement appears near the architecture description
+  depends_on: [DOC-117]
+  notes: |
+    [chump harvest check 'olive']
+    === primitives_index match for 'olive' ===
+    
+    === cluster keyword match for 'olive' ===
+      cluster content-apps (13 repos): olive, slidemate, pvc, biomeweavers, coloringbook, postsub, trove-web, trove-app, berry-avenue-codes, dice, mixdown, messaging-demo, sheckleshare
+    
+    === extracted_primitives (per-file, line-refd) match for 'olive' ===
+    
+    === repo-description match for 'olive' ===
+      olive: Olive - multi-user shopping list at shopolive.xyz
+    
+    === HARVEST_ROADMAP.md mention of 'olive' (deep-scan findings) ===
+      151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
+    
+    === cross-pollination briefs mentioning 'olive' ===
 
 - id: DOCS-001
   domain: DOCS
@@ -69255,10 +69535,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Insert credential‑self‑provisioning logic at the start of the `discover_test_scripts` function in `crates/chump-preflight/src/preflight.rs`: read the `DISCORD_TOKEN` environment variable, write its value to `~/.discord/token` with mode 0600 (unless the file already exists), exit with a non‑zero status if the variable is unset and the file is absent, and finally create the marker file `~/.gap/state/discord_creds_done` after a successful write or when the token file already exists.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Reads DISCORD_TOKEN from environment; if set, writes token to ~/.discord/token with mode 0600
-    - If DISCORD_TOKEN is unset and the file absent, --check exits non-zero
-    - Skips if token file already exists; writes marker ~/.gap/state/discord_creds_done after provision
+    - "In `crates/chump-preflight/src/preflight.rs::discover_test_scripts`, the function returns a non‑zero error code when `DISCORD_TOKEN` is unset and `~/.discord/token` does not exist."
+    - When `DISCORD_TOKEN` is set, `discover_test_scripts` creates `~/.discord/token` containing exactly the environment value and the file’s permissions are `0600`.
+    - If `~/.discord/token` already exists, `discover_test_scripts` leaves the file unchanged but still creates the marker file `~/.gap/state/discord_creds_done`.
+    - After a successful run of the preflight binary with the `--check` flag, the process exits with status 0 and the marker file `~/.gap/state/discord_creds_done` is present.
   depends_on: [INFRA-3749]
   notes: |
     [chump harvest check 'MISSION']
