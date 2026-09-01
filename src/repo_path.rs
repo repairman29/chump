@@ -244,17 +244,24 @@ pub fn repo_root() -> PathBuf {
         }
     }
 
-    // MISSION-052: Try chumpd socket first if no explicit env.
+    // INFRA-3341: CHUMP_REPO / CHUMP_HOME env vars take highest precedence.
+    // Check them BEFORE the chumpd socket so that setting them later is not
+    // shadowed by a stale OnceLock cache in chumpd_repo_root().
+    if let Ok(path) = std::env::var("CHUMP_REPO")
+        .or_else(|_| std::env::var("CHUMP_HOME"))
+    {
+        let pb = PathBuf::from(path.trim().to_string());
+        if pb.is_dir() {
+            return pb;
+        }
+    }
+
+    // MISSION-052: Try chumpd socket if no explicit env.
     if let Some(root) = chumpd_repo_root() {
         return root;
     }
 
-    std::env::var("CHUMP_REPO")
-        .or_else(|_| std::env::var("CHUMP_HOME"))
-        .ok()
-        .map(|p| PathBuf::from(p.trim().to_string()))
-        .filter(|p| p.is_dir())
-        .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")))
+    std::env::current_dir().unwrap_or_else(|_| PathBuf::from("."))
 }
 
 /// Returns the main repository root (the checkout that owns the shared `.git`
