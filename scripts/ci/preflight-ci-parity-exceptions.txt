@@ -400,3 +400,6 @@ test-publisher-platforms.sh   # reason: EFFECTIVE-483 — type-checks + unit-tes
 
 # ── META-249: rescue-class PR body citation gate (needs live PR context) ─
 test-rescue-class-cites-procedure.sh   # reason: META-249 — reads the live PR title/body via `gh pr view` for the PR being checked; no local worktree analog (there is no "current PR" outside a `pull_request` CI run). Self-tests its citation-check logic via `bash scripts/ci/test-rescue-class-cites-procedure.sh --self-test`.
+
+# ── INFRA-3836: aarch64 fleet-binary vendored-openssl regression guard ─
+test-fleet-binary-aarch64-openssl-vendored.sh   # reason: INFRA-3836 — static grep/awk check that Cargo.toml still pins vendored openssl for the aarch64-linux cross target and build-fleet-binaries.yml still installs gcc-aarch64-linux-gnu (guards the 2026-08-24 deploy-freeze regression). Mirrorable (no network/build dependency); allowlisted here pending a preflight.rs mirror follow-up rather than blocking this PR on it.
