@@ -10164,10 +10164,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new public function `ambient_emission_freq` to `crates/chump-coord/src/rpc.rs` that accepts a `&RegistryEntry`, iterates over the entry's historic emission timestamps to compute the average emission frequency in Hz (emissions per second), and returns an `f64`; include a test-only branch that returns a stubbed constant when no emission history exists.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A function `fn ambient_emission_freq(entry: &RegistryEntry) -> f64` is added"
-    - The function computes frequency from historic emission logs or a stubbed constant for testability
-    - Unit test confirms correct output for a fixture with known emission pattern
+    - Running `cargo test --lib` in `crates/chump-coord` passes a unit test named `test_ambient_emission_freq` that calls `ambient_emission_freq` on a fixture `RegistryEntry` with exactly three historic emission timestamps spaced 2 seconds apart and asserts the returned f64 equals 0.5 within ±0.001.
+    - A second unit test `test_ambient_emission_freq_no_history` calls `ambient_emission_freq` on a fixture with an empty emission log and asserts the returned f64 matches the stubbed constant value specified in the function body.
+    - "The function signature `pub fn ambient_emission_freq(entry: &RegistryEntry) -> f64` is discoverable via `grep` in `crates/chump-coord/src/rpc.rs`."
   depends_on: [CREDIBLE-483]
   notes: |
     [chump harvest check 'Index']
@@ -10198,10 +10205,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a public function `compute_value` to the module containing `handle_claim_gap` (around line 144) that takes a `&RegistryEntry` reference, reads its `fan_in_centrality` and `ambient_emission_freq` fields, and returns their sum as an `f64`.
+    
+    Target file(s):
+    - crates/mcp-servers/chump-mcp-gaps/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A function `fn compute_value(entry: &RegistryEntry) -> f64` is added"
-    - The function returns `fan_in_centrality + ambient_emission_freq`
-    - Integration test asserts that `compute_value` matches manual calculation for a sample entry
+    - "In crates/mcp-servers/chump-mcp-gaps/src/main.rs, a `pub fn compute_value(entry: &RegistryEntry) -> f64` is defined and visible to the crate root."
+    - Calling `compute_value` with a `RegistryEntry` whose `fan_in_centrality` is 2.5 and `ambient_emission_freq` is 1.3 returns exactly 3.8.
+    - An integration test in the same crate constructs a sample `RegistryEntry`, calls `compute_value`, and asserts the result equals the manual sum of the entry's two fields.
+    - "`cargo test -p chump-mcp-gaps` passes, including the new integration test for `compute_value`."
   depends_on: [CREDIBLE-484, CREDIBLE-485]
   notes: |
     [chump harvest check 'Index']
@@ -10266,10 +10281,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new public function `compute_crit` to `crates/chump-perception/src/lib.rs` that takes a `&RegistryEntry` and returns an `f64` score computed as `if compute_need(entry) { compute_value(entry) } else { 0.0 }`, reusing the existing `compute_need` and `compute_value` functions already present in that module.
+    
+    Target file(s):
+    - crates/chump-perception/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A function `fn compute_crit(entry: &RegistryEntry) -> f64` is added"
-    - The function returns `if compute_need(entry) { compute_value(entry) } else { 0.0 }`
-    - Test verifies high score for a wired entry and zero for an orphaned entry
+    - In `crates/chump-perception/src/lib.rs`, calling `compute_crit(&wired_entry)` where `compute_need` returns `true` and `compute_value` returns `0.8` yields `0.8`.
+    - In `crates/chump-perception/src/lib.rs`, calling `compute_crit(&orphaned_entry)` where `compute_need` returns `false` yields `0.0` regardless of `compute_value` output.
+    - "`cargo test -p chump-perception` passes with a test named `test_compute_crit` that asserts both the wired and orphaned cases."
   depends_on: [CREDIBLE-486, CREDIBLE-487]
   notes: |
     [chump harvest check 'Index']
@@ -10463,6 +10485,109 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-494
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-411: Define DebtIndex data structures (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A DebtIndex struct (or equivalent) is defined in the appropriate CREDIBLE module with fields for live_pct, debt, and prune_ledger.
+    - A unit test creates a DebtIndex instance and verifies field accessibility.
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-495
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-412: Implement live_pct computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A function compute_live_pct exists that accepts the necessary state (e.g., items with Crit and stage) and returns the Crit-weighted fraction of items at stage >= running.
+    - A unit test with controlled inputs proves the calculation is correct (e.g., known items yield expected live_pct).
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-496
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-413: Implement debt computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A function compute_debt exists that sums Crit × (stages - short) over high-Crit dormant items.
+    - A unit test with controlled inputs verifies the debt value.
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-497
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-414: Implement prune_ledger computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
 
 - id: DOC-031
   domain: DOC
