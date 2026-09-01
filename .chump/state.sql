@@ -91544,6 +91544,8 @@ gaps:
     - a merge to origin/main results in the running chump binary on CJ carrying the new code within N min (sha/symbol-verified)
     - a deploy that times out or fails emits a loud signal (not silent) so merged-not-running is caught
     - prefer prebuilt-binary download (EFFECTIVE-450) over cold-compile so deploy cannot time out
+  notes: |
+    [2026-09-01T01:12:20Z] PROVEN 2026-08-31 firefight: the CJ deploy is a 4-LOOP CLOBBER TANGLE, not just a timeout. auto-deploy.timer + organ-deploy.timer + merge-deploy-lag.timer + organ-reconcile.timer each rebuild chump/fleet-server from a SEPARATE stale worktree (/mnt/cjdata2/chump-refresh/wt) on timers and OVERWRITE correct binaries within minutes ('running-then-reverted'). Took ~8 hand-installs of the fleet-server /api/gap binary before I killed ALL four loops + the running auto-deploy.sh/refresh-runner procs; only then did an atomic-mv install of a route-verified binary STAY (probe held 401 at t+6s and t+31s). Also hit ETXTBSY on cp over the running binary (use temp+mv, not cp). DEPLOY LOOPS ARE NOW DISABLED on CJ to stop the clobber — fleet won't auto-update binaries until 523 ships a working deploy + re-enables. IRONCLAD SPEC from this evidence: (1) SINGLE deploy authority (kill the competing loops), (2) verify the binary carries the expected symbol/route BEFORE install, (3) atomic install (temp+mv), (4) NEVER clobber a good binary with a stale rebuild, (5) build from the current-main worktree only (not a drifting side worktree), (6) roll back to last-good + LOUD page on failure.
   outcome_id: MISSION-012
 
 - id: RESILIENT-524
@@ -93516,11 +93518,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend the `full_suite_command` function in `crates/chump-verify/src/external_verify_merge.rs` so that the generated command sequence runs the four quality‑gate commands (`cargo fmt --all -- --check`, `cargo clippy --all-targets --all-features -- -D warnings`, `cargo check --all-targets --all-features`, and `cargo test --all-targets --all-features`). The change also updates `run_full_suite_delta` to invoke this expanded command and to fail if any step returns a non‑zero exit code.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all -- --check` passes."
-    - "`cargo clippy --all-targets --all-features -- -D warnings` passes."
-    - "`cargo check --all-targets --all-features` passes."
-    - "`cargo test --all-targets --all-features` passes with no regressions; the new regression test from slice 0 passes."
+    - In `crates/chump-verify/src/external_verify_merge.rs`, the `full_suite_command` string contains the exact substring `cargo fmt --all -- --check`.
+    - In the same file, the `full_suite_command` string contains the exact substring `cargo clippy --all-targets --all-features -- -D warnings`.
+    - In the same file, the `full_suite_command` string contains the exact substrings `cargo check --all-targets --all-features` and `cargo test --all-targets --all-features`.
+    - Executing the binary that calls `run_full_suite_delta` (e.g., `cargo run --bin chump-verify -- run_full_suite_delta`) exits with status code 0 when all four commands succeed and exits with a non‑zero status when any of them fails.
   depends_on: [ZERO-WASTE-063, ZERO-WASTE-064, ZERO-WASTE-065]
   notes: |
     [chump harvest check 'ATOMIC']
