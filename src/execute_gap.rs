@@ -727,12 +727,36 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
         .unwrap_or(false);
     if dirty {
         eprintln!(
-            "[execute-gap] RESILIENT-597: ERROR — model skipped git_commit for {gap_id} — \
-             dirty tree detected, escalating to next model rung instead of auto-committing"
+            "[execute-gap] RESILIENT-597: model skipped git_commit for {gap_id} — \
+             dirty tree detected, auto-committing"
         );
-        return Err(anyhow!(
-            "model skipped git_commit for {gap_id} — dirty tree, escalate to next model"
-        ));
+        // Stage everything and commit so the work reaches the PR.
+        let add_status = tokio::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo_root)
+            .status()
+            .await
+            .with_context(|| format!("git add -A for {gap_id}"))?;
+        if !add_status.success() {
+            return Err(anyhow!(
+                "git add -A failed for {gap_id} — cannot auto-commit dirty tree"
+            ));
+        }
+        let commit_status = tokio::process::Command::new("git")
+            .args([
+                "commit",
+                "-m",
+                &format!("auto-commit: {gap_id} — model skipped git_commit, committing dirty tree"),
+            ])
+            .current_dir(repo_root)
+            .status()
+            .await
+            .with_context(|| format!("git commit for {gap_id}"))?;
+        if !commit_status.success() {
+            return Err(anyhow!(
+                "git commit failed for {gap_id} — cannot auto-commit dirty tree"
+            ));
+        }
     }
     // CREDIBLE-170: verify the fix actually accomplishes the gap BEFORE shipping.
     // Cheap free-tier drafts are frequently plausible-but-ineffective (dead code,
