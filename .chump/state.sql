@@ -92814,13 +92814,15 @@ gaps:
   domain: RESILIENT
   title: "wake the Pixel: 8-core node dark since Aug26 — port worker self-heal to proot + re-arm sv worker (fleet's biggest idle capacity)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     PROBED 2026-09-01: Pixel 8 Pro (100.84.132.93) is ONLINE (pingable) but sshd is DOWN (port 22 refused) and NO worker/ambient activity — dark since ~2026-08-26 when it was paused for cap-wasting (looping a done gap). It is an 8-core node (double CJ's 4) sitting 100% idle — the single fastest throughput lever the fleet has. Re-enable = (1) HUMAN: restart the Termux sshd on the phone (parked in TODO for Jeff — the fleet can't reach it to fix); then (2) FLEET: port the worker self-heal fixes (INFRA-3808 cooldown/auto-block + INFRA-3832 wedge-kill) to the Pixel's proot-glibc worker path so it does not resume the cap-wasting loop, and re-arm its runit sv worker. Proven worker (3 merged PRs pre-pause). Ties to the 'feels slow' throughput ceiling (2 workers on 1 node) — waking the Pixel ~doubles capacity.
   acceptance_criteria:
     - Pixel sshd reachable + a proot worker running with the self-heal fixes, authoring PRs again
     - the cap-wasting loop that caused the Aug26 pause cannot recur (cooldown/auto-block ported)
+  notes: |
+    Decomposed into 12 slices: RESILIENT-556, RESILIENT-557, RESILIENT-558, RESILIENT-559, RESILIENT-560, RESILIENT-561, RESILIENT-562, RESILIENT-563, RESILIENT-564, RESILIENT-565, RESILIENT-566, RESILIENT-567
   outcome_id: SOVEREIGN
 
 - id: RESILIENT-555
@@ -92837,6 +92839,395 @@ gaps:
   notes: |
     [2026-09-01T04:50:55Z] SUBSUMED by INFRA-3894 (split-brain class-killer). This dispatch surface is one instance; the class fix (single canonical store, no local replicas) closes it.
   outcome_id: ZERO-WASTE-000
+
+- id: RESILIENT-556
+  domain: RESILIENT
+  title: "RESILIENT: Confirm current Pixel node status (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Ping to 100.84.132.93 succeeds
+    - SSH connection on port 22 is refused
+    - No worker process is listed in the proot environment
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-557
+  domain: RESILIENT
+  title: "RESILIENT: Coordinate manual Termux sshd restart with Jeff (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Jeff confirms sshd has been restarted on the Pixel
+    - SSH on port 22 becomes reachable
+  depends_on: [RESILIENT-556]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-558
+  domain: RESILIENT
+  title: "RESILIENT: Fetch self‑heal fix code (INFRA‑3808 & INFRA‑3832) (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Local branch contains the latest commits for INFRA‑3808 and INFRA‑3832
+    - Tests for the fetched code pass locally
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-559
+  domain: RESILIENT
+  title: "RESILIENT: Create proot‑compatible worker entry point (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New script `proot_worker.sh` launches the worker inside the proot‑glibc environment
+    - Executable permission set and script runs without errors in a dry‑run
+  depends_on: [RESILIENT-558]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-560
+  domain: RESILIENT
+  title: "RESILIENT: Port cooldown/auto‑block logic (INFRA‑3808) to proot worker (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Cooldown timer is applied after a failure event
+    - Auto‑block prevents immediate restart of a failing worker
+    - Unit tests cover the new logic
+  depends_on: [RESILIENT-559]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-561
+  domain: RESILIENT
+  title: "RESILIENT: Port wedge‑kill logic (INFRA‑3832) to proot worker (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Worker detects a wedge condition and terminates gracefully
+    - Logs contain a clear wedge‑kill entry
+    - Unit tests validate wedge‑kill trigger
+  depends_on: [RESILIENT-559]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-562
+  domain: RESILIENT
+  title: "RESILIENT: Update runit sv worker service file for proot path (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Service file points to `proot_worker.sh`
+    - runit reports the service as `up` after a reload
+  depends_on: [RESILIENT-559]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-563
+  domain: RESILIENT
+  title: "RESILIENT: Deploy updated worker binaries and service to Pixel (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Updated binaries are copied to the Pixel's proot directory
+    - runit service is reloaded and shows `up`
+    - Worker logs show successful start
+  depends_on: [RESILIENT-560, RESILIENT-561, RESILIENT-562]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-564
+  domain: RESILIENT
+  title: "RESILIENT: Verify worker self‑heal behavior on Pixel (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Induced failure triggers cooldown and auto‑block as expected
+    - Wedge‑kill terminates a hung worker and restarts cleanly
+    - No unexpected restarts occur within a 10‑minute observation window
+  depends_on: [RESILIENT-563]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-565
+  domain: RESILIENT
+  title: "RESILIENT: Confirm cap‑wasting loop cannot recur (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Simulated gap processing does not enter the previous infinite loop
+    - Cooldown/auto‑block logs show the loop is blocked
+    - System remains stable for at least 30 minutes under load
+  depends_on: [RESILIENT-564]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-566
+  domain: RESILIENT
+  title: "RESILIENT: Validate SSH connectivity after worker deployment (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - SSH on port 22 is reachable from the fleet control node
+    - No connection refusals observed over a 5‑minute interval
+  depends_on: [RESILIENT-563]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-567
+  domain: RESILIENT
+  title: "RESILIENT: Create PR with changes and update documentation (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - PR includes all new files, updated service definition, and test changes
+    - Documentation describes manual sshd restart steps and self‑heal behavior
+    - CI passes for the PR
+  depends_on: [RESILIENT-565, RESILIENT-566]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: SMOKE-001
   domain: SMOKE
