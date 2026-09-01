@@ -82,6 +82,13 @@ pub struct CodebaseShape {
     pub total_files: usize,
     pub total_symbols: usize,
     pub supported_languages: Vec<String>,
+    /// Files that were skipped because their language is not supported by any
+    /// tree-sitter parser. Counted separately so downstream callers (almanac
+    /// index, gap decompose) can surface a materiality warning rather than
+    /// silently presenting a partial view as complete.
+    pub skipped_files: usize,
+    /// Distinct extensions that were skipped, for diagnostic reporting.
+    pub skipped_extensions: Vec<String>,
     pub files: Vec<FileShape>,
 }
 
@@ -101,6 +108,13 @@ impl CodebaseShape {
             self.total_symbols,
             self.supported_languages.join(", ")
         ));
+        if self.skipped_files > 0 {
+            out.push_str(&format!(
+                "⚠️  {} file(s) skipped — unsupported extensions: {}\n",
+                self.skipped_files,
+                self.skipped_extensions.join(", ")
+            ));
+        }
         for f in &self.files {
             if out.len() >= max_bytes {
                 out.push_str("\n... (truncated to fit token budget)\n");
@@ -165,6 +179,8 @@ pub fn crawl_paths(repo_root: &Path, paths: &[PathBuf]) -> Result<CodebaseShape>
     let mut total_symbols = 0usize;
     let mut langs = HashSet::new();
     let mut emitted_unsupported: HashSet<String> = HashSet::new();
+    let mut skipped_files = 0usize;
+    let mut skipped_exts = HashSet::new();
 
     for p in paths {
         let rel = p
@@ -184,6 +200,8 @@ pub fn crawl_paths(repo_root: &Path, paths: &[PathBuf]) -> Result<CodebaseShape>
             if emitted_unsupported.insert(ext.clone()) {
                 let _ = emit_unsupported_language(&rel, &ext);
             }
+            skipped_files += 1;
+            skipped_exts.insert(ext);
             files.push(FileShape {
                 path: rel,
                 language: "unknown".into(),
@@ -213,6 +231,8 @@ pub fn crawl_paths(repo_root: &Path, paths: &[PathBuf]) -> Result<CodebaseShape>
 
     let mut supported_langs: Vec<String> = langs.into_iter().collect();
     supported_langs.sort();
+    let mut skipped_exts_sorted: Vec<String> = skipped_exts.into_iter().collect();
+    skipped_exts_sorted.sort();
 
     Ok(CodebaseShape {
         repo_root: repo_root.to_string_lossy().into_owned(),
@@ -220,6 +240,8 @@ pub fn crawl_paths(repo_root: &Path, paths: &[PathBuf]) -> Result<CodebaseShape>
         total_files: files.len(),
         total_symbols,
         supported_languages: supported_langs,
+        skipped_files,
+        skipped_extensions: skipped_exts_sorted,
         files,
     })
 }
