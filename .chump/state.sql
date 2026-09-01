@@ -16990,7 +16990,7 @@ gaps:
   acceptance_criteria:
     - "1. When the top-ranked scan gap is dedup-skipped (done or in-flight PR), pick_gap advances to the next implementable gap instead of exiting. 2. Bounded by a max-skips guard. 3. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit."
   notes: |
-    Decomposed into 4 slices: EFFECTIVE-466, EFFECTIVE-467, EFFECTIVE-468, EFFECTIVE-469
+    Decomposed into 4 slices: EFFECTIVE-620, EFFECTIVE-621, EFFECTIVE-622, EFFECTIVE-623
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
   evidence: |
@@ -25283,9 +25283,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a call to `reserve_umbrella_gap` (or the appropriate gap-creation function) inside `src/commands/bootstrap.rs` that creates a sub-gap for the first core feature area identified in the EFFECTIVE-268 slice. The new gap’s title must clearly reference that area, and its description must be copied verbatim from the area’s description in the EFFECTIVE-268 definition.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new gap exists in the backlog with a title that clearly references the first identified core feature area
-    - The gap description includes the description from the identified area
+    - In `src/commands/bootstrap.rs`, a new invocation of `reserve_umbrella_gap` exists with a title string that contains the exact name of the first core feature area from EFFECTIVE-268.
+    - The description argument passed to that invocation is identical to the `description` field of the first core feature area in the EFFECTIVE-268 slice definition.
+    - Executing `cargo run -- bootstrap` (or the equivalent command) produces a new gap file in the backlog directory whose filename or metadata includes the area name and whose content contains the copied description.
   depends_on: [EFFECTIVE-617]
   notes: |
     [chump harvest check 'Bootstrap']
@@ -25308,9 +25316,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify `reserve_umbrella_gap` in `src/commands/bootstrap.rs` to iterate over the remaining core feature areas (all except the first) and create a corresponding sub-gap entry in the backlog for each, ensuring each gap's title references its feature area and its description matches the area's scope.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - For each remaining core feature area (i.e., all except the first), a corresponding gap exists in the backlog
-    - Each gap's title clearly references its feature area and description matches
+    - Running `cargo test reserve_umbrella_gap` passes and verifies that for N core feature areas, exactly N-1 sub-gaps are created (the first area is skipped).
+    - Each created sub-gap in the test output has a `title` field containing the feature area name and a non-empty `description` field that differs from the umbrella gap's description.
+    - The function `reserve_umbrella_gap` in `src/commands/bootstrap.rs` contains a loop or iterator over `core_feature_areas[1..]` (or equivalent skip-first logic) visible in the source.
   depends_on: [EFFECTIVE-617]
   notes: |
     [chump harvest check 'Bootstrap']
@@ -25326,6 +25342,146 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-620
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add max-skips guard parameter to picker (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A configuration value MAX_SKIP_GAPS is set to e.g. 5
+    - The picker function checks this limit before skipping a gap
+    - If the skip count exceeds MAX_SKIP_GAPS, the function exits with a 'no suitable gap' signal
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-621
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement next-gap iteration logic (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When the top-ranked gap is skipped (done/in-flight), the picker attempts to select the next ranked gap
+    - The iteration respects the max-skips limit
+    - Unit tests mock a list of gaps to verify correct skip behavior
+  depends_on: [EFFECTIVE-620]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-622
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate skip-and-advance into improve picker command (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The `chump improve` command uses the updated picker to skip done/in-flight gaps and picks the first undone gap
+    - If all gaps are skipped or max skips exceeded, the command exits with code 0 and a message 'No implementable gap found'
+    - Integration test verifies the behavior with a mock scan database
+  depends_on: [EFFECTIVE-621]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-623
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add comprehensive tests for skip-and-advance scenarios (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Test: scan with top gap covered by open PR -> improve implements the next undone gap"
+    - "Test: all gaps skipped -> exit gracefully"
+    - "Test: max skips exceeded -> exit gracefully"
+    - "Test: mixed done/undone gaps with prior in-flight PRs"
+  depends_on: [EFFECTIVE-622]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: EVAL-085
   title: test eval 085
@@ -81567,10 +81723,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `envelope_for` function to compute an aggregated "Verified" status from all lane check results (treating path-skips as success and flake quarantines as ignored), then post it as a GitHub commit status with context "Verified" without registering it as a required check.
+    
+    Target file(s):
+    - crates/chump-coord/src/assign.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The 'Verified' aggregator service is configured to calculate its final status based on all lane checks, including path-skips and flake quarantines.
-    - The aggregator's calculated status is visible (e.g., as a non-required GitHub status check).
-    - The aggregator's status is *not* yet configured as a required branch protection check for `main`.
+    - "Run `cargo test -p chump-coord` and confirm a new unit test in `assign.rs` passes: it mocks the GitHub API, feeds lane results including a path-skip and a quarantined flake, and asserts a single status POST with context 'Verified' and state 'success'."
+    - In a local integration run, open a PR with multiple lanes where one lane is skipped by path filtering and another has a quarantined flake; observe via `gh pr checks` that a 'Verified' status check appears with a green checkmark and is not listed in the required status checks for the `main` branch protection.
+    - Using the GitHub API, fetch the combined commit status for the PR head SHA and verify that the 'Verified' status state is 'failure' when any non-skipped, non-quarantined lane fails, and 'success' when all such lanes pass.
+    - Manually inspect the branch protection rules for `main` (Settings > Branches) and confirm that the 'Verified' context is absent from the 'Require status checks to pass before merging' list.
   depends_on: [META-137, META-139, META-142]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -81581,10 +81745,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `shadow` subcommand to the mission-scoreboard.sh script that iterates over all repositories returned by `list_tracked_repos`, fetches open pull requests, runs the CI Verified Aggregator logic in dry-run mode to compute the expected 'Verified' status, compares it with the current actual status, and prints a divergence report with per-PR details and a summary.
+    
+    Target file(s):
+    - scripts/dev/mission-scoreboard.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Monitoring dashboards are set up to track the 'Verified' aggregator's calculated status for all PRs over a defined period (e.g., 1 week).
-    - Any discrepancies or unexpected statuses from the aggregator are identified and investigated.
-    - A report summarizing shadow mode observations and confidence in the aggregator's correctness is produced.
+    - "Executing `./scripts/dev/mission-scoreboard.sh shadow` prints a table with columns: repository, PR number, aggregator calculated status, actual PR status, and a 'match' or 'mismatch' indicator for every open PR in tracked repos."
+    - The script exits with code 0 when all calculated statuses match actual statuses, and exits with code 1 if any mismatch is found.
+    - "The output ends with a summary line: 'Checked N PRs, M mismatches found.'"
+    - The aggregator logic is applied in a read-only manner; no PR statuses are updated during the shadow run.
   depends_on: [META-147]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -81595,9 +81767,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update the Week 3 section (line ~426) to document the concrete branch protection reconfiguration: remove all individual lane checks from the `main` branch's required status checks and replace them with the single 'Verified' aggregator check, referencing the exact GitHub branch protection API or UI steps to perform the flip.
+    
+    Target file(s):
+    - docs/design/CI_VERIFIED_AGGREGATOR.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Branch protection rules for the `main` branch are updated to require only the single 'Verified' aggregator check.
-    - All previously required individual lane checks are removed from `main` branch protection rules.
+    - The `main` branch protection rules in the GitHub repository settings list exactly one required status check named 'Verified'.
+    - No individual lane checks (e.g., 'lint', 'test-unit', 'test-integration') appear in the `main` branch's required status checks list.
+    - A PR with a failing individual lane but a passing 'Verified' aggregator check is mergeable (the aggregator alone gates the merge).
+    - The docs/design/CI_VERIFIED_AGGREGATOR.md Week 3 section describes the before/after state of branch protection rules and the exact check name to require.
   depends_on: [META-148]
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
@@ -99160,6 +99341,13 @@ gaps:
     [2026-09-01T22:11:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (61 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T22:13:18Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (62 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T22:15:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (63 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:17:48Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (64 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:20:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (65 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:22:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (66 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:24:28Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (67 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:26:42Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (68 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:28:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (69 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T22:30:05Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 6h) 2026-09-01; RESPAWN CAP 3 reached (70 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -101563,7 +101751,7 @@ gaps:
 - id: RESILIENT-622
   domain: RESILIENT
   title: "RESILIENT: Create shared rebase helper script with strict-gate (RESILIENT-083 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -101589,6 +101777,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-01T22:22:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2726B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-623
   domain: RESILIENT
