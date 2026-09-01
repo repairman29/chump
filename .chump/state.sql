@@ -3306,7 +3306,7 @@ gaps:
 - id: CREDIBLE-211
   domain: CREDIBLE
   title: "done-auditor miss: INFRA-3287 'decompose 18K-line main.rs god-switchboard' closed done (PR 3185) with main.rs unchanged at 18,808 LOC — closed on pattern-landed, not work-done"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -3318,6 +3318,8 @@ gaps:
     - "Backfill scan: run the new check over the last 200 closed gaps and report how many other 'done' gaps have unmet numeric claims; that count is the receipt for whether this is a one-off or a class"
     - INFRA-3287 is reopened or explicitly superseded by the re-scoped INFRA-1965 — it does not stay 'done' while its stated work is undone
     - "No new false positives: the check does not flag closed gaps whose numeric claim was about a target that legitimately moved (verify against 20 hand-checked samples)"
+  notes: |
+    [2026-09-01T18:12:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=6973B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-212
@@ -8348,9 +8350,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add unit tests for the functions live_pct, debt, and prune_ledger inside the existing test module at src/hooks.rs. Each test function will call the corresponding calculation with a small, deterministic input ledger and assert the exact expected output, ensuring that the tests fail if the functions are removed or return default values.
+    
+    Target file(s):
+    - src/hooks.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - At least three cargo tests cover each new calculation with deterministic input
-    - Tests fail when the new code is removed or returns default values
+    - "`cargo test --lib hooks::tests::test_live_pct_deterministic` passes, asserting that `live_pct` returns a known non-zero f64 value for a fixed input ledger."
+    - "`cargo test --lib hooks::tests::test_debt_deterministic` passes, asserting that `debt` returns a known non-zero i64 value for a fixed input ledger."
+    - "`cargo test --lib hooks::tests::test_prune_ledger_deterministic` passes, asserting that `prune_ledger` returns a non-empty Vec<LedgerEntry> for a fixed input ledger requiring pruning."
+    - When any of the three functions is temporarily replaced with a stub that returns its default value (0.0, 0, or empty Vec), the corresponding test fails with an assertion error.
   depends_on: [CREDIBLE-416]
   notes: |
     [chump harvest check 'Index']
@@ -8456,10 +8467,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    In `crates/chump-ap-store/src/lib.rs`, inside the `mod proof_of_merge_tests` block at line 6032, add two unit test functions: `test_proof_of_merge_success` that asserts a valid merge proof produces `ok(())`, and `test_proof_of_merge_failure` that asserts an intentionally invalid proof returns `err`.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All existing tests continue to pass
-    - New tests pass
-    - CI pipeline completes without errors
+    - Execute `cargo test -p chump-gap-store -- test_proof_of_merge_` and observe exit code 0 with test report showing `test_proof_of_merge_success ... ok` and `test_proof_of_merge_failure ... ok`.
+    - Execute `cargo test --all` from the repository root and confirm exit code 0 with no `FAILED` messages.
+    - CI pipeline log for the branch shows all jobs pass with no test failures.
   depends_on: [CREDIBLE-418, CREDIBLE-419]
   notes: |
     [chump harvest check 'Index']
@@ -10440,10 +10458,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a unit test inside the existing `mod tests` block in `src/hooks.rs` near line 264. The new test `dead_cli_scores_low` constructs a registry entry representing a dead CLI — orphaned, with the lowest available fan-in and emission values — and asserts that `compute_crit` returns exactly `0.0`. No production code is modified.
+    
+    Target file(s):
+    - src/hooks.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test fixture creates a registry entry representing a dead CLI (orphaned, low fan‑in, low emission)
-    - Assert that `compute_crit` returns 0.0
-    - Test fails before integration and passes after slice 6
+    - "`src/hooks.rs` contains a new `#[test] fn dead_cli_scores_low` inside the existing `mod tests` block."
+    - "The test constructs a registry entry with dead CLI values: orphaned status set, fan-in set to the lowest value, and emission set to the lowest value."
+    - The test calls `compute_crit` on that entry and uses `assert_eq!(compute_crit(&entry), 0.0)`.
+    - "`cargo test dead_cli_scores_low` fails before slice 6 integration and passes after slice 6."
   depends_on: [CREDIBLE-489]
   notes: |
     [chump harvest check 'Index']
@@ -10474,10 +10500,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new test function `test_credible_355_slice` after the existing `fail` function in `scripts/ci/test-product-054-cascade-toggle.sh`. This function will invoke the new CREDIBLE-355 slice unit tests (e.g., by running `bash scripts/ci/test-credible-355-slice.sh`), capture its exit code, and call the `fail` helper if the tests do not pass. Then insert a call to `test_credible_355_slice` in the main test execution block so the new tests are included in the CI run.
+    
+    Target file(s):
+    - scripts/ci/test-product-054-cascade-toggle.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`scripts/ci/test-*.sh` is modified to run the new unit tests"
-    - Running the CI script locally executes both new tests and reports success
-    - CI pipeline passes with the new tests included
+    - "`scripts/ci/test-product-054-cascade-toggle.sh` contains a function named `test_credible_355_slice` that executes `bash scripts/ci/test-credible-355-slice.sh` and, if the exit code is non-zero, calls `fail` with a message containing 'CREDIBLE-355'."
+    - Running `bash scripts/ci/test-product-054-cascade-toggle.sh` from the repository root on a clean checkout outputs a line matching `*CREDIBLE-355*PASS*` and exits with code 0.
+    - When `scripts/ci/test-credible-355-slice.sh` fails intentionally, the same invocation outputs a line containing `FAIL` and `CREDIBLE-355` and exits with a non-zero code.
+    - The CI pipeline (e.g., GitHub Actions) runs the script and the logs show a successful 'CREDIBLE-355 slice test' step without errors.
   depends_on: [CREDIBLE-490, CREDIBLE-491]
   notes: |
     [chump harvest check 'Index']
@@ -10508,10 +10542,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    In the `run` function (around line 1224), add a step that invokes `cargo fmt --all` and `cargo clippy --all-targets -- -D warnings` after the existing preflight checks, failing the preflight run with a non-zero exit code and printing the respective tool's output if either command reports issues.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all` reports no formatting changes"
-    - "`cargo clippy --all-targets -- -D warnings` reports zero warnings"
-    - All existing and new tests continue to pass
+    - Running `cargo fmt --all` in the repository root produces no diff (exit code 0).
+    - Running `cargo clippy --all-targets -- -D warnings` in the repository root produces no warnings (exit code 0).
+    - The `run` function in `crates/chump-preflight/src/preflight.rs` exits with a non-zero status and prints the tool's stderr/stdout when `cargo fmt` or `cargo clippy` fails.
+    - All existing tests in `crates/chump-preflight/` pass with `cargo test`.
   depends_on: [CREDIBLE-492]
   notes: |
     [chump harvest check 'Index']
@@ -10542,9 +10584,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Define a public DebtIndex struct in the chump-gap-store crate (near the existing routing_scoreboard function at line 5472) with three fields: live_pct (f64), debt (u64), and prune_ledger (Vec<String>). Add a basic constructor or derive Default so the struct can be instantiated directly.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A DebtIndex struct (or equivalent) is defined in the appropriate CREDIBLE module with fields for live_pct, debt, and prune_ledger.
-    - A unit test creates a DebtIndex instance and verifies field accessibility.
+    - "cargo doc --package chump-gap-store generates documentation showing DebtIndex with fields live_pct: f64, debt: u64, prune_ledger: Vec<String>."
+    - "A unit test in crates/chump-gap-store/src/lib.rs creates a DebtIndex instance via DebtIndex { live_pct: 0.5, debt: 100, prune_ledger: vec![] } and asserts debt == 100."
+    - "The DebtIndex struct is marked pub and is importable from outside the crate via use chump_gap_store::DebtIndex."
   notes: |
     [chump harvest check 'Index']
     === primitives_index match for 'Index' ===
@@ -10574,9 +10624,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a `compute_live_pct` function (or associated helper) in `crates/chump-coord/src/rpc.rs` that accepts a collection of items with `Crit` weight and `stage` fields, then returns the Crit-weighted fraction of items whose `stage >= running`. Wire this function into the existing `register_worker_rpc_handlers` if it needs to be exposed via RPC, or keep it as a private utility if it is only used internally.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A function compute_live_pct exists that accepts the necessary state (e.g., items with Crit and stage) and returns the Crit-weighted fraction of items at stage >= running.
-    - A unit test with controlled inputs proves the calculation is correct (e.g., known items yield expected live_pct).
+    - Running `cargo test` in `crates/chump-coord` passes a unit test named `test_compute_live_pct` that calls `compute_live_pct` with at least three items (mixing `stage < running` and `stage >= running`) and asserts the returned float equals the expected Crit-weighted ratio.
+    - The `compute_live_pct` function signature in `crates/chump-coord/src/rpc.rs` accepts `&[Item]` (or equivalent) and returns `f64`, and the function body contains a division where the numerator sums `Crit` for items with `stage >= running` and the denominator sums `Crit` for all items.
+    - If `compute_live_pct` is meant to be called via RPC, a handler registered in `register_worker_rpc_handlers` (in `crates/chump-coord/src/rpc.rs`) routes a named RPC method to `compute_live_pct` and returns the result serialized as JSON.
   depends_on: [CREDIBLE-494]
   notes: |
     [chump harvest check 'Index']
@@ -10607,9 +10665,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a public function `compute_debt` to `crates/chump-coord/src/rpc.rs` that accepts a slice of item structs (each with fields `crit`, `stages`, `short`, `dormant`) and returns the sum of `crit * (stages - short)` for items where `crit` exceeds a high threshold and `dormant` is true. Include a unit test module with controlled inputs that verifies the computed debt value.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A function compute_debt exists that sums Crit × (stages - short) over high-Crit dormant items.
-    - A unit test with controlled inputs verifies the debt value.
+    - "The file `crates/chump-coord/src/rpc.rs` contains a function `pub fn compute_debt(items: &[Item]) -> u64` (or appropriate numeric type) that implements the sum `crit * (stages - short)` over high-crit dormant items."
+    - Running `cargo test --lib` in the `chump-coord` crate passes a test named `test_compute_debt` that asserts the output equals a known value for a hand-crafted input vector.
+    - "The test covers: no high-crit dormant items yields 0, items with `stages <= short` contribute 0, and multiple items sum correctly."
   depends_on: [CREDIBLE-494]
   notes: |
     [chump harvest check 'Index']
@@ -66750,13 +66816,15 @@ gaps:
 - id: INFRA-3535
   domain: INFRA
   title: pre-push test gate should use nextest like bot-merge (CREDIBLE-175) — cargo test false-reds env races
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - The pre-push hook's INFRA-761 test gate prefers cargo nextest run --bin chump (process-isolated) when nextest is installed, falling back to cargo test only when absent — the same CREDIBLE-175 fix bot-merge's own test stage already made
     - The known false-red set (repo_path/repo_tools/tool_middleware CHUMP_REPO env races, INFRA-3534) passes the gate from a bare shell with a live chumpd daemon
     - The hook source of truth is updated wherever hooks are installed from, not just .git/hooks on one machine
+  notes: |
+    [2026-09-01T17:50:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=6881B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3536
@@ -67612,14 +67680,14 @@ gaps:
   domain: INFRA
   title: Picker must propagate EFFECTIVE priority through depends_on — a blocker inherits the max priority of its transitive dependents (cross-band, not just a within-band tiebreaker)
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - picker computes effective_priority(gap) = min band over {own priority} ∪ {priority of every gap it transitively unblocks} (via chump-planner unblocks()); a P3 that blocks a P0 is picked as P0
     - effective priority is the PRIMARY sort band, not a within-priority-band tiebreaker (today _pick_gap.py INFRA-1258 planner rank only breaks ties WITHIN a nominal band — crates/chump-planner/src/graph.rs has open_prerequisites/layers/critical_path_days/unblocks already)
     - "regression test (extend picker_priority_infra3616.rs): a P3 gap that a P0 depends_on is picked before unrelated P1/P2 gaps; no deadlock where a blocked P0 waits behind all P1s while its own P2 prereq sits unworked"
   notes: |
-    [2026-08-19T13:15:24Z] Jeff 2026-08-19: if P2/P3 items required for something to ship in P0, they are also P0 work. Correct. Machinery exists (unblocks() = transitive dependents); wire it into effective priority. Immediate instance fixed by hand: CREDIBLE-266 P2->P1 (blocks RESILIENT-262/276).
+    Decomposed into 3 slices: INFRA-3949, INFRA-3950, INFRA-3951
   opened_date: '2026-08-19'
 
 - id: INFRA-3614
@@ -76427,6 +76495,85 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3949
+  domain: INFRA
+  title: "INFRA: Implement effective_priority function in graph.rs (INFRA-3612 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Function `effective_priority(gap_id: GapId) -> Priority` returns the minimum priority band (P0 highest) among the gap's own priority and all gaps it transitively unblocks (via the existing `unblocks()` method)."
+    - "Unit tests cover: gap with no dependents returns own priority; gap with direct higher-priority dependent returns that priority; transitive chain (A->B->C, C highest) returns C's priority; cycle handling returns own priority or safely panics."
+    - Function is idempotent and efficient for the expected graph sizes (memoization optional).
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-3950
+  domain: INFRA
+  title: "INFRA: Update picker to use effective_priority as primary sort (INFRA-3612 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - In `_pick_gap.py`, the picker computes `effective_priority` via the Rust graph function for each gap and uses it as the primary sort key (lower band value = higher priority).
+    - Within the same effective priority band, the existing tiebreaker logic (planner rank, critical path days, etc.) is preserved.
+    - A P3 gap that blocks a P0 gap is picked before an unrelated P1 gap, preventing deadlocks where a blocked P0 waits behind lower nominal priority work.
+    - No regression in picker performance or correctness for scenarios without effective priority changes.
+  depends_on: [INFRA-3949]
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-3951
+  domain: INFRA
+  title: "INFRA: Add regression test for effective priority in picker (INFRA-3612 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Extend `picker_priority_infra3616.rs` (or new test) with a scenario: G1(P0) depends on G2(P3), and G3(P1), G4(P2) are independent and ready."
+    - The picker's first selection is G2 (P3) because its effective priority is P0, not G3 or G4.
+    - After G2 is completed, G1 becomes available and is selected next (G1 is P0).
+    - Test passes with the new implementation and fails without it.
+  depends_on: [INFRA-3950]
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
 
 - id: INFRA-416
   domain: INFRA
@@ -96504,8 +96651,8 @@ gaps:
 - id: RESILIENT-523
   domain: RESILIENT
   title: auto-deploy times out (30min systemd limit < cold chump build) — every merge silently fails to reach the running binary; the fleet runs stale code
-  status: open
-  priority: P0
+  status: done
+  priority: P2
   effort: m
   description: |
     PROVEN on CJ 2026-08-31: chump-auto-deploy.service has TimeoutStartUSec=30min, but a cold cargo build of the chump binary (190k+ LOC) exceeds 30min, so the service TIMES OUT and the install never lands. Evidence: last_deployed=48ea37fd but origin/main was at 2a5ad0a8d (INFRA-3687 gap-store fix) with the RUNNING binary built 12:38 (pre-merge) and canonical_max_id ABSENT from it — the fix merged but never ran. This is the fleet-wide 'merged != running disease' root: EVERY merge silently fails to deploy, so the fleet runs stale code and shipped fixes never take effect. Manual out-of-systemd build was required to land INFRA-3687. Fix options: (a) raise TimeoutStartSec well above worst-case cold-build (or set to infinity + rely on the reset-loop), and/or (b) BETTER: make refresh-runner-binary.sh use the provenance-gated PREBUILT binary download (EFFECTIVE-450 build-fleet-binaries artifact) instead of cold-compiling — a download is seconds and never times out. Also emit a LOUD signal when a deploy times out/fails (today it is silent). AC: after a merge to origin/main, the running binary on every fleet node carries the new code within N minutes, VERIFIED by a symbol/sha check, and a failed deploy pages loudly.
@@ -96514,7 +96661,8 @@ gaps:
     - a deploy that times out or fails emits a loud signal (not silent) so merged-not-running is caught
     - prefer prebuilt-binary download (EFFECTIVE-450) over cold-compile so deploy cannot time out
   notes: |
-    ROOT is bigger than the 30min timeout: CJ deploy was a 4-LOOP CLOBBER TANGLE (chump-auto-deploy+organ-deploy+merge-deploy-lag+organ-reconcile) rebuilding from a stale side-worktree and REVERTING correct binaries; all four now DISABLED so fleet cannot self-update binaries at all. FIX = single deploy authority per node using the recipe proven live 2026-08-31, handed off at ~/.chump/safe-deploy.sh: reset --hard origin/main; build BOTH bins (chump + -p chump-fleet-server); verify expected symbol IN each built binary (strings|grep) BEFORE install; atomic temp+mv (avoids ETXTBSY); health-verify (chump --version + curl :7070/healthz==200); rollback-to-last-good + loud page on fail; record sha; touch changed crate srcs to bust stale fingerprint; raise systemd timeout above a cold build; then re-enable EXACTLY ONE timer and remove the other three. AC: sole deploy authority per node; verify-symbol-before-install; atomic install; rollback+page on health-fail; verified live that a binary-affecting merge reaches CJ running binary within one cycle with zero clobber.
+    Decomposed into 7 slices: RESILIENT-603, RESILIENT-604, RESILIENT-605, RESILIENT-606, RESILIENT-607, RESILIENT-608, RESILIENT-609
+  closed_date: '2026-09-01'
   outcome_id: MISSION-012
 
 - id: RESILIENT-524
@@ -98844,7 +98992,7 @@ gaps:
 - id: RESILIENT-599
   domain: RESILIENT
   title: "RESILIENT: Generate single-source floor config via reproducible installer (RESILIENT-596 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -98869,6 +99017,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+    [2026-09-01T18:09:00Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2594B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-600
   domain: RESILIENT
@@ -98960,6 +99109,246 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-603
+  domain: RESILIENT
+  title: "RESILIENT: Raise systemd timeout for chump-auto-deploy to prevent premature timeout (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The chump-auto-deploy.service unit file on CJ has TimeoutStartUSec set to 'infinity' or a value > 7200 seconds.
+    - After a systemctl daemon-reload and service restart, a deploy triggered by a merge does not hit a timeout, and the build can complete.
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-604
+  domain: RESILIENT
+  title: "RESILIENT: Implement safe-deploy.sh script with atomic install and health verification (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The script ~/.chump/safe-deploy.sh exists, is executable, and performs: git fetch origin && git reset --hard origin/main; cargo build of both binaries; symbol verification (strings|grep) on each binary; atomic install via temp+mv; health check (chump --version and curl healthz); rollback to last good binary on failure; records deployed sha; touches changed crate source files."
+    - Running the script manually on CJ with a clean state results in a successful deploy with the binary running and health check passing.
+    - When the health check fails, the script restores the previous binary and exits with a non-zero code, logging the failure.
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-605
+  domain: RESILIENT
+  title: "RESILIENT: Update chump-auto-deploy.service to execute safe-deploy.sh (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The ExecStart line in chump-auto-deploy.service is changed to '/home/chump/.chump/safe-deploy.sh' (or appropriate path).
+    - After daemon-reload, the service runs the script when triggered by the timer, and the deploy completes successfully.
+  depends_on: [RESILIENT-604]
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-606
+  domain: RESILIENT
+  title: "RESILIENT: Integrate prebuilt binary download into safe-deploy.sh to replace cold compile (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The safe-deploy.sh script is modified to check for a prebuilt binary artifact for the target commit (from EFFECTIVE-450) and download it if available, skipping the cargo build step.
+    - The downloaded binary is verified (e.g., SHA256 checksum) before installation.
+    - A deploy using the download completes in under 60 seconds (excluding git fetch).
+    - If the prebuilt binary is not available, the script falls back to building from source.
+  depends_on: [RESILIENT-604]
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-607
+  domain: RESILIENT
+  title: "RESILIENT: Add pager alerting on deploy failure to safe-deploy.sh (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When safe-deploy.sh encounters any failure (build fail, symbol mismatch, health check fail), it sends a pager duty alert containing the hostname and failure reason.
+    - The alert is received by the on-call engineer within 1 minute of the failure.
+  depends_on: [RESILIENT-604]
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-608
+  domain: RESILIENT
+  title: "RESILIENT: Consolidate deploy timers to a single authority on CJ (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All other deploy-related timers (organ-deploy, merge-deploy-lag, organ-reconcile) are disabled and masked on CJ.
+    - Only chump-auto-deploy.timer is enabled and active.
+    - No conflicting deploys occur; the single timer triggers the safe-deploy process.
+  depends_on: [RESILIENT-605]
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-609
+  domain: RESILIENT
+  title: "RESILIENT: Verify end-to-end deploy flow after a merge to origin/main (RESILIENT-523 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - After all changes are applied, a merge to origin/main that changes the binary results in the running binary on CJ being updated to the new commit within one deploy cycle (within N minutes).
+    - The updated binary's sha/symbol matches the target commit, verified via chump --version and health check.
+    - No deploy timeout or rollback occurs; the deploy log shows successful symbol verification and atomic install.
+    - If a failure is intentionally injected, an alert is triggered and rollback occurs.
+  depends_on: [RESILIENT-603, RESILIENT-605, RESILIENT-606, RESILIENT-607, RESILIENT-608]
+  notes: |
+    [chump harvest check 'times']
+    === primitives_index match for 'times' ===
+    
+    === cluster keyword match for 'times' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'times' ===
+    
+    === repo-description match for 'times' ===
+    
+    === HARVEST_ROADMAP.md mention of 'times' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'times' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: RESILIENT-610
+  domain: RESILIENT
+  title: "size-aware model routing: start model by gap effort (xs/s->flash, m->pro, l/xl->decompose), not pro-first-for-all"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    Floor picks STARTING model by a fixed ladder (pro-first stopgap since flash rc=1 + escalation did not fire), so small gaps burn pro. chumpd:197 effort GATE keyed on stale haiku/sonnet not deepseek; effort->model router at dispatch.rs:1106 exists but LIVE worker path does not use it. Target: starting model from gap.effort (xs/s->flash, m->pro, l/xl->decompose) then escalate. Safe only AFTER RESILIENT-597.
+  acceptance_criteria:
+    - starting model selected from gap.effort not fixed pro-first
+    - stale haiku/sonnet gate retired to real deepseek set
+    - effort->model router on LIVE worker path (verified by live route log)
+    - xs/s no longer start on pro; real ship rate holds
+    - depends RESILIENT-597
+  depends_on: [RESILIENT-597]
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: journalctl -u chump-cj-worker* | grep model=deepseek ; sed -n 197p crates/chumpd/src/main.rs. OUTPUT: live workers call BOTH pro AND flash under pro-first ladder; chumpd:197 gate keyed on stale haiku/sonnet; dispatch.rs:1106 effort->model router returns ZERO live lines. THEORY: fixed pro-first ladder burns pro on xs/s; router exists but off live path; start-model-by-effort+escalate cuts cost. ALT: pro-first-for-all (wasteful) or flash-first-for-all (rc=1 artifacts until 597).
 
 - id: SMOKE-001
   domain: SMOKE
