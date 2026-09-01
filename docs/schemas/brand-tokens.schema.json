@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://github.com/repairman29/chump/blob/main/docs/schemas/brand-tokens.schema.json",
+  "title": "Chump per-product brand tokens schema (EFFECTIVE-636 / EFFECTIVE-358 slice)",
+  "description": "Design-token file for a single Chump-built product's brand palette. Follows the W3C Design Tokens Community Group format (https://design-tokens.github.io/community-group/format/) — each leaf token is an object with '$value' and '$type'; groups may carry a '$description'. Values map 1:1 onto the canonical CSS custom-property names enforced by docs/process/CSS_TOKEN_DISCIPLINE.md (INFRA-1590), so a product's brand tokens can be compiled straight into a ':root { }' block without renaming.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["$schema", "product", "color"],
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "const": "https://github.com/repairman29/chump/blob/main/docs/schemas/brand-tokens.schema.json"
+    },
+    "$description": {
+      "type": "string",
+      "description": "Human-readable summary of what product/brand this token set belongs to."
+    },
+    "product": {
+      "type": "string",
+      "description": "Product slug this token set brands, e.g. 'chump-pwa', 'ribbon'. Used as the directory/file key when multiple products' tokens coexist.",
+      "pattern": "^[a-z0-9][a-z0-9-]*$"
+    },
+    "color": {
+      "type": "object",
+      "description": "Color token group. Keys are the canonical CSS custom-property names (minus the leading '--') from CSS_TOKEN_DISCIPLINE.md's canonical token list — do not introduce '*-primary' / '*-secondary' aliases here, per rule2-alias.",
+      "additionalProperties": false,
+      "properties": {
+        "bg": { "$ref": "#/$defs/colorToken" },
+        "bg-surface": { "$ref": "#/$defs/colorToken" },
+        "bg-elevated": { "$ref": "#/$defs/colorToken" },
+        "text": { "$ref": "#/$defs/colorToken" },
+        "text-secondary": { "$ref": "#/$defs/colorToken" },
+        "accent": { "$ref": "#/$defs/colorToken" },
+        "accent-dim": { "$ref": "#/$defs/colorToken" },
+        "success": { "$ref": "#/$defs/colorToken" },
+        "warn": { "$ref": "#/$defs/colorToken" },
+        "error": { "$ref": "#/$defs/colorToken" },
+        "border": { "$ref": "#/$defs/colorToken" }
+      },
+      "required": ["bg", "text", "accent", "success", "warn", "error", "border"]
+    },
+    "radius": {
+      "type": "object",
+      "description": "Corner-radius token group, mirroring '--radius' / '--radius-sm'.",
+      "additionalProperties": false,
+      "properties": {
+        "radius": { "$ref": "#/$defs/dimensionToken" },
+        "radius-sm": { "$ref": "#/$defs/dimensionToken" }
+      }
+    }
+  },
+  "$defs": {
+    "colorToken": {
+      "type": "object",
+      "description": "A single W3C design-token leaf node of type 'color'.",
+      "additionalProperties": false,
+      "required": ["$value", "$type"],
+      "properties": {
+        "$value": {
+          "type": "string",
+          "description": "CSS color value: hex, rgb()/rgba(), or hsl()/hsla().",
+          "pattern": "^(#[0-9a-fA-F]{3,8}|rgba?\\([^)]*\\)|hsla?\\([^)]*\\))$"
+        },
+        "$type": { "const": "color" },
+        "$description": { "type": "string" }
+      }
+    },
+    "dimensionToken": {
+      "type": "object",
+      "description": "A single W3C design-token leaf node of type 'dimension'.",
+      "additionalProperties": false,
+      "required": ["$value", "$type"],
+      "properties": {
+        "$value": {
+          "type": "string",
+          "description": "CSS length value, e.g. '8px' or '0.5rem'.",
+          "pattern": "^-?[0-9]+(\\.[0-9]+)?(px|rem|em)$"
+        },
+        "$type": { "const": "dimension" },
+        "$description": { "type": "string" }
+      }
+    }
+  }
+}
