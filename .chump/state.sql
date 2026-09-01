@@ -9156,7 +9156,7 @@ gaps:
 - id: CREDIBLE-451
   domain: CREDIBLE
   title: "CREDIBLE: Implement core data models and calculators for green-first-try% and admin-merge count (CREDIBLE-272 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -9177,6 +9177,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'scoreboard' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T12:41:56Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-452
   domain: CREDIBLE
@@ -9259,7 +9260,7 @@ gaps:
 - id: CREDIBLE-455
   domain: CREDIBLE
   title: "CREDIBLE: Build CI script scanner for vacuous grep targets and missing paths (CREDIBLE-274 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -9275,6 +9276,8 @@ gaps:
     - The command `bash scripts/ops/cargo-target-reaper.sh scan-ci` exits with status code 0 regardless of whether any dead targets are found.
     - "After inserting a line `grep \"TODO\" non_existent_file.txt` into `scripts/ci/test-a2a-inbox-routing.sh`, executing `bash scripts/ops/cargo-target-reaper.sh scan-ci` includes an entry in the `dead_targets` array referencing `test-a2a-inbox-routing.sh` and the correct line number."
     - "The test script `scripts/ci/test-registry-pattern8.sh` invokes `bash scripts/ops/cargo-target-reaper.sh scan-ci`, checks that the output contains the string `\"dead_targets\"` and that the script exits with code 0."
+  notes: |
+    [2026-09-01T12:42:09Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-456
   domain: CREDIBLE
