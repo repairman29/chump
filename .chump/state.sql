@@ -31285,11 +31285,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update the `reserve_with_external` function in `src/lib.rs` to resolve the YAML output location against the linked worktree root (using the existing `worktree_root()` helper) instead of the repository’s main directory, and adjust any path‑construction logic so that the generated file lives under the worktree. Ensure that `import_from_yaml` can locate and read the file from this new location.
+    
+    Target file(s):
+    - .claude/worktrees/infra-3643-fleet-1-20260822-081649/crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Running `scripts/coord/gap-reserve.sh` with a test gap creates a `gap.yaml` file under the worktree path returned by `worktree_root()` and no `gap.yaml` appears in the repository root.
+    - "Calling `chump_gap_store::reserve_with_external` returns `Ok` and the `PathBuf` it returns points to a location that begins with the worktree root directory."
+    - Invoking `scripts/coord/bot-merge.sh` and inspecting its log output shows an event named `gap_reserve_written` whose `location` field matches the worktree‑based path.
+    - When `reserve_with_external` fails to write (e.g., due to a read‑only worktree), the function returns an error classified as `Transient` and the log contains an event `gap_reserve_failure` with a `transient` flag.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -71117,7 +71124,7 @@ gaps:
 - id: INFRA-3905
   domain: INFRA
   title: "INFRA: Create GitHub Actions workflow file with basic setup and caching (INFRA-3677 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -71149,6 +71156,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T02:15:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3906
   domain: INFRA
