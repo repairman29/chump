@@ -9381,7 +9381,7 @@ gaps:
 - id: CREDIBLE-461
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-338: Triage the 79 false‑done gaps and update registry (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -9408,11 +9408,12 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-01T13:52:36Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4804B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-462
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-339: Refactor done_auditor::audit to order by closed_at and persist cursor (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -9439,6 +9440,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-01T13:52:56Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4804B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-463
   domain: CREDIBLE
@@ -9747,7 +9749,7 @@ gaps:
 - id: CREDIBLE-474
   domain: CREDIBLE
   title: "CREDIBLE: Locate bot_merge_uncaught_error emission in auto‑close stage for shell/doc PRs (CREDIBLE-295 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -9778,6 +9780,7 @@ gaps:
     === cross-pollination briefs mentioning 'bot-merge' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+    [2026-09-01T13:51:03Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4804B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-475
   domain: CREDIBLE
@@ -64383,7 +64386,7 @@ gaps:
 - id: INFRA-3491
   domain: INFRA
   title: "RESILIENT: [COTG-2.3] cross-PR coordination / merge-order hazard detection"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -64391,14 +64394,15 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    [2026-07-29T03:21:23Z] DISCOVERY PARTIAL ~30% -> FINISH. collision_prediction.rs is a mock; better neighbor = contract-scan --in-flight (+ scripts/ci/test-cross-pr-contract.sh) which detects writer/reader key-mismatch across open PRs. Add a numeric double-bump detector there.
+    Decomposed into 5 slices: INFRA-3927, INFRA-3928, INFRA-3929, INFRA-3930, INFRA-3931
+    [2026-09-01T13:59:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4779B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: COTG
 
 - id: INFRA-3492
   domain: INFRA
   title: "EFFECTIVE: [COTG-2.4] reactive coordination bus (react to events; stop polling)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -64407,6 +64411,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-07-29T03:21:23Z] DISCOVERY transport COMPLETE, reactions BUILT-NOT-WIRED -> FINISH. crates/chump-coord/src/{events,nats_primary,jetstream_consumer}.rs (flag + offline-degrade real). Add pr.merged->ship and test.failed->pr-rescue reaction handlers (wiring, not plumbing).
+    [2026-09-01T14:00:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4779B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -71527,9 +71532,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the `reopen_respawned_gaps` function in `scripts/ops/stuck-pr-filer.sh` to record the timestamp of a PR close event, detect when the same PR is reopened within 60 seconds, and invoke the existing `emit_alert` function (augmented to handle a new alert type) with the PR number, close and reopen timestamps, and the actor who performed the reopen; also update `scripts/ops/queue-health-monitor.sh`’s `emit_alert` to recognize a `rapid_pr_reopen` alert and output a JSON‑structured alert containing those fields.
+    
+    Target file(s):
+    - scripts/ops/stuck-pr-filer.sh
+    - scripts/ops/queue-health-monitor.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - An alert is triggered if a PR is closed and then reopened within 60 seconds.
-    - Alert includes PR number, timestamps, and actor who reopened.
+    - In `scripts/ops/stuck-pr-filer.sh`, the `reopen_respawned_gaps` function writes a warning log entry when a PR is reopened within 60 seconds of being closed.
+    - In `scripts/ops/queue-health-monitor.sh`, the `emit_alert` function accepts a new alert type `rapid_pr_reopen` and prints a single‑line JSON object with keys `type`, `pr_number`, `closed_at`, `reopened_at`, and `actor`.
+    - Executing a simulated workflow where a PR is closed and then reopened after 30 seconds creates an entry in the alerts log that matches the JSON schema defined in `emit_alert`.
+    - No alert entry is produced when the same PR is reopened after more than 60 seconds, confirming the time‑window gating.
   notes: |
     [chump harvest check 'while']
     === primitives_index match for 'while' ===
@@ -71556,10 +71571,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new function `print_retire_pr_runbook` to `scripts/ci/test-stale-pr-reaper-retire-conflicting.sh` that outputs the runbook steps for retiring stale conflicting PRs (adding “retired” or “locked” labels, verifying no reopen, and troubleshooting merge‑queue jams), and modify the script’s argument parser to invoke this function when the `--runbook` flag is supplied.
+    
+    Target file(s):
+    - scripts/ci/test-stale-pr-reaper-retire-conflicting.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Runbook includes steps to manually add 'retired' or 'locked' labels to PRs to prevent reopening.
-    - Runbook explains how to verify that a PR will not be reopened.
-    - Runbook includes troubleshooting for merge-queue jams.
+    - The file `scripts/ci/test-stale-pr-reaper-retire-conflicting.sh` defines a function named `print_retire_pr_runbook` containing the three documented steps.
+    - Executing `scripts/ci/test-stale-pr-reaper-retire-conflicting.sh --runbook` prints exactly the runbook steps to STDOUT.
+    - The script’s argument handling includes a `--runbook` option that calls `print_retire_pr_runbook` and then exits with status code 0.
+    - No existing tests for the script fail after the addition; the script still returns exit code 0 on normal operation without the `--runbook` flag.
   notes: |
     [chump harvest check 'while']
     === primitives_index match for 'while' ===
@@ -73942,6 +73965,144 @@ gaps:
     === cross-pollination briefs mentioning 'Fleet-wide' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-3927
+  domain: INFRA
+  title: "INFRA: Add numeric double‑bump detection function to test‑cross‑pr‑contract.sh (INFRA-3491 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new Bash function `detect_double_bump` is added to `scripts/ci/test-cross-pr-contract.sh`.
+    - The function accepts a list of numeric values and returns exit code 0 if a double‑bump pattern (increase followed by a decrease) is found, otherwise exit code 1.
+    - The function is lint‑free (`shellcheck`) and passes `bash -n` syntax check.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-3928
+  domain: INFRA
+  title: "INFRA: Integrate double‑bump detection into mismatch extraction flow (INFRA-3491 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`extract_mismatches` now calls `detect_double_bump` on the numeric fields of each mismatch."
+    - When a double‑bump is detected, `emit_mismatch_event` is invoked with a descriptive payload.
+    - Existing mismatch extraction behavior is unchanged for non‑numeric or non‑double‑bump cases.
+  depends_on: [INFRA-3927]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-3929
+  domain: INFRA
+  title: "INFRA: Add CI test verifying double‑bump detection (INFRA-3491 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new test case is added to `scripts/ci/test-cross-pr-contract.sh` that feeds a crafted JSON payload containing a double‑bump scenario.
+    - The test asserts that the script exits with a non‑zero status when the detection logic is absent and exits with zero when present.
+    - The test runs as part of the existing CI `cargo test` / `scripts/ci/test-*.sh` suite.
+  depends_on: [INFRA-3928]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-3930
+  domain: INFRA
+  title: "INFRA: Run `cargo fmt` and `cargo clippy` across the repository and fix warnings (INFRA-3491 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` completes without changes."
+    - "`cargo clippy --all-targets -- -D warnings` completes with zero warnings."
+    - No existing tests fail after formatting and clippy fixes.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-3931
+  domain: INFRA
+  title: "INFRA: Validate end‑to‑end CI with new detection and ensure no regressions (INFRA-3491 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All existing tests (`cargo test` and all `scripts/ci/test-*.sh`) pass.
+    - The newly added double‑bump test passes, confirming the hazard is detected.
+    - CI pipeline reports success with no new warnings or failures.
+  depends_on: [INFRA-3929, INFRA-3930]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-394
   domain: INFRA
