@@ -65171,13 +65171,15 @@ gaps:
 - id: INFRA-3543
   domain: INFRA
   title: "EFFECTIVE: audit shard rebalance by MEASURED duration + per-shard timing record + no-checkout audit-required (real EFFECTIVE-420 AC; #3532/#3534 shipped only the cache-key/cold-build fixes)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"audit shard rebalance by MEASURED duration + per-shard timing record + no-checkout audit-required (real EFFECTIVE-420 AC; #3532/#3534 shipped only the cache-key/cold-build fixes)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-01T14:26:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4779B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3544
@@ -95237,7 +95239,7 @@ gaps:
     - the rot-reaper does not auto-close a PR whose sole failure is an unregistered-own-gate parity fail
     - "regression test: a synthetic PR adding a ci.yml step + no exceptions entry either passes parity or is blocked at commit with the exact fix, never silently reaches CI-red-then-reaped"
   notes: |
-    Decomposed into 4 slices: RESILIENT-549, RESILIENT-550, RESILIENT-551, RESILIENT-552
+    Decomposed into 4 slices: RESILIENT-586, RESILIENT-587, RESILIENT-588, RESILIENT-589
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -96558,6 +96560,117 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-586
+  domain: RESILIENT
+  title: "RESILIENT: Enable test-preflight-ci-parity.sh to auto‑recognize gates added in the same PR diff (RESILIENT-545 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Running scripts/ci/test-preflight-ci-parity.sh on a diff that adds a new job/gate in .github/workflows/ci.yml returns exit code 0
+    - The script logs a clear message that the new gate was detected in‑diff and is considered passed
+    - Existing parity checks for all other gates remain unchanged
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-587
+  domain: RESILIENT
+  title: "RESILIENT: Add pre‑commit hook to auto‑append exceptions entry for new ci.yml gates (RESILIENT-545 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Hook runs on staged changes to .github/workflows/ci.yml
+    - If a new gate is added, the hook appends the appropriate line to scripts/ci/preflight-ci-parity-exceptions.txt and allows the commit
+    - If the hook cannot update the exceptions file, it aborts the commit with an explanatory error
+    - If the exceptions entry already exists, the hook passes without modification
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-588
+  domain: RESILIENT
+  title: "RESILIENT: Update rot‑reaper to ignore PRs whose only failure is an own‑gate parity error (RESILIENT-545 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a PR has a single failing check from test-preflight-ci-parity.sh caused by its own unregistered gate, the reaper does NOT close the PR
+    - Reaper logs a message indicating the PR was exempted due to own‑gate parity failure
+    - PRs with any other failing checks continue to be closed as before
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-589
+  domain: RESILIENT
+  title: "RESILIENT: Add regression test for synthetic PR adding a ci.yml step without exceptions entry (RESILIENT-545 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates a synthetic PR that adds a new step to .github/workflows/ci.yml and does not modify preflight-ci-parity-exceptions.txt
+    - Test verifies that the commit is either blocked by the pre‑commit hook with the expected error message or that the parity script passes thanks to in‑diff recognition
+    - Test confirms that the rot‑reaper does not auto‑close the PR
+    - Test runs in CI and passes
+  depends_on: [RESILIENT-586, RESILIENT-587, RESILIENT-588]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: SMOKE-001
   domain: SMOKE
