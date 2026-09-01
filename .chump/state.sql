@@ -9750,9 +9750,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add an explicit comment and a diagnostic `println!` in `src/improve.rs` at the point where `bot_merge_uncaught_error` is emitted during the auto‑close stage for shell/doc PRs (inside `run_inner`), and annotate the surrounding else‑branch with the AC‑coverage advisory to make the emission location discoverable by scripts and reviewers.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Source files and line numbers where bot_merge_uncaught_error is currently emitted are identified
-    - Documentation of the code path (including the else‑branch and ac‑coverage advisory) is added to the ticket
+    - "src/improve.rs:184 contains a comment `// bot_merge_uncaught_error emitted here during auto‑close of shell/doc PRs`."
+    - "src/improve.rs:184 includes a `println!(\"Emission location: src/improve.rs:184\")` that is executed only when `bot_merge_uncaught_error` is about to be emitted."
+    - "The else‑branch of the `run_inner` function now has a comment referencing the AC‑coverage advisory (`// AC‑coverage: ensure this path is exercised in CI`)."
+    - "? Executing `scripts/ci/test-bot-merge-err-trap-loud-fail.sh` and grepping for `Emission location` prints exactly `Emission location : src/improve.rs:184`."
   notes: |
     [chump harvest check 'bot-merge']
     === primitives_index match for 'bot-merge' ===
@@ -9776,10 +9785,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Edit `scripts/dev/heartbeat-mabel.sh` by locating the invocation of the “ac‑coverage advisory” command (currently a direct call) and wrapping it in a failure‑tolerant construct (`<advisory‑cmd> || true`).  The surrounding `cascade_ok` helper will be updated (or a new wrapper added) so that any non‑zero exit status from the advisory is captured, logged via `echo` to stderr, and does not cause the script to exit, thereby preventing a `bot_merge_uncaught_error` emission.
+    
+    Target file(s):
+    - scripts/dev/heartbeat-mabel.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The advisory step runs inside a `|| true` or equivalent construct
-    - Errors from the advisory are captured and logged without causing the script to exit
-    - No bot_merge_uncaught_error is emitted when the advisory fails
+    - Running `scripts/dev/heartbeat-mabel.sh` with the advisory command forced to exit with status 1 still exits the script with status 0.
+    - The script writes a line containing the phrase “ac‑coverage advisory failed” to stderr (or the designated log) when the advisory exits non‑zero.
+    - No `bot_merge_uncaught_error` string appears in the script’s stdout or stderr output after a forced advisory failure.
+    - The `cascade_ok` function (or its replacement) returns a zero status after the advisory step, verified by a unit test that invokes the function with a mock failing advisory command.
   depends_on: [CREDIBLE-474]
   notes: |
     [chump harvest check 'bot-merge']
@@ -9804,10 +9821,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the else‑branch that handles a non‑zero return code from the auto‑close step in `scripts/dev/mission-scoreboard.sh` so that it logs the failure, suppresses the global uncaught‑error trap, and exits with the original rc after logging, without invoking `bot_merge_uncaught_error`.
+    
+    Target file(s):
+    - scripts/dev/mission-scoreboard.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When the auto‑close rc is non‑zero, the branch logs the failure and continues execution
-    - The branch no longer triggers the global uncaught‑error trap
-    - The script exits with the original rc after logging, but does not emit bot_merge_uncaught_error
+    - "In `scripts/dev/mission-scoreboard.sh`, the else block after the auto‑close command must call a logging function (e.g., `log_error \"auto‑close failed with rc $rc\"`), then `exit $rc`, and must not call or trigger `bot_merge_uncaught_error`."
+    - Executing `scripts/dev/mission-scoreboard.sh` with a mocked auto‑close command that returns rc 5 must produce a log line containing the exact text “auto‑close failed with rc 5” and the script must terminate with exit status 5.
+    - When the script exits via the new else‑branch, the global `trap 'bot_merge_uncaught_error' ERR` handler must not be executed; this can be verified by asserting that the side‑effects of `bot_merge_uncaught_error` (e.g., a specific marker file or log entry) are absent.
+    - "The successful path (rc 0) of the auto‑close step must remain unchanged: the script should continue without logging an error and should not exit prematurely."
   depends_on: [CREDIBLE-474]
   notes: |
     [chump harvest check 'bot-merge']
