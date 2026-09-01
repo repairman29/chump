@@ -25032,7 +25032,7 @@ gaps:
 - id: EFFECTIVE-610
   domain: EFFECTIVE
   title: "EFFECTIVE: File sub-gaps for core feature areas (EFFECTIVE-265 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -25061,6 +25061,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+    [2026-09-01T21:18:28Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2598B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-611
   domain: EFFECTIVE
@@ -77633,11 +77634,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `discover_test_scripts` function in `crates/chump-preflight/src/preflight.rs` to compute a per-worker target directory path using the WORKER_INDEX environment variable, verify that the path resides on the internal disk by checking for a marker file `/home/ci/.internal-disk-marker`, set the `CARGO_TARGET_DIR` environment variable to `/home/ci/target-<WORKER_INDEX>`, enforce a 5 GB size cap by deleting the directory if it exceeds that limit, and add a comment explaining that sccache object sharing is preserved because sccache uses its own cache directory.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Propose a naming pattern (e.g., /home/ci/target-<worker-index>) that gives distinct directories to workers or groups of <=2.
-    - "Based on node capability (CJ measurement: internal disk /home healthy, USB corrupted), the directory root must be on the fast internal disk, not USB."
-    - Document a strict reaper per-directory size cap (e.g., 5 GB per worker) to fit within available internal disk space and headroom (~15 GB free).
-    - Provide a brief design note explaining how sccache object sharing is preserved despite separate target dirs.
+    - In `crates/chump-preflight/src/preflight.rs`, function `discover_test_scripts` sets `CARGO_TARGET_DIR` to `/home/ci/target-<WORKER_INDEX>` when `WORKER_INDEX` is set and `/home/ci/.internal-disk-marker` exists.
+    - "If `/home/ci/.internal-disk-marker` is missing, the function prints 'ERROR: Internal disk not found at /home/ci' to stderr and exits with code 1."
+    - Before using the target directory, the function runs `du -sb /home/ci/target-<WORKER_INDEX>`; if the size exceeds 5368709120 bytes, it removes the directory with `rm -rf` and logs 'Target directory /home/ci/target-<WORKER_INDEX> exceeded 5 GB, purged.'
+    - "A comment in the code states: 'sccache object sharing is preserved because sccache stores objects in its own cache directory (default ~/.cache/sccache), independent of CARGO_TARGET_DIR.'"
   depends_on: [INFRA-3957]
   notes: |
     [chump harvest check 'MISSION']
@@ -77795,11 +77803,20 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new integration test function `test_fingerprint_clobber_elimination` in `scripts/ci/test-chump-ci-image.sh` that builds the chump crate with two workers using per-worker target directories, then scans the build log for phantom fingerprint trailers, compares sccache hit counts against a single-target baseline, and checks total build time for regression; register this test in `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` so it runs in CI.
+    
+    Target file(s):
+    - scripts/ci/test-chump-ci-image.sh
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Run a representative crate build (e.g., the chump project) with 2 workers using the new per-worker target dirs.
-    - Verify that zero 'phantom fingerprint from sibling worktree' trailers appear in logs over 24 hours.
-    - Compare sccache hit count with a single-target baseline; confirm hit rate is within 5% parity.
-    - Document that from-scratch recompilations have ceased and total build time is not regressed.
+    - "Running `scripts/ci/test-chump-ci-image.sh` with `WORKERS=2` executes `test_fingerprint_clobber_elimination` and outputs `PASS: fingerprint_clobber_elimination` or `FAIL: fingerprint_clobber_elimination`."
+    - The function `test_fingerprint_clobber_elimination` in `scripts/ci/test-chump-ci-image.sh` greps the build log for the string `phantom fingerprint from sibling worktree` and fails if any line matches.
+    - The function compares `sccache --show-stats` hit count between the two-worker run and a single-worker baseline run, and fails if the hit count difference exceeds 5%.
+    - The function records the total build time of the two-worker run and fails if it exceeds the baseline build time by more than 10%.
+    - The `discover_test_scripts` function in `crates/chump-preflight/src/preflight.rs` includes the string `test_fingerprint_clobber_elimination` in its returned list of test names.
   depends_on: [INFRA-3961]
   notes: |
     [chump harvest check 'MISSION']
@@ -87949,7 +87966,7 @@ gaps:
 - id: PRODUCT-188
   domain: PRODUCT
   title: "[slidemate] JSDoc-injection bot corrupted 1,649 files — comments spliced mid-statement, files unparseable"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -87963,6 +87980,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-01T21:27:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2744B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/slidemate"
@@ -98878,6 +98897,13 @@ gaps:
     [2026-09-01T21:10:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (34 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:12:31Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (35 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T21:14:47Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (36 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:17:01Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (37 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:19:15Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (38 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:21:28Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (39 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:23:42Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (40 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:25:56Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (41 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:28:09Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (42 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T21:30:05Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (43 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
