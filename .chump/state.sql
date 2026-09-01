@@ -4453,6 +4453,8 @@ gaps:
     - "The change described by \"ship-pipeline scoreboard — green-first-try%, time-to-land, admin-merge count, gate FP rate; published so we lead on measured quality+speed\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 4 slices: CREDIBLE-451, CREDIBLE-452, CREDIBLE-453, CREDIBLE-454
   opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
@@ -8911,10 +8913,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    In `src/agent_loop/tool_runner.rs`, update error-handling routines in `handle_schema_failures` to emit structured log records when ship-count or command execution checks fail. Ensure the log statements include structured key-value pairs for error_code, failed_command, and failure reason, while stripping out sensitive tokens and credentials from the logged parameters.
+    
+    Target file(s):
+    - src/agent_loop/tool_runner.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When an error occurs, the script logs a structured entry containing timestamp, error code, failed command, and reason.
-    - Log entries are written to the standard fleet‑brief log file and are searchable by operators.
-    - No sensitive information is leaked in the log.
+    - "`src/agent_loop/tool_runner.rs` invokes `tracing::error!` or `tracing::warn!` with structured fields for `error_code`, `failed_command`, and `reason` when handling command failures."
+    - Log messages produced by `handle_schema_failures` sanitize all output to ensure no bearer tokens or secret environment variables are logged.
+    - "`cargo test` passes for tests in `src/agent_loop/tool_runner.rs` verifying failure log handling."
   depends_on: [CREDIBLE-439]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -9123,6 +9132,109 @@ gaps:
     
     === cross-pollination briefs mentioning 'run-fleet' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-451
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement core data models and calculators for green-first-try% and admin-merge count (CREDIBLE-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Define Rust data structures for ship-pipeline events and scoreboard summaries.
+    - Implement calculation logic for green-first-try percentage and admin-merge count.
+    - Unit tests verify correct metric calculations across empty, normal, and edge-case event data.
+  notes: |
+    [chump harvest check 'scoreboard']
+    === primitives_index match for 'scoreboard' ===
+    
+    === cluster keyword match for 'scoreboard' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'scoreboard' ===
+    
+    === repo-description match for 'scoreboard' ===
+    
+    === HARVEST_ROADMAP.md mention of 'scoreboard' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'scoreboard' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-452
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement metric calculators for time-to-land and gate false-positive rate (CREDIBLE-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Implement calculation logic for time-to-land duration from PR creation to merge.
+    - Implement calculation logic for gate false-positive rate based on rerun and override logs.
+    - Unit tests verify time calculations and FP rate accuracy with test event logs.
+  depends_on: [CREDIBLE-451]
+  notes: |
+    [chump harvest check 'scoreboard']
+    === primitives_index match for 'scoreboard' ===
+    
+    === cluster keyword match for 'scoreboard' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'scoreboard' ===
+    
+    === repo-description match for 'scoreboard' ===
+    
+    === HARVEST_ROADMAP.md mention of 'scoreboard' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'scoreboard' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-453
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement scoreboard renderer for JSON and Markdown report outputs (CREDIBLE-272 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Add rendering functions to format the scoreboard into JSON and human-readable Markdown.
+    - Expose CLI or module interface for generating the report from pipeline log files.
+    - Tests verify rendered Markdown structure and JSON schema compliance.
+  depends_on: [CREDIBLE-452]
+  notes: |
+    [chump harvest check 'scoreboard']
+    === primitives_index match for 'scoreboard' ===
+    
+    === cluster keyword match for 'scoreboard' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'scoreboard' ===
+    
+    === repo-description match for 'scoreboard' ===
+    
+    === HARVEST_ROADMAP.md mention of 'scoreboard' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'scoreboard' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-454
+  domain: CREDIBLE
+  title: "CREDIBLE: Integrate scoreboard generation and publication into ship-pipeline CI (CREDIBLE-272 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Update pipeline/CI scripts to collect run events and output the published scoreboard artifact.
+    - Existing CI test scripts pass and verify scoreboard generation without errors.
+    - "`cargo fmt`, `clippy --all-targets -- -D warnings`, and `cargo check` pass."
+  depends_on: [CREDIBLE-453]
+  notes: |
+    [chump harvest check 'scoreboard']
+    === primitives_index match for 'scoreboard' ===
+    
+    === cluster keyword match for 'scoreboard' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'scoreboard' ===
+    
+    === repo-description match for 'scoreboard' ===
+    
+    === HARVEST_ROADMAP.md mention of 'scoreboard' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'scoreboard' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: DOC-031
   domain: DOC
@@ -92797,7 +92909,7 @@ gaps:
 - id: RESILIENT-523
   domain: RESILIENT
   title: auto-deploy times out (30min systemd limit < cold chump build) — every merge silently fails to reach the running binary; the fleet runs stale code
-  status: open
+  status: blocked
   priority: P1
   effort: m
   description: |
@@ -92809,6 +92921,7 @@ gaps:
   notes: |
     [2026-09-01T01:12:20Z] PROVEN 2026-08-31 firefight: the CJ deploy is a 4-LOOP CLOBBER TANGLE, not just a timeout. auto-deploy.timer + organ-deploy.timer + merge-deploy-lag.timer + organ-reconcile.timer each rebuild chump/fleet-server from a SEPARATE stale worktree (/mnt/cjdata2/chump-refresh/wt) on timers and OVERWRITE correct binaries within minutes ('running-then-reverted'). Took ~8 hand-installs of the fleet-server /api/gap binary before I killed ALL four loops + the running auto-deploy.sh/refresh-runner procs; only then did an atomic-mv install of a route-verified binary STAY (probe held 401 at t+6s and t+31s). Also hit ETXTBSY on cp over the running binary (use temp+mv, not cp). DEPLOY LOOPS ARE NOW DISABLED on CJ to stop the clobber — fleet won't auto-update binaries until 523 ships a working deploy + re-enables. IRONCLAD SPEC from this evidence: (1) SINGLE deploy authority (kill the competing loops), (2) verify the binary carries the expected symbol/route BEFORE install, (3) atomic install (temp+mv), (4) NEVER clobber a good binary with a stale rebuild, (5) build from the current-main worktree only (not a drifting side worktree), (6) roll back to last-good + LOUD page on failure.
     [2026-09-01T02:51:34Z] PROVEN reference recipe (hand-bootstrapped on CJ at ~/.chump/safe-deploy.sh 2026-09-01, verified: install STAYS, /api/gap held 401 at t+6s and t+31s). FLEET must productionize this as the durable organ — I am NOT hand-shipping it. Recipe: (1) SINGLE authority — the 4 clobber loops (auto-deploy/organ-deploy/merge-deploy-lag/organ-reconcile timers) stay DISABLED, this replaces them; (2) git fetch+reset --hard origin/main (current-main worktree ONLY, never /mnt/cjdata2/chump-refresh side-worktree); (3) build BOTH binaries as TWO commands: 'cargo build --release --bin chump' then 'cargo build --release -p chump-fleet-server' (--bin chump-fleet-server without -p fails); (4) VERIFY-BEFORE-INSTALL: strings the built binary for the expected symbol/route (canonical_max_id / /healthz) — refuse install if absent; (5) ATOMIC install: cp to tmp then 'mv -f' (plain cp over a running binary → ETXTBSY); (6) restart service, sleep, HEALTH-VERIFY (chump --version + curl /healthz==200); (7) on any failure ROLL BACK to ~/.chump/deploy/last-good-* and restart, keep the good binary, emit LOUD ambient kind=deploy_failed_rolled_back + page; (8) record last-deployed sha, emit deploy_succeeded. Ship as scripts/ops/safe-deploy.sh + a systemd service/timer as the SINGLE deploy authority, add to install-helsinki-atc.sh roster + organ-manifest.txt, add a test (simulated bad deploy asserts rollback), THEN re-enable it (only it). Refine: make step-3 incremental (do NOT touch all crates every run — 20min deploys; rely on git-reset mtimes).
+    [2026-09-01T08:20:10Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: MISSION-012
 
 - id: RESILIENT-524
@@ -93438,7 +93551,7 @@ gaps:
 - id: RESILIENT-546
   domain: RESILIENT
   title: "RESILIENT: rescue-class title lint substring-matches (kills non-rescue PRs) — 'unblock' in 'cascade-unblock-detector' false-flagged"
-  status: open
+  status: blocked
   priority: P1
   effort: m
   description: |
@@ -93447,6 +93560,8 @@ gaps:
     - the rescue/class title lint uses word-boundary matching (grep -w or \b), so 'unblock' does not match inside 'cascade-unblock-detector'
     - an audit of the lint's token list confirms no other token can substring-match a legitimate name
     - "regression test: a PR titled with a flagged token embedded in a larger word is NOT flagged"
+  notes: |
+    [2026-09-01T08:20:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-547
