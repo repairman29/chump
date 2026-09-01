@@ -1939,7 +1939,7 @@ gaps:
   acceptance_criteria:
     - "1. INFRA-621 probe parses the error and reports the ACTUAL class (auth-invalid vs credit-exhausted vs rate-limit vs network), not a blanket 'authentication failed'. 2. On credit-exhaustion: actionable message (top up / switch CHUMP_AUTH_MODE=oauth). 3. Emits a distinct ambient kind (e.g. fleet_credit_exhausted) so operator-recall routes it correctly."
   notes: |
-    Decomposed into 2 slices: CREDIBLE-390, CREDIBLE-391
+    Decomposed into 2 slices: CREDIBLE-449, CREDIBLE-450
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -7193,10 +7193,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update the fleet summary formatting in src/cartographer.rs and src/evangelist.rs so that when ship discovery fails after retries, the fleet-brief outputs "Ships: unavailable (<reason>)" incorporating the underlying error string instead of printing "Ships: 0" in both console output and generated logs.
+    
+    Target file(s):
+    - src/cartographer.rs
+    - src/evangelist.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "When the error flag is set after retries, fleet‑brief prints \"Ships: unavailable (<reason>)\" instead of \"Ships: 0\"."
-    - "The <reason> string includes the underlying error (e.g., \"git fetch timeout\")."
-    - The message is visible in both console output and any generated logs.
+    - "When the error flag is set after retries in src/cartographer.rs, fleet-brief prints 'Ships: unavailable (<reason>)' containing the underlying failure message instead of 'Ships: 0'."
+    - "When no error is present during fleet scan, fleet-brief continues to output the numerical ship count line 'Ships: <count>'."
+    - "The 'Ships: unavailable (<reason>)' string is written to stdout as well as log outputs during failed scan runs."
   depends_on: [CREDIBLE-380, CREDIBLE-381]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -8770,10 +8778,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update scripts/ci/test-oracle-refresh.sh to capture non-zero exit codes from git fetch and ship-count retrieval logic, setting an explicit SHIP_COUNT_ERR flag whenever a command fails rather than silently assigning an empty string or zero count.
+    
+    Target file(s):
+    - scripts/ci/test-oracle-refresh.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The fleet‑brief script captures any non‑zero exit status from git fetch and related commands.
-    - When an error occurs, a dedicated error variable is set instead of silently defaulting to an empty count.
-    - No code path leaves the ship‑count variable undefined or zero without an explicit error flag.
+    - In scripts/ci/test-oracle-refresh.sh, any git fetch or ship-count retrieval command captures exit status and sets SHIP_COUNT_ERR=1 on failure.
+    - When ship-count retrieval fails, scripts/ci/test-oracle-refresh.sh outputs an explicit error message referencing the non-zero exit status instead of silently continuing with an empty or zero count.
+    - Running scripts/ci/test-oracle-refresh.sh under simulated git failure conditions sets SHIP_COUNT_ERR to 1 and preserves the explicit error state.
   notes: |
     [chump harvest check 'fleet-brief']
     === primitives_index match for 'fleet-brief' ===
@@ -8797,10 +8812,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Wrap git fetch invocations in scripts/dev/heartbeat-self-improve.sh in a retry loop that executes up to 3 attempts with exponential backoff delays (1s, 2s, 4s) on non-zero exit codes. Ensure that a successful fetch clears any script error flag to proceed with ship count calculation, while exhaustive retry failure sets the error flag and routes execution to the unavailable-message fallback.
+    
+    Target file(s):
+    - scripts/dev/heartbeat-self-improve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - On a git fetch failure the script automatically retries up to three times with exponential back‑off (e.g., 1s, 2s, 4s).
-    - If all retries fail, the error flag from slice 0 is set and processing continues to the unavailable‑message path.
-    - Successful retry clears the error flag and proceeds with the correct ship count.
+    - In `scripts/dev/heartbeat-self-improve.sh`, transient `git fetch` failures trigger up to 3 retry attempts with exponential backoff delays of 1s, 2s, and 4s.
+    - A successful `git fetch` execution clears the script error flag and proceeds with normal ship count processing.
+    - If all 3 `git fetch` retries fail, the script error flag is set and processing falls through to the unavailable-message path.
   depends_on: [CREDIBLE-439]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -8853,10 +8875,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update probe_health in scripts/setup/refresh-almanac-binary.sh to evaluate ship-count alongside active worker process status, outputting "measurement failed / investigate" when ship-count is missing or 0 while workers are running, and restricting "looks healthy" to cases where ship-count is >0 or worker count is 0. Update scripts/ci/test-refresh-almanac-binary.sh to cover these new health verdict rules.
+    
+    Target file(s):
+    - scripts/setup/refresh-almanac-binary.sh
+    - scripts/ci/test-refresh-almanac-binary.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "If ship‑count is unavailable OR ship‑count is zero while any worker processes are running, the health verdict changes to \"measurement failed / investigate\"."
-    - "The \"looks healthy\" verdict is shown only when ship‑count is available and >0 or when no workers are active."
-    - Existing healthy cases remain unchanged.
+    - probe_health in scripts/setup/refresh-almanac-binary.sh outputs 'measurement failed / investigate' when ship-count is unavailable or equal to 0 while worker processes are active.
+    - probe_health in scripts/setup/refresh-almanac-binary.sh outputs 'looks healthy' only when ship-count is present and >0, or when zero worker processes are active.
+    - Running bash scripts/ci/test-refresh-almanac-binary.sh passes all health verdict assertion checks and exits with 0.
   depends_on: [CREDIBLE-441]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -9042,6 +9072,57 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-449
+  domain: CREDIBLE
+  title: "CREDIBLE: Parse Anthropic API probe errors into specific failure classes (auth vs credit vs rate-limit vs network) (CREDIBLE-130 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - INFRA-621 probe parses error body and HTTP status code from Anthropic API responses.
+    - Distinguishes 'credit balance too low' / credit exhaustion errors from 401 invalid API keys, 429 rate limits, and network errors.
+    - Unit or integration tests verify classification logic for each error payload variant.
+  notes: |
+    [chump harvest check 'run-fleet']
+    === primitives_index match for 'run-fleet' ===
+    
+    === cluster keyword match for 'run-fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'run-fleet' ===
+    
+    === repo-description match for 'run-fleet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'run-fleet' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'run-fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-450
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit actionable guidance and fleet_credit_exhausted ambient event on probe failure (CREDIBLE-130 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When credit exhaustion is detected, run-fleet probe prints actionable message advising credit top-up or switching CHUMP_AUTH_MODE=oauth.
+    - Emits distinct ambient telemetry event kind 'fleet_credit_exhausted' to correctly route operator-recall.
+    - Integration test verifies probe console output and emitted telemetry kind when simulated credit exhaustion occurs.
+  depends_on: [CREDIBLE-449]
+  notes: |
+    [chump harvest check 'run-fleet']
+    === primitives_index match for 'run-fleet' ===
+    
+    === cluster keyword match for 'run-fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'run-fleet' ===
+    
+    === repo-description match for 'run-fleet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'run-fleet' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'run-fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: DOC-031
   domain: DOC
