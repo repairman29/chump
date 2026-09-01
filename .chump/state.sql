@@ -7719,11 +7719,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new function `probe_slot_health` inside `scripts/coord/recurring-gap-pattern-detector.sh` that iterates over enabled slots from the environment, performs a cheap GET /v1/models call per slot, extracts x-ratelimit-limit-requests, x-ratelimit-remaining, and retry-after headers, records model existence and deprecation status, and logs success or failure for each probe.
+    
+    Target file(s):
+    - scripts/coord/recurring-gap-pattern-detector.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Job iterates over all enabled slots defined in .env
-    - For each slot it makes a cheap API call and records x‑ratelimit‑limit‑requests, x‑ratelimit‑remaining, and retry‑after headers
-    - Job performs GET /v1/models for the slot’s MODEL and records whether the model exists and is not deprecated
-    - Job logs success/failure for each probe
+    - Running `bash scripts/coord/recurring-gap-pattern-detector.sh probe` invokes `probe_slot_health` and prints a JSON line per enabled slot containing the slot name, model, x-ratelimit-limit-requests, x-ratelimit-remaining, retry-after, model_exists (boolean), and model_deprecated (boolean).
+    - "When a slot's GET /v1/models returns HTTP 200 and the model is not deprecated, the log line for that slot includes `\"status\":\"success\"` and `\"model_exists\":true`."
+    - "When a slot's GET /v1/models returns HTTP 404 or the model is marked deprecated, the log line includes `\"status\":\"failure\"` and the appropriate boolean flags."
+    - The function reads slot configuration from the same `.env` variables used by the existing `is_stopword` function, with no hardcoded slot names.
   notes: |
     [chump harvest check 'provider']
     === primitives_index match for 'provider' ===
@@ -7752,10 +7759,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify `init_schema` to add a new `observation_log` table that persists observed limits (RPM, RPD, model existence flags) keyed by slot identifier. The table schema must mirror the existing slot configuration persistence pattern so that both configured and observed data coexist in the same SQLite store.
+    
+    Target file(s):
+    - crates/chump-db-pool/src/db_pool.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Observed data (RPM, RPD, model existence) is written to the same persistence layer used for slot configuration
-    - Each record links observed values to the slot identifier (e.g., CHUMP_PROVIDER_4)
-    - Stored data can be queried by downstream services
+    - Running `sqlite3` against the database file after pool initialization shows a table named `observation_log` with columns `slot_id TEXT`, `observed_rpm REAL`, `observed_rpd REAL`, `model_exists INTEGER`, and `observed_at TEXT`.
+    - The `init_schema` function in `crates/chump-db-pool/src/db_pool.rs` contains the `CREATE TABLE IF NOT EXISTS observation_log` statement alongside the existing slot configuration table creation.
+    - Inserting a row via `INSERT INTO observation_log (slot_id, ...) VALUES ('CHUMP_PROVIDER_4', ...)` succeeds and a subsequent `SELECT * FROM observation_log WHERE slot_id = 'CHUMP_PROVIDER_4'` returns the inserted row.
   depends_on: [CREDIBLE-401]
   notes: |
     [chump harvest check 'provider']
@@ -96695,14 +96709,110 @@ gaps:
   domain: RESILIENT
   title: "fleet has NO sustainable inference floor: sub exhausts (~5h cap), chump-local routes to OpenRouter DeepSeek at $0 (rc=75), live Cerebras free-tier unwired"
   status: open
-  priority: P0
+  priority: P2
   effort: m
   description: |
     INCIDENT 2026-09-01 (why the 9h down + why the free-tier flip didn't fix it): BOTH worker backends are broken. (1) FLEET_BACKEND=claude (sub): works but the weekly/5h cap EXHAUSTS under 2 grinding workers (rc=1, ~9h outage tonight, since reset). (2) FLEET_BACKEND=chump-local: routes to model=deepseek/deepseek-v4-flash via OpenRouter which is at $0 → 402 → rc=75 fail in 7s. (3) auth-status validates a DIFFERENT free provider (Cerebras gemma-4-31b @ api.cerebras.ai) that is LIVE but the worker's chump-local model ladder does NOT fall back to it — it dies on deepseek instead of cascading to Cerebras. So the fleet has no sustainable floor: the sub bridges ~5h then dies, the intended paid DeepSeek floor is unfunded, and the live free Cerebras is unwired. FIX (pick the durable floor): (a) FUND OpenRouter DeepSeek (~$10-50 — the mission's intended paid floor, best quality/sustainability) [Jeff $ decision]; and/or (b) fix the chump-local cascade to actually FALL BACK deepseek-402 -> Cerebras (the live free provider) so a $0 floor degrades to free instead of failing rc=75; and (c) the sub stays CEILING-only, never the grinding floor. Pairs with RESILIENT-575 (auto-fallback on backend fail).
   acceptance_criteria:
     - workers ship on a sustainable floor that does not exhaust in hours (funded DeepSeek or a working free-tier cascade that reaches Cerebras)
     - chump-local cascade falls back deepseek-402 -> live-Cerebras instead of failing rc=75
+  notes: |
+    Decomposed into 2 slices: RESILIENT-591, RESILIENT-592
   outcome_id: SOVEREIGN
+
+- id: RESILIENT-591
+  domain: RESILIENT
+  title: "RESILIENT: Set up sustainable chump-local inference floor with funded DeepSeek and Cerebras fallback (RESILIENT-590 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - OpenRouter account is credited with $10-50 and deepseek/deepseek-v4-flash returns 200 for a test request
+    - chump-local model ladder configuration includes deepseek/deepseek-v4-flash as primary and cerebras/gemma-4-31b as fallback with condition on 402
+    - Test inference request to a worker with FLEET_BACKEND=chump-local returns a successful inference (200) from either model without exit code 75
+    - When deepseek returns 402, worker automatically retries with cerebras and returns 200
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-592
+  domain: RESILIENT
+  title: "RESILIENT: Reconfigure fleet workers to use sub only as a ceiling, not for grinding (RESILIENT-590 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All grinding workers (currently 2) have FLEET_BACKEND set to chump-local
+    - Sub-backed workers (Claude) are no longer assigned bulk inference tasks; they handle only high-priority ceiling jobs
+    - Monitor confirms sub daily usage stays below 20% of cap and no grinding requests hit the sub
+  depends_on: [RESILIENT-591]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: SMOKE-001
   domain: SMOKE
