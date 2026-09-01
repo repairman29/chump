@@ -24506,10 +24506,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Edit the `reserve_umbrella_gap` function (line ~873) to generate three sub-gap files under the EFFECTIVE-136 umbrella gap. Each sub-gap file must be placed in `gaps/effective/136/` with a distinct core feature area slug (e.g., `core-feature-a.md`), YAML frontmatter containing `effort: xs` or `effort: s`, and a minimal placeholder description.
+    
+    Target file(s):
+    - src/commands/bootstrap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - At least three sub-gaps are filed under EFFECTIVE-136
-    - Each sub-gap names a distinct core feature area
-    - Each sub-gap has an effort estimate of xs or s
+    - Executing `cargo run -- bootstrap --reserve-umbrella EFFECTIVE-136` creates exactly three new markdown files in `gaps/effective/136/` whose filenames start with `core-feature-`.
+    - Each created file contains YAML frontmatter with an `effort` key set to `xs` or `s` when examined with `head -5`.
+    - "The command is idempotent: running it again when the directory already contains three or more sub-gap files does not create additional files."
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -24531,11 +24538,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a `lease ls` subcommand to the `chump` CLI in `chump-gap-store/src/lib.rs` that calls `fuzzy_match_active_leases` from `atomic_claim.rs` to collect all active leases from state.db, NATS-KV, and git claim-branch, then prints them as a table (default) or JSON array (`--json`), with optional filtering by `--gap` or `--session`.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump lease ls` lists all active leases from state.db, NATS-KV, and git claim-branch with gap, session, store, and status"
-    - Filtering by `--gap <id>` or `--session <id>` works correctly
-    - "`--json` flag outputs a JSON array of lease objects"
-    - No leases are modified; command is read-only
+    - "`chump lease ls` (no flags) prints a table with columns gap, session, store, status for every active lease."
+    - "`chump lease ls --json` prints a JSON array of objects, each containing keys gap, session, store, status."
+    - "`chump lease ls --gap <id>` prints only leases whose gap field equals <id>; `--session <id>` prints only leases whose session field equals <id>."
+    - After `chump lease ls` completes, the checksum of state.db and the number of keys in the NATS-KV bucket are identical to before the command ran.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -24563,7 +24578,7 @@ gaps:
 - id: EFFECTIVE-598
   domain: EFFECTIVE
   title: "EFFECTIVE: chump lease release: release a specific lease (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -24594,6 +24609,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T19:55:31Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2589B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-599
   domain: EFFECTIVE
@@ -24601,11 +24617,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a public function `reconcile_stale_leases` that iterates over all stores, lists leases, identifies those held by dead sessions/worktrees, and releases them using existing lease release logic, logging each release.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump lease reconcile` (or `chump lease reconcile --all-stores`) detects leases that are stale (held by dead sessions/worktrees) and releases them"
-    - Uses `chump lease ls` and `chump lease release` under the hood (or equivalent logic)
-    - Logs each stale lease that was released
-    - Exits 0 if no stale leases, or after successful reconciliation
+    - "`chump lease reconcile` command exits 0 when no stale leases exist across all stores."
+    - "`chump lease reconcile` command logs each released lease's identifier (e.g., lease ID) to stdout."
+    - "crates/chump-gap-store/src/lib.rs: `reconcile_stale_leases` function returns a count of released leases."
+    - "crates/chump-gap-store/src/lib.rs: `reconcile_stale_leases` function does not release leases held by active sessions/worktrees."
   depends_on: [EFFECTIVE-597, EFFECTIVE-598]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -24637,12 +24660,20 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a `claim_recover` function in chump-gap-store/src/lib.rs that detects the auto-stash branch for a gap, recreates the worktree from that stash, and sets the gap state to ready. Extend the `connect` function in chump-coord/src/lib.rs to accept a `--recover` flag that triggers `lease reconcile` to release all stale leases tied to the old worktree. Update the test script to exercise the full `chump claim --recover` flow.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - .claude/worktrees/infra-3643-fleet-1-20260822-081649/crates/chump-coord/src/lib.rs
+    - scripts/ci/test-bot-merge-already-claimed.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump claim --recover <gap>` detects the stale-worktree-reaper auto-stash branch for the given gap"
-    - Recreates the worktree from the auto-stash, restores the working state
-    - Calls `chump lease reconcile` (or equivalent) to release all stale leases tied to the old worktree
-    - After recovery, the gap is in a ready state and can be re-claimed
-    - Replaces the previous 5-step manual recovery process
+    - "`chump claim --recover <gap>` on a gap with an existing `refs/heads/auto-stash/<gap>` branch recreates the worktree at `.claude/worktrees/<gap>` and restores the working state from the stash, outputting 'Recovered worktree for <gap>'."
+    - After recovery, `chump lease list --gap <gap>` shows zero leases, confirming that `lease reconcile` was called and cleared all stale leases.
+    - "`chump gap show <gap>` displays `state: ready` immediately after recovery, allowing the gap to be re-claimed."
+    - The test script `scripts/ci/test-bot-merge-already-claimed.sh` includes a new test case that creates a stalled worktree with an auto-stash, runs `chump claim --recover`, and asserts the worktree is restored and leases are cleared.
   depends_on: [EFFECTIVE-599]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -24674,11 +24705,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `chump unwedge <gap>` subcommand (or extend an existing entry point)  in bot-merge.sh that locates the lock/pids for the given gap, signals the stuck  bot-merge process to terminate, calls the existing `_bm_cleanup` function to  remove merge artifacts, and releases all associated locks so the gap can be  re-dispatched.
+    
+    Target file(s):
+    - scripts/coord/bot-merge.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump unwedge <gap>` (or `chump ship --abort`) terminates a stuck bot-merge process for the given gap"
-    - Cleans up any lingering merge artifacts and releases locks
-    - After unwedge, the gap can be picked up again by a fresh bot-merge or manual ship
-    - Works harness-neutral and does not require human intervention in Claude Code
+    - Running `chump unwedge <gap>` against an actively stuck gap terminates the bot-merge PID recorded in the gap’s lockfile (under `$BM_LOCK_DIR`).
+    - After the command completes, `_bm_cleanup` has removed any temporary `worktrees/bot-merge-<gap>` directories and lockfiles from `$BM_LOCK_DIR`.
+    - Executing a fresh `chump ship <gap>` immediately after unwedge succeeds without manual lock clearing or artifact removal.
+    - The unwedge logic does not hardcode any harness path; it uses the same `$BM_LOCK_DIR` and `$WORKTREES` variables defined in bot-merge.sh.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -24709,11 +24747,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a `wait` subcommand to the chump-coord binary that polls the coordinator's fleet state API for a given condition (e.g., `chump wait gap <gap> --state merged`) and exits 0 when the condition is met, with configurable `--timeout` and `--interval` flags, replacing ad-hoc shell polling loops.
+    
+    Target file(s):
+    - crates/chump-coord/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump wait <condition>` (e.g., `chump wait gap <gap> --state merged`) polls the fleet state and exits 0 when the condition is met"
-    - Supports a `--timeout <seconds>` flag; exits with non-zero if timeout exceeded
-    - Polling interval is configurable (default ~5s)
-    - Replaces hand-rolled `for i in seq; do gh pr view; sleep; done` loops
+    - Running `chump wait gap 602 --state merged` against a running coordinator polls the /gap/{id} endpoint every 5 seconds and exits with code 0 once the `state` field in the response equals `merged`.
+    - "`chump wait --timeout 30` stops polling after 30 seconds and exits with a non-zero exit code if the condition has not been satisfied."
+    - The polling interval can be overridden via `--interval <seconds>`; the default is 5 seconds, and the command prints the interval and remaining timeout to stderr on each poll.
+    - The `wait` subcommand is listed in `chump help` and shown as an alternative to manual `for`/`sleep` loops in the `chump wait --help` output.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -24849,11 +24894,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a `--manual` flag to the `ship` function in `crates/chump-ship/src/lib.rs` that, when set, bypasses the bot-merge workflow and instead creates a git branch, pushes it, opens a PR via `gh pr create`, enables auto-merge on that PR, prints the PR URL, and returns a non-zero exit code if any step fails.
+    
+    Target file(s):
+    - crates/chump-ship/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`chump ship --manual <gap>` creates a git branch, pushes it, opens a PR, and enables auto-merge"
-    - Prints the PR URL and returns a non-zero exit code if any step fails
-    - Uses the same auto-merge configuration as the bot-merge workflow
-    - Eliminates the need for raw git/gh commands when bot-merge is wedged
+    - Running `chump ship --manual EFFECTIVE-606` from a repo root creates a new branch, pushes it to origin, and opens a PR using `gh pr create` with auto-merge enabled.
+    - The command prints the full PR URL to stdout upon success.
+    - If `git push`, `gh pr create`, or `gh pr merge --auto` fails, the command prints the failure to stderr and exits with a non-zero code.
+    - The `--manual` path does not invoke any bot-merge workflow dispatch or wait for external merge queues.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -74309,9 +74361,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a verification step in the _integrator_bin function or after its invocation to poll the ambient event stream on CJ and assert the presence of an almanac_health line containing binary_present=true and indexed_files>0, failing the script if absent.
+    
+    Target file(s):
+    - scripts/ci/test-integrator-daemon-activation.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The ambient event stream on CJ contains an almanac_health line after one liveness cycle
-    - The emitted almanac_health event line contains binary_present=true and indexed_files>0
+    - Running scripts/ci/test-integrator-daemon-activation.sh on CJ exits with code 0 when an almanac_health event with binary_present=true and indexed_files>0 appears in the ambient event stream within a defined liveness cycle.
+    - Running scripts/ci/test-integrator-daemon-activation.sh on CJ exits non-zero if no almanac_health event is found after completing one liveness cycle.
+    - Running scripts/ci/test-integrator-daemon-activation.sh on CJ exits non-zero if an almanac_health event appears but binary_present is not true.
+    - Running scripts/ci/test-integrator-daemon-activation.sh on CJ exits non-zero if an almanac_health event appears but indexed_files is not >0.
   depends_on: [INFRA-3857]
   notes: |
     [chump harvest check 'MISSION']
@@ -75259,10 +75320,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the existing `trek` subcommand in the CLI definition (within `crates/chump-ship/src/lib.rs`) with a `--list` flag that calls `FileBackedMissionStore::list` and prints job, mode, state, and outcome pointer for each mission, and a `status <id>` subcommand that calls `FileBackedMissionStore::load` and prints job, mode, state history, and outcome pointer, including error handling for missing or invalid IDs.
+    
+    Target file(s):
+    - crates/chump-ship/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "chump trek --list reads records via FileBackedMissionStore::list and outputs job, mode, state, and outcome pointer for each mission"
-    - "chump trek status <id> loads the specified mission via FileBackedMissionStore::load and prints job, mode, state history, and outcome pointer"
-    - Gracefully handles missing or invalid mission IDs with an informative error message
+    - "Running `chump trek --list` prints a line for each mission containing its job, mode, state, and outcome pointer, sourced from `FileBackedMissionStore::list`."
+    - "Running `chump trek status <valid-mission-id>` prints the mission's job, mode, state history, and outcome pointer, sourced from `FileBackedMissionStore::load`."
+    - Running `chump trek status <nonexistent-or-invalid-id>` prints an informative error message to stderr and exits with a non-zero status.
   depends_on: [INFRA-3895]
   notes: |
     [chump harvest check 'MISSION']
@@ -77083,7 +77151,7 @@ gaps:
 - id: INFRA-3952
   domain: INFRA
   title: "INFRA: Reconcile merges_24h metric emitters (vital-signs, dashboard, faculty) into a single canonical column (INFRA-3841 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -77107,11 +77175,12 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-01T19:41:35Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2156B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3953
   domain: INFRA
   title: "INFRA: Reconcile merge-mix metric emitters (race-control and merge-mix-board) into a single canonical column, resolving field drift (INFRA-3841 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -77135,6 +77204,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-01T19:58:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3909B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3954
   domain: INFRA
@@ -98203,7 +98273,7 @@ gaps:
 - id: RESILIENT-545
   domain: RESILIENT
   title: "RESILIENT: parity gate fails a PR on its OWN newly-added CI gate — false-kill GENERATOR that auto-closes good PRs"
-  status: blocked
+  status: open
   priority: P2
   effort: m
   description: |
@@ -98215,6 +98285,10 @@ gaps:
   notes: |
     Decomposed into 4 slices: RESILIENT-586, RESILIENT-587, RESILIENT-588, RESILIENT-589
     [2026-09-01T15:42:17Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=12806B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    [2026-09-01T19:53:57Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; re-attempt on fresh main.
+    [2026-09-01T19:56:12Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; re-attempt on fresh main.
+    [2026-09-01T19:58:24Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; re-attempt on fresh main.
+    [2026-09-01T20:00:40Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
@@ -100283,7 +100357,7 @@ gaps:
 - id: RESILIENT-611
   domain: RESILIENT
   title: "RESILIENT: Integrate effort->model router into LIVE worker start path (RESILIENT-610 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -100323,6 +100397,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-01T19:36:24Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=4097B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-612
   domain: RESILIENT
@@ -100415,6 +100490,42 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-614
+  domain: RESILIENT
+  title: "CJ OOM-storm: 7GB box + concurrent worker rustc builds = 454 OOM-kills -> failed verify-cycles (artifacts/rc=1) AND node unreachability; serialize builds + kill the false 24GB assumption"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    CJ has 7.1Gi RAM + 8Gi swap (5.6Gi used, thrashing). 454 oom-kill events in the journal; rustc (~3GB RSS / 5.7GB virt each) under chump-cj-worker/worker3/organ-watchdog repeatedly OOM-killed. chumpd main.rs sets CARGO_BUILD_JOBS=4 under a comment assuming a 24GB laptop -- CJ is 7GB. TWO consequences: (1) a worker verify-build gets OOM-killed -> cycle fails -> auto-commit artifact / rc=1 = a ROOT of the 'floor produces artifacts' problem, INDEPENDENT of model tier (pro vs flash cannot fix an OOM-killed build); (2) swap-thrash makes the box briefly stop servicing the network -- the 2026-09-01 19:41 ~7min tailscale drop happened with uptime intact (3+ weeks, no reboot), i.e. stayed up but unreachable = swap-death, not power/wifi.
+  acceptance_criteria:
+    - only ONE rustc/cargo build runs at a time across all workers+organs on a memory-constrained node (global build semaphore/lock)
+    - CARGO_BUILD_JOBS + worker concurrency derived from actual RAM (free/nproc), not a hardcoded 24GB assumption; the chumpd comment corrected
+    - "CJ oom-kill rate drops to ~0 over 24h (journalctl -k "
+    - " grep oom-kill)"
+    - verify-build no longer fails from OOM -> fewer artifact/rc=1 cycles
+    - node stays network-reachable through build activity
+  outcome_id: FLEET-BUILD-SPEED
+  evidence: |
+    COMMAND: journalctl -k | grep -c oom-kill ; free -h ; uptime -s ; git show #4371.
+    OUTPUT: 454 oom-kill events; CJ RAM=7.1Gi + swap 8Gi (5.6Gi USED, heavy thrash); rustc ~3GB-RSS killed under chump-cj-worker/worker3/organ-watchdog at 18:41,18:43,19:26 UTC 2026-09-01; uptime = 3wk (NO reboot during the 19:41 ~7min tailscale drop -> box stayed up but went unreachable).
+    THEORY: 2 concurrent worker rustc builds + organ builds exceed 7GB -> OOM kills the VERIFY-build -> cycle fails -> auto-commit artifact/rc=1 (a ROOT of the 'floor produces artifacts' problem, independent of model tier); and swap-thrash makes the box briefly stop servicing the network (the '19:41 drop'). chumpd main.rs sets CARGO_BUILD_JOBS=4 with a comment assuming a 24GB laptop; CJ is 7GB.
+    ALT: add more swap (masks, still thrashes) or relocate workers to the 24GB free Oracle boxes via node-FTUE (INFRA-3641). A global build semaphore is the immediate $0 fix.
+
+- id: RESILIENT-615
+  domain: RESILIENT
+  title: "decompose: keep free-tier floor, escalate to OpenRouter pro (deepseek-v4-pro) on FAILURE; retire vestigial Opus-tier declaration"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    DecomposeContract declares ModelTier::Opus (chump-handoff/src/contracts.rs:1481) but the LIVE decompose path is the sovereign free-tier selector (chump-fleet-server/src/mission.rs:295, pick_decompose_provider -> Gemini/Groq, never 3B) with COST-based fallback only, NOT quality escalation. OPERATOR DECISION 2026-09-01 (Jeff): do NOT honor the Opus tier. Keep free-tier as the decompose floor (produces clean slices -- proved RESILIENT-596->597..602), escalate to OpenRouter pro (deepseek-v4-pro) ONLY on failure. Same escalate-on-failure doctrine as the worker floor (RESILIENT-597).
+  acceptance_criteria:
+    - decompose runs on the free-tier selector by default (unchanged)
+    - on decompose failure (provider error or empty/unusable slices) it retries once on deepseek-v4-pro via OpenRouter before flagging human
+    - "the vestigial ModelTier::Opus decompose declaration is retired/reconciled to the live free+escalate reality"
+    - "documented decision-of-record: decompose floor=free-tier, ceiling-on-failure=OpenRouter pro, NOT Opus"
 
 - id: SMOKE-001
   domain: SMOKE
