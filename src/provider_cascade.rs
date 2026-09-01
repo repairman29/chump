@@ -1396,6 +1396,7 @@ impl Provider for ProviderCascade {
                                     let est =
                                         r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
                                     cost_tracker::record_provider_call(&local_slot.name, est);
+                                    cost_tracker::add_session_cost_usd(0.0); // COMP-014: track session cost for local slot
                                     cost_tracker::record_completion(1, 0, est);
                                     let tier = if local_slot.tier == ProviderTier::Cloud {
                                         crate::precision_controller::ModelTier::Capable
@@ -1603,6 +1604,7 @@ impl Provider for ProviderCascade {
                     provider_quality::record_latency(&slot.name, latency_ms);
                     let est = r.text.as_ref().map(|t| (t.len() / 4) as u64).unwrap_or(0);
                     cost_tracker::record_provider_call(&slot.name, est);
+                    cost_tracker::add_session_cost_usd(0.0); // COMP-014: track session cost for cloud slot
                     cost_tracker::record_completion(1, 0, est);
                     let tier = if slot.tier == ProviderTier::Cloud {
                         crate::precision_controller::ModelTier::Capable
