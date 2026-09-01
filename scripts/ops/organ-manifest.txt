@@ -337,3 +337,23 @@ enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq
 # cooldown). Safe-by-default. Declared here so organ-reconcile re-arms it on
 # drift and Roll-Call never lets it rot silently. role=brain (it decides+acts).
 enabled     chump-nba-dispatch.timer  role=brain requires=bin:jq
+# chump-cascade-unblock-detector.timer: RESILIENT-418 (INFRA-2070). When a
+# wedge_auto_fix PR merges, fans the fix out to every open PR whose CI failed
+# on the same failure signature by calling `gh pr update-branch` on each safe
+# match. Existed only as a Mac-launchd daemon (install-meta-118-daemons.sh)
+# until this line — on CJ nothing consumed the signal, so blocked PRs sat
+# stale until a human manually re-ran update-branch after a gate fix landed.
+# Declared here so organ-reconcile re-arms it if it drifts or fails, the same
+# peer-heartbeat mechanism every other organ in this manifest relies on.
+enabled     chump-cascade-unblock-detector.timer  role=muscle requires=bin:gh
+
+# chump-rca-reflex.timer: the INFRA-249 recurring-gap-pattern-detector, wired
+# as a live organ (RESILIENT-365). Was DARK — 0 organ units, only a human-
+# facing ALERT line — while 44 symptom PRs shipped in one night against 0
+# root-cause gaps (the evidence for this gap). The detector itself still
+# gates its auto-file-a-root-gap + auto-block-symptoms half behind
+# CHUMP_RCA_REFLEX_ENABLED (default OFF, see chump-rca-reflex.service and
+# docs/process/CAPABILITY_DECISIONS.md) — this manifest line only guarantees
+# the detection + ambient ALERT sweep itself stays alive and self-heals like
+# every other organ here.
+enabled     chump-rca-reflex.timer  role=brain requires=bin:chump

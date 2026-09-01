@@ -235,8 +235,27 @@ SYSTEM_UNITS=(
   chump-pr-book-settle.timer
   chump-process-organ-heal.service
   chump-process-organ-heal.timer
+  # INFRA-3643 (TREK-17): systemd complement to the macOS-only
+  # almanac-summarize-watchdog (RESILIENT-354) — binary presence + index
+  # freshness for the almanac fusion-search organ on the Linux factory.
+  chump-almanac-liveness.service
+  chump-almanac-liveness.timer
+  # RESILIENT-365: wires the INFRA-249 recurring-gap-pattern-detector as a
+  # live organ instead of a script only ever run by hand — was DARK/0 units,
+  # human-ALERT-only, while 44 symptom PRs shipped in one night with 0 root
+  # gaps filed. CHUMP_RCA_REFLEX_ENABLED defaults OFF (see the .service file);
+  # detection + ambient ALERT run regardless.
+  chump-rca-reflex.service
+  chump-rca-reflex.timer
+  # cascade-unblock-detector (RESILIENT-418 / INFRA-2070): the launchd
+  # installer (install-meta-118-daemons.sh) only wired this on Mac/helsinki;
+  # on CJ nothing fanned a merged wedge_auto_fix PR out to sibling PRs blocked
+  # on the same failure signature, so those PRs sat stale until a human ran
+  # `gh pr update-branch` by hand. Linux port so every node self-heals.
+  chump-cascade-unblock-detector.service
+  chump-cascade-unblock-detector.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-ci-flake-rerun.timer chump-faculty-collector.timer chump-next-best-action.timer chump-organ-deploy.timer chump-outcome-verify-heal-consumer.timer chump-pr-book-settle.timer chump-process-organ-heal.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-ci-flake-rerun.timer chump-faculty-collector.timer chump-next-best-action.timer chump-organ-deploy.timer chump-outcome-verify-heal-consumer.timer chump-pr-book-settle.timer chump-process-organ-heal.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

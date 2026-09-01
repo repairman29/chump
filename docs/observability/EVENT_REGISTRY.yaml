@@ -3997,6 +3997,46 @@ events:
     expected_min_per_day: 0
     status: stable
 
+  - kind: node_deploy_lag_ok
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (RESILIENT-523)
+    trigger: >
+      Linux/systemd node's installed binary sha == green-main sha — the
+      merge->deploy chain on this node is current. Linux/systemd counterpart
+      of merge_deploy_lag_ok (macOS/launchd only).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, sha]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: node_deploy_lag_exceeded
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (RESILIENT-523)
+    trigger: >
+      origin/main advanced but the installed binary on a Linux/systemd node
+      (e.g. CJ) is still stale past the SLO (default 1800s) — the
+      chump-node-refresh timer stalled. The watchdog restarts
+      chump-node-refresh.service to self-heal (unless
+      CHUMP_NODE_DEPLOY_LAG_NO_HEAL=1).
+    consumers: [fleet-brief, ops-audit, main-health-watchdog]
+    fields_required: [ts, kind, installed_sha, main_sha, lag_secs, slo_secs, unit]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: node_deploy_timeout_detected
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (RESILIENT-523)
+    trigger: >
+      The last run of chump-node-refresh.service ended with
+      systemd Result=timeout — a cold build (or hang) exceeded
+      TimeoutStartSec and the deploy was killed before it landed. Emitted
+      immediately on detection, independent of the cumulative lag SLO, so a
+      single timed-out deploy is never silent (RESILIENT-523 AC #2).
+    consumers: [fleet-brief, ops-audit, main-health-watchdog]
+    fields_required: [ts, kind, unit]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: auto_merge_rearmed
     effect_metric: effective
     emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
@@ -12125,3 +12165,21 @@ events:
     trigger: git reset --hard origin/main exited non-zero after a successful fetch; the rebuild sequence is aborted
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, rc, from, to]
+  - kind: barnacle_threshold_crossed
+    effect_metric: self
+    emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
+    trigger: one of the registered accumulating surfaces in
+      docs/process/BARNACLE_SURFACES.yaml (stale worktrees, untracked gap
+      yaml, commits-behind-main, disk fill, expired leases) crosses its
+      configured threshold on a barnacle-buster run.
+    consumers: [ambient, fleet-brief (future), Roll Call]
+    fields_required: [ts, kind, surface, value, threshold, domain]
+
+  - kind: barnacle_buster_tick
+    effect_metric: self
+    emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
+    trigger: every barnacle-buster run, healthy or not — the busters are
+      themselves Roll-Called (RESILIENT-358 twin): this is the liveness
+      signal proving the drain is actually running, not just registered.
+    consumers: [ambient, Roll Call]
+    fields_required: [ts, kind, surfaces_checked, surfaces_breached]
