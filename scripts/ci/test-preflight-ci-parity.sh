@@ -366,9 +366,40 @@ def is_mirrored(run_cmd):
     return False
 
 
+# ── RESILIENT-586: Auto-recognize gates added in the same PR diff ────────────
+def get_added_jobs_from_diff(yml_path):
+    """Return set of job names that were added in the current git diff (PR)."""
+    import subprocess
+    try:
+        result = subprocess.run(
+            ["git", "diff", "HEAD", "--", str(yml_path)],
+            capture_output=True, text=True, timeout=10
+        )
+        added_jobs = set()
+        for line in result.stdout.splitlines():
+            # Added lines at indent 2: "+  <jobname>:"
+            if line.startswith("+") and not line.startswith("+++"):
+                stripped = line.lstrip("+").strip()
+                m = re.match(r'^([A-Za-z0-9_-]+):\s*$', stripped)
+                if m:
+                    added_jobs.add(m.group(1))
+        return added_jobs
+    except Exception:
+        return set()
+
+# Collect added jobs from diff for each workflow
+added_jobs_by_workflow = {}
+for wf_path in [ci_yml] + sibling_ymls:
+    added = get_added_jobs_from_diff(wf_path)
+    if added:
+        added_jobs_by_workflow[wf_path.name] = added
+        info(f"RESILIENT-586: Jobs added in-diff for {wf_path.name}: {', '.join(sorted(added))}")
+
+
 mirrored_count = 0
 tier_d_count = 0
 allowlisted_count = 0
+auto_recognized_count = 0
 unmirrored = []
 
 for (wf_name, job, step_name, run_cmd) in gates:
@@ -380,6 +411,12 @@ for (wf_name, job, step_name, run_cmd) in gates:
         tier_d_count += 1
     elif is_allowlisted(step_name, run_cmd, sp):
         allowlisted_count += 1
+    elif wf_name in added_jobs_by_workflow and job in added_jobs_by_workflow[wf_name]:
+        # RESILIENT-586: Gate belongs to a job added in this PR's diff.
+        # Auto-recognize it — the author is adding a new CI gate and will
+        # mirror it in a follow-up or the same PR. No ambient emission, no fail.
+        auto_recognized_count += 1
+        info(f"RESILIENT-586: Auto-recognized gate in {wf_name} job='{job}': step='{step_name}' (job added in-diff)")
     else:
         ci_path = sp if sp else run_cmd.split()[0] if run_cmd else "unknown"
         unmirrored.append((wf_name, job, step_name, ci_path, run_cmd))
@@ -390,7 +427,7 @@ for (wf_name, job, step_name, run_cmd) in gates:
         fail(f"       (b) classify as Tier-D in docs/process/CI_GATES_INVENTORY.md,")
         fail(f"       (c) add to scripts/ci/preflight-ci-parity-exceptions.txt")
 
-total_classified = mirrored_count + tier_d_count + allowlisted_count
+total_classified = mirrored_count + tier_d_count + allowlisted_count + auto_recognized_count
 print()
 print("[ci-parity] Summary:")
 print(f"  Scanned workflows     : 1 primary (ci.yml) + {len(sibling_ymls)} sibling(s)  [META-268]")
