@@ -23172,10 +23172,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In `crates/chump-atomic-claim/src/atomic_claim.rs`, add a level‑1 gate inside the `run_claim` function that checks the current EFFECTIVE level and, if the level is 1, allows only claims that create issues or draft pull requests (proposal‑only), while rejecting any claim that would result in a merge, push, or write to a protected branch.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When level is 1, proposal creation such as issues or draft PRs is allowed
-    - Any merge, push, or protected-branch write is blocked
-    - No repository write occurs while level 1 is set
+    - "In `crates/chump-atomic-claim/src/atomic_claim.rs`, a new test `test_level_1_blocks_merge` asserts that calling `run_claim` for a merge operation with level 1 returns an error (e.g., `ClaimError::Level1WriteBlocked`)."
+    - In the same file, a test `test_level_1_allows_draft_pr` verifies that `run_claim` for a draft pull request creation with level 1 succeeds.
+    - "The `run_claim` function’s logic includes a branch that checks the effective level at the start and returns `Err(ClaimError::Level1WriteBlocked)` for any operation not classified as a proposal‑only action."
   depends_on: [EFFECTIVE-584]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23207,10 +23214,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the auto-merge code path in bot-merge.sh to call `chump-policy require-auto-merge-allowed` (from the existing chump-policy crate) before performing a merge when AUTONOMY_LEVEL is 2 or 3. The call reads the current AUTONOMY_LEVEL from the environment and exits 0 if auto-merge is permitted, non-zero otherwise. If the call fails, bot-merge.sh must abort the merge and log the denial, ensuring no parallel auto-merge mechanism is introduced.
+    
+    Target file(s):
+    - scripts/coord/bot-merge.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Auto-merge behavior for levels 2-3 is controlled only through existing chump-policy
-    - Chump-policy reads the current AUTONOMY_LEVEL
-    - No new parallel auto-merge mechanism is introduced
+    - In scripts/coord/bot-merge.sh, the function that performs auto-merge (e.g., `_bm_merge`) invokes `chump-policy require-auto-merge-allowed` before executing the merge command when `AUTONOMY_LEVEL` is 2 or 3.
+    - When `chump-policy require-auto-merge-allowed` exits with a non-zero code, bot-merge.sh prints a message containing 'auto-merge denied' and does not proceed with the merge.
+    - Running `scripts/ci/test-auto-merge-policy.sh` with AUTONOMY_LEVEL=2 and a policy that denies auto-merge results in a test failure that confirms the merge was blocked by chump-policy.
+    - No new environment variables, feature flags, or separate auto-merge configuration files are introduced; the only control point is the existing `require_auto_merge_allowed` function in crates/chump-policy/src/lib.rs.
   depends_on: [EFFECTIVE-584]
   notes: |
     [chump harvest check 'EFFECTIVE']
