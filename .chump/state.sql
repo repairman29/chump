@@ -64231,7 +64231,7 @@ gaps:
   domain: INFRA
   title: "MISSION: TREK-15 —  node-install ORGANS phase installs the real roster from organ-manifest.txt (incl worker.sh), not 2 hardcoded organs"
   status: open
-  priority: P2
+  priority: P0
   effort: m
   description: |
     [RESILIENT/m] Part of the install-a-Trek-from-0 epic (outcome MISSION-010). Mines: scripts/setup/chump-node-install.sh install_organs (:141,:144) + svc_install/svc_up; scripts/ops/organ-reconcile.sh (manifest parser + requires= applicability); scripts/ops/organ-manifest.txt (format); pixel-worker.sh (worker loop). Depends on: node-install BINARY phase: build chump from the cloned repo + warm-smoke when no binary found.
@@ -64242,6 +64242,7 @@ gaps:
   notes: |
     Decomposed into 6 slices: INFRA-3888, INFRA-3889, INFRA-3890, INFRA-3891, INFRA-3892, INFRA-3893
   opened_date: '2026-08-21'
+  outcome_id: COTG
 
 - id: INFRA-3642
   domain: INFRA
@@ -92808,6 +92809,34 @@ gaps:
   acceptance_criteria:
     - "a fresh node install ends hardened (rpcbind off, root-login no, only :22 public) with no operator hand-steps"
   outcome_id: COTG
+
+- id: RESILIENT-554
+  domain: RESILIENT
+  title: "wake the Pixel: 8-core node dark since Aug26 — port worker self-heal to proot + re-arm sv worker (fleet's biggest idle capacity)"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    PROBED 2026-09-01: Pixel 8 Pro (100.84.132.93) is ONLINE (pingable) but sshd is DOWN (port 22 refused) and NO worker/ambient activity — dark since ~2026-08-26 when it was paused for cap-wasting (looping a done gap). It is an 8-core node (double CJ's 4) sitting 100% idle — the single fastest throughput lever the fleet has. Re-enable = (1) HUMAN: restart the Termux sshd on the phone (parked in TODO for Jeff — the fleet can't reach it to fix); then (2) FLEET: port the worker self-heal fixes (INFRA-3808 cooldown/auto-block + INFRA-3832 wedge-kill) to the Pixel's proot-glibc worker path so it does not resume the cap-wasting loop, and re-arm its runit sv worker. Proven worker (3 merged PRs pre-pause). Ties to the 'feels slow' throughput ceiling (2 workers on 1 node) — waking the Pixel ~doubles capacity.
+  acceptance_criteria:
+    - Pixel sshd reachable + a proot worker running with the self-heal fixes, authoring PRs again
+    - the cap-wasting loop that caused the Aug26 pause cannot recur (cooldown/auto-block ported)
+  outcome_id: SOVEREIGN
+
+- id: RESILIENT-555
+  domain: RESILIENT
+  title: chump dispatch is broken by the worktree split-brain — creates a worktree whose state.db lacks the dispatched gap ('not found in state.db')
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    PROVEN 2026-09-01: 'chump dispatch INFRA-3641' (with fleet auth env) created a worktree (claude/infra-3641) then FAILED preflight with 'WARN INFRA-3641 — not found in state.db (run chump gap import first)'. The gap IS in the main checkout's canonical state.db (P0, open) but the dispatch's fresh worktree got a state.db WITHOUT it — the gap-store split-brain (INFRA-3687 fixed reserve-side; this is the worktree-clone side). Result: manual 'chump dispatch <existing gap>' is unusable — it can't find the very gap it's dispatching, so aiming a worker at a specific keystone (e.g. to break a throughput ceiling) fails. Fix: chump dispatch must sync the target gap into the new worktree's store (call the INFRA-3002 sync_gap_from_state_sql / 'chump gap import' for that id) right after 'git worktree add', so the dispatched gap is always present. Sibling of INFRA-3687 (reserve-side) + INFRA-3894 (network write path).
+  acceptance_criteria:
+    - chump dispatch <existing-canonical-gap> finds the gap in the worktree store (no 'not found in state.db')
+    - "regression test: dispatch a gap present on main; the worktree's state.db contains it"
+  notes: |
+    [2026-09-01T04:50:55Z] SUBSUMED by INFRA-3894 (split-brain class-killer). This dispatch surface is one instance; the class fix (single canonical store, no local replicas) closes it.
+  outcome_id: ZERO-WASTE-000
 
 - id: SMOKE-001
   domain: SMOKE
