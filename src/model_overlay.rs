@@ -214,7 +214,7 @@ exactly this trace (tool calls only, no commentary):\n\
 iter 1: read_file docs/gaps.yaml                  — find COMP-014 acceptance criteria\n\
 iter 2: read_file src/cost_tracker.rs             — locate the bug\n\
 iter 3: read_file src/cost_tracker.rs lines 130-160  — confirm fix site\n\
-iter 4: patch_file src/cost_tracker.rs            — apply the fix\n\
+iter 4: str_replace src/cost_tracker.rs            — apply the fix\n\
 iter 5: run_cli cargo check --bin chump --tests   — verify it compiles\n\
 iter 6: run_cli scripts/coord/chump-commit.sh src/cost_tracker.rs -m \"fix(COMP-014): ...\"\n\
 iter 7: run_cli scripts/coord/bot-merge.sh --gap COMP-014 --auto-merge\n\
