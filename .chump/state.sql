@@ -24537,7 +24537,7 @@ gaps:
 - id: EFFECTIVE-597
   domain: EFFECTIVE
   title: "EFFECTIVE: chump lease ls: list leases across all stores (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -24576,6 +24576,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T20:38:03Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=6338B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-598
   domain: EFFECTIVE
@@ -24704,7 +24705,7 @@ gaps:
 - id: EFFECTIVE-601
   domain: EFFECTIVE
   title: "EFFECTIVE: chump unwedge: on-demand kill and recovery of a wedged bot-merge (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -24742,6 +24743,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-01T20:37:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2598B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-602
   domain: EFFECTIVE
@@ -76916,10 +76918,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new unit test function `test_organ_wiring_dedup_and_completeness` inside the existing `mod open_pr_dup_tests` block in `crates/chump-atomic-claim/src/atomic_claim.rs`, which constructs organs (with duplicates), calls the organ-wiring deduplication function, and validates that the result is duplicae-free and each organ record is structurally complete.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A new `#[test]` asserts that organs are correctly wired into dedup and that structural completeness is achieved."
-    - Running `cargo test` fails the test before the implementation and passes after.
-    - Test is placed in the appropriate crate and follows existing test conventions.
+    - "Running `cargo test -p chump-atomic-claim open_pr_dup_tests::test_organ_wiring_dedup_and_completeness` fails before the corresponding production code is implemented and passes afterward."
+    - The test creates a vector of organ inputs containing at least one duplicate, passes them to the wiring/dedup function, and uses `assert_eq!` to verify the output length equals the number of unique organs.
+    - For each organ in the deduplicated output, the test calls an assertion such as `assert!(organ.is_complete())` (or equivalent) to confirm structural completeness (no missing required fields).
+    - The diff in `crates/chump-atomic-claim/src/atomic_claim.rs` adds only the new test function, with no other modifications, and the function name and style match the existing tests in `open_pr_dup_tests`.
   depends_on: [INFRA-3940]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -77021,10 +77031,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a `#[test]` function in the `mod tests` block of `eval_harness.rs` that invokes the full test suite via `cargo test` programmatically or documents the command, and ensure the existing `tests_vision_intake` module in `contracts.rs` is included in that run, confirming zero failures across all existing and new tests.
+    
+    Target file(s):
+    - crates/chump-eval-harness/src/eval_harness.rs
+    - crates/chump-handoff/src/contracts.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo test` runs all existing tests and the new test, with 0 failures."
-    - No existing functionality is broken as verified by the full test run.
-    - CI pipeline passes all stages after the change.
+    - "Running `cargo test` from the repository root exits with code 0 and prints 'test result: ok' with 0 failing tests."
+    - The `mod tests` block in `crates/chump-eval-harness/src/eval_harness.rs` contains a test function that calls the full suite or a documented `cargo test` invocation.
+    - The `mod tests_vision_intake` in `crates/chump-handoff/src/contracts.rs` is executed as part of the full test run and its individual tests pass.
+    - CI pipeline log shows all stages green, including the `cargo test` stage, with no skipped or ignored tests related to INFRA-3511.
   depends_on: [INFRA-3943]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -98425,6 +98444,13 @@ gaps:
     [2026-09-01T20:25:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (13 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:27:46Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (14 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T20:29:59Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (15 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:32:12Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (16 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:34:25Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (17 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:36:36Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (18 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:38:48Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 4h) 2026-09-01; RESPAWN CAP 3 reached (19 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:41:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (20 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:43:20Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (21 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-01T20:45:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 5h) 2026-09-01; RESPAWN CAP 3 reached (22 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
