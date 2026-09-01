@@ -20653,10 +20653,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `fn ship` in `crates/chump-gap-store/src/lib.rs` to invoke the existing `audit_ac` routine before and after the write‑AC queue pass, compute the delta of `template_ac` counts, and emit a structured log entry reporting the reduction. Add a guard that skips applying any AC whose confidence score is below the configured threshold, flagging such gaps as ambiguous. Update `fn execute` in `src/tool_middleware.rs` to call the enhanced `ship` and to propagate a warning when low‑confidence ACs are encountered, ensuring the middleware reports the audit results.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - src/tool_middleware.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Run the queue pass over prioritized template-AC gaps, landing ACs for high-signal gaps while leaving ambiguous gaps flagged
-    - Execute audit-ac before and after the pass to verify and log the reduction in template_ac count
-    - Verify no low-confidence or hallucinated ACs are auto-applied to unclaimable gaps
+    - "In `crates/chump-gap-store/src/lib.rs`, `fn ship` logs a line containing both “template_ac count before:” and “template_ac count after:” with the after‑count strictly less than the before‑count for a test fixture containing high‑signal gaps."
+    - In `src/tool_middleware.rs`, `fn execute` returns an `Ok` result that includes a `warnings` field listing any gaps that were flagged as ambiguous due to low confidence.
+    - Running `cargo test --package chump-gap-store --test ship_pass` succeeds and asserts that the logged reduction count is ≥ 1, confirming that high‑signal gaps were auto‑landed.
+    - No log entry is created for low‑confidence ACs being applied; instead, the log contains “ambiguous gap skipped” for each such gap, verified by grepping the test output for that exact phrase.
   depends_on: [EFFECTIVE-579, EFFECTIVE-580]
   notes: |
     [chump harvest check 'queue']
@@ -93023,13 +93032,15 @@ gaps:
   domain: ZERO-WASTE
   title: "ZERO-WASTE: convert noise auto-filers to ambient-only — kill the ~180/day make-work inflow at source"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "the 'PR #N failing on <check>' CI-failure filer + stuck-pr-filer + the shelfware 'Wire X into role Y' filer emit AMBIENT events (kind=ci_failure/stuck_pr/shelfware) instead of filing gaps"
     - files_24h drops from ~180 toward <40 (measure created_at epoch on state.db, 24h post-merge)
     - live signal preserved as ambient (shepherd/ci-audit still consume it) — only gap-accumulation stops
     - "context: ~35% of the backlog is auto-filed make-work with no off-ramp = root of unbounded growth blocking drain-to-complete"
+  notes: |
+    Decomposed into 11 slices: ZERO-WASTE-067, ZERO-WASTE-068, ZERO-WASTE-069, ZERO-WASTE-070, ZERO-WASTE-071, ZERO-WASTE-072, ZERO-WASTE-073, ZERO-WASTE-074, ZERO-WASTE-075, ZERO-WASTE-076, ZERO-WASTE-077
   opened_date: '2026-07-26'
   outcome_id: ZERO-WASTE-000
 
@@ -93890,4 +93901,306 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
   opened_date: '2026-08-24'
+
+- id: ZERO-WASTE-067
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Investigate current auto-filer implementations (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Document the code paths for CI-failure, stuck-pr, and shelfware filers
+    - Identify where gaps are currently filed in each filer
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-068
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Design ambient‑event emission for auto‑filers (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Create a design doc specifying the new ambient event schema (kind, payload, timestamps)
+    - "Define mapping: ci_failure → ambient.kind=ci_failure, stuck_pr → ambient.kind=stuck_pr, shelfware → ambient.kind=shelfware"
+    - Specify removal of gap‑filing calls
+  depends_on: [ZERO-WASTE-067]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-069
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Implement ambient event emission in CI‑failure filer (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - CI‑failure filer no longer writes a gap record
+    - Filer publishes an ambient event with kind=ci_failure
+    - Event payload matches design spec
+  depends_on: [ZERO-WASTE-068]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-070
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Implement ambient event emission in stuck‑PR filer (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Stuck‑PR filer no longer writes a gap record
+    - Filer publishes an ambient event with kind=stuck_pr
+    - Event payload matches design spec
+  depends_on: [ZERO-WASTE-068]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-071
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Implement ambient event emission in shelfware filer (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Shelfware filer no longer writes a gap record
+    - Filer publishes an ambient event with kind=shelfware
+    - Event payload matches design spec
+  depends_on: [ZERO-WASTE-068]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-072
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Update shepherd/ci‑audit consumers for ambient events (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Consumers accept and process ambient events without errors
+    - Existing CI‑audit functionality remains unchanged
+  depends_on: [ZERO-WASTE-069, ZERO-WASTE-070, ZERO-WASTE-071]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-073
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Add 24‑hour gap filing metric (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Metric `files_24h` records number of gaps filed per 24 h window
+    - Metric is exposed via existing monitoring endpoint
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-074
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Unit tests for ambient event emission (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Each filer unit test asserts that an ambient event is emitted with correct kind
+    - Tests fail if a gap record is still written
+  depends_on: [ZERO-WASTE-069, ZERO-WASTE-070, ZERO-WASTE-071]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-075
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Integration test: live signal preserved & gap accumulation stops (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - After deployment, shepherd/ci‑audit receives ambient events and processes them
+    - No new gap records appear in state.db for the tested filers
+    - files_24h metric shows a decrease toward <40
+  depends_on: [ZERO-WASTE-072, ZERO-WASTE-073, ZERO-WASTE-074]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-076
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Deploy to staging and monitor metric drop (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Staging deployment completes without errors
+    - files_24h metric drops from ~180 to ≤ 80 within 24 h
+    - No regression in CI‑audit processing
+  depends_on: [ZERO-WASTE-075]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-077
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Rollout to production (ZERO-WASTE-014 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Production deployment succeeds
+    - files_24h metric reaches < 40 within 24 h post‑merge
+    - All acceptance criteria from original gap are satisfied
+  depends_on: [ZERO-WASTE-076]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
