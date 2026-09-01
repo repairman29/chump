@@ -1130,9 +1130,16 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
                             // those are genuine rejections, not "wrong model".
                             let is_empty_diff =
                                 se.contains("empty diff") || se.contains("changed nothing");
-                            if is_empty_diff && offset + 1 < total {
+                            let is_skipped_commit =
+                                se.contains("dirty tree") || se.contains("skipped git_commit");
+                            if (is_empty_diff || is_skipped_commit) && offset + 1 < total {
+                                let reason = if is_empty_diff {
+                                    "EMPTY DIFF"
+                                } else {
+                                    "SKIPPED GIT_COMMIT"
+                                };
                                 eprintln!(
-                                    "[execute-gap] EFFECTIVE-465: {} produced an EMPTY DIFF \
+                                    "[execute-gap] EFFECTIVE-465: {} produced an {reason} \
                                      for {gap_id} (agent never edited) — escalating to next \
                                      model rung",
                                     spec.model
