@@ -107,6 +107,11 @@ SYSTEM_UNITS=(
   chump-organ-watchdog.timer
   chump-board-ceo-briefing.service
   chump-board-ceo-briefing.timer
+  # RESILIENT-376: the Discord digest organ — twice-daily phone-readable
+  # factory pulse to the operator DM. SYSTEM unit so it survives the
+  # deploy-mirror reset and boots on a fresh node.
+  chump-digest.service
+  chump-digest.timer
   chump-organ-reconcile.service
   chump-organ-reconcile.timer
   chump-pr-approval.service
@@ -176,6 +181,32 @@ SYSTEM_UNITS=(
   # Same silent-disable class RESILIENT-376 fixed for the merge-flow organs.
   chump-gap-closure-reconcile.service
   chump-gap-closure-reconcile.timer
+  # chump-fleet-server (INFRA-2175): metric-gauge API + bat-phone intake.
+  # Serves 127.0.0.1:7070; role=data. Declared `enabled` in organ-manifest.txt
+  # — MUST be rostered here or the unit file never lands and the gauges stay
+  # dark (RESILIENT-376 merged-not-running class). Service-only, no timer.
+  chump-fleet-server.service
+  # chump-nba-dispatch (EFFECTIVE-509): the AUTO-DISPATCH CONSUMER for the
+  # next-best-action router - reads the top EV-ranked bet and takes a SAFE,
+  # reversible, allow-listed action (heal a dead organ / ensure workers building
+  # / wait_ci) or DEFERS everything else to the human (kind=nba_deferred_to_human).
+  # Lets the OS aim itself between human check-ins. Declared `enabled` in
+  # organ-manifest.txt - MUST be rostered here or the unit never lands and the
+  # loop stays open (RESILIENT-376 merged-not-running class). Paired timer below.
+  chump-nba-dispatch.service
+  chump-nba-dispatch.timer
+  # INFRA-3643 (TREK-17): systemd complement to the macOS-only
+  # almanac-summarize-watchdog (RESILIENT-354) — binary presence + index
+  # freshness for the almanac fusion-search organ on the Linux factory.
+  chump-almanac-liveness.service
+  chump-almanac-liveness.timer
+  # RESILIENT-365: wires the INFRA-249 recurring-gap-pattern-detector as a
+  # live organ instead of a script only ever run by hand — was DARK/0 units,
+  # human-ALERT-only, while 44 symptom PRs shipped in one night with 0 root
+  # gaps filed. CHUMP_RCA_REFLEX_ENABLED defaults OFF (see the .service file);
+  # detection + ambient ALERT run regardless.
+  chump-rca-reflex.service
+  chump-rca-reflex.timer
   # cascade-unblock-detector (RESILIENT-418 / INFRA-2070): the launchd
   # installer (install-meta-118-daemons.sh) only wired this on Mac/helsinki;
   # on CJ nothing fanned a merged wedge_auto_fix PR out to sibling PRs blocked
@@ -184,7 +215,7 @@ SYSTEM_UNITS=(
   chump-cascade-unblock-detector.service
   chump-cascade-unblock-detector.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-cascade-unblock-detector.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-armed-rebaser.timer chump-board-cycle.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

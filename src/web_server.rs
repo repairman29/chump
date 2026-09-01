@@ -1640,6 +1640,12 @@ async fn handle_tasks_list(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let status = q.status.as_deref().filter(|s| !s.is_empty());
+    if let Some(s) = status {
+        const KNOWN_STATUSES: &[&str] = &["open", "blocked", "in_progress", "done", "abandoned"];
+        if !KNOWN_STATUSES.contains(&s) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
     let mut tasks = task_db::task_list(status).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if let Some(ref a) = q.assignee {
         let a = a.trim().to_lowercase();

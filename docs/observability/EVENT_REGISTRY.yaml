@@ -516,6 +516,29 @@ events:
       (automated form of the board hand-block)
     consumers: [fleet-brief, watchdog]
     fields_required: [gap_id, offenses, last_kind, rc]
+  - kind: unverified_ship_attempt
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
+    trigger: gap claimed + worked, rc=0, but no ship evidence found (kind=unverified_ship);
+      persistent per-gap attempt counter incremented
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, agent_id, count, action]
+
+  - kind: gap_model_escalated
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
+    trigger: per-gap unverified_ship attempt count reaches CHUMP_UNVERIFIED_SHIP_ESCALATE_N
+      (default 3); required_model bumped to opus
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, count, new_model]
+
+  - kind: gap_parked_unverified_ship
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
+    trigger: per-gap unverified_ship attempt count reaches CHUMP_UNVERIFIED_SHIP_PARK_M
+      (default 6); gap status flipped to needs_decompose, taken out of the open pool
+    consumers: [fleet-brief, watchdog]
+    fields_required: [gap_id, count, reason]
 
   - kind: worker_circuit_open
     effect_metric: self
@@ -2007,6 +2030,19 @@ events:
     consumers: [ambient]
     fields_required: [ts, kind, drift_verdict]
 
+  - kind: chump_digest_posted
+    effect_metric: self
+    emitter: scripts/dispatch/digest-beat.sh (RESILIENT-376)
+    trigger: the twice-daily Discord DIGEST organ successfully posted its
+      phone-readable factory pulse (SHIPPED / THE NUMBER / STUCK /
+      NEEDS-YOUR-CALL) to operator Discord via scripts/coord/lib/notify-operator.sh
+      (CHUMP_NOTIFY_KIND=chump_digest, verdict direct). Deterministic state-read
+      only, no LLM — distinct from board_ceo_briefing_posted (the Sonnet strategy
+      layer). Records the digest window merge/gap/organ counts so each post is
+      provable without a desktop session open.
+    consumers: [ambient]
+    fields_required: [ts, kind]
+
   - kind: discord_command_agent_dispatched
     effect_metric: self
     emitter: scripts/dispatch/discord-command-agent.sh (INFRA-3596)
@@ -3333,6 +3369,17 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, size_bytes_before, lines_before, archive]
 
+  - kind: gz_archive_compressed
+    effect_metric: self
+    emitter: scripts/coord/gz-archive-compressor.sh (RESILIENT-467)
+    trigger: >
+      gz-archive-compressor.sh completed an --execute sweep of stale logs
+      and archived docs. Each candidate is gzipped, verified with
+      `gzip -t`, and the original removed only after verification passes;
+      this event summarizes the sweep totals.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, compressed, skipped, bytes_saved]
+
   # (product_drought removed by INFRA-1287: emitter scripts/ops/pillar-drought-detector.sh
   #  never shipped; drought detection done via chump gap list + pillar counts)
 
@@ -3950,6 +3997,46 @@ events:
     expected_min_per_day: 0
     status: stable
 
+  - kind: node_deploy_lag_ok
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (RESILIENT-523)
+    trigger: >
+      Linux/systemd node's installed binary sha == green-main sha — the
+      merge->deploy chain on this node is current. Linux/systemd counterpart
+      of merge_deploy_lag_ok (macOS/launchd only).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, sha]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: node_deploy_lag_exceeded
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (RESILIENT-523)
+    trigger: >
+      origin/main advanced but the installed binary on a Linux/systemd node
+      (e.g. CJ) is still stale past the SLO (default 1800s) — the
+      chump-node-refresh timer stalled. The watchdog restarts
+      chump-node-refresh.service to self-heal (unless
+      CHUMP_NODE_DEPLOY_LAG_NO_HEAL=1).
+    consumers: [fleet-brief, ops-audit, main-health-watchdog]
+    fields_required: [ts, kind, installed_sha, main_sha, lag_secs, slo_secs, unit]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: node_deploy_timeout_detected
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (RESILIENT-523)
+    trigger: >
+      The last run of chump-node-refresh.service ended with
+      systemd Result=timeout — a cold build (or hang) exceeded
+      TimeoutStartSec and the deploy was killed before it landed. Emitted
+      immediately on detection, independent of the cumulative lag SLO, so a
+      single timed-out deploy is never silent (RESILIENT-523 AC #2).
+    consumers: [fleet-brief, ops-audit, main-health-watchdog]
+    fields_required: [ts, kind, unit]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: auto_merge_rearmed
     effect_metric: effective
     emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
@@ -4368,6 +4455,18 @@ events:
       from bot-merge.sh; phase=gap-ship from the Rust manual-ship path.
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, behind, threshold, phase]
+
+  # ── INFRA-3689: gap-mutation routed to fleet-server (Mac-independence) ─────
+  - kind: gap_mutation_routed_to_server
+    effect_metric: self
+    emitter: src/main.rs chump gap reserve|set|ship (INFRA-3689, via src/gap_route.rs)
+    trigger: CHUMP_GAP_SERVER is set AND the local checkout's `main` branch is
+      verifiably behind origin/main (gap_route::should_route_to_server) — the
+      mutation is delegated to chump-fleet-server's POST /api/gap
+      (crates/chump-fleet-server/src/gap_write.rs) instead of writing the
+      local (non-canonical) state.db.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, gap, op, server, behind]
 
   # ── RESILIENT-325: pre-push auto-rebase (conflict-rot elimination) ─────────
   - kind: pre_push_rebase_applied
@@ -5187,6 +5286,14 @@ events:
     trigger: a gap hits the chump-local strike threshold (CHUMP_DECOMPOSE_STRIKE_THRESHOLD, default 2 whole-gap failures) and the frontier model decomposes it into xs/s sub-gaps via 'chump gap decompose --apply'
     consumers: [tier-scorecard (model×effort split), ambient glance]
     fields_required: [ts, kind, source, agent, gap_id, backend, trigger_rc]
+  - kind: decompose_provider_selected
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/lib/decompose-provider.sh (shared decompose/enrich provider selector; used by gap-drain.sh + the worker.sh EFFECTIVE-310 reflex)
+    emitter_paths: [scripts/dispatch/lib/decompose-provider.sh]
+    trigger: gap-drain.sh or the worker.sh decompose reflex selects the decompose/enrich provider — OpenRouter deepseek-v4-pro when a decompose-size request is affordable, else a capable free tier (Google gemini-3.6-flash, then Groq gpt-oss-120b) when OpenRouter 402s on credit exhaustion
+    consumers: [ambient glance, provider-fallback audit]
+    fields_required: [ts, kind, source, detail]
   - kind: model_tier_escalated
     status: active
     effect_metric: self
@@ -5518,6 +5625,15 @@ events:
       sibling lease; allocator skipped to the next safe ID
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, domain, skipped_id]
+
+  - kind: gap_reserve_stale_bypass_used
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs (reserve_with_external — INFRA-3687)
+    trigger: checkout is behind origin/main AND canonical_max_id() could not verify
+      canonical state.sql (unreadable/unreachable), but CHUMP_RESERVE_ALLOW_STALE=1
+      bypassed the fail-closed refusal — audit trail for the escape hatch
+    consumers: [fleet-brief, curator, operator-recall]
+    fields_required: [ts, kind, domain, behind]
 
   - kind: gap_id_allocator_collision
     effect_metric: self
@@ -12004,3 +12120,66 @@ events:
     trigger: a distinct pr_failed (failing_test_name, first_error_line signature) recurs >= threshold times within the configured window and has not already been rate-limited (max 5/hour)
     consumers: [INFRA-2068 auto-wedge-file, INFRA-2069 template library, INFRA-2070 cascade-unblock, INFRA-2071 admin-merge circuit-breaker]
     fields_required: [ts, kind, signature_hash, failing_test_name, occurrence_count, sample_pr_numbers]
+
+  - kind: node_main_sync_noop
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: node-main-sync ran and local HEAD already equals origin/main (main_moved=false) — no fetch/reset action needed
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, sha]
+
+  - kind: node_main_sync_main_moved
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: node-main-sync detected main_moved=true (local HEAD != origin/main after fetch) and is about to run git reset --hard origin/main
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, from, to]
+
+  - kind: node_main_sync_synced
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: git fetch + git reset --hard origin/main both succeeded; local checkout is now current with origin/main
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, sha]
+
+  - kind: node_main_sync_fetch_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: git fetch origin main exited non-zero; the rebuild sequence is aborted before any reset is attempted
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, rc, output]
+
+  - kind: node_main_sync_reset_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-main-sync.sh (RESILIENT-491)
+    emitter_paths: [scripts/ops/node-main-sync.sh]
+    trigger: git reset --hard origin/main exited non-zero after a successful fetch; the rebuild sequence is aborted
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, rc, from, to]
+  - kind: barnacle_threshold_crossed
+    effect_metric: self
+    emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
+    trigger: one of the registered accumulating surfaces in
+      docs/process/BARNACLE_SURFACES.yaml (stale worktrees, untracked gap
+      yaml, commits-behind-main, disk fill, expired leases) crosses its
+      configured threshold on a barnacle-buster run.
+    consumers: [ambient, fleet-brief (future), Roll Call]
+    fields_required: [ts, kind, surface, value, threshold, domain]
+
+  - kind: barnacle_buster_tick
+    effect_metric: self
+    emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
+    trigger: every barnacle-buster run, healthy or not — the busters are
+      themselves Roll-Called (RESILIENT-358 twin): this is the liveness
+      signal proving the drain is actually running, not just registered.
+    consumers: [ambient, Roll Call]
+    fields_required: [ts, kind, surfaces_checked, surfaces_breached]

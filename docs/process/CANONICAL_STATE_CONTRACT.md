@@ -34,6 +34,7 @@ in the repo; one is the GitHub remote.
 | 4 | **legacy monolith** | `docs/gaps.yaml` | YAML, all gaps in one file | **Deprecated mirror.** Still read by some CI scripts for backward compat. |
 | 5 | **lease files** | `.chump-locks/*.json` | JSON per session | **Live lease bookkeeping** for active claims, mirrored from `leases` table. |
 | 6 | **origin/main** | GitHub | git tree | **Cross-session canonical** — the only store all sibling agents can see. |
+| 7 | **fleet-server `/api/gap`** | HTTP, `127.0.0.1:<port>` | N/A (not a store) | **Delegated write path** (INFRA-3689) — not itself authoritative; it shells `chump gap reserve\|set\|ship` against store #1 on the machine it runs on. Exists so a non-canonical client can write #1 without holding a writable local copy of it. |
 
 `state.db` tables and their purposes:
 
@@ -68,6 +69,47 @@ Two of these are non-obvious and load-bearing:
 - **ID allocation needs *both* state.db and origin/main.** state.db alone
   can't see what sibling sessions have reserved on un-merged PR branches.
   The allocator must intersect (see § 4 / Drift Mode D).
+
+## 2a — Network write path for non-canonical clients (INFRA-3689)
+
+`state.db` (store #1) is canonical, but it only holds that authority for the
+machine whose disk it lives on. A client whose local checkout has drifted behind `origin/main` (the
+operator's Mac being the recurring case, per operator decision to move
+canonical fleet operation onto owned iron) writing to its own `state.db`
+would be writing to a **non-canonical replica**, silently reintroducing
+Drift Mode C/E's root cause (a stale local view diverging from the
+checkout everyone else reads).
+
+Rather than requiring every client to hold a writable, always-fresh
+canonical replica, `chump gap reserve|set|ship` can delegate the write over
+HTTP to a **fleet-server running on a machine that already has one** (owned
+iron, e.g. CJ):
+
+- **Server side**: `POST /api/gap` (`crates/chump-fleet-server/src/routes.rs`
+  `post_gap`, `crates/chump-fleet-server/src/gap_write.rs`
+  `execute_gap_write`) — bearer-authed (`CHUMP_BATPHONE_TOKEN`, fail-closed,
+  same auth as `POST /api/mission`), localhost-bind only. It runs the exact
+  `chump gap <op>` command against **its own** `repo_root`'s state.db — the
+  write still goes through the normal CLI path into store #1, just on a
+  different machine.
+- **Client side**: `src/gap_route.rs` — when `CHUMP_GAP_SERVER` is set
+  *and* the client's local `main` is verifiably behind `origin/main`
+  (`gap_route::should_route_to_server`), the mutation is POSTed to the
+  server instead of calling `GapStore::reserve|set_fields|ship` locally.
+  Unset `CHUMP_GAP_SERVER` (the default) or a canonical local checkout ⇒
+  unchanged local-first behavior.
+- **Fail-closed on routing failure**: if the server is unreachable or
+  errors, the client does **not** silently fall back to writing its own
+  (known-stale) `state.db` — see INFRA-3687 (`GapStore::behind_origin_main`)
+  for the companion fail-closed gate inside `reserve()` itself.
+- **Observability**: every successful route emits `kind=gap_mutation_routed_to_server`
+  to `ambient.jsonl` (`docs/observability/EVENT_REGISTRY.yaml`) with `op`,
+  `server`, and `behind` — so a reconcile pass can distinguish
+  server-delegated writes from ones the client made against its own replica.
+
+This does not add an eighth authoritative store: the server's `state.db` is
+still store #1, just addressed over loopback HTTP from a client that
+shouldn't trust its own copy.
 
 ## 3 — The reconciliation routine
 
@@ -221,6 +263,61 @@ stale PR number.
 (part of CREDIBLE-028 AC) detects this class by calling `gh pr view`.
 
 **Prevention**: CREDIBLE-028 (same checker handles A and F).
+
+### Drift Mode G — Stale-checkout canonical-ID collision (fixed, INFRA-3687)
+**Symptom**: `chump gap reserve` on a checkout that is behind `origin/main`
+re-issues an ID that canonically already belongs to an already-merged gap.
+Distinct from Drift Mode B (allocator race between two concurrent
+reserves): here there is no race at all — a single checkout's local
+`gaps` table is simply stale relative to `origin/main`.
+
+**How it happens**: `reserve_with_external()`'s allocation ceiling
+(`combined_max`) used to come from only two sources: `existing_max`
+(`SELECT MAX(id)` on the LOCAL `.chump/state.db`) and `extra_max`
+(`.chump-locks/*.json` leases + open-PR titles, via
+`external_pending_ids()`). Neither consults `origin/main`'s canonical,
+git-tracked `.chump/state.sql` (the full dump of every gap ever reserved
+or merged — see `load_state_sql()` / `restore_from_state_sql()`). A
+checkout N commits behind `origin/main` has a stale local `gaps` table,
+so `existing_max` under-counts and the naive `existing_max + 1` can equal
+an ID that already shipped upstream.
+
+**Real incident**: a checkout 177 commits behind reserved `INFRA-3680`,
+which canonically is a merged "parse_verdict" gap — collision, stranding
+the new gap in the stale local rep.
+
+**Prevention (fixed, INFRA-3687)** — three parts, all in
+`crates/chump-gap-store/src/lib.rs`:
+1. `GapStore::canonical_max_id(domain)` best-effort `git fetch origin
+   main --quiet` (mirrors the INFRA-2423 auto-fetch pattern), then reads
+   `origin/main:.chump/state.sql` via `git show` and extracts the max
+   `<DOMAIN>-N` from the **`id` column only** (deliberately not a raw
+   text scan — `state.sql` carries `<DOMAIN>-N`-shaped junk substrings
+   outside the `id` field, e.g. a stray `INFRA-9999999` quoted in a
+   note, and a naive scan would rocket the allocator to that instead).
+   `reserve_with_external` folds this into `combined_max`, so a stale
+   local checkout can no longer under-allocate whenever origin refs are
+   reachable.
+2. Fail-closed: if this checkout is genuinely behind `origin/main`
+   (`git rev-list --count main..origin/main` > 0) AND
+   `canonical_max_id()` could not verify canonical truth (offline,
+   unreachable ref, or the file is absent at that ref — distinct from
+   "verified and this domain has zero canonical gaps", which returns
+   `Some(0)`), `reserve_with_external` returns `Err` rather than trust a
+   possibly-stale local counter. Audited escape hatch:
+   `CHUMP_RESERVE_ALLOW_STALE=1` (emits `gap_reserve_stale_bypass_used`
+   to `ambient.jsonl`, registered in `docs/observability/EVENT_REGISTRY.yaml`).
+3. `chump gap list` prints a loud, non-blocking `stderr` warning when the
+   checkout is behind `origin/main` (`GapStore::behind_origin_main()`) —
+   stdout output (`--json`/`--csv`/plain) is untouched since scripts
+   parse it.
+
+**Regression lock**: `scripts/ci/test-gap-reserve-no-stale-collision.sh`
+(wired in both `.github/workflows/ci.yml` and `chump preflight` per the
+INFRA-2120 parity rule) runs the `chump-gap-store` unit tests that
+reproduce the exact drift (local max stuck low, canonical max high) and
+assert the allocator beats canonical truth, plus the fail-closed +
+bypass paths and the junk-ID-immune extraction.
 
 ## 5 — Stores that look load-bearing but aren't
 

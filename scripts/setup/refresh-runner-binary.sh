@@ -173,9 +173,18 @@ if [[ "$INSTALLED_SHA" == "$MAIN_SHA"* || "$MAIN_SHA" == "$INSTALLED_SHA"* ]] &&
     exit 0
 fi
 
-# Resolve cargo on PATH
+# Resolve cargo on PATH.
+# PRODUCT-169: the rustup shim at ~/.cargo/bin/cargo reads rust-toolchain.toml
+# and resolves to whatever channel is pinned there. A prior fallback candidate
+# hardcoded a specific "stable" toolchain path (e.g.
+# ~/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo) — that bypasses
+# the pin entirely, so this cron would build with whatever "stable" happened
+# to be installed while interactive sessions built with the pinned channel,
+# doubling compile artifacts across the shared target dir. Only the rustup
+# shim (pin-aware) and a generic PATH lookup (also pin-aware, since rustup
+# installs its shim onto PATH) are safe fallbacks here.
 CARGO=""
-for candidate in "$HOME/.cargo/bin/cargo" "$HOME/.rustup/toolchains/stable-aarch64-apple-darwin/bin/cargo" "$(command -v cargo)"; do
+for candidate in "$HOME/.cargo/bin/cargo" "$(command -v cargo)"; do
     if [[ -x "$candidate" ]]; then
         CARGO="$candidate"
         break

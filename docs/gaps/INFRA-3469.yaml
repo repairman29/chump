@@ -1,7 +1,7 @@
 - id: INFRA-3469
   domain: INFRA
   title: "EFFECTIVE: WIRING organ — add ecosystem adapters beyond Rust (comprehend UAT pilot-1 B3, the #1 coverage gap)"
-  status: open
+  status: wontfix
   priority: P2
   effort: m
   acceptance_criteria:

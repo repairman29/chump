@@ -129,6 +129,7 @@ mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
+mod gap_route; // INFRA-3689: route gap mutations to the fleet-server when local checkout is non-canonical
 mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764
 mod gen;
 mod genai_conv;
@@ -9909,6 +9910,20 @@ async fn main() -> Result<()> {
                         "state.db was empty on open — auto-imported from docs/gaps/"
                     );
                 }
+                // INFRA-3687 part 3: loud, non-blocking staleness warning.
+                // stderr only — stdout is script-parsed (--json/--csv/plain
+                // ids), so this must never appear there and must never
+                // block the read. Deliberately doesn't force a fetch (this
+                // is a hot/frequent read path); it reports against whatever
+                // origin/main ref this checkout already knows.
+                if let Some(behind) = store.behind_origin_main() {
+                    if behind > 0 {
+                        eprintln!(
+                            "\u{26A0} gap list may be STALE: checkout is {behind} commit(s) \
+                             behind origin/main — run `git pull` for canonical state."
+                        );
+                    }
+                }
                 match store.list(status_filter.as_deref()) {
                     Ok(all_gaps) => {
                         // Apply --since filter before any output path.
@@ -10994,6 +11009,92 @@ async fn main() -> Result<()> {
                 }
                 // ── end farmer readiness gate ────────────────────────────────────────────
 
+                // ── INFRA-3689: route to fleet-server when opted in + stale ──────────────
+                // Mac-independence of canonical gap state: when CHUMP_GAP_SERVER is set
+                // AND this checkout's local `main` is verifiably behind origin/main, a
+                // local `reserve` would write to a non-canonical replica. Delegate to the
+                // fleet-server's `POST /api/gap` (running on owned iron with a canonical
+                // checkout) instead of writing state.db here. Unset CHUMP_GAP_SERVER (the
+                // default) leaves this whole block a no-op — fleet nodes stay local-first.
+                if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
+                    let server_base = server_base.trim().to_string();
+                    if !server_base.is_empty() {
+                        let behind = store.behind_origin_main();
+                        if gap_route::should_route_to_server(behind, true) {
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] local main is {} commit(s) behind origin/main; CHUMP_GAP_SERVER={} set — routing to fleet-server instead of writing local state.db",
+                                    behind.unwrap_or(0),
+                                    server_base
+                                );
+                            }
+                            let token =
+                                std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+                            let ac_list: Option<Vec<String>> = if acceptance_criteria_json != "[]" {
+                                serde_json::from_str(&acceptance_criteria_json).ok()
+                            } else {
+                                None
+                            };
+                            let body = gap_route::GapMutationBody {
+                                op: "reserve".into(),
+                                domain: Some(domain.clone()),
+                                title: Some(title.clone()),
+                                priority: Some(priority.clone()),
+                                effort: Some(effort.clone()),
+                                outcome: reserve_outcome_id.clone(),
+                                acceptance_criteria: ac_list,
+                                ..Default::default()
+                            };
+                            match gap_route::route_gap_mutation(&server_base, &token, &body).await {
+                                Ok(result) => {
+                                    let _ =
+                                        crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                                            kind: "gap_mutation_routed_to_server".to_string(),
+                                            source: Some("chump_gap_reserve".to_string()),
+                                            gap: Some(result.gap_id.clone()),
+                                            fields: vec![
+                                                ("op".to_string(), "reserve".to_string()),
+                                                ("server".to_string(), server_base.clone()),
+                                                (
+                                                    "behind".to_string(),
+                                                    behind.unwrap_or(0).to_string(),
+                                                ),
+                                            ],
+                                            ..Default::default()
+                                        });
+                                    if json_out {
+                                        println!(
+                                            "{{\"id\":\"{}\",\"yaml_path\":\"\"}}",
+                                            result.gap_id
+                                        );
+                                    } else {
+                                        println!("{}", result.gap_id);
+                                    }
+                                    if why {
+                                        eprintln!(
+                                            "reserved {} — why: routed to fleet-server ({}) because local checkout is non-canonical (INFRA-3689): {}",
+                                            result.gap_id, server_base, result.detail
+                                        );
+                                    }
+                                    return Ok(());
+                                }
+                                Err(e) => {
+                                    // Do NOT silently fall back to a local write on a
+                                    // known-stale checkout — that's exactly the write
+                                    // this routing exists to avoid. Fall through to the
+                                    // existing local path below, where INFRA-3687's
+                                    // fail-closed reserve() gate refuses an
+                                    // unverifiable/stale canonical write on its own.
+                                    eprintln!(
+                                        "[reserve] fleet-server routing failed ({e:#}); falling through to local reserve path"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
@@ -11499,6 +11600,61 @@ async fn main() -> Result<()> {
                         std::process::exit(3);
                     }
                 }
+                // ── INFRA-3689: route to fleet-server when opted in + stale ──────────────
+                // Same gate as `chump gap reserve`/`set` — see reserve's comment for
+                // rationale. Uses repo_root's local `main` (the canonical replica),
+                // distinct from the CHUMP_GAP_SHIP_STALE_THRESHOLD gate above which
+                // checks the current worktree's HEAD.
+                if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
+                    let server_base = server_base.trim().to_string();
+                    if !server_base.is_empty() {
+                        let behind = store.behind_origin_main();
+                        if gap_route::should_route_to_server(behind, true) {
+                            eprintln!(
+                                "[gap ship] local main is {} commit(s) behind origin/main; CHUMP_GAP_SERVER={} set — routing to fleet-server instead of writing local state.db",
+                                behind.unwrap_or(0),
+                                server_base
+                            );
+                            let token =
+                                std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+                            let body = gap_route::GapMutationBody {
+                                op: "ship".into(),
+                                gap_id: Some(gap_id.clone()),
+                                ..Default::default()
+                            };
+                            match gap_route::route_gap_mutation(&server_base, &token, &body).await {
+                                Ok(result) => {
+                                    let _ =
+                                        crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                                            kind: "gap_mutation_routed_to_server".to_string(),
+                                            source: Some("chump_gap_ship".to_string()),
+                                            gap: Some(result.gap_id.clone()),
+                                            fields: vec![
+                                                ("op".to_string(), "ship".to_string()),
+                                                ("server".to_string(), server_base.clone()),
+                                                (
+                                                    "behind".to_string(),
+                                                    behind.unwrap_or(0).to_string(),
+                                                ),
+                                            ],
+                                            ..Default::default()
+                                        });
+                                    println!("shipped {}", result.gap_id);
+                                    return Ok(());
+                                }
+                                Err(e) => {
+                                    // Do NOT silently fall back to a local write on a
+                                    // known-stale checkout. Fall through to the existing
+                                    // local path below.
+                                    eprintln!(
+                                        "[gap ship] fleet-server routing failed ({e:#}); falling through to local ship path"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
                 match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
@@ -12009,6 +12165,74 @@ async fn main() -> Result<()> {
                 } else {
                     flag_local("--notes")
                 };
+
+                // ── INFRA-3689: route to fleet-server when opted in + stale ──────────────
+                // Same gate as `chump gap reserve` — see its comment for rationale.
+                if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
+                    let server_base = server_base.trim().to_string();
+                    if !server_base.is_empty() {
+                        let behind = store.behind_origin_main();
+                        if gap_route::should_route_to_server(behind, true) {
+                            eprintln!(
+                                "[gap set] local main is {} commit(s) behind origin/main; CHUMP_GAP_SERVER={} set — routing to fleet-server instead of writing local state.db",
+                                behind.unwrap_or(0),
+                                server_base
+                            );
+                            let token =
+                                std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+                            let ac_list: Vec<String> = acceptance_criteria
+                                .as_deref()
+                                .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+                                .unwrap_or_default();
+                            let body = gap_route::GapMutationBody {
+                                op: "set".into(),
+                                gap_id: Some(gap_id.clone()),
+                                title: flag_local("--title"),
+                                description: flag_local("--description"),
+                                priority: flag_local("--priority"),
+                                effort: flag_local("--effort"),
+                                status: flag_local("--status"),
+                                outcome: flag_local("--outcome"),
+                                acceptance_criteria: if ac_list.is_empty() {
+                                    None
+                                } else {
+                                    Some(ac_list)
+                                },
+                                ..Default::default()
+                            };
+                            match gap_route::route_gap_mutation(&server_base, &token, &body).await {
+                                Ok(result) => {
+                                    let _ =
+                                        crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                                            kind: "gap_mutation_routed_to_server".to_string(),
+                                            source: Some("chump_gap_set".to_string()),
+                                            gap: Some(result.gap_id.clone()),
+                                            fields: vec![
+                                                ("op".to_string(), "set".to_string()),
+                                                ("server".to_string(), server_base.clone()),
+                                                (
+                                                    "behind".to_string(),
+                                                    behind.unwrap_or(0).to_string(),
+                                                ),
+                                            ],
+                                            ..Default::default()
+                                        });
+                                    println!("updated {}", result.gap_id);
+                                    return Ok(());
+                                }
+                                Err(e) => {
+                                    // Do NOT silently fall back to a local write on a
+                                    // known-stale checkout. Fall through to the existing
+                                    // local path below.
+                                    eprintln!(
+                                        "[gap set] fleet-server routing failed ({e:#}); falling through to local set path"
+                                    );
+                                }
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
 
                 let update = gap_store::GapFieldUpdate {
                     title: flag_local("--title"),

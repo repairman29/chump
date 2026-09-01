@@ -10,6 +10,19 @@ loops that claim gaps and ship PRs. Nodes coordinate through a shared **NATS** b
 so two machines never pick the same gap. This doc takes you from a bare box to a
 shipping node in one pass.
 
+> **Newer one-command path (COTG).** This runbook is the original
+> `chumpd`/NATS bring-up. The current bare-box path is
+> [`scripts/setup/chump-node-install.sh`](../../scripts/setup/chump-node-install.sh)
+> (`--role brain|muscle|all`), which installs a provenance-gated binary plus a
+> minimal manifest-driven organ set, substrate, and eyes in one command. It
+> does **not** install the root-privileged ATC roster
+> (`scripts/setup/install-helsinki-atc.sh`) — that stays a separate
+> `sudo` step. For a grounded reproducibility reading of which manifest organs
+> a fresh box actually gets (69% @ 2026-08-30) and the per-node secrets that
+> stay hand-set, see
+> [`docs/audits/ftue-verifications/FTUE-VERIFICATION-2026-08-30.md`](../audits/ftue-verifications/FTUE-VERIFICATION-2026-08-30.md)
+> (tracked by CREDIBLE-354).
+
 **Two backends, same runbook:**
 - `claude` — dispatches `claude -p` on your Claude subscription. Reliable shipper. Needs the Claude Code CLI + an OAuth token.
 - `chump-local` — open models via OpenRouter (the EFFECTIVE-314 cost ladder). ~$0 to run; lower land-rate on thin-spec gaps. Needs OpenRouter keys.

@@ -42,6 +42,21 @@ esac
 
 cd "$REPO" || { echo "cannot cd to $REPO" >&2; exit 1; }
 
+# PRODUCT-169: this cron previously left CARGO_TARGET_DIR unset, so it built
+# into whatever .cargo/config.toml's [build] target-dir happened to resolve
+# to (typically $REPO/target) while fleet workers (scripts/dispatch/worker.sh,
+# INFRA-1933) build into the shared ~/.cargo/chump-shared-target. Two
+# directories meant every crate compiled twice into every cache. Mirror
+# worker.sh's resolution so the cron and interactive sessions share one
+# build cache.
+if [[ -z "${CARGO_TARGET_DIR:-}" ]]; then
+    export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
+    mkdir -p "$CARGO_TARGET_DIR" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"cargo_target_dir_shared","source":"refresh-chump-binary.sh","target_dir":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CARGO_TARGET_DIR" \
+        >> "$AMB" 2>/dev/null || true
+fi
+
 # Pull latest so the staleness check sees committed-but-unfetched commits too.
 git fetch origin main --quiet 2>/dev/null || true
 

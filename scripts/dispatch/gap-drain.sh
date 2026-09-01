@@ -34,11 +34,13 @@ set -a
 [ -f "$HOME/.chump/providers.env" ] && source "$HOME/.chump/providers.env" 2>/dev/null
 [ -f "$HOME/.chump/cj.env" ] && source "$HOME/.chump/cj.env" 2>/dev/null
 set +a
-if [ -n "${OPENROUTER_API_KEY:-}" ]; then
-  export OPENAI_API_BASE="https://openrouter.ai/api/v1"
-  export OPENAI_API_KEY="$OPENROUTER_API_KEY"
-  export OPENAI_MODEL="${CHUMP_DRAIN_MODEL:-deepseek/deepseek-v4-pro}"
-fi
+# INFRA: pick the decompose/enrich provider. Prefer OpenRouter deepseek-v4-pro,
+# but fall to a capable FREE tier (Google gemini-3.6-flash, then Groq
+# gpt-oss-120b) when OpenRouter credits are exhausted (402 on full requests) —
+# the floor is unaffected but this path would otherwise go dead. The SAME
+# selector backs the worker.sh decompose reflex, so both stay consistent.
+source "$(dirname "$0")/lib/decompose-provider.sh"
+pick_decompose_provider
 # Almanac binary (the file:line source the enricher grounds on). The enricher
 # defaults to `almanac` on PATH; on the owned nodes it is symlinked into
 # ~/.cargo/bin from the separate ~/Projects/almanac checkout. Only pin an

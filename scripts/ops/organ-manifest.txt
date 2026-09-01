@@ -207,6 +207,12 @@ enabled     chump-armed-rebaser.timer  role=muscle requires=bin:gh
 # disabling chump-armed-rebaser.timer so it stops resetting verified on main moves.
 enabled     chump-merge-serializer.timer  role=muscle requires=bin:gh
 enabled     chump-board-cycle.timer  role=brain
+# RESILIENT-376: the DISCORD DIGEST organ — twice-daily phone-readable
+# factory pulse (SHIPPED/THE NUMBER/STUCK/NEEDS-YOUR-CALL) to the operator
+# Discord DM. role=data (publishes state, no muscle). Deterministic state
+# read, no LLM. Must be manifest-declared or it stays dark after a reset.
+enabled     chump-digest.timer  role=data
+
 
 # --- Owned-node factory organs (TREK-16 / INFRA-3642, install-a-Trek-from-0) -
 # CJ is the first owned MUSCLE+DATA node (COTG). Until this line, its worker,
@@ -251,6 +257,12 @@ enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git
 enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df
 enabled     chump-cj-sync.service  role=data requires=bin:git
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
+# chump-fleet-server (INFRA-2175): the metric-gauge API + bat-phone intake.
+# Serves /api/dashboard-summary etc on 127.0.0.1:7070 from the local repo
+# data (github_cache.db, ambient.jsonl, claim leases). ~48 gauges stayed
+# dark until this served them. Unit + SYSTEM_UNITS roster entry land together
+# (RESILIENT-376: manifest-only never installs the file).
+enabled     chump-fleet-server.service  role=data requires=bin:git
 
 # chump-almanac-liveness.timer: systemd complement to the macOS-only
 # almanac-summarize-watchdog (RESILIENT-354/launchd) — covers almanac binary
@@ -311,6 +323,20 @@ enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bi
 # current picture, not a week-old file. Cheap (no LLM call). Declared here so
 # organ-reconcile re-arms it on drift and Roll-Call never lets it rot silently.
 enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq
+
+# chump-nba-dispatch.timer: EFFECTIVE-509 (+ conservative first cut of
+# EFFECTIVE-510) - the AUTO-DISPATCH CONSUMER that closes the next-best-action
+# loop so the OS can aim ITSELF between human check-ins. The producer above is
+# ADVISORY (writes the ranking, never acts); this consumer reads the TOP bet and
+# takes a SAFE, REVERSIBLE, ALLOW-LISTED action only - heal a DEAD organ
+# (reset-failed+restart; a relapse escalates to the human, never loops), ensure
+# worker/farmer muscle is building (respects the fleet-paused sentinel), or a
+# wait_ci no-op. EVERYTHING else (merge PRs, cut PRs, resolve/rebase,
+# raise_faculty, any unknown action-type) DEFERS: records a needs-human item +
+# emits kind=nba_deferred_to_human for Jeff's digest. Idempotent (30-min bet
+# cooldown). Safe-by-default. Declared here so organ-reconcile re-arms it on
+# drift and Roll-Call never lets it rot silently. role=brain (it decides+acts).
+enabled     chump-nba-dispatch.timer  role=brain requires=bin:jq
 # chump-cascade-unblock-detector.timer: RESILIENT-418 (INFRA-2070). When a
 # wedge_auto_fix PR merges, fans the fix out to every open PR whose CI failed
 # on the same failure signature by calling `gh pr update-branch` on each safe
@@ -320,3 +346,14 @@ enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq
 # Declared here so organ-reconcile re-arms it if it drifts or fails, the same
 # peer-heartbeat mechanism every other organ in this manifest relies on.
 enabled     chump-cascade-unblock-detector.timer  role=muscle requires=bin:gh
+
+# chump-rca-reflex.timer: the INFRA-249 recurring-gap-pattern-detector, wired
+# as a live organ (RESILIENT-365). Was DARK — 0 organ units, only a human-
+# facing ALERT line — while 44 symptom PRs shipped in one night against 0
+# root-cause gaps (the evidence for this gap). The detector itself still
+# gates its auto-file-a-root-gap + auto-block-symptoms half behind
+# CHUMP_RCA_REFLEX_ENABLED (default OFF, see chump-rca-reflex.service and
+# docs/process/CAPABILITY_DECISIONS.md) — this manifest line only guarantees
+# the detection + ambient ALERT sweep itself stays alive and self-heals like
+# every other organ here.
+enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
