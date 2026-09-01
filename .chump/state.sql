@@ -4491,7 +4491,7 @@ gaps:
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-361, CREDIBLE-362, CREDIBLE-363, CREDIBLE-364
+    Decomposed into 4 slices: CREDIBLE-455, CREDIBLE-456, CREDIBLE-457, CREDIBLE-458
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -9235,6 +9235,53 @@ gaps:
     
     === cross-pollination briefs mentioning 'scoreboard' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-455
+  domain: CREDIBLE
+  title: "CREDIBLE: Build CI script scanner for vacuous grep targets and missing paths (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Scanner script checks files in scripts/ci for grep targets, paths, or symbols that do not exist in the repository tree
+    - Outputs identified dead/vacuous targets as structured report findings (JSON or text summary)
+    - Script exits with status code 0 to ensure findings are reported as non-blocking queue items rather than CI build failures
+
+- id: CREDIBLE-456
+  domain: CREDIBLE
+  title: "CREDIBLE: Add verification test suite replaying known historical rot cases (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Test suite verifies the CI rot scanner against test fixtures representing known dead checks (e.g. moved stale-binary target)
+    - Test asserts scanner correctly flags vacuous assertions and absent targets in fixture scripts
+    - Test runs cleanly in local test runner and CI
+  depends_on: [CREDIBLE-455]
+
+- id: CREDIBLE-457
+  domain: CREDIBLE
+  title: "CREDIBLE: Add launchd process and daemon config probes to rot detector (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Probe checks launchd plists in scripts/launchd and ~/Library/LaunchAgents for declared jobs with zero running processes
+    - Probe checks TOML and config files with enabled=true where the referenced daemon executable is absent
+    - Probe output is integrated into the unified non-blocking findings report
+  depends_on: [CREDIBLE-455]
+
+- id: CREDIBLE-458
+  domain: CREDIBLE
+  title: "CREDIBLE: Schedule standing rot sweep and add unused tool reference probe (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Probe checks installed apt/brew tools against references in project scripts and environment variables
+    - Scheduled CI workflow or cron job is configured to execute the full rot sweep periodically
+    - Sweep results are posted to findings queue/log artifact without blocking standard PR builds
+  depends_on: [CREDIBLE-455, CREDIBLE-457]
 
 - id: DOC-031
   domain: DOC
