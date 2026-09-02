@@ -9478,10 +9478,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `fn ship` in `crates/chump-gap-store/src/lib.rs` to serialize the run‑event summary into a `scoreboard.json` file placed in the CI artifacts directory and return its path, and augment `scripts/ci/test-cli-integration.sh` to verify that this file is produced and conforms to the expected JSON schema via the existing `check_json` helper.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - scripts/ci/test-cli-integration.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Update pipeline/CI scripts to collect run events and output the published scoreboard artifact.
-    - Existing CI test scripts pass and verify scoreboard generation without errors.
-    - "`cargo fmt`, `clippy --all-targets -- -D warnings`, and `cargo check` pass."
+    - In `crates/chump-gap-store/src/lib.rs`, `fn ship` creates a file named `scoreboard.json` under the `$CI_ARTIFACTS` path and includes the file path in its returned `ShipResult`.
+    - In `scripts/ci/test-cli-integration.sh`, after invoking the ship command, the script asserts that `$CI_ARTIFACTS/scoreboard.json` exists and calls `check_json` on it without error.
+    - Executing `cargo fmt`, `cargo clippy --all-targets -- -D warnings`, and `cargo check` completes with zero warnings or errors.
+    - Running `scripts/ci/test-cli-integration.sh` exits with status 0, confirming successful scoreboard generation and validation.
   depends_on: [CREDIBLE-453]
   notes: |
     [chump harvest check 'scoreboard']
@@ -11457,13 +11466,15 @@ gaps:
 - id: CREDIBLE-517
   domain: CREDIBLE
   title: "CREDIBLE: Define HALT_CLASS_PREDICATES manifest event schema and failure taxonomy (CREDIBLE-109 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - Manifest docs/observability/HALT_CLASS_PREDICATES.yaml exists and is valid YAML.
     - Specifies events emitted on success, failure, and timeout conditions.
     - Includes failure-class taxonomy distinguishing transient vs permanent failures.
+  notes: |
+    [2026-09-02T09:06:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-518
   domain: CREDIBLE
@@ -11650,10 +11661,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new integration test function `test_ship_count_failure_regression` to `crates/chump-preflight/src/preflight.rs`. The test forces a git fetch failure (by mocking the fetch command to return an error), invokes the `fleet‑brief` command, and asserts that the command’s stdout contains the expected failure messages and does not contain the healthy‑state messages.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Synthetic scenario forces git fetch to fail
-    - "Running fleet‑brief during the scenario shows \"Ships: unavailable\" and health verdict \"measurement failed / investigate\""
-    - "Test fails if output reverts to \"Ships: 0\" or \"looks healthy\""
+    - "? In crates/chump-preflight/src/preflight.rs, the function `test_ship_count_failure_regression` runs `fleet-brief` with a simulated git fetch failure and asserts that stdout includes the string \"Ships : unavailable\"."
+    - "The same test asserts that stdout includes the string \"measurement failed / investigate\"."
+    - "The test fails if stdout contains the string \"Ships: 0\"."
+    - "The test fails if stdout contains the string \"looks healthy\"."
   depends_on: [CREDIBLE-523, CREDIBLE-524, CREDIBLE-525]
   notes: |
     [chump harvest check 'fleet-brief']
