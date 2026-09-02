@@ -13841,9 +13841,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a new “Tier 4” markdown sub‑heading into `docs/process/SELF_HOSTED_RUNNERS.md` (immediately following the existing Tier 3 section) and add a concise paragraph that explains how to enable `sccache` once the repository path‑remapping step has been completed, including the exact command line flags and environment variables required.
+    
+    Target file(s):
+    - docs/process/SELF_HOSTED_RUNNERS.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Add a \"Tier 4\" sub‑heading"
-    - Describe enabling sccache once path remapping is in place
+    - "docs/process/SELF_HOSTED_RUNNERS.md contains a markdown heading matching the regex `^##\\s+Tier\\s*4` placed after the Tier 3 heading."
+    - The newly added Tier 4 section includes the literal phrase “enable sccache” and references “path remapping” in the same paragraph.
+    - The Tier 4 heading and its paragraph are rendered without markdown syntax errors when processed by the repository’s documentation build script (`scripts/ci/test-docs.sh` or equivalent).
+    - "Running `grep -A2 \"Tier 4\" docs/process/SELF_HOSTED_RUNNERS.md` outputs the heading and the paragraph describing sccache enablement."
   depends_on: [DOC-103]
   notes: |
     [chump harvest check 'fleet']
@@ -82910,7 +82919,7 @@ gaps:
 - id: INFRA-3927
   domain: INFRA
   title: "INFRA: Add numeric double‑bump detection function to test‑cross‑pr‑contract.sh (INFRA-3491 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -82933,6 +82942,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T11:18:53Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3928
   domain: INFRA
@@ -83289,7 +83299,7 @@ gaps:
 - id: INFRA-3939
   domain: INFRA
   title: "INFRA: Analyze spec and locate relevant INFRA code paths for organ wiring (INFRA-3511 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -83327,6 +83337,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T11:19:13Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-394
   domain: INFRA
