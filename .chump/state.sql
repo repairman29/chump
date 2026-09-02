@@ -4248,9 +4248,19 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    Add a new harness‑neutral RPC verb named “list_workers” by extending the `register_worker_rpc_handlers` function in `crates/chump-coord/src/rpc.rs` to register a handler that gathers and returns each worker’s `worker_id`, `backend`, `machine`, `skills`, `current_gap`, `heartbeat_age`, and `ships_today`.  Then expose this verb through the command‑line interface by updating `src/spawn_worker_tool.rs::execute` to recognize a new subcommand `list-workers`, invoke the RPC verb, and print the returned data in a human‑readable table (or JSON) format.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    - src/spawn_worker_tool.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A harness-neutral verb is implemented to list registered workers
-    - "The verb returns the required information: worker_id, backend, machine, skills, current_gap, heartbeat_age, ships_today"
+    - "In `crates/chump-coord/src/rpc.rs`, the function `register_worker_rpc_handlers` registers a handler for the verb `\"list_workers\"` that returns a collection of structs containing the fields `worker_id`, `backend`, `machine`, `skills`, `current_gap`, `heartbeat_age`, and `ships_today`."
+    - "In `src/spawn_worker_tool.rs`, the function `execute` parses a new CLI subcommand `list-workers`, calls the `\"list_workers\"` RPC verb, and outputs the result to stdout in a tabular (or JSON) format showing all seven required columns."
+    - Running the built binary with `./spawn_worker_tool list-workers` exits with status 0 and prints at least one line containing the seven columns for each registered worker.
+    - "A unit test in `crates/chump-coord/src/rpc.rs` invokes the `\"list_workers\"` handler after registering a mock worker and asserts that the returned list includes an entry whose fields match the mock worker’s data."
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-264
@@ -4803,10 +4813,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Edit the `count_json_events` function in `scripts/dev/outcomes-delivered.sh` to treat a JSON event whose `type` is `"bot-merge"` and whose `exit_code` is `13` (the clippy‑exit code used by the inline bot‑merge) as a successful merge, and to ignore the “wait‑expiry” flag when determining success, so that the script no longer reports a FAILED outcome for PRs that actually merged.
+    
+    Target file(s):
+    - scripts/dev/outcomes-delivered.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The change described by \"trek/swe reports FAILED while the PR actually merges — inline bot-merge clippy(exit13) + wait-expiry lie about landed outcomes\" is implemented in the relevant CREDIBLE code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - "In `scripts/dev/outcomes-delivered.sh`, `count_json_events` returns a success count ≥ 1 for a JSON line containing `\"type\":\"bot-merge\"` and `\"exit_code\":13`."
+    - Executing `scripts/dev/outcomes-delivered.sh` on a test fixture JSON file that includes a bot‑merge event with exit_code 13 exits with status 0 and prints a line containing the word `SUCCESS`.
+    - Running `cargo fmt` and `cargo clippy --all-targets -D warnings` on the repository completes without any formatting or clippy warnings.
+    - All existing repository tests (`cargo test` and any `scripts/ci/test-*.sh` scripts) pass unchanged.
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -5151,9 +5169,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify `src/improve.rs` by extending the `implement_gap` function to perform a git‑diff lookup for any “file touch” claim, determine whether the claimed file appears in the PR’s diff, and return a concrete grounding result (`grounded` or `ungrounded`) together with a specific reason. Update `format_grounding_block` to render this status and reason in the gap’s output block.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Given a file touch claim, verify the file appears in the git diff of the PR
-    - Return grounded/ungrounded status with specific reason
+    - "In `src/improve.rs::implement_gap`, when a gap of type “file touch” is processed, the function calls `git diff --name-only $BASE..$HEAD` (or equivalent) and sets `grounded` if the claimed file path is listed, otherwise sets `ungrounded` with the reason “file not touched in PR”."
+    - "In `src/improve.rs::format_grounding_block`, the generated markdown includes a line `**Grounding:** grounded` or `**Grounding:** ungrounded – <reason>` reflecting the result from `implement_gap`."
+    - "? Running the CI script `scripts/ci/check-pr-scope.sh` on a PR that contains a file‑touch claim for a file not present in the diff produces a non‑zero exit code and logs “Ungrounded claim : file not touched” in the console output."
   depends_on: [CREDIBLE-306]
   notes: |
     [chump harvest check 'pipeline']
@@ -5226,11 +5252,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a grounding‑gate step to the bot‑merge pipeline in `src/execute_gap.rs` by inserting a call to a new `check_grounding` helper before the arming phase; the helper reuses the existing `send_back` loop from EFFECTIVE‑367 to bounce the PR with the specific ungrounded claim name, and delegates to the EFFECTIVE‑372 gate host when all claims are grounded, ensuring the overall latency stays below 15 seconds. Update the CI pre‑push script to verify the bounce behavior and latency constraint.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    - scripts/ci/test-pre-push-hook-no-sigpipe.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Add grounding check step in bot-merge before arming, reusing EFFECTIVE-367's send-back loop for bounce
-    - When ungrounded claims are found, bounce PR back to agent with specific ungrounded claim named
-    - When all claims are grounded, allow PR to proceed with zero added latency beyond budget (<15s)
-    - Ensure gate is hosted inside EFFECTIVE-372's gate host
+    - In `src/execute_gap.rs`, the main merge function now invokes `check_grounding` before arming and returns a bounce PR containing the exact ungrounded claim text when any claim fails the grounding check.
+    - "? The new `check_grounding` implementation calls the `effective_367::send_back_ungrounded` loop and formats the bounce comment as “Ungrounded claim : <claim>”."
+    - Executing `scripts/ci/test-pre-push-hook-no-sigpipe.sh` with a test PR that includes an ungrounded claim exits with status code 1 and outputs the “Ungrounded claim” bounce message.
+    - A unit test `test_grounding_gate_latency` in `src/execute_gap.rs` asserts that processing a fully grounded PR completes in ≤ 15 seconds.
   depends_on: [CREDIBLE-310]
   notes: |
     [chump harvest check 'pipeline']
@@ -18933,41 +18967,7 @@ gaps:
     - "BIG-CONTEXT ROUTING IS FREE MONEY LEFT ON THE TABLE: free tool-capable models exist at 1,000,000 context (nvidia/nemotron-3-ultra-550b:free) and several at 262,144. Nothing today routes 'this task needs a huge window' to them — the cascade orders by priority and rate limit only"
     - "OUTPUT IS A RANKED, DATED ARTIFACT the fleet and a human can both read, refreshed on a schedule (launchd per SCHEDULING_LAYERS.md — it must survive session close). Not a one-shot script someone remembers to run: see ZERO-WASTE-036, this fleet's most repeated failure is the built-and-never-scheduled instrument"
   notes: |
-    [2026-08-08T15:20:12Z] CORRECTION 2026-08-07 — operator: 'we're not just using open router... you can't default to that. I use A LOT of providers and we will take from them until they turn off the faucet.'
-    
-    My first draft made OpenRouter the registry. Wrong. OpenRouter only knows what OpenRouter routes; the direct Cerebras/Groq/Gemini/Mistral keys have their own catalogs, their own free tiers, and better limits than going through an aggregator. OpenRouter is ONE slot of 13, useful as a cross-provider metadata source (it is the only one exposing supported_parameters incl. tools), NOT the source of truth.
-    
-    MEASURED per-provider discovery, all 8 distinct configured endpoints, 2026-08-07 — GET {BASE}/models with the configured key:
-      gemini      generativelanguage.google      59 models  ok
-      openrouter  openrouter.ai/api/v1          400 models  ok
-      nvidia      integrate.api.nvidia.com      100 models  ok
-      mistral     api.mistral.ai/v1              54 models  ok
-      cerebras    api.cerebras.ai/v1             403 Forbidden
-      groq        api.groq.com/openai/v1         403 Forbidden
-      hyperbolic  api.hyperbolic.xyz/v1          403 Forbidden
-      opencode    opencode.ai/zen/v1             403 Forbidden
-    
-    So catalog polling covers only half the fleet's providers. DO NOT read the 403s as dead keys — listing may simply be out of the key's scope while completions still work. The tender must DISTINGUISH those two cases, because they demand opposite actions (re-key vs ignore).
-    
-    REVISED DESIGN:
-    1. Per-provider catalog where /v1/models answers (4 of 8 today) — authoritative for that provider's models, context, deprecation.
-    2. Liveness/limit probe where listing is refused — a minimal completion, capturing rate-limit response headers. This doubles as the CREDIBLE-227 limit verification and is the ONLY signal available for the 403 half.
-    3. OpenRouter as a supplementary metadata join (tools/context/pricing across models we reach directly elsewhere), never as the default.
-    
-    PRIMARY VALUE, per the operator's actual strategy: the point is not a pretty catalog — it is DETECTING THE FAUCET TURNING OFF and re-ranking around it within one cycle. A free model vanishing from a catalog, a 200 becoming 401/403/429-always, a free tier silently repriced. That detection is worth more than the ranking, because today a cut-off tier fails silently at call time mid-task and the cascade only learns via quality demotion after repeated failures.
-    [2026-08-08T15:23:43Z] OPERATOR DIRECTION 2026-08-07: 'No probing. Set up fail catches and file gaps to fix/review them. I WANT ALL OF THIS. 100% PLANNED USE OF AVAILABLE INFERENCE. IT DOES NOT NEED TO BE FOR CHUMP TO WRITE ALL CODE & SHIP PRS. THE INFERENCE SHOULD BE AVAILABLE TO THE FLEET/SOFTWARE FACTORY.'
-    
-    NO SYNTHETIC PROBES — supersedes the probe design in my earlier note. Probing scarce slots spends the budget being measured (gemini-2.5-pro is ~50/day). Instead classify failure KIND on real traffic: 401/403 (auth or scope), 429 (rate), model-not-found (deprecation), tool-call-refused. provider_quality.rs already records success/failure/latency/tool-call outcomes per slot and already drives demotion — extend it to record the kind, not just the fact. A faucet turning off is a CHANGE IN A SLOT'S FAILURE SIGNATURE, detectable from real traffic with zero extra requests. On a signature change: file a gap and let the cascade re-rank; a human only decides the re-key.
-    
-    SCOPE IS THE WHOLE SOFTWARE FACTORY, not chump's code path. Full vision: opportunity-library/INFERENCE_AS_ATTENTION.md.
-    
-    Reframe that shapes the design: we do not have a cheap Claude, we have a CROWD. The measured failure is narrow (free/sub models avoid str_replace) and that is one job. The crowd is the fleet's EYES — perceive, classify, summarize, watch, vote, draft. Claude is the HANDS — decide, edit, ship.
-    
-    ALLOCATOR, not just a ranker: 'planned use' means a daily budget across standing jobs with floors (continuous comprehension; sweeps and watching; queue curation) and the remainder spent opportunistically. Quotas RESET — unused free inference evaporates rather than banking, which makes idle capacity a ZERO-WASTE-000 violation ('no shelved capability') and probably the largest single item on it. Reserve scarce high-context slots (2M ctx at ~50/day) for jobs that need whole-repo reads instead of whoever asks first.
-    
-    READY CONSUMERS, all already filed and all starving on attention rather than capability: almanac's markdown summarize backfill (currently a local 3B at ~20s/file), organ sweeps across ~95 repos (EFFECTIVE-389), the 211-flag drift triage (CREDIBLE-222), 74 template ACs (EFFECTIVE-407, currently specced at opus), fleet CI watching (CREDIBLE-220), PR-rot detection (RESILIENT-247), holler triage/consolidate (ZERO-WASTE-049), and tracemap over 4,394 unread ambient events incl. 769 unclassified farmer_auth_dead (EFFECTIVE-397).
-    
-    QUALITY MECHANISM IS REDUNDANCY, NOT PROMPTING: N independent models; unanimous = accept as candidate, split = escalate to Claude or a human. Disagreement is the signal and must not be averaged away. Mirrors the Chatwoot lesson already recorded in SHAPE_SCAN_support.md — count observable acts, never a model's self-reported confidence.
+    Decomposed into 12 slices: EFFECTIVE-700, EFFECTIVE-701, EFFECTIVE-702, EFFECTIVE-703, EFFECTIVE-704, EFFECTIVE-705, EFFECTIVE-706, EFFECTIVE-707, EFFECTIVE-708, EFFECTIVE-709, EFFECTIVE-710, EFFECTIVE-711
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -27175,7 +27175,7 @@ gaps:
 - id: EFFECTIVE-656
   domain: EFFECTIVE
   title: "EFFECTIVE: Add job capping, nice, and load-aware defer to preflight gate (EFFECTIVE-372 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -27204,6 +27204,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'local-first' ===
+    [2026-09-02T03:01:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5025B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-657
   domain: EFFECTIVE
@@ -28535,6 +28536,366 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-700
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement per‑provider catalog fetcher for configured endpoints (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Fetcher runs against each configured provider (gemini, nvidia, mistral, cerebras, groq, hyperbolic, opencode) and stores the JSON response from /v1/models
+    - Successful fetches are persisted in a local cache file with a timestamp
+    - Fetcher logs a warning and continues when a provider returns 403/401/429
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-701
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Store OpenRouter metadata as supplementary join data (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - OpenRouter /v1/models is queried once per schedule and its response is saved
+    - Metadata (supported_parameters, pricing, context_length, etc.) is available for join operations with other provider catalogs
+    - OpenRouter data is never used as the primary source of truth for model existence
+  depends_on: [EFFECTIVE-700]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-702
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Distinguish 403/401 failures from catalog‑refused listings (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a /v1/models request returns 403/401, the system records the failure kind as 'auth_or_scope'
+    - When a model call later returns 401/403, the failure is classified as 'auth_or_scope'
+    - When a model call returns 429, the failure is classified as 'rate_limit'
+    - When a model call returns a model‑not‑found error, the failure is classified as 'deprecation'
+  depends_on: [EFFECTIVE-700]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-703
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Extend provider_quality.rs to record detailed failure kinds (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "provider_quality.rs now logs a new enum field FailureKind with values: AuthOrScope, RateLimit, Deprecation, ToolCallRefused, Other"
+    - Existing success/failure/latency metrics remain unchanged
+    - Unit tests verify that each simulated API response maps to the correct FailureKind
+  depends_on: [EFFECTIVE-702]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-704
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Filter models for tool capability based on supported_parameters (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "During catalog processing, models whose supported_parameters array contains the string \"tools\" are marked as tool_capable = true"
+    - "A unit test confirms that a model with supported_parameters [\"tools\", \"json\"] is flagged tool_capable"
+    - Models without the flag are excluded from any tool‑call routing paths
+  depends_on: [EFFECTIVE-700, EFFECTIVE-701]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-705
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Compute measured fitness score per model slot (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Fitness = weighted combination of (a) advertised specs (context_length, pricing), (b) observed success rate, (c) observed latency, (d) tool_call_success_rate
+    - Scores are persisted alongside model metadata in the catalog cache
+    - A regression test verifies that increasing failure rate lowers the fitness score
+  depends_on: [EFFECTIVE-703, EFFECTIVE-704]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-706
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire fitness scores into CascadeStrategy::TaskAware ranking (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "CascadeStrategy::TaskAware now consumes per‑task‑class fitness scores instead of static priority"
+    - When multiple slots are eligible for a task class, the slot with the highest fitness is selected first
+    - "Integration test runs a mock task of class \"research\" and asserts that the chosen slot matches the highest fitness for that class"
+  depends_on: [EFFECTIVE-705]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-707
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement per‑task‑class ranking output artifact (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A JSON file named `tender_ranking_<timestamp>.json` is written to the configured artifacts directory
+    - "File contains an ordered list of slots per task class with fields: slot_id, fitness, last_updated"
+    - File is readable by both automated consumers and humans (pretty‑printed)
+  depends_on: [EFFECTIVE-706]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-708
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Set up launchd scheduled job to run the tender daily (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A launchd plist is installed that triggers the tender binary at 02:00 UTC every day"
+    - Job survives user logout and system reboot
+    - Log file records start time, completion status, and any errors
+  depends_on: [EFFECTIVE-707]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-709
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Detect and report limit drift without modifying .env (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - During each run, the tender compares observed rate‑limit headers (from provider_quality records) with the limits declared in the slot configuration
+    - Any mismatch creates a finding entry in `limit_drift_report_<timestamp>.json` with slot_id, declared_limit, observed_limit, and timestamp
+    - No environment variables are altered by the tender
+  depends_on: [EFFECTIVE-703]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-710
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Detect model deprecation and expiration, generate findings (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If a model's expiration_date (from any catalog) is in the past, a deprecation finding is emitted
+    - If a model previously present in a provider catalog is missing in the current fetch, a deprecation finding is emitted
+    - Findings are appended to `deprecation_report_<timestamp>.json` with slot_id, model_name, reason, and timestamp
+  depends_on: [EFFECTIVE-700, EFFECTIVE-701]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-711
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add big‑context routing preference for tasks requiring large windows (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Models with context_length >= 262144 are flagged as big_context_capable
+    - When a task class includes a `required_context` attribute > 200000, the tender ranks big_context_capable models ahead of others with comparable fitness
+    - Unit test verifies that a mock task needing 300k context selects a model with 1,000,000 context even if its raw fitness is slightly lower
+  depends_on: [EFFECTIVE-705]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: EVAL-085
   title: test eval 085
@@ -102460,6 +102821,11 @@ gaps:
     [2026-09-01T23:02:23Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 7h) 2026-09-01; RESPAWN CAP 3 reached (83 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T23:04:37Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 7h) 2026-09-01; RESPAWN CAP 3 reached (84 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-01T23:06:52Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 7h) 2026-09-01; RESPAWN CAP 3 reached (85 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T03:06:42Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (86 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T03:08:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (87 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T03:09:06Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (88 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T03:11:18Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (89 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T03:13:31Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (90 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
