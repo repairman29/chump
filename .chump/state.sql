@@ -11110,10 +11110,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `crates/chump-inventory/src/inventory.rs`, update the `farmer_auth_dead` detector evaluation logic in `DETECTOR_CLASSES` to check for false-positive authentication error signatures and set `flagged_for_deletion` to `true` on the gate metadata when a false positive is identified. Update `scripts/ci/test-slo-breach-gates.sh` to test that false-positive scenarios set the deletion flag while leaving true-positive breach triggers unaffected.
+    
+    Target file(s):
+    - crates/chump-inventory/src/inventory.rs
+    - scripts/ci/test-slo-breach-gates.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The farmer_auth_dead gate is instrumented to recognise false‑positive conditions.
-    - When a false‑positive is detected the gate is flagged for deletion.
-    - True‑positive behaviour is unchanged.
+    - "In `crates/chump-inventory/src/inventory.rs`, `farmer_auth_dead` detector logic sets `flagged_for_deletion: true` when a false-positive auth signature is detected."
+    - In `crates/chump-inventory/src/inventory.rs`, true-positive `farmer_auth_dead` gate breaches do not set `flagged_for_deletion`.
+    - Executing `scripts/ci/test-slo-breach-gates.sh` passes and validates that false-positive `farmer_auth_dead` gates are flagged for deletion.
   depends_on: [CREDIBLE-504]
   notes: |
     [chump harvest check 'audit']
@@ -11143,10 +11151,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update detect_ci_failure_blocked in crates/chump-paramedic/src/paramedic.rs and _detect_new_checks in scripts/coord/required-check-monitor.sh to identify false-positive phantom required checks that report blocked status without associated workflow runs. Flag phantom checks for exclusion or deletion while keeping true-positive CI failure blocking logic intact.
+    
+    Target file(s):
+    - crates/chump-paramedic/src/paramedic.rs
+    - scripts/coord/required-check-monitor.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Phantom required‑check gates are instrumented to recognise false‑positive conditions.
-    - False‑positive gates are flagged for deletion.
-    - Existing true‑positive logic remains intact.
+    - Function detect_ci_failure_blocked in crates/chump-paramedic/src/paramedic.rs identifies phantom required check contexts that have no matching active CI job runs.
+    - Function _detect_new_checks in scripts/coord/required-check-monitor.sh filters out flagged false-positive phantom check names from the required check payload.
+    - Executing cargo test -p chump-paramedic succeeds with tests covering phantom check detection.
   depends_on: [CREDIBLE-504]
   notes: |
     [chump harvest check 'audit']
