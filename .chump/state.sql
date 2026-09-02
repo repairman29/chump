@@ -19762,7 +19762,7 @@ gaps:
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
-    Decomposed into 4 slices: EFFECTIVE-611, EFFECTIVE-612, EFFECTIVE-613, EFFECTIVE-614
+    Decomposed into 4 slices: EFFECTIVE-808, EFFECTIVE-809, EFFECTIVE-810, EFFECTIVE-811
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -33818,7 +33818,7 @@ gaps:
 - id: EFFECTIVE-773
   domain: EFFECTIVE
   title: "EFFECTIVE: Create detailed design spec for dispatch/escalate integration, auto‑file P0, outcome settlement, Brier calibration, and EV meta‑gauge (EFFECTIVE-510 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -33842,6 +33842,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-02T21:09:36Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-774
   domain: EFFECTIVE
@@ -34942,6 +34943,106 @@ gaps:
     - Each ticket is linked to the parent issue EFFECTIVE-265
     - Each ticket description outlines a core feature area of the habit‑tracking CLI
   depends_on: [EFFECTIVE-805]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-808
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize repository scaffold (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Repository is created at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj
+    - Git is initialized in the repository
+    - First commit exists with the scaffold commit message
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-809
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README with intent string (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md file exists in the repository root
+    - "The first body line of README.md contains the exact string \"Another intent\""
+  depends_on: [EFFECTIVE-808]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-810
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Validate repository git history (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Running `git log --oneline` shows the scaffold commit as the initial commit
+    - The repository path matches the expected temporary location
+  depends_on: [EFFECTIVE-808, EFFECTIVE-809]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-811
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub‑gaps for core feature areas (EFFECTIVE-266 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least three sub‑gap tickets are created for core feature areas
+    - Each sub‑gap references the parent gap (EFFECTIVE‑266) and includes a clear title and description
+  depends_on: [EFFECTIVE-808]
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -80380,11 +80481,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `refresh-almanac-binary.sh` script (specifically the main execution block) to invoke `cargo build --release` inside `~/Projects/almanac`, ensure `~/.cargo/bin` exists, copy the resulting `target/release/almanac` binary to `~/.cargo/bin/almanac` with executable permissions, and abort with a non‑zero exit code if the build fails, leaving no partial binary behind.
+    
+    Target file(s):
+    - scripts/setup/refresh-almanac-binary.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - After clone and toolchain preflight, the script runs `cargo build --release` inside ~/Projects/almanac
-    - The resulting target/release/almanac binary is hardcopied to ~/.cargo/bin/almanac and is executable
-    - If ~/.cargo/bin does not exist, the script creates it before hardcopy
-    - If the build fails, the script exits non-zero and does not install a partial binary
+    - Running `scripts/setup/refresh-almanac-binary.sh` after a fresh clone creates the file `~/.cargo/bin/almanac` and it is executable.
+    - The script calls `cargo build --release` in the directory `~/Projects/almanac`; if that command exits non‑zero, the script exits with the same non‑zero status.
+    - If the directory `~/.cargo/bin` does not exist before the script runs, the script creates it before copying the binary.
+    - After a simulated build failure (e.g., `cargo build --release` forced to exit 1), `~/.cargo/bin/almanac` does not exist, confirming no partial install.
   depends_on: [INFRA-3710, INFRA-3711]
   notes: |
     [chump harvest check 'MISSION']
@@ -113102,7 +113210,7 @@ gaps:
 - id: RESILIENT-670
   domain: RESILIENT
   title: "RESILIENT: Improve index‑mutex handling to return clear retry error instead of hard 30‑second failure (RESILIENT-137 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -113124,6 +113232,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T21:08:51Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5009B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-671
   domain: RESILIENT
