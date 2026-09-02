@@ -6,6 +6,7 @@
 
 pub mod dashboard;
 pub mod db;
+pub mod drop;
 pub mod gap_write;
 pub mod mission;
 pub mod routes;

@@ -14,6 +14,7 @@ use tokio::time::{interval, Duration};
 
 use crate::dashboard;
 use crate::db::{now_ms, FleetStore};
+use crate::drop::{self, DropRequest};
 use crate::gap_write::{self, GapWriteRequest};
 use crate::mission::{self, MissionRequest};
 
@@ -40,6 +41,7 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/dashboard-summary", get(get_dashboard_summary))
         .route("/api/mission", post(post_mission))
         .route("/api/gap", post(post_gap))
+        .route("/api/drop", post(post_drop))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
         .with_state(state)
@@ -405,6 +407,56 @@ async fn post_gap(
         }
         Err(e) => {
             tracing::error!("POST /api/gap task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /api/drop — cheap idea-drop intake (EFFECTIVE-679).
+///
+/// Deliberately unauthenticated and gap-free: appends `{sentence, citation}`
+/// to a durable local JSONL queue (`.chump/idea_drops.jsonl`) and returns
+/// the drop id. Idempotent — re-posting the exact same `(sentence,
+/// citation)` pair returns the original id instead of a duplicate row (200
+/// vs 201 distinguishes replay from creation).
+async fn post_drop(
+    State(s): State<AppState>,
+    payload: Result<Json<DropRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    let req = match payload {
+        Ok(Json(r)) => r,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid JSON body: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    let repo_root = s.repo_root.clone();
+    let result = tokio::task::spawn_blocking(move || drop::record_drop(&repo_root, req)).await;
+
+    match result {
+        Ok(Ok((d, created))) => {
+            let status = if created {
+                axum::http::StatusCode::CREATED
+            } else {
+                axum::http::StatusCode::OK
+            };
+            (status, Json(d)).into_response()
+        }
+        Ok(Err(e)) => (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": e.to_string()})),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("POST /api/drop task join error: {e}");
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "internal error"})),
