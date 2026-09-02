@@ -26177,11 +26177,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new integration test script that simulates an agent repeatedly committing without producing valid output (storm) and a truncated file scenario, verifying that the system rejects the excessive commit with feedback, and that the syntax check catches a truncated file before scoring and returns a syntax error.
+    
+    Target file(s):
+    - scripts/ci/test-effective-351-storm-prevention.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A test scenario simulates an agent that repeatedly calls git_commit without writing valid code; the system should eventually reject the commit and provide feedback.
-    - The test also verifies that if a truncated file is written (due to abortion), the syntax check catches it before scoring, and the agent gets a syntax error feedback.
-    - The test uses a mock agent that mimics the storm behavior and truncated file generation.
-    - All tests pass in CI.
+    - The script `scripts/ci/test-effective-351-storm-prevention.sh` exits with code 0 and prints 'PASS' when all assertions succeed.
+    - The script runs a mock agent that calls `git commit` 10 times with an empty file; the 10th commit is rejected and the output contains a storm-prevention rejection message.
+    - The script creates a truncated file (e.g., half-written JSON), runs `cargo run --bin chump-preflight -- check --file <truncated_file>`, and asserts that stderr includes 'syntax error' and no score is emitted.
+    - The script is placed in `scripts/ci/` and automatically discovered by `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` so it runs in CI.
   depends_on: [EFFECTIVE-629, EFFECTIVE-630, EFFECTIVE-632, EFFECTIVE-633]
   notes: |
     [chump harvest check 'Agent']
@@ -26263,7 +26270,7 @@ gaps:
 - id: EFFECTIVE-636
   domain: EFFECTIVE
   title: "EFFECTIVE: Specify per-product brand tokens schema (EFFECTIVE-358 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -26293,6 +26300,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+  closed_pr: 4375
 
 - id: EFFECTIVE-637
   domain: EFFECTIVE
@@ -89649,7 +89657,7 @@ gaps:
 - id: PRODUCT-190
   domain: PRODUCT
   title: "[chump] Flag-default drift: three BEAST_MODE endpoint flags with 7 conflicting defaults (incl. typo-domain)"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -89665,6 +89673,8 @@ gaps:
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
+  closed_date: '2026-09-02'
+  closed_pr: 4376
   skills_required: "external_repo:repairman29/chump"
 
 - id: PRODUCT-191
