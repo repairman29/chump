@@ -1,0 +1,22 @@
+{
+  "$schema": "https://github.com/repairman29/chump/blob/main/docs/schemas/brand-tokens.schema.json",
+  "$description": "Example brand token set for the Chump PWA, mirroring the dark-mode :root values in web/v2/index.html (CSS_TOKEN_DISCIPLINE.md canonical token list).",
+  "product": "chump-pwa",
+  "color": {
+    "bg": { "$value": "#0b0d10", "$type": "color" },
+    "bg-surface": { "$value": "#14171c", "$type": "color" },
+    "bg-elevated": { "$value": "#1c2027", "$type": "color" },
+    "text": { "$value": "#e6e9ef", "$type": "color" },
+    "text-secondary": { "$value": "#9aa3b2", "$type": "color" },
+    "accent": { "$value": "#5b8cff", "$type": "color" },
+    "accent-dim": { "$value": "#3a5bb0", "$type": "color" },
+    "success": { "$value": "#3fb950", "$type": "color" },
+    "warn": { "$value": "#d29922", "$type": "color" },
+    "error": { "$value": "#f85149", "$type": "color" },
+    "border": { "$value": "#2a2f3a", "$type": "color" }
+  },
+  "radius": {
+    "radius": { "$value": "8px", "$type": "dimension" },
+    "radius-sm": { "$value": "4px", "$type": "dimension" }
+  }
+}
