@@ -3641,7 +3641,7 @@ gaps:
     - "provider_quality.rs already records success/failure/latency/tool-call outcomes and drives demotion, but NOTHING compares observation back to the configured ceiling. Close that loop: a slot repeatedly 429ing well under its declared RPD is evidence the declared number is wrong, and that signal is already being collected and thrown away"
     - "HONEST CONSEQUENCE TO RECORD: a same-session capacity claim ('100K+ free requests/day idle') was made from the 86400 figure and had to be retracted. Config read as measurement is exactly the signal-vs-outcome error this fleet keeps making"
   notes: |
-    Decomposed into 11 slices: CREDIBLE-400, CREDIBLE-401, CREDIBLE-402, CREDIBLE-403, CREDIBLE-404, CREDIBLE-405, CREDIBLE-406, CREDIBLE-407, CREDIBLE-408, CREDIBLE-409, CREDIBLE-410
+    Decomposed into 11 slices: CREDIBLE-586, CREDIBLE-587, CREDIBLE-588, CREDIBLE-589, CREDIBLE-590, CREDIBLE-591, CREDIBLE-592, CREDIBLE-593, CREDIBLE-594, CREDIBLE-595, CREDIBLE-596
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
@@ -13304,6 +13304,362 @@ gaps:
     - All existing tests plus the new unit and integration tests pass.
     - No new warnings or regressions are introduced.
   depends_on: [CREDIBLE-583, CREDIBLE-584]
+
+- id: CREDIBLE-586
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-400: Validate required slot fields during .env parsing (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Parser throws a clear error when a slot is missing RPM, RPD, TIER, PRIORITY, or CONTEXT_K fields
+    - Error message includes the slot identifier (e.g., CHUMP_PROVIDER_12) and the missing field name
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-587
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-401: Implement refresh job to probe rate‑limit headers for each enabled slot (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Job runs on a configurable schedule and makes a cheap request to each slot
+    - Observed x‑ratelimit‑limit‑requests, x‑ratelimit‑remaining, and retry‑after headers are captured
+    - Observed values are logged with the slot identifier
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-588
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-402: Extend refresh job to verify model existence via GET /v1/models (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For each slot the job calls /v1/models and confirms the configured MODEL is present and not deprecated
+    - If the model is missing or deprecated, the job records a warning with the slot identifier
+  depends_on: [CREDIBLE-587]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-589
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-403: Persist observed limits alongside configured limits (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Observed RPM/RPD values are stored in a durable store (e.g., JSON file or DB) keyed by slot
+    - Stored data can be retrieved via an internal API for reporting
+    - Historical observed values are retained for at least 30 days
+  depends_on: [CREDIBLE-587, CREDIBLE-588]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-590
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-404: Detect drift between observed and configured limits and generate a gap report (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When observed RPM/RPD differs from configured by >5%, a gap entry is created
+    - Gap entry includes slot id, configured values, observed values, timestamp, and drift percentage
+    - Gap entries are visible in the existing “holler” dashboard
+  depends_on: [CREDIBLE-589]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-591
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-405: Ensure drift reporting does not auto‑modify .env files (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After a drift detection run, the original .env file remains unchanged
+    - A log entry confirms that no automatic rewrite was attempted
+  depends_on: [CREDIBLE-590]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-592
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-406: Add validation for slots missing RPM/TIER/PRIORITY/CONTEXT_K (e.g., slots 12‑15) (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Loader scans all slots and flags any that lack RPM, TIER, PRIORITY, or CONTEXT_K
+    - Flagged slots are listed in a startup warning with their identifiers
+  depends_on: [CREDIBLE-586]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-593
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-407: Make loader refuse or warn on incomplete slot configuration (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If a slot is incomplete, the loader either aborts startup with an error or logs a fatal warning (configurable flag)
+    - Error/warning message includes the missing fields and slot identifier
+  depends_on: [CREDIBLE-592]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-594
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-408: Close the loop in provider_quality.rs to compare observed 429 rates with configured ceilings (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - provider_quality.rs now receives observed RPM/RPD from the persistence layer
+    - When observed 429 responses occur below the configured RPD, a “capacity‑mismatch” signal is emitted
+    - Signal includes slot id, configured RPD, observed 429 count, and timestamp
+  depends_on: [CREDIBLE-589]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-595
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-409: Record capacity‑mismatch evidence as a metric/event (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new Prometheus metric (e.g., provider_capacity_mismatch_total) increments for each mismatch event
+    - Metric labels include slot id and configured vs observed RPD
+    - Dashboard alert triggers when mismatches exceed a threshold within 24 h
+  depends_on: [CREDIBLE-594]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-596
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-410: Update documentation and add end‑to‑end test for capacity planning correctness (CREDIBLE-227 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documentation explains the refresh job, drift reporting, and how to interpret mismatch alerts
+    - Automated test spins up two mock slots with differing configured RPD, runs the refresh job, and asserts that a drift gap is created
+    - Test also verifies that .env is not modified after drift detection
+  depends_on: [CREDIBLE-591, CREDIBLE-593, CREDIBLE-595]
+  notes: |
+    [chump harvest check 'provider']
+    === primitives_index match for 'provider' ===
+    
+    === cluster keyword match for 'provider' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'provider' ===
+    
+    === repo-description match for 'provider' ===
+      jarvis-gateway: Clawdbot-based multi-provider LLM gateway (Railway), routing across ~12 model providers. Currently dormant.
+    
+    === HARVEST_ROADMAP.md mention of 'provider' (deep-scan findings) ===
+      144:| `ai-gm-service` `aiGMMultiModelEnsembleService.js` + `togetherAIService.js` (Together.ai → Qwen 72B → Mistral fallback chain, 45+ service files) | Chump LLM abstraction layer (provider-agnostic routing) | Vendor or Microservice | not yet filed (consider) |
+    
+    === cross-pollination briefs mentioning 'provider' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: DOC-031
   domain: DOC
