@@ -34201,11 +34201,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In src/improve.rs within run_inner and implement_gap, add support for an unwedge/abort command that checks for active or hung merge subprocesses and stale claim locks for a given gap ID, terminates the wedged process, invokes claim --recover, and reports actionable status messages.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Command identifies a wedged bot‑merge for the given <gap>
-    - Terminates the offending merge process and triggers recovery via claim --recover
-    - Reports success or detailed failure reason
-    - Operates safely when no wedge is present (no‑op with informative message)
+    - Invoking the unwedge command for a wedged gap in src/improve.rs terminates the running merge subprocess and executes claim --recover for that gap ID.
+    - "When no wedged process or stale claim exists for the given gap ID, the command exits safely and prints \"No wedged merge detected for gap <gap_id>\"."
+    - "On successful unwedge, output includes \"Successfully unwedged gap <gap_id>\", while failure reports a detailed error string describing why process termination or recovery failed."
   depends_on: [EFFECTIVE-781]
   notes: |
     [chump harvest check 'EFFECTIVE']
