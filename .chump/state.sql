@@ -9092,10 +9092,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the `run_inner` function in `src/onboard.rs` to check the new error flag on the fleet‑brief context; when the flag is set, format the ship‑count line as `Ships: unavailable (<reason>)` using the captured error string instead of the default `Ships: 0`. The change adds a conditional branch that pulls the `<reason>` from the existing error‑capture field and injects it into the SessionStart banner output.
+    
+    Target file(s):
+    - src/onboard.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "When the error flag is set, fleet‑brief prints \"Ships: unavailable (<reason>)\" instead of \"Ships: 0\"."
-    - "The <reason> string includes the captured error (e.g., \"git fetch timeout\")."
-    - The message appears in the SessionStart banner and is visible to operators.
+    - "? Running the binary with a simulated error flag set (e.g., via a test harness that sets `context.ship_error = Some(\\\"git fetch timeout\\\".to_string())`) causes `src/onboard.rs::run_inner` to print the line `Ships : unavailable (git fetch timeout)` in the console output."
+    - "The same `Ships: unavailable (git fetch timeout)` line appears in the SessionStart banner printed by `run_inner`, confirming visibility to operators."
+    - "When `context.ship_error` is `None`, `run_inner` continues to print `Ships: 0`, preserving existing behavior."
+    - "? A unit test in `src/onboard.rs` asserts that given a populated `ship_error` field, the formatted output string exactly matches `\\\"Ships : unavailable (git fetch timeout)\\\"`."
   depends_on: [CREDIBLE-439, CREDIBLE-440]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -11476,9 +11484,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the `discover_test_scripts` function in `crates/chump-preflight/src/preflight.rs` to register a new observability smoke‑test command named `observability-smoke-test` that points to a script under `scripts/ci/observability-smoke-test.sh`; and augment `scripts/ci/test-fanout-reference-flag.sh` with a `validate_manifest` function that checks for a `manifest.yaml` file and invoke this function so the CI job runs manifest validation on every push or PR.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/ci/test-fanout-reference-flag.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Smoke test command implemented and documented to verify observability predicate matching.
-    - CI workflow updated to execute the manifest validation bash test on push/PR.
+    - "In `crates/chump-preflight/src/preflight.rs`, the `discover_test_scripts` function includes a new entry mapping the identifier `\"observability-smoke-test\"` to the script path `scripts/ci/observability-smoke-test.sh`."
+    - Executing the preflight binary with the argument `observability-smoke-test` (`cargo run --bin preflight observability-smoke-test`) exits with status 0 and prints the exact line `Observability smoke test passed`.
+    - In `scripts/ci/test-fanout-reference-flag.sh`, a new function `validate_manifest` is defined that returns a non‑zero exit code and prints `Manifest validation failed` when `manifest.yaml` is absent, and prints `Manifest validation succeeded` when the file exists.
+    - The CI workflow (triggered on push or PR) runs `scripts/ci/test-fanout-reference-flag.sh`, which calls `validate_manifest`; the CI job log contains the string `Manifest validation succeeded` for a repository that includes a valid `manifest.yaml`.
   depends_on: [CREDIBLE-519]
 
 - id: CREDIBLE-521
@@ -30657,7 +30675,7 @@ gaps:
 - id: EFFECTIVE-741
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement --apply flow: invoke provider_cascade::build_provider with RoadmapFromVisionContract::prompt (EFFECTIVE-425 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -30688,6 +30706,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T08:05:19Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-742
   domain: EFFECTIVE
