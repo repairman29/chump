@@ -1,6 +1,12 @@
 //! EFFECTIVE-446: proactive gap-spec **enricher** — turn thin, vague open gaps
 //! into CONCRETE, file-pointed specs the cheap DeepSeek-v4-flash floor can ship.
 //!
+//! EFFECTIVE-449 (this module's slice of EFFECTIVE-446): the pure, unit-tested
+//! core — [`classify_thinness`], [`build_enrich_prompt`], [`parse_enriched_spec`],
+//! and [`EnrichedSpec::to_field_update`] — lives entirely below with no I/O in
+//! the detection/parsing path, so it's covered by the `#[cfg(test)]` module at
+//! the bottom without a live Almanac or LLM call.
+//!
 //! ## Why (the proven basis — EFFECTIVE-445)
 //!
 //! DeepSeek-v4-flash lands a CONCRETE gap with a named target file for ~$0.01
