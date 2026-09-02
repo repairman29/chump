@@ -3601,7 +3601,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 5 slices: CREDIBLE-395, CREDIBLE-396, CREDIBLE-397, CREDIBLE-398, CREDIBLE-399
+    Decomposed into 5 slices: CREDIBLE-581, CREDIBLE-582, CREDIBLE-583, CREDIBLE-584, CREDIBLE-585
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-226
@@ -13244,6 +13244,66 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-581
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-395: Impact analysis for tmp change (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Identify all CREDIBLE code paths that will be affected by the \"tmp\" change."
+    - Document required modifications and any potential side‑effects.
+    - Stakeholder sign‑off obtained on the analysis document.
+
+- id: CREDIBLE-582
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-396: Implement \"tmp\" change in identified code paths (CREDIBLE-225 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Code modifications for \"tmp\" are merged into the relevant modules."
+    - Compilation succeeds without warnings.
+    - No existing functionality is broken (all current tests still pass).
+  depends_on: [CREDIBLE-581]
+
+- id: CREDIBLE-583
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-397: Add unit test verifying new \"tmp\" behavior (CREDIBLE-225 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "A new cargo test is added that asserts the expected outcome of the \"tmp\" change."
+    - The test fails on the pre‑change code base and passes after the implementation.
+    - Test is placed in the appropriate test module and follows project naming conventions.
+  depends_on: [CREDIBLE-582]
+
+- id: CREDIBLE-584
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-398: Add integration/CI test script for \"tmp\" (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A script under scripts/ci/test‑*.sh is created that exercises the \"tmp\" behavior in an end‑to‑end scenario."
+    - The script exits with status 0 only when the new behavior is present.
+    - The script is referenced in the CI configuration and runs on each push.
+  depends_on: [CREDIBLE-582]
+
+- id: CREDIBLE-585
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-399: Enforce formatting, clippy, and regression check (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `cargo fmt --check` reports no formatting issues.
+    - Running `cargo clippy --all-targets -D warnings` reports no warnings.
+    - All existing tests plus the new unit and integration tests pass.
+    - No new warnings or regressions are introduced.
+  depends_on: [CREDIBLE-583, CREDIBLE-584]
 
 - id: DOC-031
   domain: DOC
