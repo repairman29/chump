@@ -27565,11 +27565,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In the `main` function of `scripts/ab-harness/run-cloud-v2.py`, after the sweep completes and distinct findings per repo are available, append a CSV row (timestamp, repo, count) to a `findings_log.csv` file in the same directory, creating the file with a header if it does not exist.
+    
+    Target file(s):
+    - scripts/ab-harness/run-cloud-v2.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - During each sweep run, the number of distinct findings per repo is counted and recorded (e.g., appended to a CSV or JSON log)
-    - Historical counts are preserved across runs, allowing extraction of trends over time
-    - Counting is integrated into the sweep command (or as a post-bridge step) without manual steps
-    - A simple query or dashboard can display the counts per repo and week (trend testable ad-hoc)
+    - Running `python scripts/ab-harness/run-cloud-v2.py` produces a file `scripts/ab-harness/findings_log.csv` containing a header row `timestamp,repo,distinct_findings` and at least one data row with the current UTC timestamp, a repo identifier, and an integer count.
+    - Running the script a second time appends a new row to the same CSV file; the file contains two data rows after the second run.
+    - Executing `grep 'my-repo' scripts/ab-harness/findings_log.csv | cut -d, -f3` outputs the distinct-findings counts for 'my-repo' across all runs, enabling trend inspection.
   depends_on: [EFFECTIVE-665]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -28326,6 +28332,118 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-693
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Define findings JSON schema and validation (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Schema document exists specifying the structure of a finding: title (string), project (bare slug string), coverage (enum: full, partial, none), details (object, optional)."
+    - A JSON Schema validation test passes for a valid sample finding and rejects invalid ones (missing title, non-bare project slug, invalid coverage).
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-694
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Build thin emitter that reads JSON findings, normalizes, deduplicates, and files into holler (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Emitter accepts a JSON array of findings on stdin and an --organ flag (e.g., flagmap).
+    - Normalizes titles using rules from CREDIBLE-222 (e.g., collapses 'no-default', 'no default', 'No Default' to a canonical form).
+    - "Computes a stable dedupe hash from `project + '::' + normalized_title`."
+    - Files each unique finding into holler via posse/report-holler.mjs fileFinding with reporter=almanac-<organ>, including the coverage field.
+    - Skips duplicates within the same run (same hash).
+    - Project slug is used bare (no owner/ prefix).
+    - Verified by piping sample JSON with known duplicates and noise; holler receives exactly one row per unique hash, and re-running produces no new rows.
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-695
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add --findings-json flag to organ: flagmap (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running `almanac flagmap --findings-json` on a test repo outputs a JSON array to stdout.
+    - Each element contains title, project (bare slug, e.g., 'myrepo'), coverage (full/partial/none), and flagmap-specific details.
+    - No human prose is printed; exit code 0.
+    - Output matches the defined schema (slice 0).
+    - Verified by diffing against expected JSON for a known repo state.
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-696
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add --findings-json flag to organ: gatemap (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running `almanac gatemap --findings-json` outputs a JSON array of gate findings with title, project (bare slug), coverage, and details.
+    - No prose output; conforms to schema.
+    - Verified with a test repo containing gates.
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-697
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add --findings-json flag to organ: livemap (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: xs
 
 - id: EVAL-085
   title: test eval 085
