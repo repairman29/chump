@@ -101423,13 +101423,15 @@ gaps:
 - id: RESILIENT-421
   domain: RESILIENT
   title: "Disk auto-reaction unwired on CJ: board-vitals PAGES on disk pressure but nothing ACTS; disk-critical-reactor and disk-pressure-reaper have no unit and chump-cj-disk-monitor is disabled; add disk auto-reclaim to organ-manifest and wire it"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "The change described by \"board-vitals PAGES on disk pressure but nothing ACTS; disk-critical-reactor and disk-pressure-reaper have no unit and chump-cj-disk-monitor is disabled; add disk auto-reclaim to organ-manifest and wire it\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T10:12:47Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-422
