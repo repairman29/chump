@@ -12481,9 +12481,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a concise comment block immediately before the `check` function in `scripts/ci/test-ambient-schema-consistency.sh` that documents that this function implements the current deploy‑lag (SHA‑instant) comparison logic, describing the inputs, the comparison performed, and the resulting exit status, without altering any runtime behavior.
+    
+    Target file(s):
+    - scripts/ci/test-ambient-schema-consistency.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Source file and function implementing the current SHA‑instant comparison are identified
-    - Current logic is documented in a short comment block
+    - The file `scripts/ci/test-ambient-schema-consistency.sh` contains a comment block directly above the `check` function that explicitly states it performs the deploy‑lag SHA‑instant comparison.
+    - The comment block mentions the function name (`check`), the SHA being compared, the reference instant, and the exit‑code semantics (e.g., non‑zero on lag).
+    - A grep for the phrase “deploy‑lag” in `scripts/ci/test-ambient-schema-consistency.sh` returns a match, confirming the documentation was added.
   notes: |
     [chump harvest check 'Deploy']
     === primitives_index match for 'Deploy' ===
