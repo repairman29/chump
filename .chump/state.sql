@@ -991,7 +991,7 @@ gaps:
 - id: CREDIBLE-074
   domain: CREDIBLE
   title: "CREDIBLE P2: curator sub-agent dispatch rate telemetry — emit kind=sub_agent_dispatched on each Agent-tool call; chump fleet dispatch-hygiene CLI reports per-curator ratio (Opus-only vs Sonnet-delegated)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -1009,6 +1009,7 @@ gaps:
     - Running `chump fleet dispatch-hygiene` when no dispatched entries are available outputs an error message to stderr and exits with code 1.
   notes: |
     Decomposed into 2 slices: CREDIBLE-359, CREDIBLE-360
+    [2026-09-02T12:56:24Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4805B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -4867,7 +4868,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 6 slices: CREDIBLE-346, CREDIBLE-347, CREDIBLE-348, CREDIBLE-349, CREDIBLE-350, CREDIBLE-351
+    Decomposed into 6 slices: CREDIBLE-563, CREDIBLE-564, CREDIBLE-565, CREDIBLE-566, CREDIBLE-567, CREDIBLE-568
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -10136,10 +10137,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Insert a temporary `set +e` before the advisory step and its else‑branch and a matching `set -e` after it in `scripts/dispatch/chump-farmer-run.sh`, adding an explanatory comment so that only the best‑effort portion loses strict error handling while the rest of the script retains `set -e`.
+    
+    Target file(s):
+    - scripts/dispatch/chump-farmer-run.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`set +e` is applied before the advisory and else‑branch and restored afterwards"
-    - No other part of the script loses its strict error handling
-    - The change is covered by comments explaining the rationale
+    - "In `scripts/dispatch/chump-farmer-run.sh`, the advisory block now starts with a `set +e` line preceded by a comment `# Temporarily disable strict mode for best‑effort advisory step`."
+    - The advisory block ends with a `set -e` line that restores strict error handling before the script continues to subsequent commands.
+    - Running the script with a failing advisory command does not cause the script to exit early; the script proceeds to execute commands after the advisory block.
+    - Any failure in commands outside the advisory block still terminates the script immediately, demonstrating that global `set -e` behavior is unchanged elsewhere.
   depends_on: [CREDIBLE-475, CREDIBLE-476]
   notes: |
     [chump harvest check 'bot-merge']
@@ -12729,6 +12738,185 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
+- id: CREDIBLE-563
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"built\" stage in capability lifecycle (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge records a capability as \"built\" when the build step completes"
+    - Gauge entry is persisted in the lifecycle state store
+    - "Unit test verifies that invoking the build step creates a \"built\" gauge entry"
+    - cargo fmt + clippy passes with no new warnings
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-564
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"merged\" stage and transition from \"built\" (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge updates a capability from \"built\" to \"merged\" after merge succeeds"
+    - Transition is recorded atomically in the lifecycle state store
+    - "Unit test confirms that a \"built\" capability becomes \"merged\" after merge step"
+    - Existing tests continue to pass
+  depends_on: [CREDIBLE-563]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-565
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"deployed\" stage and transition from \"merged\" (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge updates a capability from \"merged\" to \"deployed\" after deployment succeeds"
+    - Deployment failure does not change the gauge state
+    - Integration test (scripts/ci/test-deploy.sh) validates the transition
+    - All prior tests remain green
+  depends_on: [CREDIBLE-564]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-566
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"wired\" stage and transition from \"deployed\" (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge updates a capability from \"deployed\" to \"wired\" when wiring completes"
+    - "Wiring errors leave the gauge at \"deployed\""
+    - Test script (scripts/ci/test-wire.sh) asserts correct gauge state after wiring
+    - No regression in existing test suite
+  depends_on: [CREDIBLE-565]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-567
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"running\" stage and transition from \"wired\" (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge updates a capability from \"wired\" to \"running\" once the service reports healthy"
+    - Health check failure does not advance the gauge
+    - "Automated test (scripts/ci/test-running.sh) confirms gauge reaches \"running\" on success"
+    - All previous tests continue to pass
+  depends_on: [CREDIBLE-566]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-568
+  domain: CREDIBLE
+  title: "CREDIBLE: Enforce DONE only at \"doing-its-job\" stage and add end‑to‑end test (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Capability cannot be marked DONE unless gauge state is \"running\""
+    - Attempting to set DONE at any earlier stage returns an error
+    - "End‑to‑end test (scripts/ci/test-done.sh) verifies that DONE succeeds only after \"running\""
+    - Full test suite (cargo test) passes and CI lint (cargo fmt + clippy) reports no warnings
+  depends_on: [CREDIBLE-567]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
 - id: DOC-031
   domain: DOC
   title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
@@ -15043,7 +15231,7 @@ gaps:
 - id: DOCS-012
   domain: DOCS
   title: "DOCS: DOCS-004: Define RUN documentation standards and template (DOCS-002 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -15067,6 +15255,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'roadmap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T12:49:04Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4993B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: DOCS-013
   domain: DOCS
@@ -93217,7 +93406,7 @@ gaps:
 - id: PRODUCT-087
   domain: PRODUCT
   title: "PRODUCT: PWA local-only onboarding wizard — guide solo dev through CHUMP_WORK_BACKEND=ollama setup with zero Anthropic creds (depends on EFFECTIVE-017/018)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -93242,6 +93431,8 @@ gaps:
     - Pairs with EFFECTIVE-017/018 (WorkBackend + pluggable auth) — onboarding is the UI; those are the runtime. Cannot meaningfully ship this until they ship.
   notes: |
     [2026-05-15T04:28:26Z] PWA phase: 4 (Demo Mode) — see docs/product/PWA_ROADMAP.md (PRODUCT-121)
+    
+    [2026-09-02T12:55:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4802B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: PRODUCT-090
@@ -107972,7 +108163,7 @@ gaps:
 - id: RESILIENT-615
   domain: RESILIENT
   title: "decompose: keep free-tier floor, escalate to OpenRouter pro (deepseek-v4-pro) on FAILURE; retire vestigial Opus-tier declaration"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -107982,6 +108173,8 @@ gaps:
     - on decompose failure (provider error or empty/unusable slices) it retries once on deepseek-v4-pro via OpenRouter before flagging human
     - "the vestigial ModelTier::Opus decompose declaration is retired/reconciled to the live free+escalate reality"
     - "documented decision-of-record: decompose floor=free-tier, ceiling-on-failure=OpenRouter pro, NOT Opus"
+  notes: |
+    [2026-09-02T12:49:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-616
   domain: RESILIENT
