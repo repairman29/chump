@@ -653,14 +653,14 @@ check_backlog_sync_freshness() {
     if [[ -z "$last_epoch" ]]; then
         register_check "backlog-sync-freshness" "fail" \
             "no commit history for .chump/state.sql on origin/main — backlog-sync writer has never published" \
-            "install the writer organ: sudo bash scripts/setup/install-helsinki-atc.sh (see chump-backlog-sync-writer.timer)"
+            "install the writer organ: sudo bash scripts/setup/install-fleet-node.sh (see chump-backlog-sync-writer.timer)"
         return
     fi
     local age_h=$(( ( $(date +%s) - last_epoch ) / 3600 ))
     if (( age_h >= max_h )); then
         register_check "backlog-sync-freshness" "fail" \
             "origin/main .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
-            "check: systemctl status chump-backlog-sync-writer.timer; re-arm: sudo bash scripts/setup/install-helsinki-atc.sh"
+            "check: systemctl status chump-backlog-sync-writer.timer; re-arm: sudo bash scripts/setup/install-fleet-node.sh"
         return
     fi
     register_check "backlog-sync-freshness" "pass" "origin/main .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""

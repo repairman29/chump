@@ -3,11 +3,11 @@
 # chump-organ-reconcile and chump-organ-watchdog run as the repo-owning user and
 # CANNOT write /etc/systemd/system, so every merged chump-*.service/.timer stayed
 # DARK (declared `enabled` in the manifest, never installed in systemd) — the
-# exact merged-not-running disease. This organ runs install-helsinki-atc.sh
+# exact merged-not-running disease. This organ runs install-fleet-node.sh
 # --auto AS ROOT (install + enable --now + reconcile) so a merged organ actually
 # RUNS on the target. Paired with chump-organ-deploy.timer.
 #
-# Host convention: tracked helsinki-shaped (/root paths); install-helsinki-atc.sh
+# Host convention: tracked helsinki-shaped (/root paths); install-fleet-node.sh
 # host-rewrites "/root/" -> the run-user's HOME per node. UNLIKE every other
 # organ it must stay User=root (its whole job is the privileged system-unit
 # write), so it is listed in that installer's _KEEP_ROOT_ORGANS set: the

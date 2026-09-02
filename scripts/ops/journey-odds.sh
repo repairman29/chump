@@ -77,7 +77,7 @@ OUT="${CHUMP_JOURNEY_OUT:-$REAL_HOME/.chump/journey-odds.json}"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 GH_REPO="${CHUMP_GH_REPO:-repairman29/chump}"
 MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
-INSTALLER="$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+INSTALLER="$REPO_ROOT/scripts/setup/install-fleet-node.sh"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1

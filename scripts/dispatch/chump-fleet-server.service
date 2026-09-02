@@ -10,10 +10,10 @@
 # postgrest already holds :3000 on every node; 7070 is the crate default and free.
 #
 # HOST-AGNOSTIC (TREK-18): the /root/ path prefixes and User=root are
-# host-rewritten by scripts/setup/install-helsinki-atc.sh to the repo-owner
+# host-rewritten by scripts/setup/install-fleet-node.sh to the repo-owner
 # HOME/user, which also injects User=/HOME=/PATH=/WorkingDirectory= when absent.
 # Declared `enabled ... role=data` in scripts/ops/organ-manifest.txt AND added to
-# the SYSTEM_UNITS roster in install-helsinki-atc.sh so the unit file is actually
+# the SYSTEM_UNITS roster in install-fleet-node.sh so the unit file is actually
 # cp'd into /etc/systemd/system — RESILIENT-376: a manifest-only `enabled` line
 # whose unit is missing from the roster never installs and stays DARK
 # (merged-not-running). Reads local .chump/github_cache.db + .chump-locks/

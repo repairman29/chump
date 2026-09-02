@@ -2,7 +2,7 @@
 # scripts/ci/test-resilient-366-organ-roll-call.sh — RESILIENT-366
 #
 # WHY THIS EXISTS. chump-backlog-sync-writer.timer was DESIGNED (RESILIENT-194)
-# and later added to install-helsinki-atc.sh's SYSTEM_TIMERS roster (CREDIBLE-292)
+# and later added to install-fleet-node.sh's SYSTEM_TIMERS roster (CREDIBLE-292)
 # but sat inactive/disabled on the live node for 21 days undetected — no organ
 # was watching for the case "declared in the install roster, but forgotten from
 # organ-manifest.txt" (the file organ-reconcile.sh actually reads to revive a
@@ -10,7 +10,7 @@
 # manifest can never be self-healed: organ-reconcile only acts on lines in
 # scripts/ops/organ-manifest.txt.
 #
-# This is the "Roll-Call": every systemd timer install-helsinki-atc.sh installs
+# This is the "Roll-Call": every systemd timer install-fleet-node.sh installs
 # on the primary node must appear in organ-manifest.txt as either `enabled`
 # (organ-reconcile keeps it alive) or `paging_off` (organ-reconcile deliberately
 # keeps it silent) — so a future organ can never be added to the roster and
@@ -22,7 +22,7 @@
 
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-INSTALLER="$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+INSTALLER="$REPO_ROOT/scripts/setup/install-fleet-node.sh"
 MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
 
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
@@ -32,7 +32,7 @@ fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 [ -f "$MANIFEST" ]  || fail "missing $MANIFEST"
 
 # chump-organ-reconcile.timer is intentionally self-excluded from the manifest
-# (its own liveness is install-helsinki-atc.sh's job, per the manifest's header
+# (its own liveness is install-fleet-node.sh's job, per the manifest's header
 # comment) — the one deliberate, documented exception to the roll-call.
 EXEMPT=(chump-organ-reconcile.timer)
 
@@ -44,7 +44,7 @@ is_exempt() {
   return 1
 }
 
-# Extract every *.timer entry from install-helsinki-atc.sh's SYSTEM_TIMERS
+# Extract every *.timer entry from install-fleet-node.sh's SYSTEM_TIMERS
 # array — the roster actually installed (systemctl enable --now'd) at
 # lines 160/268, not SYSTEM_UNITS (which is only a copy-into-place list that
 # includes .service siblings never enabled as timers). SYSTEM_TIMERS is
@@ -96,9 +96,9 @@ for unit in "${ROSTER_TIMERS[@]}"; do
 done
 
 if [ "${#missing[@]}" -gt 0 ]; then
-  fail "roll-call gap: ${missing[*]} installed by install-helsinki-atc.sh but absent from organ-manifest.txt (organ-reconcile can never revive them — the exact silent-disable class RESILIENT-366 closes)"
+  fail "roll-call gap: ${missing[*]} installed by install-fleet-node.sh but absent from organ-manifest.txt (organ-reconcile can never revive them — the exact silent-disable class RESILIENT-366 closes)"
 fi
-ok "every install-helsinki-atc.sh SYSTEM_TIMERS entry (the installed roster) is covered by organ-manifest.txt (enabled or paging_off)"
+ok "every install-fleet-node.sh SYSTEM_TIMERS entry (the installed roster) is covered by organ-manifest.txt (enabled or paging_off)"
 
 # Specifically pin the backlog-sync --writer, since it's the organ that caused
 # the 21-day undetected outage this gap traces to.
@@ -123,7 +123,7 @@ ok "worker/coherence-sync/gap-store organs are declared 'enabled' with role+requ
 # manifest (a timer that's installed can always be revived). The OTHER direction
 # had no guard, and that is exactly how chump-gap-closure-reconcile.timer sat
 # dead 2026-08-21 → 2026-08-26: declared `enabled` in the manifest but ABSENT
-# from install-helsinki-atc.sh's SYSTEM_TIMERS, so the deploy never cp'd/enabled
+# from install-fleet-node.sh's SYSTEM_TIMERS, so the deploy never cp'd/enabled
 # it and organ-reconcile (which sees the wedged timer as `active`) never re-armed
 # it. A fully general "every enabled *.timer must be in THIS installer" invariant
 # would false-positive on organs installed by a dedicated installer (e.g.
@@ -136,7 +136,7 @@ ok "worker/coherence-sync/gap-store organs are declared 'enabled' with role+requ
 grep -qE '^enabled +chump-gap-closure-reconcile\.timer' "$MANIFEST" \
   || fail "chump-gap-closure-reconcile.timer must be an 'enabled' line in organ-manifest.txt (organ-reconcile revive gate)"
 grep -qE 'chump-gap-closure-reconcile\.timer' <<<"${ROSTER_TIMERS[*]}" \
-  || fail "chump-gap-closure-reconcile.timer must be in install-helsinki-atc.sh SYSTEM_TIMERS so the deploy installs + enables it (INFRA-3826: it was dead 2026-08-21 precisely because it was manifest-enabled but un-rostered)"
+  || fail "chump-gap-closure-reconcile.timer must be in install-fleet-node.sh SYSTEM_TIMERS so the deploy installs + enables it (INFRA-3826: it was dead 2026-08-21 precisely because it was manifest-enabled but un-rostered)"
 ok "chump-gap-closure-reconcile.timer is both manifest-'enabled' and installer-rostered (INFRA-3826)"
 
 echo "ALL PASS"

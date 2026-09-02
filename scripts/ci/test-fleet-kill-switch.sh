@@ -202,7 +202,7 @@ _refresh_provision_scripts=(
     "$REPO_ROOT/scripts/ops/node-refresh-chump.sh"
     "$REPO_ROOT/scripts/setup/install-node-refresh-systemd.sh"
     "$REPO_ROOT/scripts/setup/provision-chumpd-host.sh"
-    "$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+    "$REPO_ROOT/scripts/setup/install-fleet-node.sh"
 )
 _write_offenders=""
 for _script in "${_refresh_provision_scripts[@]}"; do

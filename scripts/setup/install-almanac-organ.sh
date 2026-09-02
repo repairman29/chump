@@ -6,11 +6,11 @@
 # freshly-installed node keeps its almanac fusion-search index alive without
 # a human ever running anything by hand. Before this gap, that liveness
 # script existed and was wired into the ROOT-only, helsinki-shaped
-# install-helsinki-atc.sh system-unit roster — but chump-node-install.sh (the
+# install-fleet-node.sh system-unit roster — but chump-node-install.sh (the
 # per-user, host-agnostic node installer) never called it, so an owned node
 # installed via node-install got every organ EXCEPT eyes.
 #
-# This script is deliberately independent of install-helsinki-atc.sh's
+# This script is deliberately independent of install-fleet-node.sh's
 # root/system-unit path: it runs as the invoking user, picks the lightest
 # supervisor available (systemd --user timer > launchd agent > cron
 # fallback), and is idempotent + safe to re-run.

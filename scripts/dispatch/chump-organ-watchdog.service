@@ -10,7 +10,7 @@
 # docs/process/LINUX_NODE_ONBOARDING.md).
 #
 # HOST-AGNOSTIC MECHANISM (RESILIENT-200): this tracked unit is helsinki-shaped
-# (User=root, /root/... paths) ON PURPOSE. install-helsinki-atc.sh rewrites
+# (User=root, /root/... paths) ON PURPOSE. install-fleet-node.sh rewrites
 # every "/root/" -> the run-user's $HOME and "User=root" -> "User=<run-user>"
 # at copy time, so the SAME tracked file wires correctly on root (helsinki) AND
 # on an owned node (CJ=jeff, /home/jeff). This matches all ~17 sibling dispatch

@@ -1,7 +1,7 @@
 # INFRA-3643 (TREK-17) — systemd complement to the macOS-only
 # almanac-summarize-watchdog (RESILIENT-354). Covers almanac binary presence +
 # index-freshness on the Linux owned-node factory (CJ, INFRA-3642). Paired with
-# chump-almanac-liveness.timer. Deployed by scripts/setup/install-helsinki-atc.sh
+# chump-almanac-liveness.timer. Deployed by scripts/setup/install-fleet-node.sh
 # (system unit, root-owned; host-rewritten per-node by the installer).
 [Unit]
 Description=Chump almanac liveness/refresh — binary presence + index freshness (INFRA-3643)

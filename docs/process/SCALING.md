@@ -53,7 +53,7 @@ minutes, selects candidates, builds and preflights an integration branch, then
 logs what it would have shipped. No git push, no PR.
 
 On Linux the organ is also part of the RUN-INSTALL roster: a fresh node that runs
-`sudo bash scripts/setup/install-helsinki-atc.sh` boots WITH the merge train
+`sudo bash scripts/setup/install-fleet-node.sh` boots WITH the merge train
 (units in `scripts/dispatch/chump-integrator.{service,timer}`, kept enabled by
 `scripts/ops/organ-manifest.txt` + `chump-organ-reconcile`).
 

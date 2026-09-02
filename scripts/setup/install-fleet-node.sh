@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/setup/install-helsinki-atc.sh — RESILIENT-300, auto-deploy path INFRA-3593
+# scripts/setup/install-fleet-node.sh — RESILIENT-300, auto-deploy path INFRA-3593
 #
 # Establishes the full "ATC roster" on the primary node (helsinki) from a
 # fresh clone: the self-maintenance daemons that keep the shipping pipeline
@@ -68,9 +68,9 @@
 # kind=organ_units_deploy_failed reason=not_root.
 #
 # Usage:
-#   sudo bash scripts/setup/install-helsinki-atc.sh
-#   sudo bash scripts/setup/install-helsinki-atc.sh --check   # exit 0 iff all timers active
-#   bash scripts/setup/install-helsinki-atc.sh --auto         # merge-triggered auto-deploy
+#   sudo bash scripts/setup/install-fleet-node.sh
+#   sudo bash scripts/setup/install-fleet-node.sh --check   # exit 0 iff all timers active
+#   bash scripts/setup/install-fleet-node.sh --auto         # merge-triggered auto-deploy
 
 set -euo pipefail
 

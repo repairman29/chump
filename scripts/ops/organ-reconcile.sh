@@ -15,7 +15,7 @@
 #
 # The pager-OFF mechanism is a systemd drop-in that overrides ExecStart to
 # /bin/true. A drop-in beats mask/disable for durability here because:
-#   * install-helsinki-atc.sh does `cp -f` of the BASE unit file every deploy —
+#   * install-fleet-node.sh does `cp -f` of the BASE unit file every deploy —
 #     that would clobber a mask symlink, but it never touches the unit's `.d/`
 #     drop-in directory, so the override survives.
 #   * `git reset --hard` reverts working-tree edits, but the drop-in content is
@@ -52,7 +52,7 @@ AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
 
-# TREK-18 (INFRA-3644): the manifest parser is shared with install-helsinki-atc.sh
+# TREK-18 (INFRA-3644): the manifest parser is shared with install-fleet-node.sh
 LIB_ORGAN_MANIFEST="$REPO_ROOT/scripts/ops/lib/organ-manifest-lib.sh"
 if [[ ! -f "$LIB_ORGAN_MANIFEST" ]]; then
   echo "ERROR: missing $LIB_ORGAN_MANIFEST" >&2
@@ -140,7 +140,7 @@ dropin_body() {
 # Managed by scripts/ops/organ-reconcile.sh (RESILIENT-305) — DO NOT EDIT BY HAND.
 # Desired state is declared in scripts/ops/organ-manifest.txt (state=paging_off).
 # Neuters $unit's ExecStart so its auto-paging stays OFF. Survives
-# install-helsinki-atc.sh's cp of the base unit (the .d/ dir is untouched) and
+# install-fleet-node.sh's cp of the base unit (the .d/ dir is untouched) and
 # the deploy mirror's \`git reset --hard origin/main\` (re-applied from the repo).
 [Service]
 ExecStart=

@@ -6506,7 +6506,7 @@ events:
 
   - kind: organ_units_deployed
     effect_metric: organ_unit_drift_auto_healed
-    emitter: scripts/setup/install-helsinki-atc.sh --auto (INFRA-3593, called
+    emitter: scripts/setup/install-fleet-node.sh --auto (INFRA-3593, called
       from scripts/ops/node-refresh-chump.sh after every fast-forward)
     trigger: a merge that changed a tracked chump-*.service/.timer file
       (RESILIENT-300 roster) was auto-installed on helsinki with no human
@@ -6517,7 +6517,7 @@ events:
 
   - kind: organ_units_deploy_skipped
     effect_metric: self
-    emitter: scripts/setup/install-helsinki-atc.sh --auto (INFRA-3593)
+    emitter: scripts/setup/install-fleet-node.sh --auto (INFRA-3593)
     trigger: auto-deploy ran but every tracked chump-*.service/.timer file
       already matched what was live — no-op on the common path, still
       observable proof the check ran each refresh cycle.
@@ -6526,7 +6526,7 @@ events:
 
   - kind: organ_units_deploy_failed
     effect_metric: self
-    emitter: scripts/setup/install-helsinki-atc.sh --auto (INFRA-3593)
+    emitter: scripts/setup/install-fleet-node.sh --auto (INFRA-3593)
     trigger: auto-deploy was invoked without root privileges and could not
       write /etc/systemd/system — the calling worker context structurally
       cannot install system units; surfaced for the board instead of
@@ -6537,7 +6537,7 @@ events:
   - kind: organ_reconcile_applied
     effect_metric: organ_unit_drift_auto_healed
     emitter: scripts/ops/organ-reconcile.sh (RESILIENT-305, run by
-      chump-organ-reconcile.timer and once by install-helsinki-atc.sh on deploy)
+      chump-organ-reconcile.timer and once by install-fleet-node.sh on deploy)
     trigger: the reconcile changed live systemd state to match the repo-declared
       organ manifest (scripts/ops/organ-manifest.txt) — neutered a drifted
       auto-pager via its repo drop-in, removed a legacy zz-autopage-off.conf
@@ -6880,7 +6880,7 @@ events:
       fast-forwarded before reconciling chump-*.service/.timer units — proof
       the clone this watchdog reads tracked units from auto-stays-current
       (INFRA-3598 AC 5), fixing the false-done gap where node-refresh-
-      chump.sh's unprivileged install-helsinki-atc.sh --auto call silently
+      chump.sh's unprivileged install-fleet-node.sh --auto call silently
       no-op'd and never reached a working merge->deploy loop.
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, prev_sha, new_sha]

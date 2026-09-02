@@ -12,7 +12,7 @@
 # PRs, so the merge GATE stays green (helps the CI pass-rate amber).
 #
 # Twin of chump-rot-reaper.service. Paths default to the primary node (helsinki,
-# root); install-helsinki-atc.sh host-rewrites User=/HOME=/paths per node so the
+# root); install-fleet-node.sh host-rewrites User=/HOME=/paths per node so the
 # SAME manifest wires correctly on CJ/Termux/etc (RESILIENT-353).
 [Unit]
 Description=Chump CI flake auto-rerun — rerun known-flake CI reds on open PRs, bounded (INFRA-375)

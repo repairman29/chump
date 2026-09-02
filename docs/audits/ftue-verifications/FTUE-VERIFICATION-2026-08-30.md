@@ -20,7 +20,7 @@ head_sha: bc78ef88
 
 > **Status — this is a GROUNDED STATIC audit, not a live fresh-box proof.**
 > Every claim below is read from the actual repo at HEAD `bc78ef88`
-> (`scripts/ops/organ-manifest.txt`, `scripts/setup/install-helsinki-atc.sh`,
+> (`scripts/ops/organ-manifest.txt`, `scripts/setup/install-fleet-node.sh`,
 > `scripts/setup/chump-node-install.sh`, and the dedicated `install-*.sh`),
 > not from a running install and not from vibes. **A LIVE fresh-box proof is
 > still owed** and cannot honestly be produced on CJ — see
@@ -37,19 +37,19 @@ promise, and they cover **different, non-overlapping** organ sets:
 | Installer | Privilege | What it installs | Invoked how |
 |---|---|---|---|
 | `scripts/setup/chump-node-install.sh` | user | binary (CI-artifact/release/build, provenance-gated) · minimal organs (`node-heartbeat`, `worker`, `process-organ-heal`) · SEED (gap store) · SUBSTRATE (`postgrest` via `install-gap-substrate.sh`) · EYES (`almanac-liveness` via `install-almanac-organ.sh`) · node-housekeeping (`install-node-housekeeping.sh`) · user `node-refresh` timer | the "one command" — `curl … \| bash -s -- --role …` |
-| `scripts/setup/install-helsinki-atc.sh` | **root** | the **ATC roster** — 18 `chump-*` timers + service siblings (pr-lander, farmer, integrator, gap-drain, merge-serializer, nba-dispatch, …) copied into `/etc/systemd/system` and `enable --now`'d, then `organ-reconcile --apply` | `sudo bash …` by hand, **or** `node-refresh --auto` after a merge |
+| `scripts/setup/install-fleet-node.sh` | **root** | the **ATC roster** — 18 `chump-*` timers + service siblings (pr-lander, farmer, integrator, gap-drain, merge-serializer, nba-dispatch, …) copied into `/etc/systemd/system` and `enable --now`'d, then `organ-reconcile --apply` | `sudo bash …` by hand, **or** `node-refresh --auto` after a merge |
 
 **Finding F1 — "one command" does not install the factory.**
-`chump-node-install.sh` **never calls** `install-helsinki-atc.sh`
+`chump-node-install.sh` **never calls** `install-fleet-node.sh`
 (confirmed: `grep -n helsinki-atc scripts/setup/chump-node-install.sh` → no
 match). The 16 ATC-roster organs that make the box an actual *shipping
 factory* (lander, farmer, integrator, drain, merge-flow) come **only** from
 the root-privileged ATC installer. The auto-path that would run it
-(`node-refresh-chump.sh` → `install-helsinki-atc.sh --auto`) **skips the
-system-unit deploy when not root** (`install-helsinki-atc.sh:221-231`, emits
+(`node-refresh-chump.sh` → `install-fleet-node.sh --auto`) **skips the
+system-unit deploy when not root** (`install-fleet-node.sh:221-231`, emits
 `organ_units_deploy_failed reason=not_root`), and `node-refresh` is a *user*
 unit. So on a fresh owned box the operator must **manually**
-`sudo bash scripts/setup/install-helsinki-atc.sh` — a hand-step the "one
+`sudo bash scripts/setup/install-fleet-node.sh` — a hand-step the "one
 command" ribbon does not cover.
 
 ---
@@ -64,7 +64,7 @@ reproducible_pct = (manifest-enabled organs in the installer roster)
 - **manifest(enabled)** = `enabled` lines in `scripts/ops/organ-manifest.txt`
   = **29** units @ HEAD `bc78ef88`.
 - **installer-roster** = a unit is rostered if it (or its `.service`/`.timer`
-  sibling) is in `install-helsinki-atc.sh`'s `SYSTEM_UNITS` array, **or** it is
+  sibling) is in `install-fleet-node.sh`'s `SYSTEM_UNITS` array, **or** it is
   installed by a dedicated `scripts/setup/install-*.sh` the node bring-up
   invokes.
 
@@ -122,7 +122,7 @@ Debt Index reading reports **ribbon-readiness beside node-liveness**.
 | chump-pr-book-settle.timer | no installer / not rostered | no-installer |
 | chump-next-best-action.timer | no installer (its *consumer* nba-dispatch IS rostered; the producer is not) | no-installer |
 | chump-cj-sync.service | no installer / not rostered | no-installer |
-| chump-organ-deploy.timer | only referenced in `install-helsinki-atc.sh`'s `_KEEP_ROOT_ORGANS` map, **not** in the `SYSTEM_UNITS` copy/enable roster → never actually cp'd/enabled on a fresh Linux box | phantom-roster |
+| chump-organ-deploy.timer | only referenced in `install-fleet-node.sh`'s `_KEEP_ROOT_ORGANS` map, **not** in the `SYSTEM_UNITS` copy/enable roster → never actually cp'd/enabled on a fresh Linux box | phantom-roster |
 | chump-process-organ-heal.timer | `chump-node-install.sh` installs a `process-organ-heal` **capability** as a supervised while-true service, but under a **different unit shape** than the manifest's `.timer` | unit-shape mismatch |
 | chump-cj-worker.service | `chump-node-install.sh` installs the **worker capability** (`muscle_organs` → `chump-worker`), but not under the manifest's `chump-cj-worker.service` name | unit-shape mismatch |
 
@@ -192,7 +192,7 @@ box for the live proof. Two options, both cheap:
 
 The live run should: (1) supply only the two required creds; (2) run the one
 command; (3) record what is and is not up **before** any hand-fix; (4)
-confirm F1 (ATC roster absent until `sudo install-helsinki-atc.sh`) and F2
+confirm F1 (ATC roster absent until `sudo install-fleet-node.sh`) and F2
 (bat-phone/floor dark until hand-set) on a truly cold box.
 
 ---

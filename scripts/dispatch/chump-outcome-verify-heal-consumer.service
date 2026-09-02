@@ -13,7 +13,7 @@
 # case-sensitive Linux (docs/process/LINUX_NODE_ONBOARDING.md).
 #
 # Host-agnostic via the systemd /root specifier, same as chump-organ-watchdog.service
-# (INFRA-3647): install-helsinki-atc.sh inserts the per-node User= line at
+# (INFRA-3647): install-fleet-node.sh inserts the per-node User= line at
 # deploy time, so /root resolves to root's home on helsinki and to jeff's home on
 # an owned node (CJ) from this SAME tracked unit.
 [Unit]

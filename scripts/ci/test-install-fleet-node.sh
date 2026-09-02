@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
-# scripts/ci/test-install-helsinki-atc.sh — INFRA-3593
+# scripts/ci/test-install-fleet-node.sh — INFRA-3593
 #
 # Smoke-tests the merge-triggered auto-deploy path added to
-# install-helsinki-atc.sh: --auto must degrade gracefully (exit 0, emit
+# install-fleet-node.sh: --auto must degrade gracefully (exit 0, emit
 # organ_units_deploy_failed) when not root, since CI and most worker
 # contexts cannot write /etc/systemd/system.
 
 set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-SCRIPT="$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+SCRIPT="$REPO_ROOT/scripts/setup/install-fleet-node.sh"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
@@ -65,10 +65,10 @@ ok "chump-sla-scorecard.service sets WorkingDirectory so gh repo view resolves"
 # test instead asserts the source-level guard exists and covers the exact
 # path shape node-refresh sessions run from.
 grep -q '/.claude/worktrees/' "$SCRIPT" \
-    || fail "install-helsinki-atc.sh missing the ephemeral-worktree guard for CHUMP_NODE_REPO"
+    || fail "install-fleet-node.sh missing the ephemeral-worktree guard for CHUMP_NODE_REPO"
 grep -q 'Not propagating it as CHUMP_NODE_REPO' "$SCRIPT" \
-    || fail "install-helsinki-atc.sh guard doesn't skip CHUMP_NODE_REPO propagation for worktree paths"
-ok "install-helsinki-atc.sh guards against baking an ephemeral worktree into CHUMP_NODE_REPO"
+    || fail "install-fleet-node.sh guard doesn't skip CHUMP_NODE_REPO propagation for worktree paths"
+ok "install-fleet-node.sh guards against baking an ephemeral worktree into CHUMP_NODE_REPO"
 
 # ── Test: --auto must NOT abort the roster on a single unit enable failure
 #       (RESILIENT-347) ─────────────────────────────────────────────────────
@@ -143,7 +143,7 @@ ok "--auto with one unit's enable failure continues the roster loop AND still re
 # inserted, no /root path leaked into the installed copy either).
 ORGAN_WATCHDOG_SRC="$REPO_ROOT/scripts/dispatch/chump-organ-watchdog.service"
 # RESILIENT-200: the tracked unit is helsinki-shaped (/root/... + User=root) ON
-# PURPOSE; install-helsinki-atc.sh host-rewrites "/root/" -> $RUN_HOME per node.
+# PURPOSE; install-fleet-node.sh host-rewrites "/root/" -> $RUN_HOME per node.
 # It MUST NOT resolve its home via the systemd %h specifier in an active
 # directive: on a SYSTEM-scope unit %h ignores User= and always expands to
 # /root, so on an owned node (CJ=jeff) it exec'd /root/... as jeff and failed
@@ -198,7 +198,7 @@ ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape): ex
 # User=. This catches organ-watchdog + process-organ-heal + any future reintro.
 _pct_h_offenders="$(grep -lE '^(Environment|ExecStart)=.*%h' "$REPO_ROOT"/scripts/dispatch/*.service 2>/dev/null || true)"
 [ -z "$_pct_h_offenders" ] \
-    || fail "dispatch *.service units use the %h specifier in an active directive (breaks install-helsinki-atc.sh host-rewrite; RESILIENT-200): $_pct_h_offenders"
+    || fail "dispatch *.service units use the %h specifier in an active directive (breaks install-fleet-node.sh host-rewrite; RESILIENT-200): $_pct_h_offenders"
 ok "no dispatch *.service unit uses %h in an active directive (RESILIENT-200 class guard)"
 
 # ── Guard: the "instruments lie" keystone (INFRA-3647) ─────────────────────

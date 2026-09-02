@@ -14,7 +14,7 @@
 # organ-reconcile + organ-deploy keep it alive (RESILIENT-366 / RESILIENT-374).
 #
 # CJ-native form (User=jeff, /home/jeff paths), mirroring chump-gap-drain.service;
-# install-helsinki-atc.sh host-rewrites paths per node if ever run elsewhere.
+# install-fleet-node.sh host-rewrites paths per node if ever run elsewhere.
 [Unit]
 Description=Chump next-best-action — recompute the EV-ranked advisory action list + emit kind=next_best_action (recommend-only)
 After=network-online.target

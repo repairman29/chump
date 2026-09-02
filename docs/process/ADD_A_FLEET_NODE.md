@@ -16,7 +16,7 @@ shipping node in one pass.
 > (`--role brain|muscle|all`), which installs a provenance-gated binary plus a
 > minimal manifest-driven organ set, substrate, and eyes in one command. It
 > does **not** install the root-privileged ATC roster
-> (`scripts/setup/install-helsinki-atc.sh`) — that stays a separate
+> (`scripts/setup/install-fleet-node.sh`) — that stays a separate
 > `sudo` step. For a grounded reproducibility reading of which manifest organs
 > a fresh box actually gets (69% @ 2026-08-30) and the per-node secrets that
 > stay hand-set, see

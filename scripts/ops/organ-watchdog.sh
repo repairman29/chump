@@ -11,7 +11,7 @@
 # runs `systemctl reset-failed <unit>`. This watchdog is that something.
 #
 # INFRA-3598: INFRA-3593's merge->deploy path was false-done. node-refresh-
-# chump.sh calls `install-helsinki-atc.sh --auto` to reinstall changed
+# chump.sh calls `install-fleet-node.sh --auto` to reinstall changed
 # chump-*.service/.timer files, but node-refresh-chump.sh runs as a systemd
 # --user timer (unprivileged) — --auto always hit the "not root, can't write
 # /etc/systemd/system" branch and silently no-op'd. Merged unit-file fixes
@@ -22,7 +22,7 @@
 #   0. (opt-in, CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH=1) fast-forwards
 #      CHUMP_REPO_ROOT to origin/main so the tracked unit files it reconciles
 #      against are never stale (AC 5).
-#   0.5. calls `install-helsinki-atc.sh --auto`, which diffs tracked
+#   0.5. calls `install-fleet-node.sh --auto`, which diffs tracked
 #      scripts/dispatch/chump-*.service|.timer against what's live and
 #      reinstalls + restarts anything changed, emitting
 #      kind=organ_units_deployed (AC 1, 3, 7).
@@ -62,7 +62,7 @@
 # Test hooks (used by scripts/ci/test-organ-watchdog.sh):
 #   CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN   — path to a stubbed `systemctl`
 #   CHUMP_ORGAN_WATCHDOG_GIT_BIN         — path to a stubbed `git`
-#   CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT   — override for install-helsinki-atc.sh
+#   CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT   — override for install-fleet-node.sh
 #   CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT — RESILIENT-347: override for
 #                                           organ-reconcile.sh, called directly
 #                                           every cycle (step 0.6, see below)
@@ -110,7 +110,7 @@ DRY_RUN=0
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 SYSTEMCTL_BIN="${CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN:-systemctl}"
-# RESILIENT-413: the tracked unit is User=root, but install-helsinki-atc.sh
+# RESILIENT-413: the tracked unit is User=root, but install-fleet-node.sh
 # rewrites User=root -> the run-user (jeff) on an OWNED node — so on CJ this
 # watchdog actually runs as User=jeff. reset-failed/restart/start on a
 # SYSTEM-scope unit then fails with "Access denied ... requires interactive
@@ -131,7 +131,7 @@ if [[ "$SYSTEMCTL_BIN" == "systemctl" && "${EUID:-$(id -u)}" -ne 0 ]] \
     echo "[organ-watchdog] not root — elevating systemctl management calls via 'sudo -n' (owned-node User=jeff deployment, RESILIENT-413)"
 fi
 GIT_BIN="${CHUMP_ORGAN_WATCHDOG_GIT_BIN:-git}"
-DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/install-helsinki-atc.sh}"
+DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/install-fleet-node.sh}"
 
 # RESILIENT-347: share organ-reconcile.sh's backoff registry. Without this,
 # section 1 below (blind reset-failed+restart of ANY failed chump-*.service)
@@ -232,11 +232,11 @@ if [[ "${CHUMP_ORGAN_WATCHDOG_CLONE_REFRESH:-0}" == "1" ]]; then
 fi
 
 # ── 0.5. reconcile + reinstall changed chump-* organ units (INFRA-3598) ────
-# node-refresh-chump.sh already calls install-helsinki-atc.sh --auto every
+# node-refresh-chump.sh already calls install-fleet-node.sh --auto every
 # cycle, but it runs unprivileged (systemd --user), so that call always
 # no-ops on reason=not_root — a merged unit-file change never reaches
 # /etc/systemd/system. This watchdog runs as root (chump-organ-watchdog.service),
-# so its call is the one that actually succeeds. install-helsinki-atc.sh
+# so its call is the one that actually succeeds. install-fleet-node.sh
 # --auto diffs tracked units against what's live and emits its own
 # kind=organ_units_deployed/organ_units_deploy_skipped — this is the board's
 # verifiable proof the merge->deploy loop is real (AC 1, 3, 7).
@@ -250,7 +250,7 @@ else
 fi
 
 # ── 0.6. run organ-reconcile.sh directly (RESILIENT-347 step 3) ────────────
-# install-helsinki-atc.sh --auto (step 0.5 above) already calls
+# install-fleet-node.sh --auto (step 0.5 above) already calls
 # organ-reconcile.sh --apply itself as its LAST step (RESILIENT-305 /
 # RESILIENT-347's "don't let one failed unit abort the auto-deploy before
 # organ-reconcile runs" fix), but that path is coupled to the FULL roster

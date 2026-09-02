@@ -6,7 +6,7 @@
 #                              sub-gaps, one file/one edit/one testable AC each)
 # Both LLM calls route to deepseek-v4-pro (OPENAI_API_BASE=openrouter slot 0),
 # NOT the contended local ollama that owns the cascade's slot 0 on CJ.
-# Paired with chump-gap-drain.timer; rostered in install-helsinki-atc.sh +
+# Paired with chump-gap-drain.timer; rostered in install-fleet-node.sh +
 # organ-manifest.txt so organ-reconcile keeps it alive (RESILIENT-366).
 [Unit]
 Description=Chump gap-drain — enrich thin + decompose broad open gaps into surgical, flash-landable specs (EFFECTIVE-464)

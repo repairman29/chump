@@ -305,8 +305,8 @@ One idempotent script installs the whole roster (pr-lander + armed-rebaser +
 node-refresh) from tracked repo files:
 
 ```bash
-sudo bash scripts/setup/install-helsinki-atc.sh          # install + enable all 3
-sudo bash scripts/setup/install-helsinki-atc.sh --check   # exit 0 iff all 3 timers active
+sudo bash scripts/setup/install-fleet-node.sh          # install + enable all 3
+sudo bash scripts/setup/install-fleet-node.sh --check   # exit 0 iff all 3 timers active
 ```
 
 **Two gotchas that will otherwise waste an hour re-discovering them:**

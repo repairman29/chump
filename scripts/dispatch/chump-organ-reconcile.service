@@ -2,7 +2,7 @@
 # organ state to the repo-declared manifest (scripts/ops/organ-manifest.txt):
 # enables the organs that must run and neuters the auto-pagers that must stay
 # OFF. Paired with chump-organ-reconcile.timer. Deployed by
-# scripts/setup/install-helsinki-atc.sh (system unit, root-owned). Runs the
+# scripts/setup/install-fleet-node.sh (system unit, root-owned). Runs the
 # reconcile so drift between the repo and the node self-heals with no human step.
 [Unit]
 Description=Chump organ-reconcile — enforce repo-declared organ manifest (enabled organs up, auto-pagers OFF) (RESILIENT-305)

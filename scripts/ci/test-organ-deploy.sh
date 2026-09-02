@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # test-organ-deploy.sh — RESILIENT-374. Verifies the root-privileged self-deploy
 # organ: non-root is a non-fatal no-op that never touches systemd, the deploy
-# path invokes install-helsinki-atc.sh --auto, and the keep-root exemption +
+# path invokes install-fleet-node.sh --auto, and the keep-root exemption +
 # manifest row that keep the organ itself User=root are in place.
 set -uo pipefail
 FAIL=0
@@ -38,7 +38,7 @@ grep -qi "not root" <<<"$out" || fail "expected not-root message, got: $out"
 [ ! -s "$CALLLOG" ] || fail "non-root must NOT invoke installer, got: $(cat "$CALLLOG")"
 ok "non-root: non-fatal no-op, never invokes the privileged deploy"
 
-# 2. deploy path (allow-nonroot + stubs): invokes install-helsinki-atc --auto
+# 2. deploy path (allow-nonroot + stubs): invokes install-fleet-node --auto
 : > "$CALLLOG"
 out="$(CALLLOG="$CALLLOG" \
       CHUMP_ORGAN_DEPLOY_ALLOW_NONROOT=1 \
@@ -49,11 +49,11 @@ grep -q "INSTALLER_CALLED --auto" "$CALLLOG" \
   || fail "deploy path must call installer with --auto, got: $(cat "$CALLLOG")"
 grep -q "post-deploy manifest audit" <<<"$out" \
   || fail "expected post-deploy audit line, got: $out"
-ok "deploy path: invokes install-helsinki-atc.sh --auto + runs audit"
+ok "deploy path: invokes install-fleet-node.sh --auto + runs audit"
 
 # 3. keep-root exemption + manifest row present (the wiring that keeps the organ root)
-grep -q "_KEEP_ROOT_ORGANS" "$ROOT/scripts/setup/install-helsinki-atc.sh" \
-  || fail "install-helsinki-atc.sh must define _KEEP_ROOT_ORGANS (keep-root exemption)"
+grep -q "_KEEP_ROOT_ORGANS" "$ROOT/scripts/setup/install-fleet-node.sh" \
+  || fail "install-fleet-node.sh must define _KEEP_ROOT_ORGANS (keep-root exemption)"
 grep -qE '^enabled[[:space:]]+chump-organ-deploy\.timer' "$ROOT/scripts/ops/organ-manifest.txt" \
   || fail "organ-manifest.txt must declare chump-organ-deploy.timer enabled"
 [ -f "$ROOT/scripts/dispatch/chump-organ-deploy.service" ] || fail "missing chump-organ-deploy.service"

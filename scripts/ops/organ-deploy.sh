@@ -17,8 +17,8 @@
 #
 # This organ closes that hole at its root: it runs the privileged deploy AS
 # ROOT (its unit is User=root — the one deliberate exception to the host
-# de-privilege rewrite, see scripts/setup/install-helsinki-atc.sh
-# _KEEP_ROOT_ORGANS). install-helsinki-atc.sh --auto then installs every
+# de-privilege rewrite, see scripts/setup/install-fleet-node.sh
+# _KEEP_ROOT_ORGANS). install-fleet-node.sh --auto then installs every
 # manifest-declared unit, `enable --now`s it, and runs organ-reconcile — so a
 # merged organ actually RUNS on the target. It is the standing anti-
 # "merged-not-running" faculty for owned nodes.
@@ -27,10 +27,10 @@
 #   1. Refuse cheaply if not root (its job IS the root-only write; a non-root
 #      run is a no-op, never a crash — the unit runs User=root so this only
 #      trips in tests / manual mis-invocation).
-#   2. Point CARGO_BIN_DIR at the repo-owner's cargo bin so install-helsinki-
-#      atc's integrator-binary guard finds the existing binary and never builds
+#   2. Point CARGO_BIN_DIR at the repo-owner's cargo bin so install-fleet-node's
+#      integrator-binary guard finds the existing binary and never builds
 #      as root inside the owner's checkout.
-#   3. Run install-helsinki-atc.sh --auto (install + enable --now + reconcile),
+#   3. Run install-fleet-node.sh --auto (install + enable --now + reconcile),
 #      whose own registered ambient kinds (organ_units_deployed / _skipped /
 #      _failed, organ_reconcile_applied) are the observability for the actions.
 #   4. Advisory audit: count manifest `enabled` organs still not is-active after
@@ -39,18 +39,18 @@
 #
 # Env / test hooks:
 #   CHUMP_REPO_ROOT                       repo checkout root (default: derived)
-#   CHUMP_ORGAN_DEPLOY_INSTALLER          override install-helsinki-atc.sh path
+#   CHUMP_ORGAN_DEPLOY_INSTALLER          override install-fleet-node.sh path
 #   CHUMP_ORGAN_DEPLOY_SYSTEMCTL_BIN      override `systemctl` (audit stub)
 #   CHUMP_ORGAN_DEPLOY_ALLOW_NONROOT=1    run the deploy path without root (tests)
 #   CARGO_BIN_DIR                         integrator-binary dir (default: owner ~/.cargo/bin)
 #
-# Exit code: propagates install-helsinki-atc.sh --auto's exit (0 on the common
+# Exit code: propagates install-fleet-node.sh --auto's exit (0 on the common
 # path; --auto is itself non-fatal by design).
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="${CHUMP_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}"
-INSTALLER="${CHUMP_ORGAN_DEPLOY_INSTALLER:-$REPO_ROOT/scripts/setup/install-helsinki-atc.sh}"
+INSTALLER="${CHUMP_ORGAN_DEPLOY_INSTALLER:-$REPO_ROOT/scripts/setup/install-fleet-node.sh}"
 SYSTEMCTL_BIN="${CHUMP_ORGAN_DEPLOY_SYSTEMCTL_BIN:-systemctl}"
 MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
 
@@ -78,7 +78,7 @@ fi
 log "privileged deploy: $INSTALLER --auto (REPO_ROOT=$REPO_ROOT CARGO_BIN_DIR=$CARGO_BIN_DIR)"
 CHUMP_REPO_ROOT="$REPO_ROOT" bash "$INSTALLER" --auto
 rc=$?
-log "install-helsinki-atc --auto exit=$rc"
+log "install-fleet-node --auto exit=$rc"
 
 # Advisory post-deploy audit (log-only; no new ambient kinds).
 if [[ -f "$MANIFEST" ]]; then

@@ -3,7 +3,7 @@
 #
 # The ONE parser for scripts/ops/organ-manifest.txt, shared by
 # organ-reconcile.sh (which converges live systemd state to the manifest)
-# and install-helsinki-atc.sh (which now derives its installed roster FROM
+# and install-fleet-node.sh (which now derives its installed roster FROM
 # the manifest instead of a second, hand-maintained array). Before this gap,
 # the installer's SYSTEM_TIMERS array and the manifest were two independent
 # sources of truth — adding an organ to the manifest was NOT sufficient to

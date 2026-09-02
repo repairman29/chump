@@ -6,7 +6,7 @@
 # slice of reproducible-deploy (RESILIENT-305 / RESILIENT-000 self-healing).
 #
 # WHY THIS FILE EXISTS (2026-08-13 incident): auto-pager DM spam kept
-# resurrecting because failed organs were hand-managed and install-helsinki-atc
+# resurrecting because failed organs were hand-managed and install-fleet-node
 # re-enabled them every 5 min; the fix landed as HOST-LEVEL systemd drop-ins
 # (/etc/systemd/system/*.d/zz-autopage-off.conf) — a NEW snowflake invisible to
 # the repo, and the deploy mirror's `git reset --hard origin/main` silently
@@ -27,7 +27,7 @@
 #                         that neuters ExecStart to /bin/true, then stops the
 #                         service if it is running. The drop-in wins over the
 #                         tracked/host unit's ExecStart, survives
-#                         install-helsinki-atc.sh's `cp -f` of the base unit
+#                         install-fleet-node.sh's `cp -f` of the base unit
 #                         (the .d/ dir is untouched) AND survives the mirror's
 #                         `git reset --hard` (its content is re-applied from
 #                         this repo, not a one-time host edit).
@@ -80,7 +80,7 @@ paging_off  chump-board-ceo-briefing.service
 # chump-discord-gateway: the two-way operator channel (must not go dark).
 # chump-pr-lander.timer: arms green PRs so they merge (RESILIENT-288).
 # NOTE: chump-organ-reconcile.timer (this reconcile's own beat) is intentionally
-# NOT self-listed here — its liveness is install-helsinki-atc.sh's job (run on
+# NOT self-listed here — its liveness is install-fleet-node.sh's job (run on
 # every deploy + boot), same as every other ATC timer. Clean separation: the
 # installer keeps the timer alive, the timer runs the reconcile, the reconcile
 # enforces this manifest.
@@ -187,7 +187,7 @@ enabled     chump-outcome-verify-heal-consumer.timer  role=muscle requires=bin:c
 enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
 
 # RESILIENT-366: chump-armed-rebaser.timer and chump-board-cycle.timer are both
-# in install-helsinki-atc.sh's SYSTEM_TIMERS roster but, until this line, were
+# in install-fleet-node.sh's SYSTEM_TIMERS roster but, until this line, were
 # MISSING from this manifest — meaning organ-reconcile could never revive
 # either one if it went dark, exactly the "designed coherence loop silently
 # disabled, nothing detects it" disease that let chump-backlog-sync-writer.timer
@@ -271,7 +271,7 @@ enabled     chump-fleet-server.service  role=data requires=bin:git
 # the same peer-heartbeat mechanism every other organ in this manifest relies
 # on; also closes the Roll-Call gap (scripts/ci/test-resilient-366-organ-roll-
 # call.sh) that would otherwise fire the moment this timer was added to
-# install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
+# install-fleet-node.sh's SYSTEM_UNITS without a matching manifest line.
 enabled     chump-almanac-liveness.timer  role=data requires=bin:git
 enabled     chump-faculty-collector.timer  role=data requires=bin:gh,bin:jq
 enabled     chump-pr-book-settle.timer     role=trust requires=bin:gh,bin:jq
@@ -288,9 +288,9 @@ enabled     chump-race-control.timer  role=data requires=bin:gh
 # organ. On owned nodes (CJ=jeff) chump-organ-reconcile and chump-organ-watchdog
 # run as the repo-owning user and cannot write /etc/systemd/system, so merged
 # chump-*.service/.timer files stayed DARK (declared here, never installed in
-# systemd) — the merged-not-running disease. This organ runs install-helsinki-
-# atc.sh --auto AS ROOT so every merged organ actually gets installed + enabled.
-# It is User=root by design (install-helsinki-atc _KEEP_ROOT_ORGANS), the one
+# systemd) — the merged-not-running disease. This organ runs
+# install-fleet-node.sh --auto AS ROOT so every merged organ actually gets installed + enabled.
+# It is User=root by design (install-fleet-node _KEEP_ROOT_ORGANS), the one
 # organ exempt from the host de-privilege rewrite. Declared here so Roll-Call
 # (scripts/ci/test-resilient-366-organ-roll-call.sh) sees a manifest line for
 # the tracked unit files and organ-watchdog re-arms it if it drifts.

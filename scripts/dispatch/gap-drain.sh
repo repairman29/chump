@@ -20,7 +20,7 @@
 # CJ by default (which hangs the call for minutes). deepseek-v4-pro ~ $0.0035/gap.
 #
 # Idempotent, budget-bounded, host-agnostic. Paired with chump-gap-drain.timer,
-# rostered in install-helsinki-atc.sh + organ-manifest.txt so organ-reconcile
+# rostered in install-fleet-node.sh + organ-manifest.txt so organ-reconcile
 # keeps it alive (RESILIENT-366 Roll-Call).
 set -uo pipefail
 

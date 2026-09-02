@@ -5,7 +5,7 @@
 # WHY A BEAT WRAPPER, AND WHY IT LIVES HERE. RESILIENT-266 shipped the gateway
 # and a manifest `enabled chump-discord-gateway.service` line, but the only unit
 # file lived in scripts/ops/ and the only installer was a Mac launchd script.
-# The ATC roster (install-helsinki-atc.sh, TREK-18) derives what to deploy from
+# The ATC roster (install-fleet-node.sh, TREK-18) derives what to deploy from
 # organ-manifest.txt INTERSECTED with the unit files under scripts/dispatch/ —
 # so a manifest line with no scripts/dispatch/ unit is declared-but-never-
 # installed on every Linux node. helsinki's decommission left the two-way
@@ -18,7 +18,7 @@
 set -uo pipefail
 
 # ── Host-agnostic HOME ───────────────────────────────────────────────────────
-# systemd may hand us HOME=/root even on a run-user node: install-helsinki-atc
+# systemd may hand us HOME=/root even on a run-user node: install-fleet-node
 # rewrites `/root/` paths but NOT a bare `Environment=HOME=/root`, because its
 # sed only matches `/root/` WITH a trailing slash. Derive HOME from the user we
 # actually run as so ~/.chump resolves on every host (Mac, root Linux, CJ).

@@ -7,7 +7,7 @@ Linux / macOS). This is what RESILIENT-318 actually is.
 
 ## Why this exists
 The 2026-08-17 helsinki teardown proved helsinki was ~half *installed* (reproducible from
-`install-helsinki-atc.sh`) and ~half *built* — 11 load-bearing organs (worker@, keep-mergeable,
+`install-fleet-node.sh`) and ~half *built* — 11 load-bearing organs (worker@, keep-mergeable,
 discord-gateway, electrician, …) were hand-placed with no installer, so a rebuild couldn't
 reproduce them. The Pixel is the same disease one layer down: a RESILIENT-336 node accumulated
 across `~/chump` (binary + junk), `~/chump-repo`, `~/chump-brain`, a boot supervisor, an

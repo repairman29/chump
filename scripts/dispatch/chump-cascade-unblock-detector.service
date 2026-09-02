@@ -11,7 +11,7 @@
 # same failure signature, and calls `gh pr update-branch` on each safe match.
 #
 # CHUMP_REPO_ROOT is REQUIRED: the script's default $HOME/Projects/Chump is
-# capital-C and does not exist on case-sensitive Linux. install-helsinki-atc.sh
+# capital-C and does not exist on case-sensitive Linux. install-fleet-node.sh
 # rewrites /root + User for the target node on install.
 [Unit]
 Description=Chump cascade-unblock detector — fan a merged fix PR out to sibling blocked PRs (RESILIENT-418/INFRA-2070)

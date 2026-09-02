@@ -1,5 +1,5 @@
 # RESILIENT-365 — systemd unit for the RCA reflex organ. Paired with
-# chump-rca-reflex.timer. Deployed by scripts/setup/install-helsinki-atc.sh
+# chump-rca-reflex.timer. Deployed by scripts/setup/install-fleet-node.sh
 # (system unit, root-owned; host-rewritten per-node by the installer, same
 # pattern as chump-almanac-liveness.service).
 #

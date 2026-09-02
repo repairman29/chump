@@ -11,7 +11,7 @@
 # case-sensitive Linux (docs/process/LINUX_NODE_ONBOARDING.md).
 #
 # HOST-AGNOSTIC MECHANISM: helsinki-shaped (/root/... + User=root) ON PURPOSE;
-# install-helsinki-atc.sh rewrites "/root/" -> the run-user's $HOME and
+# install-fleet-node.sh rewrites "/root/" -> the run-user's $HOME and
 # "User=root" -> "User=<run-user>" at copy time. DO NOT use the systemd %h
 # specifier (reverts INFRA-3647/TREK-21): on a SYSTEM-scope unit %h ignores
 # User= and always resolves to /root, so on an owned node (CJ=jeff) it exec'd

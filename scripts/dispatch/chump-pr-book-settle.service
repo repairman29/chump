@@ -5,7 +5,7 @@
 # the .timer). Without this, the ledger records predictions but nothing ever scores
 # them, and the sign reads UNKNOWN (the board could be lying and no one would know).
 # Deployed/host-rewritten (/root/ -> run-user HOME, User=root -> run-user) by
-# scripts/setup/install-helsinki-atc.sh, same as every other organ.
+# scripts/setup/install-fleet-node.sh, same as every other organ.
 [Unit]
 Description=Chump pr-book settle — score PR predictions vs outcomes, refresh Brier calibration
 After=network-online.target

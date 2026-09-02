@@ -34,7 +34,7 @@ trap 'rm -rf "$TMP"' EXIT
 
 # Harmless no-op deploy-script stub for tests that aren't exercising the
 # INFRA-3598 deploy wiring itself — decouples this test file from
-# install-helsinki-atc.sh's own behavior/root-check.
+# install-fleet-node.sh's own behavior/root-check.
 NOOP_DEPLOY="$TMP/noop-deploy.sh"
 cat > "$NOOP_DEPLOY" <<'EOF'
 #!/usr/bin/env bash
@@ -127,7 +127,7 @@ pass "--dry-run reports without mutating systemd state"
 
 # ── 5. INFRA-3598: watchdog actually invokes the unit-deploy script ────────
 # This is the false-done fix: node-refresh-chump.sh's call to
-# install-helsinki-atc.sh --auto silently no-ops (unprivileged). The
+# install-fleet-node.sh --auto silently no-ops (unprivileged). The
 # watchdog runs as root, so ITS call must be the one that actually happens,
 # every cycle, unconditionally (not just on the failed-organ path).
 STUB4="$TMP/systemctl-healthy4"
@@ -150,7 +150,7 @@ CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB4" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="
     CHUMP_AMBIENT_LOG="$AMB4" "$WATCHDOG" >/dev/null 2>&1
 grep -q -- "--auto" "$DEPLOY_CALL_LOG" \
     || fail "expected the deploy script to be invoked with --auto every cycle; calls: $(cat "$DEPLOY_CALL_LOG" 2>/dev/null)"
-pass "watchdog calls install-helsinki-atc.sh --auto every cycle (the privileged path node-refresh-chump.sh cannot reach)"
+pass "watchdog calls install-fleet-node.sh --auto every cycle (the privileged path node-refresh-chump.sh cannot reach)"
 
 # ── 6. --dry-run does not invoke the deploy script ──────────────────────────
 DEPLOY_CALL_LOG2="$TMP/deploy-calls2.log"

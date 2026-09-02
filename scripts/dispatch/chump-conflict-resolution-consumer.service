@@ -10,7 +10,7 @@
 # a plain rebase then conflict-resolver-agent.sh (INFRA-1488) for real conflicts.
 #
 # CHUMP_REPO_ROOT is REQUIRED: the script default $HOME/Projects/Chump is
-# capital-C and does not exist on case-sensitive Linux. install-helsinki-atc.sh
+# capital-C and does not exist on case-sensitive Linux. install-fleet-node.sh
 # (RESILIENT-353) rewrites /root + User for the target node on install.
 [Unit]
 Description=Chump conflict-resolution consumer — drain real-conflict DIRTY PRs (RESILIENT-360/301)

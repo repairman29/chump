@@ -20,7 +20,7 @@
 # scripts/ops/organ-manifest.txt so organ-reconcile + organ-deploy keep it alive.
 #
 # CJ-native form (User=jeff, /home/jeff paths), mirroring chump-next-best-action
-# .service; install-helsinki-atc.sh host-rewrites paths per node if run elsewhere.
+# .service; install-fleet-node.sh host-rewrites paths per node if run elsewhere.
 [Unit]
 Description=Chump NBA auto-dispatch — consume the top next-best-action; take a safe allow-listed action or defer to the human
 After=network-online.target chump-next-best-action.service
