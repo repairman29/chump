@@ -13349,10 +13349,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the `probe_cascade` function in `scripts/dev/chump-binary-unwedge.sh` to iterate over all enabled slots, issue a lightweight HTTP HEAD request to each slot, extract the `x‑ratelimit‑limit‑requests`, `x‑ratelimit‑remaining`, and `retry‑after` response headers, and emit a structured log line that includes the slot identifier and the captured header values; also add a configurable `REFRESH_INTERVAL` variable and a cron‑compatible entry at the end of the script so the probe runs on the defined schedule.
+    
+    Target file(s):
+    - scripts/dev/chump-binary-unwedge.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Job runs on a configurable schedule and makes a cheap request to each slot
-    - Observed x‑ratelimit‑limit‑requests, x‑ratelimit‑remaining, and retry‑after headers are captured
-    - Observed values are logged with the slot identifier
+    - Running `scripts/dev/chump-binary-unwedge.sh` (invoked by the added schedule) produces log entries of the form `slot=<id> limit=<value> remaining=<value> retry_after=<value>` for every enabled slot, visible in stdout or the designated log file.
+    - The `probe_cascade` function now contains a curl (or equivalent) command that requests only headers (`-I`/`--head`) and parses the three rate‑limit headers, returning a non‑zero exit code if any request fails.
+    - The script defines a `REFRESH_INTERVAL` variable (default “15m”) that can be overridden via an environment variable, and the generated cron line uses this interval to schedule the job.
+    - No other existing functionality of `scripts/dev/chump-binary-unwedge.sh` is altered; a regression test that calls the script with a mock slot list confirms that the original exit status and side‑effects remain unchanged.
   notes: |
     [chump harvest check 'provider']
     === primitives_index match for 'provider' ===
@@ -22093,7 +22101,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: EFFECTIVE-505, EFFECTIVE-506
+    Decomposed into 2 slices: EFFECTIVE-753, EFFECTIVE-754
   opened_date: '2026-08-22'
 
 - id: EFFECTIVE-445
@@ -32940,6 +32948,64 @@ gaps:
     === cross-pollination briefs mentioning 'PILOT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-753
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add data model fields for \"who\", \"struggling-moment\", and \"done-signal\" to intake structs (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The Rust structs used in the EFFECTIVE intake path include new fields: `who: String`, `struggling_moment: String`, and `done_signal: bool` (or appropriate types)."
+    - Serialization and deserialization (e.g., via serde) correctly handle the new fields.
+    - The code compiles with `cargo check` and passes `cargo fmt` and `cargo clippy --all-targets -D warnings` without warnings.
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-754
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update intake processing to capture new fields and add verification test (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The intake code extracts `who`, `struggling_moment`, and `done_signal` from incoming data and stores them in the updated structs.
+    - A new unit test (or script under `scripts/ci/test-*.sh`) verifies that providing these fields results in the expected stored values.
+    - The test fails when the change is not present, proving the new behavior is required.
+    - All existing tests continue to pass; `cargo fmt` and `cargo clippy --all-targets -D warnings` succeed with no new warnings.
+  depends_on: [EFFECTIVE-753]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: EVAL-085
   title: test eval 085
