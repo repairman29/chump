@@ -1925,7 +1925,7 @@ gaps:
   acceptance_criteria:
     - "1. fleet-brief ship-count NEVER silently returns 0 on a transient error — it retries, reports the real count, or prints an explicit 'ship-count unavailable (<reason>)' instead of a misleading 0. 2. Root-cause the intermittent-0 (candidate: git fetch failure / swallowed subshell error inside the script). 3. The 'looks healthy' verdict incorporates ship-rate — a 0-ship state with live workers is NOT 'healthy', it is 'measurement failed / investigate'. 4. Regression test: synthetic scenario where the count query fails -> brief shows 'unavailable', not '0 + healthy'."
   notes: |
-    Decomposed into 10 slices: CREDIBLE-521, CREDIBLE-522, CREDIBLE-523, CREDIBLE-524, CREDIBLE-525, CREDIBLE-526, CREDIBLE-527, CREDIBLE-528, CREDIBLE-529, CREDIBLE-530
+    Decomposed into 10 slices: CREDIBLE-597, CREDIBLE-598, CREDIBLE-599, CREDIBLE-600, CREDIBLE-601, CREDIBLE-602, CREDIBLE-603, CREDIBLE-604, CREDIBLE-605, CREDIBLE-606
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -13683,6 +13683,285 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: CREDIBLE-597
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-521: Reproduce intermittent ship-count zero issue (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Able to trigger a ship-count of 0 by forcing a git fetch timeout in a controlled environment
+    - Logs show that fleet-brief.sh receives empty output from the git fetch command
+    - Document steps to reproduce the failure
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-598
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-522: Add explicit error handling for git fetch failures in fleet-brief.sh (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - fleet-brief.sh checks the exit code of git fetch and captures stderr
+    - When git fetch fails, the script does not silently continue with empty data
+    - Error condition is logged with a clear message
+  depends_on: [CREDIBLE-597]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-599
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-523: Implement retry logic for git fetch in fleet-brief.sh (CREDIBLE-129 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Script retries git fetch up to 3 times with a short back‑off between attempts
+    - If all retries fail, the script proceeds to the unavailable handling path
+    - Retry attempts are logged with attempt number
+  depends_on: [CREDIBLE-598]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-600
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-524: Return explicit \"ship-count unavailable (<reason>)\" message on failure (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "When git fetch ultimately fails, fleet‑brief output shows \"Ships: unavailable (git fetch error)\""
+    - "The message replaces the misleading \"Ships: 0\""
+    - The reason string includes the captured git error or a generic placeholder
+  depends_on: [CREDIBLE-599]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-601
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-525: Adjust health verdict to incorporate ship-rate and unavailable state (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Health check marks fleet as \"measurement failed / investigate\" when ship-count is unavailable"
+    - "If ship-count is zero but active workers exist, health is also marked as \"measurement failed / investigate\""
+    - "The \"looks healthy\" banner no longer appears in these cases"
+  depends_on: [CREDIBLE-600]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-602
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-526: Add unit test for ship-count unavailable scenario (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit test mocks git fetch failure and verifies that fleet‑brief returns the unavailable message
+    - "Test asserts that health verdict is not \"healthy\" in this scenario"
+    - Test runs in the CI suite and passes
+  depends_on: [CREDIBLE-601]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-603
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-527: Add integration regression test simulating git fetch failure (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Integration test runs fleet‑brief in a sandbox where git fetch is forced to timeout
+    - "Test confirms output contains \"unavailable\" and health verdict is \"measurement failed / investigate\""
+    - Test is added to the regression test suite and passes
+  depends_on: [CREDIBLE-602]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-604
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-528: Enhance logging for git fetch errors in fleet-brief.sh (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When git fetch fails, error details (exit code, stderr) are logged at WARN level
+    - Logs include timestamp and the context of the ship-count query
+    - Log format matches existing logging conventions
+  depends_on: [CREDIBLE-598]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-605
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-529: Update documentation to describe unavailable ship-count and health logic (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README/ops guide includes a section on the new \"unavailable\" status"
+    - Health verdict rules are documented, explaining why a zero ship-rate with live workers is not healthy
+    - Documentation changes are reviewed and merged
+  depends_on: [CREDIBLE-601]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-606
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-530: Verify CI pipeline with new changes and ensure no regressions (CREDIBLE-129 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All existing unit and integration tests pass after changes
+    - New regression test (CREDIBLE-527) runs and passes in CI
+    - Pipeline reports zero failures and deployment artifacts are generated
+  depends_on: [CREDIBLE-603, CREDIBLE-605]
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: DOC-031
   domain: DOC
