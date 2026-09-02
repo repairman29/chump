@@ -4461,7 +4461,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 9 slices: CREDIBLE-422, CREDIBLE-423, CREDIBLE-424, CREDIBLE-425, CREDIBLE-426, CREDIBLE-427, CREDIBLE-428, CREDIBLE-429, CREDIBLE-430
+    Decomposed into 9 slices: CREDIBLE-504, CREDIBLE-505, CREDIBLE-506, CREDIBLE-507, CREDIBLE-508, CREDIBLE-509, CREDIBLE-510, CREDIBLE-511, CREDIBLE-512
   opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
@@ -4584,7 +4584,7 @@ gaps:
 - id: CREDIBLE-277
   domain: CREDIBLE
   title: EVENT_REGISTRY.yaml — the declared ground-truth contract every ambient consumer reads — is not parseable YAML
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -4599,6 +4599,8 @@ gaps:
     - "Command `python3 -c 'import yaml; yaml.safe_load(open(\"docs/observability/EVENT_REGISTRY.yaml\"))'` exits with status code 0."
     - Line 110 and all other unquoted backtick scalars in docs/observability/EVENT_REGISTRY.yaml are wrapped in quotes.
     - Verification checks in src/verify/rules/event_registry.rs attempt full YAML parsing of docs/observability/EVENT_REGISTRY.yaml and fail if parsing errors occur.
+  notes: |
+    [2026-09-02T06:58:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   evidence: |
     COMMAND: git show origin/main:docs/observability/EVENT_REGISTRY.yaml | python3 -c 'import yaml,sys; yaml.safe_load(sys.stdin)'  |  OUTPUT: yaml.scanner.ScannerError: found character '`' that cannot start any token, in "<stdin>", line 110, column 14. Line 110 is an unquoted trigger value beginning with a backtick: 'trigger: `chump gap audit-done` finds a DONE gap...'. Pre-existing on origin/main (f60ac216), not introduced by any recent branch.  |  THEORY: the file header declares itself a GROUND-TRUTH CONTRACT that fleet-brief, waste-tally, kpi-report and every ambient consumer reads to know which kind=X values to expect, and INFRA-1237 hardened a gate around it. But any consumer using a real YAML parser cannot load it at all — which means either no consumer actually parses it (the contract is documentation, not machinery) or those that do are silently falling back. Both possibilities are worth knowing, and the gate passing while the file is unparseable means the gate is grepping, not parsing. A contract that its own enforcement cannot parse is the same shape as a supervisor that reports health it never measured.  |  ALT: considered just quoting line 110 as a drive-by inside PR 3562 — rejected: the one-line fix is trivial but the question it raises (does anything actually parse this file?) is the real work, and burying it in a curator-supervisor diff would lose it. Considered treating it as cosmetic — rejected: INFRA-754/1237/1287 all cite consumers reading this file, so either those citations are wrong or the consumers are broken.
@@ -11023,6 +11025,301 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-504
+  domain: CREDIBLE
+  title: "CREDIBLE: Document all gate checks in CREDIBLE codebase (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown file lists every gate check with file path and identifier.
+    - The list is reviewed and approved by the code‑owner.
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-505
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect false‑positive farmer_auth_dead gates (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The farmer_auth_dead gate is instrumented to recognise false‑positive conditions.
+    - When a false‑positive is detected the gate is flagged for deletion.
+    - True‑positive behaviour is unchanged.
+  depends_on: [CREDIBLE-504]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-506
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect false‑positive phantom required checks (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Phantom required‑check gates are instrumented to recognise false‑positive conditions.
+    - False‑positive gates are flagged for deletion.
+    - Existing true‑positive logic remains intact.
+  depends_on: [CREDIBLE-504]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-507
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect false‑positive reapers freeing 0 bytes (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Reaper gates that free 0 bytes are detected as false‑positives.
+    - Detected gates are marked for removal.
+    - No regression for legitimate reaper behaviour.
+  depends_on: [CREDIBLE-504]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-508
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect false‑positive grace‑guards that don't guard (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Grace‑guard gates that perform no guarding are identified as false‑positives.
+    - Identified gates are flagged for deletion.
+    - Valid grace‑guard functionality is preserved.
+  depends_on: [CREDIBLE-504]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-509
+  domain: CREDIBLE
+  title: "CREDIBLE: Delete or disable identified false‑positive gates (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All gates flagged in slices 1‑4 are programmatically removed or disabled.
+    - Compilation succeeds without warnings.
+    - Runtime execution does not panic due to the deletions.
+  depends_on: [CREDIBLE-505, CREDIBLE-506, CREDIBLE-507, CREDIBLE-508]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-510
+  domain: CREDIBLE
+  title: "CREDIBLE: Instrument per‑gate false‑positive rate measurement (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Metrics emitted for each gate include total checks, false‑positives, and calculated FP rate.
+    - Metrics are logged to the standard CREDIBLE metrics sink.
+    - Metrics can be queried in CI to verify rates.
+  depends_on: [CREDIBLE-509]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-511
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit / integration tests for detection and deletion logic (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least one test per gate type verifies correct false‑positive detection.
+    - Tests fail when the new detection logic is removed.
+    - All new tests pass on the updated codebase.
+  depends_on: [CREDIBLE-509, CREDIBLE-510]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-512
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI scripts and enforce cargo fmt + clippy (CREDIBLE-271 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI runs cargo fmt and clippy with -D warnings on all targets.
+    - CI passes with zero formatting or clippy warnings.
+    - Existing test suite runs unchanged and all tests succeed.
+  depends_on: [CREDIBLE-511]
+  notes: |
+    [chump harvest check 'audit']
+    === primitives_index match for 'audit' ===
+    
+    === cluster keyword match for 'audit' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'audit' ===
+    
+    === repo-description match for 'audit' ===
+    
+    === HARVEST_ROADMAP.md mention of 'audit' (deep-scan findings) ===
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'audit' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: DOC-031
   domain: DOC
@@ -29704,9 +30001,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify `crates/chump-verify/src/external_verify_merge.rs` by enhancing the `test_command_specific` function to invoke `cargo test` on the repository after the merge verification steps and to return an error if the test command exits with a non‑zero status, thereby guaranteeing that no pre‑existing test regressions are introduced.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All pre‑existing `cargo test` suites pass.
-    - CI gate still succeeds for unchanged codebases.
+    - "crates/chump-verify/src/external_verify_merge.rs::test_command_specific returns an Err variant when the spawned `cargo test` process exits with a non‑zero status."
+    - Running `cargo test` in the repository root after the change exits with status 0, confirming all existing tests still pass.
+    - The CI pipeline step that executes `cargo test` (as defined in the repository’s CI configuration) succeeds without modifications to the codebase.
+    - The unit test module in src/tool_inventory.rs (line 572) continues to compile and run, showing that the added verification does not break existing test code.
   depends_on: [EFFECTIVE-732]
   notes: |
     [chump harvest check 'build']
@@ -72629,7 +72935,7 @@ gaps:
 - id: INFRA-3549
   domain: INFRA
   title: "INFRA: Implement fix or workaround for the identified root cause (INFRA-1655 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -72643,6 +72949,8 @@ gaps:
     - Running `bash scripts/ci/check-pr-scope.sh` in a CI environment completes without an actions/checkout@v6 error.
     - The report_violation function in scripts/ci/check-pr-scope.sh contains a checkout step using actions/checkout@v4 instead of @v6.
     - The script still checks out the repository and reports PR scope violations correctly.
+  notes: |
+    [2026-09-02T06:51:20Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3550
@@ -72802,12 +73110,14 @@ gaps:
 - id: INFRA-3561
   domain: INFRA
   title: "INFRA: Implement proposed fix (INFRA-1655 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - Fix is implemented and tested
     - Fix does not introduce new issues
+  notes: |
+    [2026-09-02T06:56:59Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3562
@@ -72888,12 +73198,14 @@ gaps:
 - id: INFRA-3568
   domain: INFRA
   title: "INFRA: Research and design the shared LLM service integration (INFRA-3462 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - A design document outlining the shared LLM service integration is created
     - The design document is reviewed and approved by the team
+  notes: |
+    [2026-09-02T06:57:39Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3569
