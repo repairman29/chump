@@ -20026,7 +20026,7 @@ gaps:
   acceptance_criteria:
     - "1. When the top-ranked scan gap is dedup-skipped (done or in-flight PR), pick_gap advances to the next implementable gap instead of exiting. 2. Bounded by a max-skips guard. 3. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit."
   notes: |
-    Decomposed into 4 slices: EFFECTIVE-620, EFFECTIVE-621, EFFECTIVE-622, EFFECTIVE-623
+    Decomposed into 4 slices: EFFECTIVE-817, EFFECTIVE-818, EFFECTIVE-819, EFFECTIVE-820
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
   evidence: |
@@ -35182,6 +35182,146 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-817
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-620: Detect dedup‑skipped gaps (done or in‑flight PR) (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Picker can query a gap and correctly identify it as 'dedup‑skipped' when the gap is marked done.
+    - Picker can query a gap and correctly identify it as 'dedup‑skipped' when an in‑flight PR exists for the gap.
+    - No change to picker flow; detection is logged for debugging.
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-818
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-621: Implement max‑skips guard (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A configurable max‑skips limit (default 5) is introduced.
+    - When the number of consecutive dedup‑skipped gaps reaches the limit, picker stops skipping and exits with a clear log message.
+    - Guard does not affect normal (non‑skipped) gap processing.
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-819
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-622: Advance picker to next implementable gap after a skip (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If the top‑ranked gap is dedup‑skipped, picker invokes the new advance logic.
+    - Picker selects the next gap that is not done and has no in‑flight PR.
+    - If no such gap exists before reaching max‑skips, picker exits per the guard.
+    - Behavior is logged for each skip and advance step.
+  depends_on: [EFFECTIVE-817, EFFECTIVE-818]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-820
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-623: Add tests for skip‑and‑advance behavior (EFFECTIVE-289 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit test where the top gap is covered by an open PR verifies that picker selects the next undone gap.
+    - Integration test confirms picker respects the max‑skips guard and exits after the limit is hit.
+    - All new code paths (detection, guard, advance) have ≥90% coverage.
+    - Tests run in CI and pass on the main branch.
+  depends_on: [EFFECTIVE-819]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: EVAL-085
   title: test eval 085
@@ -82939,11 +83079,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add advisory‑mode handling to the claim RPC registered in `register_worker_rpc_handlers` (crates/chump-coord/src/rpc.rs): when the environment variable `CHUMP_CLAIM_MODE` equals `advisory` and a lease overlap is detected, emit a structured JSON warning (`kind=lease_advisory_warning`) that includes the existing lease owner, the contested path, and the requesting PID, and return a successful claim response without acquiring an exclusive lock.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When CHUMP_CLAIM_MODE=advisory and path overlap detected, warning log includes lease owner, path, PID
-    - "Warning is emitted in structured JSON format (field: kind=lease_advisory_warning)"
-    - Claim operation does not block concurrent workers
-    - Integration test confirms advisory claim allows overlapping claims on same path
+    - "crates/chump-coord/src/rpc.rs: the claim handler emits a JSON log entry with `kind=\"lease_advisory_warning\"` and fields `lease_owner`, `path`, and `pid` when overlap is detected under advisory mode."
+    - "crates/chump-coord/src/rpc.rs: the claim handler returns a success RPC response (no error) for overlapping claims when `CHUMP_CLAIM_MODE=advisory`."
+    - Integration test `cargo test --test advisory_claim` passes, demonstrating that two workers can claim the same path concurrently and that the test output contains the advisory warning JSON line.
+    - "The warning log is produced via the structured logger (e.g., `tracing::info!`) and is not emitted when `CHUMP_CLAIM_MODE` is not set to `advisory`."
   depends_on: [INFRA-3765]
   notes: |
     [chump harvest check 'RESILIENT']
