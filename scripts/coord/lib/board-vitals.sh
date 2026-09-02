@@ -31,6 +31,8 @@
 #   * oauth_expired — ≥3 oauth_token_refresh_failed in-window with NO recovery
 #                   since (routine oauth_token_refreshed successes never page).
 #   * cost_cap    — a cost_cap_exceeded in-window (sub cap / OpenRouter credit).
+#   * almanac_coverage_low — almanac summarized_pct at/below its floor (default
+#                   95%, CREDIBLE-300) — the eyes going blind on fusion search.
 # oauth_expired + cost_cap residentize operator-recall.sh's proven signals+bar.
 # The `[board-vitals] tick` proof-of-life line (RESILIENT-410) still prints
 # EVERY beat regardless — that is journal observability, NOT a DM.
@@ -76,6 +78,9 @@
 #   CHUMP_BOARD_VITALS_OAUTH_FAIL_THR  oauth_token_refresh_failed count to page (default 3)
 #   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the merge-stall diagnosis (default sonnet)
 #   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM diagnosis on merge_stall (default 1)
+#   CHUMP_BOARD_VITALS_ALMANAC_COVERAGE_MIN_PCT  almanac summarized_pct floor (default 95;
+#                                      CREDIBLE-300). Reads $almanac_coverage_summarized_pct
+#                                      from the environment; unset/non-numeric = unknown, never paged.
 #
 # shellcheck shell=bash
 
@@ -469,6 +474,29 @@ board_vitals_check() {
         incidents=$((incidents+1))
         _bv_maybe_page "main_red" \
 "🔴 **main CI red ${main_red_span}m.** main has been failing for ${main_red_span}m (threshold ${main_red_min}m) — the whole fleet builds on red. A human should look. (board-vitals.sh)"
+    fi
+
+    # ── 4b · ALMANAC: summarized-coverage floor (CREDIBLE-300) ────────────────
+    # The eyes must not go blind. ORDER 2 (consult Almanac before any build) is
+    # fleet law — a fusion-search index that has silently drifted below the
+    # summarized floor degrades every dispatch to keyword-only without anyone
+    # noticing (chump sat at 68.6% for 10 days before RESILIENT-354's watchdog
+    # caught it). This residentizes that same floor check inside the
+    # already-resident board beat so it pages through the one page bar Jeff
+    # actually reads, instead of depending solely on a separate cron.
+    # `almanac_coverage_summarized_pct` is read from the environment (the
+    # caller — e.g. a cron wrapper around `almanac coverage --json` — computes
+    # and exports it); absent/non-numeric means "unknown", never paged.
+    local almanac_min_pct="${CHUMP_BOARD_VITALS_ALMANAC_COVERAGE_MIN_PCT:-95}"
+    if [[ "${almanac_coverage_summarized_pct:-}" =~ ^[0-9]+(\.[0-9]+)?$ ]]; then
+        if awk -v p="${almanac_coverage_summarized_pct}" -v f="${almanac_min_pct}" 'BEGIN{exit !(p<=f)}'; then
+            incidents=$((incidents+1))
+            echo "ALMANAC_COVERAGE_LOW" >&2
+            _bv_emit "board_vitals_almanac_coverage_low" \
+                "\"pct\":${almanac_coverage_summarized_pct},\"floor\":${almanac_min_pct}"
+            _bv_maybe_page "almanac_coverage_low" \
+"🔴 **Almanac coverage below floor.** summarized_pct=${almanac_coverage_summarized_pct}% (floor ${almanac_min_pct}%) — fusion NL search is degrading to keyword-only. The summarize driver may be dead or lagging; check scripts/ops/almanac-summarize-watchdog.sh. (board-vitals.sh)"
+        fi
     fi
 
     # ── 5 · FLOOR: credential / credit needs — genuinely Jeff's to fix ───────

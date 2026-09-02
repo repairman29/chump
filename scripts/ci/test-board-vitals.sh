@@ -266,6 +266,57 @@ BG="$TMP/blocked-green.jsonl"
 _notemitted "5 in-flight PRs + main GREEN → merge_stall still suppressed (unchanged behavior)" \
     "$BG" '"board_vitals_page_(dryrun|sent)".*"merge_stall"'
 
+# ── CREDIBLE-300: almanac coverage floor pages ALMANAC_COVERAGE_LOW ─────────
+echo "[test-board-vitals] almanac coverage below floor logs ALMANAC_COVERAGE_LOW + pages"
+AC="$TMP/almanac-low.jsonl"; : > "$AC"
+AC_ERR="$TMP/almanac-low.stderr"
+( set -a
+  CHUMP_AMBIENT_LOG="$AC"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-ac-low"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100
+  CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  almanac_coverage_summarized_pct=90
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>"$AC_ERR"
+grep -q '^ALMANAC_COVERAGE_LOW$' "$AC_ERR" \
+    && _ok "summarized_pct=90 (<=95 floor) logs ALMANAC_COVERAGE_LOW to stderr" \
+    || _fail "summarized_pct=90 did not log ALMANAC_COVERAGE_LOW (stderr: $(cat "$AC_ERR"))"
+_emitted "almanac coverage-low emits board_vitals_almanac_coverage_low" "$AC" '"board_vitals_almanac_coverage_low".*"pct":90'
+_emitted "almanac coverage-low would-page (dryrun)" "$AC" '"board_vitals_page_dryrun".*"almanac_coverage_low"'
+
+echo "[test-board-vitals] almanac coverage at/above floor is silent"
+AH="$TMP/almanac-high.jsonl"; : > "$AH"
+AH_ERR="$TMP/almanac-high.stderr"
+( set -a
+  CHUMP_AMBIENT_LOG="$AH"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-ac-high"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100
+  CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  almanac_coverage_summarized_pct=96
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>"$AH_ERR"
+grep -q 'ALMANAC_COVERAGE_LOW' "$AH_ERR" \
+    && _fail "summarized_pct=96 (above floor) unexpectedly logged ALMANAC_COVERAGE_LOW" \
+    || _ok "summarized_pct=96 (above floor) produces no ALMANAC_COVERAGE_LOW line"
+_notemitted "almanac coverage-high does not page" "$AH" '"board_vitals_page_dryrun".*"almanac_coverage_low"'
+
+echo "[test-board-vitals] almanac coverage unset/unknown is silent (never paged on missing data)"
+AU="$TMP/almanac-unset.jsonl"; : > "$AU"
+AU_ERR="$TMP/almanac-unset.stderr"
+( set -a
+  CHUMP_AMBIENT_LOG="$AU"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-ac-unset"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100
+  CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>"$AU_ERR"
+grep -q 'ALMANAC_COVERAGE_LOW' "$AU_ERR" \
+    && _fail "unset almanac_coverage_summarized_pct unexpectedly logged ALMANAC_COVERAGE_LOW" \
+    || _ok "unset almanac_coverage_summarized_pct produces no ALMANAC_COVERAGE_LOW line"
+
 echo
 echo "[test-board-vitals] PASS=$PASS FAIL=$FAIL"
 [[ "$FAIL" -eq 0 ]] || exit 1
