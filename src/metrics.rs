@@ -12,6 +12,7 @@ pub struct FleetMetrics {
     pub pr_metrics: PrMetrics,
     pub gap_metrics: GapMetrics,
     pub fleet_metrics: FleetVelocity,
+    pub almanac_metrics: AlmanacMetrics,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]
@@ -34,6 +35,11 @@ pub struct FleetVelocity {
     pub prs_per_minute: f64,
     pub gaps_per_hour: f64,
     pub active_workers: u32,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug)]
+pub struct AlmanacMetrics {
+    pub almanac_coverage_summarized_pct: f64,
 }
 
 pub fn snapshot() -> FleetMetrics {
@@ -59,6 +65,9 @@ pub fn snapshot() -> FleetMetrics {
             prs_per_minute: 0.0,
             gaps_per_hour: 0.0,
             active_workers: 0,
+        },
+        almanac_metrics: AlmanacMetrics {
+            almanac_coverage_summarized_pct: 0.0,
         },
     }
 }
