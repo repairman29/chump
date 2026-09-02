@@ -97488,7 +97488,7 @@ gaps:
 - id: RESILIENT-247
   domain: RESILIENT
   title: pr-rescue.sh exists but is not scheduled — stuck PRs rot silently until someone happens to look
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -97496,6 +97496,8 @@ gaps:
     - It surfaces PRs that are DIRTY/BLOCKED past a threshold age, with the diagnosis attached to the gap rather than printed and lost
     - "Receipt: PR #3499 (INFRA-1965) sat DIRTY for 9 hours with auto-merge armed and nobody watching. Its conflict was ONE region caused by two known main.rs commits, diagnosable in under a minute — but only because a human happened to ask 'can we help the fleet'. A 6000-line refactor of the fleet's hottest file rots by the hour"
     - "Pairs with CREDIBLE-220 (nothing watches non-chump CI): same class — an instrument exists, nothing runs it on a clock"
+  notes: |
+    [2026-09-02T05:21:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
@@ -103842,6 +103844,13 @@ gaps:
     [2026-09-02T04:24:56Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (101 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T04:29:11Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (102 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T04:30:09Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (103 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:16:43Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (104 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:18:41Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (105 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:21:04Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (106 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:23:20Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (107 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:25:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (108 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:27:46Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (109 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T05:30:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (110 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
