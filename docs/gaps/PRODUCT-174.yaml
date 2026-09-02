@@ -15,4 +15,14 @@
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
   source_doc: "holler:feedback_events"
   skills_required: "external_repo:repairman29/jeffadkins-dev"
+  notes: |
+    Shipped in repairman29/jeffadkins-dev#7 (merged f0c3ddf): reframed the
+    upshift-cli downloads line to a dated figure (week of 2026-07-18)
+    instead of an undated "last week" claim that had drifted from its own
+    live npm receipt link (70 at write time, 20 now); added og:image /
+    twitter:image pointing at the site-wide brand og.png (1200x630,
+    terminal-green identity, already used on / and /games/) and switched
+    twitter:card to summary_large_image. Live-verified post-deploy on
+    https://jeffadkins.dev/guides/upgrade-treadmill/ (both the new copy
+    and the og:image tag render on the live page).
 
