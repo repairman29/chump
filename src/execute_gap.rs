@@ -727,12 +727,26 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
         .unwrap_or(false);
     if dirty {
         eprintln!(
-            "[execute-gap] RESILIENT-597: ERROR — model skipped git_commit for {gap_id} — \
-             dirty tree detected, escalating to next model rung instead of auto-committing"
+            "[execute-gap] EFFECTIVE-312 (restored): {gap_id} left a dirty tree, auto-committing the real edit instead of discarding it"
         );
-        return Err(anyhow!(
-            "model skipped git_commit for {gap_id} — dirty tree, escalate to next model"
-        ));
+        let _ = tokio::process::Command::new("git")
+            .args(["add", "-A"])
+            .current_dir(repo_root)
+            .status()
+            .await;
+        let _ = tokio::process::Command::new("git")
+            .args([
+                "-c",
+                "user.name=chump-fleet",
+                "-c",
+                "user.email=fleet@chump.local",
+                "commit",
+                "-m",
+                &format!("{gap_id}: agent changes (auto-committed, model skipped git_commit)"),
+            ])
+            .current_dir(repo_root)
+            .status()
+            .await;
     }
     // CREDIBLE-170: verify the fix actually accomplishes the gap BEFORE shipping.
     // Cheap free-tier drafts are frequently plausible-but-ineffective (dead code,
