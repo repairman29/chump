@@ -13829,10 +13829,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Insert a new test case into `scripts/ci/test-gap-ship-auto-fetch.sh` that sets up a mock git‑fetch failure to represent the “ship‑count unavailable” condition, runs the `fleet‑brief` command, and uses the existing `fail` helper to assert that the command’s stdout contains the unavailable message and that the reported health verdict is not the literal string “healthy”. The test case is added alongside the existing ones without modifying their logic.
+    
+    Target file(s):
+    - scripts/ci/test-gap-ship-auto-fetch.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Unit test mocks git fetch failure and verifies that fleet‑brief returns the unavailable message
-    - "Test asserts that health verdict is not \"healthy\" in this scenario"
-    - Test runs in the CI suite and passes
+    - Running `GIT_FETCH_FAIL=1 ./scripts/ci/test-gap-ship-auto-fetch.sh` prints the exact phrase “ship count unavailable” to stdout.
+    - The same run prints a health verdict line that does **not** contain the word “healthy”.
+    - The script exits with status 0, reporting “PASS” for the newly added test case.
+    - All pre‑existing test cases in `scripts/ci/test-gap-ship-auto-fetch.sh` still pass and their output remains unchanged.
   depends_on: [CREDIBLE-601]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -98495,7 +98503,7 @@ gaps:
 - id: RESILIENT-080
   domain: RESILIENT
   title: "RESILIENT P1: killed sub-agent dispatches resume from checkpoint, not restart-from-zero (dispatch reset)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -98505,6 +98513,9 @@ gaps:
     - on re-dispatch/recovery the agent resumes from the WIP branch and finishes, rather than restarting from zero
     - a kill-mid-work-then-recover cycle is tested and completes without re-doing the already-finished steps
     - integrates with RESILIENT-059 durable execution (shared journal), no parallel checkpoint mechanism
+  notes: |
+    Decomposed into 10 slices: RESILIENT-654, RESILIENT-655, RESILIENT-656, RESILIENT-657, RESILIENT-658, RESILIENT-659, RESILIENT-660, RESILIENT-661, RESILIENT-662, RESILIENT-663
+    [2026-09-02T16:54:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4808B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
@@ -111066,6 +111077,282 @@ gaps:
     - Farmer logs a WARN/ERROR when a check fails and a restart event is emitted
     - Log entries include timestamps and the component name (NATS, webhook, deliberator)
   depends_on: [RESILIENT-650]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-654
+  domain: RESILIENT
+  title: "RESILIENT: Review RESILIENT-059 durable execution implementation (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Identify the journal API functions used for persisting execution state
+    - Document how the journal is initialized, written to, and read during resume
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-655
+  domain: RESILIENT
+  title: "RESILIENT: Design checkpointing approach for sub‑agent dispatches (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Select between commit‑and‑push vs journal entry for WIP checkpoint
+    - Define checkpoint interval (e.g., every N steps or time‑based)
+    - Specify branch naming convention for WIP branches
+  depends_on: [RESILIENT-654]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-656
+  domain: RESILIENT
+  title: "RESILIENT: Implement checkpoint hook in sub‑agent runner (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Runner creates a WIP commit and pushes to the claim branch at the defined interval
+    - Checkpoint data is written to the RESILIENT‑059 journal if chosen
+    - Hook logs a clear message when a checkpoint is performed
+  depends_on: [RESILIENT-655]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-657
+  domain: RESILIENT
+  title: "RESILIENT: Add detection of existing WIP branch on dispatch start (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Dispatch logic queries the claim repository for a WIP branch before starting work
+    - If a WIP branch exists, the dispatcher checks out that branch and loads the latest checkpoint
+    - Dispatcher logs whether it is starting fresh or resuming from a checkpoint
+  depends_on: [RESILIENT-656]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-658
+  domain: RESILIENT
+  title: "RESILIENT: Modify dispatch manager to resume from checkpoint instead of restarting (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a WIP branch is present, the manager restores state from the journal or last commit and continues execution
+    - No duplicate work is performed after a resume; steps already completed before the kill are skipped
+    - Token usage and wall‑clock time are reduced compared to a full restart
+  depends_on: [RESILIENT-657]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-659
+  domain: RESILIENT
+  title: "RESILIENT: Guard against parallel checkpoint creation (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Only one checkpoint operation can be in progress per sub‑agent at any time
+    - Concurrent attempts are serialized or ignored with a warning log
+    - Test confirms that rapid successive checkpoint triggers do not produce race conditions
+  depends_on: [RESILIENT-656]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-660
+  domain: RESILIENT
+  title: "RESILIENT: Unit tests for checkpoint creation and push (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test verifies that a checkpoint results in a new commit on the WIP branch
+    - Test verifies that the commit is pushed to the remote claim repository
+    - Test validates that journal entries (if used) contain expected state snapshot
+  depends_on: [RESILIENT-656, RESILIENT-659]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-661
+  domain: RESILIENT
+  title: "RESILIENT: Integration test: kill‑mid‑work‑then‑recover cycle (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Simulate a sub‑agent kill after several checkpoints
+    - Trigger a new dispatch and confirm it resumes from the latest checkpoint
+    - Assert that previously completed steps are not re‑executed and final output matches a full‑run baseline
+  depends_on: [RESILIENT-658, RESILIENT-660]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-662
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation for resilient sub‑agent dispatch (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes a section describing the checkpointing mechanism, branch naming, and recovery workflow
+    - Developer guide lists required environment variables and any new CLI flags
+  depends_on: [RESILIENT-658]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-663
+  domain: RESILIENT
+  title: "RESILIENT: Add new tests to CI pipeline (RESILIENT-080 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI runs unit tests from slice 6 and integration test from slice 7 on every push
+    - Pipeline fails if any of the new tests fail
+  depends_on: [RESILIENT-660, RESILIENT-661]
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
