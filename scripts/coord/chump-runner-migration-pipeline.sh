@@ -198,6 +198,13 @@ PY
   log "  stage 2 PR: $pr_url"
 }
 
+action_advance_to_design_pass() {
+  log "STAGE: design-pass — CI job for user-facing repos, no spec produced yet"
+  emit "design_pass" "started" "placeholder gate"
+  echo "design-pass: no spec produced" >&2
+  return 1
+}
+
 action_advance_to_acp_smoke() {
   log "STAGE 3: pushing migration PR for ACP smoke (editor-integration.yml)"
   emit "stage_3_migrate_acp_smoke" "started" "pushing PR"
@@ -342,6 +349,7 @@ case "${1:-}" in
   --loop)   cmd_loop ;;
   --status) cmd_status ;;
   --reset)  rm -f "$STATE_FILE"; echo "reset to stage_0";;
+  design-pass) action_advance_to_design_pass ;;
   -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \?//'; exit 0 ;;
   "")       tick ;;
   *)        echo "Unknown arg: $1"; exit 1 ;;
