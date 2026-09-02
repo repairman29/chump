@@ -11,6 +11,8 @@ Usage:
 """
 from __future__ import annotations
 import json
+import os
+import shutil
 from pathlib import Path
 
 # ---------------------------------------------------------------------------
@@ -386,6 +388,26 @@ HELD_OUT_TASKS: list[dict] = [
 CHECKPOINTS = [10, 25, 50, 75, 100]
 
 
+def compute_footprint_budget(host_cpu_cores: int, total_disk_gb: float) -> dict:
+    """Dynamic max caps for logs/target-dirs/caches, sized off disk capacity.
+
+    Caps are a fixed share of total disk (10% logs, 50% target dirs, 5%
+    caches) so a node's footprint scales with the iron it actually has
+    instead of a hardcoded constant that starves small nodes or wastes
+    space on large ones. host_cpu_cores is carried through for downstream
+    consumers that want to further scale per-core (e.g. parallel build
+    caches) without recomputing disk math.
+    """
+    disk_mb = total_disk_gb * 1024
+    return {
+        "host_cpu_cores": host_cpu_cores,
+        "total_disk_gb": total_disk_gb,
+        "log_cap_mb": round(disk_mb * 0.10),
+        "target_dir_cap_mb": round(disk_mb * 0.50),
+        "cache_cap_mb": round(disk_mb * 0.05),
+    }
+
+
 def build_accumulated_facts(checkpoint: int) -> list[str]:
     """Return all facts from sessions 1..checkpoint as a flat list."""
     facts = []
@@ -408,6 +430,9 @@ def build_fixture() -> dict:
     for cp in CHECKPOINTS:
         accumulated[str(cp)] = build_accumulated_facts(cp)
 
+    host_cpu_cores = os.cpu_count() or 1
+    total_disk_gb = shutil.disk_usage(Path(__file__).parent).total / (1024 ** 3)
+
     return {
         "_comment": (
             "EVAL-021: Longitudinal accumulation A/B. Synthetic 100-session trace "
@@ -422,6 +447,7 @@ def build_fixture() -> dict:
         "session_trace": session_trace,
         "accumulated_facts": accumulated,
         "held_out_tasks": HELD_OUT_TASKS,
+        "footprint_budget": compute_footprint_budget(host_cpu_cores, total_disk_gb),
     }
 
 
