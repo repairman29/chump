@@ -1,11 +1,11 @@
 {
   "name": "publisher",
   "version": "1.0.0",
-  "description": "EFFECTIVE-483: PUBLISHER.md platform rules, codified as typed config",
+  "description": "EFFECTIVE-483/484: PUBLISHER.md platform rules + Jeff's-voice style loader, codified as typed config",
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --import tsx --test platforms.test.ts"
+    "test": "node --import tsx --test platforms.test.ts style.test.ts"
   },
   "keywords": [],
   "author": "",
