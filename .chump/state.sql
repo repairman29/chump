@@ -3564,7 +3564,7 @@ gaps:
 - id: CREDIBLE-224
   domain: CREDIBLE
   title: planner's strategic inputs are inert — roadmap_alignment weight exists but roadmap_refs is never supplied in production
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -3580,6 +3580,8 @@ gaps:
     - In `crates/chump-planner/src/score.rs`, the `score` function must add a non‑zero contribution from `roadmap_alignment` when `telemetry.roadmap_refs` is `Some`; a unit test feeding a `TelemetryInputs` with a matching ref asserts that the returned score is greater than the baseline score without the ref.
     - "The integration test `crates/chump-planner/tests/integration.rs::live_gaps_dir_loads_without_panic` must pass without panicking, demonstrating that the planner no longer crashes due to missing `roadmap_refs`."
     - Executing `scripts/dev/mission-scoreboard.sh` (which invokes the planner) must output a line containing the value `roadmap_alignment=100.0` when the loaded `ROADMAP.md` contains at least one valid ID, confirming the lever is now active.
+  notes: |
+    [2026-09-02T05:51:00Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
@@ -3685,7 +3687,7 @@ gaps:
 - id: CREDIBLE-231
   domain: CREDIBLE
   title: software-factory matrix is a DELIVERY org chart — the business chairs (support, money, legal) are not layers at all
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -3696,6 +3698,8 @@ gaps:
     - "ALSO ALREADY EXISTS OUTSIDE THE MAP: LICENSING.md, RELEASE_CHECKLIST.md's revoke-before-publish gate, GIVEAWAY_SOP Phase E, and the cost governor / waste taxonomy in L6. The business functions are partly PRESENT as artifacts and gates while being ABSENT as roles — which is the same built-not-wired shape as ZERO-WASTE-036, one level up"
     - "DELIVERABLE: extend the matrix (or add a companion) with the business layers, each audited the same honest way — what exists, status, receipt — so 'autonomous software COMPANY' (essay phase 6, currently marked ❌ overall) is scored against the full org rather than the delivery half"
     - "GRAIN NOTE WORTH PRESERVING from DOC-079: stage-specialization wins where the artifact is a DIFF; job-title specialization matters at the boundaries where the artifact is a DECISION. Every missing business chair is a decision-artifact chair, which predicts they will need role shape, not stage shape"
+  notes: |
+    [2026-09-02T05:56:41Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -19327,7 +19331,7 @@ gaps:
     - "--apply is opt-in; bare invocation only prints the validated Roadmap JSON."
     - max_gaps clamped client-side (never trust model compliance).
   notes: |
-    Decomposed into 2 slices: EFFECTIVE-503, EFFECTIVE-504
+    Decomposed into 2 slices: EFFECTIVE-741, EFFECTIVE-742
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -29159,10 +29163,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend `fn free_tier_ship` in `src/execute_gap.rs` to insert four new free‑tier model definitions (longcat‑2.0‑free, mimo‑v2‑pro‑free, grok‑code, deepseek‑v4‑flash‑free) with their official context sizes and `tool_call=true`, and place them in the slot list according to the existing free‑tier priority ordering rule; also update `scripts/ab-harness/together_free_models.py::main` to emit these four identifiers in its free‑model enumeration output.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    - scripts/ab-harness/together_free_models.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The four named models are present in the slot list with correct context sizes and `tool_call=true`
-    - They are reachable in the post‑change reachability test
-    - Their priority values place them among the free tier according to the ordering rule
+    - "? src/execute_gap.rs:free_tier_ship contains a struct entry for each of the four models with the correct `context_size` value and `tool_call : true`."
+    - "src/execute_gap.rs:free_tier_ship returns a slot list where the four new models appear in the free‑tier segment sorted by the established priority ordering (i.e., they are positioned between existing free models as defined by the ordering rule)."
+    - "scripts/ab-harness/together_free_models.py:main prints the identifiers `longcat-2.0-free`, `mimo-v2-pro-free`, `grok-code`, and `deepseek-v4-flash-free` in its generated free‑model list."
+    - Running the repository’s post‑change reachability test (`cargo test --test reachability`) reports each of the four new models as reachable.
   depends_on: [EFFECTIVE-717]
   notes: |
     [chump harvest check 'inference']
@@ -29219,10 +29232,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a DISABLED_SLOTS array containing slot IDs 3 and 7 (with explanatory comments) to `scripts/lib/together-study-inference.sh` and modify the `together_study_inference_or_exit` function to skip loading any slot whose ID appears in this array, logging a clear “skipping disabled slot” message; update the fleet‑autopilot test script to assert that the reported number of reachable slots excludes these disabled slots.
+    
+    Target file(s):
+    - scripts/lib/together-study-inference.sh
+    - scripts/ci/test-fleet-autopilot.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Slots 3 and 7 are marked disabled in the configuration with explanatory comments
-    - The system skips loading these slots without raising errors
-    - A test confirms that disabled slots are not counted among reachable slots
+    - In `scripts/lib/together-study-inference.sh` a constant `DISABLED_SLOTS=(3 7)` is defined with comments indicating that these slots are intentionally disabled.
+    - The `together_study_inference_or_exit` function in `scripts/lib/together-study-inference.sh` checks `DISABLED_SLOTS` and does not attempt to load slot 3 or slot 7, emitting a log line “Skipping disabled slot 3” (or 7) and without raising an error.
+    - "When executing `scripts/ci/test-fleet-autopilot.sh`, the script prints a line “Reachable slots: N” where N equals the total configured slots minus the two disabled ones, confirming that slots 3 and 7 are not counted."
   notes: |
     [chump harvest check 'inference']
     === primitives_index match for 'inference' ===
@@ -29893,6 +29914,78 @@ gaps:
     
     === cross-pollination briefs mentioning 'readable' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-741
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement --apply flow: invoke provider_cascade::build_provider with RoadmapFromVisionContract::prompt (EFFECTIVE-425 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Running `chump roadmap-from-vision \"<vision>\" --domain INFRA --outcome <existing-id> --max-gaps 3 --apply` calls `provider_cascade::build_provider` with `RoadmapFromVisionContract::prompt()` (contracts.rs:753‑1081)."
+    - "The provider receives the vision string and returns a JSON block that `chump_handoff::extract_json_block` can extract."
+    - "Extracted JSON is parsed into a `Roadmap` and passes `Roadmap::validate()` without errors."
+    - When `--apply` is omitted, the command prints the validated Roadmap JSON and performs no side‑effects.
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-742
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Reserve outcome‑linked GapDrafts from validated Roadmap (EFFECTIVE-425 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - After a successful Roadmap validation, the implementation shells out to `chump gap reserve --outcome <existing-id>` for each gap up to the clamped `max_gaps` value.
+    - "Reservation logic reuses the umbrella‑gap flow (bootstrap.rs:871‑931) and respects MISSION‑045 similarity gates."
+    - At least one GapDraft is created and stored in the GapStore.
+    - Running `chump gap show <filed-id>` displays the GapDraft with the correct `outcome_id` set.
+    - "`max_gaps` is clamped client‑side; the command never attempts to reserve more gaps than the supplied limit."
+  depends_on: [EFFECTIVE-741]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: EVAL-085
   title: test eval 085
