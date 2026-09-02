@@ -22143,7 +22143,7 @@ gaps:
     - cargo test -p chump-gap-store passes new enricher unit tests (mock LLM/almanac, no live calls)
     - docs/strategy/MODEL_ROUTING_LADDER_2026-07-22.md gains an enricher section (extends EFFECTIVE-445, no dup) documenting the mechanism + before/after proof
   notes: |
-    Decomposed into 15 slices: EFFECTIVE-449, EFFECTIVE-450, EFFECTIVE-451, EFFECTIVE-452, EFFECTIVE-453, EFFECTIVE-454, EFFECTIVE-455, EFFECTIVE-456, EFFECTIVE-457, EFFECTIVE-458, EFFECTIVE-459, EFFECTIVE-460, EFFECTIVE-461, EFFECTIVE-462, EFFECTIVE-463
+    Decomposed into 15 slices: EFFECTIVE-758, EFFECTIVE-759, EFFECTIVE-760, EFFECTIVE-761, EFFECTIVE-762, EFFECTIVE-763, EFFECTIVE-764, EFFECTIVE-765, EFFECTIVE-766, EFFECTIVE-767, EFFECTIVE-768, EFFECTIVE-769, EFFECTIVE-770, EFFECTIVE-771, EFFECTIVE-772
   opened_date: '2026-08-23'
   outcome_id: EFFECTIVE-000
 
@@ -33047,6 +33047,456 @@ gaps:
     - Each sub‑gap includes a clear title, priority, and acceptance criteria
     - All sub‑gaps are linked to the parent gap EFFECTIVE-136
   depends_on: [EFFECTIVE-755]
+
+- id: EFFECTIVE-758
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create enricher.rs skeleton with module declaration and imports (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - File crates/chump-gap-store/src/maintenance/enricher.rs exists
+    - File contains `pub mod enricher;` or appropriate module header
+    - "File includes imports: serde::{Deserialize, Serialize}, crate::{GapFieldUpdate, GapRow, GapStore}, and re‑exports super::architect::{ArchitectError, LlmClient}"
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-759
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement Thinness struct, ThinReason enum, and is_thin helper (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - ThinReason enum with at least three variants and a `tag()` method
+    - Thinness struct with fields for reason list and description length
+    - "`fn is_thin(&self) -> bool` correctly returns true when description length < THIN_DESCRIPTION_CHARS or reason list non‑empty"
+    - All new code compiles with `cargo check`
+  depends_on: [EFFECTIVE-758]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-760
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement classify_thinness function (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`fn classify_thinness(gap: &GapRow) -> Thinness` is pure (no I/O)"
+    - Function uses ThinReason signals (e.g., missing file pointer, vague AC) to populate Thinness
+    - Unit test verifies thin and non‑thin cases (added in later test slice)
+    - Function is publicly exported
+  depends_on: [EFFECTIVE-759]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-761
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement parse_almanac_hits function (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`fn parse_almanac_hits(json: &str) -> Result<Vec<AlmanacHit>, _>` parses the `hits` array from almanac JSON"
+    - Handles missing or malformed fields gracefully, returning an error
+    - Compiles without warnings
+  depends_on: [EFFECTIVE-758]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-762
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement build_almanac_query function (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`fn build_almanac_query(gap: &GapRow) -> String` returns a query string that includes the gap title and description"
+    - Query string is deterministic and suitable for `almanac search`
+    - Function is covered by a unit test (added later)
+  depends_on: [EFFECTIVE-758]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-763
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement build_enrich_prompt function (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`fn build_enrich_prompt(gap: &GapRow, almanac_hits: &[AlmanacHit]) -> String` creates a single prompt for the capable model"
+    - Prompt includes gap description, almanac locations, and instruction to produce concrete spec
+    - Function returns a non‑empty string and compiles
+  depends_on: [EFFECTIVE-758]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-764
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement parse_enriched_spec function (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`fn parse_enriched_spec(raw: &str) -> Result<EnrichedSpec, _>` parses model output (JSON or YAML) into EnrichedSpec"
+    - Strips optional fences via `strip_fences` before parsing
+    - Returns error on invalid format
+    - Function is public and has a unit test (added later)
+  depends_on: [EFFECTIVE-758]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-765
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement to_field_update method on EnrichedSpec (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`fn to_field_update(&self) -> GapFieldUpdate` produces a GapFieldUpdate with concrete description, target file, and line"
+    - Method returns a usable update when `is_usable` is true
+    - Compiles and passes a basic sanity test
+  depends_on: [EFFECTIVE-764]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-766
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add CommandLlmClient with from_env and complete methods (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`CommandLlmClient::from_env()` reads `CHUMP_ENRICH_LLM_CMD` env var or falls back to default command"
+    - "`complete(&self, prompt: &str) -> Result<String, _>` invokes the command, captures stdout, and returns it"
+    - Handles command‑not‑found and non‑zero exit codes with proper errors
+    - Unit test using a mock command (e.g., `echo`) validates behavior
+  depends_on: [EFFECTIVE-758]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-767
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement Enricher struct and new() constructor (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`struct Enricher<A, L>` holds an `AlmanacClient` and an `LlmClient`"
+    - "`Enricher::new(almanac: A, llm: L) -> Self` constructs the struct"
+    - Generic bounds compile for the provided mock clients
+    - Publicly exported
+  depends_on: [EFFECTIVE-758, EFFECTIVE-766]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-768
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement Enricher::enrich pipeline (detect → almanac → model → writeback) (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`fn enrich(&self, gap: &GapRow, mode: EnrichMode) -> Result<EnrichOutcome, _>` runs:"
+    - 1. `classify_thinness` to decide thinness
+    - "2. `build_almanac_query` + `AlmanacClient::search`"
+    - 3. `build_enrich_prompt`
+    - "4. `LlmClient::complete`"
+    - 5. `parse_enriched_spec` and `to_field_update`
+    - 6. Returns `EnrichOutcome` indicating DryRun or Applied
+    - All steps are mockable for tests
+    - Compiles with no warnings
+  depends_on: [EFFECTIVE-760, EFFECTIVE-761, EFFECTIVE-762, EFFECTIVE-763, EFFECTIVE-764, EFFECTIVE-765, EFFECTIVE-767]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-769
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create standalone binary chump-gap-enricher.rs with CLI flags (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - File crates/chump-gap-store/src/bin/chump-gap-enricher.rs exists
+    - Binary parses `--apply` and `--dry-run` flags (default dry‑run)
+    - Binary constructs `CliAlmanacClient` and `CommandLlmClient` from env vars
+    - "Binary iterates over open gaps, calls `Enricher::enrich`, and writes updates when `--apply` is set"
+    - Binary exits with status 0 on success and prints a summary JSON of outcomes
+  depends_on: [EFFECTIVE-768]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-770
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Register binary in Cargo.toml (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Cargo.toml contains `[[bin]] name = \"chump-gap-enricher\"` with correct path"
+    - "`cargo build -p chump-gap-store` builds the binary without errors"
+  depends_on: [EFFECTIVE-769]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-771
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit tests for thinness detection, parsing, and Enricher pipeline with mocks (EFFECTIVE-446 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Tests cover:"
+    - "- `classify_thinness` returns Thinness with correct reasons"
+    - "- `parse_enriched_spec` parses JSON and YAML examples"
+    - "- `Enricher::enrich` works end‑to‑end using mock `AlmanacClient` and `LlmClient` (no external calls)"
+    - All tests pass with `cargo test -p chump-gap-store`
+    - Test module located under `mod tests` in enricher.rs
+  depends_on: [EFFECTIVE-760, EFFECTIVE-764, EFFECTIVE-768, EFFECTIVE-766]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-772
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add enricher section to MODEL_ROUTING_LADDER_2026-07-22.md (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "File docs/strategy/MODEL_ROUTING_LADDER_2026-07-22.md contains a new heading `## Gap Spec Enricher`"
+    - Section describes detection, almanac lookup, prompt building, model call, and write‑back flow
+    - Includes before/after proof snippet referencing EFFECTIVE-445
+    - Documentation builds without markdown lint errors
+  depends_on: [EFFECTIVE-769]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: EVAL-085
   title: test eval 085
@@ -97713,7 +98163,7 @@ gaps:
 - id: RESILIENT-077
   domain: RESILIENT
   title: "RESILIENT P1: farmer guards trunk + CI capacity — trunk-red auto-dispatch, ghost-runner restart, saturation throttle (playbook #5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -97723,13 +98173,15 @@ gaps:
     - farmer detects a ghost-online self-hosted runner (online but idle while jobs are queued) and restarts it within a tick
     - farmer detects sustained CI saturation (queued > runner_count for > N min) and emits kind=ci_saturation_throttle so the conductor/operator can dial back
     - all three checks are skipped when AUTONOMY_LEVEL=0
+  notes: |
+    [2026-09-02T16:16:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4808B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
 - id: RESILIENT-078
   domain: RESILIENT
   title: "RESILIENT P1: farmer guards coordination substrate — NATS + smee/webhook/cache + deliberator liveness (playbook #6)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -97739,6 +98191,9 @@ gaps:
     - farmer detects stale github_cache.db (no update in > N min while PRs are open) and restarts the webhook path
     - farmer detects the deliberator down or stuck heartbeat-only (not emitting consensus_result) and restarts it so consensus can decide
     - all checks are skipped when AUTONOMY_LEVEL=0
+  notes: |
+    Decomposed into 15 slices: RESILIENT-639, RESILIENT-640, RESILIENT-641, RESILIENT-642, RESILIENT-643, RESILIENT-644, RESILIENT-645, RESILIENT-646, RESILIENT-647, RESILIENT-648, RESILIENT-649, RESILIENT-650, RESILIENT-651, RESILIENT-652, RESILIENT-653
+    [2026-09-02T16:25:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4808B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
@@ -109918,6 +110373,420 @@ gaps:
   acceptance_criteria:
     - macOS tests run successfully in CI under the chosen approach
   depends_on: [RESILIENT-636]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-639
+  domain: RESILIENT
+  title: "RESILIENT: Add AUTONOMY_LEVEL guard to farmer tick (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Farmer reads AUTONOMY_LEVEL environment variable at start of each tick
+    - When AUTONOMY_LEVEL is 0, none of the coordination substrate checks or restarts are executed
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-640
+  domain: RESILIENT
+  title: "RESILIENT: Implement NATS liveness check function (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Function `is_nats_alive()` returns true when a ping to the NATS server succeeds
+    - Function returns false when the ping fails or times out
+  depends_on: [RESILIENT-639]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-641
+  domain: RESILIENT
+  title: "RESILIENT: Implement NATS restart logic (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When `is_nats_alive()` returns false, farmer emits a `restart_nats` event
+    - Farmer attempts to restart the NATS server process within the same tick
+    - Successful restart results in `is_nats_alive()` returning true on the next check
+  depends_on: [RESILIENT-640]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-642
+  domain: RESILIENT
+  title: "RESILIENT: Unit test NATS liveness and restart (RESILIENT-078 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test verifies `is_nats_alive()` returns true for a mock healthy NATS server
+    - Test verifies `is_nats_alive()` returns false for a mock unavailable NATS server
+    - Test verifies farmer emits `restart_nats` and calls restart logic when NATS is down
+  depends_on: [RESILIENT-640, RESILIENT-641]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-643
+  domain: RESILIENT
+  title: "RESILIENT: Implement smee-client/webhook receiver health check (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Function `is_webhook_path_alive()` returns true when both smee-client and github-webhook-receiver processes are running
+    - Function returns false if either process is not running
+  depends_on: [RESILIENT-639]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-644
+  domain: RESILIENT
+  title: "RESILIENT: Detect stale github_cache.db (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Function `is_github_cache_fresh()` reads the last-modified timestamp of `github_cache.db`
+    - Function returns false when the timestamp is older than N minutes while there are open PRs
+    - Function returns true otherwise
+  depends_on: [RESILIENT-639]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-645
+  domain: RESILIENT
+  title: "RESILIENT: Implement restart of webhook path when down or stale (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When `is_webhook_path_alive()` or `is_github_cache_fresh()` returns false, farmer emits a `restart_webhook_path` event
+    - Farmer restarts both smee-client and github-webhook-receiver processes within the same tick
+    - After restart, both health checks return true
+  depends_on: [RESILIENT-642, RESILIENT-643, RESILIENT-644]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-646
+  domain: RESILIENT
+  title: "RESILIENT: Unit test webhook health and stale detection (RESILIENT-078 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test verifies `is_webhook_path_alive()` true when mock processes are alive and false when one is missing
+    - Test verifies `is_github_cache_fresh()` true for recent timestamp and false for stale timestamp with open PRs
+    - Test verifies farmer emits `restart_webhook_path` when either check fails
+  depends_on: [RESILIENT-642, RESILIENT-643, RESILIENT-644, RESILIENT-645]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-647
+  domain: RESILIENT
+  title: "RESILIENT: Implement deliberator heartbeat detection (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Function `is_deliberator_active()` returns true when a consensus_result has been emitted within the configured heartbeat interval
+    - Function returns false when only heartbeat messages are observed or no messages at all
+  depends_on: [RESILIENT-639]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-648
+  domain: RESILIENT
+  title: "RESILIENT: Implement deliberator restart logic (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When `is_deliberator_active()` returns false, farmer emits a `restart_deliberator` event
+    - Farmer restarts the deliberator daemon within the same tick
+    - After restart, `is_deliberator_active()` returns true on the next check
+  depends_on: [RESILIENT-647]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-649
+  domain: RESILIENT
+  title: "RESILIENT: Unit test deliberator detection and restart (RESILIENT-078 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test verifies `is_deliberator_active()` true when recent consensus_result is present
+    - Test verifies false when only heartbeat messages are present
+    - Test verifies farmer emits `restart_deliberator` and calls restart when detection is false
+  depends_on: [RESILIENT-647, RESILIENT-648]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-650
+  domain: RESILIENT
+  title: "RESILIENT: Integrate all substrate checks into farmer tick loop (RESILIENT-078 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Farmer executes NATS, webhook, and deliberator checks each tick when AUTONOMY_LEVEL >= 1
+    - Each failed check triggers its corresponding restart event within the same tick
+    - No check is executed when AUTONOMY_LEVEL is 0
+  depends_on: [RESILIENT-639, RESILIENT-640, RESILIENT-641, RESILIENT-642, RESILIENT-643, RESILIENT-644, RESILIENT-645, RESILIENT-647, RESILIENT-648, RESILIENT-649]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-651
+  domain: RESILIENT
+  title: "RESILIENT: Integration test full resilience scenario (RESILIENT-078 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Simulate NATS down, stale github_cache.db, and deliberator heartbeat-only in a test environment
+    - Verify farmer detects each condition and emits the correct restart events
+    - Verify that after restarts, all health checks return true
+  depends_on: [RESILIENT-650]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-652
+  domain: RESILIENT
+  title: "RESILIENT: Update FARMER_PLAYBOOK.md with new guard behavior (RESILIENT-078 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Documentation includes description of precondition #6 and the new automatic restart behavior"
+    - Configuration notes for AUTONOMY_LEVEL and heartbeat intervals are added
+  depends_on: [RESILIENT-650]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-653
+  domain: RESILIENT
+  title: "RESILIENT: Add structured logging for each check and restart event (RESILIENT-078 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Farmer logs a DEBUG/INFO message when each health check starts and ends
+    - Farmer logs a WARN/ERROR when a check fails and a restart event is emitted
+    - Log entries include timestamps and the component name (NATS, webhook, deliberator)
+  depends_on: [RESILIENT-650]
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
