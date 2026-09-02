@@ -64,6 +64,38 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
     }
 }
 
+/// RESILIENT-072: scripts/ci/cargo-test-with-rerun.sh REQUIRES `-- <cmd>
+/// [args...]` — without the separator + a real cargo invocation it prints
+/// `usage: ...` and exits non-zero, silently skipping every test. Kept as a
+/// standalone pure function so the argv shape is covered by a regression
+/// test (see `test_cargo_test_argv_includes_dashdash_cmd` below) instead of
+/// only being exercised end-to-end.
+fn cargo_test_argv(nextest_available: bool) -> &'static [&'static str] {
+    if nextest_available {
+        &[
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "nextest",
+            "run",
+            "--bin",
+            "chump",
+        ]
+    } else {
+        &[
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "test",
+            "--bin",
+            "chump",
+            "--tests",
+        ]
+    }
+}
+
 /// INFRA-3377 (META-070): staged-diff commit-content-guards mirrored from
 /// `scripts/git-hooks/pre-commit-*.sh` into `chump preflight --pre-commit`.
 /// Each of these scripts inspects `git diff --cached` directly (same input
@@ -1582,30 +1614,11 @@ pub fn run(argv: &[String]) -> i32 {
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);
-            let test_argv: &[&str] = if nextest_available {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "nextest",
-                    "run",
-                    "--bin",
-                    "chump",
-                ]
-            } else {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "test",
-                    "--bin",
-                    "chump",
-                    "--tests",
-                ]
-            };
-            steps.push(step("cargo-test", test_argv, GateKind::Rust));
+            steps.push(step(
+                "cargo-test",
+                cargo_test_argv(nextest_available),
+                GateKind::Rust,
+            ));
         }
 
         // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
@@ -3215,6 +3228,35 @@ mod tests {
         let out = run_step(&s);
         assert_eq!(out.status, Status::Fail);
         assert!(out.captured.is_some());
+    }
+
+    // RESILIENT-072: cargo-test-with-rerun.sh usage-bug regression — the
+    // wrapper REQUIRES a `-- <cmd> [args...]` separator; without it, it
+    // prints `usage: ...` and exits non-zero, silently skipping every test.
+    #[test]
+    fn cargo_test_argv_includes_dashdash_cmd_nextest() {
+        let argv = cargo_test_argv(true);
+        assert_eq!(argv[0], "bash");
+        assert_eq!(argv[1], "scripts/ci/cargo-test-with-rerun.sh");
+        assert_eq!(
+            argv[2], "--",
+            "wrapper requires a -- separator before <cmd>"
+        );
+        assert_eq!(argv[3], "cargo");
+        assert!(argv.contains(&"nextest"));
+    }
+
+    #[test]
+    fn cargo_test_argv_includes_dashdash_cmd_fallback() {
+        let argv = cargo_test_argv(false);
+        assert_eq!(argv[0], "bash");
+        assert_eq!(argv[1], "scripts/ci/cargo-test-with-rerun.sh");
+        assert_eq!(
+            argv[2], "--",
+            "wrapper requires a -- separator before <cmd>"
+        );
+        assert_eq!(argv[3], "cargo");
+        assert!(argv.contains(&"test"));
     }
 
     // META-208: "flake-ingest" arm runs in-process (no subprocess spawn) —
