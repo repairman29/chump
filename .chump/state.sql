@@ -12407,9 +12407,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `run` function in `crates/chump-preflight/src/preflight.rs` to invoke `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` sequentially, capture their exit codes, and abort with a non‑zero status and a clear error message if either command reports formatting changes needed or any clippy warnings. On success, emit explicit “cargo fmt passed” and “cargo clippy passed” messages before returning a zero exit code.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt runs without changes needed
-    - cargo clippy --all-targets -D warnings passes with zero warnings
+    - "? Running `cargo run --bin chump-preflight` executes `cargo fmt -- --check` and the process exits with code 1 and prints “cargo fmt failed : formatting changes required” when the repository is not properly formatted."
+    - "? Running `cargo run --bin chump-preflight` executes `cargo clippy --all-targets -D warnings` and the process exits with code 1 and prints “cargo clippy failed : warnings detected” when any clippy warning is present."
+    - When both `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` succeed, the `run` function prints “cargo fmt passed” and “cargo clippy passed” and exits with code 0.
   depends_on: [CREDIBLE-547, CREDIBLE-548, CREDIBLE-549, CREDIBLE-550]
   notes: |
     [chump harvest check 'committed']
@@ -12435,9 +12443,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a new subsection titled “Provider Manifest” into the CP‑007‑acp‑alignment.md document, describing the manifest file’s purpose, its YAML/JSON schema, and how it supersedes a .env file for slot‑tag values, including an example manifest code block.
+    
+    Target file(s):
+    - docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - README or docs folder includes a section explaining the provider manifest file, its format, and how it replaces .env for slot tags
-    - Documentation builds without errors
+    - CP-007-acp-alignment.md contains a level‑2 heading “Provider Manifest” with explanatory text about the manifest file and its role replacing .env for slot tags.
+    - CP-007-acp-alignment.md includes a fenced code block (language yaml) that shows a valid example manifest containing at least the keys `provider` and `slots`.
+    - Executing the documentation build command (`mdbook build docs`) exits with status 0 and the generated HTML file `docs/arsenal/cross-pollination/CP-007-acp-alignment.html` contains the phrase “Provider Manifest”.
   depends_on: [CREDIBLE-546, CREDIBLE-547]
   notes: |
     [chump harvest check 'committed']
@@ -13432,10 +13448,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the `run_claim` function in `scripts/ci/test-claim-nugget-prefetch.sh` to invoke `sccache --show-stats` after the representative build, parse the output, and abort with a non‑zero status if the hit‑rate is greater than 0 %. Add an explanatory comment and an `echo` that documents the need for `--remap-path-prefix` to avoid path‑poisoning when sccache is later re‑enabled.
+    
+    Target file(s):
+    - scripts/ci/test-claim-nugget-prefetch.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Run a representative build with sccache enabled
-    - Show that hit rate is 0 % (ZERO‑WASTE‑021)
-    - Document that --remap-path-prefix is required to avoid path poisoning
+    - In `scripts/ci/test-claim-nugget-prefetch.sh`, the `run_claim` function calls `sccache --show-stats` and exits with status 1 when the parsed hit‑rate percentage is > 0.
+    - "The script prints a line matching `sccache hit rate: 0%` to stdout during a successful run with sccache disabled."
+    - A comment or `echo` statement near the new verification step explicitly mentions that `--remap-path-prefix` is required to avoid path poisoning.
+    - "? Executing the CI job that sources `scripts/ci/test-claim-nugget-prefetch.sh` completes without error and the job log contains both the “sccache hit rate : 0%” line and the `--remap-path-prefix` notice."
   notes: |
     [chump harvest check 'fleet']
     === primitives_index match for 'fleet' ===
