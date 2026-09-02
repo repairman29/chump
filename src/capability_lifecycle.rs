@@ -94,8 +94,7 @@ impl CapabilityLifecycleStore {
         if content.trim().is_empty() {
             return Ok(HashMap::new());
         }
-        serde_json::from_str(&content)
-            .with_context(|| format!("parsing {}", self.path.display()))
+        serde_json::from_str(&content).with_context(|| format!("parsing {}", self.path.display()))
     }
 
     fn save(&self, records: &HashMap<String, CapabilityRecord>) -> Result<()> {
