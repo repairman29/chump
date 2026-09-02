@@ -31,3 +31,12 @@ green (run 32260670533).
 `[PASS]`/`[FAIL]` marker convention internally (they rely on bare
 `set -euo pipefail` exits). The step name narrows a future failure to one
 script, but not to which assertion inside it. Follow-up filed: `META-023`.
+
+## Closure (2026-09-02)
+
+The gap record was left `status: open` in `docs/gaps/RESILIENT-044.yaml`
+despite the diagnosis (#3733) and write-up (#3950) above already satisfying
+every AC. Re-verified today: `scripts/ci/test-audit-step-isolation.sh` (the
+regression guard added in #3733) still passes, and the last 100 `Audit`
+workflow runs on GitHub show zero real failures (76 success / 18
+superseded-cancelled / 0 red). Closing the gap record to match reality.
