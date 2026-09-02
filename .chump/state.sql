@@ -19081,6 +19081,8 @@ gaps:
     - "The change described by \"'no readable intent documents' on repos that HAVE them (olive has CLAUDE.md/MANIFESTO.md/README.md/docs/*.md) — blocks autonomous scout\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: EFFECTIVE-734, EFFECTIVE-735, EFFECTIVE-736, EFFECTIVE-737, EFFECTIVE-738, EFFECTIVE-739, EFFECTIVE-740
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -28274,9 +28276,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    
+    
+    Target file(s):
+    - scripts/dev/outcomes-delivered.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The tracemap output includes a final line in the format 'Coverage: interpreted X of Y events (Z%)' where Y is the total event count and X is the count of events that were actually grouped/summarized"
-    - When only gap-run events are interpreted (after slice 0), the coverage percentage reflects the true share of interpreted events (e.g., ~0.45%)
+    - The `count_json_events` function in `scripts/dev/outcomes-delivered.sh` returns the exact total event count Y, verified by a unit test that supplies a known JSON file and asserts the returned value.
+    - "? Running `scripts/dev/outcomes-delivered.sh` on a normal dataset produces standard‑output that contains a line matching the regex `^Coverage : interpreted \\d+ of \\d+ events \\(\\d+\\.\\d+%\\)$`."
+    - Executing `scripts/dev/outcomes-delivered.sh --slice 0` (interpreting only gap‑run events) prints a coverage line whose percentage is approximately `0.45%` (within ±0.05% of 0.45) for the provided test fixture.
+    - The coverage line appears as the final non‑empty line of the script’s output, after all other tracemap information.
   depends_on: [EFFECTIVE-686]
   notes: |
     [chump harvest check 'almanac']
@@ -29701,6 +29712,187 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-734
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Locate and document current intent‑document detection logic (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Source files and functions that enforce the \"no readable intent documents\" rule are identified"
+    - A short markdown note is added to the repo summarizing the code path and its current behavior
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-735
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add guard to bypass \"no readable intent documents\" when intent files exist (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The code now checks for the presence of CLAUDE.md, MANIFESTO.md, README.md, or any *.md under docs/ before emitting the error
+    - The new guard compiles without warnings
+  depends_on: [EFFECTIVE-734]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-736
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update autonomous scout flow to continue when readable intent docs are found (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scout no longer aborts the onboarding process for repositories that contain at least one readable intent document
+    - Existing scout behavior for repositories without intent docs remains unchanged
+  depends_on: [EFFECTIVE-735]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-737
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create unit test confirming scout passes with existing intent documents (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A new `#[test]` in the Rust test suite creates a temporary repo containing CLAUDE.md and verifies that the scout returns success"
+    - The test fails when the guard from slice 2 is removed
+  depends_on: [EFFECTIVE-736]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-738
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add CI script test‑intent‑docs.sh to validate end‑to‑end behavior (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script runs the full onboarding pipeline against a fixture repo with intent docs and exits with code 0 only after slice 2 is applied
+    - Running the script against the same fixture before the change exits with a non‑zero code
+  depends_on: [EFFECTIVE-737]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-739
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run cargo fmt, clippy and ensure no new warnings (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` makes no changes"
+    - "`cargo clippy --all-targets -D warnings` passes cleanly"
+  depends_on: [EFFECTIVE-738]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-740
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update project CHANGELOG and onboarding documentation (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CHANGELOG contains an entry describing the new handling of existing intent documents
+    - Onboarding docs mention that repositories with CLAUDE.md, MANIFESTO.md, README.md, or docs/*.md are no longer blocked
+  depends_on: [EFFECTIVE-739]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
 
 - id: EVAL-085
   title: test eval 085
@@ -79627,13 +79819,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add comprehensive assay validation inside the `execute_tool_calls_sequential` function in `src/task_executor.rs` to reject gaps that have empty or placeholder descriptions, empty or placeholder acceptance‑criteria lists, estimated effort exceeding a configurable `MAX_GAP_SIZE`, references to non‑existent dependency IDs, or that are near‑duplicate of an existing open gap; on rejection the gap remains in `needs-prep` status and a detailed failure reason is recorded.
+    
+    Target file(s):
+    - src/task_executor.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Gap fails assay if description is empty or only TODO placeholders
-    - Gap fails assay if AC list is empty or contains only generic placeholders
-    - Gap fails assay if estimated effort exceeds defined MAX_GAP_SIZE (configurable)
-    - Gap fails assay if it contains false dependencies (dependency IDs that do not exist)
-    - Gap fails assay if a near‑duplicate open gap exists (using existing consolidate similarity logic)
-    - When a gap fails, its status remains needs‑prep and a detailed reason is stored
+    - "In `src/task_executor.rs::execute_tool_calls_sequential`, processing a gap whose `description` field is empty or contains only a TODO placeholder returns an error with the message “description empty” and leaves the gap status as `needs-prep`."
+    - "In `src/task_executor.rs::execute_tool_calls_sequential`, processing a gap whose `acceptance_criteria` list is empty or contains only generic placeholders returns an error with the message “acceptance criteria empty” and leaves the gap status as `needs-prep`."
+    - "In `src/task_executor.rs::execute_tool_calls_sequential`, if a gap’s `estimated_effort` exceeds the constant `MAX_GAP_SIZE` defined in the same file, the function returns an error with the message “effort exceeds limit” and the gap status stays `needs-prep`."
+    - "In `src/task_executor.rs::execute_tool_calls_sequential`, providing a dependency ID that does not exist in the current gap index causes an error with the message “false dependency” and retains `needs-prep`; similarly, when the existing duplicate‑detection logic flags a near‑duplicate open gap, the function returns an error with the message “duplicate gap detected” and the status remains `needs-prep`."
   depends_on: [INFRA-3878]
 
 - id: INFRA-3880
