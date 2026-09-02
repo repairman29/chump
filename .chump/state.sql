@@ -6760,11 +6760,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `board_vitals_check` function in `scripts/coord/lib/board-vitals.sh` to read the current `almanac_coverage_summarized_pct` value (from an environment variable or config), compare it against the 95 % threshold, and raise an alert by logging a distinct message (e.g., “ALMANAC_COVERAGE_LOW”) and incrementing a health counter when the value is ≤ 95 %.
+    
+    Target file(s):
+    - scripts/coord/lib/board-vitals.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A checker (e.g., periodic task or health endpoint) evaluates the current `almanac_coverage_summarized_pct` value.
-    - If the value is less than or equal to 95%, an alert is raised (log, counter, or notification).
-    - "An integration (or unit with mock) test verifies: above 95% no alert, at or below 95% alert triggers; the test fails without the checker logic."
-    - The change passes `cargo check`, `cargo fmt`, and `cargo clippy --all-targets -D warnings` with no regressions.
+    - In `scripts/coord/lib/board-vitals.sh`, the `board_vitals_check` function includes a conditional that logs the exact string “ALMANAC_COVERAGE_LOW” to stderr when `$almanac_coverage_summarized_pct` is ≤ 95.
+    - Running `almanac_coverage_summarized_pct=96 scripts/coord/lib/board-vitals.sh check` produces no line containing “ALMANAC_COVERAGE_LOW” in its combined stdout/stderr output.
+    - Running `almanac_coverage_summarized_pct=95 scripts/coord/lib/board-vitals.sh check` produces a line containing “ALMANAC_COVERAGE_LOW” in its combined stdout/stderr output.
+    - Executing `cargo clippy --all-targets -D warnings` after the change completes without emitting new warnings.
   depends_on: [CREDIBLE-352]
   notes: |
     [chump harvest check 'Almanac']
@@ -27912,10 +27919,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new helper function `detect_config_findings` to `scripts/ci/test-organ-watchdog.sh` that inspects the current environment and command‑line arguments for CARGO_TARGET_DIR resolution paths, conflicting BEAST_MODE flags (`--beast-mode` vs `--beastmode`), and multiple sources of OPENAI_API_KEY. Extend the existing `mk_timer_stub` routine to invoke this helper before the main test loop, and have the helper emit standardized “finding” lines to stdout prefixed with `FINDING:`.
+    
+    Target file(s):
+    - scripts/ci/test-organ-watchdog.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Sweep can surface CARGO_TARGET_DIR resolved in multiple ways across sites (e.g. the known 14-way chump case) as a finding.
-    - Sweep can surface conflicting BEAST_MODE endpoint flags including the beast-mode.dev vs beastmode.dev typo-domain class.
-    - Sweep can surface OPENAI_API_KEY with multiple defaults over reads (e.g. 4 defaults over 49 reads in Maclawd) as a finding.
+    - "? Running `scripts/ci/test-organ-watchdog.sh` with `CARGO_TARGET_DIR` set via an env var and also via a config file prints a line `FINDING : CARGO_TARGET_DIR resolved from multiple sources` to stdout."
+    - "Invoking `scripts/ci/test-organ-watchdog.sh --beast-mode=dev --beastmode=dev` produces the exact output line `FINDING: Conflicting BEAST_MODE endpoint flags detected` in the script’s log."
+    - "? When `OPENAI_API_KEY` is defined in at least two environment sources (e.g., exported env var and a `.env` file) and the script reads it 49 times, the output includes `FINDING : OPENAI_API_KEY has 4 defaults over 49 reads`."
+    - "The new function `detect_config_findings` is called from `mk_timer_stub` and its output appears before any test execution begins, verified by grepping for `FINDING:` in the script’s stdout."
   depends_on: [EFFECTIVE-671, EFFECTIVE-676]
   notes: |
     [chump harvest check 'schedule']
@@ -27968,11 +27983,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a POST /api/drop route inside the `build_api_router` function in `src/web_server.rs` that parses a JSON payload `{ "sentence": "...", "citation": "..." }`, calls a new `add_drop` helper in `chump-gap-store::lib` to persist the drop to a JSON file in the curator’s data directory, returns `201 Created` with a JSON body `{ "id": "<generated‑uuid>" }`, and implements idempotency by returning the existing drop ID when the same sentence‑citation pair is submitted again.
+    
+    Target file(s):
+    - src/web_server.rs
+    - .claude/worktrees/infra-3643-fleet-1-20260822-081649/crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Agent can POST to /api/drop with JSON {\"sentence\": \"...\", \"citation\": \"...\"} and receive 201 Created with the drop ID."
-    - "The idea is stored in a durable queue (e.g., a JSON file in the curator's data directory) with fields: id, sentence, citation, status ('new'), timestamp."
-    - The queue survives session exit (persisted to disk).
-    - "The endpoint is idempotent: duplicate submissions return the existing drop ID."
+    - "A `curl -X POST http://localhost:8080/api/drop -H \"Content-Type: application/json\" -d '{\"sentence\":\"hello world\",\"citation\":\"ref1\"}'` request returns HTTP 201 and a JSON response containing an `\"id\"` field that matches a new entry appended to the queue file managed by `chump-gap-store::add_drop`."
+    - "Re‑posting the identical payload (`sentence\":\"hello world\",\"citation\":\"ref1\"`) returns HTTP 200 (or 201) with the same `\"id\"` as the first request and does **not** create a second entry in the JSON queue file."
+    - "The function `add_drop` in `crates/chump-gap-store/src/lib.rs` creates or updates a record with keys `id`, `sentence`, `citation`, `status` (set to `\"new\"`), and `timestamp` in the persistent JSON file located under the curator’s data directory."
+    - After stopping the server process and restarting it, a `curl` GET (or inspecting the JSON file) shows that the previously stored drop entry remains present with its original fields, confirming durability across sessions.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -107181,12 +107204,14 @@ gaps:
   domain: ZERO-WASTE
   title: "On every ship, fully manage the queue in the SAME op: close the shipped gap + dedup-check + AC-hygiene — eliminate one-off reconcile-stale-gap PRs (Jeff: stale-gap PRs still shipping, NO WASTE). AC: ship closes gap atomically in canonical store; dedup+AC check runs on ship; zero standalone reconcile PRs over 24h."
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"close the shipped gap + dedup-check + AC-hygiene — eliminate one-off reconcile-stale-gap PRs (Jeff: stale-gap PRs still shipping, NO WASTE). AC: ship closes gap atomically in canonical store; dedup+AC check runs on ship; zero standalone reconcile PRs over 24h.\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: ZERO-WASTE-078, ZERO-WASTE-079, ZERO-WASTE-080, ZERO-WASTE-081, ZERO-WASTE-082, ZERO-WASTE-083, ZERO-WASTE-084, ZERO-WASTE-085, ZERO-WASTE-086, ZERO-WASTE-087
   opened_date: '2026-08-20'
 
 - id: ZERO-WASTE-060
@@ -107686,4 +107711,414 @@ gaps:
     
     === cross-pollination briefs mentioning 'ZERO-WASTE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: ZERO-WASTE-078
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Investigate current shipping pipeline for gap closing, dedup-check, and AC hygiene (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Identify all code locations where gap closing, dedup-check, and AC hygiene are performed separately
+    - Document findings in a short design note
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-079
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Design atomic operation to close gap, perform dedup-check and AC hygiene in a single transaction (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Design document describing the new atomic API, required inputs/outputs, and error handling
+    - Design reviewed and approved by the team
+  depends_on: [ZERO-WASTE-078]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-080
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Implement atomic close‑gap, dedup‑check, and AC hygiene function (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New function compiles and is reachable from the ship module
+    - Function returns success when all three steps succeed
+    - Function rolls back or returns error if any step fails
+  depends_on: [ZERO-WASTE-079]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-081
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Integrate atomic operation into the ship command flow (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Ship command invokes the new atomic function instead of the old separate calls
+    - Build succeeds with no warnings related to the change
+  depends_on: [ZERO-WASTE-080]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-082
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Remove standalone reconcile‑stale‑gap PR generation logic (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Code paths that create separate reconcile‑stale‑gap PRs are deleted or guarded
+    - No compile warnings about unused code remain
+  depends_on: [ZERO-WASTE-081]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-083
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Add unit test for atomic operation verifying gap closure, dedup‑check, and AC hygiene (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test asserts that a gap is closed in the canonical store, dedup‑check runs, and AC hygiene is applied
+    - Test fails when the atomic function is replaced with the old separate calls
+  depends_on: [ZERO-WASTE-080]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-084
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Add integration test ensuring zero standalone reconcile PRs over 24 h after shipping (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test runs a full ship workflow and verifies that no reconcile‑stale‑gap PR is created after 24 h
+    - Test fails on the current code base without the new atomic operation
+  depends_on: [ZERO-WASTE-081, ZERO-WASTE-082, ZERO-WASTE-083]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-085
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Update CI scripts to execute the new unit and integration tests (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline runs the added tests and reports success
+    - Pipeline fails if the new tests fail
+  depends_on: [ZERO-WASTE-083, ZERO-WASTE-084]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-086
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Run cargo fmt and clippy, ensure no warnings (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` completes without changes"
+    - "`cargo clippy --all-targets -D warnings` passes with zero warnings"
+  depends_on: [ZERO-WASTE-082, ZERO-WASTE-084, ZERO-WASTE-085]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-087
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Update documentation to describe the new atomic shipping behavior (ZERO-WASTE-059 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Documentation pages mention that gap closing, dedup‑check, and AC hygiene now happen atomically
+    - Docs note that standalone reconcile‑stale‑gap PRs are no longer generated
+  depends_on: [ZERO-WASTE-081]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
