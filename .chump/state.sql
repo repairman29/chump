@@ -19063,7 +19063,7 @@ gaps:
 - id: EFFECTIVE-415
   domain: EFFECTIVE
   title: doc-only PRs still pay ~12m of Audit, and PRs can sit hours with CI never triggering
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -19072,6 +19072,8 @@ gaps:
     - "THE DOMINANT LATENCY IS NOT CI: PR #3489 opened 21:47Z and its FIRST CI run started 00:22Z — 2h35m with zero runs — then merged 9 minutes later. The pipeline only fired after the PR was closed and reopened by hand. So end-to-end was 2h44m of which ~9m was actual pipeline"
     - "FIX THE TRIGGER, it is worth more than any check tuning: detect a PR with zero workflow runs N minutes after open and re-fire (or alert). Pairs with RESILIENT-247 (pr-rescue.sh exists, is unscheduled) — a rescue loop that also watched for never-triggered CI would have caught this in minutes instead of hours"
     - "Note the side effect for whoever implements the re-fire: close/reopen DROPS auto-merge, so it must be re-armed (gh pr merge <N> --auto --squash) or the PR silently stops merging itself"
+  notes: |
+    [2026-09-02T06:18:09Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: EFFECTIVE-000
 
@@ -72576,7 +72578,7 @@ gaps:
 - id: INFRA-3546
   domain: INFRA
   title: "INFRA: Analyze system information for potential root causes (INFRA-1655 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -72590,6 +72592,8 @@ gaps:
     - "In docs/process/SELF_HOSTED_RUNNERS.md under \"System-information root-cause analysis (2026-08-11, INFRA-3546 slice)\", the text includes `df -h /` and `df -i /` with an explicit condition such as usage above 90% identifying disk full."
     - In docs/process/SELF_HOSTED_RUNNERS.md under the same section, the text includes a runner-service status command (`systemctl --no-pager status 'actions.runner-*'` or `./svc.sh status`) and states stale runner registration is ruled out only when output reports an active/running runner service.
     - "In docs/process/SELF_HOSTED_RUNNERS.md under the same section, the text includes a network reachability command such as `curl -I --max-time 10 https://github.com` and states a non-zero exit or timeout identifies a network issue."
+  notes: |
+    [2026-09-02T06:18:47Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3547
@@ -103944,6 +103948,13 @@ gaps:
     [2026-09-02T05:25:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (108 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T05:27:46Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (109 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T05:30:02Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 13h) 2026-09-02; RESPAWN CAP 3 reached (110 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:17:40Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (111 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:20:04Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (112 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:22:20Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (113 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:24:34Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (114 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:26:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (115 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:29:11Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (116 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T06:30:05Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (117 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
