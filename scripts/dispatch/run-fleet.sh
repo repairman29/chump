@@ -603,6 +603,13 @@ fi
 # billing/credit-exhaustion phrases must be checked BEFORE the generic
 # 401/unauthorized check, since a credit-exhausted response can also carry a
 # 401-shaped envelope depending on provider.
+#
+# CREDIBLE-449 (CREDIBLE-130 slice, filed after this landed) re-asked for the
+# same three ACs — parse probe error body/status into auth-invalid vs
+# credit-exhausted vs rate-limit vs network, with test coverage. Verified
+# 2026-09-02 that classify_probe_error() below already satisfies all three
+# (see scripts/ci/test-run-fleet-error-classification.sh, 10/10 passing);
+# closed as duplicate rather than re-implementing.
 #   echoes one of: auth-invalid | credit-exhausted | rate-limit | network
 classify_probe_error() {
     local out="$1"
