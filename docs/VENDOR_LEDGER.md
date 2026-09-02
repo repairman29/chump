@@ -89,10 +89,12 @@ typo-domain. Verified against the live `repairman29/BEAST-MODE` clone
   with the other two reading through it as aliases, and repoint
   `experimentDeployment.ts`) is genuine work in `repairman29/BEAST-MODE`
   (139 files touch these flag names), not in this repo — filed as
-  PRODUCT-201 with `skills_required: external_repo:repairman29/BEAST-MODE`
+  **PRODUCT-202** with `skills_required: external_repo:repairman29/BEAST-MODE`
   so it routes through the external-repo execution path
   (`docs/design/EXTERNAL_REPO_EXECUTION.md`) once claimable, rather than
-  being hand-edited outside this worktree.
+  being hand-edited outside this worktree. (The PRODUCT-201 slot referenced
+  in the commit that added this section never actually persisted a gap —
+  PRODUCT-190's ship re-verified the finding and re-filed it as PRODUCT-202.)
 
 ---
 
