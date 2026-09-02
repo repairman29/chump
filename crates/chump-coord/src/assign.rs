@@ -28,8 +28,8 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use chump_gap_store::{GapRow, GapStore};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
-use std::path::PathBuf;
+use std::collections::{HashMap, HashSet};
+use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 /// Subject prefix for routed work. Workers subscribe under this.
@@ -160,6 +160,50 @@ fn replicas_for(row: &GapRow) -> u32 {
     1
 }
 
+/// Persisted cursor for delta-publish mode (ZERO-WASTE-003): the fingerprint
+/// of the last-published envelope-relevant fields for each open+unclaimed gap
+/// id. A cycle only re-publishes a gap when its id is new (never seen) or its
+/// fingerprint changed since the prior cycle — an unchanged backlog publishes
+/// ~0 envelopes instead of the full open set every cycle.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeltaState {
+    pub fingerprints: HashMap<String, String>,
+}
+
+impl DeltaState {
+    /// Load from `path`. Missing or corrupt state is treated as "first run"
+    /// (empty map) — fail-open, never wedges the daemon (AC2).
+    pub fn load(path: &Path) -> Self {
+        match std::fs::read_to_string(path) {
+            Ok(s) => serde_json::from_str(&s).unwrap_or_default(),
+            Err(_) => Self::default(),
+        }
+    }
+
+    pub fn save(&self, path: &Path) -> Result<()> {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        std::fs::write(path, serde_json::to_string(self)?)?;
+        Ok(())
+    }
+}
+
+/// Fingerprint of the envelope-relevant fields of a gap row (excludes
+/// `published_at`/`delivery_seq`, which change every cycle by design).
+fn fingerprint_for(row: &GapRow, subject: &str, replicas: u32) -> String {
+    format!(
+        "{}|{}|{}|{}|{}|{}|{}",
+        subject,
+        row.skills_required,
+        row.preferred_backend,
+        row.required_model,
+        row.effort,
+        row.title,
+        replicas
+    )
+}
+
 fn envelope_for(row: &GapRow, seq: u32, replicas: u32) -> WorkEnvelope {
     WorkEnvelope {
         gap_id: row.id.clone(),
@@ -181,13 +225,72 @@ fn envelope_for(row: &GapRow, seq: u32, replicas: u32) -> WorkEnvelope {
     }
 }
 
+/// One item this cycle decided to publish: a NATS subject plus the envelope
+/// to send there.
+struct PlannedPublish {
+    subject: String,
+    envelope: WorkEnvelope,
+}
+
+/// Pure planning step (no I/O): given the currently open gap rows and the
+/// set of already-claimed gap ids, decide which envelopes to publish this
+/// cycle and advance `state` in place. A gap is (re)published only when its
+/// id is new to `state` or its envelope-relevant fields changed since the
+/// last cycle that saw it (delta-publish, ZERO-WASTE-003). Gaps that are no
+/// longer open+unclaimed (claimed or closed) are dropped from `state` so a
+/// future reopen is treated as new-again, not "unchanged".
+///
+/// Split out from [`assign_cycle`] so the delta semantics are unit-testable
+/// without a NATS connection.
+fn plan_cycle(
+    rows: Vec<GapRow>,
+    claimed: &HashSet<String>,
+    state: &mut DeltaState,
+) -> Vec<PlannedPublish> {
+    let mut current_ids: HashSet<String> = HashSet::new();
+    let mut plan = Vec::new();
+
+    for row in rows {
+        if claimed.contains(&row.id) {
+            continue;
+        }
+        let subject = subject_for(&row);
+        let replicas = replicas_for(&row);
+        current_ids.insert(row.id.clone());
+
+        let fp = fingerprint_for(&row, &subject, replicas);
+        let unchanged = state.fingerprints.get(&row.id) == Some(&fp);
+        if unchanged {
+            continue;
+        }
+
+        for seq in 1..=replicas {
+            plan.push(PlannedPublish {
+                subject: subject.clone(),
+                envelope: envelope_for(&row, seq, replicas),
+            });
+        }
+        state.fingerprints.insert(row.id.clone(), fp);
+    }
+
+    state.fingerprints.retain(|id, _| current_ids.contains(id));
+    plan
+}
+
 /// One cycle of the assign daemon: read open gaps, publish to NATS for any
-/// gap not currently claimed.
+/// gap that is new-or-changed since the prior cycle (delta-publish,
+/// ZERO-WASTE-003). `state` tracks what was published last cycle; an empty
+/// `state` (first run, or reloaded after missing/corrupt persisted state)
+/// republishes the full open+unclaimed set once, then subsequent calls with
+/// the same `state` settle into delta mode.
 ///
 /// Returns the count of envelopes published.
-pub async fn assign_cycle(client: &CoordClient, store: &GapStore) -> Result<usize> {
+pub async fn assign_cycle(
+    client: &CoordClient,
+    store: &GapStore,
+    state: &mut DeltaState,
+) -> Result<usize> {
     let rows = store.list(Some("open"))?;
-    let mut published = 0usize;
 
     // Cache active claims so we don't re-publish work that's already taken.
     let claimed: HashSet<String> = client
@@ -198,23 +301,18 @@ pub async fn assign_cycle(client: &CoordClient, store: &GapStore) -> Result<usiz
         .map(|(id, _)| id)
         .collect();
 
-    for row in rows {
-        if claimed.contains(&row.id) {
-            continue;
-        }
-        let subject = subject_for(&row);
-        let replicas = replicas_for(&row);
-        for seq in 1..=replicas {
-            let env = envelope_for(&row, seq, replicas);
-            let payload: Bytes = serde_json::to_vec(&env)?.into();
-            client
-                .nats
-                .publish(subject.clone(), payload)
-                .await
-                .map_err(|e| anyhow!("NATS publish to {}: {}", subject, e))?;
-            published += 1;
-        }
+    let plan = plan_cycle(rows, &claimed, state);
+    let mut published = 0usize;
+    for item in &plan {
+        let payload: Bytes = serde_json::to_vec(&item.envelope)?.into();
+        client
+            .nats
+            .publish(item.subject.clone(), payload)
+            .await
+            .map_err(|e| anyhow!("NATS publish to {}: {}", item.subject, e))?;
+        published += 1;
     }
+
     // One flush per cycle keeps the publish loop snappy.
     client
         .nats
@@ -241,13 +339,18 @@ pub async fn run_assign_daemon(repo_root: PathBuf, poll_interval: Duration) -> R
     };
     let db_path = GapStore::db_path(&repo_root);
     let store = GapStore::open(&repo_root)?;
+    let state_path = repo_root
+        .join(".chump-locks")
+        .join("assign-delta-state.json");
+    let mut state = DeltaState::load(&state_path);
     eprintln!(
-        "[chump-coord assign] daemon up: watching {} every {:?}",
+        "[chump-coord assign] daemon up: watching {} every {:?} (delta-state: {})",
         db_path.display(),
-        poll_interval
+        poll_interval,
+        state_path.display()
     );
     loop {
-        match assign_cycle(&client, &store).await {
+        match assign_cycle(&client, &store, &mut state).await {
             Ok(n) if n > 0 => {
                 eprintln!("[chump-coord assign] published {} envelope(s)", n);
             }
@@ -259,6 +362,12 @@ pub async fn run_assign_daemon(repo_root: PathBuf, poll_interval: Duration) -> R
                 );
                 return Ok(());
             }
+        }
+        if let Err(e) = state.save(&state_path) {
+            eprintln!(
+                "[chump-coord assign] warning: failed to persist delta-state: {} (continuing in-memory)",
+                e
+            );
         }
         tokio::time::sleep(poll_interval).await;
     }
@@ -427,5 +536,136 @@ mod tests {
         assert_eq!(sanitize_token("runtime"), "runtime");
         // a full subject built from the cleaned token is dot-split-safe (3 dots)
         assert_eq!(format!("chump.work.{}.any", clean).matches('.').count(), 3);
+    }
+
+    // ── ZERO-WASTE-003: delta-publish semantics (plan_cycle is pure, no NATS) ──
+
+    #[test]
+    fn plan_cycle_unchanged_backlog_publishes_zero() {
+        let rows = vec![row_with("X-1", "P1", "INFRA", "", "")];
+        let mut state = DeltaState::default();
+
+        // Cycle 1: first run, empty state -> full backlog publishes once.
+        let plan1 = plan_cycle(rows.clone(), &HashSet::new(), &mut state);
+        assert_eq!(plan1.len(), 1, "first cycle republishes the open set once");
+
+        // Cycle 2: identical gap set, state carried over -> steady state, 0.
+        let plan2 = plan_cycle(rows, &HashSet::new(), &mut state);
+        assert_eq!(plan2.len(), 0, "unchanged backlog must publish 0 envelopes");
+    }
+
+    #[test]
+    fn plan_cycle_new_gap_publishes_exactly_one() {
+        let mut state = DeltaState::default();
+        let rows = vec![row_with("X-1", "P1", "INFRA", "", "")];
+        plan_cycle(rows.clone(), &HashSet::new(), &mut state);
+
+        // Add one new open gap alongside the unchanged one.
+        let mut rows2 = rows;
+        rows2.push(row_with("X-2", "P1", "INFRA", "", ""));
+        let plan = plan_cycle(rows2, &HashSet::new(), &mut state);
+        assert_eq!(
+            plan.len(),
+            1,
+            "adding one open gap should publish exactly 1"
+        );
+        assert_eq!(plan[0].envelope.gap_id, "X-2");
+    }
+
+    #[test]
+    fn plan_cycle_claim_drops_gap_from_next_publish() {
+        let mut state = DeltaState::default();
+        let rows = vec![row_with("X-1", "P1", "INFRA", "", "")];
+        plan_cycle(rows.clone(), &HashSet::new(), &mut state);
+        assert!(state.fingerprints.contains_key("X-1"));
+
+        // X-1 is now claimed -> filtered out of the open+unclaimed rows the
+        // caller passes in (mirrors what assign_cycle does against
+        // list_gap_claims()), so the gap drops out of the plan and out of
+        // the retained delta-state (0 publishes, no tombstone needed).
+        let claimed: HashSet<String> = ["X-1".to_string()].into_iter().collect();
+        let plan = plan_cycle(vec![], &claimed, &mut state);
+        assert_eq!(plan.len(), 0, "claiming the only gap should publish 0");
+        assert!(
+            !state.fingerprints.contains_key("X-1"),
+            "claimed gap must be dropped from delta-state so a future reopen republishes"
+        );
+    }
+
+    #[test]
+    fn plan_cycle_changed_fields_republish_even_with_same_id() {
+        let mut state = DeltaState::default();
+        let row = row_with("X-1", "P1", "INFRA", "", "");
+        plan_cycle(vec![row], &HashSet::new(), &mut state);
+
+        // Same id, priority changed -> subject changes -> must republish.
+        let changed = row_with("X-1", "P0", "INFRA", "", "");
+        let plan = plan_cycle(vec![changed], &HashSet::new(), &mut state);
+        assert_eq!(
+            plan.len(),
+            1,
+            "a changed gap must republish even with the same id"
+        );
+    }
+
+    #[test]
+    fn delta_state_load_missing_or_corrupt_fails_open() {
+        let dir =
+            std::env::temp_dir().join(format!("zw003-delta-state-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        // Missing file -> empty map, not an error.
+        let missing = dir.join("missing.json");
+        let _ = std::fs::remove_file(&missing);
+        let s = DeltaState::load(&missing);
+        assert!(s.fingerprints.is_empty());
+
+        // Corrupt file -> empty map, not a panic/error.
+        let corrupt = dir.join("corrupt.json");
+        std::fs::write(&corrupt, b"not json{{{").unwrap();
+        let s = DeltaState::load(&corrupt);
+        assert!(s.fingerprints.is_empty());
+
+        // Round-trips a real save/load.
+        let good = dir.join("good.json");
+        let mut original = DeltaState::default();
+        original
+            .fingerprints
+            .insert("X-1".to_string(), "fp".to_string());
+        original.save(&good).unwrap();
+        let reloaded = DeltaState::load(&good);
+        assert_eq!(reloaded.fingerprints.get("X-1"), Some(&"fp".to_string()));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// FLEET-034 fail-open path (AC3): a dead broker must not hang or error
+    /// the daemon — it logs and exits `Ok(())` so a supervisor can restart it
+    /// once NATS recovers, and workers fall back to the pull loop meanwhile.
+    /// Points at an unreachable localhost port (never the shared fleet
+    /// broker) so this test never touches live coordination state.
+    #[tokio::test]
+    async fn run_assign_daemon_exits_ok_when_broker_unreachable() {
+        let prior = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:19929");
+
+        let dir =
+            std::env::temp_dir().join(format!("zw003-broker-down-test-{}", std::process::id()));
+        let _ = std::fs::create_dir_all(&dir);
+
+        let result = tokio::time::timeout(
+            Duration::from_secs(10),
+            run_assign_daemon(dir.clone(), Duration::from_secs(1)),
+        )
+        .await
+        .expect("run_assign_daemon must not hang against a dead broker");
+
+        match prior {
+            Some(v) => std::env::set_var("CHUMP_NATS_URL", v),
+            None => std::env::remove_var("CHUMP_NATS_URL"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+
+        assert!(result.is_ok(), "dead broker must exit Ok(()), not error");
     }
 }

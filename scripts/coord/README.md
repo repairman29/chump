@@ -106,6 +106,37 @@ These three are often confused because all three touch the gap store:
 | `queue-driver.sh` | Drive the gap pick loop (used by worker.sh in dispatch/) |
 | `check-worktree-config.sh` | Verify worktree config.worktree is healthy (INFRA-810) |
 
+## `chump-coord assign` — delta-publish (FLEET-034, ZERO-WASTE-003)
+
+The `assign` daemon (`crates/chump-coord/src/assign.rs`) polls `state.db`
+and pushes open+unclaimed gaps onto NATS subjects
+(`chump.work.<priority>.<class>.<machine>`) for workers to subscribe to.
+
+**Since ZERO-WASTE-003 this is no longer a full-backlog firehose.** Each
+cycle compares the current open+unclaimed set against a persisted
+fingerprint cursor (`.chump-locks/assign-delta-state.json`) and publishes
+only gaps that are new or whose routing-relevant fields changed since the
+last cycle a worker could have seen them. A steady, unchanged backlog
+publishes ~0 envelopes per cycle instead of re-sending everything every
+`--poll-secs`.
+
+Implications for anyone consuming `chump.work.>`:
+
+- **Don't assume a burst of silence means the backlog is empty** — it means
+  nothing changed. Use `chump gap list --status open` (or the cache) to see
+  the actual backlog, not envelope volume on the bus.
+- **A worker that starts subscribing mid-run may miss gaps published before
+  it connected** and won't see them again until they change or the daemon
+  restarts (which republishes the full open set once — fail-open on
+  missing/corrupt delta-state). If you need a full resync, delete
+  `.chump-locks/assign-delta-state.json` and let the daemon restart, or
+  fall back to the pull loop (`worker.sh`), which reads `state.db` directly
+  and is unaffected by delta-publish.
+- **Claiming a gap drops it from the delta cursor**, so if it's ever
+  reopened it's treated as new and republishes once.
+- Broker-down fail-open behavior (FLEET-034) is unchanged: if NATS is
+  unreachable, `assign` logs and exits `0`; workers fall back to pull.
+
 ## Cache lib (`lib/github_cache.sh`) — INFRA-1081 / INFRA-1107
 
 Local SQLite cache at `.chump/github_cache.db` populated by the webhook
