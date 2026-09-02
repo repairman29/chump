@@ -33547,10 +33547,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a concrete implementation of `fn to_field_update(&self) -> GapFieldUpdate` inside the `impl EnrichedSpec` block in `crates/mcp-servers/chump-mcp-eval/src/main.rs`, constructing a `GapFieldUpdate` that fills in a human‑readable description, the source file path (e.g., `"crates/mcp-servers/chump-mcp-eval/src/main.rs"`), and the line number where the spec is defined, and ensuring the returned value reports `is_usable()` as true.
+    
+    Target file(s):
+    - crates/mcp-servers/chump-mcp-eval/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`fn to_field_update(&self) -> GapFieldUpdate` produces a GapFieldUpdate with concrete description, target file, and line"
-    - Method returns a usable update when `is_usable` is true
-    - Compiles and passes a basic sanity test
+    - "In `crates/mcp-servers/chump-mcp-eval/src/main.rs`, the `EnrichedSpec` impl now contains a `to_field_update(&self) -> GapFieldUpdate` method that returns a `GapFieldUpdate` with a non‑empty `description` field, a `target_file` equal to `\"crates/mcp-servers/chump-mcp-eval/src/main.rs\"`, and a `line` number greater than zero."
+    - "The `GapFieldUpdate` produced by `EnrichedSpec::to_field_update` returns `true` from its `is_usable()` method for a default‑constructed `EnrichedSpec` instance."
+    - A unit test added to `crates/mcp-servers/chump-mcp-eval/src/main.rs` creates an `EnrichedSpec`, calls `to_field_update`, and asserts that the `description` contains the spec’s identifier and that `is_usable()` is true.
+    - Running `cargo test` in the repository compiles without errors and the new unit test passes.
   depends_on: [EFFECTIVE-764]
   notes: |
     [chump harvest check 'concrete']
