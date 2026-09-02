@@ -78701,11 +78701,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update `scripts/setup/install-gap-substrate.sh` (specifically `write_postgrest_conf` and binary setup in `svc_install`) to download and install the PostgREST binary to `/usr/local/bin/postgrest` if not present, and generate `~/.chump/postgrest.conf` with `db-uri = postgres://authenticator:<password>@localhost/chump_fleet` using the authenticator password from `providers.env`. Ensure all steps are idempotent so subsequent runs perform no action if the binary and config are up to date.
+    
+    Target file(s):
+    - scripts/setup/install-gap-substrate.sh
+    - scripts/setup/chump-node-install.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The script downloads/installs the PostgREST binary (e.g., from GitHub releases) and places it in a standard location (e.g., /usr/local/bin).
-    - "It creates ~/.chump/postgrest.conf with the correct connection string (db-uri = postgres://authenticator:<password>@localhost/chump_fleet) using the password from providers.env."
-    - "The step is idempotent: if the binary exists and the config file matches, nothing is changed."
-    - "After installation, running `postgrest ~/.chump/postgrest.conf` starts the server and curl to the REST endpoint (e.g., http://localhost:3000/shared_gaps) returns an empty 200 response (not PGRST205)."
+    - Executing `scripts/setup/install-gap-substrate.sh` places the executable `postgrest` binary in `/usr/local/bin/postgrest` and writes `~/.chump/postgrest.conf`.
+    - "The generated `~/.chump/postgrest.conf` contains `db-uri = postgres://authenticator:<password>@localhost/chump_fleet` using the password read from `providers.env`."
+    - Re-running `scripts/setup/install-gap-substrate.sh` when `/usr/local/bin/postgrest` exists and `~/.chump/postgrest.conf` matches skips download and rewrite steps with exit code 0.
+    - "Starting PostgREST via `postgrest ~/.chump/postgrest.conf` allows `curl -s -o /dev/null -w \"%{http_code}\" http://localhost:3000/shared_gaps` to return HTTP status 200."
   depends_on: [INFRA-3698]
   notes: |
     [chump harvest check 'MISSION']
