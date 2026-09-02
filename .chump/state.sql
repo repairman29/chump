@@ -1561,7 +1561,7 @@ gaps:
 - id: CREDIBLE-108
   domain: CREDIBLE
   title: "CREDIBLE P1 (CREDIBLE-106 sub-gap): Gate 2 — scripts/lib/halt-class-emit.sh wrapper + retrofit halt-class emitters (bash, ~50 LOC)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -1571,13 +1571,14 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Decomposed into 4 slices: CREDIBLE-513, CREDIBLE-514, CREDIBLE-515, CREDIBLE-516
+    [2026-09-02T17:48:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4805B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-109
   domain: CREDIBLE
   title: "CREDIBLE P1 (CREDIBLE-106 sub-gap): Gate 3 — docs/observability/HALT_CLASS_PREDICATES.yaml manifest + CI test (yaml + bash test, ~100 LOC)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -1587,6 +1588,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Decomposed into 4 slices: CREDIBLE-517, CREDIBLE-518, CREDIBLE-519, CREDIBLE-520
+    [2026-09-02T17:54:30Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4805B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -10609,10 +10611,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new unit test function `test_dormant_champion_scores_high` inside the existing `mod tests` block of `src/provider_bandit.rs`. The test constructs a `RegistryEntry` that models a dormant champion (e.g., `still_wired: true`, high `fan_in` and high `emission` values), registers it using the module’s API, invokes `compute_crit` on that entry, and asserts that the returned score exceeds a threshold of 10.0.
+    
+    Target file(s):
+    - src/provider_bandit.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test fixture creates a registry entry representing a dormant champion (still‑wired, high fan‑in, high emission)
-    - Assert that `compute_crit` returns a value > threshold (e.g., 10.0)
-    - Test fails before integration and passes after slice 6
+    - "src/provider_bandit.rs contains a `#[test]` function named `test_dormant_champion_scores_high` within the `mod tests` section."
+    - "The test creates a `RegistryEntry` with `still_wired: true`, `fan_in` ≥ 100, and `emission` ≥ 50 before calling `compute_crit`."
+    - The test asserts that the value returned by `compute_crit` for that entry is greater than 10.0.
+    - Executing `cargo test` reports `test test_dormant_champion_scores_high ... ok` and exits with status 0.
   depends_on: [CREDIBLE-489]
   notes: |
     [chump harvest check 'Index']
@@ -99580,7 +99590,7 @@ gaps:
 - id: RESILIENT-137
   domain: RESILIENT
   title: "RESILIENT (Cut-Friction): streamline the commit-gate stack — a 60-line docs commit took 5 attempts (stomp-hang, net-new-docs, bypass-4-field, index-mutex pileup)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -99591,6 +99601,9 @@ gaps:
     - a non-bypass commit never triggers the bypass-trailer 4-field validator
     - index-mutex contention degrades gracefully (clear retry, not hard 30s fail)
     - a 60-line docs change commits in ONE attempt
+  notes: |
+    Decomposed into 10 slices: RESILIENT-664, RESILIENT-665, RESILIENT-666, RESILIENT-667, RESILIENT-668, RESILIENT-669, RESILIENT-670, RESILIENT-671, RESILIENT-672, RESILIENT-673
+    [2026-09-02T17:56:48Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4808B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
@@ -111362,6 +111375,273 @@ gaps:
     - CI runs unit tests from slice 6 and integration test from slice 7 on every push
     - Pipeline fails if any of the new tests fail
   depends_on: [RESILIENT-660, RESILIENT-661]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-664
+  domain: RESILIENT
+  title: "RESILIENT: Refactor chump‑commit error aggregation to emit a single failure message with all required trailers (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When multiple trailer validation failures occur, chump‑commit returns one error message containing all missing/invalid trailers
+    - No separate retry is triggered for each trailer failure
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-665
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test verifying single aggregated failure message from chump‑commit (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test simulates missing net‑new‑docs and bypass‑trailer fields and asserts a single error containing both trailer names
+    - Test fails before the refactor and passes after
+  depends_on: [RESILIENT-664]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-666
+  domain: RESILIENT
+  title: "RESILIENT: Make stomp prompt non‑tty‑safe (auto‑default in headless mode) (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When STDIN is not a TTY, stomp prompt automatically selects the default option without blocking
+    - Behavior is logged with a clear message indicating auto‑default was applied
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-667
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test for non‑tty safe stomp handling (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test runs chump‑commit in a non‑TTY environment and verifies it proceeds without waiting for user input
+    - Test confirms the default option is applied
+  depends_on: [RESILIENT-666]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-668
+  domain: RESILIENT
+  title: "RESILIENT: Adjust bypass‑trailer validator to ignore non‑bypass commits (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A commit that does not include the bypass flag never triggers the 4‑field bypass validator
+    - Validator logs a debug message when it skips a non‑bypass commit
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-669
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test confirming bypass validator is bypassed for normal commits (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test creates a regular commit without the bypass flag and asserts the validator does not run
+    - Test ensures no bypass‑related error is produced
+  depends_on: [RESILIENT-668]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-670
+  domain: RESILIENT
+  title: "RESILIENT: Improve index‑mutex handling to return clear retry error instead of hard 30‑second failure (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When index‑mutex contention occurs, chump‑commit returns an error with a retry‑after hint rather than timing out after 30 s
+    - Error message is deterministic and parsable by automation
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-671
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test for graceful index‑mutex contention handling (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test simulates mutex contention and verifies the returned error contains a retry‑after field
+    - Test confirms the process exits promptly (≤ 5 s) instead of hanging
+  depends_on: [RESILIENT-670]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-672
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end test: 60‑line docs change commits in a single attempt (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A synthetic 60‑line documentation change is committed using chump‑commit and succeeds on the first try
+    - No intermediate gate prompts block the flow; all required trailers are emitted in one message if validation fails
+    - Log output shows non‑tty defaults, bypass validator skip, and graceful mutex handling
+  depends_on: [RESILIENT-664, RESILIENT-666, RESILIENT-668, RESILIENT-670]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-673
+  domain: RESILIENT
+  title: "RESILIENT: Update project documentation to describe new commit‑gate behavior (RESILIENT-137 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README/CONTRIBUTING sections reflect that stomp prompts are auto‑default in CI, bypass trailers are ignored for normal commits, and index‑mutex errors include retry hints
+    - Release notes list the RESILIENT‑137 improvements
+  depends_on: [RESILIENT-672]
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
