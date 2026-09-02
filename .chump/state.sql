@@ -13649,10 +13649,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a `create_mock_slots` helper in `scripts/ab-harness/gen-longitudinal-fixture.py` that returns two slot definitions with differing configured RPD values, and add a new test function `test_capacity_planning_drift_detection` in `crates/chump-eval-harness/src/eval_harness.rs` that runs the refresh job on those slots, asserts that a drift gap is recorded, and verifies that the `.env` file remains unchanged after drift detection.
+    
+    Target file(s):
+    - scripts/ab-harness/gen-longitudinal-fixture.py
+    - crates/chump-eval-harness/src/eval_harness.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Documentation explains the refresh job, drift reporting, and how to interpret mismatch alerts
-    - Automated test spins up two mock slots with differing configured RPD, runs the refresh job, and asserts that a drift gap is created
-    - Test also verifies that .env is not modified after drift detection
+    - Running `cargo test --test eval_harness` reports a passing test named `test_capacity_planning_drift_detection` in `crates/chump-eval-harness/src/eval_harness.rs`.
+    - The test invokes `create_mock_slots` from `scripts/ab-harness/gen-longitudinal-fixture.py` and asserts that exactly one drift gap is created after the refresh job.
+    - The test reads the `.env` file before and after the refresh job and asserts that its contents (or checksum) are identical, confirming no modification.
   depends_on: [CREDIBLE-591, CREDIBLE-593, CREDIBLE-595]
   notes: |
     [chump harvest check 'provider']
@@ -17837,7 +17845,7 @@ gaps:
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.VXMw46xG7y has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
-    Decomposed into 3 slices: EFFECTIVE-594, EFFECTIVE-595, EFFECTIVE-596
+    Decomposed into 3 slices: EFFECTIVE-755, EFFECTIVE-756, EFFECTIVE-757
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -33006,6 +33014,39 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-755
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create repository scaffold (EFFECTIVE-594) (EFFECTIVE-136 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new git repository is created at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.VXMw46xG7y
+    - The repository contains a single initial commit (the scaffold commit) with appropriate commit message
+
+- id: EFFECTIVE-756
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add intent to README (EFFECTIVE-595) (EFFECTIVE-136 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md exists in the repository root
+    - "The first body line of README.md exactly reads: \"Another intent\""
+  depends_on: [EFFECTIVE-755]
+
+- id: EFFECTIVE-757
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub‑gaps for core feature areas (EFFECTIVE-596) (EFFECTIVE-136 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - At least one sub‑gap is created for each core feature area of the project
+    - Each sub‑gap includes a clear title, priority, and acceptance criteria
+    - All sub‑gaps are linked to the parent gap EFFECTIVE-136
+  depends_on: [EFFECTIVE-755]
 
 - id: EVAL-085
   title: test eval 085
@@ -109793,7 +109834,7 @@ gaps:
 - id: RESILIENT-634
   domain: RESILIENT
   title: "RESILIENT: Verify preflight-vs-CI parity for macOS-only tests (RESILIENT-074 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -109814,6 +109855,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T16:09:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-636
   domain: RESILIENT
