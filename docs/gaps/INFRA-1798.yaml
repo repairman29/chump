@@ -1,7 +1,7 @@
 - id: INFRA-1798
   domain: INFRA
   title: "EFFECTIVE: cron-loop autopilot prompt reads opus-message inbox at iter start — 'Glance' phase addendum (INFRA-1796 dogfood)"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -12,5 +12,7 @@
     - Each drained cycle emits kind=inbox_advance with the count of items processed, so the outcome is measurable (the master-plan load-bearing gate is inbox_advance > 0 fleet-wide).
     - "OUTCOME verification (not signal): over a soak window with >=1 open proposal and >=2 live agents, consensus_result events fire and at least one proposal reaches quorum (>1 distinct voter). consensus_result count must climb from its current floor."
     - "Smoke test: a single loop cycle with 1 unread proposal in the inbox results in (a) the proposal read, (b) a chump vote emitted for it, (c) an inbox_advance event — asserted by a scripts/ci/test-*.sh that drives the real loop, not a hand-written fixture."
+  closed_date: '2026-09-02'
+  closed_pr: 3677
   outcome_id: MISSION-010
 
