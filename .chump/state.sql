@@ -19787,7 +19787,7 @@ gaps:
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
-    Decomposed into 5 slices: EFFECTIVE-615, EFFECTIVE-616, EFFECTIVE-617, EFFECTIVE-618, EFFECTIVE-619
+    Decomposed into 5 slices: EFFECTIVE-812, EFFECTIVE-813, EFFECTIVE-814, EFFECTIVE-815, EFFECTIVE-816
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -34050,7 +34050,7 @@ gaps:
 - id: EFFECTIVE-781
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement chump claim --recover command (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -34081,6 +34081,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T22:14:04Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-782
   domain: EFFECTIVE
@@ -35043,6 +35044,130 @@ gaps:
     - At least three sub‑gap tickets are created for core feature areas
     - Each sub‑gap references the parent gap (EFFECTIVE‑266) and includes a clear title and description
   depends_on: [EFFECTIVE-808]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-812
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Initialize repository with scaffold commit (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Repository is created at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT
+    - "Initial commit exists with message \"scaffold\""
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-813
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Validate scaffold commit is first in git history (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Running `git log --reverse` shows the first commit message is \"scaffold\""
+    - No earlier commits are present
+  depends_on: [EFFECTIVE-812]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-814
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add intent line to README.md (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md exists in the repository root
+    - "The first body line (after any title) contains the exact string \"Another intent\""
+  depends_on: [EFFECTIVE-812]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-815
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Verify README intent line (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Automated check confirms the first body line of README.md matches \"Another intent\""
+    - Test fails if the line is missing or altered
+  depends_on: [EFFECTIVE-814]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-816
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create sub‑gap tickets for core feature areas (EFFECTIVE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - At least three sub‑gap tickets are filed (e.g., EFFECTIVE‑XXX) covering core feature areas
+    - Each ticket includes a clear title, priority, and brief description
+  depends_on: [EFFECTIVE-814]
   notes: |
     [chump harvest check 'Bootstrap']
     === primitives_index match for 'Bootstrap' ===
@@ -38686,7 +38811,7 @@ gaps:
     - "Smoke test scripts/ci/test-github-liaison-phase3.sh: mock NATS + mock gh; 5 concurrent workers send pr.create mutations; assert all 5 requests serialized through the liaison, rate limit enforced, responses correlated by request_id"
     - "Events: github_mutation_queued, github_mutation_sent, github_mutation_failed, github_liaison_fallback registered in EVENT_REGISTRY.yaml before code ships"
   notes: |
-    [2026-05-30T04:21:08Z] [2026-05-29 offline-first classification] Public-side, Phase 6 (longer-term) of INFRA-2246 offline-first roadmap. Workers never call GitHub directly; all mutations via NATS request/reply to a Liaison node. Depends on Phase 1-5 being stable.
+    Decomposed into 22 slices: INFRA-3981, INFRA-3982, INFRA-3983, INFRA-3984, INFRA-3985, INFRA-3986, INFRA-3987, INFRA-3988, INFRA-3989, INFRA-3990, INFRA-3991, INFRA-3992, INFRA-3993, INFRA-3994, INFRA-3995, INFRA-3996, INFRA-3997, INFRA-3998, INFRA-3999, INFRA-4000, INFRA-4001, INFRA-4002
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -81739,11 +81864,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `verify --live` branch in the command‑handler function within src/main.rs to call `load_proof_ac_for_gap` and `resolve_target_node`, then iterate over each claim of the loaded gap, invoke `run_claim_on_node` for the resolved node, aggregate the outcomes, print a receipt line with the verdict (including the word “REVIVABLE” on success), and exit with the proper status code; also add graceful error handling that emits clear “Error:” messages for unreachable nodes or missing gaps and returns a non‑zero exit code.
+    
+    Target file(s):
+    - src/main.rs
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The command handler for `verify --live` calls `load_proof_ac_for_gap`, `resolve_target_node`, then for each claim runs `run_claim_on_node`, collects results, prints receipts with verdicts, and exits with the appropriate code.
-    - Handles errors gracefully (e.g., node unreachable, gap not found) with clear error messages.
-    - Works for both gap and PR arguments (for a PR, resolve the associated gap first).
-    - Manual test against a real gap with a live unit returns 0 and prints a REVIVABLE receipt.
+    - In src/main.rs, the `verify --live` execution path calls `load_proof_ac_for_gap` followed by `resolve_target_node` before any claim processing.
+    - In src/main.rs, after node resolution the handler loops over the gap’s claims, calls `run_claim_on_node` for each, and aggregates the results.
+    - When all claims succeed on a live unit, src/main.rs prints a receipt containing the token “REVIVABLE” and the process exits with status code 0.
+    - "If the node is unreachable or the specified gap/PR cannot be found, src/main.rs prints an error line beginning with “Error:” and exits with a non‑zero status code."
   depends_on: [INFRA-3735, INFRA-3736, INFRA-3737, INFRA-3739, INFRA-3740]
   notes: |
     [chump harvest check 'MISSION']
@@ -81781,11 +81914,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add two new integration test functions inside the existing `mod tests` block of `crates/chump-verify/src/pr_ac_coverage.rs`. The first test (`test_live_verify_success`) invokes `chump verify --live known_good_unit` against a mock SSH server, asserts that the process exits with code 0 and that its stdout contains the string “REVIVABLE receipt”. The second test (`test_live_verify_failure`) invokes `chump verify --live known_bad_unit`, asserts a non‑zero exit code and that stdout contains the phrase “failure receipt”. Both tests spin up the mock SSH server locally to avoid touching production nodes.
+    
+    Target file(s):
+    - crates/chump-verify/src/pr_ac_coverage.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test that `chump verify --live <gap-with-live-unit>` returns exit code 0 and prints a REVIVABLE receipt.
-    - Test that `chump verify --live <gap-with-failed-unit>` returns non-zero and prints a failure receipt.
-    - Tests use a dedicated test node or a mock SSH server to avoid affecting production.
-    - Tests are automated and run in CI.
+    - "Running `cargo test --test pr_ac_coverage::test_live_verify_success` executes the `test_live_verify_success` function in `crates/chump-verify/src/pr_ac_coverage.rs`, which calls `chump verify --live known_good_unit`, exits with code 0, and prints a line containing “REVIVABLE receipt”."
+    - "Running `cargo test --test pr_ac_coverage::test_live_verify_failure` executes the `test_live_verify_failure` function in `crates/chump-verify/src/pr_ac_coverage.rs`, which calls `chump verify --live known_bad_unit`, exits with a non‑zero code, and prints a line containing “failure receipt”."
+    - "Both new tests start a mock SSH server (observable via the log line “Mock SSH server listening on 127.0.0.1:<port>”) and complete without any network connection to real production nodes."
+    - The CI workflow includes `cargo test` and reports both new tests as passed, confirming that live‑verify behavior is exercised automatically on each commit.
   depends_on: [INFRA-3741]
   notes: |
     [chump harvest check 'MISSION']
@@ -81823,10 +81963,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new subcommand branch for `trek` in the CLI argument‑parsing logic of `src/main.rs`, extend `print_help` to list the `trek` command with its usage, and implement a simple placeholder that prints “chump trek command recognized: <job>” when invoked with a job argument, then exits with code 0.
+    
+    Target file(s):
+    - src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Running `chump trek <job>` prints a placeholder message indicating the command is recognized and shows the job argument.
-    - "`chump trek --help` shows usage information."
-    - The command returns exit code 0.
+    - "Running `cargo run -- trek sample-job` prints the exact line `chump trek command recognized: sample-job` to stdout and the process exits with status 0. (src/main.rs)"
+    - "Executing `cargo run -- trek --help` displays a usage section that includes the string `Usage: chump trek <job>` generated by `print_help`. (src/main.rs)"
+    - The `print_help` function in `src/main.rs` contains a dedicated help entry for the `trek` subcommand. (src/main.rs)
+    - The `trek` subcommand returns exit code 0 for both the help request and the normal execution path. (observable process exit status)
   notes: |
     [chump harvest check 'MISSION']
     === primitives_index match for 'MISSION' ===
@@ -88250,6 +88398,623 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-3981
+  domain: INFRA
+  title: "INFRA: Define NATS subject schema and mutation request/response structs (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Subject pattern chump.github.mutations.<action> is documented
+    - Rust structs for request {request_id, action, params, criticality} and response {request_id, result, gh_response_code} are added with serde serialization
+    - Schema is version‑controlled and reviewed
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3982
+  domain: INFRA
+  title: "INFRA: Create NATS request wrapper library for workers (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Public function send_github_mutation(request) publishes to the defined subject and awaits a reply
+    - Wrapper returns a Result containing the parsed response struct
+    - Wrapper handles NATS connection errors and propagates them as a 429_queued‑like error
+  depends_on: [INFRA-3981]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3983
+  domain: INFRA
+  title: "INFRA: Implement liaison daemon skeleton with NATS subscription and GH token loading (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Daemon starts, loads GH_TOKEN from environment, and subscribes to chump.github.mutations.*
+    - Process logs successful subscription and token load
+    - Graceful shutdown on SIGTERM
+  depends_on: [INFRA-3981]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3984
+  domain: INFRA
+  title: "INFRA: Add request validation and parsing in liaison (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Incoming NATS messages are deserialized into the request struct
+    - "Invalid JSON or missing fields cause a reply with gh_response_code 400 and result \"invalid_request\""
+    - Valid requests are passed to the mutation dispatcher
+  depends_on: [INFRA-3983]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3985
+  domain: INFRA
+  title: "INFRA: Implement global rate‑limit enforcement (token bucket) (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Token bucket configured with CHOMP_GH_MAX_CALLS_PER_MIN
+    - "When bucket is empty, liaison replies with gh_response_code 429 and result \"queued\" plus retry_after_ms"
+    - Bucket refills correctly each minute
+  depends_on: [INFRA-3983]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3986
+  domain: INFRA
+  title: "INFRA: Add criticality handling and GraphQL quota awareness (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Request criticality field is parsed (critical|background)
+    - Liaison queries GraphQL remaining quota before each background mutation
+    - If remaining < 10%, background mutation is queued with 429 response; critical mutations bypass the queue
+    - Queued background mutations are retried after the provided retry_after_ms
+  depends_on: [INFRA-3985]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3987
+  domain: INFRA
+  title: "INFRA: Implement pr.create mutation handler (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a valid pr.create request, liaison calls GitHub GraphQL API to create a PR
+    - "Success response includes gh_response_code 201 and result \"created\" with PR URL in result"
+    - Errors from GitHub are propagated with appropriate gh_response_code
+  depends_on: [INFRA-3984, INFRA-3985, INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3988
+  domain: INFRA
+  title: "INFRA: Implement pr.merge mutation handler (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a valid pr.merge request, liaison calls GitHub API to merge the PR
+    - "Success response includes gh_response_code 200 and result \"merged\""
+    - "Failure (e.g., merge conflict) returns gh_response_code 409 and result \"conflict\""
+  depends_on: [INFRA-3984, INFRA-3985, INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3989
+  domain: INFRA
+  title: "INFRA: Implement pr.comment mutation handler (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a valid pr.comment request, liaison posts a comment via GitHub API
+    - "Success response includes gh_response_code 201 and result \"commented\" with comment ID"
+    - Error handling mirrors GitHub error codes
+  depends_on: [INFRA-3984, INFRA-3985, INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3990
+  domain: INFRA
+  title: "INFRA: Implement pr.label mutation handler (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a valid pr.label request, liaison adds labels to the PR via GitHub API
+    - "Success response includes gh_response_code 200 and result \"labeled\""
+    - "Invalid label errors return gh_response_code 400 and result \"invalid_label\""
+  depends_on: [INFRA-3984, INFRA-3985, INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3991
+  domain: INFRA
+  title: "INFRA: Implement pr.update-branch mutation handler (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a valid pr.update-branch request, liaison triggers branch update via GitHub API
+    - "Success response includes gh_response_code 200 and result \"updated\""
+    - Failure returns appropriate gh_response_code and result
+  depends_on: [INFRA-3984, INFRA-3985, INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3992
+  domain: INFRA
+  title: "INFRA: Generate correlated response messages (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Response includes the original request_id
+    - Result and gh_response_code reflect the outcome of the specific mutation handler
+    - Response is sent back over NATS request/reply channel
+  depends_on: [INFRA-3987, INFRA-3988, INFRA-3989, INFRA-3990, INFRA-3991]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3993
+  domain: INFRA
+  title: "INFRA: Emit mutation lifecycle events to EVENT_REGISTRY (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Events github_mutation_queued, github_mutation_sent, github_mutation_failed are published with request_id and action
+    - Events conform to the schema defined in EVENT_REGISTRY.yaml
+    - All mutation handlers trigger the appropriate events
+  depends_on: [INFRA-3987, INFRA-3988, INFRA-3989, INFRA-3990, INFRA-3991]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3994
+  domain: INFRA
+  title: "INFRA: Add offline fallback to direct GitHub calls when NATS is unavailable (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Liaison detects NATS connection loss and switches to direct GitHub calls for incoming requests
+    - Fallback path logs kind=github_liaison_fallback to ambient.jsonl
+    - Fallback behavior matches Phase 1/2 semantics
+  depends_on: [INFRA-3983]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3995
+  domain: INFRA
+  title: "INFRA: Refactor audit scripts/coord/ to use NATS wrapper (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All direct GitHub calls in audit scripts/coord/ are replaced with send_github_mutation wrapper
+    - Scripts compile and run without GH_TOKEN environment variable
+    - No remaining references to chump_gh or direct GH API in the directory
+  depends_on: [INFRA-3982]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3996
+  domain: INFRA
+  title: "INFRA: Refactor src/web_server.rs to use NATS wrapper (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Web server code no longer imports or uses direct GitHub client
+    - All mutation operations go through the NATS wrapper and handle 429_queued responses
+    - Integration tests for web server pass
+  depends_on: [INFRA-3982]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3997
+  domain: INFRA
+  title: "INFRA: Add retry logic for 429_queued responses in workers (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Worker receives 429 response with retry_after_ms and automatically retries after the specified delay
+    - Retry respects a maximum of 3 attempts per request
+    - Successful retry results in normal response handling
+  depends_on: [INFRA-3994, INFRA-3995]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3998
+  domain: INFRA
+  title: "INFRA: Register new events in EVENT_REGISTRY.yaml (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - github_mutation_queued, github_mutation_sent, github_mutation_failed, github_liaison_fallback entries are added with proper schema
+    - Event registry passes validation step in CI
+  depends_on: [INFRA-3992, INFRA-3993]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-3999
+  domain: INFRA
+  title: "INFRA: Add configuration for CHOMP_GH_MAX_CALLS_PER_MIN and criticality thresholds (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Configuration file includes CHOMP_GH_MAX_CALLS_PER_MIN (integer) and BACKGROUND_CRITICALITY_THRESHOLD (percentage)
+    - Liaison reads these values at startup and applies them to rate‑limit and criticality logic
+    - Default values are documented
+  depends_on: [INFRA-3985, INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4000
+  domain: INFRA
+  title: "INFRA: Implement GraphQL remaining‑quota monitoring (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Liaison queries GitHub GraphQL rate‑limit endpoint before processing background mutations
+    - Remaining quota value is cached for 30 seconds and logged
+    - When remaining < 10%, background mutations are queued as per criticality handling
+  depends_on: [INFRA-3986]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4001
+  domain: INFRA
+  title: "INFRA: Create CI smoke test script test-github-liaison-phase3.sh (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script starts a mock NATS server and a mock GitHub API
+    - Spawns 5 concurrent worker processes that send pr.create mutations via the wrapper
+    - Asserts that all 5 requests are processed by the liaison (checked via logged events)
+    - Verifies rate‑limit enforcement and that responses contain matching request_id
+    - Test passes in CI pipeline
+  depends_on: [INFRA-3982, INFRA-3987, INFRA-3988, INFRA-3989, INFRA-3990, INFRA-3991, INFRA-3992, INFRA-3993, INFRA-3994]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4002
+  domain: INFRA
+  title: "INFRA: Update documentation for Phase 3 migration (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and migration guide describe the new NATS request/reply flow, configuration, and worker changes
+    - Documentation includes steps to run the CI smoke test and troubleshooting for fallback mode
+    - All links to EVENT_REGISTRY and config files are correct
+  depends_on: [INFRA-3995, INFRA-3996, INFRA-3997, INFRA-3998, INFRA-3999, INFRA-4000, INFRA-4001]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: INFRA-416
   domain: INFRA
