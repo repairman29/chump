@@ -1043,5 +1043,12 @@
       "expected_in_response": "50",
       "judge_rubric": "Score 1.0 if the response gives max_size = 50 (the post-tuning value after raising from 20). Score 0.0 if it gives 20 (the original) or another number."
     }
-  ]
+  ],
+  "footprint_budget": {
+    "host_cpu_cores": 2,
+    "total_disk_gb": 44.96192169189453,
+    "log_cap_mb": 4604,
+    "target_dir_cap_mb": 23021,
+    "cache_cap_mb": 2302
+  }
 }
