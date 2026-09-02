@@ -4770,6 +4770,8 @@ gaps:
     - "The change described by \"it compares running-binary SHA to origin/main SHA at the INSTANT, so any moment main is ahead of the last 20-min auto-deploy cycle (i.e. most of the time — main moves ~q10-20min, deploy runs q20min) reads as \"NO auto-deploy — MISSION-012 open — THE MULTIPLIER\" and flips the verdict off ON-TRACK on timing luck. Auto-deploy is actually healthy (SKIP-when-current, deploys on main-move). Fix: ③ should be a FRESHNESS SLA — pass if the binary is within N minutes / M commits of the latest main-move (e.g. deployed within 30min), fail only if deploy-lag persists beyond the auto-deploy cadence+build-time. A flickering ③ erodes the scoreboard as the one honest measure + risks alarm-fatigue masking a REAL deploy regression.\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 9 slices: CREDIBLE-554, CREDIBLE-555, CREDIBLE-556, CREDIBLE-557, CREDIBLE-558, CREDIBLE-559, CREDIBLE-560, CREDIBLE-561, CREDIBLE-562
   opened_date: '2026-08-20'
 
 - id: CREDIBLE-294
@@ -12473,6 +12475,252 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
+- id: CREDIBLE-554
+  domain: CREDIBLE
+  title: "CREDIBLE: Locate existing deploy‑lag check in mission‑scoreboard code (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Source file and function implementing the current SHA‑instant comparison are identified
+    - Current logic is documented in a short comment block
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-555
+  domain: CREDIBLE
+  title: "CREDIBLE: Add configurable freshness SLA parameters (N minutes, M commits) (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Configuration struct / env vars for `freshness_minutes` (default 30) and `freshness_commits` (default 0) are added
+    - Parameters are exposed to the scoreboard module via a public getter
+  depends_on: [CREDIBLE-554]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-556
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement freshness‑SLA check logic (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function `is_fresh(binary_sha, main_sha) -> bool` returns true when the binary is within N minutes or M commits of the latest main SHA
+    - Logic uses git metadata or CI‑provided timestamps without external network calls
+    - Edge cases (no commits, missing timestamps) are handled gracefully
+  depends_on: [CREDIBLE-555]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-557
+  domain: CREDIBLE
+  title: "CREDIBLE: Replace instant‑SHA comparison with freshness‑SLA in scoreboard verdict (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scoreboard now calls `is_fresh` and sets the ③ verdict to ON‑TRACK only when the freshness check passes
+    - Previous instant‑SHA path is removed or guarded behind a feature flag
+    - Existing unit tests that depend on the old behavior are updated or marked as expected failures
+  depends_on: [CREDIBLE-556]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-558
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit test for freshness‑SLA function (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test case where binary SHA is within the 30‑minute window passes
+    - Test case where binary SHA exceeds the window fails
+    - Test runs via `cargo test` and fails before the implementation, passes after
+  depends_on: [CREDIBLE-557]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-559
+  domain: CREDIBLE
+  title: "CREDIBLE: Create integration test simulating auto‑deploy lag scenario (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script sets up a mock repo where main moves 15 min after the last deploy
+    - Scoreboard verdict flips from OFF‑TRACK to ON‑TRACK only after the freshness threshold is satisfied
+    - Test is added to `scripts/ci/test‑freshness.sh` and invoked by CI
+  depends_on: [CREDIBLE-558]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-560
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI pipeline to run new freshness tests (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI configuration includes execution of `scripts/ci/test‑freshness.sh`
+    - Pipeline fails when the freshness logic is absent and passes after implementation
+  depends_on: [CREDIBLE-559]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-561
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy, ensure no warnings (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt -- --check` passes without changes"
+    - "`cargo clippy --all-targets -D warnings` passes with zero warnings"
+  depends_on: [CREDIBLE-560]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-562
+  domain: CREDIBLE
+  title: "CREDIBLE: Document the new freshness SLA in project README (CREDIBLE-293 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes a section describing the freshness SLA, default values, and how to adjust them
+    - Documentation links to the new configuration parameters
+  depends_on: [CREDIBLE-557]
+  notes: |
+    [chump harvest check 'Deploy']
+    === primitives_index match for 'Deploy' ===
+    
+    === cluster keyword match for 'Deploy' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Deploy' ===
+    
+    === repo-description match for 'Deploy' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Deploy' (deep-scan findings) ===
+      173:| **1** | `project-forge` (misc cluster) | 149 MB ACTIVE OKR platform (Next.js + Node + Postgres + AI insights + GCloud deploy) — not the dormant marketing-named thing the cluster label implied | **HIGH** — initiative hierarchy schema overlaps Chump's `state.db` gap registry; harvest the schema + AI-insights pipeline |
+    
+    === cross-pollination briefs mentioning 'Deploy' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
 - id: DOC-031
   domain: DOC
   title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
@@ -14688,9 +14936,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a pre‑verification step in `crates/chump-verify/src/external_verify_merge.rs` that invokes `cargo test --quiet` before collecting failing tests; update `collect_failing_tests` to capture the command’s exit status and, if non‑zero, return a `TestRegressionError` that aborts the merge with a clear message indicating that existing test suites failed.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All existing cargo test suites pass after the change
-    - No new test failures are introduced
+    - In `crates/chump-verify/src/external_verify_merge.rs`, the function `collect_failing_tests` must execute `cargo test --quiet` and return an error when the command exits with a non‑zero status.
+    - Running the verification binary (e.g., `cargo run --bin chump-verify verify`) after the change must output the line “All existing cargo test suites passed” when no tests fail.
+    - "Executing `cargo test` on the repository after the change must still result in a zero exit code for the existing test module in `src/tool_inventory.rs:572`."
+    - "No new test failures are introduced: the CI pipeline’s `cargo test` step must complete without any failing tests after the change."
   depends_on: [DOCS-005]
   notes: |
     [chump harvest check 'roadmap']
@@ -36351,12 +36608,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update the pickable‑gap determination logic so that gaps whose acceptance_criteria contain at least one concrete bullet are counted, and adjust the pillar‑coverage check to use this revised count; this involves adding a concrete‑AC filter in `scripts/dispatch/_pick_gap.py` → `main` and making `scripts/coord/fleet-doctor-strict.sh` → `check_pillar_coverage` evaluate the new pickable‑gap list when reporting pillar starvation.
+    
+    Target file(s):
+    - scripts/coord/fleet-doctor-strict.sh
+    - scripts/dispatch/_pick_gap.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - After this gap ships, `chump gap list --status open` shows zero ⚠ indicators on all P0 and P1 gaps (concrete AC present on every pickable gap)
-    - "`chump gap audit-priorities` exits 0 with no `vague_pickable` warnings on any pillar"
-    - At least 2 pickable (effort ≤ m, status open, no blocked deps, concrete AC) gaps exist per pillar at ship time; verified via `chump health --pillar-check` or equivalent
-    - "INFRA-1382 is self-closing: this gap ships when INFRA-1599 (batch AC fix) merges and the pillar-starvation condition is resolved"
-    - "Follow-up: if pillar starvation recurs within 7 days, a MISSION-PM maintenance gap is filed to add a `chump gap audit-priorities` CI gate that blocks ships when pickable-per-pillar < 2"
+    - Running `chump gap audit-priorities` exits with status 0 and produces no lines containing the string `vague_pickable`.
+    - "? Executing `chump health --pillar-check` outputs a line for every pillar that includes the phrase `≥2 pickable gaps` (e.g., “Pillar A : 2+ pickable gaps”)."
+    - The function `check_pillar_coverage` in `scripts/coord/fleet-doctor-strict.sh` returns exit code 0 when each pillar has at least two pickable gaps according to the updated logic.
+    - The `main` function in `scripts/dispatch/_pick_gap.py` now adds to the pickable‑gap list any gap whose `acceptance_criteria` array contains at least one concrete bullet (identified by a leading “- [x]” or similar marker); a unit test asserting that a gap with such a concrete criterion appears in the pickable set passes.
   notes: |
     Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
   opened_date: '2026-07-26'
@@ -52029,8 +52293,18 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    Extend the ambient event registry by inserting the nine new consensus event kind identifiers into the registration block in `src/pe_suite_status.rs` (around line 273, inside `fn scan_ambient`) and update the `_kind_registered` helper in `scripts/dev/ambient-emit.sh` to include those identifiers, so the scanner no longer emits “unknown‑kind” warnings for them.
+    
+    Target file(s):
+    - src/pe_suite_status.rs
+    - scripts/dev/ambient-emit.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - 9 consensus event kinds are registered in the event registry and recognized by the scanner without unknown-kind warnings.
+    - "src/pe_suite_status.rs::scan_ambient runs against a test payload containing each of the nine new kinds and produces zero “unknown‑kind” warnings in its output."
+    - "scripts/dev/ambient-emit.sh::_kind_registered invoked with each new kind exits with status 0 and prints “registered” (e.g., `./ambient-emit.sh <new_kind>`)."
+    - The event‑registry data structure in `src/pe_suite_status.rs` contains entries for all nine new kinds (verified by a unit test that asserts the registry length increased by nine).
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
