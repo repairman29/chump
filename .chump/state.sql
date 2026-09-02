@@ -2893,6 +2893,8 @@ gaps:
     - "The change described by \"opus/sonnet/haiku slot tags live only in gitignored/drifted .env — need a tracked provider manifest (or fix apply-mabel-badass-env.sh drift) so routing config survives a fresh checkout\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: CREDIBLE-544, CREDIBLE-545, CREDIBLE-546, CREDIBLE-547, CREDIBLE-548, CREDIBLE-549, CREDIBLE-550, CREDIBLE-551, CREDIBLE-552, CREDIBLE-553
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-186
@@ -12172,6 +12174,284 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-544
+  domain: CREDIBLE
+  title: "CREDIBLE: Investigate current .env handling and apply-mabel-badass-env.sh behavior (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A short markdown document summarizing where opus/sonnet/haiku slot tags are read from in the codebase
+    - Documented list of all places the apply-mabel-badass-env.sh script writes or expects those tags
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-545
+  domain: CREDIBLE
+  title: "CREDIBLE: Design provider manifest schema for slot tags (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A schema definition (e.g., TOML or YAML) that includes fields for opus, sonnet, and haiku tags
+    - Schema approved by the team (recorded in a comment on the issue)
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-546
+  domain: CREDIBLE
+  title: "CREDIBLE: Add tracked provider manifest file with default slot tags (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new file (e.g., config/provider_manifest.toml) is committed to the repo
+    - File contains default entries for opus, sonnet, and haiku matching current .env values
+  depends_on: [CREDIBLE-545]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-547
+  domain: CREDIBLE
+  title: "CREDIBLE: Update code to read slot tags from provider manifest (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All code paths that previously read tags from .env now load them from the manifest
+    - If the manifest is missing a tag, the code falls back to a sensible default
+  depends_on: [CREDIBLE-546]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-548
+  domain: CREDIBLE
+  title: "CREDIBLE: Modify apply-mabel-badass-env.sh to sync .env from manifest (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script now generates .env entries for opus/sonnet/haiku based on the manifest values
+    - Running the script on a fresh checkout creates a .env that matches the manifest
+  depends_on: [CREDIBLE-547]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-549
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit test for provider manifest parsing (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - cargo test includes a test that loads the manifest and asserts the correct tag values are returned
+    - Test fails when the manifest is altered to contain incorrect values
+  depends_on: [CREDIBLE-547]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-550
+  domain: CREDIBLE
+  title: "CREDIBLE: Add integration test verifying routing config survives fresh checkout (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test clones the repo, removes .env, runs the application, and asserts that routing uses the tags from the manifest
+    - Test fails when the manifest is missing or contains wrong values
+  depends_on: [CREDIBLE-547, CREDIBLE-548]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-551
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI scripts to execute new tests (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-*.sh includes commands to run the new unit and integration tests
+    - CI pipeline passes with the new tests on a clean checkout
+  depends_on: [CREDIBLE-549, CREDIBLE-550]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-552
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt + clippy and ensure no warnings (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt runs without changes needed
+    - cargo clippy --all-targets -D warnings passes with zero warnings
+  depends_on: [CREDIBLE-547, CREDIBLE-548, CREDIBLE-549, CREDIBLE-550]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-553
+  domain: CREDIBLE
+  title: "CREDIBLE: Update documentation to describe provider manifest usage (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README or docs folder includes a section explaining the provider manifest file, its format, and how it replaces .env for slot tags
+    - Documentation builds without errors
+  depends_on: [CREDIBLE-546, CREDIBLE-547]
+  notes: |
+    [chump harvest check 'committed']
+    === primitives_index match for 'committed' ===
+    
+    === cluster keyword match for 'committed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'committed' ===
+    
+    === repo-description match for 'committed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'committed' (deep-scan findings) ===
+      42:| `chump-brain` | Active (auto-committed) | **Already integrated** — it's a runtime memory artifact, not a harvest target |
+    
+    === cross-pollination briefs mentioning 'committed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: DOC-031
   domain: DOC
