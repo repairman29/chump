@@ -2009,6 +2009,21 @@ pub struct VisionIntakeOutput {
     pub clarifying_questions: Vec<String>,
     /// Plain-language proposed definition-of-done for the resulting outcome.
     pub proposed_dod: String,
+    /// JTBD "who": plain-language description of the person experiencing the
+    /// problem (EFFECTIVE-443 slice). Empty string when not yet captured —
+    /// intake may need a clarifying turn before this is known.
+    #[serde(default)]
+    pub who: String,
+    /// JTBD "struggling moment": plain-language description of the moment
+    /// the person is stuck in, in their own words (EFFECTIVE-443 slice).
+    #[serde(default)]
+    pub struggling_moment: String,
+    /// JTBD "done signal": whether a concrete, observable signal of success
+    /// has been captured (as opposed to `proposed_dod`'s free-text
+    /// description). `false` until the person has confirmed one
+    /// (EFFECTIVE-443 slice).
+    #[serde(default)]
+    pub done_signal: bool,
 }
 
 impl Validate for VisionIntakeOutput {
@@ -2139,12 +2154,41 @@ mod tests_vision_intake {
             proposed_dod: "A customer can pick an open time, get a confirmation, and you can \
                            see all upcoming bookings in one place."
                 .into(),
+            who: "A small-business owner who takes bookings by phone.".into(),
+            struggling_moment: "Missing calls while busy and losing potential bookings.".into(),
+            done_signal: false,
         }
     }
 
     #[test]
     fn accepts_clean_output() {
         assert!(good_output().validate().is_ok());
+    }
+
+    /// EFFECTIVE-753: `who` / `struggling_moment` / `done_signal` round-trip
+    /// through serde, and deserializing a payload that predates these fields
+    /// (no keys present) still succeeds via `#[serde(default)]`.
+    #[test]
+    fn jtbd_fields_roundtrip_and_default() {
+        let o = good_output();
+        let json = serde_json::to_string(&o).expect("serialize");
+        assert!(json.contains("\"who\""));
+        assert!(json.contains("\"struggling_moment\""));
+        assert!(json.contains("\"done_signal\""));
+        let back: VisionIntakeOutput = serde_json::from_str(&json).expect("deserialize");
+        assert_eq!(back.who, o.who);
+        assert_eq!(back.struggling_moment, o.struggling_moment);
+        assert_eq!(back.done_signal, o.done_signal);
+
+        let legacy = r#"{
+            "restatement": "You want a simple way to book online.",
+            "clarifying_questions": ["How many slots per day?"],
+            "proposed_dod": "Customers can book and you can see bookings."
+        }"#;
+        let parsed: VisionIntakeOutput = serde_json::from_str(legacy).expect("legacy deserialize");
+        assert_eq!(parsed.who, "");
+        assert_eq!(parsed.struggling_moment, "");
+        assert!(!parsed.done_signal);
     }
 
     #[test]
