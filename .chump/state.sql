@@ -23552,9 +23552,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add dependency names for arcade, upshift CLI, and olive surfaces to the Routing table in CI_POLICY_AUDIT.md, and update the test function force_fire_forged_cycle_surfaces_member_set in integration.rs to reference those names.
+    
+    Target file(s):
+    - docs/strategy/CI_POLICY_AUDIT.md
+    - crates/chump-planner/tests/integration.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Dependency names for arcade, upshift CLI, and olive surfaces are added to the CREDIBLE-206 specification
-    - Code references the new dependency names without errors
+    - In docs/strategy/CI_POLICY_AUDIT.md, the Routing table contains rows for arcade, upshift CLI, and olive surfaces with non-empty dependency name columns.
+    - In crates/chump-planner/tests/integration.rs, the function force_fire_forged_cycle_surfaces_member_set uses the new dependency names (e.g., as string literals) without causing compilation errors.
+    - Running `cargo test --test integration` passes all tests, including force_fire_forged_cycle_surfaces_member_set.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -23585,9 +23594,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a bash function `honestDegrade` that accepts a bucket status string (dead, exhausted, healthy) and echoes a JSON object with `state` and `reason` fields; also add a self-test function `test_honestDegrade` that validates outputs for dead, exhausted, and healthy inputs.
+    
+    Target file(s):
+    - scripts/ops/vital-signs.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Utility function `honestDegrade(bucketStatus)` returns a truthful state object for dead or quota‑exhausted buckets
-    - Unit tests cover dead‑bucket, quota‑exhausted, and healthy scenarios and all pass
+    - "Running `source scripts/ops/vital-signs.sh && honestDegrade dead` echoes '{\"state\":\"dead\",\"reason\":\"bucket is dead\"}'"
+    - "Running `source scripts/ops/vital-signs.sh && honestDegrade exhausted` echoes '{\"state\":\"exhausted\",\"reason\":\"quota exhausted\"}'"
+    - "Running `source scripts/ops/vital-signs.sh && honestDegrade healthy` echoes '{\"state\":\"healthy\",\"reason\":\"operational\"}'"
+    - Executing `source scripts/ops/vital-signs.sh && test_honestDegrade` prints 'All tests passed' and returns exit code 0
   depends_on: [EFFECTIVE-568]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23653,9 +23671,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    In scripts/coord/decompose-loop.sh, modify the cmd_tick function to wrap the leaderboard fetch command (e.g., curl) with a timeout and a fallback that logs a degradation banner and uses a cached or empty leaderboard, so that an unresponsive leaderboard service never blocks or crashes the game loop.
+    
+    Target file(s):
+    - scripts/coord/decompose-loop.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Gameplay continues unchanged when the leaderboard degradation banner is active
-    - Integration test confirms the game loop runs for at least 5 minutes without interruption
+    - Running `scripts/coord/decompose-loop.sh` with LEADERBOARD_URL pointing to a non‑responsive host prints 'leaderboard degradation banner' and continues emitting tick output for at least 5 minutes without exiting.
+    - The cmd_tick function in scripts/coord/decompose-loop.sh contains a `timeout 5` (or similar) on the leaderboard fetch command and a fallback assignment to a default leaderboard variable when the fetch fails.
+    - The existing integration test (tests/integration/test_game_loop_resilience.sh) passes, confirming the loop completes 300+ ticks with a simulated leaderboard outage.
   depends_on: [EFFECTIVE-570]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23687,9 +23713,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In the `upshift explain` command handler within `crates/chump-coord/src/main.rs`, wrap the call that fetches data from the AI bucket in a try/catch (or equivalent Result handling) so that when the bucket is unreachable the function returns a hardcoded placeholder string instead of propagating an error.
+    
+    Target file(s):
+    - crates/chump-coord/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The `upshift explain` command works when the AI bucket is unavailable, returning placeholder data
-    - No unhandled exceptions are thrown in this path
+    - Running `upshift explain <query>` while the AI bucket endpoint is unreachable (e.g., network down, timeout) prints a message containing the word 'placeholder' to stdout and exits with code 0.
+    - No panic message, stack trace, or unhandled error is written to stderr when the AI bucket is unavailable.
+    - When the AI bucket is available, `upshift explain` still returns the real explanation from the bucket, with no change to its output format.
   depends_on: [EFFECTIVE-569]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23721,9 +23755,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In the AI command handler within `src/upshift/cli/ai.py`, add a try/except block around the AI API call that catches the quota-exhaustion exception, then calls the existing credits module's credit-exhaustion message function to display a user-facing message instead of allowing a stack trace.
+    
+    Target file(s):
+    - src/upshift/cli/ai.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When AI bucket quota is exhausted, the CLI outputs a credit‑exhaustion message using the existing credits module
-    - No stack traces or crashes occur
+    - Running `upshift ai explain <file>` when the AI bucket quota is exhausted prints the credit-exhaustion message from the credits module to stderr and exits with a non-zero code.
+    - Running `upshift ai explain <file>` when the AI bucket quota is exhausted does not print a Python stack trace or crash message.
+    - Running `upshift ai explain <file>` when quota is available completes normally and returns the AI explanation on stdout.
   depends_on: [EFFECTIVE-569]
   notes: |
     [chump harvest check 'EFFECTIVE']
