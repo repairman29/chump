@@ -9547,10 +9547,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add two new probe functions (`probe_launchd_missing` and `probe_daemon_config_missing`) to `crates/chump-preflight/src/preflight.rs` that detect launchd plist jobs with zero running processes and enabled daemon configs whose executable is absent, respectively, and invoke these probes from `scripts/coord/trunk-sentinel-daemon.sh` so their findings are merged into the unified non‑blocking findings report.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/coord/trunk-sentinel-daemon.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Probe checks launchd plists in scripts/launchd and ~/Library/LaunchAgents for declared jobs with zero running processes
-    - Probe checks TOML and config files with enabled=true where the referenced daemon executable is absent
-    - Probe output is integrated into the unified non-blocking findings report
+    - In `crates/chump-preflight/src/preflight.rs`, a function named `probe_launchd_missing` scans `scripts/launchd` and `~/Library/LaunchAgents` for plist files, parses the declared job label, and emits a Finding when no process with that label is running.
+    - In `crates/chump-preflight/src/preflight.rs`, a function named `probe_daemon_config_missing` parses TOML and generic config files for `enabled = true`, resolves the referenced executable path, and emits a Finding when the executable file does not exist.
+    - "Executing `scripts/coord/trunk-sentinel-daemon.sh --run-probes` writes JSON entries to the unified findings report (`var/findings.json`) that include `\"probe\":\"launchd_missing\"` and `\"probe\":\"daemon_config_missing\"` keys when the respective conditions are detected."
+    - "The unified findings report (`var/findings.json`) contains a non‑blocking entry with `\"status\":\"warning\"` for each missing launchd job and missing daemon executable, confirming integration of the new probes."
   depends_on: [CREDIBLE-455]
 
 - id: CREDIBLE-458
