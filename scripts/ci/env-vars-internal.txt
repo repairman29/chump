@@ -2451,3 +2451,8 @@ CHUMP_SUB_FALLBACK_THRESHOLD
 CHUMP_ZERO_SHIP_MIN_CYCLES
 # detected in: (standard input)
 CHUMP_ZERO_SHIP_WINDOW_SECS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PREFLIGHT_LOAD_THRESHOLD

@@ -491,19 +491,40 @@ fn changed_crate_names(repo_root: &std::path::Path, paths: &[String]) -> Option<
     }
 }
 
+/// Load-average multiplier past which the machine is considered "busy"
+/// (default: defer once load1 exceeds `cpus`). Configurable so operators/tests
+/// can tune how aggressively the gate backs off. `CHUMP_PREFLIGHT_LOAD_THRESHOLD=1.5`
+/// means "defer once load1 > 1.5x available cpus".
+const DEFAULT_PREFLIGHT_LOAD_THRESHOLD: f64 = 1.0;
+
+fn preflight_load_threshold() -> f64 {
+    std::env::var("CHUMP_PREFLIGHT_LOAD_THRESHOLD")
+        .ok()
+        .and_then(|s| s.trim().parse::<f64>().ok())
+        .filter(|v| *v > 0.0)
+        .unwrap_or(DEFAULT_PREFLIGHT_LOAD_THRESHOLD)
+}
+
 /// Cap `cargo check -j` at a sane ceiling (~6) so a scoped, single-crate
 /// check doesn't monopolize every core on the machine, and back off to a
 /// single job under a load-aware-defer: when 1-minute load average already
-/// exceeds available CPUs, the machine is busy (another cargo build,
+/// exceeds `cpus * threshold`, the machine is busy (another cargo build,
 /// another agent) — deferring to 1 job avoids compounding the contention
-/// instead of racing it.
-fn compute_check_jobs(cpus: usize, load1: f64) -> usize {
+/// instead of racing it. `threshold` is a pure parameter (not read from env
+/// directly) so callers/tests can toggle the defer behavior deterministically.
+fn compute_check_jobs_with_threshold(cpus: usize, load1: f64, threshold: f64) -> usize {
     let cap = cpus.clamp(1, 6);
-    if load1 > cpus as f64 {
+    if load1 > cpus as f64 * threshold {
         1
     } else {
         cap
     }
+}
+
+/// Convenience wrapper that reads the threshold from `CHUMP_PREFLIGHT_LOAD_THRESHOLD`
+/// (default 1.0x available cpus).
+fn compute_check_jobs(cpus: usize, load1: f64) -> usize {
+    compute_check_jobs_with_threshold(cpus, load1, preflight_load_threshold())
 }
 
 /// Best-effort CPU count; defaults to 4 if unavailable (matches CI runner
@@ -3738,6 +3759,41 @@ mod tests {
         // Load average already exceeds available CPUs -> back off to 1 job
         // rather than compounding contention (load-aware-defer).
         assert_eq!(compute_check_jobs(8, 20.0), 1);
+    }
+
+    #[test]
+    fn compute_check_jobs_with_threshold_is_configurable() {
+        // At 2x threshold, a load of 10 on 8 cpus (1.25x) should NOT defer.
+        assert_eq!(compute_check_jobs_with_threshold(8, 10.0, 2.0), 6);
+        // But it should defer once load exceeds the scaled threshold.
+        assert_eq!(compute_check_jobs_with_threshold(8, 20.0, 2.0), 1);
+        // Threshold can be tightened too: 0.5x means defer sooner.
+        assert_eq!(compute_check_jobs_with_threshold(8, 5.0, 0.5), 1);
+    }
+
+    #[test]
+    fn cargo_check_step_argv_includes_nice_and_capped_jobs() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["crates/foo/src/lib.rs".to_string()];
+        let step = cargo_check_step(root, &paths);
+        // AC: constructs `nice -n 10 cargo check -p <crate> -j 6` (or
+        // equivalent capped jobs) — this crate uses the long-form `--jobs`
+        // flag, which is functionally equivalent to `-j`.
+        assert_eq!(step.argv[0], "nice", "argv={:?}", step.argv);
+        assert_eq!(step.argv[1], "-n", "argv={:?}", step.argv);
+        assert_eq!(step.argv[2], "10", "argv={:?}", step.argv);
+        assert!(
+            step.argv.iter().any(|a| a == "--jobs"),
+            "must pass a jobs flag (equivalent to -j), argv={:?}",
+            step.argv
+        );
+        let jobs_idx = step.argv.iter().position(|a| a == "--jobs").unwrap();
+        let jobs_val: usize = step.argv[jobs_idx + 1].parse().unwrap();
+        assert!(
+            (1..=6).contains(&jobs_val),
+            "jobs must be capped at 6, got {jobs_val}"
+        );
     }
 
     #[test]
