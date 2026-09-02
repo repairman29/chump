@@ -1569,7 +1569,7 @@ gaps:
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-431, CREDIBLE-432, CREDIBLE-433, CREDIBLE-434
+    Decomposed into 4 slices: CREDIBLE-513, CREDIBLE-514, CREDIBLE-515, CREDIBLE-516
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -4841,13 +4841,15 @@ gaps:
 - id: CREDIBLE-298
   domain: CREDIBLE
   title: land outcomes-delivered gauge as a durable organ (script+timer+manifest+test)
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "The change described by \"land outcomes-delivered gauge as a durable organ (script+timer+manifest+test)\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T07:04:21Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-22'
 
 - id: CREDIBLE-299
@@ -8603,10 +8605,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update the `run_gate` function in `scripts/ci/test-rust-first-gate.sh` to emit a structured log entry containing `gate_id`, timestamp, and `activation_reason` to stdout whenever a gate is evaluated, allowing CI logs to be filtered by `gate_id` without altering gate execution results.
+    
+    Target file(s):
+    - scripts/ci/test-rust-first-gate.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Each gate emits a structured log entry (gate_id, timestamp, activation_reason) via the project's logging framework.
-    - Log emission does not change existing program behavior or performance beyond a negligible amount.
-    - Logs can be filtered by gate_id in the CI logs.
+    - "`run_gate` in `scripts/ci/test-rust-first-gate.sh` outputs a structured log line containing `gate_id`, timestamp, and `activation_reason` when executed."
+    - Running `bash scripts/ci/test-rust-first-gate.sh` emits log lines containing `gate_id=` that can be filtered with standard grep commands.
+    - Executing `scripts/ci/test-rust-first-gate.sh` preserves original script exit codes and gate pass/fail evaluation outcomes.
   depends_on: [CREDIBLE-422]
   notes: |
     [chump harvest check 'audit']
@@ -8669,10 +8678,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `scripts/coord/gap-doctor.py`, update the gate processing in `cmd_safe_sweep` so that when `is_false_positive` evaluates to True for an evaluated gate, that gate is removed from the active gate dictionary or tagged with status `DELETED`.
+    
+    Target file(s):
+    - scripts/coord/gap-doctor.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When `is_false_positive` returns true, the gate is removed from the active gate set or marked as DELETED.
-    - No panic or crash occurs when a gate is deleted.
-    - Existing functional tests continue to pass.
+    - In `scripts/coord/gap-doctor.py`, `cmd_safe_sweep` identifies gates where `is_false_positive` returns True and removes them from the active gate list or updates their status to DELETED.
+    - Deleting a false positive gate in `scripts/coord/gap-doctor.py` completes without throwing key errors, unhandled exceptions, or crashing.
+    - Running `python3 scripts/coord/gap-doctor.py` completes successfully without failing existing functional gate checks.
   depends_on: [CREDIBLE-423, CREDIBLE-424]
   notes: |
     [chump harvest check 'audit']
@@ -8702,10 +8718,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a per-gate false-positive rate Prometheus metric `gate_fp_rate` labeled by `gate_id` in `src/telemetry_energy.rs` by tracking false-positive deletions against total gate activations, and register/render this metric inside the telemetry output in `src/routes/health.rs`.
+    
+    Target file(s):
+    - src/telemetry_energy.rs
+    - src/routes/health.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new metric `gate_fp_rate{gate_id}` is exported via the project's Prometheus exporter.
-    - The metric reports the ratio of false‑positive deletions to total activations for each gate.
-    - Metric values are updated in real time during normal execution.
+    - "`src/telemetry_energy.rs` calculates and updates `gate_fp_rate` labeled with `gate_id` as the ratio of false-positive deletions to total gate activations."
+    - "`src/routes/health.rs` exports `gate_fp_rate{gate_id=...}` in the Prometheus metrics endpoint output."
+    - "`cargo test` passes and verifies that `gate_fp_rate` updates correctly when gate activations and false-positive deletions occur."
   depends_on: [CREDIBLE-425]
   notes: |
     [chump harvest check 'audit']
@@ -8735,10 +8759,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new Rust unit test function `test_farmer_auth_dead_false_positive_deletion` inside `crates/chump-atomic-claim/src/atomic_claim.rs` under `mod main_health_gate_tests` that sets up a false-positive evaluation state for `farmer_auth_dead`, invokes the gate cleanup pipeline, asserts that the `farmer_auth_dead` gate is removed from the active gate list, and verifies that the `gate_fp_rate` metric counter for `farmer_auth_dead` is incremented.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test simulates a false‑positive condition for `farmer_auth_dead` and asserts that the gate is deleted.
-    - Test also verifies that the `gate_fp_rate{farmer_auth_dead}` metric increments accordingly.
-    - Test passes with the new code and fails when the deletion logic is removed.
+    - "`crates/chump-atomic-claim/src/atomic_claim.rs` contains unit test `test_farmer_auth_dead_false_positive_deletion` under `mod main_health_gate_tests`."
+    - The unit test simulates a false-positive state for `farmer_auth_dead` and asserts that the gate is deleted from the active gate set.
+    - The unit test asserts that the `gate_fp_rate` metric for `farmer_auth_dead` increments after deletion.
+    - Running `cargo test -p chump-atomic-claim --lib main_health_gate_tests` passes.
   depends_on: [CREDIBLE-425]
   notes: |
     [chump harvest check 'audit']
@@ -8834,10 +8866,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Apply Rust code formatting fixes and resolve clippy lint warnings in `crates/chump-preflight/src/preflight.rs` (including `run` and `print_help` functions) to ensure `cargo fmt --check` and `cargo clippy --all-targets -- -D warnings` execute cleanly without errors or warnings.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all` makes no changes."
-    - "`cargo clippy --all-targets -D warnings` completes with zero warnings."
-    - All new code passes the existing formatting and linting checks.
+    - "`cargo fmt --check` exits with status 0 and makes no changes across `crates/chump-preflight/src/preflight.rs`."
+    - "`cargo clippy --all-targets -- -D warnings` completes with exit code 0 and zero warnings."
+    - "`cargo test -p chump-preflight` passes all existing unit and integration tests."
   notes: |
     [chump harvest check 'audit']
     === primitives_index match for 'audit' ===
@@ -11320,6 +11359,50 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-513
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement core scripts/lib/halt-class-emit.sh wrapper with failure taxonomy (CREDIBLE-108 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/lib/halt-class-emit.sh wrapper exists and is executable
+    - Emits structured events for success, failure, and timeout execution states
+    - Categorizes failures into transient vs permanent taxonomy via CLI arguments or flags
+
+- id: CREDIBLE-514
+  domain: CREDIBLE
+  title: "CREDIBLE: Add cost tracking and operator reporting to halt-class emitter (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - halt-class-emit.sh accepts cost tracking parameters (e.g. execution duration/units)
+    - Formats and outputs cost metrics for operator visibility during event emission
+  depends_on: [CREDIBLE-513]
+
+- id: CREDIBLE-515
+  domain: CREDIBLE
+  title: "CREDIBLE: Retrofit existing halt-class emitters to use halt-class-emit.sh wrapper (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Existing bash halt-class emission logic refactored to delegate to scripts/lib/halt-class-emit.sh
+    - All retrofitted invocation sites pass required failure taxonomy and execution state metadata
+  depends_on: [CREDIBLE-513]
+
+- id: CREDIBLE-516
+  domain: CREDIBLE
+  title: "CREDIBLE: Add smoke test command to verify halt-class emitter observability (CREDIBLE-108 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Executable smoke test command added to verify halt-class observability
+    - Smoke test validates event output across success, timeout, transient failure, and permanent failure scenarios
+  depends_on: [CREDIBLE-513, CREDIBLE-514, CREDIBLE-515]
 
 - id: DOC-031
   domain: DOC
@@ -74301,13 +74384,15 @@ gaps:
 - id: INFRA-3666
   domain: INFRA
   title: "swe: fix the README to document the new chump trek command"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "The change described by \"fix the README to document the new chump trek command\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T07:03:49Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-22'
 
 - id: INFRA-3667
