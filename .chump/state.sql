@@ -26806,9 +26806,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the integration test script to implement the full publication-stage scenario: ship a gap with an artifact_type that defines both internal and external targets, then assert that publication gaps are created, external ones appear in the approval queue, and internal ones proceed without approval; complete one publication gap and verify a receipt is recorded; finally ship a gap with no targets and assert that zero publication gaps are created.
+    
+    Target file(s):
+    - scripts/ci/test-gap-ship-integration.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Test covers: ship a gap with artifact_type that has internal and external targets; verify publication gaps created, external ones routed to approval queue, internal ones proceed; complete a publication gap and verify receipt recorded; ship a gap with no targets and verify no gaps created."
-    - All steps are automated and pass.
+    - "Execute `scripts/ci/test-gap-ship-integration.sh`; the script must exit 0 and print 'PASS: publication gaps created for internal and external targets' after shipping a gap with mixed targets."
+    - "The script must run `chump-gap-store ship` with a gap that has no artifact targets and then assert the output contains 'publication_gaps_created: 0'."
+    - The script must complete a publication gap via `chump-gap-store complete` and then query the gap store to verify a receipt record exists for that gap.
+    - The script must check the approval queue (e.g., `chump-approval list`) after shipping a gap with an external target and assert the external publication gap appears in the queue.
   depends_on: [EFFECTIVE-642, EFFECTIVE-643, EFFECTIVE-644, EFFECTIVE-645, EFFECTIVE-646]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -26837,13 +26846,21 @@ gaps:
 - id: EFFECTIVE-648
   domain: EFFECTIVE
   title: "EFFECTIVE: Arcade: Implement degradation for leaderboard and feedback widget when Supabase is down/limited (EFFECTIVE-370 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
+  description: |
+    In the `pr_ac_coverage.rs` module, add a check within the Supabase client initialization or query functions that catches connection failures or timeouts, and when caught, sets a degradation flag causing the leaderboard to render the "scores are napping" placeholder and the feedback widget to render in a disabled, non-functional state, while allowing the game loop to proceed without interruption.
+    
+    Target file(s):
+    - crates/chump-verify/src/pr_ac_coverage.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Leaderboard displays 'scores are napping' state when Supabase is unavailable
-    - Feedback widget shows a quiet, non-functional state when Supabase is unavailable
-    - Game loop remains fully functional and unaffected by degradation
+    - Running `cargo test` in `crates/chump-verify/src/pr_ac_coverage.rs` passes a new test that simulates a Supabase connection refusal and asserts the leaderboard UI state contains the exact string 'scores are napping'.
+    - Running `cargo test` in `crates/chump-verify/src/pr_ac_coverage.rs` passes a new test that simulates a Supabase timeout and asserts the feedback widget's submit button is disabled or hidden.
+    - Running the full game binary with the `SUPABASE_URL` environment variable set to an unreachable host results in the game loop continuing to process frames normally for at least 30 seconds without a panic or crash.
+    - Executing `scripts/ci/test-handoff-reactor.sh` with a mocked-down Supabase endpoint exits with code 0 and its output contains 'degraded mode active'.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -26867,6 +26884,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T01:24:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3298B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-649
   domain: EFFECTIVE
@@ -26874,9 +26892,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In the preflight check (`run` in crates/chump-preflight/src/preflight.rs) and the CLI argument handler (`main` in src/main.rs), skip the AI bucket requirement when the command is "explain" and the data source is "registry", allowing the command to execute and return results solely from local registry data without any dependency on the AI bucket.
+    
+    Target file(s):
+    - src/main.rs
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Running 'upshift explain' on registry data returns results without requiring AI bucket
-    - No errors, hangs, or stack traces occur when AI bucket is unavailable
+    - Running `upshift explain --source registry` while the `AI_BUCKET` environment variable is unset exits with status 0 and prints human-readable explanation output to stdout.
+    - "In `crates/chump-preflight/src/preflight.rs`, the `run` function (line 1196) does not return an error or panic when invoked with command \"explain\" and source \"registry\" even if no AI bucket credentials are configured."
+    - In `src/main.rs`, the `explain` subcommand match arm (around line 1341 in `main`) contains no reference to the AI bucket module or bucket-related upload logic and does not fail when the bucket is unavailable.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
