@@ -9227,10 +9227,20 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new end‑to‑end regression test file `tests/ship_count_failure.rs` that invokes `fleet-brief` with a mocked git‑fetch timeout, asserts that the SessionStart banner prints “Ships: unavailable” and that the health verdict line reads “measurement failed / investigate”, and fails if the banner ever prints “Ships: 0” with a healthy verdict. Register this test in the `discover_test_scripts` function inside `crates/chump-preflight/src/preflight.rs` so it is picked up automatically, and extend the CI helper `scripts/ci/test-bypass-trailer-validator.sh` to run the new test as part of the CI suite.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - tests/ship_count_failure.rs
+    - scripts/ci/test-bypass-trailer-validator.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - An end‑to‑end test runs fleet‑brief with a simulated git fetch timeout.
-    - "The test confirms the SessionStart banner shows \"Ships: unavailable\" and that the health verdict is \"measurement failed / investigate\"."
-    - "The test fails if the banner ever shows \"Ships: 0\" with a healthy verdict."
+    - "Running `cargo test --test ship_count_failure` prints a banner line containing “Ships: unavailable” and a verdict line containing “measurement failed / investigate”, and the test exits with status 0."
+    - "The same test exits with a non‑zero status when the output contains the string “Ships: 0” together with a healthy verdict line."
+    - The function `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` includes the path `tests/ship_count_failure.rs` in its returned list of test script paths.
+    - The CI script `scripts/ci/test-bypass-trailer-validator.sh` invokes `cargo test --test ship_count_failure` and causes the CI job to fail if that test returns a non‑zero exit code.
   depends_on: [CREDIBLE-439, CREDIBLE-440, CREDIBLE-441, CREDIBLE-442, CREDIBLE-444]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -99755,13 +99765,15 @@ gaps:
 - id: RESILIENT-382
   domain: RESILIENT
   title: "CJ: /mnt/cjdata3 (/dev/sdb1) is a dead disk — unwritable (Bad message, os error 74); sccache was pinned to it so every rebuild failed; repointed sccache config to /mnt/cjdata2, but the failing disk needs fsck/remount/decommission"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "The change described by \"/mnt/cjdata3 (/dev/sdb1) is a dead disk — unwritable (Bad message, os error 74); sccache was pinned to it so every rebuild failed; repointed sccache config to /mnt/cjdata2, but the failing disk needs fsck/remount/decommission\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T08:35:49Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: RESILIENT-383
@@ -104724,6 +104736,7 @@ gaps:
     [2026-09-02T07:22:54Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (120 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T07:25:14Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (121 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T07:30:09Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (122 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T08:18:15Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 16h) 2026-09-02; RESPAWN CAP 3 reached (123 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
