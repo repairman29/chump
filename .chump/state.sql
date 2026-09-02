@@ -6875,7 +6875,7 @@ gaps:
 - id: CREDIBLE-358
   domain: CREDIBLE
   title: Debt Index 5/5 — prune loop for low-Crit dormant
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -6884,6 +6884,8 @@ gaps:
     - "The change described by \"Debt Index 5/5 — prune loop for low-Crit dormant\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T10:43:47Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-359
@@ -11824,7 +11826,7 @@ gaps:
 - id: CREDIBLE-531
   domain: CREDIBLE
   title: "CREDIBLE: Implement CI grep‑target sweep script (CREDIBLE-274 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -11833,6 +11835,8 @@ gaps:
     - "The script produces a JSON file listing each missing target with fields: file, line, missing_target."
     - When run on the known test case (CREDIBLE‑237), the script reports at least one missing target.
     - The script does not cause the CI job to fail (no non‑zero exit on missing targets).
+  notes: |
+    [2026-09-02T10:43:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-532
   domain: CREDIBLE
@@ -23105,13 +23109,15 @@ gaps:
 - id: EFFECTIVE-515
   domain: EFFECTIVE
   title: Add CI test harness for nba-dispatch-beat.sh (allow-list boundary, relapse-loop, pause-guard, idempotency, stale-input)
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "The change described by \"Add CI test harness for nba-dispatch-beat.sh (allow-list boundary, relapse-loop, pause-guard, idempotency, stale-input)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T10:44:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-516
   domain: EFFECTIVE
