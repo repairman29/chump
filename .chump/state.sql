@@ -27244,7 +27244,7 @@ gaps:
 - id: EFFECTIVE-658
   domain: EFFECTIVE
   title: "EFFECTIVE: Demote cloud CI to non-blocking net (EFFECTIVE-372 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -27272,6 +27272,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'local-first' ===
+    [2026-09-02T04:10:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-659
   domain: EFFECTIVE
@@ -28238,7 +28239,7 @@ gaps:
 - id: EFFECTIVE-686
   domain: EFFECTIVE
   title: "EFFECTIVE: Extend event recognition to all 70 distinct event kinds, not just gap-run events (EFFECTIVE-397 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -28258,6 +28259,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'almanac' ===
+    [2026-09-02T04:10:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-687
   domain: EFFECTIVE
