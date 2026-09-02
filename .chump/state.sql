@@ -19749,7 +19749,7 @@ gaps:
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"A CLI tool that tracks daily habits\"\n3. Sub-gaps filed for core feature areas"
   notes: |
-    Decomposed into 3 slices: EFFECTIVE-608, EFFECTIVE-609, EFFECTIVE-610
+    Decomposed into 3 slices: EFFECTIVE-805, EFFECTIVE-806, EFFECTIVE-807
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -34491,11 +34491,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new `#[cfg(test)]` module in `src/ship_quality.rs` containing four concrete unit tests for the `chump ship --manual` command. Each test uses API mocks to simulate success, authentication error, CI failure, and branch‑conflict scenarios, then asserts that the command prints the correct URLs, status messages, and exits with the expected code.
+    
+    Target file(s):
+    - src/ship_quality.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test successful push, PR creation, and merge using API mocks
-    - "Test failure paths: auth error, CI failure, branch conflict"
-    - Validate that command reports correct URLs and statuses
-    - All tests pass in CI
+    - In `src/ship_quality.rs`, the test `test_manual_ship_success` verifies that mocked successful push, PR creation, and merge result in the command printing the expected PR URL and a “merged” status line.
+    - In `src/ship_quality.rs`, the test `test_manual_ship_auth_error` asserts that an authentication‑error response from the mocked API causes the command to exit with code 1 and prints “Authentication failed”.
+    - In `src/ship_quality.rs`, the test `test_manual_ship_ci_failure` asserts that a mocked CI‑failure response leads to the command printing “CI checks failed” and exiting with a non‑zero status.
+    - In `src/ship_quality.rs`, the test `test_manual_ship_branch_conflict` asserts that a mocked branch‑conflict error results in the command printing “Branch conflict” and exiting with code 2.
   depends_on: [EFFECTIVE-792]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -34562,11 +34569,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add three concrete unit tests inside the existing `mod tests` block of `src/execute_gap.rs`: one that verifies commit trailers are correctly appended when invoking `chump commit --bypass`, one that checks the validation error for an overly short reason string, and one that ensures the command aborts with an appropriate error when the repository has uncommitted changes.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test that trailers are correctly appended to a commit message
-    - Test validation of reason length and error handling
-    - Test behavior when repository is in a dirty state
-    - All tests pass in CI
+    - Running `cargo test --test execute_gap_bypass_trailers` executes the new test `test_bypass_trailers_appended` in src/execute_gap.rs and asserts that the generated commit message ends with the expected trailer line.
+    - Running `cargo test --test execute_gap_bypass_reason` executes the new test `test_bypass_reason_length_error` in src/execute_gap.rs and verifies that the returned error string contains the phrase “reason too short”.
+    - Running `cargo test --test execute_gap_bypass_dirty` executes the new test `test_bypass_fails_on_dirty_repo` in src/execute_gap.rs and confirms that the command exits with status code 1 and outputs “repository is dirty”.
   depends_on: [EFFECTIVE-794]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -34598,10 +34611,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Register a new POST "/api/mission" endpoint in the API router (src/web_server.rs::build_api_router) and wire it to the existing handler function (crates/chump-fleet-server/src/routes.rs::post_mission), then implement post_mission to deserialize a well‑formed JSON body and respond with HTTP 200, returning an error for malformed payloads.
+    
+    Target file(s):
+    - src/web_server.rs
+    - crates/chump-fleet-server/src/routes.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The fleet server registers a POST /api/mission endpoint in its routing table.
-    - A request to the new endpoint returns HTTP 200 for a well‑formed JSON body.
-    - Compilation succeeds with no warnings.
+    - "src/web_server.rs:build_api_router registers POST \"/api/mission\" pointing to routes::post_mission."
+    - "crates/chump-fleet-server/src/routes.rs:post_mission parses the request body as JSON and returns a 200 OK response for valid input."
+    - "crates/chump-fleet-server/tests/mission_intake.rs:build_app sends a POST /api/mission with a valid JSON payload and asserts that the response status is 200."
+    - Running `cargo test --package chump-fleet-server` completes without failures or compilation warnings.
   notes: |
     [chump harvest check 'external']
     === primitives_index match for 'external' ===
@@ -34626,10 +34648,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `post_mission` function in `crates/chump-fleet-server/src/routes.rs` to deserialize the incoming JSON body into a struct, explicitly check for the presence and type of the required fields (`mission_id`, `target`, `parameters`), and return an HTTP 400 response with a JSON error message when any field is missing or invalid; on success return HTTP 200 with the created mission data.
+    
+    Target file(s):
+    - crates/chump-fleet-server/src/routes.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The POST handler extracts required fields (mission_id, target, parameters) from the JSON body.
-    - Invalid or missing fields cause an HTTP 400 response with an error message.
-    - Unit tests cover both valid and invalid payloads.
+    - In `crates/chump-fleet-server/src/routes.rs`, `post_mission` returns HTTP 200 when the request body contains a valid JSON object with `mission_id`, `target`, and `parameters`.
+    - In `crates/chump-fleet-server/src/routes.rs`, `post_mission` returns HTTP 400 with a JSON error message when `mission_id` is absent from the request body.
+    - In `crates/chump-fleet-server/src/routes.rs`, `post_mission` returns HTTP 400 with a JSON error message when the request body is malformed JSON or any required field has an incorrect type.
   depends_on: [EFFECTIVE-796]
   notes: |
     [chump harvest check 'external']
@@ -34851,6 +34880,82 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-805
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create repository scaffold with initial commit (EFFECTIVE-265 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Repository exists at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.sesaNzYOfT
+    - Git repository is initialized
+    - First commit in history is the scaffold commit
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-806
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add README with intent string (EFFECTIVE-265 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md file is present in the repository root
+    - "The first body line of README.md contains the exact string: \"A CLI tool that tracks daily habits\""
+  depends_on: [EFFECTIVE-805]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: EFFECTIVE-807
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File sub‑gap tickets for core feature areas (EFFECTIVE-265 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Three sub‑gap tickets (EFFECTIVE-608, EFFECTIVE-609, EFFECTIVE-610) are created in the issue tracker
+    - Each ticket is linked to the parent issue EFFECTIVE-265
+    - Each ticket description outlines a core feature area of the habit‑tracking CLI
+  depends_on: [EFFECTIVE-805]
+  notes: |
+    [chump harvest check 'Bootstrap']
+    === primitives_index match for 'Bootstrap' ===
+    
+    === cluster keyword match for 'Bootstrap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Bootstrap' ===
+    
+    === repo-description match for 'Bootstrap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Bootstrap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Bootstrap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: EVAL-085
   title: test eval 085
@@ -112451,7 +112556,7 @@ gaps:
 - id: RESILIENT-664
   domain: RESILIENT
   title: "RESILIENT: Refactor chump‑commit error aggregation to emit a single failure message with all required trailers (RESILIENT-137 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -112473,6 +112578,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T20:34:17Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-665
   domain: RESILIENT
@@ -112504,7 +112610,7 @@ gaps:
 - id: RESILIENT-666
   domain: RESILIENT
   title: "RESILIENT: Make stomp prompt non‑tty‑safe (auto‑default in headless mode) (RESILIENT-137 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -112526,6 +112632,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T20:34:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-667
   domain: RESILIENT
@@ -112557,7 +112664,7 @@ gaps:
 - id: RESILIENT-668
   domain: RESILIENT
   title: "RESILIENT: Adjust bypass‑trailer validator to ignore non‑bypass commits (RESILIENT-137 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -112579,6 +112686,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-02T20:35:25Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-669
   domain: RESILIENT
