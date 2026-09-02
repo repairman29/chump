@@ -46,6 +46,7 @@ mod browser;
 mod browser_tool;
 mod calc_tool;
 mod cancel_registry;
+mod capability_lifecycle;
 mod cascade_stats;
 mod checkpoint_db;
 mod checkpoint_tool;
