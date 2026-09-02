@@ -3489,7 +3489,7 @@ gaps:
 - id: CREDIBLE-220
   domain: CREDIBLE
   title: nothing watches CI health on non-chump fleet repos — two sat red for ~6 months unnoticed
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -3504,6 +3504,8 @@ gaps:
     - Invoking the fleet-doctor binary with `--check ci-health --threshold-days 180` produces a holler entry for `ai-gm-service` (red since 2026-01-21) and `jarvis-rog-ed` (red since 2026-01-31) when run against fleet data from 2026-08-07.
     - A repo whose default-branch CI is red due to a missing `lint` script in `package.json` is classified as `config-failure` in the holler report, while a repo red due to a failing `cargo test` assertion is classified as `test-failure`.
     - The `check_ci_health` function in `src/fleet_health.rs` is registered in the existing periodic sweep scheduler so that it runs on the same cadence as other fleet-wide health checks and its results appear in the holler dashboard.
+  notes: |
+    [2026-09-02T02:42:28Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4697B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
@@ -18561,7 +18563,7 @@ gaps:
 - id: EFFECTIVE-390
   domain: EFFECTIVE
   title: holler-bridge + dispatch grounding query the WRONG repo for external_repo gaps
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -18577,6 +18579,8 @@ gaps:
     - In holler-to-chump.mjs, the bridge's gap reservation step (the deterministic spine) performs a search against the target external repo's almanac index when an `external_repo` tag is present, and attaches the results as a `candidates` map (with the indexed commit) to the gap's metadata, ensuring the hits are visible in the gap's intake view.
     - "A test in dispatch.rs (mod tests) verifies that a gap with `external_repo:repairman29/olive` produces a grounding block containing only hits from the olive repo's index, and that a gap with an unregistered `external_repo` produces no grounding block."
     - "Running the holler-to-chump bridge with a test gap that has `external_repo:repairman29/olive` results in the gap's stored metadata containing a `candidates` field with at least one hit from the olive repo, and the hit includes the indexed commit SHA."
+  notes: |
+    [2026-09-02T02:31:36Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=6185B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: EFFECTIVE-391
@@ -18771,6 +18775,8 @@ gaps:
     - "Coverage honesty travels with every finding: a partial/none organ result must say so in the row, so a thin scan can never be read as a clean bill of health (RELEASE_CHECKLIST 1.5c already requires this for humans — the machine path needs it too)"
     - context.repo uses a BARE slug, not owner/repo — the bridge prefixes the owner and double-prefixed tags route to a repo that does not exist (fixed at source 2026-08-07, do not reintroduce)
     - "Unblocks three things that are all currently manual or impossible: EFFECTIVE-389 (scheduled code-posse sweep), the RELEASE_CHECKLIST 1e/1.5 auditor filing what it finds instead of only printing it, and CREDIBLE-221 (organ usage telemetry)"
+  notes: |
+    Decomposed into 7 slices: EFFECTIVE-693, EFFECTIVE-694, EFFECTIVE-695, EFFECTIVE-696, EFFECTIVE-697, EFFECTIVE-698, EFFECTIVE-699
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CHUMPOS
@@ -26936,7 +26942,7 @@ gaps:
 - id: EFFECTIVE-650
   domain: EFFECTIVE
   title: "EFFECTIVE: Upshift CLI: Implement AI-explain path degradation for quota exhaustion (EFFECTIVE-370 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -26973,11 +26979,12 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T02:35:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3550B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-651
   domain: EFFECTIVE
   title: "EFFECTIVE: Olive: Implement degradation for Kroger/AI failures to list-keeping with honest banner (EFFECTIVE-370 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -27016,6 +27023,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T02:41:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4701B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-652
   domain: EFFECTIVE
@@ -27141,7 +27149,7 @@ gaps:
 - id: EFFECTIVE-655
   domain: EFFECTIVE
   title: "EFFECTIVE: Scope preflight BLOCKING gate to changed crate only (EFFECTIVE-372 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -27162,6 +27170,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'local-first' ===
+    [2026-09-02T02:49:49Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5025B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-656
   domain: EFFECTIVE
@@ -27634,10 +27643,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add deduplication logic to the sweep result handlers in `handle_run_ab_sweep_with_summary` and `handle_get_sweep_results` that stores findings keyed by a stable identity (a composite of dedupe_hash, repo slug, organ, path, line) and returns only findings absent from the previous state, reusing the same state/diff shape used by the posse bots; include a comment linking to the reused approach.
+    
+    Target file(s):
+    - crates/mcp-servers/chump-mcp-eval/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - State schema stores previous sweep findings keyed by a stable identity (dedupe_hash plus repo bare slug and organ/path/line where available).
-    - Diff function returns only findings whose stable identity is absent from the previous run state.
-    - Implementation reuses the posse bots' existing state/diff shape rather than introducing a new bespoke mechanism; a comment or README note links to the reused approach.
+    - "In `crates/mcp-servers/chump-mcp-eval/src/main.rs`, the function `handle_run_ab_sweep_with_summary` writes a state file (e.g., `sweep_state.json`) containing a JSON object where each key is a colon-separated identity string `{dedupe_hash}:{repo_slug}:{organ}:{path}:{line}` and the value is the finding data."
+    - In `crates/mcp-servers/chump-mcp-eval/src/main.rs`, the function `handle_get_sweep_results` loads the previous state file and filters the current findings to only those whose identity key is not present in the state, returning the new findings.
+    - A comment in `crates/mcp-servers/chump-mcp-eval/src/main.rs` near the state/diff logic explicitly references the posse-bot state/diff pattern with a path or module name to the reused approach.
+    - Running `cargo test` in the `crates/mcp-servers/chump-mcp-eval` crate passes a test that verifies that after a sweep with findings A and B, a subsequent sweep with findings A and C returns only C via `handle_get_sweep_results`.
   depends_on: [EFFECTIVE-668]
   notes: |
     [chump harvest check 'schedule']
@@ -28371,6 +28388,7 @@ gaps:
     - Skips duplicates within the same run (same hash).
     - Project slug is used bare (no owner/ prefix).
     - Verified by piping sample JSON with known duplicates and noise; holler receives exactly one row per unique hash, and re-running produces no new rows.
+  depends_on: [EFFECTIVE-693]
   notes: |
     [chump harvest check 'almanac']
     === primitives_index match for 'almanac' ===
@@ -28398,6 +28416,7 @@ gaps:
     - No human prose is printed; exit code 0.
     - Output matches the defined schema (slice 0).
     - Verified by diffing against expected JSON for a known repo state.
+  depends_on: [EFFECTIVE-693]
   notes: |
     [chump harvest check 'almanac']
     === primitives_index match for 'almanac' ===
@@ -28423,6 +28442,7 @@ gaps:
     - Running `almanac gatemap --findings-json` outputs a JSON array of gate findings with title, project (bare slug), coverage, and details.
     - No prose output; conforms to schema.
     - Verified with a test repo containing gates.
+  depends_on: [EFFECTIVE-693]
   notes: |
     [chump harvest check 'almanac']
     === primitives_index match for 'almanac' ===
@@ -28444,6 +28464,77 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  acceptance_criteria:
+    - Running `almanac livemap --findings-json` outputs a JSON array of live findings with title, project (bare slug), coverage, and details.
+    - No prose output; conforms to schema.
+    - Verified with a test repo containing live checks.
+  depends_on: [EFFECTIVE-693]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-698
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add --findings-json flag to organ: tracemap (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running `almanac tracemap --findings-json` outputs a JSON array of trace findings with title, project (bare slug), coverage, and details.
+    - No prose output; conforms to schema.
+    - Verified with a test repo containing traces.
+  depends_on: [EFFECTIVE-693]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-699
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add --findings-json flag to organ: comprehend (EFFECTIVE-398 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Running `almanac comprehend --findings-json` outputs a JSON array of comprehension findings with title, project (bare slug), coverage, and details.
+    - No prose output; conforms to schema.
+    - Verified with a test repo containing comprehension targets.
+  depends_on: [EFFECTIVE-693]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
 
 - id: EVAL-085
   title: test eval 085
@@ -91556,7 +91647,7 @@ gaps:
 - id: PRODUCT-195
   domain: PRODUCT
   title: "[almanac] Eval regression gate never runs in CI — cargo test passes without it, so it is not actually a gate"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -91578,6 +91669,8 @@ gaps:
     - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
     - No regression -- the rest of the page/flow that already worked still works
     - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-09-02T02:41:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4694B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: "holler:feedback_events"
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
