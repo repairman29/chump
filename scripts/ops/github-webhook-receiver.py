@@ -618,6 +618,39 @@ def _self_sync_fleet_scripts(payload: dict) -> int:
     return len(updated)
 
 
+def _trigger_checkout_sync(payload: dict) -> None:
+    """RESILIENT-629: on push to origin/main, kick off scripts/ops/checkout-sync.sh
+    immediately instead of waiting for the next cron tick (up to 60s away —
+    see scripts/setup/install-checkout-sync-launchd.sh). This is the "webhook
+    endpoint triggers an immediate pull" half of RESILIENT-629 AC2; the cron
+    job is the fallback that guarantees convergence even if a webhook delivery
+    is dropped.
+
+    Fire-and-forget: checkout-sync.sh does its own fetch/ff-only-merge and
+    ambient logging (kind=checkout_synced / checkout_sync_failed /
+    checkout_sync_skipped — AC4), so this only needs to launch it, not wait
+    for or interpret the result. Never raises — a launch failure here must
+    not fail the webhook response.
+    """
+    if payload.get("ref") != "refs/heads/main":
+        return
+    repo_root = _repo_root()
+    sync_script = repo_root / "scripts" / "ops" / "checkout-sync.sh"
+    if not sync_script.exists():
+        return
+    try:
+        subprocess.Popen(
+            ["/bin/bash", str(sync_script)],
+            cwd=str(repo_root),
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+            start_new_session=True,
+        )
+        log.info("RESILIENT-629: launched checkout-sync.sh for immediate pull on push to main")
+    except OSError as e:
+        log.warning("RESILIENT-629: failed to launch checkout-sync.sh: %s", e)
+
+
 def _verify_signature(secret: str, payload: bytes, header: str | None) -> bool:
     """Verify GitHub's X-Hub-Signature-256 header. Constant-time compare."""
     if not secret or not header or not header.startswith("sha256="):
@@ -906,6 +939,10 @@ class Handler(BaseHTTPRequestHandler):
                         synced = _self_sync_fleet_scripts(payload)
                         if synced > 0:
                             log.info("RESILIENT-152: self-synced %d runtime path(s) on push to main", synced)
+                        # RESILIENT-629: also kick an immediate full checkout
+                        # sync (fetch + ff-only merge) rather than waiting for
+                        # the next 60s cron tick.
+                        _trigger_checkout_sync(payload)
                         _emit_ambient({
                             "ts": _now_iso(),
                             "kind": "webhook_event_received",

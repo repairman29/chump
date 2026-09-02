@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
-# scripts/setup/install-checkout-sync-launchd.sh — MISSION-027
+# scripts/setup/install-checkout-sync-launchd.sh — MISSION-027 / RESILIENT-629
 #
-# Install the com.chump.checkout-sync LaunchAgent that runs
-# scripts/ops/checkout-sync.sh on a cadence (default 300s = 5 min).
+# Installs the com.chump.checkout-sync LaunchAgent (macOS) or a per-minute
+# cron job (Linux) that runs scripts/ops/checkout-sync.sh on a cadence
+# (default 300s on macOS / every 60s — cron's minimum granularity — on
+# Linux; see RESILIENT-629 AC1).
 #
 # checkout-sync.sh keeps the RUNNING checkout — the one the fleet's
 # scripts/dispatch/_pick_gap.py and daemons actually execute out of — fast
@@ -13,18 +15,14 @@
 #   bash scripts/setup/install-checkout-sync-launchd.sh --check    # exits 0 if loaded
 #   bash scripts/setup/install-checkout-sync-launchd.sh --uninstall
 #
-# Override interval for testing (seconds):
+# Override interval for testing (seconds, macOS only — Linux cron is fixed
+# at once-per-minute):
 #   CHUMP_CHECKOUT_SYNC_INTERVAL=60 bash scripts/setup/install-checkout-sync-launchd.sh
 #
 # Point at a dedicated fleet checkout instead of this repo root:
 #   CHUMP_SYNC_TARGET_DIR=/path/to/fleet/checkout bash scripts/setup/install-checkout-sync-launchd.sh
 
 set -euo pipefail
-
-case "$(uname -s)" in
-  Darwin) ;;
-  *) echo "skip: not macOS"; exit 0 ;;
-esac
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # INFRA-2365: resolve to the MAIN worktree, not whatever worktree this
@@ -41,28 +39,44 @@ PLIST_NAME="com.chump.checkout-sync"
 DEST="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 INTERVAL="${CHUMP_CHECKOUT_SYNC_INTERVAL:-300}"
 TARGET_DIR="${CHUMP_SYNC_TARGET_DIR:-$REPO_ROOT}"
+CRON_TAG="chump-checkout-sync"
 
 SYNC_SCRIPT="$REPO_ROOT/scripts/ops/checkout-sync.sh"
 
 # ── --check mode ──────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
-    if launchctl list 2>/dev/null | grep -q "$PLIST_NAME"; then
-        echo "ok: $PLIST_NAME is loaded"
-        exit 0
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        if launchctl list 2>/dev/null | grep -q "$PLIST_NAME"; then
+            echo "ok: $PLIST_NAME is loaded"
+            exit 0
+        else
+            echo "MISSING: $PLIST_NAME not loaded"
+            exit 1
+        fi
     else
-        echo "MISSING: $PLIST_NAME not loaded"
-        exit 1
+        if crontab -l 2>/dev/null | grep -q "$CRON_TAG"; then
+            echo "ok: $CRON_TAG cron job installed"
+            exit 0
+        else
+            echo "MISSING: $CRON_TAG cron job not installed"
+            exit 1
+        fi
     fi
 fi
 
 # ── --uninstall mode ──────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--uninstall" ]]; then
-    if [[ -f "$DEST" ]]; then
-        launchctl unload "$DEST" 2>/dev/null || true
-        rm -f "$DEST"
-        echo "uninstalled $PLIST_NAME"
+    if [[ "$(uname -s)" == "Darwin" ]]; then
+        if [[ -f "$DEST" ]]; then
+            launchctl unload "$DEST" 2>/dev/null || true
+            rm -f "$DEST"
+            echo "uninstalled $PLIST_NAME"
+        else
+            echo "$PLIST_NAME not installed"
+        fi
     else
-        echo "$PLIST_NAME not installed"
+        ( crontab -l 2>/dev/null | grep -v "$CRON_TAG" ) | crontab - 2>/dev/null || true
+        echo "uninstalled $CRON_TAG cron job"
     fi
     exit 0
 fi
@@ -71,6 +85,22 @@ fi
 if [[ ! -x "$SYNC_SCRIPT" ]]; then
     echo "ERROR: $SYNC_SCRIPT not found or not executable" >&2
     exit 1
+fi
+
+# ── Linux: cron, once per minute (cron's minimum granularity; satisfies the
+# "every 60 seconds" cadence in RESILIENT-629 AC1). ────────────────────────────
+if [[ "$(uname -s)" != "Darwin" ]]; then
+    mkdir -p "$TARGET_DIR/.chump-locks/checkout-sync-logs"
+    CRON_LOG="$TARGET_DIR/.chump-locks/checkout-sync-cron.log"
+    CRON_LINE="* * * * * CHUMP_SYNC_TARGET_DIR=$TARGET_DIR /bin/bash $SYNC_SCRIPT >> $CRON_LOG 2>&1 # $CRON_TAG"
+    ( crontab -l 2>/dev/null | grep -v "$CRON_TAG"; echo "$CRON_LINE" ) | crontab -
+    echo "Installed cron job: $CRON_TAG (every 60s)"
+    echo "  sync script : ${SYNC_SCRIPT}"
+    echo "  target dir  : ${TARGET_DIR}"
+    echo "  verify      : crontab -l | grep $CRON_TAG"
+    echo "  cron log    : ${CRON_LOG}"
+    echo "  logs        : ${TARGET_DIR}/.chump-locks/checkout-sync-logs/"
+    exit 0
 fi
 
 mkdir -p "$HOME/Library/LaunchAgents"
