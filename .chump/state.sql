@@ -18126,13 +18126,14 @@ gaps:
 - id: EFFECTIVE-136
   domain: EFFECTIVE
   title: "Bootstrap: Another intent"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.VXMw46xG7y has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
     Decomposed into 3 slices: EFFECTIVE-755, EFFECTIVE-756, EFFECTIVE-757
+    [2026-09-02T17:12:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
