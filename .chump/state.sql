@@ -18554,7 +18554,7 @@ gaps:
     - "FROM CREDIBLE-217 (superseded into this gap 2026-08-07): benign sentinel variance is classified and suppressed BY A STATED RULE, not by hand — AGENT_ID placeholders, empty-string vs unset, and build-script path variance are the known noise classes, and the rule that suppresses them appears in the output so a reader can disagree with it"
     - "FROM CREDIBLE-217: the CONFIG organ's proven finding classes are the acceptance bar for signal quality — the sweep must be able to surface incoherences of the kind already found by hand (CARGO_TARGET_DIR resolved 14 ways across 171 sites in chump; three conflicting BEAST_MODE endpoint flags across 356 reads including a beast-mode.dev vs beastmode.dev typo-domain; OPENAI_API_KEY with 4 defaults over 49 reads in Maclawd)"
   notes: |
-    Bumped P2->P1 2026-08-07: operator asked for this capability directly ('can we build tech debt agents with/on posse using almanac'), and it is the trunk of a four-gap cluster all parked at P2 — CREDIBLE-217 (folded in, superseded), ZERO-WASTE-036 (the ACT-on-detection loop, now depends on this), EFFECTIVE-374 (posse + fluff-audit sweep, depends on CREDIBLE-209). Detection must land before the act layer has anything to act on. Outcome linked at bump time, not via the set --priority side door (cf CREDIBLE-213).
+    Decomposed into 11 slices: EFFECTIVE-668, EFFECTIVE-669, EFFECTIVE-670, EFFECTIVE-671, EFFECTIVE-672, EFFECTIVE-673, EFFECTIVE-674, EFFECTIVE-675, EFFECTIVE-676, EFFECTIVE-677, EFFECTIVE-678
   opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
@@ -26934,9 +26934,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In the `_detect_queue_saturated` function within `scripts/dispatch/operator-recall.sh`, add a guard that calls `loadPricingTierCredits` and, when the returned credits indicate exhaustion (e.g., zero), prints a message containing the credits information and exits with status 0, preventing any further processing.
+    
+    Target file(s):
+    - scripts/dispatch/operator-recall.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When AI quota is exhausted, the AI-explain path displays a message with credits information from loadPricingTierCredits
-    - No hangs or stack traces occur; the CLI exits gracefully
+    - Running `upshift ai-explain` after AI quota is exhausted prints a line that contains the word 'credits' and a numeric value from `loadPricingTierCredits`.
+    - The command exits with status 0 and does not hang or output a stack trace.
+    - The `_detect_queue_saturated` function in `scripts/dispatch/operator-recall.sh` includes a conditional that invokes `loadPricingTierCredits` and writes the message to stdout when credits are exhausted.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -26967,9 +26975,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Introduce degradation handling in the list-keeping frontend and server health endpoint: modify `web/v2/app.js` to periodically fetch a `/health` endpoint and render the existing `ChumpDoctorBanner` when the response indicates Kroger or AI services are unavailable; modify `src/web_server.rs`’s `handle_doctor_health` function to return a `degraded` boolean based on the liveness of those external services, while ensuring the list-keeping loop (add/remove items) remains fully operational regardless of the degraded state.
+    
+    Target file(s):
+    - web/v2/app.js
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When Kroger or AI services fail, the core list-keeping loop remains functional
-    - An honest banner is displayed indicating the degraded state
+    - "In `web/v2/app.js`, the `ChumpDoctorBanner` component is rendered when `fetch('/health')` returns `{ degraded: true }`, and hidden when `degraded` is false."
+    - "In `src/web_server.rs`, the `handle_doctor_health` function returns a JSON body with `\"degraded\": true` when Kroger or AI health checks fail, and `false` otherwise."
+    - The list-keeping UI (add item, remove item) is fully functional even when the `/health` endpoint reports degraded state, verified by manually disabling Kroger/AI and confirming list actions succeed.
+    - Running `scripts/ci/test-pwa-doctor-banner.sh` passes, confirming the banner is displayed and list-keeping continues during simulated service failures.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -27000,9 +27018,20 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Audit and update all user-facing status messages emitted by the `MergeableState` enum variants in `chump-ship/src/lib.rs`, the handoff validation messages in `chump-handoff/src/lib.rs`, and the inventory status display strings in `chump-inventory/src/inventory.rs` to conform to the "write-as-jeff" register guidelines. This involves replacing any technical jargon, passive voice, or impersonal phrasing with direct, conversational language that Jeff would actually say to a teammate.
+    
+    Target file(s):
+    - crates/chump-ship/src/lib.rs
+    - crates/chump-handoff/src/lib.rs
+    - crates/chump-inventory/src/inventory.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All degraded state messages across arcade, upshift CLI, and olive are reviewed and approved
-    - Messages adhere to the write-as-jeff register guidelines
+    - In `crates/chump-ship/src/lib.rs`, every `MergeableState` variant's Display or message output uses second-person or first-person-plural phrasing (e.g., 'you have a merge conflict' not 'merge conflict detected') and avoids internal jargon like 'CI', 'DAG', or 'ref'.
+    - In `crates/chump-handoff/src/lib.rs`, the `validate` module's error messages replace passive constructions ('the handoff was rejected') with active, Jeff-style phrasing ('I couldn't accept your handoff because...').
+    - In `crates/chump-inventory/src/inventory.rs`, all inventory status strings shown to users in the `tests` module or display paths use conversational register ('we found 3 ships' not '3 ships located') and no bare error codes.
+    - Running `scripts/ci/test-code-reviewer-spirit.sh` passes without emitting any degraded-state messages that violate the write-as-jeff register (the script's `emit_line` function flags non-conforming strings).
   depends_on: [EFFECTIVE-648, EFFECTIVE-649, EFFECTIVE-650, EFFECTIVE-651]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -27034,9 +27063,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a test step to scripts/ci/test-silent-failure-tax.sh that executes `stranger check --mode degraded` against the arcade, upshift CLI, and olive file trees and fails the script if any 'got stuck' findings appear in stranger's output.
+    
+    Target file(s):
+    - scripts/ci/test-silent-failure-tax.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Stranger is run against all degraded mode files for arcade, upshift CLI, and olive
-    - Zero got-stuck findings are reported
+    - Running `bash scripts/ci/test-silent-failure-tax.sh` invokes `stranger check --mode degraded` on the arcade, upshift CLI, and olive directories.
+    - The script exits with code 0 if and only if stranger's stdout contains zero lines matching the substring 'got stuck'.
+    - "On success the script prints 'PASS: stranger degraded' to stdout; on failure it prints 'FAIL: stranger degraded' and the offending lines."
   depends_on: [EFFECTIVE-648, EFFECTIVE-649, EFFECTIVE-650, EFFECTIVE-651]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -27127,10 +27164,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `crates/chump-preflight/src/preflight.rs`, modify the `run` function to wrap each `cargo check` spawn in a shared concurrency cap of 6 (for example, a `tokio::sync::Semaphore` or atomic permit counter acquired before spawn and released after completion), launch the check process under `nice`/`setpriority` so it runs with reduced CPU priority, and add a pre-spawn load check that reads `/proc/loadavg` and defers spawning with a logged sleep/retry while the 1-minute load average exceeds `CHUMP_PREFLIGHT_LOAD_LIMIT` (default `2.0 * num_cpus`).
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Cap concurrent cargo check jobs to ~6.
-    - Apply `nice` to reduce CPU priority of the check process.
-    - "Implement load-aware defer: delay the check if system load average exceeds a threshold."
+    - "`cargo test -p chump-preflight` passes, and the `run` function in `crates/chump-preflight/src/preflight.rs` contains the cap, nice, and load-defer branch around the cargo check spawn site."
+    - While preflight runs against a workspace with 10 check targets, `pgrep -fc 'cargo check'` never reports more than 6 concurrent cargo check processes.
+    - While a preflight cargo check child is active, `ps -o ni= -p $(pgrep -f 'cargo check' | head -n1)` prints a positive nice value.
+    - When `awk '{print $1}' /proc/loadavg` is above `CHUMP_PREFLIGHT_LOAD_LIMIT`, `run` logs a deferral message and does not start the next check; when it drops below the limit, the next check starts.
   notes: |
     [chump harvest check 'local-first']
     === primitives_index match for 'local-first' ===
@@ -27509,6 +27554,313 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-668
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Record placement decision and note posse README code-side sibling (EFFECTIVE-389 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Decision is documented in almanac/scripts (or an accepted alternative) with justification for practical coherence next to existing organ binaries, launchd patterns, and crons.
+    - posse README contains a note that it gained a code-side sibling and points to the sweep code location.
+    - The placement note names the chosen repo path and is committed.
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-669
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Reuse posse-bot state/diff pattern for sweep dedupe (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - State schema stores previous sweep findings keyed by a stable identity (dedupe_hash plus repo bare slug and organ/path/line where available).
+    - Diff function returns only findings whose stable identity is absent from the previous run state.
+    - Implementation reuses the posse bots' existing state/diff shape rather than introducing a new bespoke mechanism; a comment or README note links to the reused approach.
+  depends_on: [EFFECTIVE-668]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-670
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add scheduled sweep runner in almanac/scripts (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A cron or launchd pattern under almanac/scripts schedules the sweep to run automatically at a defined interval (e.g. daily).
+    - Runner accepts a registered repo list via configuration and logs run start, finish, and per-organ status.
+    - Runner supports targeting a single repo via flag or env for local end-to-end proof.
+  depends_on: [EFFECTIVE-669]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-671
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Invoke comprehension organs across registered repos (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - For each registered repo, the runner invokes comprehend, flagmap, gatemap, livemap, and whymap binaries.
+    - Captured output includes exit status and is associated with context.repo as a bare slug, not owner/repo.
+    - Failure in one organ does not abort the sweep; it records the repo as shallow/failed for that organ.
+  depends_on: [EFFECTIVE-670]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-672
+  domain: EFFECTIVE
+  title: "EFFECTIVE: File findings through holler to chump bridge (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New findings are filed to holler with found_by=almanac-sweep.
+    - Each filed item includes dedupe_hash and context.repo as a bare slug.
+    - Filing passes the 2026-08-07 security screen before any chump gap is updated.
+  depends_on: [EFFECTIVE-671]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-673
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Enforce new-only filing via prior-run diff (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The filing path uses the state/diff from the reuse slice so only new stable identities are filed.
+    - Running the sweep twice against an unchanged repo produces zero holler filings on the second run.
+    - A standing condition is not refiled each cycle; the diff is wired before filing, not as a post-hoc delete.
+  depends_on: [EFFECTIVE-672]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-674
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Prove end-to-end on one real repo to a chump gap (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - One registered real repo runs a full sweep and produces at least one finding that reaches a chump gap.
+    - "The chump gap finding includes a file:line receipt that can be opened and verified."
+    - The proof repo name and exact command/env needed to reproduce are recorded in a runbook or README.
+  depends_on: [EFFECTIVE-673]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-675
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Emit honest per-repo organ coverage note (EFFECTIVE-389 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Sweep output includes a coverage section listing each registered repo and which organs could deep-inspect vs shallowly inspect.
+    - Repos with non-Rust adapters still landing (e.g. Python pending) are explicitly marked shallow/uninspected rather than omitted.
+    - The output does not imply a clean bill of health for any shallowly inspected repo.
+  depends_on: [EFFECTIVE-671]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-676
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Suppress benign sentinel variance by a stated rule (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Known noise classes are classified and suppressed by a rule: AGENT_ID placeholders, empty-string vs unset, and build-script path variance."
+    - The suppression rule is printed in the output so a reader can disagree with it.
+    - Suppression is rule-based, not a hand-maintained list of specific findings.
+  depends_on: [EFFECTIVE-672]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-677
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Meet CONFIG organ proven finding-class signal bar (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Sweep can surface CARGO_TARGET_DIR resolved in multiple ways across sites (e.g. the known 14-way chump case) as a finding.
+    - Sweep can surface conflicting BEAST_MODE endpoint flags including the beast-mode.dev vs beastmode.dev typo-domain class.
+    - Sweep can surface OPENAI_API_KEY with multiple defaults over reads (e.g. 4 defaults over 49 reads in Maclawd) as a finding.
+  depends_on: [EFFECTIVE-671, EFFECTIVE-676]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-678
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Regression check for no duplicate refiles and visible suppression/coverage (EFFECTIVE-389 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Two back-to-back runs over the same fleet result in zero duplicate holler findings on the second run.
+    - The suppression rule and coverage note are visible in sweep output.
+    - One known standing finding from the first run is verified absent from the second run's filing payload.
+  depends_on: [EFFECTIVE-673, EFFECTIVE-675, EFFECTIVE-676]
+  notes: |
+    [chump harvest check 'schedule']
+    === primitives_index match for 'schedule' ===
+    
+    === cluster keyword match for 'schedule' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'schedule' ===
+    
+    === repo-description match for 'schedule' ===
+      bulwark: Zero-dependency resilience primitives for Node: circuit breaker, rate limiter, retry, fallback, scheduler, cache.
+    
+    === HARVEST_ROADMAP.md mention of 'schedule' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'schedule' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: EVAL-085
   title: test eval 085
