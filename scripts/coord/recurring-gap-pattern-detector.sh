@@ -35,6 +35,10 @@
 #
 # Usage:
 #   recurring-gap-pattern-detector.sh [--days 7] [--threshold 3] [--quiet] [--no-rca]
+#   recurring-gap-pattern-detector.sh probe   # CREDIBLE-401/227: probe_slot_health —
+#                                              # GET /v1/models per enabled CHUMP_PROVIDER_N_*
+#                                              # slot, prints one JSON line per slot with
+#                                              # rate-limit headers + model existence.
 #
 # Env:
 #   CHUMP_PATTERN_DETECTOR_QUIET=1     # same as --quiet (suppresses stdout, only emits ALERTs)
@@ -56,6 +60,103 @@
 #   CHUMP_PATTERN_DETECTOR_HOLD=<path>  # override hold file path (test fixture uses this)
 
 set -euo pipefail
+
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# ── CREDIBLE-401 (CREDIBLE-227 slice): probe_slot_health ────────────────────
+# Iterates the enabled provider-cascade slots (CHUMP_PROVIDER_<N>_* in .env —
+# same numbered-slot convention used by scripts/ci/check-providers.sh; no
+# slot names are hardcoded here, discovery is purely env-var-driven), issues
+# a cheap GET <base>/models per slot, and prints one JSON line per slot with
+# the rate-limit headers, model existence, and deprecation status. This is
+# the "probe" half of CREDIBLE-227 (rate-limit + model-health telemetry) —
+# it does not file gaps or mutate any state, it only observes and logs.
+probe_slot_health() {
+    local env_file="$REPO_ROOT/.env"
+    if [ -f "$env_file" ]; then
+        set -a
+        # shellcheck disable=SC1090
+        source "$env_file"
+        set +a
+    fi
+
+    local max_slots="${CHUMP_PATTERN_DETECTOR_MAX_SLOTS:-20}"
+    local i enabled_var name_var base_var key_var model_var
+    local enabled name base key model
+
+    for i in $(seq 1 "$max_slots"); do
+        enabled_var="CHUMP_PROVIDER_${i}_ENABLED"
+        name_var="CHUMP_PROVIDER_${i}_NAME"
+        base_var="CHUMP_PROVIDER_${i}_BASE"
+        key_var="CHUMP_PROVIDER_${i}_KEY"
+        model_var="CHUMP_PROVIDER_${i}_MODEL"
+
+        enabled="${!enabled_var:-}"
+        [ "$enabled" = "1" ] || continue
+
+        name="${!name_var:-slot_$i}"
+        base="${!base_var:-}"
+        key="${!key_var:-}"
+        model="${!model_var:-}"
+        [ -n "$base" ] || continue
+
+        local header_file body_file http_code
+        header_file="$(mktemp)"
+        body_file="$(mktemp)"
+
+        if [ -n "$key" ]; then
+            http_code=$(curl -s -o "$body_file" -D "$header_file" -w '%{http_code}' --max-time 10 \
+                -H "Authorization: Bearer $key" "${base}/models" 2>/dev/null) || http_code=""
+        else
+            http_code=$(curl -s -o "$body_file" -D "$header_file" -w '%{http_code}' --max-time 10 \
+                "${base}/models" 2>/dev/null) || http_code=""
+        fi
+        [ -n "$http_code" ] || http_code="000"
+
+        local ratelimit_limit ratelimit_remaining retry_after
+        ratelimit_limit=$( (grep -i '^x-ratelimit-limit-requests:' "$header_file" || true) | tail -1 | cut -d':' -f2- | tr -d ' \t\r\n')
+        ratelimit_remaining=$( (grep -i '^x-ratelimit-remaining:' "$header_file" || true) | tail -1 | cut -d':' -f2- | tr -d ' \t\r\n')
+        retry_after=$( (grep -i '^retry-after:' "$header_file" || true) | tail -1 | cut -d':' -f2- | tr -d ' \t\r\n')
+
+        local model_exists="false"
+        local model_deprecated="false"
+        if [ "$http_code" = "200" ] && [ -n "$model" ]; then
+            if command -v jq >/dev/null 2>&1; then
+                if jq -e --arg m "$model" '(.data // []) | any(.id == $m)' "$body_file" >/dev/null 2>&1; then
+                    model_exists="true"
+                fi
+                if jq -e --arg m "$model" '(.data // []) | any(.id == $m and (.deprecated == true))' "$body_file" >/dev/null 2>&1; then
+                    model_deprecated="true"
+                fi
+            else
+                if grep -q "\"id\"[[:space:]]*:[[:space:]]*\"$model\"" "$body_file" 2>/dev/null; then
+                    model_exists="true"
+                fi
+            fi
+        fi
+
+        local status="failure"
+        if [ "$http_code" = "200" ] && [ "$model_exists" = "true" ] && [ "$model_deprecated" = "false" ]; then
+            status="success"
+        fi
+
+        local limit_json remaining_json retry_json
+        case "$ratelimit_limit" in ''|*[!0-9]*) limit_json="null" ;; *) limit_json="$ratelimit_limit" ;; esac
+        case "$ratelimit_remaining" in ''|*[!0-9]*) remaining_json="null" ;; *) remaining_json="$ratelimit_remaining" ;; esac
+        case "$retry_after" in ''|*[!0-9]*) retry_json="null" ;; *) retry_json="$retry_after" ;; esac
+
+        printf '{"slot":"%s","model":"%s","http_code":"%s","x-ratelimit-limit-requests":%s,"x-ratelimit-remaining":%s,"retry-after":%s,"model_exists":%s,"model_deprecated":%s,"status":"%s"}\n' \
+            "$name" "$model" "$http_code" "$limit_json" "$remaining_json" "$retry_json" "$model_exists" "$model_deprecated" "$status"
+
+        rm -f "$header_file" "$body_file"
+    done
+}
+
+if [ "${1:-}" = "probe" ]; then
+    shift
+    probe_slot_health
+    exit 0
+fi
 
 DAYS=7
 THRESHOLD=3
@@ -91,7 +192,6 @@ while [ $# -gt 0 ]; do
     esac
 done
 
-REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 GAPS_DIR="$REPO_ROOT/docs/gaps"
 AMBIENT_LOG="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 STATE_FILE="${CHUMP_PATTERN_DETECTOR_STATE:-$REPO_ROOT/.chump-locks/pattern-detector-state.json}"
