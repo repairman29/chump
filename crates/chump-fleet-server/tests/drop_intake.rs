@@ -76,7 +76,10 @@ async fn drop_create_then_duplicate_is_idempotent_and_durable() {
     )
     .await;
     assert_eq!(status2, StatusCode::OK);
-    assert_eq!(body2["id"], id, "duplicate submission must return existing id");
+    assert_eq!(
+        body2["id"], id,
+        "duplicate submission must return existing id"
+    );
 
     let contents_after = std::fs::read_to_string(&drops_path).unwrap();
     assert_eq!(
