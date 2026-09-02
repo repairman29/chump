@@ -4513,7 +4513,7 @@ gaps:
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-455, CREDIBLE-456, CREDIBLE-457, CREDIBLE-458
+    Decomposed into 4 slices: CREDIBLE-531, CREDIBLE-532, CREDIBLE-533, CREDIBLE-534
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -11779,6 +11779,61 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-531
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CI grep‑target sweep script (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script runs without error from the repository root and exits with code 0.
+    - It scans all files under scripts/ci for grep commands, extracts the target path/pattern, and identifies any that do not exist in the current tree.
+    - "The script produces a JSON file listing each missing target with fields: file, line, missing_target."
+    - When run on the known test case (CREDIBLE‑237), the script reports at least one missing target.
+    - The script does not cause the CI job to fail (no non‑zero exit on missing targets).
+
+- id: CREDIBLE-532
+  domain: CREDIBLE
+  title: "CREDIBLE: Add scheduled execution of the CI grep‑target sweep (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A daily scheduled job (e.g., via cron or a CI scheduled workflow) invokes the sweep script.
+    - Execution logs are written to a predictable location (e.g., logs/rot‑detector‑ci‑grep.log).
+    - Only one run occurs per day; duplicate runs are detected and skipped.
+    - The scheduled run completes successfully (exit code 0) even when missing targets are found.
+  depends_on: [CREDIBLE-531]
+
+- id: CREDIBLE-533
+  domain: CREDIBLE
+  title: "CREDIBLE: Create non‑blocking human‑readable report from sweep output (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script converts the JSON output of the sweep into a markdown report summarising each missing target with file and line number.
+    - "The report is automatically posted to the designated Slack channel #rot‑detector or opened as a GitHub issue labeled \"rot‑detector\"."
+    - The report is marked as informational only; it does not block PR merges or CI pipelines.
+    - Each entry in the report includes a link to the source file and line for easy triage.
+  depends_on: [CREDIBLE-531]
+
+- id: CREDIBLE-534
+  domain: CREDIBLE
+  title: "CREDIBLE: Extend sweep to additional instrument probes (launchd, config daemons, apt/brew tools) (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The sweep script now also checks:"
+    - (a) launchd/plist jobs declared in scripts/launchd or ~/Library/LaunchAgents that have zero running processes;
+    - (b) toml/config entries with enabled=true whose daemon binary is absent;
+    - (c) apt/brew‑installed tools that are not referenced by any script or environment variable.
+    - Each probe type produces its own section in the JSON output with appropriate metadata (type, identifier, missing component).
+    - The combined markdown report includes separate sections for each probe type.
+    - Running the extended sweep on a repository containing known stale launchd jobs or unused brew tools reports those items correctly.
+  depends_on: [CREDIBLE-531]
 
 - id: DOC-031
   domain: DOC
@@ -100855,13 +100910,15 @@ gaps:
 - id: RESILIENT-412
   domain: RESILIENT
   title: "worktree-reaper: prune registered-but-stale worktrees (git-prune misses them; 154 on CJ causing worktree_create_fail; remove trees whose branch is merged/gone AND no active build, target <30; land in repo — CJ reset-loop wipes node-local)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "The change described by \"prune registered-but-stale worktrees (git-prune misses them; 154 on CJ causing worktree_create_fail; remove trees whose branch is merged/gone AND no active build, target <30; land in repo — CJ reset-loop wipes node-local)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-02T08:53:58Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-26'
 
 - id: RESILIENT-413
