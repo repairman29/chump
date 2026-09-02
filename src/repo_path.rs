@@ -51,16 +51,17 @@ fn try_chumpd_db_path() -> Option<PathBuf> {
     }
 }
 
+/// INFRA-3534: only the socket lookup itself is cached (it's a pure query
+/// against a daemon that isn't expected to change db path mid-process); the
+/// env precedence check below is re-evaluated on every call so a later
+/// CHUMP_REPO/CHUMP_HOME change is honored instead of being frozen by
+/// whatever the first-ever call happened to see.
 pub fn chumpd_repo_root() -> Option<PathBuf> {
-    CHUMPD_DB_PATH_CACHE
-        .get_or_init(|| {
-            // INFRA-3341: CHUMP_REPO env still highest precedence.
-            if std::env::var("CHUMP_REPO").is_ok() || std::env::var("CHUMP_HOME").is_ok() {
-                return None;
-            }
-            try_chumpd_db_path()
-        })
-        .clone()
+    // INFRA-3341: CHUMP_REPO env still highest precedence.
+    if std::env::var("CHUMP_REPO").is_ok() || std::env::var("CHUMP_HOME").is_ok() {
+        return None;
+    }
+    CHUMPD_DB_PATH_CACHE.get_or_init(try_chumpd_db_path).clone()
 }
 
 static WORKING_REPO_OVERRIDE: std::sync::OnceLock<Mutex<Option<PathBuf>>> =
@@ -505,6 +506,43 @@ pub fn repo_root_is_explicit() -> bool {
 mod tests {
     use super::*;
     use std::process::Command;
+
+    /// INFRA-3534: chumpd_repo_root() must not freeze the env-precedence
+    /// decision at first call. Before the fix, the entire closure (env check
+    /// + socket lookup) ran inside `get_or_init`, so once the OnceLock was
+    /// initialized with CHUMP_REPO/CHUMP_HOME unset, a later `set_var` had
+    /// no effect — every subsequent call kept returning the frozen daemon
+    /// answer. The fix re-checks env on every call and caches only the pure
+    /// socket lookup.
+    #[test]
+    #[serial_test::serial]
+    fn chumpd_repo_root_reflects_later_env_change() {
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+
+        // First call: env unset. Whatever it returns (Some(daemon-path) or
+        // None), it must NOT be the frozen answer once env changes below.
+        let _ = chumpd_repo_root();
+
+        std::env::set_var("CHUMP_REPO", "/tmp/test-root");
+        assert_eq!(
+            chumpd_repo_root(),
+            None,
+            "chumpd_repo_root() must yield precedence to an explicit CHUMP_REPO \
+             set AFTER the first call, not return a frozen daemon answer"
+        );
+
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+    }
 
     /// INFRA-474: when CHUMP_REPO points to repo A and the process CWD is inside
     /// repo B (a completely different git tree), worktree_root() must return repo A
