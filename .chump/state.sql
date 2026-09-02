@@ -7764,9 +7764,16 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add two new test functions to `scripts/ci/test-gap-consolidate.sh` – `test_duplicate_model_limits_mismatch` which creates a temporary `.env` containing two identical `MODEL` entries with differing RPM/RPD values, runs the existing environment‑parsing command, and asserts that the script exits with a non‑zero status and prints an explicit error message; and `test_duplicate_model_limits_consistent` which creates a `.env` with duplicate `MODEL` entries that share the same RPM/RPD limits, runs the same parser, and asserts a zero exit status with a success message.
+    
+    Target file(s):
+    - scripts/ci/test-gap-consolidate.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test parses .env and identifies slots declaring the same MODEL with different RPM/RPD values
-    - Test fails when such a mismatch exists and passes when limits are consistent
+    - "? Running `scripts/ci/test-gap-consolidate.sh test_duplicate_model_limits_mismatch` exits with status 1 and the output contains the string “Error : duplicate MODEL with mismatched limits”."
+    - "? Running `scripts/ci/test-gap-consolidate.sh test_duplicate_model_limits_consistent` exits with status 0 and the output contains the string “PASS : duplicate MODEL limits consistent”."
   notes: |
     [chump harvest check 'provider']
     === primitives_index match for 'provider' ===
@@ -22053,6 +22060,8 @@ gaps:
     - "The change described by \"architect emits a MERGED skeleton (traits + todo!() holes + failing tests) as ONE stable PR, then N leaf fill-this-hole gaps each pointing at one todo!()+its test — makes agent diffs tiny+disjoint+mechanically-verifiable (structural fix for merge-race + definition-of-ready). Measure CI-time + collision-rate vs open-ended gaps\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: EFFECTIVE-743, EFFECTIVE-744, EFFECTIVE-745, EFFECTIVE-746, EFFECTIVE-747, EFFECTIVE-748, EFFECTIVE-749, EFFECTIVE-750, EFFECTIVE-751, EFFECTIVE-752
   opened_date: '2026-08-19'
 
 - id: EFFECTIVE-441
@@ -32665,6 +32674,270 @@ gaps:
     
     === cross-pollination briefs mentioning 'EFFECTIVE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-743
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Analyze current scaffold process and integration points (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A short analysis document is added to the repo (docs/analysis_scaffold.md) describing the existing scaffold-and-holes workflow.
+    - The document lists at least three concrete integration points where a merged skeleton PR could be emitted.
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-744
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Design data structures for merged skeleton representation (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - New Rust structs/enums (e.g., `MergedSkeleton`, `SkeletonTrait`, `SkeletonHole`) are added in src/skeleton.rs and compile without errors.
+    - Each struct is documented and includes fields for traits, todo! holes, and failing test identifiers.
+  depends_on: [EFFECTIVE-743]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-745
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement merged skeleton generation function (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function `generate_merged_skeleton()` returns a `MergedSkeleton` containing all required traits, `todo!()` placeholders, and failing test stubs.
+    - Running `cargo test --quiet` after generation produces failing tests for each hole.
+    - The function is covered by a unit test that asserts the correct number of traits and holes are present.
+  depends_on: [EFFECTIVE-744]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-746
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add CI script to emit merged skeleton as a stable PR (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script `ci/emit_skeleton_pr.sh` can be executed locally and exits with status 0.
+    - The script creates a draft PR on the configured remote containing the output of `generate_merged_skeleton()`.
+    - CI logs show the script being invoked as a separate job.
+  depends_on: [EFFECTIVE-745]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-747
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create leaf‑gap template file (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - File `templates/leaf_gap_template.rs` contains a single `todo!()` macro and a corresponding failing test function.
+    - The template passes `cargo fmt` and `cargo clippy` with no warnings.
+  depends_on: [EFFECTIVE-743]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-748
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Automate generation of N leaf fill‑this‑hole PRs (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Executable `ci/generate_leaf_gaps.rs` reads a `MergedSkeleton` and creates N separate PRs, each containing exactly one `todo!()` from the skeleton and its test.
+    - Each generated PR builds successfully (`cargo check` passes) and the associated test fails until the hole is filled.
+    - The tool logs the number of PRs created and exits with status 0.
+  depends_on: [EFFECTIVE-745, EFFECTIVE-747]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-749
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit test for merged skeleton generation (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test `tests/test_generate_merged_skeleton.rs` fails when `generate_merged_skeleton()` is stubbed out.
+    - After slice 2 is implemented, the test passes and verifies that at least one trait and one hole are present.
+  depends_on: [EFFECTIVE-745]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-750
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit test for leaf‑gap creation automation (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test `tests/test_leaf_gap_creation.rs` invokes `generate_leaf_gaps.rs` on a sample skeleton and asserts that N PR directories are created.
+    - The test fails when the automation is missing and passes once slice 5 is completed.
+  depends_on: [EFFECTIVE-748]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-751
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate measurement of CI time and collision rate (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline records total job duration before and after the new workflow and writes a JSON artifact `ci/metrics.json` with fields `ci_time_ms` and `collision_rate`.
+    - A comparison script `ci/compare_metrics.sh` can be run locally and prints the delta values.
+    - Metrics are stored as CI artifacts for later analysis.
+  depends_on: [EFFECTIVE-746, EFFECTIVE-748]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-752
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update documentation with new scaffold‑and‑holes workflow (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README.md includes a new section \"Merged Skeleton Workflow\" describing how to run `emit_skeleton_pr.sh` and `generate_leaf_gaps.rs`."
+    - The documentation references the measurement script and explains how to interpret `ci/metrics.json`.
+    - All CI checks (`cargo fmt`, `cargo clippy`, `cargo test`) pass after the update.
+  depends_on: [EFFECTIVE-751]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
@@ -97263,7 +97536,7 @@ gaps:
 - id: RESILIENT-074
   domain: RESILIENT
   title: "RESILIENT P1: preflight-vs-CI parity has a Mac-vs-Linux blind spot — macOS-only tests pass preflight (Mac) and fail CI (Linux)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -97277,6 +97550,7 @@ gaps:
     - test-farmer.sh (RESILIENT-068) and the farmer-status test (RESILIENT-069) pass in CI under the chosen approach
   notes: |
     Decomposed into 4 slices: RESILIENT-634, RESILIENT-636, RESILIENT-637, RESILIENT-638
+    [2026-09-02T15:08:20Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
