@@ -101,7 +101,7 @@ for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
         continue
     fi
 
-    target_mtime=$(stat -f %m "$target" 2>/dev/null || stat -c %Y "$target" 2>/dev/null || echo 0)
+    target_mtime=$(stat -c %Y "$target" 2>/dev/null || stat -f %m "$target" 2>/dev/null || echo 0)
     age=$((NOW - target_mtime))
 
     if [[ $age -lt $AGE_SECONDS ]]; then

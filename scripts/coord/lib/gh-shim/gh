@@ -36,8 +36,8 @@ if [[ $# -eq 2 && "$1" == "auth" && "$2" == "token" && \
 
     if [[ -f "$_tc_file" ]]; then
         _tc_now=$(date +%s 2>/dev/null || echo 0)
-        _tc_mtime=$(stat -f %m "$_tc_file" 2>/dev/null || \
-                    stat -c %Y "$_tc_file" 2>/dev/null || echo 0)
+        _tc_mtime=$(stat -c %Y "$_tc_file" 2>/dev/null || \
+            stat -f %m "$_tc_file" 2>/dev/null || echo 0)
         _tc_age=$(( _tc_now - _tc_mtime ))
         if [[ "$_tc_age" -lt "$_tc_ttl" ]]; then
             cat "$_tc_file"

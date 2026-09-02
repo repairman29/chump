@@ -326,7 +326,7 @@ while true; do
     SHIP_LOG_MTIMES=$(mktemp -t chump-ship-mtimes.XXXXXX)
     for f in "$ROOT/chump-brain/projects/"/*/log.md; do
       [[ -f "$f" ]] || continue
-      mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || true)
+      mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || true)
       [[ -n "$mtime" ]] && echo "$f $mtime" >> "$SHIP_LOG_MTIMES"
     done
   fi
@@ -347,7 +347,7 @@ while true; do
     if [[ -f "${SHIP_LOG_MTIMES:-}" ]]; then
       while read -r path prev_mtime; do
         [[ -f "$path" ]] || continue
-        cur_mtime=$(stat -f %m "$path" 2>/dev/null || stat -c %Y "$path" 2>/dev/null || true)
+        cur_mtime=$(stat -c %Y "$path" 2>/dev/null || stat -f %m "$path" 2>/dev/null || true)
         if [[ -n "$cur_mtime" ]] && [[ "$cur_mtime" -gt "${prev_mtime:-0}" ]]; then
           slug=$(basename "$(dirname "$path")")
           echo "[$(date -u +%Y-%m-%dT%H:%M:%SZ)]   → project log updated: projects/$slug/log.md" >> "$LOG"

@@ -94,7 +94,7 @@ while IFS= read -r entry; do
     # Cooldown: skip if we already tried this head SHA recently.
     cooldown_marker="$COOLDOWN_DIR/${PR}-${HEAD_SHA_SHORT}"
     if [[ -f "$cooldown_marker" ]]; then
-        marker_age=$(( $(date +%s) - $(stat -f %m "$cooldown_marker" 2>/dev/null || stat -c %Y "$cooldown_marker" 2>/dev/null || echo 0) ))
+        marker_age=$(( $(date +%s) - $(stat -c %Y "$cooldown_marker" 2>/dev/null || stat -f %m "$cooldown_marker" 2>/dev/null || echo 0) ))
         if (( marker_age < PR_FMT_COOLDOWN_S )); then
             echo "[pr-fmt-shepherd] PR #$PR: cooldown (${marker_age}s < ${PR_FMT_COOLDOWN_S}s)"
             SKIPPED=$((SKIPPED + 1))

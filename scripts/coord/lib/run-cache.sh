@@ -65,7 +65,7 @@ run_cache_lookup_run_id() {
 
     if [[ -f "$cache_file" ]]; then
         local mtime now age
-        mtime=$(stat -f %m "$cache_file" 2>/dev/null || stat -c %Y "$cache_file" 2>/dev/null || echo 0)
+        mtime=$(stat -c %Y "$cache_file" 2>/dev/null || stat -f %m "$cache_file" 2>/dev/null || echo 0)
         now=$(date -u +%s)
         age=$((now - mtime))
         if [[ "$age" -lt "$ttl" ]]; then

@@ -625,7 +625,7 @@ check_almanac_freshness() {
     local max_h="${CHUMP_ALMANAC_STALE_HOURS:-3}" age=999
     if [[ -f "$ahome/refresh.log" ]]; then
         local mtime
-        mtime="$(stat -f %m "$ahome/refresh.log" 2>/dev/null || stat -c %Y "$ahome/refresh.log" 2>/dev/null || echo 0)"
+        mtime="$(stat -c %Y "$ahome/refresh.log" 2>/dev/null || stat -f %m "$ahome/refresh.log" 2>/dev/null || echo 0)"
         age=$(( ( $(date +%s) - mtime ) / 3600 ))
     fi
     if (( age >= max_h )); then

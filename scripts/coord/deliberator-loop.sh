@@ -111,7 +111,7 @@ _nudge_curators_to_vote() {
     if [[ -f "$stamp" ]]; then
         local now_ts stamp_ts age_h
         now_ts="$(_now_epoch)"
-        stamp_ts="$(stat -f %m "$stamp" 2>/dev/null || stat -c %Y "$stamp" 2>/dev/null || echo "$now_ts")"
+        stamp_ts="$(stat -c %Y "$stamp" 2>/dev/null || stat -f %m "$stamp" 2>/dev/null || echo "$now_ts")"
         age_h=$(( (now_ts - stamp_ts) / 3600 ))
         (( age_h < cooldown_h )) && return 0
     fi
