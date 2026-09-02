@@ -10128,13 +10128,18 @@ mod api_battle_tests {
     ///
     /// RESTORES (never bare-removes) the prior CHUMP_REPO on drop, panics
     /// included. A bare remove_var leaves an unset-env window in which any
-    /// later repo_root() call can poison the process-wide chumpd_repo_root()
-    /// OnceLock with a live daemon's answer (the env-precedence check only
-    /// runs on the FIRST call ever) — under `cargo test`'s shared process
+    /// other test's repo_root() call resolves against a live chumpd daemon
+    /// instead of the intended tempdir — under `cargo test`'s shared process
     /// that cascades into repo_path/repo_tools failures whenever a chumpd
     /// daemon is running. Found live shipping this gap: nextest (process per
     /// test) passed 2734/2734 while the pre-push cargo-test gate failed 17
-    /// env-sensitive tests two modules away.
+    /// env-sensitive tests two modules away. Before INFRA-3534, the fallout
+    /// was worse: `chumpd_repo_root()` cached the whole env-precedence
+    /// decision in a `OnceLock`, so a stray daemon answer from the unset
+    /// window stuck for the rest of the process even after CHUMP_REPO was
+    /// restored. INFRA-3534 fixed that — only the pure socket lookup is
+    /// cached now, env is re-checked every call — but restoring promptly
+    /// still avoids the unset-env window entirely.
     struct GapWriteEnv {
         _dir: tempfile::TempDir,
         prev_repo: Option<String>,
@@ -11133,6 +11138,80 @@ mod api_battle_tests {
         match prev_token {
             Some(t) => std::env::set_var("CHUMP_WEB_TOKEN", t),
             None => std::env::remove_var("CHUMP_WEB_TOKEN"),
+        }
+    }
+
+    /// INFRA-3534: `repo_path::chumpd_repo_root()` used to cache the whole
+    /// env-precedence decision in a `OnceLock`, so once a live chumpd daemon
+    /// answer was cached with CHUMP_REPO/CHUMP_HOME unset, a later
+    /// `CHUMP_REPO` set in the SAME process was silently ignored — exactly
+    /// the poisoning scenario documented on `GapWriteEnv` above. This test
+    /// spawns a minimal fake chumpd daemon over the real `db-path` unix
+    /// socket protocol, resolves `repo_root()` with env unset (hits the
+    /// daemon), then sets `CHUMP_REPO` and resolves again — the second call
+    /// must reflect the new env, not the frozen daemon answer.
+    #[test]
+    #[serial]
+    fn repo_root_honors_env_change_after_chumpd_daemon_answer() {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixListener;
+
+        let daemon_root = tempfile::tempdir().unwrap();
+        let chump_dir = daemon_root.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let db_path = chump_dir.join("state.db");
+        std::fs::write(&db_path, b"").unwrap();
+        let sock_path = chump_dir.join("chumpd.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        let db_path_reply = db_path.display().to_string();
+        let server = std::thread::spawn(move || {
+            if let Ok((mut stream, _)) = listener.accept() {
+                let mut buf = [0u8; 1024];
+                let _ = stream.read(&mut buf);
+                let resp = serde_json::json!({ "db_path": db_path_reply });
+                let _ = stream.write_all(resp.to_string().as_bytes());
+            }
+        });
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_chump_home = std::env::var("CHUMP_HOME").ok();
+        let prev_home = std::env::var("HOME").ok();
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+        // try_chumpd_db_path() falls back to $HOME when CHUMP_REPO/CHUMP_HOME
+        // are unset — point it at our fake daemon's directory.
+        std::env::set_var("HOME", daemon_root.path());
+
+        let first = crate::repo_path::repo_root();
+        server.join().unwrap();
+        assert_eq!(
+            first.canonicalize().unwrap(),
+            daemon_root.path().canonicalize().unwrap(),
+            "first call should resolve via the fake chumpd daemon"
+        );
+
+        let other_root = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_REPO", other_root.path());
+        let second = crate::repo_path::repo_root();
+        assert_eq!(
+            second.canonicalize().unwrap(),
+            other_root.path().canonicalize().unwrap(),
+            "second call must honor the newly-set CHUMP_REPO, not the frozen \
+             daemon answer from before it was set"
+        );
+
+        match prev_repo {
+            Some(v) => std::env::set_var("CHUMP_REPO", v),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        match prev_chump_home {
+            Some(v) => std::env::set_var("CHUMP_HOME", v),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
         }
     }
 }
