@@ -45,12 +45,17 @@ FORCE="${CHUMP_DOCTOR_FORCE:-0}"
 # Linux hosts (command not found), falsely diagnosing a healthy binary as
 # wedged — which then failed every ship on chumpd-eu.
 PTIMEOUT="$(command -v gtimeout || command -v timeout)"
+# CREDIBLE-587: how often the cascade rate-limit header probe should run
+# under cron. Accepts "<N>m" or "<N>h"; see refresh_interval_to_cron().
+REFRESH_INTERVAL="${CHUMP_DOCTOR_REFRESH_INTERVAL:-15m}"
 PROBE_CASCADE=0
 PROBE_RESOURCES=0
+PRINT_CRON=0
 for arg in "$@"; do
   case "$arg" in
     --probe-cascade)   PROBE_CASCADE=1 ;;
     --probe-resources) PROBE_RESOURCES=1 ;;
+    --print-cron)      PRINT_CRON=1 ;;
   esac
 done
 
@@ -241,8 +246,9 @@ probe_cascade() {
   log "probing cascade slots (1-token request per slot)…"
 
   # Source .env into a subshell so we don't leak vars; emit one line per slot.
+  local cascade_rc=0
   ( set -a; source "$env_file"; set +a
-    local n status_table=""
+    local n status_table="" any_fail=0
     for n in $(seq 1 10); do
       local enabled_var="CHUMP_PROVIDER_${n}_ENABLED"
       local enabled="${!enabled_var:-0}"
@@ -282,8 +288,29 @@ probe_cascade() {
         *)       status="❔ unknown (${code})" ;;
       esac
       printf '  slot %d %s [%s] %s → %s\n' "$n" "$name" "$model" "$base" "$status"
+
+      # CREDIBLE-587: HEAD-only rate-limit header probe (no request body,
+      # doesn't consume tokens). Captures the three rate-limit headers a
+      # provider returns and emits one structured log line per slot so a
+      # scheduled refresh job can trend limit/remaining/retry-after over
+      # time. Failure here (nonzero curl exit) is reported via any_fail so
+      # the caller (e.g. cron) can alert; it never blocks the POST probe
+      # above from running.
+      local head_headers head_rc
+      head_headers=$(curl -sS -D - -o /dev/null --max-time 5 \
+        -H "Authorization: Bearer ${key}" \
+        -X HEAD "${base%/}/chat/completions" 2>/dev/null) && head_rc=0 || head_rc=$?
+      [ "$head_rc" -eq 0 ] || any_fail=1
+
+      local limit remaining retry_after
+      limit=$(printf '%s' "$head_headers" | grep -i '^x-ratelimit-limit-requests:' | tr -d '\r' | cut -d' ' -f2- || true)
+      remaining=$(printf '%s' "$head_headers" | grep -i '^x-ratelimit-remaining:' | tr -d '\r' | cut -d' ' -f2- || true)
+      retry_after=$(printf '%s' "$head_headers" | grep -i '^retry-after:' | tr -d '\r' | cut -d' ' -f2- || true)
+      printf 'chump-doctor: slot=%s limit=%s remaining=%s retry_after=%s\n' \
+        "$name" "${limit:-unknown}" "${remaining:-unknown}" "${retry_after:-unknown}"
     done
-  )
+    exit "$any_fail"
+  ) || cascade_rc=$?
 
   # Also probe the local OPENAI_API_BASE if set.
   ( set -a; source "$env_file"; set +a
@@ -300,9 +327,43 @@ probe_cascade() {
       printf '  local OPENAI_API_BASE [%s] %s → %s\n' "${OPENAI_MODEL:-?}" "$OPENAI_API_BASE" "$status"
     fi
   )
+
+  return "$cascade_rc"
+}
+
+refresh_interval_to_cron() {
+  # CREDIBLE-587: convert a "<N>m" / "<N>h" REFRESH_INTERVAL into a
+  # 5-field crontab schedule. Falls back to */15 * * * * on anything
+  # that doesn't parse.
+  local interval="${1:-15m}"
+  local n unit
+  n="${interval%[a-zA-Z]}"
+  unit="${interval##*[0-9]}"
+  case "$unit" in
+    m) printf '*/%s * * * *' "$n" ;;
+    h) printf '0 */%s * * *' "$n" ;;
+    *) printf '*/15 * * * *' ;;
+  esac
+}
+
+print_cron_entry() {
+  # CREDIBLE-587: emit a crontab-ready line that runs the cascade
+  # rate-limit header probe on the REFRESH_INTERVAL schedule. Operator
+  # pastes this into `crontab -e`; this script never mutates crontab
+  # itself.
+  local schedule script_path
+  schedule="$(refresh_interval_to_cron "$REFRESH_INTERVAL")"
+  script_path="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/$(basename "${BASH_SOURCE[0]}")"
+  printf '%s %s --probe-cascade >> %s/chump-doctor-cascade-probe.log 2>&1\n' \
+    "$schedule" "$script_path" "${TMPDIR:-/tmp}"
 }
 
 main() {
+  if [ "$PRINT_CRON" = "1" ]; then
+    print_cron_entry
+    exit 0
+  fi
+
   if [ "$PROBE_RESOURCES" = "1" ]; then
     log "substrate resource check…"
     probe_resources
@@ -351,3 +412,14 @@ main() {
 }
 
 main "$@"
+
+# ---------------------------------------------------------------------------
+# CREDIBLE-587: cron-compatible entry for the cascade rate-limit header probe.
+# Interval is controlled by REFRESH_INTERVAL (default 15m), override via
+# CHUMP_DOCTOR_REFRESH_INTERVAL. Get the crontab-ready line for your current
+# REFRESH_INTERVAL with:
+#   scripts/dev/chump-binary-unwedge.sh --print-cron
+# then paste the printed line into `crontab -e`. Example at the default
+# 15m interval:
+#   */15 * * * * /path/to/chump-binary-unwedge.sh --probe-cascade >> /tmp/chump-doctor-cascade-probe.log 2>&1
+# ---------------------------------------------------------------------------

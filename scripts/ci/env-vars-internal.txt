@@ -2480,3 +2480,16 @@ CHUMP_DRAIN_DECOMPOSE_LIMIT
 CHUMP_DRAIN_ENRICH_LIMIT
 # detected in: (standard input)
 CHUMP_DRAIN_LEDGER
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DOCTOR_REFRESH_INTERVAL
+# detected in: (standard input)
+CHUMP_PROVIDER_1_BASE
+# detected in: (standard input)
+CHUMP_PROVIDER_1_ENABLED
+# detected in: (standard input)
+CHUMP_PROVIDER_1_KEY
+# detected in: (standard input)
+CHUMP_PROVIDER_1_MODEL
