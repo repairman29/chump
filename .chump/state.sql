@@ -1585,7 +1585,7 @@ gaps:
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-435, CREDIBLE-436, CREDIBLE-437, CREDIBLE-438
+    Decomposed into 4 slices: CREDIBLE-517, CREDIBLE-518, CREDIBLE-519, CREDIBLE-520
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -11071,9 +11071,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Create `docs/credible-gate-checks.md` documenting all gate checks across the CREDIBLE codebase, mapping each check identifier to its description and repo-relative source location, including preflight checks in `crates/chump-preflight/src/preflight.rs` and CI verification scripts under `scripts/ci/`.
+    
+    Target file(s):
+    - docs/credible-gate-checks.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A markdown file lists every gate check with file path and identifier.
-    - The list is reviewed and approved by the code‑owner.
+    - "`docs/credible-gate-checks.md` exists and contains a formatted markdown table listing all gate checks."
+    - Every documented check in `docs/credible-gate-checks.md` specifies a gate identifier, description, and precise file path such as `crates/chump-preflight/src/preflight.rs` or `scripts/ci/test-acp-real-clients.sh`.
+    - "`test -f docs/credible-gate-checks.md` returns exit code 0."
   notes: |
     [chump harvest check 'audit']
     === primitives_index match for 'audit' ===
@@ -11403,6 +11411,51 @@ gaps:
     - Executable smoke test command added to verify halt-class observability
     - Smoke test validates event output across success, timeout, transient failure, and permanent failure scenarios
   depends_on: [CREDIBLE-513, CREDIBLE-514, CREDIBLE-515]
+
+- id: CREDIBLE-517
+  domain: CREDIBLE
+  title: "CREDIBLE: Define HALT_CLASS_PREDICATES manifest event schema and failure taxonomy (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Manifest docs/observability/HALT_CLASS_PREDICATES.yaml exists and is valid YAML.
+    - Specifies events emitted on success, failure, and timeout conditions.
+    - Includes failure-class taxonomy distinguishing transient vs permanent failures.
+
+- id: CREDIBLE-518
+  domain: CREDIBLE
+  title: "CREDIBLE: Add operator cost tracking specifications to HALT_CLASS_PREDICATES manifest (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - HALT_CLASS_PREDICATES.yaml contains schema for tracking execution costs.
+    - Defines cost reporting payload fields and units consumable by operators.
+  depends_on: [CREDIBLE-517]
+
+- id: CREDIBLE-519
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CI bash script to validate HALT_CLASS_PREDICATES manifest (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Bash validation script created (~100 LOC) that parses docs/observability/HALT_CLASS_PREDICATES.yaml.
+    - "Script checks for required keys: event schemas, failure taxonomy, and cost tracking."
+    - Script exits with 0 on valid manifest and non-zero on invalid schema or missing required keys.
+  depends_on: [CREDIBLE-517]
+
+- id: CREDIBLE-520
+  domain: CREDIBLE
+  title: "CREDIBLE: Add observability smoke test command and wire manifest validation into CI (CREDIBLE-109 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Smoke test command implemented and documented to verify observability predicate matching.
+    - CI workflow updated to execute the manifest validation bash test on push/PR.
+  depends_on: [CREDIBLE-519]
 
 - id: DOC-031
   domain: DOC
@@ -104352,6 +104405,11 @@ gaps:
     [2026-09-02T06:26:55Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (115 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T06:29:11Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (116 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T06:30:05Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 14h) 2026-09-02; RESPAWN CAP 3 reached (117 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T07:18:04Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (118 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T07:20:27Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (119 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T07:22:54Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (120 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T07:25:14Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (121 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T07:30:09Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 15h) 2026-09-02; RESPAWN CAP 3 reached (122 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
