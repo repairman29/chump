@@ -18273,7 +18273,7 @@ gaps:
     - A test in src/preflight.rs proves the scoped gate runs the changed crate's check and skips the full workspace; fails without the change.
     - "NOTE: earlier auto-generated AC (EFFECTIVE-386 write-ac) hallucinated file paths (src/lib/gate.rs, src/tests/*) — those do NOT exist; real path is src/preflight.rs. Blocked on EFFECTIVE-388 (AC-writer repo grounding) for trustworthy auto-AC."
   notes: |
-    Decomposed into 5 slices: EFFECTIVE-498, EFFECTIVE-499, EFFECTIVE-500, EFFECTIVE-501, EFFECTIVE-502
+    Decomposed into 5 slices: EFFECTIVE-655, EFFECTIVE-656, EFFECTIVE-657, EFFECTIVE-658, EFFECTIVE-659
   opened_date: '2026-08-19'
 
 - id: EFFECTIVE-373
@@ -23883,9 +23883,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a test function within the existing `mod tests` block that simulates degraded mode by deliberately blocking buckets for arcade, upshift CLI, and olive surfaces, then invokes the stranger test adapter and asserts that zero "got-stuck" findings appear in the output.
+    
+    Target file(s):
+    - crates/chump-preflight/src/artifact_gates.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Stranger test runs against arcade, upshift CLI, and olive surfaces with buckets deliberately blocked
-    - "Zero \"got‑stuck\" findings are reported"
+    - Running `cargo test` in `crates/chump-preflight` executes a new test that calls the stranger adapter with a configuration where arcade, upshift CLI, and olive surface buckets are marked blocked.
+    - The test assertion explicitly checks that the returned findings list contains no entry with classification 'got-stuck'.
+    - "The test uses the existing `CLASSIFICATION` constant from `scripts/eval/doc-phase0-classify.py:24` or its Rust equivalent to reference the 'got-stuck' category."
+    - "The test passes when run in isolation via `cargo test --package chump-preflight --lib artifact_gates::tests::<new_test_name>`."
   depends_on: [EFFECTIVE-570, EFFECTIVE-572, EFFECTIVE-574]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23917,9 +23926,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a chaos test case `test_cta_no_dead_supabase` in `scripts/ci/test-a2a-layer1a-chaos.sh` that simulates Supabase unavailability (by calling `stop_nats` or equivalent) and then verifies that the primary CTA element on the lighthouse surface (identified by a new `data-testid="primary-cta"` attribute added to the relevant element in `web/v2/app.js` within `FIRSTRUN_STEPS`) does not have an `href` pointing to a dead Supabase hostname.
+    
+    Target file(s):
+    - scripts/ci/test-a2a-layer1a-chaos.sh
+    - web/v2/app.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Automated test confirms that the primary CTA on each lighthouse surface never redirects to a dead Supabase hostname under degraded conditions
-    - All test cases pass
+    - "Running `bash scripts/ci/test-a2a-layer1a-chaos.sh test_cta_no_dead_supabase` exits with code 0 and prints exactly 'PASS: test_cta_no_dead_supabase'."
+    - "In `web/v2/app.js`, the primary CTA element inside `FIRSTRUN_STEPS` includes `data-testid=\"primary-cta\"` so the test can select it."
+    - "The `test_cta_no_dead_supabase` function in the chaos script uses `stop_nats` to degrade connectivity, then fetches the lighthouse page and asserts that the element with `data-testid=\"primary-cta\"` has an `href` that does not contain `supabase.co`."
   depends_on: [EFFECTIVE-570, EFFECTIVE-572, EFFECTIVE-574]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -23951,9 +23969,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add an `honest_degradation` boolean field to the `GapBriefing` struct at line 70 and update its constructor to set this flag based on whether the lighthouse surface's required buckets are blocked, so that downstream integration tests can assert each surface is either fully usable or explicitly marked as degraded.
+    
+    Target file(s):
+    - src/briefing.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Full integration test validates each lighthouse surface is either usable or presents an honest degraded state when its buckets are blocked
-    - Test suite passes with no failures
+    - "`src/briefing.rs`: `GapBriefing` struct contains a public `honest_degradation: bool` field initialized in all construction sites."
+    - "`cargo test --test integration` passes a test that iterates every lighthouse surface in a briefing and asserts `usable == true OR honest_degradation == true`."
+    - "`cargo test` shows zero failures in the `briefing` module's unit tests after the struct change."
   depends_on: [EFFECTIVE-575, EFFECTIVE-576, EFFECTIVE-577]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -26527,10 +26553,20 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `prompt` function in `crates/chump-handoff/src/contracts.rs` to generate a combined markdown report for UI, brand, and interaction specs after the design-pass stage. In `crates/chump-orchestrator/src/reflect.rs`, add a new function that uses `pr_number_of` to post that report as a PR comment. In `scripts/ab-harness/cost_ledger.py`, update the `report` function to produce a summary markdown with checklist violations and before/after screenshot links.
+    
+    Target file(s):
+    - crates/chump-handoff/src/contracts.rs
+    - crates/chump-orchestrator/src/reflect.rs
+    - scripts/ab-harness/cost_ledger.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - After the design-pass stage runs, a markdown report is generated summarizing checklist violations and including before/after screenshot comparisons
-    - The report is posted as a comment on the PR and the PR status check reflects the pass/fail result
-    - The report includes a link to the full spec artifact (e.g., a rendered HTML report) for detailed review
+    - Invoking the design-pass pipeline on a PR with a checklist violation results in `cost_ledger.py`'s `report` function returning a dict containing a 'violations' key with a non-empty list.
+    - "The merged markdown report generated by the `prompt` function in `contracts.rs` contains a section titled `## UI Spec`, `## Brand Spec`, and `## Interaction Spec`."
+    - The new function in `reflect.rs` (e.g., `post_design_pass_comment`) successfully creates a PR comment with the report body and a link to `report.html` artifact.
+    - Running `grep 'screenshots/before/' design-pass-report.md` returns a non-zero exit code, confirming at least one screenshot link is embedded.
   depends_on: [EFFECTIVE-638, EFFECTIVE-640]
   notes: |
     [chump harvest check 'EFFECTIVE']
@@ -26562,10 +26598,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a static mapping from artifact_type strings to lists of PublishTarget names in bench.rs, and implement a function get_publish_targets_for_artifact_type that returns the corresponding PublishTarget objects (or an empty list if no mapping exists). Include initial mappings: 'docs' → ['docs-site-refresh'] and 'unknown' → [].
+    
+    Target file(s):
+    - crates/chump-bench/src/bench.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Registry is accessible (e.g., config file or DB table) and returns a list of publish targets for a given artifact_type.
-    - Initial mappings include at least one artifact_type with targets (e.g., 'docs' -> ['docs-site-refresh']) and one with no targets.
-    - Registry can be queried programmatically.
+    - In crates/chump-bench/src/bench.rs, the function get_publish_targets_for_artifact_type is defined and accepts a &str argument.
+    - "Calling get_publish_targets_for_artifact_type(\"docs\") returns a Vec<PublishTarget> containing exactly one target with name \"docs-site-refresh\"."
+    - "Calling get_publish_targets_for_artifact_type(\"unknown\") returns an empty Vec."
+    - The crate compiles successfully with `cargo build -p chump-bench`.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -26998,6 +27042,133 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-655
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Scope preflight BLOCKING gate to changed crate only (EFFECTIVE-372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Modify src/preflight.rs to detect the changed crate (e.g., via git diff) and run `cargo check -p <crate>` instead of `cargo check --workspace`.
+    - Fallback to full workspace check if no crate change is detected.
+    - The gate remains blocking (i.e., fails the preflight if check fails).
+  notes: |
+    [chump harvest check 'local-first']
+    === primitives_index match for 'local-first' ===
+    
+    === cluster keyword match for 'local-first' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local-first' ===
+    
+    === repo-description match for 'local-first' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+    
+    === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'local-first' ===
+
+- id: EFFECTIVE-656
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add job capping, nice, and load-aware defer to preflight gate (EFFECTIVE-372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Cap concurrent cargo check jobs to ~6.
+    - Apply `nice` to reduce CPU priority of the check process.
+    - "Implement load-aware defer: delay the check if system load average exceeds a threshold."
+  notes: |
+    [chump harvest check 'local-first']
+    === primitives_index match for 'local-first' ===
+    
+    === cluster keyword match for 'local-first' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local-first' ===
+    
+    === repo-description match for 'local-first' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+    
+    === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'local-first' ===
+
+- id: EFFECTIVE-657
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write test for scoped preflight gate (EFFECTIVE-372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Add a test in src/preflight.rs that simulates a changed crate.
+    - The test verifies that `cargo check -p <changed-crate>` is executed and the full workspace check is skipped.
+    - The test fails if the scoping logic is absent (i.e., it detects the full workspace check was run).
+  depends_on: [EFFECTIVE-655]
+  notes: |
+    [chump harvest check 'local-first']
+    === primitives_index match for 'local-first' ===
+    
+    === cluster keyword match for 'local-first' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local-first' ===
+    
+    === repo-description match for 'local-first' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+    
+    === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'local-first' ===
+
+- id: EFFECTIVE-658
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Demote cloud CI to non-blocking net (EFFECTIVE-372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Modify CI configuration (e.g., GitHub Actions workflow) to make the cloud CI check non-blocking for pull requests.
+    - Cloud CI still runs but does not prevent merging.
+    - Local preflight gate remains blocking.
+  notes: |
+    [chump harvest check 'local-first']
+    === primitives_index match for 'local-first' ===
+    
+    === cluster keyword match for 'local-first' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local-first' ===
+    
+    === repo-description match for 'local-first' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+    
+    === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'local-first' ===
+
+- id: EFFECTIVE-659
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement AC-judge on Mac for preflight gate (EFFECTIVE-372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Add a mechanism to evaluate acceptance criteria on Mac as part of the preflight gate.
+    - Integrate with the scoped and capped gate logic.
+    - Ensure Mac-specific checks run correctly and fail the gate if criteria are not met.
+  depends_on: [EFFECTIVE-655, EFFECTIVE-656]
+  notes: |
+    [chump harvest check 'local-first']
+    === primitives_index match for 'local-first' ===
+    
+    === cluster keyword match for 'local-first' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local-first' ===
+    
+    === repo-description match for 'local-first' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+    
+    === HARVEST_ROADMAP.md mention of 'local-first' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'local-first' ===
 
 - id: EVAL-085
   title: test eval 085
