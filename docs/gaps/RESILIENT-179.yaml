@@ -1,7 +1,7 @@
 - id: RESILIENT-179
   domain: RESILIENT
   title: "RESILIENT: worker heartbeat must span the FULL cycle — writer only runs during claude; long ship phases go quiet and chumpd wedge-kills healthy workers (16 kills first night, ~2/hr yield tax)"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -12,4 +12,6 @@
     - de-scaled slots removed from chumpd-status.json workers array
   notes: |
     Promoted P0 2026-07-22: confirmed #1 yield ceiling (2 real ships/day at 2 workers); wedge-kill tax measured across two nights.
+  opened_date: '2026-07-22'
+  closed_pr: 3760
 
