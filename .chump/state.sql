@@ -18751,6 +18751,8 @@ gaps:
     - "The top unread kinds are the fleet's real operational signal and each answers a question nobody is asking today: farmer_auth_dead 769, farmer_heartbeat 769, github_api_call 561, operator_recall_suppressed 522, operator_recall 247, farmer_drain_guard 198, cache_miss 138, queue_health_check_failed 133"
     - Extend TRACES beyond gap-run grouping to summarize operational event classes over a window (rates, spikes, ratios) — e.g. 769 farmer_auth_dead is either a real recurring outage or a known false-positive class (INFRA-2031 precedent), and today nothing tells you which
     - "Keep the organ's coverage-honesty rule: state what share of the stream was interpreted, never imply a full read"
+  notes: |
+    Decomposed into 7 slices: EFFECTIVE-686, EFFECTIVE-687, EFFECTIVE-688, EFFECTIVE-689, EFFECTIVE-690, EFFECTIVE-691, EFFECTIVE-692
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: ZERO-WASTE-000
@@ -26386,7 +26388,7 @@ gaps:
 - id: EFFECTIVE-637
   domain: EFFECTIVE
   title: "EFFECTIVE: Create design-pass stage entry in the factory pipeline (EFFECTIVE-358 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -26423,6 +26425,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-02T02:05:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1524B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-638
   domain: EFFECTIVE
@@ -28148,6 +28151,181 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-686
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Extend event recognition to all 70 distinct event kinds, not just gap-run events (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When running `tracemap --events .chump-locks/ambient.jsonl`, the output lists all distinct event kinds present in the stream (at least 70) with their counts
+    - The total number of events consumed equals the total number of events in the input file (e.g., 4394 for the measured file)
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-687
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add coverage-honesty reporting: display the percentage of total events interpreted (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The tracemap output includes a final line in the format 'Coverage: interpreted X of Y events (Z%)' where Y is the total event count and X is the count of events that were actually grouped/summarized"
+    - When only gap-run events are interpreted (after slice 0), the coverage percentage reflects the true share of interpreted events (e.g., ~0.45%)
+  depends_on: [EFFECTIVE-686]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-688
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement generic grouping/summarization framework for event classes over a window (rates, spikes, ratios) (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A configuration mechanism allows specifying a list of event kinds and window parameters (e.g., time window size)
+    - For each specified event kind, the framework outputs a summary line containing the event count, rate (events per minute), a spike detection flag (if the rate exceeds a threshold), and the ratio of this kind to total events
+    - The framework can be exercised with a test input containing known event patterns to verify correctness of rate, spike, and ratio calculations
+  depends_on: [EFFECTIVE-686]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-689
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add farmer event grouping and summarization (farmer_auth_dead, farmer_heartbeat, farmer_drain_guard) (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `tracemap --events .chump-locks/ambient.jsonl` with the updated configuration shows summary lines for farmer_auth_dead (769 events), farmer_heartbeat (769 events), and farmer_drain_guard (198 events)
+    - Each summary line includes derived metrics (rate, spike detection, ratio) that align with the event counts
+  depends_on: [EFFECTIVE-688]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-690
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add operator event grouping and summarization (operator_recall, operator_recall_suppressed) (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `tracemap --events .chump-locks/ambient.jsonl` with the updated configuration shows summary lines for operator_recall (247 events) and operator_recall_suppressed (522 events)
+    - Each summary line includes derived metrics (rate, spike detection, ratio) that align with the event counts
+  depends_on: [EFFECTIVE-688]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-691
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add github_api_call event grouping and summarization (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `tracemap --events .chump-locks/ambient.jsonl` with the updated configuration shows a summary line for github_api_call (561 events)
+    - The summary line includes derived metrics (rate, spike detection, ratio) that align with the event count
+  depends_on: [EFFECTIVE-688]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: EFFECTIVE-692
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add infrastructure event grouping (cache_miss, queue_health_check_failed) (EFFECTIVE-397 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `tracemap --events .chump-locks/ambient.jsonl` with the updated configuration shows summary lines for cache_miss (138 events) and queue_health_check_failed (133 events)
+    - Each summary line includes derived metrics (rate, spike detection, ratio) that align with the event counts
+  depends_on: [EFFECTIVE-688]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
 
 - id: EVAL-085
   title: test eval 085
