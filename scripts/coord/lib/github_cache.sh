@@ -428,7 +428,7 @@ _emit_offline_read_event() {
     local marker="${TMPDIR:-/tmp}/chump-liaison-offline-${helper}.marker"
     if [[ -f "$marker" ]]; then
         local mtime now age
-        mtime=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null)
+        mtime=$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null)
         now=$(date -u +%s)
         if [[ -n "$mtime" ]]; then
             age=$((now - mtime))

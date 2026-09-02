@@ -62,7 +62,7 @@ emit_ambient() {
 
 # --- lock guard ---
 if [[ -f "$LOCK" ]]; then
-  lock_age_hours=$(( ( $(date +%s) - $(stat -f %m "$LOCK" 2>/dev/null || stat -c %Y "$LOCK" 2>/dev/null || echo 0) ) / 3600 ))
+  lock_age_hours=$(( ( $(date +%s) - $(stat -c %Y "$LOCK" 2>/dev/null || stat -f %m "$LOCK" 2>/dev/null || echo 0) ) / 3600 ))
   if (( lock_age_hours < STALE_LOCK_HOURS )); then
     log "lock present (${lock_age_hours}h old, threshold ${STALE_LOCK_HOURS}h) — exiting"
     emit_ambient "overnight_skip" "\"reason\":\"lock_held\",\"age_hours\":$lock_age_hours"

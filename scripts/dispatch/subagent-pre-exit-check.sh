@@ -40,7 +40,7 @@ emit_idle() {
     local marker="${TMPDIR:-/tmp}/chump-subagent-idle-${sess}.marker"
     if [[ -f "$marker" ]]; then
         local mtime now age
-        mtime=$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null)
+        mtime=$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null)
         now=$(date -u +%s)
         if [[ -n "$mtime" ]]; then
             age=$((now - mtime))

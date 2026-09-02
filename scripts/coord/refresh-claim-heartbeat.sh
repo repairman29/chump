@@ -64,7 +64,7 @@ except Exception: print('')
 " 2>/dev/null)"
             if [[ "$gid" == "$key" ]]; then
                 local mt
-                mt="$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)"
+                mt="$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)"
                 if [[ "$mt" -gt "$newest_mtime" ]]; then
                     newest_mtime="$mt"
                     found="$f"

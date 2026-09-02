@@ -35,7 +35,7 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
 
 QUIET=0
-declare -a TARGETS
+declare -a TARGETS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --quiet) QUIET=1 ;;

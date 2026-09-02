@@ -144,7 +144,7 @@ while IFS= read -r entry; do
 
     # Cooldown check: same head_sha failed recently → skip
     if [[ -f "$cooldown_marker" ]]; then
-        marker_age=$(( $(date +%s) - $(stat -f %m "$cooldown_marker" 2>/dev/null || stat -c %Y "$cooldown_marker" 2>/dev/null || echo 0) ))
+        marker_age=$(( $(date +%s) - $(stat -c %Y "$cooldown_marker" 2>/dev/null || stat -f %m "$cooldown_marker" 2>/dev/null || echo 0) ))
         if (( marker_age < COOLDOWN_S )); then
             echo "[pr-watch-shepherd] skip PR #$PR (cooldown: ${marker_age}s < ${COOLDOWN_S}s)"
             COOLDOWN=$((COOLDOWN + 1))

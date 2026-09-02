@@ -64,7 +64,7 @@ CACHE_FILE="$CACHE_DIR/${TREE_SHA}.json"
 # ── Cache lookup ─────────────────────────────────────────────────────────────
 now_ts=$(date +%s)
 if [ -f "$CACHE_FILE" ]; then
-    mtime=$(stat -f %m "$CACHE_FILE" 2>/dev/null || stat -c %Y "$CACHE_FILE" 2>/dev/null || echo 0)
+    mtime=$(stat -c %Y "$CACHE_FILE" 2>/dev/null || stat -f %m "$CACHE_FILE" 2>/dev/null || echo 0)
     age=$((now_ts - mtime))
     cached_status=$(python3 -c "import json; print(json.load(open('$CACHE_FILE')).get('status', '?'))" 2>/dev/null || echo '?')
 

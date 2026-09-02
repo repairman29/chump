@@ -56,7 +56,7 @@ fi
 TMP_MARKER="/tmp/chump-infra-491-test-marker-$$"
 echo "test" > "$TMP_MARKER"
 NOW_EPOCH=$(date +%s)
-marker_mtime="$(stat -f %m "$TMP_MARKER" 2>/dev/null || stat -c %Y "$TMP_MARKER" 2>/dev/null || echo 0)"
+marker_mtime="$(stat -c %Y "$TMP_MARKER" 2>/dev/null || stat -f %m "$TMP_MARKER" 2>/dev/null || echo 0)"
 marker_age_min=$(( (NOW_EPOCH - marker_mtime) / 60 ))
 realert_min=360
 if (( marker_age_min < realert_min )); then
@@ -72,7 +72,7 @@ echo "test" > "$TMP_MARKER"
 # Simulate a 7h-old marker by backdating mtime.
 touch -t "$(date -v-7H +%Y%m%d%H%M 2>/dev/null || date -d '7 hours ago' +%Y%m%d%H%M 2>/dev/null)" "$TMP_MARKER" 2>/dev/null || true
 NOW_EPOCH=$(date +%s)
-marker_mtime="$(stat -f %m "$TMP_MARKER" 2>/dev/null || stat -c %Y "$TMP_MARKER" 2>/dev/null || echo 0)"
+marker_mtime="$(stat -c %Y "$TMP_MARKER" 2>/dev/null || stat -f %m "$TMP_MARKER" 2>/dev/null || echo 0)"
 marker_age_min=$(( (NOW_EPOCH - marker_mtime) / 60 ))
 if (( marker_age_min >= realert_min )); then
     ok "live: stale marker (age=${marker_age_min}m >= ${realert_min}m) triggers re-emit"
