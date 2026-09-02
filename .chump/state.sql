@@ -3512,13 +3512,15 @@ gaps:
 - id: CREDIBLE-221
   domain: CREDIBLE
   title: "[almanac] organ binaries log no usage — we cannot tell whether the release gate is ever run"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "All 6 organ binaries (comprehend, flagmap, gatemap, livemap, tracemap, whymap) append to ~/.almanac/usage.jsonl the same way MCP tools and CLI search/api already do — measured 2026-08-07: 0 of 6 log anything"
     - "Why this is CREDIBLE-class not nice-to-have: RELEASE_CHECKLIST.md item 1e REQUIRES 'flagmap --repo <path> --top' for credential-shaped defaults (it caught olive's real TEST_USER_PASSWORD), and 1.5 requires comprehend. Today an auditor could skip both entirely and nothing anywhere would show it. A gate whose execution cannot be observed is a signal, not an outcome — the fleet's own rule"
     - almanac usage then distinguishes retrieval calls from inspection calls, so 'are we actually inspecting or only searching' is answerable from data rather than argued
+  notes: |
+    [2026-09-02T04:16:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
@@ -18761,13 +18763,15 @@ gaps:
 - id: EFFECTIVE-395
   domain: EFFECTIVE
   title: "[almanac] add ROADMAP phase O6 — continuous organ sweep (the plan gates at release only)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "ROADMAP.md gains an explicit O6 phase for continuous fleet-wide organ sweeping, so it lives in the plan rather than only in a gap. Verified 2026-08-07: O1-O5 cover ecosystem parity, claim correctness, convergence/release-gate and agent surface — none covers running the organs on a schedule across repos"
     - O6 references EFFECTIVE-389 (the code-posse sweep implementation) as its delivery vehicle, and states the exit condition
     - "Rationale to record: organs ARE proactively used today, but only at RELEASE time (RELEASE_CHECKLIST 1e flagmap + 1.5 comprehend). That catches a problem the moment something ships public; nothing catches it in the weeks between. olive's committed TEST_USER_PASSWORD sat until a release audit happened to look"
+  notes: |
+    [2026-09-02T04:16:59Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
 
@@ -19047,6 +19051,8 @@ gaps:
     - "The change described by \"flag new large src/*.rs files landing in the bin (enforce crate-first, WHEN_TO_CRATE.md)\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: EFFECTIVE-724, EFFECTIVE-725, EFFECTIVE-726, EFFECTIVE-727, EFFECTIVE-728, EFFECTIVE-729, EFFECTIVE-730, EFFECTIVE-731, EFFECTIVE-732, EFFECTIVE-733
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -26909,7 +26915,7 @@ gaps:
 - id: EFFECTIVE-649
   domain: EFFECTIVE
   title: "EFFECTIVE: Upshift CLI: Ensure registry-data explain path works without AI bucket (EFFECTIVE-370 slice)"
-  status: open
+  status: obsolete
   priority: P2
   effort: s
   description: |
@@ -26947,6 +26953,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+  closed_date: '2026-09-02'
 
 - id: EFFECTIVE-650
   domain: EFFECTIVE
@@ -29314,6 +29321,386 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-724
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Review WHEN_TO_CRATE.md to extract crate‑first rules (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Key crate‑first rules relevant to bin bloat are documented in a short summary.
+    - Any thresholds or naming conventions required for the implementation are identified.
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-725
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Locate the CI gate entry point for bin‑bloat‑guard (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The script or Rust module that runs the bin‑bloat‑guard check is identified.
+    - A comment placeholder is added indicating where new logic will be inserted.
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-726
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement file‑size detection for new src/*.rs files (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A function `is_large_src_file(path: &Path) -> bool` returns true when the file size exceeds the configured limit."
+    - The function correctly handles non‑existent paths and returns false.
+  depends_on: [EFFECTIVE-724]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-727
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add configurable size threshold constant (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A constant `MAX_SRC_RS_SIZE_BYTES` (default 100 KB) is defined and can be overridden via an env var.
+    - The detection function uses this constant.
+  depends_on: [EFFECTIVE-726]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-728
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate detection into the CI gate logic (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The CI gate scans newly added `src/*.rs` files in the bin crate.
+    - If any file is flagged as large, the gate prints a clear error message and exits with a non‑zero status.
+  depends_on: [EFFECTIVE-725, EFFECTIVE-726, EFFECTIVE-727]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-729
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit tests for the detection function (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Tests verify that a file below the threshold returns false.
+    - Tests verify that a file above the threshold returns true.
+    - Tests run via `cargo test` and pass.
+  depends_on: [EFFECTIVE-726]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-730
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write integration test that CI gate fails on a large src file (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A temporary bin crate is created with a large `src/main.rs` (> threshold).
+    - Running the CI gate script against this crate exits with a non‑zero code.
+    - Running the gate with only small files exits with zero.
+  depends_on: [EFFECTIVE-728, EFFECTIVE-729]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-731
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI scripts to execute the new integration test (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-*.sh` includes a call to the integration test."
+    - The CI pipeline reports the test result as part of the gate.
+  depends_on: [EFFECTIVE-730]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-732
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run `cargo fmt` and `cargo clippy --all-targets -D warnings` and fix any warnings (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` makes no changes."
+    - "`cargo clippy` completes without warnings."
+  depends_on: [EFFECTIVE-728, EFFECTIVE-729, EFFECTIVE-730, EFFECTIVE-731]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-733
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Verify no regression of existing tests (EFFECTIVE-414 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All pre‑existing `cargo test` suites pass.
+    - CI gate still succeeds for unchanged codebases.
+  depends_on: [EFFECTIVE-732]
+  notes: |
+    [chump harvest check 'build']
+    === primitives_index match for 'build' ===
+    
+    === cluster keyword match for 'build' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'build' ===
+    
+    === repo-description match for 'build' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+    
+    === HARVEST_ROADMAP.md mention of 'build' (deep-scan findings) ===
+      86:**Recommendation:** mark this cluster as a "future product factory" — primitives to revisit when Chump starts hosting customer-facing services. For now: **shelf**, with a single follow-up to confirm each service still builds (it'll be a pain to harvest dead code 18 months from now if nobody can compile it).
+      226:regenerate the catalog. Re-running `scripts/arsenal/build.py` against the existing
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'build' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: EVAL-085
   title: test eval 085
@@ -42562,7 +42949,7 @@ gaps:
 - id: INFRA-1793
   domain: INFRA
   title: "ZERO-WASTE: chump preflight runs no-claude-leak audit on changed product files — INFRA-1051 (INFRA-1762 Tier C #7)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -42579,6 +42966,7 @@ gaps:
     [2026-08-30T14:30:37Z] rot-reaper: PR #4283 auto-closed (required-check-red, 61h) 2026-08-30; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T14:32:59Z] rot-reaper: PR #4283 auto-closed (required-check-red, 61h) 2026-08-30; RESPAWN CAP 3 reached (4 prior recycles) — NOT re-queued, escalating to operator.
     [2026-08-30T15:09:32Z] rot-reaper: PR #4283 auto-closed (required-check-red, 62h) 2026-08-30; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T04:25:29Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -103252,6 +103640,11 @@ gaps:
     [2026-09-02T03:27:11Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (96 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T03:29:25Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (97 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-02T03:30:08Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 11h) 2026-09-02; RESPAWN CAP 3 reached (98 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T04:20:16Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (99 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T04:22:37Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (100 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T04:24:56Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (101 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T04:29:11Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (102 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-02T04:30:09Z] rot-reaper: PR #4366 auto-closed (CONFLICTING, 12h) 2026-09-02; RESPAWN CAP 3 reached (103 prior recycles) — NOT re-queued, escalating to operator.
   outcome_id: ZERO-WASTE-000
 
 - id: RESILIENT-546
