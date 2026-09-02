@@ -14,6 +14,7 @@ use tokio::time::{interval, Duration};
 
 use crate::dashboard;
 use crate::db::{now_ms, FleetStore};
+use crate::gap_pick::{self, ClaimError, ClaimRequest, NextQuery, PickedGap};
 use crate::gap_write::{self, GapWriteRequest};
 use crate::mission::{self, MissionRequest};
 
@@ -40,6 +41,8 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/dashboard-summary", get(get_dashboard_summary))
         .route("/api/mission", post(post_mission))
         .route("/api/gap", post(post_gap))
+        .route("/api/gaps/next", get(get_gaps_next))
+        .route("/api/gap/claim", post(post_gap_claim))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
         .with_state(state)
@@ -405,6 +408,156 @@ async fn post_gap(
         }
         Err(e) => {
             tracing::error!("POST /api/gap task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// Shared fail-closed bearer check for the API-first pick+claim endpoints.
+/// Identical semantics to `post_mission` / `post_gap`: 503 when
+/// `CHUMP_BATPHONE_TOKEN` is unset, 401 when the presented token mismatches
+/// (constant-time). `Err(response)` short-circuits; `Ok(())` proceeds.
+fn bearer_authorized(headers: &axum::http::HeaderMap) -> Result<(), Response> {
+    let Some(expected) = mission::configured_token() else {
+        return Err((
+            axum::http::StatusCode::SERVICE_UNAVAILABLE,
+            Json(serde_json::json!({
+                "error": "bat-phone disabled: CHUMP_BATPHONE_TOKEN not set"
+            })),
+        )
+            .into_response());
+    };
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).trim().to_string())
+        .unwrap_or_default();
+    if !mission::constant_time_eq(&presented, &expected) {
+        return Err((
+            axum::http::StatusCode::UNAUTHORIZED,
+            Json(serde_json::json!({"error": "unauthorized"})),
+        )
+            .into_response());
+    }
+    Ok(())
+}
+
+/// GET /api/gaps/next — API-first "pick my next gap" (INFRA-3966).
+///
+/// Fail-closed bearer auth (same `CHUMP_BATPHONE_TOKEN` as `/api/gap`). Opens
+/// the canonical gap store, applies the `_pick_and_claim_gap.py` ranking +
+/// filters, excludes in-progress work (active DB leases + open `chump/*`
+/// branches), and returns the single best pickable gap as JSON — or 204 when
+/// none. Read-only: the atomic claim is a separate `POST /api/gap/claim`.
+async fn get_gaps_next(
+    State(s): State<AppState>,
+    headers: axum::http::HeaderMap,
+    Query(q): Query<NextQuery>,
+) -> Response {
+    if let Err(resp) = bearer_authorized(&headers) {
+        return resp;
+    }
+    let repo_root = s.repo_root.clone();
+    let worker = q.worker.unwrap_or_default();
+    let prio = gap_pick::csv(q.priority_filter.as_deref());
+    let effort = gap_pick::csv(q.effort_filter.as_deref());
+    let skills: std::collections::HashSet<String> = gap_pick::csv(q.skills.as_deref())
+        .into_iter()
+        .map(|x| x.to_lowercase())
+        .collect();
+
+    let result = tokio::task::spawn_blocking(move || {
+        gap_pick::pick_next_gap(&repo_root, &worker, &prio, &effort, &skills)
+    })
+    .await;
+
+    match result {
+        Ok(Ok(Some(gap))) => Json(PickedGap::from(gap)).into_response(),
+        Ok(Ok(None)) => axum::http::StatusCode::NO_CONTENT.into_response(),
+        Ok(Err(e)) => {
+            tracing::error!("GET /api/gaps/next failed: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("GET /api/gaps/next task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// POST /api/gap/claim — API-first atomic claim (INFRA-3966).
+///
+/// Fail-closed bearer auth. Body: `{gap_id, worker, ttl?}`. Reuses the store's
+/// DB-lease claim (`GapStore::claim`); a live conflicting lease or an
+/// already-done gap is a 409, an unknown gap is a 404. Returns the lease record.
+async fn post_gap_claim(
+    State(s): State<AppState>,
+    headers: axum::http::HeaderMap,
+    payload: Result<Json<ClaimRequest>, axum::extract::rejection::JsonRejection>,
+) -> Response {
+    if let Err(resp) = bearer_authorized(&headers) {
+        return resp;
+    }
+    let req = match payload {
+        Ok(Json(r)) => r,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid JSON body: {e}")})),
+            )
+                .into_response();
+        }
+    };
+    let gap_id = req.gap_id.trim().to_string();
+    let worker = req.worker.trim().to_string();
+    if gap_id.is_empty() || worker.is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "gap_id and worker are required"})),
+        )
+            .into_response();
+    }
+    let ttl = req.ttl.filter(|t| *t > 0).unwrap_or(4 * 3600);
+    let repo_root = s.repo_root.clone();
+
+    let result =
+        tokio::task::spawn_blocking(move || gap_pick::claim_gap(&repo_root, &gap_id, &worker, ttl))
+            .await;
+
+    match result {
+        Ok(Ok(record)) => Json(record).into_response(),
+        Ok(Err(ClaimError::Conflict(msg))) => (
+            axum::http::StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": msg})),
+        )
+            .into_response(),
+        Ok(Err(ClaimError::NotFound(msg))) => (
+            axum::http::StatusCode::NOT_FOUND,
+            Json(serde_json::json!({"error": msg})),
+        )
+            .into_response(),
+        Ok(Err(ClaimError::Internal(msg))) => {
+            tracing::error!("POST /api/gap/claim failed: {msg}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": msg})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("POST /api/gap/claim task join error: {e}");
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "internal error"})),

@@ -11,6 +11,7 @@ categories = ["web-programming::http-server"]
 
 [dependencies]
 anyhow = "1.0"
+chump-gap-store = { path = "../chump-gap-store" }
 axum = { version = "0.8", features = ["macros", "json", "ws"] }
 glob = "0.3"
 rusqlite = { version = "0.32", features = ["bundled"] }

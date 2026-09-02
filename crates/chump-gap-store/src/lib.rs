@@ -846,6 +846,22 @@ impl GapStore {
         }
     }
 
+    /// INFRA-3966: recent ship history (domain, title) for the API-first gap
+    /// picker rebalance heuristic. Mirrors the query in
+    /// `scripts/dispatch/_pick_and_claim_gap.py::get_ship_history`: the last
+    /// `window` gaps that are done WITH a closed_pr, newest first. Read-only.
+    pub fn recent_ship_history(&self, window: i64) -> Result<Vec<(String, String)>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT domain, title FROM gaps \
+             WHERE status='done' AND closed_pr IS NOT NULL \
+             ORDER BY closed_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map(params![window], |r| {
+            Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
+        })?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
+    }
+
     /// CREDIBLE-339: list gaps with a specific status, ordered by closed_at ASC
     /// (oldest closed first). Used by the done-gap over-claim auditor
     /// so each run processes the oldest closed gaps and subsequent runs
