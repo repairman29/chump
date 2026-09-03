@@ -110,6 +110,10 @@ struct IntakeJson<'a> {
     gap_id: Option<String>,
     #[serde(skip_serializing_if = "Vec::is_empty")]
     acceptance_criteria: Vec<String>,
+    /// EFFECTIVE-505: who/struggling-moment/done-signal, when the model
+    /// supplied it. Omitted rather than emitted null when absent.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    jtbd: Option<&'a chump_handoff::contracts::JtbdSummary>,
 }
 
 /// Run one intake turn: dispatch the contract, emit the ambient event, and
@@ -178,6 +182,7 @@ pub async fn run(text: &str, json: bool, create: bool) -> Result<()> {
             outcome_id: outcome_id.clone(),
             gap_id: gap_id.clone(),
             acceptance_criteria,
+            jtbd: output.jtbd.as_ref(),
         };
         println!("{}", serde_json::to_string(&j)?);
     } else {
@@ -198,6 +203,12 @@ pub async fn run(text: &str, json: bool, create: bool) -> Result<()> {
         }
         println!();
         println!("What \"done\" would look like: {}", output.proposed_dod);
+        if let Some(jtbd) = &output.jtbd {
+            println!();
+            println!("Who this is for: {}", jtbd.who);
+            println!("The moment it hurts: {}", jtbd.struggling_moment);
+            println!("How they'll know it's solved: {}", jtbd.done_signal);
+        }
         if let Some(id) = &outcome_id {
             println!();
             println!("Outcome created: {id}");
@@ -383,11 +394,37 @@ mod tests {
             outcome_id: Some("VISION-abcd1234".to_string()),
             gap_id: None,
             acceptance_criteria: Vec::new(),
+            jtbd: None,
         };
         let v: serde_json::Value = serde_json::to_value(&j).unwrap();
         assert!(v.get("gap_id").is_none());
         assert!(v.get("acceptance_criteria").is_none());
+        assert!(v.get("jtbd").is_none());
         assert_eq!(v["outcome_id"], "VISION-abcd1234");
         assert!((v["ambiguity_level"].as_f64().unwrap() - 0.8).abs() < 1e-6);
+    }
+
+    /// EFFECTIVE-505 AC1/AC2: when `jtbd` is populated it serializes as a
+    /// nested object rather than being dropped.
+    #[test]
+    fn intake_json_includes_jtbd_when_present() {
+        let jtbd = chump_handoff::contracts::JtbdSummary {
+            who: "a solo dog walker".to_string(),
+            struggling_moment: "juggling paper routes every morning".to_string(),
+            done_signal: "routes are grouped automatically".to_string(),
+        };
+        let j = IntakeJson {
+            restatement: "restated",
+            clarifying_questions: &["q1".to_string()],
+            proposed_dod: "done means x",
+            ambiguity_level: 0.8,
+            outcome_id: None,
+            gap_id: None,
+            acceptance_criteria: Vec::new(),
+            jtbd: Some(&jtbd),
+        };
+        let v: serde_json::Value = serde_json::to_value(&j).unwrap();
+        assert_eq!(v["jtbd"]["who"], "a solo dog walker");
+        assert_eq!(v["jtbd"]["done_signal"], "routes are grouped automatically");
     }
 }
