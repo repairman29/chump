@@ -202,6 +202,7 @@ mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
 mod provider_cascade;
+mod provider_probe;
 mod provider_quality;
 mod ratings;
 mod read_url_tool;
@@ -1597,6 +1598,20 @@ async fn main() -> Result<()> {
         }
         eprintln!("Usage: chump farmer status [--json] [--quiet]");
         std::process::exit(2);
+    }
+
+    // CREDIBLE-227: `chump provider probe` — probes every enabled cloud
+    // provider slot's live rate-limit headers + /v1/models existence,
+    // compares against the hand-entered CHUMP_PROVIDER_{N}_RPM/RPD in .env,
+    // and hollers (ambient kind=provider_slot_drift) any disagreement
+    // instead of silently trusting or rewriting the configured value.
+    if args.get(1).map(String::as_str) == Some("provider")
+        && args.get(2).map(String::as_str) == Some("probe")
+    {
+        load_dotenv();
+        let summary = provider_probe::run_probe_and_report().await;
+        println!("{}", summary);
+        return Ok(());
     }
 
     // EFFECTIVE-009: no-args → help; `chump help` → help. Must come before

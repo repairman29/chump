@@ -931,6 +931,13 @@ impl LocalOpenAIProvider {
         &self.model
     }
 
+    /// CREDIBLE-227: API key for this slot, so an out-of-band probe (rate-limit
+    /// header capture, `/v1/models` existence check) can authenticate without
+    /// re-deriving it from env vars.
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+
     /// Build with optional fallback URL (e.g. from CHUMP_FALLBACK_API_BASE). If primary fails after retries, one attempt is made to the fallback.
     /// Request timeout from CHUMP_MODEL_REQUEST_TIMEOUT_SECS (default 300s for slow 14B).
     pub fn with_fallback(
