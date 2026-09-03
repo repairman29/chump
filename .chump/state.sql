@@ -18400,7 +18400,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 8 slices: DOCS-011, DOCS-012, DOCS-013, DOCS-014, DOCS-015, DOCS-016, DOCS-017, DOCS-018
+    Decomposed into 8 slices: DOCS-019, DOCS-020, DOCS-021, DOCS-022, DOCS-023, DOCS-024, DOCS-025, DOCS-026
   opened_date: '2026-08-19'
 
 - id: DOCS-003
@@ -18882,6 +18882,230 @@ gaps:
     - All RUN docs cross-reference each other where appropriate (e.g., incident response links to backup restore).
     - No broken links exist; verified with `markdown-link-check`.
   depends_on: [DOCS-013, DOCS-014, DOCS-015, DOCS-016]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-019
+  domain: DOCS
+  title: "DOCS: Identify relevant DOCS code paths for roadmap track (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A list of source files and modules where the roadmap track is currently implemented is documented in a markdown file.
+    - The identified locations are reviewed and approved by a senior developer.
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-020
+  domain: DOCS
+  title: "DOCS: Add RUN half data structures to DOCS model (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - New structs/enums representing the RUN half of COTG are added to the appropriate model file.
+    - "The new data structures compile without warnings and are covered by #[derive(Debug, Clone, PartialEq)] where appropriate."
+  depends_on: [DOCS-019]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-021
+  domain: DOCS
+  title: "DOCS: Implement RUN half processing logic (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Business logic that processes the RUN half of COTG is implemented and integrates with existing roadmap handling code.
+    - The logic returns expected results for at least three representative input scenarios (verified by a quick manual run).
+  depends_on: [DOCS-020]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-022
+  domain: DOCS
+  title: "DOCS: Expose RUN half via CLI flag (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new CLI option `--run-half` (or similar) is added and correctly parses into the internal model.
+    - Running `docs --help` shows the new flag with a description.
+  depends_on: [DOCS-021]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-023
+  domain: DOCS
+  title: "DOCS: Write unit test for RUN half logic (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "At least one `#[test]` function validates the RUN half processing logic for a positive case."
+    - The test fails when the new logic is removed or disabled.
+  depends_on: [DOCS-021]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-024
+  domain: DOCS
+  title: "DOCS: Create CI test script for RUN half behavior (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script `scripts/ci/test-run-half.sh` is added that runs the new unit test and a small integration scenario.
+    - The script exits with a non‑zero status when the behavior is incorrect.
+  depends_on: [DOCS-023]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-025
+  domain: DOCS
+  title: "DOCS: Update documentation for RUN half feature (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The README and/or docs/roadmap.md include a section describing the RUN half of COTG and how to use the new CLI flag.
+    - Documentation builds without errors.
+  depends_on: [DOCS-021]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-026
+  domain: DOCS
+  title: "DOCS: Run cargo fmt, clippy, and full test suite to ensure no regressions (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all -- --check` passes with no formatting issues."
+    - "`cargo clippy --all-targets -- -D warnings` passes with zero warnings."
+    - All existing tests plus the new RUN half tests pass (`cargo test`).
+  depends_on: [DOCS-022, DOCS-023, DOCS-024, DOCS-025]
   notes: |
     [chump harvest check 'roadmap']
     === primitives_index match for 'roadmap' ===
@@ -35501,10 +35725,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Implement the missing `generate_merged_skeleton()` function in `crates/chump-preflight/src/preflight.rs`. The new code constructs a `MergedSkeleton` that aggregates all required traits, inserts `todo!()` placeholders for each unimplemented method, and creates failing test stubs for every generated hole, so that the skeleton can be compiled and exercised by the test suite.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Function `generate_merged_skeleton()` returns a `MergedSkeleton` containing all required traits, `todo!()` placeholders, and failing test stubs.
-    - Running `cargo test --quiet` after generation produces failing tests for each hole.
-    - The function is covered by a unit test that asserts the correct number of traits and holes are present.
+    - Running `cargo test --quiet` in the repository after the change produces at least one failing test whose name starts with `test_generated_` and originates from the skeleton generated by `generate_merged_skeleton`.
+    - The unit test `test_generate_merged_skeleton` defined in `crates/chump-preflight/src/preflight.rs` asserts that the returned `MergedSkeleton` contains exactly 3 traits and 2 placeholder holes.
+    - The function `generate_merged_skeleton` compiles without errors and its signature matches `fn generate_merged_skeleton() -> MergedSkeleton`.
+    - The file `crates/chump-preflight/src/preflight.rs` now contains the implementation of `generate_merged_skeleton` with a comment explaining that it produces a merged skeleton with `todo!()` placeholders and failing test stubs.
   depends_on: [EFFECTIVE-744]
   notes: |
     [chump harvest check 'PILOT']
@@ -83324,7 +83556,7 @@ gaps:
 - id: INFRA-3527
   domain: INFRA
   title: wire RoadmapFromVisionContract into a real CLI command (INFRA-2267 follow-up)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -83334,6 +83566,9 @@ gaps:
     - output is a real docs/ROADMAP.md, not just console text
     - tested end-to-end against at least one real existing repo (retrofit case), not just net-new bootstrap
     - a human reviews the generated roadmap's phases and done-when criteria for actual usefulness before this ships as done
+  notes: |
+    Decomposed into 9 slices: INFRA-4194, INFRA-4195, INFRA-4196, INFRA-4197, INFRA-4198, INFRA-4199, INFRA-4200, INFRA-4201, INFRA-4202
+    [2026-09-03T16:25:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: session 2026-08-02, first-mate portfolio audit; follows INFRA-2267
   opened_date: '2026-08-19'
 
@@ -100338,6 +100573,264 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-4194
+  domain: INFRA
+  title: "INFRA: Implement vision input loader (INFRA-3527 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Function `load_vision_input(repo_path: &Path, opt_string: Option<String>) -> Result<String>` is added."
+    - When `opt_string` is Some, the function returns that string unchanged.
+    - When `opt_string` is None, the function reads the repository's intent document at `repo_path/INTENT.md` (or a documented default) and returns its contents.
+    - If the intent document does not exist and no string is supplied, the function returns an error with a clear message.
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4195
+  domain: INFRA
+  title: "INFRA: Wrap RoadmapFromVisionContract call (INFRA-3527 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Function `generate_roadmap(vision: &str) -> Result<Roadmap>` is added."
+    - "The function invokes `RoadmapFromVisionContract::call(vision)` and returns the typed `Roadmap` on success."
+    - On contract failure, the function propagates an error with context.
+  depends_on: [INFRA-4194]
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4196
+  domain: INFRA
+  title: "INFRA: Ensure docs directory exists (INFRA-3527 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Utility `ensure_docs_dir(repo_path: &Path) -> Result<()>` creates `repo_path/docs` if it does not exist."
+    - The function is idempotent and returns Ok when the directory already exists.
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4197
+  domain: INFRA
+  title: "INFRA: Write ROADMAP.md in phased format (INFRA-3527 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Function `write_roadmap_md(repo_path: &Path, roadmap: &Roadmap) -> Result<()>` creates `repo_path/docs/ROADMAP.md`."
+    - The file content follows the established phased/done‑when template (product‑line → phase → done‑when criteria).
+    - The file is non‑empty and matches the structure of a previously approved roadmap (e.g., contains at least one phase header).
+  depends_on: [INFRA-4195, INFRA-4196]
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4198
+  domain: INFRA
+  title: "INFRA: Wire `--with-roadmap` flag in `chump bootstrap` (INFRA-3527 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Running `chump bootstrap --with-roadmap <repo>` no longer prints the TODO message.
+    - The command calls `load_vision_input`, `generate_roadmap`, `ensure_docs_dir`, and `write_roadmap_md` in sequence.
+    - Process exits with code 0 when the roadmap is successfully written.
+    - If any step fails, the command exits with a non‑zero code and prints the propagated error.
+  depends_on: [INFRA-4197]
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4199
+  domain: INFRA
+  title: "INFRA: Add end‑to‑end integration test against retrofit repo (INFRA-3527 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test harness clones or uses a local copy of the `retrofit` repository.
+    - The test runs `chump bootstrap --with-roadmap <retrofit_path>`.
+    - After execution, `retrofit/docs/ROADMAP.md` exists, is non‑empty, and contains at least two phase sections.
+    - The test asserts exit code 0 and that the file content matches the phased/done‑when format.
+  depends_on: [INFRA-4198]
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4200
+  domain: INFRA
+  title: "INFRA: Update CLI help text for `--with-roadmap` (INFRA-3527 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`chump bootstrap --help` now includes a description of the `--with-roadmap` flag explaining that it generates `docs/ROADMAP.md` from the vision contract."
+    - The outdated TODO message is removed from the help output.
+  depends_on: [INFRA-4198]
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4201
+  domain: INFRA
+  title: "INFRA: Add graceful error handling for missing vision input (INFRA-3527 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "If `load_vision_input` returns an error (no intent file and no supplied string), the CLI prints a user‑friendly message: \"Error: No vision input provided. Supply a vision string with `--vision <text>` or add an INTENT.md file to the repository.\""
+    - The command exits with a non‑zero status code.
+    - No TODO message is printed in this scenario.
+  depends_on: [INFRA-4194, INFRA-4198]
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4202
+  domain: INFRA
+  title: "INFRA: Add reviewer checklist note to project documentation (INFRA-3527 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README or CONTRIBUTING file includes a section: \"Roadmap Generation Review – After running `chump bootstrap --with-roadmap`, a human must review `docs/ROADMAP.md` for phase relevance and done‑when criteria before shipping.\""
+    - The note references INFRA‑3527 as the source of the requirement.
+  notes: |
+    [chump harvest check 'command']
+    === primitives_index match for 'command' ===
+    
+    === cluster keyword match for 'command' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'command' ===
+    
+    === repo-description match for 'command' ===
+    
+    === HARVEST_ROADMAP.md mention of 'command' (deep-scan findings) ===
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'command' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
@@ -114812,13 +115305,15 @@ gaps:
 - id: RESILIENT-224
   domain: RESILIENT
   title: "Pre-push cargo-test gate exposes ~19 CHUMP_REPO/CHUMP_HOME parallel-env-race false-reds (repo_path/repo_tools/tool_middleware) that nextest masks — forces Test-Gate-Bypass on unrelated ships. Fix: make pre-push/cargo-test-with-rerun use nextest, or #[serial]+env-guard the repo-path tests"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"make pre-push/cargo-test-with-rerun use nextest, or #[serial]+env-guard the repo-path tests\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-03T16:17:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: RESILIENT-225
@@ -126982,13 +127477,15 @@ gaps:
 - id: ZERO-WASTE-035
   domain: ZERO-WASTE
   title: "RESCUE lap spends an agent even when an open PR/recent commit already fixes the problem: drive_task_directed has NO dedup (unlike chump improve's dedup_check). Before running the agent, scan the target's open PRs + recent commits; for a CI-rescue, defer if any open PR already makes required_check green (reuse grade_checks_strict on PR heads — semantic, not keyword-fuzzy). Emit redundant_work_skipped"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"drive_task_directed has NO dedup (unlike chump improve's dedup_check). Before running the agent, scan the target's open PRs + recent commits; for a CI-rescue, defer if any open PR already makes required_check green (reuse grade_checks_strict on PR heads — semantic, not keyword-fuzzy). Emit redundant_work_skipped\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-03T16:18:28Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1087B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: ZERO-WASTE-036
