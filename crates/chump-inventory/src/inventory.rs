@@ -135,6 +135,22 @@ pub fn open_db_at(db_path: &Path, schema_path: &Path) -> Result<Connection> {
         .with_context(|| format!("reading inventory schema at {}", schema_path.display()))?;
     conn.execute_batch(&sql)
         .with_context(|| "applying inventory schema")?;
+    // CREDIBLE-358: backfill retire columns onto DBs created before this
+    // migration landed. ALTER TABLE ADD COLUMN is idempotent here — a
+    // duplicate-column error just means a fresh DB already has it via the
+    // CREATE TABLE above, so it's ignored (same pattern as chump-gap-store).
+    let _ = conn.execute(
+        "ALTER TABLE tech_debt_findings ADD COLUMN retired_at INTEGER",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE tech_debt_findings ADD COLUMN retired_by TEXT",
+        [],
+    );
+    let _ = conn.execute(
+        "ALTER TABLE tech_debt_findings ADD COLUMN retired_reason TEXT",
+        [],
+    );
     Ok(conn)
 }
 
@@ -2282,11 +2298,17 @@ pub fn list_findings(
 pub struct ClassStats {
     pub finding_class: String,
     pub current_tier: i64,
+    /// Debt denominator (CREDIBLE-358): live (non-retired) findings only.
+    /// Retired findings are pruned confirmed-dead capabilities and must
+    /// not count against live_pct, so they are excluded here.
     pub total_findings: i64,
     pub reviewed_count: i64,
     pub real_positive_count: i64,
     pub real_positive_ratio: f64,
     pub eligible_for_promotion: bool,
+    /// Findings archived via `chump inventory retire` — reported for
+    /// transparency but never folded back into total_findings.
+    pub retired_count: i64,
 }
 
 pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
@@ -2294,7 +2316,11 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
         "SELECT fct.finding_class, fct.current_tier, fct.reviewed_count,
                 fct.real_positive_count,
                 COALESCE((SELECT COUNT(*) FROM tech_debt_findings tdf
-                          WHERE tdf.finding_class = fct.finding_class), 0) AS total
+                          WHERE tdf.finding_class = fct.finding_class
+                            AND tdf.retired_at IS NULL), 0) AS total,
+                COALESCE((SELECT COUNT(*) FROM tech_debt_findings tdf
+                          WHERE tdf.finding_class = fct.finding_class
+                            AND tdf.retired_at IS NOT NULL), 0) AS retired
          FROM finding_class_tiers fct
          ORDER BY fct.finding_class",
     )?;
@@ -2304,6 +2330,7 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
         let reviewed: i64 = r.get(2)?;
         let rp: i64 = r.get(3)?;
         let total: i64 = r.get(4)?;
+        let retired: i64 = r.get(5)?;
         let ratio = if reviewed == 0 {
             0.0
         } else {
@@ -2318,6 +2345,7 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
             real_positive_count: rp,
             real_positive_ratio: ratio,
             eligible_for_promotion: eligible,
+            retired_count: retired,
         })
     })?;
     let mut out = Vec::new();
@@ -2325,6 +2353,111 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
         out.push(r?);
     }
     Ok(out)
+}
+
+// ─── prune loop (CREDIBLE-358) ───────────────────────────────────────────────
+//
+// A low-severity dormant finding that has been reviewed REAL_POSITIVE (the
+// operator confirmed the capability is genuinely dead, not a detector
+// false-positive) is a prune candidate: `prune_ledger` renders it for
+// review, and `retire_finding` archives it. Retired findings drop out of
+// the debt denominator (`class_stats.total_findings` above) rather than
+// staying in it forever — a pruned item is a *closed* debt item, not an
+// ongoing one, so it must not keep dragging live_pct down.
+
+/// Severity floor for prune eligibility — "low-Crit" per the gap title.
+const PRUNE_MAX_SEVERITY: &str = "low";
+
+/// Findings eligible for the prune loop: severity <= low, not yet retired,
+/// and already confirmed REAL_POSITIVE by an operator review (a prune
+/// retires a *confirmed*-dead capability, never an unreviewed finding).
+pub fn prune_ledger(conn: &Connection, limit: Option<i64>) -> Result<Vec<FindingRow>> {
+    let mut sql = String::from(
+        "SELECT finding_id, finding_class, severity, artifact_path, pr_number,
+                gap_id, detail, detected_at, tier, operator_classification,
+                operator_reviewed_at, auto_fix_filed_gap_id
+         FROM tech_debt_findings
+         WHERE severity = ?1
+           AND retired_at IS NULL
+           AND operator_classification = 'REAL_POSITIVE'
+         ORDER BY operator_reviewed_at ASC",
+    );
+    if let Some(l) = limit {
+        sql.push_str(&format!(" LIMIT {}", l));
+    }
+    let mut stmt = conn.prepare(&sql)?;
+    let mapped = stmt.query_map(params![PRUNE_MAX_SEVERITY], |r| {
+        Ok(FindingRow {
+            finding_id: r.get(0)?,
+            finding_class: r.get(1)?,
+            severity: r.get(2)?,
+            artifact_path: r.get(3)?,
+            pr_number: r.get(4)?,
+            gap_id: r.get(5)?,
+            detail: r.get(6)?,
+            detected_at: r.get(7)?,
+            tier: r.get(8)?,
+            operator_classification: r.get(9)?,
+            operator_reviewed_at: r.get(10)?,
+            auto_fix_filed_gap_id: r.get(11)?,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in mapped {
+        out.push(r?);
+    }
+    Ok(out)
+}
+
+/// Archive a confirmed-dead capability. Rejects findings that are not
+/// severity=low, not REAL_POSITIVE-reviewed, or already retired — retire
+/// is the terminal step of the prune loop, not a shortcut around review.
+pub fn retire_finding(
+    conn: &Connection,
+    finding_id: i64,
+    by: &str,
+    reason: Option<&str>,
+) -> Result<()> {
+    type Row = (String, Option<String>, Option<i64>);
+    let row: Option<Row> = conn
+        .query_row(
+            "SELECT severity, operator_classification, retired_at
+             FROM tech_debt_findings WHERE finding_id=?1",
+            params![finding_id],
+            |r| {
+                Ok((
+                    r.get::<_, String>(0)?,
+                    r.get::<_, Option<String>>(1)?,
+                    r.get::<_, Option<i64>>(2)?,
+                ))
+            },
+        )
+        .optional()?;
+    let (severity, classification, retired_at) = match row {
+        Some(r) => r,
+        None => return Err(anyhow!("finding {finding_id} not found")),
+    };
+    if retired_at.is_some() {
+        return Err(anyhow!("finding {finding_id} is already retired"));
+    }
+    if severity != PRUNE_MAX_SEVERITY {
+        return Err(anyhow!(
+            "finding {finding_id} has severity '{severity}' — retire is only for low-severity (Crit) findings"
+        ));
+    }
+    if classification.as_deref() != Some("REAL_POSITIVE") {
+        return Err(anyhow!(
+            "finding {finding_id} is not REAL_POSITIVE-reviewed — run `chump inventory review {finding_id} --classify REAL_POSITIVE` first"
+        ));
+    }
+    let ts = now_secs();
+    conn.execute(
+        "UPDATE tech_debt_findings
+         SET retired_at=?1, retired_by=?2, retired_reason=?3
+         WHERE finding_id=?4",
+        params![ts, by, reason, finding_id],
+    )?;
+    Ok(())
 }
 
 /// Aggregate counts for rebuild summary.
@@ -2755,5 +2888,161 @@ mod tests {
             extract_gap_id("CREDIBLE-002 something"),
             Some("CREDIBLE-002".to_string())
         );
+    }
+
+    // ─── prune loop (CREDIBLE-358) ───────────────────────────────────────────
+
+    #[test]
+    #[serial]
+    fn retire_rejects_unreviewed_finding() {
+        let (_tmp, conn) = setup_test_db();
+        let f = Finding {
+            finding_class: "dormant-script".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/old.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "unreviewed".to_string(),
+            evidence_json: None,
+        };
+        let id = insert_finding(&conn, &f).unwrap();
+        // Not yet REAL_POSITIVE-reviewed — retire must fail.
+        let err = retire_finding(&conn, id, "operator", None).unwrap_err();
+        assert!(
+            err.to_string().contains("not REAL_POSITIVE-reviewed"),
+            "unexpected error: {err}"
+        );
+        // Confirm it still shows up as a candidate needing review, not in the ledger.
+        assert!(prune_ledger(&conn, None).unwrap().is_empty());
+    }
+
+    #[test]
+    #[serial]
+    fn retire_rejects_non_low_severity() {
+        let (_tmp, conn) = setup_test_db();
+        let f = Finding {
+            finding_class: "stale-plist".to_string(),
+            severity: "high".to_string(),
+            artifact_path: Some("launchd/foo.plist".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "high severity".to_string(),
+            evidence_json: None,
+        };
+        let id = insert_finding(&conn, &f).unwrap();
+        review_finding(&conn, id, "REAL_POSITIVE", None).unwrap();
+        let err = retire_finding(&conn, id, "operator", None).unwrap_err();
+        assert!(
+            err.to_string().contains("low-severity"),
+            "unexpected error: {err}"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn prune_ledger_lists_only_confirmed_low_severity_dormant_findings() {
+        let (_tmp, conn) = setup_test_db();
+
+        // Candidate: low severity, REAL_POSITIVE.
+        let f1 = Finding {
+            finding_class: "dormant-script".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/dead1.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "dead script 1".to_string(),
+            evidence_json: None,
+        };
+        let id1 = insert_finding(&conn, &f1).unwrap();
+        review_finding(&conn, id1, "REAL_POSITIVE", None).unwrap();
+
+        // Not a candidate: low severity but unreviewed.
+        let f2 = Finding {
+            finding_class: "dormant-script".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/dead2.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "dead script 2".to_string(),
+            evidence_json: None,
+        };
+        insert_finding(&conn, &f2).unwrap();
+
+        // Not a candidate: REAL_POSITIVE but severity=high.
+        let f3 = Finding {
+            finding_class: "stale-plist".to_string(),
+            severity: "high".to_string(),
+            artifact_path: Some("launchd/bar.plist".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "high severity confirmed".to_string(),
+            evidence_json: None,
+        };
+        let id3 = insert_finding(&conn, &f3).unwrap();
+        review_finding(&conn, id3, "REAL_POSITIVE", None).unwrap();
+
+        let ledger = prune_ledger(&conn, None).unwrap();
+        assert_eq!(
+            ledger.len(),
+            1,
+            "ledger should surface only the one eligible candidate"
+        );
+        assert_eq!(ledger[0].finding_id, id1);
+    }
+
+    #[test]
+    #[serial]
+    fn retire_archives_and_leaves_the_debt_denominator() {
+        let (_tmp, conn) = setup_test_db();
+        let f = Finding {
+            finding_class: "dormant-script".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/dead.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "confirmed dead".to_string(),
+            evidence_json: None,
+        };
+        let id = insert_finding(&conn, &f).unwrap();
+        review_finding(&conn, id, "REAL_POSITIVE", None).unwrap();
+
+        let before = class_stats(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|s| s.finding_class == "dormant-script")
+            .unwrap();
+        assert_eq!(before.total_findings, 1);
+        assert_eq!(before.retired_count, 0);
+
+        retire_finding(
+            &conn,
+            id,
+            "operator",
+            Some("archived: prior-art confirmed dead"),
+        )
+        .unwrap();
+
+        // Retire is a one-way archive — a second attempt must fail.
+        let err = retire_finding(&conn, id, "operator", None).unwrap_err();
+        assert!(
+            err.to_string().contains("already retired"),
+            "unexpected error: {err}"
+        );
+
+        // The retired finding must leave the prune ledger...
+        assert!(prune_ledger(&conn, None).unwrap().is_empty());
+
+        // ...and must leave the debt denominator (total_findings), not be
+        // counted against live_pct, while still being visible as retired.
+        let after = class_stats(&conn)
+            .unwrap()
+            .into_iter()
+            .find(|s| s.finding_class == "dormant-script")
+            .unwrap();
+        assert_eq!(
+            after.total_findings, 0,
+            "retired finding must not count in the debt denominator"
+        );
+        assert_eq!(after.retired_count, 1);
     }
 }
