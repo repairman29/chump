@@ -58,9 +58,9 @@
 //!   separately asserts a `--block --timeout 1` against an unresolved id
 //!   returns exit 3 with `consensus_ask_timeout`.
 //!
-//! Gated behind `CHUMP_FLEET_RECV_SIDE_V0=1` (same flag as `chump vote`),
-//! matching META-159's precedent: prints "feature flag off, consensus ask
-//! not published" and exits 0 when unset.
+//! Enabled by default (CREDIBLE-179), same flag as `chump vote`. Set
+//! `CHUMP_FLEET_RECV_SIDE_V0=0` to opt out: prints "feature flag off,
+//! consensus ask not published" and exits 0.
 //!
 //! ## INFRA-2162 (META-125/C3) note
 //! `consensus_ask_published` above is the real event for the umbrella's
@@ -249,7 +249,9 @@ fn parse_args(raw: &[String]) -> Result<Args, String> {
 }
 
 pub fn run(args: &[String]) -> i32 {
-    if std::env::var("CHUMP_FLEET_RECV_SIDE_V0").as_deref() != Ok("1") {
+    // CREDIBLE-179: default ON, same rationale as chump vote — see
+    // src/commands/vote.rs. Explicit CHUMP_FLEET_RECV_SIDE_V0=0 opts out.
+    if std::env::var("CHUMP_FLEET_RECV_SIDE_V0").as_deref() == Ok("0") {
         println!("feature flag off, consensus ask not published");
         return EXIT_OK;
     }
