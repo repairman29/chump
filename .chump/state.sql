@@ -11343,10 +11343,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update the preflight check logic in `crates/chump-preflight/src/preflight.rs` and proof-of-merge verification in `crates/chump-gap-store/src/lib.rs` to identify false-positive grace-guards that perform no actual gating or validation, flagging no-op guards for deletion while keeping active grace-guard mechanisms intact.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Grace‑guard gates that perform no guarding are identified as false‑positives.
-    - Identified gates are flagged for deletion.
-    - Valid grace‑guard functionality is preserved.
+    - In `crates/chump-preflight/src/preflight.rs`, preflight verification flags grace-guards as false-positives when their guard conditions perform no functional checks.
+    - In `crates/chump-gap-store/src/lib.rs`, `verify_proof_of_merge` correctly rejects or flags merge attempts containing no-op grace-guard gates.
+    - Running `cargo test -p chump-preflight -p chump-gap-store` succeeds and demonstrates that valid grace-guard gates remain unflagged.
   depends_on: [CREDIBLE-504]
   notes: |
     [chump harvest check 'audit']
@@ -79200,23 +79208,27 @@ gaps:
 - id: INFRA-3376
   domain: INFRA
   title: "META-070: mirror observability-fleet-signals fast-checks scripts (20) into chump preflight"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. For each of the 20 observability-fleet-signals scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#observability-fleet-signals-infra-3376, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-observability-mirrors.sh asserts all 20 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
   notes: |
     Decomposed into 11 slices: INFRA-4095, INFRA-4096, INFRA-4097, INFRA-4098, INFRA-4099, INFRA-4100, INFRA-4101, INFRA-4102, INFRA-4103, INFRA-4104, INFRA-4105
+    [2026-09-03T07:34:01Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3377
   domain: INFRA
   title: "META-070: mirror commit-content-guards fast-checks scripts (22) into chump preflight"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. For each of the 22 commit-content-guards scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#commit-content-guards-infra-3377, add a mirror gate in src/preflight.rs (GateKind::Scripts, or --pre-commit only where the check is inherently commit-scoped like docs-delta-trailer) following the established pattern.\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-content-guard-mirrors.sh asserts all 22 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  notes: |
+    Decomposed into 9 slices: INFRA-4127, INFRA-4128, INFRA-4129, INFRA-4130, INFRA-4131, INFRA-4132, INFRA-4133, INFRA-4134, INFRA-4135
+    [2026-09-03T07:35:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1074B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3378
@@ -79276,6 +79288,8 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  notes: |
+    Decomposed into 12 slices: INFRA-4115, INFRA-4116, INFRA-4117, INFRA-4118, INFRA-4119, INFRA-4120, INFRA-4121, INFRA-4122, INFRA-4123, INFRA-4124, INFRA-4125, INFRA-4126
   opened_date: '2026-07-26'
 
 - id: INFRA-3382
@@ -95964,6 +95978,784 @@ gaps:
   acceptance_criteria:
     - docs/process/CI_PREFLIGHT_PARITY.md is updated to reflect cluster 3/5 (fleet-daemon & reaper-cadence) as mirrored
   depends_on: [INFRA-4113]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4115
+  domain: INFRA
+  title: "INFRA: Extract list of fleet‑daemon scripts to mirror (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown or JSON file (e.g., scripts/fleet_daemon_list.md) contains the exact 21 script names from docs/process/AUDIT_JOB_DECOMPOSITION.md cluster 'fleet‑daemon'
+    - The list is reviewed and matches the inventory provided in the ticket
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4116
+  domain: INFRA
+  title: "INFRA: Add generic script‑execution helper to src/preflight.rs (INFRA-3381 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "src/preflight.rs contains a private function `run_preflight_script(name: &str) -> Result<(), ExitCode>` that spawns the script, captures its exit status, and returns an error on non‑zero exit"
+    - The helper is covered by a unit test that simulates a successful and a failing script
+    - Clippy and rustfmt report no issues for the new code
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4117
+  domain: INFRA
+  title: "INFRA: Mirror first batch of scripts (auto‑arm‑sweeper, autoscale‑decisions, cargo‑target‑reaper) (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs invokes the three scripts via the helper function
+    - Running `cargo run --bin preflight` executes each script in order
+    - If any of the three scripts exits non‑zero, preflight exits with the same non‑zero code
+  depends_on: [INFRA-4116]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4118
+  domain: INFRA
+  title: "INFRA: Mirror second batch of scripts (claude‑reaper, worktree‑reaper‑safety, fleet‑kill‑switch) (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs now includes the three additional scripts using the helper
+    - Preflight runs all six scripts (batches 1 + 2) in the defined order
+    - Non‑zero exit from any of the new scripts propagates to the preflight exit code
+  depends_on: [INFRA-4117]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4119
+  domain: INFRA
+  title: "INFRA: Mirror third batch of scripts (fleet‑starve‑auto‑action, fleet‑spec, fleet‑fanout) (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The three scripts are added to src/preflight.rs with the same pattern as previous batches
+    - Preflight now runs nine scripts total and respects failure semantics
+  depends_on: [INFRA-4118]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4120
+  domain: INFRA
+  title: "INFRA: Mirror fourth batch of scripts (deliberator‑tick‑emits, supervision‑trees, stale‑process‑watchdog) (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The four scripts are added (three new scripts) and invoked via the helper
+    - Preflight runs twelve scripts total and exits non‑zero on any failure
+  depends_on: [INFRA-4119]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4121
+  domain: INFRA
+  title: "INFRA: Mirror fifth batch of scripts (chump‑improve, sandbox/spike‑isolation, keystone‑cascade) (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The three scripts are added to src/preflight.rs
+    - Preflight runs fifteen scripts total with correct ordering and error propagation
+  depends_on: [INFRA-4120]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4122
+  domain: INFRA
+  title: "INFRA: Mirror sixth batch of scripts (mcp‑coord‑smoke, run‑fleet‑cross‑repo, cli‑fleet‑coord) (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The final three scripts are added and invoked
+    - Preflight now runs all twenty‑one scripts and exits non‑zero if any script fails
+  depends_on: [INFRA-4121]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4123
+  domain: INFRA
+  title: "INFRA: Update CI parity exceptions file (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/preflight-ci-parity-exceptions.txt contains no entries for any of the twenty‑one fleet‑daemon scripts
+    - File is committed and passes the repository's CI parity check
+  depends_on: [INFRA-4122]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4124
+  domain: INFRA
+  title: "INFRA: Add integration test for preflight failure handling (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new test in tests/preflight_failure.rs forces one mirrored script to exit with code 1 and asserts that `cargo run --bin preflight` exits with a non‑zero status
+    - Test passes locally and is included in CI
+  depends_on: [INFRA-4122]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4125
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy, and ensure repository passes (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt -- --check` reports no formatting issues"
+    - "`cargo clippy -- -D warnings` reports no warnings"
+    - All existing and new tests pass
+  depends_on: [INFRA-4116, INFRA-4117, INFRA-4118, INFRA-4119, INFRA-4120, INFRA-4121, INFRA-4122]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4126
+  domain: INFRA
+  title: "INFRA: Validate preflight CI parity script passes (INFRA-3381 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-preflight-ci-parity.sh` runs successfully in CI and locally after all changes"
+    - The script reports zero failures for the fleet‑daemon cluster
+  depends_on: [INFRA-4123, INFRA-4124, INFRA-4125]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4127
+  domain: INFRA
+  title: "INFRA: Extract list of 22 commit‑content‑guards scripts (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The list of 22 script names is extracted from docs/process/AUDIT_JOB_DECOMPOSITION.md#commit-content-guards-infra-3377"
+    - The list is saved in a JSON file (scripts_list.json) in the repo root for later consumption
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4128
+  domain: INFRA
+  title: "INFRA: Add mirror gates for first 5 scripts in src/preflight.rs (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "GateKind::Scripts entries for the first 5 scripts are added following the existing pattern"
+    - The preflight binary builds without errors and the new gates are listed by `--list-gates`
+  depends_on: [INFRA-4127]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4129
+  domain: INFRA
+  title: "INFRA: Add mirror gates for next 5 scripts in src/preflight.rs (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "GateKind::Scripts entries for scripts 6‑10 are added following the existing pattern"
+    - The preflight binary builds and the new gates appear in `--list-gates` output
+  depends_on: [INFRA-4127]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4130
+  domain: INFRA
+  title: "INFRA: Add mirror gates for third batch of 5 scripts in src/preflight.rs (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "GateKind::Scripts entries for scripts 11‑15 are added following the existing pattern"
+    - The preflight binary builds and the new gates appear in `--list-gates` output
+  depends_on: [INFRA-4127]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4131
+  domain: INFRA
+  title: "INFRA: Add mirror gates for remaining 7 scripts (including commit‑scoped ones) in src/preflight.rs (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "GateKind::Scripts entries for scripts 16‑22 are added; any script that is inherently commit‑scoped uses the `--pre-commit` flag"
+    - The preflight binary builds and all 22 new gates are listed by `--list-gates`
+  depends_on: [INFRA-4127]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4132
+  domain: INFRA
+  title: "INFRA: Update PREFLIGHT_COVERAGE_AUDIT.md table with new gates (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The table in docs/process/PREFLIGHT_COVERAGE_AUDIT.md includes a row for each of the 22 newly added gates
+    - Each row contains the script name, gate kind, and any special flags (e.g., `--pre-commit`)
+  depends_on: [INFRA-4128, INFRA-4129, INFRA-4130, INFRA-4131]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4133
+  domain: INFRA
+  title: "INFRA: Extend test‑preflight‑content‑guard‑mirrors.sh to assert all 22 gates reachable (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script iterates over the 22 gate identifiers and verifies that `preflight --run <gate>` exits with status 0
+    - Running the script locally reports success for all gates
+  depends_on: [INFRA-4132]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4134
+  domain: INFRA
+  title: "INFRA: Benchmark Scripts‑scope preflight speed after gate additions (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Execute `preflight --scope Scripts` with the new gates and record total runtime
+    - Runtime does not exceed the documented speed‑target budget (e.g., ≤ X seconds) and is not a regression compared to baseline
+  depends_on: [INFRA-4131]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4135
+  domain: INFRA
+  title: "INFRA: Add CI step to run the mirror‑gate test and enforce speed budget (INFRA-3377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline includes a job that runs scripts/ci/test-preflight-content-guard-mirrors.sh
+    - CI pipeline includes a job that runs the benchmark and fails if the speed target is exceeded
+  depends_on: [INFRA-4133, INFRA-4134]
   notes: |
     [chump harvest check 'META-070']
     === primitives_index match for 'META-070' ===
