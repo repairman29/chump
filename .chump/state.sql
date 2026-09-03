@@ -34467,7 +34467,7 @@ gaps:
 - id: EFFECTIVE-792
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement chump ship --manual fallback command (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -34498,6 +34498,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-03T00:18:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-793
   domain: EFFECTIVE
@@ -34545,7 +34546,7 @@ gaps:
 - id: EFFECTIVE-794
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement chump commit --bypass command (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -34576,6 +34577,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-03T00:25:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-795
   domain: EFFECTIVE
@@ -34622,7 +34624,7 @@ gaps:
 - id: EFFECTIVE-796
   domain: EFFECTIVE
   title: "EFFECTIVE: Add POST /api/mission route to fleet server (EFFECTIVE-513 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -34655,6 +34657,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-03T00:26:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-797
   domain: EFFECTIVE
