@@ -1076,6 +1076,22 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, agent_id]
 
+  - kind: ci_fleet_health_red
+    effect_metric: self
+    emitter: scripts/coord/ci-fleet-health-sweep.sh (CREDIBLE-220)
+    trigger: ci-fleet-health-sweep.sh files a new gap for a non-chump fleet
+      repo whose default-branch CI has been continuously red for >=
+      CHUMP_CI_FLEET_SWEEP_DAYS (default 3) days. Fires once per repo (state
+      file dedupes — a standing red condition does not refile every cycle).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repo, red_days, cause]
+    docs: |
+      repo is an "owner/repo" bare-ish string (owner/name, not a URL).
+      cause is one of: missing_script, missing_lockfile, unclassified.
+      missing_script/missing_lockfile are cheap broken-workflow-config fixes
+      (filed as INFRA); unclassified is treated as a real test failure and
+      filed as CREDIBLE for investigation.
+
   - kind: pipeline_health_throttle
     effect_metric: self
     emitter: scripts/coord/ci-health-gate.sh (INFRA-1607)

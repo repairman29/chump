@@ -15499,9 +15499,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update the `yaml_block_scalar` function in `crates/chump-gap-store/src/lib.rs` to recognize the spellings `"default= "`, `"(unset)"`, and `"<unset>"` as equivalent and normalize them to the canonical string `"<unset>"`. Add a new unit test in `crates/chump-gap-store/tests/normalization.rs` that feeds each of the three spellings to the parser and asserts the returned value is exactly `"<unset>"`.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - crates/chump-gap-store/tests/normalization.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Parser treats \"default= \", \"(unset)\", \"<unset>\" as a single canonical value \"<unset>\""
-    - Unit test verifies that all three spellings are collapsed to the same canonical value
+    - "In `crates/chump-gap-store/src/lib.rs`, calling `yaml_block_scalar` with the literal strings `\"default= \"`, `\"(unset)\"`, or `\"<unset>\"` returns the string `\"<unset>\"` (case‑exact match)."
+    - "The test `test_unset_normalization` in `crates/chump-gap-store/tests/normalization.rs` passes, confirming that all three spellings are collapsed to `\"<unset>\"` without panics or errors."
   depends_on: [CREDIBLE-675]
   notes: |
     [chump harvest check 'almanac']
@@ -15625,9 +15633,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `set_repo_fields` function in `crates/chump-gap-store/src/lib.rs` to aggregate noise‑pattern entries so that the generated drift report contains a single entry per distinct noise pattern. After collapsing, append a summary line `Noise patterns collapsed: X` (where X is the count of collapsed patterns derived from slice 0) to the report output.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Generated drift report shows a single entry for each noise pattern instead of multiple variants
-    - "Report includes a summary line: \"Noise patterns collapsed: X\" where X matches the count from slice 0"
+    - "Running the report generation command (`cargo run --bin generate-drift-report`) produces a drift report in which the number of lines matching the regex `^Noise Pattern:` equals the count of distinct noise patterns, confirming that duplicate variants have been collapsed."
+    - "The generated report contains a line exactly matching `Noise patterns collapsed: <N>` where `<N>` is the integer count of collapsed patterns as calculated from slice 0, verified by parsing the report output."
+    - The `set_repo_fields` function in `crates/chump-gap-store/src/lib.rs` returns a `RepoFields` struct whose `noise_patterns` collection length equals the distinct pattern count, and unit tests asserting this length pass.
   depends_on: [CREDIBLE-678]
   notes: |
     [chump harvest check 'almanac']
@@ -54398,6 +54414,8 @@ gaps:
     - Vendoring lineage comment in src/gap_scoring.rs cites repairman29/echeo at commit SHA original src/matchmaker.rs calculate_ship_velocity_score (CP-005)
     - Cross-pollination brief CP-005-echeo-ship-velocity-score.md documents harvest and gap-vs-need mapping
     - Coordinate with INFRA-1764 — routing layer reads this score, does not compute its own competing one
+  notes: |
+    Decomposed into 10 slices: INFRA-4184, INFRA-4185, INFRA-4186, INFRA-4187, INFRA-4188, INFRA-4189, INFRA-4190, INFRA-4191, INFRA-4192, INFRA-4193
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -99767,6 +99785,276 @@ gaps:
     
     === cross-pollination briefs mentioning 'streamline' ===
 
+- id: INFRA-4184
+  domain: INFRA
+  title: "INFRA: Read and document calculate_ship_velocity_score formula (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Formula (cosine similarity + language boost 0.1 + type boost 0.05, capped at 1.0) is captured verbatim in docs/ship_velocity_score.md
+    - Documentation includes reference to original source file and line numbers
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4185
+  domain: INFRA
+  title: "INFRA: Read and document Match struct fields (score, reasons, capability, need) (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Match struct fields are described in docs/match_struct.md with type information and purpose
+    - Reference to original source file and line numbers is included
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4186
+  domain: INFRA
+  title: "INFRA: Decide vendoring vs lightweight‑crate dependency for scoring algorithm (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Decision document (docs/vendor_decision.md) states \"vendor\" for v0 with justification"
+    - Document outlines criteria for revisiting in v1
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4187
+  domain: INFRA
+  title: "INFRA: Create src/gap_scoring.rs with vendored calculate_gap_value_score stub (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - File src/gap_scoring.rs exists and compiles
+    - Stub function `calculate_gap_value_score(gap, routing_outcomes) -> f32` returns 0.0
+  depends_on: [INFRA-4186]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4188
+  domain: INFRA
+  title: "INFRA: Implement calculate_gap_value_score logic mirroring echeo formula (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function returns a value between 0.0 and 1.0 using cosine similarity plus language boost 0.1 plus type boost 0.05
+    - Capping at 1.0 is enforced
+    - Unit tests in tests/gap_scoring.rs verify correct calculation for known inputs
+  depends_on: [INFRA-4184, INFRA-4185, INFRA-4187]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4189
+  domain: INFRA
+  title: "INFRA: Add additional boost factors (domain match, recency on similar task class) (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Language, domain, and recency boosts are applied according to documented weights
+    - Boost logic is covered by unit tests confirming expected score adjustments
+  depends_on: [INFRA-4188]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4190
+  domain: INFRA
+  title: "INFRA: Add vendoring lineage comment in gap_scoring.rs (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Comment at top of src/gap_scoring.rs cites repairman29/echeo commit SHA and original file path
+    - Comment follows project licensing guidelines
+  depends_on: [INFRA-4187]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4191
+  domain: INFRA
+  title: "INFRA: Write smoke‑test script scripts/ci/test-gap-scoring.sh (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script sets up a synthetic gap and routing_outcomes table
+    - Running the script prints a deterministic score between 0.0 and 1.0
+    - CI pipeline passes the script without errors
+  depends_on: [INFRA-4188, INFRA-4189]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4192
+  domain: INFRA
+  title: "INFRA: Create cross‑pollination brief CP-005-echeo-ship-velocity-score.md (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Brief documents harvest process, mapping of gap vs need, and references to CP-005
+    - File is stored in docs/briefs/ and linked from the main INFRA-1816 ticket
+  depends_on: [INFRA-4184, INFRA-4185]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4193
+  domain: INFRA
+  title: "INFRA: Coordinate with INFRA-1764: routing layer consumes gap value score (INFRA-1816 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Routing code imports `calculate_gap_value_score` and uses its output
+    - No competing score calculation remains in routing layer
+    - Integration test confirms routing decisions respect the new score
+  depends_on: [INFRA-4188, INFRA-4191]
+  notes: |
+    [chump harvest check 'INFRA-1816']
+    === primitives_index match for 'INFRA-1816' ===
+    
+    === cluster keyword match for 'INFRA-1816' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1816' ===
+    
+    === repo-description match for 'INFRA-1816' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1816' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'INFRA-1816' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
@@ -113770,7 +114058,7 @@ gaps:
 - id: RESILIENT-203
   domain: RESILIENT
   title: opencode agentic worker hangs at init in the large (746k-LOC) Chump repo — model-independent scaling blocker
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -113778,7 +114066,8 @@ gaps:
     - Root cause identified + fixed with a durable timeout/fail-fast (not retry-forever)
     - "Proven: across >=3 runs in the full repo, the worker reaches its first real work step or errors clearly within a bounded time - no indefinite init hang"
   notes: |
-    SOLVED (architecture) 2026-07-27: the cheap fleet = Chump-NATIVE execute-gap loop + provider cascade, NOT opencode. Proven: 'chump --execute-gap' on Groq free-tier runs the native ChumpAgent loop, executes read_file/list_dir tools scoped to the worktree — NO large-repo hang (native tools, not opencode's repo-wide scan), NO rate-limit death (free-tier rotation), FREE. This clears all 3 walls opencode hit. ONE remaining variable = MODEL tool-call quality: free 70B llama (Groq) works mechanically but 'storms on bad tool inputs' and aborts (too weak); DeepSeek strong+cheap but account out-of-balance; mistral/codestral proven clean tool-calls + funded but MISTRAL_API_KEY only in opencode auth (add to .env). WINNING CONFIG: CHUMP_WORK_BACKEND=chump-local + CHUMP_FREE_TIER_PROVIDERS pinned to a competent cheap coder (codestral-latest@api.mistral.ai or topped-up deepseek). (b) = ~$5-10 for a good cheap model, NOT a big paid tier. Validated Jeff's 'a then b': (a) uses infra he already built; (b) is a small model-budget, not architecture.
+    Decomposed into 8 slices: RESILIENT-690, RESILIENT-691, RESILIENT-692, RESILIENT-693, RESILIENT-694, RESILIENT-695, RESILIENT-696, RESILIENT-697
+    [2026-09-03T15:07:06Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -125339,6 +125628,221 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-690
+  domain: RESILIENT
+  title: "RESILIENT: Reproduce init hang in controlled environment (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `opencode worker` against the 746k-LOC Chump repo reproduces an indefinite init hang
+    - Logs capture the point where execution stops during initialization
+    - Reproduction steps are documented in a README section
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-691
+  domain: RESILIENT
+  title: "RESILIENT: Add configurable init timeout to opencode worker (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new configuration flag `INIT_TIMEOUT_MS` (default 120000 ms) is read at startup
+    - When the timeout elapses, the worker aborts the init phase
+    - Unit test verifies that a mock long‑running init triggers the timeout after the configured period
+  depends_on: [RESILIENT-690]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-692
+  domain: RESILIENT
+  title: "RESILIENT: Implement fail‑fast error handling with clear message (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "If the init timeout fires, the worker exits with exit code 1 and prints a concise error: \"Init timed out after X ms\""
+    - Error is logged to both stdout and a structured log file
+    - Existing error‑handling paths remain unchanged for non‑timeout failures
+  depends_on: [RESILIENT-691]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-693
+  domain: RESILIENT
+  title: "RESILIENT: Enable CHUMP_WORK_BACKEND env var to select native backend (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker reads `CHUMP_WORK_BACKEND` at startup and switches to the native `chump-local` implementation when set
+    - When the variable is unset, behavior falls back to the previous default
+    - Integration test confirms that setting the variable results in native tool execution (read_file/list_dir) without repo‑wide scan
+  depends_on: [RESILIENT-692]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-694
+  domain: RESILIENT
+  title: "RESILIENT: Add CHUMP_FREE_TIER_PROVIDERS env var for model selection (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker reads `CHUMP_FREE_TIER_PROVIDERS` and uses the specified provider (e.g., codestral‑latest@api.mistral.ai) for tool calls
+    - Invalid provider values produce a clear configuration error
+    - Test verifies that a valid provider results in successful tool calls during a short workflow
+  depends_on: [RESILIENT-693]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-695
+  domain: RESILIENT
+  title: "RESILIENT: Load MISTRAL_API_KEY from .env and propagate to provider client (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`.env` file is parsed at startup and `MISTRAL_API_KEY` is injected into the Mistral client configuration"
+    - Missing key triggers a descriptive startup error
+    - Local test confirms that a dummy key allows the client to be instantiated without runtime failure
+  depends_on: [RESILIENT-694]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-696
+  domain: RESILIENT
+  title: "RESILIENT: Write integration test for bounded init on full repo (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test launches the worker against the 746k‑LOC repo with the new timeout and backend settings
+    - Test asserts that the process either reaches the first real work step or exits with the timeout error within the configured limit
+    - Test runs in CI and fails if the process exceeds the timeout
+  depends_on: [RESILIENT-695]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-697
+  domain: RESILIENT
+  title: "RESILIENT: Run three verification runs and collect logs (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Three consecutive executions of the worker on the full repo complete without indefinite hang
+    - All runs finish within the configured timeout and produce either a successful first work step or a clear timeout error
+    - Log files from the runs are archived and referenced in the release notes
+  depends_on: [RESILIENT-696]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: SMOKE-001
   domain: SMOKE
