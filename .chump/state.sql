@@ -112755,13 +112755,15 @@ gaps:
 - id: RESILIENT-193
   domain: RESILIENT
   title: chump restore --from-sql must not require a reachable LLM (blocks fresh-node state.db materialize)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"chump restore --from-sql must not require a reachable LLM (blocks fresh-node state.db materialize)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-03T12:06:52Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: RESILIENT-194
