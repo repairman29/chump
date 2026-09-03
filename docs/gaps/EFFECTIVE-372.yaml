@@ -1,11 +1,29 @@
 - id: EFFECTIVE-372
   domain: EFFECTIVE
   title: "compute-aware local-first gate: make the BLOCKING gate scoped+capped+AC-judge on-Mac; demote cloud CI to non-blocking net"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - Scope the preflight BLOCKING gate (src/preflight.rs, currently 'cargo check --workspace' ~line 1081) to 'cargo check -p <changed-crate>' + capped jobs (~6) + nice + load-aware-defer.
     - A test in src/preflight.rs proves the scoped gate runs the changed crate's check and skips the full workspace; fails without the change.
     - "NOTE: earlier auto-generated AC (EFFECTIVE-386 write-ac) hallucinated file paths (src/lib/gate.rs, src/tests/*) — those do NOT exist; real path is src/preflight.rs. Blocked on EFFECTIVE-388 (AC-writer repo grounding) for trustworthy auto-AC."
+  closed_date: '2026-09-03'
+  closed_pr: 3594
+  evidence: |
+    RESOLUTION: fixed by commit e7e02d13 (PR #3594, "WIP-EFFECTIVE-372:
+    sigterm-rescue (INFRA-686)", 2026-08-10), already merged to main.
+    `cargo_check_step` (crates/chump-preflight/src/preflight.rs:531) scopes the
+    BLOCKING gate to `cargo check -p <changed-crate>` per crate touched, via
+    `changed_crate_names` (preflight.rs:465) which falls back to `--workspace`
+    only when scoping can't be proven safe (e.g. root Cargo.toml/Cargo.lock
+    changes, or no Rust paths touched). `compute_check_jobs` (preflight.rs:500)
+    caps jobs at 6 and defers to 1 under load (load-aware-defer); the step is
+    wrapped in `nice`. AC-2's exact scenario (scoped gate runs the changed
+    crate's check and skips the full workspace) is regression-tested by
+    `cargo_check_step_scopes_argv_to_changed_crate_not_workspace` and
+    `cargo_check_step_falls_back_to_workspace_when_scoping_unsafe`
+    (preflight.rs:3744, 3767). This worktree's HEAD (origin/main) already
+    includes commit e7e02d13 — doc-only sync to close the gap, no code change
+    needed.
 
