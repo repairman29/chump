@@ -251,6 +251,27 @@ else
 fi
 
 # ════════════════════════════════════════════════════════════════════════════
+# 4b · capability_lifecycle  (CREDIBLE-299) — per-capability lifecycle stage
+#      histogram (built->merged->deployed->wired->running->doing-its-job),
+#      sourced from capability-lifecycle.sh so this board and that gauge never
+#      drift: same manifest, same evidence, one canonical computation. Shells
+#      out (rather than sourcing) because capability-lifecycle.sh sets its own
+#      top-level REPO_ROOT/MANIFEST/AMBIENT_LOG/OUT globals that would clobber
+#      this script's — --dry-run gives us its JSON without any writes.
+# ════════════════════════════════════════════════════════════════════════════
+CAP_LIFECYCLE_SCRIPT="$SCRIPT_DIR/capability-lifecycle.sh"
+cap_lifecycle_json="null"
+if [[ -f "$CAP_LIFECYCLE_SCRIPT" && -f "$MANIFEST" ]] && command -v systemctl >/dev/null 2>&1; then
+  cap_raw="$(CHUMP_REPO_ROOT="$REPO_ROOT" CHUMP_AMBIENT_LOG="$AMBIENT_LOG" \
+             bash "$CAP_LIFECYCLE_SCRIPT" --dry-run 2>/dev/null)"
+  if printf '%s' "$cap_raw" | jq -e . >/dev/null 2>&1; then
+    cap_lifecycle_json="$(printf '%s' "$cap_raw" | jq \
+      '{done_count, total,
+        by_stage: ([.capabilities[].stage] | group_by(.) | map({(.[0]|tostring): length}) | add // {})}')"
+  fi
+fi
+
+# ════════════════════════════════════════════════════════════════════════════
 # 5 · conflict_churn  (waste / leading)  — DIRTY open PR count (rework backlog).
 # ════════════════════════════════════════════════════════════════════════════
 dirty="$(gh pr list --repo "$GH_REPO" --state open --limit 400 --json mergeStateStatus \
@@ -363,7 +384,8 @@ DOC="$(jq -n \
   --arg ts "$NOW" \
   --argjson pft "$(jnum "$p_full")" \
   --argjson signs "$signs_json" \
-  '{generated_at:$ts, p_full_trek:$pft, signs:$signs}')"
+  --argjson caplc "$cap_lifecycle_json" \
+  '{generated_at:$ts, p_full_trek:$pft, signs:$signs, capability_lifecycle:$caplc}')"
 
 if [[ "$DRY_RUN" == 1 ]]; then
   printf '%s\n' "$DOC"
