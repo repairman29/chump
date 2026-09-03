@@ -15128,9 +15128,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a filter to the concern‑generation routine in `crates/chump-gap-store/src/lib.rs` so that the function which builds the list of emitted concerns (e.g. `emit_concerns` or its equivalent) discards any concern whose `evidence_id` does not exist in the supplied evidence map, thereby guaranteeing that every emitted concern has a matching evidence entry.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - No concern is emitted without a corresponding evidence entry
-    - "Running the reviewer on the PR from PR #3495 produces only the expected concerns"
+    - In `crates/chump-gap-store/src/lib.rs`, the function that creates concerns must skip a `GapRow` whose `evidence_id` is absent from the evidence `HashMap`, resulting in no `Concern` being emitted for that row.
+    - "The unit test `tests::test_hallucinated_concerns_filtered` added to `crates/chump-gap-store/src/lib.rs` must pass, confirming that a GapRow without matching evidence yields an empty concerns vector."
+    - Executing the reviewer CLI on PR
+    - Running `cargo test` for the `chump-gap-store` crate must complete with zero failures, ensuring the new filter does not break existing functionality.
   depends_on: [CREDIBLE-659]
 
 - id: CREDIBLE-661
@@ -80462,7 +80471,7 @@ gaps:
 - id: INFRA-3388
   domain: INFRA
   title: "META-070: preflight-mirror worker/CLI smoke gates (14 scripts, audit-job decomposition cluster 5/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -80476,6 +80485,8 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 14 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  notes: |
+    [2026-09-03T11:58:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3389
@@ -112730,13 +112741,15 @@ gaps:
 - id: RESILIENT-192
   domain: RESILIENT
   title: fleet-join-nats.sh + fleet-tailscale-up.sh node helpers (RESILIENT-191 follow-up)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"fleet-join-nats.sh + fleet-tailscale-up.sh node helpers (RESILIENT-191 follow-up)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-03T12:00:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: RESILIENT-193
