@@ -75,6 +75,74 @@ env:
   SCCACHE_LOG: info
 
 jobs:
+  # ── changes: docs-only lane detector (EFFECTIVE-415) ────────────────────────
+  # AC #2: the 4-shard audit matrix was an unconditional 11-12 min floor on
+  # every PR, including ones that touch only .md files (PR #3489, DOC-085).
+  # ci.yml already has this exact docs_only signal (INFRA-1379) for clippy/
+  # cargo-test/e2e — this mirrors it locally rather than cross-workflow
+  # `needs:` (GitHub Actions jobs can only depend on jobs in the SAME
+  # workflow file). push/merge_group always run the full matrix — the
+  # dorny/paths-filter base-ref diff is only meaningful for pull_request.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true  # INFRA-1348: a filter failure must not block audit
+    outputs:
+      docs_only: ${{ steps.lanes.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'src/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'chump-tool-macro/**'
+              - 'build.rs'
+              - 'tests/**'
+              - 'wasm/**'
+              - '.github/workflows/**'
+              - 'rust-toolchain.toml'
+            web:
+              - 'web/**'
+              - 'ChumpMenu/**'
+            scripts:
+              - 'scripts/**'
+              - 'tools/**'
+              - '.github/workflows/**'
+              - 'bin/**'
+              - 'launchd/**'
+              - 'config/**'
+              - '.release-plz.toml'
+            docs:
+              - 'docs/**'
+              - 'book/**'
+              - '*.md'
+              - 'CONTRIBUTING.md'
+              - 'CODE_OF_CONDUCT.md'
+              - 'CHANGELOG.md'
+              - 'SECURITY.md'
+      - name: Compute docs_only (mirrors ci.yml INFRA-1379)
+        id: lanes
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            # push-to-main / merge_group: always run the full matrix.
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rust="${{ steps.filter.outputs.rust }}"
+          web="${{ steps.filter.outputs.web }}"
+          scripts="${{ steps.filter.outputs.scripts }}"
+          docs="${{ steps.filter.outputs.docs }}"
+          if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" ]]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── audit-shard ──────────────────────────────────────────────────────────────
   # INFRA-2565: 4-way parallel shard matrix replacing the single serial `audit` job.
   # Each shard runs the 8 setup steps then its share of audit gates.
@@ -83,7 +151,16 @@ jobs:
   #   shard-2: event-registry + observability + webhook/cache telemetry
   #   shard-3: bash/script gates — coordinator, worker, bot-merge, PWA, precommit
   #   shard-4: cross-PR contract gate + security + remaining guards
+  #
+  # EFFECTIVE-415: skipped entirely when `changes` says docs_only=true — a
+  # change that touches only .md files cannot regress a cargo build,
+  # event-registry contract, or bash gate. The `audit` aggregate below
+  # treats "skipped" as passing (same aggregator pattern as ci.yml's
+  # clippy-required / cargo-test-required), so branch protection still
+  # gets a green required check.
   audit-shard:
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -903,6 +980,10 @@ jobs:
   # tax (~12min × every PR). Moved to .github/workflows/cargo-audit-nightly.yml
   # (cron daily). Advisory database updates daily, not per-commit, so per-PR
   # was redundant. Median PR cycle drops from 14m → ~5m.
+  #
+  # EFFECTIVE-415: "skipped" now also passes — audit-shard's own `if:` skips
+  # the whole matrix on docs_only PRs (see audit-shard comment above). Same
+  # aggregator pattern as ci.yml's cargo-test / clippy required rollups.
   audit:
     name: audit
     needs: [audit-shard]
@@ -914,8 +995,8 @@ jobs:
         run: |
           result="${{ needs.audit-shard.result }}"
           echo "audit-shard result=$result"
-          if [ "$result" = "success" ]; then
-            echo "audit: all shards passed"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "audit: all shards passed (or appropriately skipped, result=$result)"
           else
             echo "::error::audit FAIL — at least one audit-shard failed (result=$result)"
             exit 1
