@@ -25361,6 +25361,8 @@ gaps:
     - The nudge injects an explicit instruction to stop investigating and emit a str_replace now.
     - A bounded retry cap (e.g. <=2 extra nudges) prevents an infinite loop when a model genuinely cannot edit.
     - "Test: a mock LlmClient emitting >2 read-only tool calls then an EndTurn prose reply triggers at least one edit-nudge before terminating, asserted in iteration_controller tests."
+  notes: |
+    Decomposed into 6 slices: EFFECTIVE-975, EFFECTIVE-976, EFFECTIVE-977, EFFECTIVE-978, EFFECTIVE-979, EFFECTIVE-980
   opened_date: '2026-08-23'
 
 - id: EFFECTIVE-449
@@ -41898,6 +41900,160 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-975
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add zero-edit detection flag to iteration state (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A boolean flag `zero_edit_detected` (or equivalent counter) is added to the iteration controller state.
+    - The flag is set to true when an iteration completes without any edit‑tool calls (str_replace, write_file, patch_file).
+    - The flag is reset at the start of each new iteration.
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-976
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement edit‑nudge injection when zero edits detected (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When `zero_edit_detected` is true, the controller injects an edit‑nudge tool call containing an explicit instruction to stop investigating and emit a `str_replace`.
+    - The injection occurs regardless of the existing `model_calls_count` cap (i.e., the <=2 limit is ignored for the zero‑edit case).
+    - The injected nudge is added to the tool call queue and processed like any other tool call.
+  depends_on: [EFFECTIVE-975]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-977
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add bounded retry cap for edit‑nudges (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A retry counter `nudge_retry_count` is introduced and incremented each time an edit‑nudge is injected.
+    - The controller stops injecting further nudges after `nudge_retry_count` reaches 2.
+    - When the cap is reached, the iteration terminates normally without additional nudges.
+  depends_on: [EFFECTIVE-976]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-978
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update EndTurn branch to trigger zero‑edit logic (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The EndTurn branch now checks `zero_edit_detected` and, if true, invokes the edit‑nudge injection flow.
+    - The branch respects the bounded retry cap from the previous slice.
+    - No other EndTurn behavior is altered.
+  depends_on: [EFFECTIVE-975, EFFECTIVE-976, EFFECTIVE-977]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-979
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create unit test for zero‑edit nudge scenario (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A mock LlmClient is configured to emit more than two read‑only tool calls followed by an EndTurn prose reply.
+    - The test asserts that at least one edit‑nudge tool call is injected before the iteration terminates.
+    - The test also verifies that the nudge respects the retry cap (no more than two nudges).
+  depends_on: [EFFECTIVE-978]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-980
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run regression suite and fix any failures (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing iteration_controller tests pass after the new changes.
+    - Any failing tests are investigated and corrected without altering the new functionality.
+  depends_on: [EFFECTIVE-979]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
 
 - id: EVAL-085
   title: test eval 085
