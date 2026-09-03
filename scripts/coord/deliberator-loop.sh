@@ -15,8 +15,8 @@
 #   docs/gaps/META-162.yaml — 9 AC
 #   docs/gaps/META-159.yaml — sibling: chump vote + consensus-tally CLI
 #
-# Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1 required for tick to do real work.
-# Without it, tick emits a heartbeat-only response.
+# Feature flag: CHUMP_FLEET_RECV_SIDE_V0 defaults ON (CREDIBLE-179); set to
+# "0" to opt out, in which case tick emits a heartbeat-only response.
 #
 # Rust-First-Bypass: glue between jq + scripts/coord helpers;
 # <200 LOC at first commit; read-mostly (only writes are ambient.jsonl emit
@@ -44,7 +44,7 @@
 #   3 — ambient log missing or unreadable
 #
 # Env:
-#   CHUMP_FLEET_RECV_SIDE_V0      set to "1" to enable real tally work
+#   CHUMP_FLEET_RECV_SIDE_V0      defaults to "1" (real tally work); set "0" to opt out
 #   CHUMP_SESSION_ID              session id for inbox + emits (default: deliberator-<pid>)
 #   CHUMP_AMBIENT_LOG             ambient.jsonl path override
 #   CHUMP_DELIBERATOR_LANE_OVERRIDE  if "1", lane-scope checks skip
@@ -348,9 +348,16 @@ _cmd_tick() {
     echo "=== curator-opus-deliberator tick @ $(_now_iso) ==="
     echo
 
-    # Feature flag gate.
-    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" != "1" ]]; then
-        echo "[deliberator] CHUMP_FLEET_RECV_SIDE_V0 not set — heartbeat only"
+    # Feature flag gate (CREDIBLE-179: default ON, matching `chump vote` /
+    # `chump consensus ask`'s opt-out polarity per the "A2A consensus is
+    # always-on and mandatory" doctrine. The old opt-in default meant a
+    # session that never ran the macOS-only bootstrap `launchctl setenv`
+    # step got heartbeat-only ticks forever — the deliberator never
+    # actually scanned proposals or nudged curators to vote, compounding
+    # the zero-real-votes-ever bug even after `chump vote` itself worked.
+    # Explicit CHUMP_FLEET_RECV_SIDE_V0=0 remains the opt-out escape hatch.)
+    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-1}" == "0" ]]; then
+        echo "[deliberator] CHUMP_FLEET_RECV_SIDE_V0=0 — heartbeat only"
         _cmd_heartbeat
         return 1
     fi
