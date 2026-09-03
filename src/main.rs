@@ -16,6 +16,7 @@ mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
+mod scaffold_holes;
 // EFFECTIVE-023: ambient_emit/rotate/stream live in crates/ambient-cli/ now.
 // Re-exported at the crate root so existing `crate::ambient_emit::*` callers
 // (18+ across the binary) keep working without churn.
@@ -14684,6 +14685,90 @@ async fn main() -> Result<()> {
 
                 return Ok(());
             }
+            "scaffold-holes" => {
+                // EFFECTIVE-440: mechanical hole-finder for the
+                // scaffold-and-holes pattern. A scaffold PR merges traits +
+                // todo!() holes + failing tests as ONE stable PR; this arm
+                // lists every hole as a candidate one-hole-per-gap leaf spec
+                // so each fill-this-hole gap is tiny, disjoint, and
+                // mechanically verifiable (no LLM call, no ambiguity).
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!("Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json]");
+                    println!();
+                    println!(
+                        "Scans DIR (default: repo root) for todo!() holes left by a scaffold PR"
+                    );
+                    println!("and prints one fill-this-hole leaf-gap spec (title + AC) per hole.");
+                    return Ok(());
+                }
+                let gap_id = match args.get(3) {
+                    Some(a) if !a.starts_with('-') => a.clone(),
+                    _ => {
+                        eprintln!("Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json]");
+                        std::process::exit(1);
+                    }
+                };
+                let scan_dir = flag("--path")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| repo_root.clone());
+                let as_json = json_out || args.iter().any(|a| a == "--json");
+
+                let holes = match scaffold_holes::find_todo_holes_in_dir(&scan_dir) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!(
+                            "chump gap scaffold-holes: failed to scan {}: {e:#}",
+                            scan_dir.display()
+                        );
+                        std::process::exit(1);
+                    }
+                };
+
+                if as_json {
+                    let specs: Vec<serde_json::Value> = holes
+                        .iter()
+                        .map(|h| {
+                            let (title, ac) = scaffold_holes::hole_to_gap_spec(h, &gap_id);
+                            serde_json::json!({
+                                "file": h.file.display().to_string(),
+                                "line": h.line,
+                                "function": h.function,
+                                "nearest_test": h.nearest_test,
+                                "title": title,
+                                "acceptance_criteria": ac,
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "parent": gap_id,
+                            "holes": specs,
+                        }))
+                        .unwrap_or_default()
+                    );
+                } else if holes.is_empty() {
+                    println!(
+                        "chump gap scaffold-holes: no todo!() holes found under {}",
+                        scan_dir.display()
+                    );
+                } else {
+                    for h in &holes {
+                        let (title, _ac) = scaffold_holes::hole_to_gap_spec(h, &gap_id);
+                        println!("{title}");
+                    }
+                    println!(
+                        "--- {} hole(s) found under {} ---",
+                        holes.len(),
+                        scan_dir.display()
+                    );
+                }
+                return Ok(());
+            }
             "dep-clean" => {
                 let do_apply = args.iter().any(|a| a == "--apply");
                 let as_json = json_out || args.iter().any(|a| a == "--json");
@@ -16427,6 +16512,7 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
                 eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description] [--external-repo <owner/repo|path>] [--clone-path <path>]  # LLM-assisted slicing");
+                eprintln!("  scaffold-holes   <GAP-ID> [--path DIR] [--json]  # mechanical todo!() hole-finder for scaffold-and-holes PRs (EFFECTIVE-440)");
                 eprintln!("  dep-clean        [--apply] [--json]  # strip depends_on entries pointing at done gaps");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
