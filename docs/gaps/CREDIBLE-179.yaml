@@ -1,7 +1,7 @@
 - id: CREDIBLE-179
   domain: CREDIBLE
   title: zero real votes ever cast on any FEEDBACK proposal despite mandatory-voting doctrine
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -11,4 +11,6 @@
     - Check whether curator loop scripts (ci-audit-loop.sh, handoff-loop.sh, deliberator-loop.sh, etc.) have a concrete 'cast a vote' step wired in, or whether the mandate exists only in CLAUDE.md prose with no code enforcement
     - Propose + ship at least one concrete fix (e.g. a lane-scoped auto-vote step in one curator loop, or a fleet-doctor check that flags proposals with total=0 votes past N hours) that gets real votes flowing, and verify via a real (not fabricated) proposal reaching quorum
     - "Test: after the fix, a newly-broadcast FEEDBACK proposal accumulates >=1 real vote within one curator-loop cycle, observable via scripts/coord/deliberator-loop.sh audit --corr-id <new-corr-id>"
+  closed_date: '2026-09-03'
+  closed_pr: 4425
 
