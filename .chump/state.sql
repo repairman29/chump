@@ -21390,7 +21390,7 @@ gaps:
 - id: EFFECTIVE-086
   domain: EFFECTIVE
   title: "EFFECTIVE P1: autonomy dial — graduated levels 0-5 (STOP/OBSERVE/ASSIST/SUPERVISED/AUTONOMOUS/UNLEASHED) on the AUTONOMY_LEVEL flag"
-  status: blocked
+  status: done
   priority: P2
   effort: m
   description: |
@@ -21404,6 +21404,8 @@ gaps:
     Decomposed into 12 slices: EFFECTIVE-582, EFFECTIVE-583, EFFECTIVE-584, EFFECTIVE-585, EFFECTIVE-586, EFFECTIVE-587, EFFECTIVE-588, EFFECTIVE-589, EFFECTIVE-590, EFFECTIVE-591, EFFECTIVE-592, EFFECTIVE-593
     [2026-09-02T14:31:18Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4808B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
+  closed_date: '2026-09-03'
+  closed_pr: 4446
   outcome_id: EFFECTIVE-000
 
 - id: EFFECTIVE-087
@@ -29690,7 +29692,7 @@ gaps:
     - "provider is gemini-3.6-flash not llama3.2:3b"
     - child slices filed into state.db
   notes: |
-     | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+    | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
   closed_date: '2026-08-31'
 
 - id: EFFECTIVE-517
