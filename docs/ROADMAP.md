@@ -1,5 +1,7 @@
 # Chump Roadmap — current cycle
 
+**Two-surface architecture (operator, 2026-08-09).** Olive now has two first-class product surfaces: web (`/shop`) and MCP (`api/mcp`). Per the operator: "the plan is 2 surfaces. MCP + web for now and then we decide how to go from here on paid vs not." Monetisation (paid vs. free) is an explicitly deferred decision, not an open question.
+
 > **What this is.** The single canonical entry point for "what is chump
 > working on, in what order, why." Gaps implement the roadmap, not the
 > other way around.
