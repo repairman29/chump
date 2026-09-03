@@ -19391,7 +19391,7 @@ gaps:
 - id: DOCS-002
   domain: DOCS
   title: "DOCS: Run-the-Business roadmap track — the RUN half of COTG (customer 0)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -19400,6 +19400,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 8 slices: DOCS-027, DOCS-028, DOCS-029, DOCS-030, DOCS-031, DOCS-032, DOCS-033, DOCS-034
+    [2026-09-03T20:50:17Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1065B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: DOCS-003
@@ -21602,9 +21603,20 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the `SpawnResult` type in `dispatch.rs` with an `Outcome` enum, modify the dispatch handling function to construct an `Outcome` (success, failure, escalation) and invoke `monitor::record_reflection` with this outcome before returning, and update `monitor.rs` so that `record_reflection` writes a JSON line containing `dispatch_id`, `outcome`, and a timestamp to the persistent outcomes log.  Add a concrete unit test in `reflect.rs` that simulates a dispatch and asserts that the expected outcome entry appears in the log.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/dispatch.rs
+    - crates/chump-orchestrator/src/monitor.rs
+    - crates/chump-orchestrator/src/reflect.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Outcome records (success, failure, escalation) are persisted after dispatch completes.
-    - State transitions follow the defined state machine and are covered by unit tests.
+    - "In `crates/chump-orchestrator/src/dispatch.rs`, the function that processes a `SpawnResult` must call `monitor::record_reflection` with an `Outcome` value before completing."
+    - In `crates/chump-orchestrator/src/monitor.rs`, `record_reflection` must append a JSON object with keys `dispatch_id`, `outcome`, and `timestamp` to the file `var/log/effective/outcomes.log`.
+    - "Executing `scripts/coord/nba-dispatch-beat.sh` for a successful dispatch must create a new line in `var/log/effective/outcomes.log` whose `outcome` field is `\"success\"`."
+    - The test `test_settle_outcome_persistence` in `crates/chump-orchestrator/src/reflect.rs` must pass, confirming that a mock dispatch results in a correctly formatted entry in the outcomes log.
   depends_on: [EFFECTIVE-999]
   notes: |
     [chump harvest check 'phase']
@@ -88225,6 +88237,8 @@ gaps:
     - "The change described by \"bot-merge.sh gh_api_probe hangs 10s when stdin not redirected from /dev/null (--silent reads stdin)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 6 slices: INFRA-4224, INFRA-4225, INFRA-4226, INFRA-4227, INFRA-4228, INFRA-4229
   opened_date: '2026-08-19'
 
 - id: INFRA-3583
@@ -105285,6 +105299,71 @@ gaps:
     
     === cross-pollination briefs mentioning 'INFRA-1823' ===
 
+- id: INFRA-4224
+  domain: INFRA
+  title: "INFRA: Reproduce the gh_api_probe hang and add diagnostic logging (INFRA-3582 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `bot-merge.sh gh_api_probe` without stdin redirection reproduces a ~10s hang
+    - Diagnostic logs clearly show that `--silent` causes the script to read from stdin
+
+- id: INFRA-4225
+  domain: INFRA
+  title: "INFRA: Implement stdin redirection fix for `--silent` in bot-merge.sh (INFRA-3582 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`bot-merge.sh gh_api_probe --silent` no longer hangs (execution completes in <1 s)"
+    - The fix only applies when `--silent` is present and does not affect other flags
+  depends_on: [INFRA-4224]
+
+- id: INFRA-4226
+  domain: INFRA
+  title: "INFRA: Add unit test for gh_api_probe silent behavior (INFRA-3582 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new `cargo test` verifies that `gh_api_probe --silent` returns quickly
+    - The test fails on the pre‑fix code and passes after the fix
+  depends_on: [INFRA-4225]
+
+- id: INFRA-4227
+  domain: INFRA
+  title: "INFRA: Add CI script test to validate bot-merge.sh silent execution (INFRA-3582 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A script under `scripts/ci/test-bot-merge.sh` runs `bot-merge.sh gh_api_probe --silent` and asserts execution <1 s
+    - The CI test fails on the original code and passes after the fix
+  depends_on: [INFRA-4225]
+
+- id: INFRA-4228
+  domain: INFRA
+  title: "INFRA: Run cargo fmt and clippy, fix any warnings (INFRA-3582 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes the codebase formatted"
+    - "`cargo clippy --all-targets -D warnings` completes with zero warnings"
+  depends_on: [INFRA-4225, INFRA-4226, INFRA-4227]
+
+- id: INFRA-4229
+  domain: INFRA
+  title: "INFRA: Execute full test suite to confirm no regressions (INFRA-3582 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing `cargo test` cases pass
+    - All CI test scripts (including the new bot‑merge test) pass
+  depends_on: [INFRA-4228]
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
@@ -120657,11 +120736,14 @@ gaps:
 - id: RESILIENT-268
   domain: RESILIENT
   title: local disk at 99% (7.8GB free) on /System/Volumes/Data — disk_critical alert firing
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - 1. Identify what's consuming disk on /System/Volumes/Data (likely cargo target dirs, worktrees, or claude/docker caches). 2. Free space back above 15% (69GB) via targeted cleanup (cargo-target-reaper, worktree reaper, docker prune) not blind deletion. 3. If a specific runaway consumer is found, file a follow-up to cap/rotate it so this doesn't recur.
+  notes: |
+    Decomposed into 6 slices: RESILIENT-705, RESILIENT-706, RESILIENT-707, RESILIENT-708, RESILIENT-709, RESILIENT-710
+    [2026-09-03T20:57:00Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: RESILIENT-269
@@ -131263,6 +131345,251 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'holler' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'holler' ===
+
+- id: RESILIENT-705
+  domain: RESILIENT
+  title: "RESILIENT: Investigate disk usage on /System/Volumes/Data (RESILIENT-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Generate a sorted list of the top 5 directories consuming space on /System/Volumes/Data
+    - Identify whether cargo target directories, git worktrees, or Docker caches are among the top consumers
+    - Document total used space and free space before any cleanup
+  notes: |
+    [chump harvest check 'local']
+    === primitives_index match for 'local' ===
+    
+    === cluster keyword match for 'local' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local' ===
+    
+    === repo-description match for 'local' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'local' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      49:| `neural-farm` | Active (84d, threshold) | **HARVEST** as local-LLM gateway — see #5 |
+    
+    === cross-pollination briefs mentioning 'local' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-706
+  domain: RESILIENT
+  title: "RESILIENT: Create cargo‑target‑reaper script (RESILIENT-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script removes cargo target directories older than 30 days
+    - Script logs each removed directory and total reclaimed space
+    - Running the script reduces cargo‑related disk usage by at least 5 GB
+  depends_on: [RESILIENT-705]
+  notes: |
+    [chump harvest check 'local']
+    === primitives_index match for 'local' ===
+    
+    === cluster keyword match for 'local' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local' ===
+    
+    === repo-description match for 'local' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'local' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      49:| `neural-farm` | Active (84d, threshold) | **HARVEST** as local-LLM gateway — see #5 |
+    
+    === cross-pollination briefs mentioning 'local' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-707
+  domain: RESILIENT
+  title: "RESILIENT: Create worktree reaper script (RESILIENT-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script removes git worktrees older than 30 days that are not referenced by any active branch
+    - Script logs each removed worktree and total reclaimed space
+    - Running the script reduces worktree‑related disk usage by at least 2 GB
+  depends_on: [RESILIENT-705]
+  notes: |
+    [chump harvest check 'local']
+    === primitives_index match for 'local' ===
+    
+    === cluster keyword match for 'local' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local' ===
+    
+    === repo-description match for 'local' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'local' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      49:| `neural-farm` | Active (84d, threshold) | **HARVEST** as local-LLM gateway — see #5 |
+    
+    === cross-pollination briefs mentioning 'local' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-708
+  domain: RESILIENT
+  title: "RESILIENT: Execute safe Docker system prune (RESILIENT-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Run `docker system prune --all --volumes` with `--filter \"until=72h\"` to avoid removing recent images"
+    - Confirm no running containers are stopped or removed
+    - Log amount of space reclaimed by Docker
+  depends_on: [RESILIENT-705]
+  notes: |
+    [chump harvest check 'local']
+    === primitives_index match for 'local' ===
+    
+    === cluster keyword match for 'local' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local' ===
+    
+    === repo-description match for 'local' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'local' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      49:| `neural-farm` | Active (84d, threshold) | **HARVEST** as local-LLM gateway — see #5 |
+    
+    === cross-pollination briefs mentioning 'local' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-709
+  domain: RESILIENT
+  title: "RESILIENT: Verify free space exceeds 15 % (≥ 69 GB) (RESILIENT-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Run `df -h /System/Volumes/Data` and capture free space
+    - Free space is ≥ 15 % (≥ 69 GB) after all cleanup steps
+    - Create a short report showing before/after free space values
+  depends_on: [RESILIENT-706, RESILIENT-707, RESILIENT-708]
+  notes: |
+    [chump harvest check 'local']
+    === primitives_index match for 'local' ===
+    
+    === cluster keyword match for 'local' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local' ===
+    
+    === repo-description match for 'local' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'local' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      49:| `neural-farm` | Active (84d, threshold) | **HARVEST** as local-LLM gateway — see #5 |
+    
+    === cross-pollination briefs mentioning 'local' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-710
+  domain: RESILIENT
+  title: "RESILIENT: Document findings and create follow‑up ticket if needed (RESILIENT-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Document root cause of the disk consumption (e.g., runaway cargo target, stale worktrees, Docker cache)
+    - If any consumer remains above threshold, create a follow‑up ticket to implement caps/rotation
+    - Attach the before/after disk usage report to the ticket
+  depends_on: [RESILIENT-709]
+  notes: |
+    [chump harvest check 'local']
+    === primitives_index match for 'local' ===
+    
+    === cluster keyword match for 'local' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'local' ===
+    
+    === repo-description match for 'local' ===
+      chump: Self-hosted AI coding agent with persistent memory and bounded autonomy. Local-first, your keys, your data. Written in Rust.
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'local' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      49:| `neural-farm` | Active (84d, threshold) | **HARVEST** as local-LLM gateway — see #5 |
+    
+    === cross-pollination briefs mentioning 'local' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: SMOKE-001
   domain: SMOKE
