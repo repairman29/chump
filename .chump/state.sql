@@ -25048,7 +25048,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: EFFECTIVE-753, EFFECTIVE-754
+    Decomposed into 2 slices: EFFECTIVE-957, EFFECTIVE-958
   opened_date: '2026-08-22'
 
 - id: EFFECTIVE-445
@@ -41152,6 +41152,63 @@ gaps:
     
     === cross-pollination briefs mentioning 'readable' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-957
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-753: Define data structures for who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Rust structs/enums for 'who', 'struggling-moment', and 'done-signal' are added to the EFFECTIVE codebase.
+    - All code compiles with `cargo check` and passes `cargo fmt` and `cargo clippy` without warnings.
+    - No existing tests fail after the addition.
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-958
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-754: Integrate new fields into intake flow and add verification test (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The intake code path captures and stores 'who', 'struggling-moment', and 'done-signal' for each request.
+    - A new test (cargo test or scripts/ci/test-*.sh) asserts that the new fields are correctly recorded and fails without the change.
+    - All linting (`cargo fmt`, `cargo clippy`) passes with `-D warnings` and no regression in existing test suite.
+  depends_on: [EFFECTIVE-957]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: EVAL-085
   title: test eval 085
