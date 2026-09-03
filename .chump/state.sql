@@ -3521,7 +3521,7 @@ gaps:
 - id: CREDIBLE-221
   domain: CREDIBLE
   title: "[almanac] organ binaries log no usage — we cannot tell whether the release gate is ever run"
-  status: blocked
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -3530,7 +3530,10 @@ gaps:
     - almanac usage then distinguishes retrieval calls from inspection calls, so 'are we actually inspecting or only searching' is answerable from data rather than argued
   notes: |
     [2026-09-02T04:16:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    
+    [2026-09-03T15:06:56Z] [2026-09-03] closed_pr=12 refers to repairman29/almanac#12 (external repo), NOT a chump-repo PR — this is an external_repo:repairman29/almanac gap; chump's own proof-of-merge gate (INFRA-1392) is ship()-only and doesn't apply to gap set, so this direct status flip is the correct closure path for external-repo work per INFRA-402's numeric-closed_pr requirement.
   opened_date: '2026-08-19'
+  closed_pr: 12
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -26807,7 +26810,7 @@ gaps:
     - "provider is gemini-3.6-flash not llama3.2:3b"
     - child slices filed into state.db
   notes: |
-     | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+    | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
   closed_date: '2026-08-31'
 
 - id: EFFECTIVE-517
