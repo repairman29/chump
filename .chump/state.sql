@@ -4688,7 +4688,7 @@ gaps:
     - "Boilerplate acceptance criteria stop being generated, or audit-done ignores them: 'The change described by <title> is implemented in the relevant code path(s)' cannot be covered or failed by any diff, and it is why AC-coverage scoring missed all 79. Either chump gap reserve demands real criteria or the auditor excludes the three known boilerplate lines from its denominator and says so"
     - "Regression: a test proves a bookkeeping-only PR closing a gap is FLAGGED, and that the flag survives the gap text naming the same files the PR touched (the CREDIBLE-175 false-negative that path-overlap alone could not catch)"
   notes: |
-    Decomposed into 7 slices: CREDIBLE-459, CREDIBLE-460, CREDIBLE-461, CREDIBLE-462, CREDIBLE-463, CREDIBLE-464, CREDIBLE-465
+    Decomposed into 7 slices: CREDIBLE-627, CREDIBLE-628, CREDIBLE-629, CREDIBLE-630, CREDIBLE-631, CREDIBLE-632, CREDIBLE-633
   opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
@@ -11733,10 +11733,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `#[cfg(test)]` module in `crates/chump-atomic-claim/src/atomic_claim.rs` containing unit tests for the `ship_count` function. The tests will mock the git fetch operation to simulate success and failure, verify the retry behavior, and assert that the returned count or `None` matches the expected values and that the generated output messages correspond to slices 2 and 3 of the specification.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test case where git fetch succeeds returns correct count
-    - Test case where git fetch fails triggers retry and ultimately returns nil
-    - Tests assert that the output message matches expectations from slices 2 and 3
+    - In `crates/chump-atomic-claim/src/atomic_claim.rs`, a test named `test_ship_count_success` calls `ship_count` with a mocked successful `git fetch` and asserts that the returned count equals the expected number.
+    - In `crates/chump-atomic-claim/src/atomic_claim.rs`, a test named `test_ship_count_failure_retries` calls `ship_count` with a mocked failing `git fetch`, verifies that the retry logic is exercised the configured number of times, and asserts that the function returns `None`.
+    - Both new tests assert that the log/message output produced by `ship_count` exactly matches the strings defined in slices 2 and 3 of the original acceptance criteria.
   depends_on: [CREDIBLE-521]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -14556,6 +14563,225 @@ gaps:
     
     === cross-pollination briefs mentioning 'scoreboard' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: CREDIBLE-627
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement false-done-sweep script with multi‑close and JSON output (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ops/false-done-sweep.py is added to the repository and can be executed via the CLI
+    - Running the script with `--multi-close-only --json` reports exactly 79 bookkeeping‑closed gaps across the 47 multi‑close PRs
+    - A unit test fixture verifies that a PR containing only `docs/gaps/*.yaml` files is flagged as bookkeeping‑only, while a PR containing any `.rs` file is not flagged
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-628
+  domain: CREDIBLE
+  title: "CREDIBLE: Triage the 79 bookkeeping‑only gaps (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Each of the 79 gaps receives a verdict: (a) work landed in a different PR – the PR number is recorded and `closed_pr` is corrected, or (b) work never landed – the gap is reopened"
+    - The gap registry reflects the updated verdicts and no longer contains untrusted counts
+    - A summary report shows 79 gaps processed with 0 remaining without a verdict
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-629
+  domain: CREDIBLE
+  title: "CREDIBLE: Refactor done_auditor::audit to iterate by closed_at or resume cursor (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Audit no longer relies on `GapStore::list ORDER BY id` limited to the first 100 rows"
+    - Successive runs of the auditor examine disjoint sets of gaps (verified by logs showing non‑overlapping `closed_at` ranges)
+    - All gaps in the store are eventually audited when the auditor is run repeatedly
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-630
+  domain: CREDIBLE
+  title: "CREDIBLE: Schedule audit‑done execution via launchd/CI and surface findings (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - audit‑done is invoked automatically on a daily schedule (launchd plist or CI pipeline)
+    - Findings are posted to the operator’s monitoring dashboard or log aggregation system
+    - Operators can see the latest audit results without manual invocation
+  depends_on: [CREDIBLE-629]
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-631
+  domain: CREDIBLE
+  title: "CREDIBLE: Exclude boilerplate acceptance‑criteria lines from auditor denominator (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Auditor no longer counts lines matching the pattern \"The change described by <title> is implemented in the relevant code path(s)\" toward AC coverage"
+    - Coverage reports reflect the reduced denominator and show correct scores for gaps with only boilerplate ACs
+    - Unit tests confirm that a gap containing only boilerplate ACs is reported as having 0/0 coverage rather than a false failure
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-632
+  domain: CREDIBLE
+  title: "CREDIBLE: Add regression test for bookkeeping‑only PR flag persistence (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates a PR that touches only documentation files, runs false‑done‑sweep, and asserts the gap is flagged as bookkeeping‑only
+    - Test then modifies the gap text to name the same files and verifies the flag remains set
+    - Test fails before the fix (CREDIBLE‑175) and passes after the implementation
+  depends_on: [CREDIBLE-627]
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-633
+  domain: CREDIBLE
+  title: "CREDIBLE: Remove generation of meaningless boilerplate acceptance criteria from PR templates (CREDIBLE-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - New PR templates no longer include the generic boilerplate AC line
+    - Documentation is updated to explain the new AC expectations
+    - A lint check confirms that no generated PR contains the removed boilerplate line
+  notes: |
+    [chump harvest check 'closed']
+    === primitives_index match for 'closed' ===
+    
+    === cluster keyword match for 'closed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'closed' ===
+    
+    === repo-description match for 'closed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'closed' (deep-scan findings) ===
+      227:`EXTRACTED_PRIMITIVES` table only closed 16 of the 45 repos AC7 requires. Dispatched the
+    
+    === cross-pollination briefs mentioning 'closed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: DOC-031
   domain: DOC
