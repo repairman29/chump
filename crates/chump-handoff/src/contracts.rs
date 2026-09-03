@@ -1995,12 +1995,27 @@ pub struct VisionIntakeInput {
     pub prior_answers: Vec<String>,
 }
 
+/// EFFECTIVE-505 (EFFECTIVE-443 slice): the JTBD-sharpen triple — who is
+/// struggling, what the struggling moment looks like, and what signal tells
+/// them the struggle is over. Optional on [`VisionIntakeOutput`] (`#[serde(default)]`)
+/// so payloads produced before this slice still deserialize (AC3).
+#[derive(Debug, Clone, Default, Deserialize, Serialize)]
+pub struct JtbdSummary {
+    /// Plain-language description of who is struggling (the "who" in JTBD).
+    pub who: String,
+    /// Plain-language description of the moment the struggle shows up.
+    pub struggling_moment: String,
+    /// Plain-language description of the signal that tells them it's solved.
+    pub done_signal: String,
+}
+
 /// Output from vision-intake: a plain-language restatement of the problem,
 /// 1-3 clarifying questions, and a plain-language proposed definition-of-done.
 ///
-/// None of the three fields may contain software-vocabulary terms — see
-/// [`JARGON_BANLIST`]. This is the load-bearing guarantee of INFRA-3480: a
-/// non-technical founder never sees "PR", "branch", "CI", etc. in this flow.
+/// None of the three original fields (plus `jtbd`'s three fields, when
+/// present) may contain software-vocabulary terms — see [`JARGON_BANLIST`].
+/// This is the load-bearing guarantee of INFRA-3480: a non-technical founder
+/// never sees "PR", "branch", "CI", etc. in this flow.
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct VisionIntakeOutput {
     /// Plain-language restatement of the user's problem, proving it was understood.
@@ -2009,6 +2024,10 @@ pub struct VisionIntakeOutput {
     pub clarifying_questions: Vec<String>,
     /// Plain-language proposed definition-of-done for the resulting outcome.
     pub proposed_dod: String,
+    /// EFFECTIVE-505: who/struggling-moment/done-signal, when the model
+    /// supplies it. `None` for payloads produced before this slice.
+    #[serde(default)]
+    pub jtbd: Option<JtbdSummary>,
 }
 
 impl Validate for VisionIntakeOutput {
@@ -2049,6 +2068,35 @@ impl Validate for VisionIntakeOutput {
             return Err(ValidationError::new(format!(
                 "proposed_dod leaks software jargon term {term:?} — vision intake must stay in plain language"
             )));
+        }
+
+        if let Some(jtbd) = &self.jtbd {
+            if jtbd.who.trim().is_empty() {
+                return Err(ValidationError::new("jtbd.who cannot be empty"));
+            }
+            if jtbd.struggling_moment.trim().is_empty() {
+                return Err(ValidationError::new(
+                    "jtbd.struggling_moment cannot be empty",
+                ));
+            }
+            if jtbd.done_signal.trim().is_empty() {
+                return Err(ValidationError::new("jtbd.done_signal cannot be empty"));
+            }
+            if let Some(term) = first_jargon_hit(&jtbd.who) {
+                return Err(ValidationError::new(format!(
+                    "jtbd.who leaks software jargon term {term:?} — vision intake must stay in plain language"
+                )));
+            }
+            if let Some(term) = first_jargon_hit(&jtbd.struggling_moment) {
+                return Err(ValidationError::new(format!(
+                    "jtbd.struggling_moment leaks software jargon term {term:?} — vision intake must stay in plain language"
+                )));
+            }
+            if let Some(term) = first_jargon_hit(&jtbd.done_signal) {
+                return Err(ValidationError::new(format!(
+                    "jtbd.done_signal leaks software jargon term {term:?} — vision intake must stay in plain language"
+                )));
+            }
         }
 
         Ok(())
@@ -2099,8 +2147,12 @@ Instructions:
    help scope the work. Ask about outcomes and constraints, not implementation.
 3. Write a `proposed_dod` — a plain-language description of what "done" would
    look like to the person asking, from their point of view.
+4. Write a `jtbd` object sharpening the "job to be done": `who` is struggling
+   (in plain language, e.g. "a solo dog walker juggling paper routes"),
+   `struggling_moment` is the specific moment the struggle shows up, and
+   `done_signal` is the plain-language signal that tells them it's solved.
 
-HARD RULE: none of the three fields may use software-engineering vocabulary.
+HARD RULE: none of the fields may use software-engineering vocabulary.
 Never write any of these words or phrases, in any form: "PR" / "pull request",
 "branch", "CI", "test", "deploy", "commit", "merge", "repo" / "repository",
 "gap". Describe outcomes the way you'd explain them to a friend, not a
@@ -2112,7 +2164,12 @@ Emit a SINGLE fenced JSON block (no other JSON, no commentary outside the block)
 {{
   "restatement": "<1-3 plain-language sentences>",
   "clarifying_questions": ["<question 1>", "<question 2 (optional)>", "<question 3 (optional)>"],
-  "proposed_dod": "<plain-language description of done>"
+  "proposed_dod": "<plain-language description of done>",
+  "jtbd": {{
+    "who": "<plain-language who is struggling>",
+    "struggling_moment": "<plain-language moment the struggle shows up>",
+    "done_signal": "<plain-language signal it's solved>"
+  }}
 }}
 ```
 "#,
@@ -2139,6 +2196,13 @@ mod tests_vision_intake {
             proposed_dod: "A customer can pick an open time, get a confirmation, and you can \
                            see all upcoming bookings in one place."
                 .into(),
+            jtbd: Some(JtbdSummary {
+                who: "A small shop owner who takes bookings by phone.".into(),
+                struggling_moment: "The phone rings while they're mid-task and they lose track \
+                                     of who booked what."
+                    .into(),
+                done_signal: "They can glance at one place and see every upcoming booking.".into(),
+            }),
         }
     }
 
@@ -2207,6 +2271,41 @@ mod tests_vision_intake {
         o.proposed_dod = "The commit is merged and deployed.".into();
         let err = o.validate().unwrap_err();
         assert!(err.message().contains("proposed_dod"));
+    }
+
+    /// AC1/AC3 (EFFECTIVE-505): `jtbd` is optional — a payload with no `jtbd`
+    /// key at all still deserializes and validates, so pre-slice callers/tests
+    /// keep working unchanged.
+    #[test]
+    fn jtbd_absent_deserializes_and_validates() {
+        let json = r#"{
+            "restatement": "You want customers to book online.",
+            "clarifying_questions": ["How many slots per day?"],
+            "proposed_dod": "A customer can pick a time and get a confirmation."
+        }"#;
+        let o: VisionIntakeOutput = serde_json::from_str(json).unwrap();
+        assert!(o.jtbd.is_none());
+        assert!(o.validate().is_ok());
+    }
+
+    #[test]
+    fn rejects_empty_jtbd_who() {
+        let mut o = good_output();
+        if let Some(jtbd) = o.jtbd.as_mut() {
+            jtbd.who = "  ".into();
+        }
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("jtbd.who cannot be empty"));
+    }
+
+    #[test]
+    fn rejects_jargon_in_jtbd_done_signal() {
+        let mut o = good_output();
+        if let Some(jtbd) = o.jtbd.as_mut() {
+            jtbd.done_signal = "The PR is merged and deployed.".into();
+        }
+        let err = o.validate().unwrap_err();
+        assert!(err.message().contains("jtbd.done_signal"));
     }
 
     #[test]
