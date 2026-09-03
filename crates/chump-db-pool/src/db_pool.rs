@@ -362,6 +362,14 @@ fn init_schema(conn: &rusqlite::Connection) -> Result<()> {
         "ALTER TABLE chump_provider_quality ADD COLUMN tool_call_accuracy REAL DEFAULT NULL",
         [],
     );
+    // CREDIBLE-227: track 429 (rate-limited) responses separately from generic
+    // failures so declared RPD ceilings can be compared against observed
+    // rate-limit evidence (a slot 429ing well under its declared cap is
+    // evidence the declared number is wrong).
+    let _ = conn.execute(
+        "ALTER TABLE chump_provider_quality ADD COLUMN rate_limited_count INTEGER NOT NULL DEFAULT 0",
+        [],
+    );
     // task_db migrations (add columns if missing)
     let _ = conn.execute(
         "ALTER TABLE chump_tasks ADD COLUMN priority INTEGER DEFAULT 0",

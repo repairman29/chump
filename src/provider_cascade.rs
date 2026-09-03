@@ -656,14 +656,13 @@ impl ProviderCascade {
                 .unwrap_or_else(|_| "gpt-4".to_string());
             let name = std::env::var(format!("CHUMP_PROVIDER_{}_NAME", n))
                 .unwrap_or_else(|_| format!("slot_{}", n));
-            let priority = std::env::var(format!("CHUMP_PROVIDER_{}_PRIORITY", n))
-                .ok()
+            let priority_raw = std::env::var(format!("CHUMP_PROVIDER_{}_PRIORITY", n)).ok();
+            let priority = priority_raw
+                .as_ref()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(n * 10);
-            let rpm = std::env::var(format!("CHUMP_PROVIDER_{}_RPM", n))
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(30);
+            let rpm_raw = std::env::var(format!("CHUMP_PROVIDER_{}_RPM", n)).ok();
+            let rpm = rpm_raw.as_ref().and_then(|v| v.parse().ok()).unwrap_or(30);
             let rpd = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n))
                 .ok()
                 .and_then(|v| v.parse().ok())
@@ -671,13 +670,37 @@ impl ProviderCascade {
             let privacy = std::env::var(format!("CHUMP_PROVIDER_{}_PRIVACY", n))
                 .map(|s| parse_privacy_tier(&s))
                 .unwrap_or(PrivacyTier::Safe);
-            let context_k = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n))
-                .ok()
+            let context_k_raw = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n)).ok();
+            let context_k = context_k_raw
+                .as_ref()
                 .and_then(|v| v.trim().parse::<u32>().ok());
             let model_class = std::env::var(format!("CHUMP_PROVIDER_{}_MODEL_CLASS", n))
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.trim().to_lowercase());
+
+            // CREDIBLE-227 AC #4: a slot that declares BASE/KEY/MODEL but
+            // omits RPM, PRIORITY, and CONTEXT_K is "half-declared" — it
+            // silently falls back to defaults (rpm=30, priority=n*10,
+            // unlimited context) instead of an explicit, verified value.
+            // Make that visible instead of letting it look fully configured.
+            if rpm_raw.is_none() && priority_raw.is_none() && context_k_raw.is_none() {
+                eprintln!(
+                    "[cascade] WARNING: slot {} ({}) declares only BASE/KEY/MODEL/MODEL_CLASS — \
+                     missing RPM/PRIORITY/CONTEXT_K, falling back to defaults (rpm=30, priority={}, context_k=none). \
+                     Set CHUMP_PROVIDER_{}_RPM/PRIORITY/CONTEXT_K explicitly.",
+                    n, name, n * 10, n
+                );
+                // scanner-anchor: "kind":"provider_slot_incomplete"
+                crate::tool_policy::emit_ambient_json(
+                    "provider_slot_incomplete",
+                    serde_json::json!({
+                        "slot": n,
+                        "name": name,
+                        "missing": ["RPM", "PRIORITY", "CONTEXT_K"],
+                    }),
+                );
+            }
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -1713,7 +1736,11 @@ impl Provider for ProviderCascade {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);
                         }
 
-                        record_failover(&slot.name, classify_failover_reason(&e_str));
+                        let failover_reason = classify_failover_reason(&e_str);
+                        if failover_reason == "429" {
+                            provider_quality::record_slot_rate_limited(&slot.name);
+                        }
+                        record_failover(&slot.name, failover_reason);
                         idx = i + 1;
                         continue;
                     }

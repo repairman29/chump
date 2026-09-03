@@ -11503,6 +11503,29 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, from_provider, to_provider, reason, attempt_count]
 
+  - kind: provider_slot_drift
+    effect_metric: self
+    emitter: src/provider_probe.rs::holler_findings (CREDIBLE-227)
+    trigger: >
+      `chump provider probe` (or any caller of run_probe_and_report) found a
+      disagreement between a slot's hand-entered .env config (RPM/RPD/MODEL)
+      and what was observed live (rate-limit headers, /v1/models existence,
+      or a 429 pattern that contradicts the declared RPD). Reported only —
+      never auto-edits .env.
+    consumers: [ops-audit, decompose]
+    fields_required: [ts, kind, slot, drift_kind, detail]
+
+  - kind: provider_slot_incomplete
+    effect_metric: self
+    emitter: src/provider_cascade.rs::ProviderSlot::from_env (CREDIBLE-227)
+    trigger: >
+      a CHUMP_PROVIDER_{N}_* slot declares BASE/KEY/MODEL/MODEL_CLASS but
+      omits RPM, PRIORITY, and CONTEXT_K — it silently falls back to
+      defaults instead of an explicit, verified configuration. Emitted once
+      per cascade build (ProviderCascade::from_env call) for each such slot.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, slot, name, missing]
+
   - kind: provider_chain_exhausted
     effect_metric: self
     emitter: src/inference_provider.rs (INFRA-1844, CP-012)
