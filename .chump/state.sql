@@ -3521,7 +3521,7 @@ gaps:
 - id: CREDIBLE-221
   domain: CREDIBLE
   title: "[almanac] organ binaries log no usage — we cannot tell whether the release gate is ever run"
-  status: done
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -3530,10 +3530,7 @@ gaps:
     - almanac usage then distinguishes retrieval calls from inspection calls, so 'are we actually inspecting or only searching' is answerable from data rather than argued
   notes: |
     [2026-09-02T04:16:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
-    
-    [2026-09-03T15:06:56Z] [2026-09-03] closed_pr=12 refers to repairman29/almanac#12 (external repo), NOT a chump-repo PR — this is an external_repo:repairman29/almanac gap; chump's own proof-of-merge gate (INFRA-1392) is ship()-only and doesn't apply to gap set, so this direct status flip is the correct closure path for external-repo work per INFRA-402's numeric-closed_pr requirement.
   opened_date: '2026-08-19'
-  closed_pr: 12
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
@@ -26810,7 +26807,7 @@ gaps:
     - "provider is gemini-3.6-flash not llama3.2:3b"
     - child slices filed into state.db
   notes: |
-    | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+     | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
   closed_date: '2026-08-31'
 
 - id: EFFECTIVE-517
@@ -113773,7 +113770,7 @@ gaps:
 - id: RESILIENT-203
   domain: RESILIENT
   title: opencode agentic worker hangs at init in the large (746k-LOC) Chump repo — model-independent scaling blocker
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -113781,7 +113778,8 @@ gaps:
     - Root cause identified + fixed with a durable timeout/fail-fast (not retry-forever)
     - "Proven: across >=3 runs in the full repo, the worker reaches its first real work step or errors clearly within a bounded time - no indefinite init hang"
   notes: |
-    SOLVED (architecture) 2026-07-27: the cheap fleet = Chump-NATIVE execute-gap loop + provider cascade, NOT opencode. Proven: 'chump --execute-gap' on Groq free-tier runs the native ChumpAgent loop, executes read_file/list_dir tools scoped to the worktree — NO large-repo hang (native tools, not opencode's repo-wide scan), NO rate-limit death (free-tier rotation), FREE. This clears all 3 walls opencode hit. ONE remaining variable = MODEL tool-call quality: free 70B llama (Groq) works mechanically but 'storms on bad tool inputs' and aborts (too weak); DeepSeek strong+cheap but account out-of-balance; mistral/codestral proven clean tool-calls + funded but MISTRAL_API_KEY only in opencode auth (add to .env). WINNING CONFIG: CHUMP_WORK_BACKEND=chump-local + CHUMP_FREE_TIER_PROVIDERS pinned to a competent cheap coder (codestral-latest@api.mistral.ai or topped-up deepseek). (b) = ~$5-10 for a good cheap model, NOT a big paid tier. Validated Jeff's 'a then b': (a) uses infra he already built; (b) is a small model-budget, not architecture.
+    Decomposed into 8 slices: RESILIENT-690, RESILIENT-691, RESILIENT-692, RESILIENT-693, RESILIENT-694, RESILIENT-695, RESILIENT-696, RESILIENT-697
+    [2026-09-03T15:07:06Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -125342,6 +125340,221 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-690
+  domain: RESILIENT
+  title: "RESILIENT: Reproduce init hang in controlled environment (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `opencode worker` against the 746k-LOC Chump repo reproduces an indefinite init hang
+    - Logs capture the point where execution stops during initialization
+    - Reproduction steps are documented in a README section
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-691
+  domain: RESILIENT
+  title: "RESILIENT: Add configurable init timeout to opencode worker (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new configuration flag `INIT_TIMEOUT_MS` (default 120000 ms) is read at startup
+    - When the timeout elapses, the worker aborts the init phase
+    - Unit test verifies that a mock long‑running init triggers the timeout after the configured period
+  depends_on: [RESILIENT-690]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-692
+  domain: RESILIENT
+  title: "RESILIENT: Implement fail‑fast error handling with clear message (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "If the init timeout fires, the worker exits with exit code 1 and prints a concise error: \"Init timed out after X ms\""
+    - Error is logged to both stdout and a structured log file
+    - Existing error‑handling paths remain unchanged for non‑timeout failures
+  depends_on: [RESILIENT-691]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-693
+  domain: RESILIENT
+  title: "RESILIENT: Enable CHUMP_WORK_BACKEND env var to select native backend (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker reads `CHUMP_WORK_BACKEND` at startup and switches to the native `chump-local` implementation when set
+    - When the variable is unset, behavior falls back to the previous default
+    - Integration test confirms that setting the variable results in native tool execution (read_file/list_dir) without repo‑wide scan
+  depends_on: [RESILIENT-692]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-694
+  domain: RESILIENT
+  title: "RESILIENT: Add CHUMP_FREE_TIER_PROVIDERS env var for model selection (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker reads `CHUMP_FREE_TIER_PROVIDERS` and uses the specified provider (e.g., codestral‑latest@api.mistral.ai) for tool calls
+    - Invalid provider values produce a clear configuration error
+    - Test verifies that a valid provider results in successful tool calls during a short workflow
+  depends_on: [RESILIENT-693]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-695
+  domain: RESILIENT
+  title: "RESILIENT: Load MISTRAL_API_KEY from .env and propagate to provider client (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`.env` file is parsed at startup and `MISTRAL_API_KEY` is injected into the Mistral client configuration"
+    - Missing key triggers a descriptive startup error
+    - Local test confirms that a dummy key allows the client to be instantiated without runtime failure
+  depends_on: [RESILIENT-694]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-696
+  domain: RESILIENT
+  title: "RESILIENT: Write integration test for bounded init on full repo (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test launches the worker against the 746k‑LOC repo with the new timeout and backend settings
+    - Test asserts that the process either reaches the first real work step or exits with the timeout error within the configured limit
+    - Test runs in CI and fails if the process exceeds the timeout
+  depends_on: [RESILIENT-695]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: RESILIENT-697
+  domain: RESILIENT
+  title: "RESILIENT: Run three verification runs and collect logs (RESILIENT-203 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Three consecutive executions of the worker on the full repo complete without indefinite hang
+    - All runs finish within the configured timeout and produce either a successful first work step or a clear timeout error
+    - Log files from the runs are archived and referenced in the release notes
+  depends_on: [RESILIENT-696]
+  notes: |
+    [chump harvest check 'opencode']
+    === primitives_index match for 'opencode' ===
+    
+    === cluster keyword match for 'opencode' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opencode' ===
+    
+    === repo-description match for 'opencode' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opencode' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opencode' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: SMOKE-001
   domain: SMOKE
