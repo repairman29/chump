@@ -20221,9 +20221,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new `#[cfg(test)]` module to `crates/chump-verify/src/external_verify_merge.rs` containing a test function `test_run_half_behavior` that calls the RUN half logic on a known DOCS-002 slice, asserts the returned slice matches the expected half, and initially uses `assert!(false, "unimplemented")` so the test fails until the RUN half implementation is completed.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Unit test asserts RUN half behavior.
-    - Test fails before implementation and passes after.
+    - Running `cargo test --package chump-verify` reports a failing test named `test_run_half_behavior` defined in `crates/chump-verify/src/external_verify_merge.rs`.
+    - After the RUN half behavior is implemented, the same `cargo test` command reports `test_run_half_behavior` as passed.
+    - The test asserts that the returned slice from RUN half on a sample DOCS-002 input equals the expected half slice (e.g., by comparing `assert_eq!(result, expected_half)`).
+    - All existing tests in the repository continue to pass after the new test is added.
   depends_on: [DOCS-029]
   notes: |
     [chump harvest check 'roadmap']
@@ -44905,7 +44914,7 @@ gaps:
 - id: EFFECTIVE-998
   domain: EFFECTIVE
   title: "EFFECTIVE: Add wire top action trigger to dispatch/escalate flow (EFFECTIVE-510 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -44928,6 +44937,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-03T20:37:52Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-999
   domain: EFFECTIVE
