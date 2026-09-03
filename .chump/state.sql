@@ -3547,7 +3547,7 @@ gaps:
     - "REAL examples that must survive triage: BEAST_MODE_API localhost:3000 vs https://beast-mode.com across 270 reads; BEAST_MODE_API_URL with 5 values including the typo domain beastmode.dev vs beast-mode.dev; BASE_URL 3000 vs 7777; BEAST_MODE_CLOUD_MODEL llama-3.3-70b vs gpt-4o-mini; CHUMPBAR_SSH_TIMEOUT 15 vs 6"
     - "Normalize before comparing: empty/unset spellings collapse to one value, and $VAR-interpolated paths compare by resolved shape not literal text. Then re-report the real count — ROADMAP O2 calls drift the organ's flagship claim and says it is unverified at scale; this is that verification"
   notes: |
-    Decomposed into 12 slices: CREDIBLE-569, CREDIBLE-570, CREDIBLE-571, CREDIBLE-572, CREDIBLE-573, CREDIBLE-574, CREDIBLE-575, CREDIBLE-576, CREDIBLE-577, CREDIBLE-578, CREDIBLE-579, CREDIBLE-580
+    Decomposed into 12 slices: CREDIBLE-675, CREDIBLE-676, CREDIBLE-677, CREDIBLE-678, CREDIBLE-679, CREDIBLE-680, CREDIBLE-681, CREDIBLE-682, CREDIBLE-683, CREDIBLE-684, CREDIBLE-685, CREDIBLE-686
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
@@ -15459,6 +15459,310 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
+- id: CREDIBLE-675
+  domain: CREDIBLE
+  title: "CREDIBLE: Catalog known noise patterns in chump drift flags (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - List of all noise patterns (e.g., ANTHROPIC_API_KEY default spellings, CARGO_MANIFEST_DIR unknown, CHUMP_AMBIENT_LOG path variants) documented in a markdown file
+    - Each pattern includes example raw values and the count of occurrences from the latest dataset
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-676
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement normalization for empty/unset value spellings (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "Parser treats \"default= \", \"(unset)\", \"<unset>\" as a single canonical value \"<unset>\""
+    - Unit test verifies that all three spellings are collapsed to the same canonical value
+  depends_on: [CREDIBLE-675]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-677
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement path normalization for $VAR‑interpolated values (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Paths containing environment variable interpolation are resolved to their directory shape (e.g., $HOME/project/target → /project/target)
+    - Two paths that differ only by variable name but resolve to the same shape are considered equal
+    - "Unit test confirms that \"${X}/target\" and \"${Y}/target\" compare equal after normalization"
+  depends_on: [CREDIBLE-675]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-678
+  domain: CREDIBLE
+  title: "CREDIBLE: Update drift detection logic to use normalized values (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Drift comparison now operates on the canonical values produced by slices 1 and 2
+    - No new false‑positive drift flags appear for the cataloged noise patterns when re‑running on the current dataset
+  depends_on: [CREDIBLE-676, CREDIBLE-677]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-679
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit tests for identified noise patterns (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test suite includes cases for each noise pattern listed in slice 0
+    - All tests pass with the updated normalization logic
+  depends_on: [CREDIBLE-676, CREDIBLE-677]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-680
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit tests for real drift examples (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test suite includes cases for BEAST_MODE_API, BEAST_MODE_API_URL typo, BASE_URL port differences, BEAST_MODE_CLOUD_MODEL model differences, CHUMPBAR_SSH_TIMEOUT variance
+    - Tests confirm that these real differences are still reported as drift after normalization
+  depends_on: [CREDIBLE-678]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-681
+  domain: CREDIBLE
+  title: "CREDIBLE: Update reporting to collapse noise counts (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Generated drift report shows a single entry for each noise pattern instead of multiple variants
+    - "Report includes a summary line: \"Noise patterns collapsed: X\" where X matches the count from slice 0"
+  depends_on: [CREDIBLE-678]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-682
+  domain: CREDIBLE
+  title: "CREDIBLE: Re‑run drift analysis on current backlog and capture new counts (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Execution of the drift pipeline on the latest chump data completes without errors
+    - Output includes total drift flags, noise‑only flags, and real‑drift flags
+    - Numbers are recorded in a JSON artifact for later verification
+  depends_on: [CREDIBLE-681]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-683
+  domain: CREDIBLE
+  title: "CREDIBLE: Validate that real drift examples remain flagged after changes (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All real examples from slice 0 (e.g., BEAST_MODE_API mismatches) appear in the new drift report
+    - No real example is mistakenly collapsed as noise
+  depends_on: [CREDIBLE-680, CREDIBLE-682]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-684
+  domain: CREDIBLE
+  title: "CREDIBLE: Document normalization rules in the codebase README (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README section \"Drift Normalization Rules\" lists empty/unset handling and path interpolation handling"
+    - Examples from slices 0‑2 are included
+    - Documentation is linked from the drift pipeline configuration
+  depends_on: [CREDIBLE-676, CREDIBLE-677]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-685
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI pipeline to enforce new normalization tests (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI job runs the full test suite including new noise and real‑drift tests
+    - Pipeline fails if any of the new tests regress
+    - Build badge reflects passing status
+  depends_on: [CREDIBLE-679, CREDIBLE-680]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-686
+  domain: CREDIBLE
+  title: "CREDIBLE: Close previously untriaged noise flags and create tickets for remaining real drifts (CREDIBLE-222 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All noise‑only drift flags identified in slice 0 are marked as resolved in the tracking system
+    - For each remaining real drift flag, a new ticket is created with description, affected variable, and example values
+    - Ticket count matches the real‑drift count from slice 8
+  depends_on: [CREDIBLE-683, CREDIBLE-682]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
 - id: DOC-031
   domain: DOC
   title: "CREDIBLE: reconcile CLAUDE.md / AGENTS.md / DISPATCH_RULES.md into single agent doctrine"
@@ -17509,9 +17813,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `build_free_tier_prompt` function in `src/execute_gap.rs` to append a level‑2 markdown heading “## DISPATCH” and a short paragraph that mentions the `preferred_machine` field, the `chump‑coord assign daemon`, and explicitly states that the daemon is not running.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Section \"DISPATCH\" is added under a level‑2 heading"
-    - Mentions preferred_machine field, chump‑coord assign daemon, and that the daemon is not running
+    - "Running the binary with the `--help` flag prints a line exactly matching `## DISPATCH` in the output generated by `src/execute_gap.rs`."
+    - The help output contains the literal token `preferred_machine` as part of the DISPATCH section.
+    - The help output contains the literal phrase `chump‑coord assign daemon` within the DISPATCH section.
+    - The help output contains the literal phrase `daemon is not running` within the DISPATCH section.
   depends_on: [DOC-127]
 
 - id: DOC-133
@@ -17733,13 +18046,15 @@ gaps:
 - id: DOC-152
   domain: DOC
   title: "DOC: Verify live MCP API schema and update docs/api.md accordingly (DOC-097 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - "A manual curl/post to https://shopolive.xyz/api/mcp/tools/list returns the expected JSON schema."
     - docs/api.md is updated to reflect the current schema and includes example responses for each tool.
     - The documentation notes that the endpoint returned HTTP 200 on 2026‑08‑09.
+  notes: |
+    [2026-09-03T13:57:59Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1062B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: DOC-153
   domain: DOC
