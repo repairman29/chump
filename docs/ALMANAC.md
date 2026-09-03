@@ -182,3 +182,51 @@ exact symbol name — differently-named implementations of the same idea
 never merge into one row. Every report states its `retrieval_mode` and
 carries the fleet's last known embedding-coverage percentage so a reader
 knows how much of the fleet that blind spot still covers.
+
+## Fleet-wide organ sweep — code-posse (EFFECTIVE-389)
+
+Posse (`repairman29/posse`) plays live surfaces cold and files findings into
+holler; it had no code-side member — nothing read source and asked "is this
+config flag's default drifting across call sites" or "is this capability
+actually wired into a real run." `almanac`'s `scripts/organ-sweep.mjs`
+(shipped [repairman29/almanac#10](https://github.com/repairman29/almanac/pull/10))
+fills that gap: it runs `comprehend --repo <path> --findings-json`
+(EFFECTIVE-398's structured-findings flag — flagmap+gatemap+livemap in one
+call) against every registered repo with a live checkout under
+`~/.almanac/repos-cache`, and files newly-seen findings into holler using
+posse's own `dedupe_hash`/`fileFinding` convention
+(`reporter=almanac-<organ>`) rather than a second filing mechanism. Posse's
+README now [notes the sibling](https://github.com/repairman29/posse/pull/2).
+
+- **"Only NEW findings file"** (not a standing-condition refile every
+  cycle): the sweep queries holler for dedupe_hashes already on file before
+  filing — no separate ledger file, holler's own table is the previous-run
+  state.
+- **Placement**: `almanac/scripts`, where the organ binaries and launchd
+  cron patterns already live, not the posse repo.
+- **Sentinel-variance suppression rule** (folded in from CREDIBLE-217):
+  DRIFT counts already exclude benign spelling variance via
+  `normalize_default()` (`almanac-organs/src/config.rs`, INFRA-3472) —
+  unset sentinels and dynamic per-process expressions collapse before
+  dedup/count. The rule is printed in the sweep's own output every run, not
+  just documented here, so a reader auditing a specific finding can see it
+  and disagree.
+- **Proof** (real repo, real finding, file:line receipt — chased down as
+  INFRA-4071): a run against `posse` itself
+  surfaced `PLAYTEST_BASE` read with 4 conflicting literal defaults across
+  `draft-adapter.mjs:135`, `adapters/realm-of-shadows.mjs:29`,
+  `adapters/crystal-rush.mjs:22`, `adapters/space-shooter.mjs:14` — the same
+  CONFIG-organ signal class CREDIBLE-217 set as the bar (CARGO_TARGET_DIR 14
+  ways, BEAST_MODE 3 conflicting endpoints, OPENAI_API_KEY 4 defaults).
+- **Honest coverage**: WIRING/CONFIG adapter coverage on non-Rust repos is
+  still landing (CONFIG got JS/TS 2026-08-05, Python pending; WIRING
+  recently got Next.js + Python routes) — the sweep states this, plus which
+  repos it could only shallowly inspect (no live checkout), in its own
+  output every run rather than implying a clean bill of health on silence.
+
+Runs on demand (`HOLLER_SUPABASE_URL=... HOLLER_ANON_KEY=... node
+scripts/organ-sweep.mjs [--dry-run]` from the almanac checkout); no cron
+ships pre-installed, same policy as posse's `scan-portfolio.mjs`. The
+act-on-detection loop (ZERO-WASTE-036) and the posse+fluff-audit portfolio
+sweep (EFFECTIVE-374) both depend on this landing first — detection before
+the act layer has anything to act on.
