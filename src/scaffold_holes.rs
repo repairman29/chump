@@ -176,6 +176,85 @@ pub fn hole_to_gap_spec(hole: &TodoHole, parent_gap: &str) -> (String, String) {
     (title, ac)
 }
 
+/// One completed gap's inputs to the scaffold-vs-open-ended comparison:
+/// how long it took to ship (proxy for CI/round-trip cost) and which
+/// files its shipping PR touched (input to collision-rate).
+#[derive(Debug, Clone)]
+pub struct GapMetric {
+    pub id: String,
+    /// Wall-clock seconds from `created_at` to `closed_at`. `None` if the
+    /// gap isn't closed yet or timestamps are missing.
+    pub cycle_time_secs: Option<i64>,
+    /// Files touched by the gap's shipping PR (from `git show --stat`, or
+    /// empty if unknown).
+    pub files_touched: Vec<String>,
+}
+
+/// Fraction of `gaps` that share at least one touched file with another
+/// gap in the same slice — a mechanical proxy for "these two agents would
+/// have collided if worked concurrently". 0.0 for fewer than 2 gaps.
+pub fn collision_rate(gaps: &[GapMetric]) -> f64 {
+    if gaps.len() < 2 {
+        return 0.0;
+    }
+    let collided = gaps
+        .iter()
+        .filter(|g| {
+            gaps.iter().any(|other| {
+                other.id != g.id
+                    && g.files_touched
+                        .iter()
+                        .any(|f| other.files_touched.contains(f))
+            })
+        })
+        .count();
+    collided as f64 / gaps.len() as f64
+}
+
+/// Mean cycle time in seconds across `gaps`, ignoring gaps with no
+/// recorded cycle time. `None` if none have one.
+pub fn mean_cycle_secs(gaps: &[GapMetric]) -> Option<f64> {
+    let vals: Vec<f64> = gaps
+        .iter()
+        .filter_map(|g| g.cycle_time_secs)
+        .map(|s| s as f64)
+        .collect();
+    if vals.is_empty() {
+        None
+    } else {
+        Some(vals.iter().sum::<f64>() / vals.len() as f64)
+    }
+}
+
+/// Head-to-head comparison of scaffold-and-holes leaf gaps against
+/// open-ended gaps: mean ship cycle-time and collision rate for each
+/// group. This is the mechanical measurement the EFFECTIVE-440 hypothesis
+/// ("tiny disjoint leaf gaps ship faster with fewer collisions than
+/// open-ended gaps") lives or dies by.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ScaffoldMetricsReport {
+    pub scaffold_leaf_count: usize,
+    pub open_ended_count: usize,
+    pub scaffold_leaf_mean_cycle_secs: Option<f64>,
+    pub open_ended_mean_cycle_secs: Option<f64>,
+    pub scaffold_leaf_collision_rate: f64,
+    pub open_ended_collision_rate: f64,
+}
+
+pub fn compare_scaffold_vs_open_ended(
+    scaffold_leaves: &[GapMetric],
+    open_ended: &[GapMetric],
+) -> ScaffoldMetricsReport {
+    ScaffoldMetricsReport {
+        scaffold_leaf_count: scaffold_leaves.len(),
+        open_ended_count: open_ended.len(),
+        scaffold_leaf_mean_cycle_secs: mean_cycle_secs(scaffold_leaves),
+        open_ended_mean_cycle_secs: mean_cycle_secs(open_ended),
+        scaffold_leaf_collision_rate: collision_rate(scaffold_leaves),
+        open_ended_collision_rate: collision_rate(open_ended),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -261,5 +340,81 @@ fn add(a: i32, b: i32) -> i32 {
         assert_eq!(holes[0].function.as_deref(), Some("a"));
 
         std::fs::remove_dir_all(&tmp).unwrap();
+    }
+
+    fn metric(id: &str, cycle_secs: Option<i64>, files: &[&str]) -> GapMetric {
+        GapMetric {
+            id: id.to_string(),
+            cycle_time_secs: cycle_secs,
+            files_touched: files.iter().map(|s| s.to_string()).collect(),
+        }
+    }
+
+    #[test]
+    fn collision_rate_is_zero_when_no_files_overlap() {
+        let gaps = vec![
+            metric("A", Some(60), &["src/a.rs"]),
+            metric("B", Some(60), &["src/b.rs"]),
+        ];
+        assert_eq!(collision_rate(&gaps), 0.0);
+    }
+
+    #[test]
+    fn collision_rate_counts_gaps_sharing_a_touched_file() {
+        let gaps = vec![
+            metric("A", Some(60), &["src/shared.rs"]),
+            metric("B", Some(60), &["src/shared.rs"]),
+            metric("C", Some(60), &["src/other.rs"]),
+        ];
+        // A and B collide (2/3); C is disjoint.
+        assert!((collision_rate(&gaps) - (2.0 / 3.0)).abs() < 1e-9);
+    }
+
+    #[test]
+    fn collision_rate_is_zero_for_fewer_than_two_gaps() {
+        assert_eq!(collision_rate(&[]), 0.0);
+        assert_eq!(collision_rate(&[metric("A", Some(60), &["src/a.rs"])]), 0.0);
+    }
+
+    #[test]
+    fn mean_cycle_secs_averages_only_known_values() {
+        let gaps = vec![
+            metric("A", Some(100), &[]),
+            metric("B", None, &[]),
+            metric("C", Some(300), &[]),
+        ];
+        assert_eq!(mean_cycle_secs(&gaps), Some(200.0));
+    }
+
+    #[test]
+    fn mean_cycle_secs_is_none_when_nothing_is_known() {
+        let gaps = vec![metric("A", None, &[])];
+        assert_eq!(mean_cycle_secs(&gaps), None);
+    }
+
+    #[test]
+    fn scaffold_leaves_beat_open_ended_gaps_on_both_axes() {
+        // The EFFECTIVE-440 hypothesis: tiny disjoint leaf gaps (one
+        // todo!() + its test each) ship faster and collide less often
+        // than open-ended gaps that roam across many files.
+        let scaffold_leaves = vec![
+            metric("EFFECTIVE-441", Some(600), &["src/foo.rs"]),
+            metric("EFFECTIVE-442", Some(700), &["src/bar.rs"]),
+        ];
+        let open_ended = vec![
+            metric("EFFECTIVE-100", Some(5000), &["src/foo.rs", "src/bar.rs"]),
+            metric("EFFECTIVE-101", Some(6000), &["src/bar.rs", "src/baz.rs"]),
+        ];
+
+        let report = compare_scaffold_vs_open_ended(&scaffold_leaves, &open_ended);
+
+        assert_eq!(report.scaffold_leaf_count, 2);
+        assert_eq!(report.open_ended_count, 2);
+        assert_eq!(report.scaffold_leaf_mean_cycle_secs, Some(650.0));
+        assert_eq!(report.open_ended_mean_cycle_secs, Some(5500.0));
+        assert_eq!(report.scaffold_leaf_collision_rate, 0.0);
+        assert_eq!(report.open_ended_collision_rate, 1.0);
+        assert!(report.scaffold_leaf_mean_cycle_secs < report.open_ended_mean_cycle_secs);
+        assert!(report.scaffold_leaf_collision_rate < report.open_ended_collision_rate);
     }
 }

@@ -14698,7 +14698,7 @@ async fn main() -> Result<()> {
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
                     println!(
-                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply]"
+                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply] [--metrics]"
                     );
                     println!();
                     println!(
@@ -14709,6 +14709,11 @@ async fn main() -> Result<()> {
                         "--apply files one leaf gap per hole via chump-gap-store instead of \
                          just printing specs (INFRA-2515 A2A voting still applies to what those \
                          leaf gaps become — this only reserves them)."
+                    );
+                    println!(
+                        "--metrics compares shipped leaf gaps (depends_on GAP-ID) against a \
+                         baseline of shipped open-ended gaps (no depends_on) in the same domain: \
+                         mean ship cycle-time and file-collision rate for each group."
                     );
                     return Ok(());
                 }
@@ -14724,6 +14729,116 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| repo_root.clone());
                 let as_json = json_out || args.iter().any(|a| a == "--json");
                 let do_apply = args.iter().any(|a| a == "--apply");
+                let do_metrics = args.iter().any(|a| a == "--metrics");
+
+                if do_metrics {
+                    let domain = store
+                        .get(&gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.domain)
+                        .unwrap_or_else(|| {
+                            gap_id.split('-').next().unwrap_or("EFFECTIVE").to_string()
+                        });
+                    let closed = store.list(Some("closed")).unwrap_or_default();
+                    let done = store.list(Some("done")).unwrap_or_default();
+                    let all_closed: Vec<_> = closed.into_iter().chain(done).collect();
+
+                    let files_for_pr = |pr: i64| -> Vec<String> {
+                        let out = std::process::Command::new("git")
+                            .args(["log", "--all", "--merges", "--format=%H"])
+                            .arg("--grep")
+                            .arg(format!("#{pr}"))
+                            .current_dir(&repo_root)
+                            .output();
+                        let Ok(out) = out else { return Vec::new() };
+                        let sha = String::from_utf8_lossy(&out.stdout)
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if sha.is_empty() {
+                            return Vec::new();
+                        }
+                        std::process::Command::new("git")
+                            .args(["show", "--stat", "--format=", &sha])
+                            .current_dir(&repo_root)
+                            .output()
+                            .map(|o| {
+                                String::from_utf8_lossy(&o.stdout)
+                                    .lines()
+                                    .filter_map(|l| l.split('|').next())
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    };
+
+                    let to_metric = |g: &gap_store::GapRow| -> scaffold_holes::GapMetric {
+                        let cycle_time_secs = g.closed_at.map(|c| c - g.created_at);
+                        let files_touched = g.closed_pr.map(files_for_pr).unwrap_or_default();
+                        scaffold_holes::GapMetric {
+                            id: g.id.clone(),
+                            cycle_time_secs,
+                            files_touched,
+                        }
+                    };
+
+                    let scaffold_leaves: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| g.domain == domain && g.depends_on.contains(&gap_id))
+                        .map(to_metric)
+                        .collect();
+                    let open_ended: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| {
+                            g.domain == domain
+                                && !g.depends_on.contains(&gap_id)
+                                && (g.depends_on.is_empty() || g.depends_on == "[]")
+                        })
+                        .map(to_metric)
+                        .collect();
+
+                    let report = scaffold_holes::compare_scaffold_vs_open_ended(
+                        &scaffold_leaves,
+                        &open_ended,
+                    );
+
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "scaffold_leaf_count": report.scaffold_leaf_count,
+                                "open_ended_count": report.open_ended_count,
+                                "scaffold_leaf_mean_cycle_secs": report.scaffold_leaf_mean_cycle_secs,
+                                "open_ended_mean_cycle_secs": report.open_ended_mean_cycle_secs,
+                                "scaffold_leaf_collision_rate": report.scaffold_leaf_collision_rate,
+                                "open_ended_collision_rate": report.open_ended_collision_rate,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "--- scaffold-and-holes metrics for {gap_id} (domain {domain}) ---"
+                        );
+                        println!(
+                            "scaffold leaves: {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.scaffold_leaf_count,
+                            report.scaffold_leaf_mean_cycle_secs,
+                            report.scaffold_leaf_collision_rate
+                        );
+                        println!(
+                            "open-ended:      {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.open_ended_count,
+                            report.open_ended_mean_cycle_secs,
+                            report.open_ended_collision_rate
+                        );
+                    }
+                    return Ok(());
+                }
 
                 let holes = match scaffold_holes::find_todo_holes_in_dir(&scan_dir) {
                     Ok(h) => h,
