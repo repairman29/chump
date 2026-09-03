@@ -1,12 +1,14 @@
 - id: CREDIBLE-271
   domain: CREDIBLE
   title: "SHIP-INFRA 4/7 [RELIABILITY]: gate false-positive audit — every gate a real signal or DELETED (farmer_auth_dead, phantom required checks, reapers freeing 0 bytes, grace-guards that don't guard); measure per-gate FP rate"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"gate false-positive audit — every gate a real signal or DELETED (farmer_auth_dead, phantom required checks, reapers freeing 0 bytes, grace-guards that don't guard); measure per-gate FP rate\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-09-03'
+  closed_pr: 4445
   outcome_id: SHIP-INFRA
 
