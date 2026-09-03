@@ -32614,10 +32614,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add 25 free Zen model definitions with `tool_call = true` to the provider cascade configuration in `src/tool_inventory.rs` (inside the model registration function) and extend the `main` function in `scripts/ab-harness/run-cloud-v2.py` to read those model names from the environment, instantiate each via the provider cascade, and verify successful loading.
+    
+    Target file(s):
+    - src/tool_inventory.rs
+    - scripts/ab-harness/run-cloud-v2.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All 25 free Zen models appear in the .env and provider_cascade configuration with `tool_call=true`
-    - Each model loads without error during startup
-    - A sanity‑check test confirms that each model is reachable via the inference API mock
+    - src/tool_inventory.rs defines exactly 25 new `ZenModel` entries, each with the field `tool_call = true`, inside the provider‑cascade registration function.
+    - "scripts/ab-harness/run-cloud-v2.py::main reads the `.env` variables for all 25 Zen model identifiers and attempts to create a provider instance for each without raising an exception."
+    - Executing `scripts/ab-harness/run-cloud-v2.py --list-models` prints a list that includes all 25 Zen model names.
+    - "The unit test `src/tool_inventory.rs::mod tests::test_zen_models_load` passes, confirming that each of the 25 Zen models returns a mock inference response when queried through the provider cascade."
   depends_on: [EFFECTIVE-714]
   notes: |
     [chump harvest check 'inference']
