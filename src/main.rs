@@ -977,10 +977,12 @@ fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
         // LLM agent loop. Mirror the `s` expansion.
         // INFRA-1229: leave `chump ship plan` / `chump ship execute` alone
         // — those are the new subcommands (slices 1+2 of bot-merge port).
+        // EFFECTIVE-1019: leave `chump ship --manual` alone too — the
+        // manual-fallback executor (push + PR + arm auto-merge) subcommand.
         // Only the legacy `chump ship <GAP-ID>` form gets the `gap ship` alias.
         "ship" => {
             let sub2 = args.get(2).map(String::as_str);
-            if sub2 != Some("plan") && sub2 != Some("execute") {
+            if sub2 != Some("plan") && sub2 != Some("execute") && sub2 != Some("--manual") {
                 args[1] = "gap".to_string();
                 args.insert(2, "ship".to_string());
             }
@@ -2134,6 +2136,34 @@ async fn main() -> Result<()> {
             return Ok(());
         }
         return ship_execute_cli(&args[3..]).await;
+    }
+
+    // `chump ship --manual` (EFFECTIVE-1019, EFFECTIVE-178 slice) — the
+    // manual-fallback ship command: push the current branch, open a PR via
+    // the GitHub API (`gh`), and arm auto-merge so it lands once CI is
+    // green. On failure after a successful push, best-effort rolls the
+    // push back (deletes the just-pushed remote branch) so a half-shipped
+    // branch doesn't linger on origin. Thin CLI wrapper over
+    // `chump_ship::manual_ship::ManualShipPath` (already the executor
+    // backing `chump ship execute` / the standalone `chump-ship` binary).
+    if args.get(1).map(String::as_str) == Some("ship")
+        && args.get(2).map(String::as_str) == Some("--manual")
+    {
+        if args.iter().any(|a| a == "--help" || a == "-h") {
+            println!(
+                "Usage: chump ship --manual --gap GAP-ID [--branch B] [--base B] \
+                 [--commit-message MSG] [--dry-run]"
+            );
+            println!();
+            println!("Manual-fallback ship: git push the current (or given) branch, open a");
+            println!("PR via `gh pr create`, and arm auto-merge (`gh pr merge --auto --squash`).");
+            println!("On failure after the push lands, best-effort deletes the pushed remote");
+            println!("branch so origin isn't left with a half-shipped branch.");
+            println!();
+            println!("Exits 0 on success (prints the ShipReceipt as JSON), 1 on any failure.");
+            return Ok(());
+        }
+        return ship_manual_cli(&args[3..]).await;
     }
 
     // `chump init` (UX-001) — first-run setup: detect model, write .env, start server, open browser.
@@ -21046,6 +21076,119 @@ async fn ship_execute_cli(args: &[String]) -> Result<()> {
         std::process::exit(1);
     }
     Ok(())
+}
+
+/// `chump ship --manual` (EFFECTIVE-1019, EFFECTIVE-178 slice) — CLI wrapper
+/// over [`chump_ship::manual_ship::ManualShipPath`]: push the branch, open a
+/// PR via `gh`, arm auto-merge. Rollback-on-failure and single-instance
+/// guarantees live in the executor; this function only parses flags,
+/// resolves defaults, and reports the result.
+async fn ship_manual_cli(args: &[String]) -> Result<()> {
+    let mut gap: Option<String> = None;
+    let mut branch: Option<String> = None;
+    let mut base = "main".to_string();
+    let mut commit_message: Option<String> = None;
+    let mut dry_run = false;
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--gap" => {
+                gap = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--branch" => {
+                branch = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--base" => {
+                base = args.get(i + 1).cloned().unwrap_or(base);
+                i += 2;
+            }
+            "--commit-message" => {
+                commit_message = args.get(i + 1).cloned();
+                i += 2;
+            }
+            "--dry-run" => {
+                dry_run = true;
+                i += 1;
+            }
+            other => {
+                eprintln!("chump ship --manual: unknown flag {other:?}");
+                eprintln!("Run `chump ship --manual --help` for usage.");
+                std::process::exit(2);
+            }
+        }
+    }
+
+    let gap = match gap {
+        Some(g) => g,
+        None => {
+            eprintln!("chump ship --manual: --gap GAP-ID is required.");
+            std::process::exit(2);
+        }
+    };
+
+    let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+
+    let branch = match branch {
+        Some(b) => b,
+        None => ship_manual_resolve_head_branch(&repo_root).unwrap_or_else(|| "HEAD".to_string()),
+    };
+
+    let session_id = std::env::var("CHUMP_SESSION_ID")
+        .unwrap_or_else(|_| format!("chump-ship-manual-{}", std::process::id()));
+
+    let commit_message = commit_message
+        .unwrap_or_else(|| format!("feat({gap}): automated ship via chump ship --manual"));
+
+    let intent = chump_ship::ShipIntent::owned(
+        gap.clone(),
+        branch.clone(),
+        base.clone(),
+        commit_message,
+        session_id,
+    );
+
+    let shipper = match chump_ship::manual_ship::ManualShipPath::new(intent, &repo_root, dry_run) {
+        Ok(s) => s,
+        Err(err) => {
+            eprintln!("chump ship --manual: {err}");
+            std::process::exit(1);
+        }
+    };
+
+    use chump_ship::Ship as _;
+    match shipper.ship().await {
+        Ok(receipt) => {
+            println!("{}", serde_json::to_string_pretty(&receipt)?);
+            Ok(())
+        }
+        Err(err) => {
+            eprintln!("chump ship --manual: ship failed: {err}");
+            std::process::exit(1);
+        }
+    }
+}
+
+/// Resolve the current branch name via `git rev-parse --abbrev-ref HEAD`.
+/// Returns `None` on a detached HEAD or any subprocess failure — caller
+/// falls back to the literal string `"HEAD"`.
+fn ship_manual_resolve_head_branch(repo_root: &std::path::Path) -> Option<String> {
+    let out = std::process::Command::new("git")
+        .arg("-C")
+        .arg(repo_root)
+        .args(["rev-parse", "--abbrev-ref", "HEAD"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if s.is_empty() || s == "HEAD" {
+        None
+    } else {
+        Some(s)
+    }
 }
 
 /// MISSION-046: extract OWNER/REPO from a gap's `skills_required` if it carries an

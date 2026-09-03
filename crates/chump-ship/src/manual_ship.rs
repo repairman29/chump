@@ -374,6 +374,48 @@ impl ManualShipPath {
         Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
     }
 
+    /// Best-effort rollback of [`Self::push_branch`]: deletes the just-
+    /// pushed remote branch so a failure between push and PR-create
+    /// doesn't leave a half-shipped branch on origin (EFFECTIVE-1019 AC 2).
+    /// Failure to delete is logged, not propagated — the original error
+    /// that triggered the rollback is what the caller reports.
+    async fn rollback_push(&self) {
+        if self.dry_run {
+            tracing::info!(
+                branch = %self.intent.branch,
+                "[dry-run] skipping push rollback"
+            );
+            return;
+        }
+        let out = self
+            .git()
+            .args(["push", "origin", "--delete", self.intent.branch.as_ref()])
+            .output()
+            .await;
+        match out {
+            Ok(o) if o.status.success() => {
+                tracing::warn!(
+                    branch = %self.intent.branch,
+                    "rolled back push (deleted remote branch) after ship failure"
+                );
+            }
+            Ok(o) => {
+                tracing::error!(
+                    branch = %self.intent.branch,
+                    stderr_tail = %truncate_for_log(&String::from_utf8_lossy(&o.stderr), 240),
+                    "push rollback failed — remote branch may still be pushed"
+                );
+            }
+            Err(err) => {
+                tracing::error!(
+                    branch = %self.intent.branch,
+                    error = %err,
+                    "push rollback subprocess failed to spawn"
+                );
+            }
+        }
+    }
+
     /// Arm GitHub auto-merge (`--auto --squash`). Returns false if the
     /// arm subcommand failed in a non-fatal way (secondary rate limit
     /// is the common case); operator can re-arm manually.
@@ -432,8 +474,16 @@ impl Ship for ManualShipPath {
         // 2. Push the branch.
         self.push_branch().await?;
 
-        // 3. Open the PR.
-        let (pr_number, pr_url) = self.create_pr().await?;
+        // 3. Open the PR. If this fails, the branch is pushed but there is
+        // no PR to show for it — roll the push back (EFFECTIVE-1019 AC 2)
+        // rather than leaving a dangling remote branch behind.
+        let (pr_number, pr_url) = match self.create_pr().await {
+            Ok(v) => v,
+            Err(err) => {
+                self.rollback_push().await;
+                return Err(err);
+            }
+        };
 
         // 4. Resolve head SHA for the receipt.
         let head_sha = self.resolve_head_sha().await?;
