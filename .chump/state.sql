@@ -15853,9 +15853,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `chump_system_prompt` function in `src/system_prompt.rs` to read the manifest’s `opus`, `sonnet`, and `haiku` tags and inject them as distinct slots in the generated routing‑config JSON payload, ensuring the payload structure matches the format expected by the existing routing‑config tests.
+    
+    Target file(s):
+    - src/system_prompt.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Routing config includes opus, sonnet, and haiku slots sourced from the manifest
-    - Generated config matches expected format in existing tests
+    - "In `src/system_prompt.rs`, the `chump_system_prompt` function’s output string contains a JSON key `\"opus\"` whose value equals the `opus` tag from the supplied manifest."
+    - "In `src/system_prompt.rs`, the `chump_system_prompt` function’s output string contains JSON keys `\"sonnet\"` and `\"haiku\"` populated with the corresponding manifest tags."
+    - Executing `cargo test --test routing_config` succeeds, confirming that the generated config matches the expected JSON schema defined in the test suite.
+    - When the manifest lacks any of the three tags, `chump_system_prompt` omits the missing slot without panicking, and the resulting JSON remains valid.
   depends_on: [CREDIBLE-688]
   notes: |
     [chump harvest check 'committed']
@@ -25082,7 +25091,7 @@ gaps:
     - cargo test -p chump-gap-store passes new enricher unit tests (mock LLM/almanac, no live calls)
     - docs/strategy/MODEL_ROUTING_LADDER_2026-07-22.md gains an enricher section (extends EFFECTIVE-445, no dup) documenting the mechanism + before/after proof
   notes: |
-    Decomposed into 15 slices: EFFECTIVE-758, EFFECTIVE-759, EFFECTIVE-760, EFFECTIVE-761, EFFECTIVE-762, EFFECTIVE-763, EFFECTIVE-764, EFFECTIVE-765, EFFECTIVE-766, EFFECTIVE-767, EFFECTIVE-768, EFFECTIVE-769, EFFECTIVE-770, EFFECTIVE-771, EFFECTIVE-772
+    Decomposed into 15 slices: EFFECTIVE-959, EFFECTIVE-960, EFFECTIVE-961, EFFECTIVE-962, EFFECTIVE-963, EFFECTIVE-964, EFFECTIVE-965, EFFECTIVE-966, EFFECTIVE-967, EFFECTIVE-968, EFFECTIVE-970, EFFECTIVE-971, EFFECTIVE-972, EFFECTIVE-973, EFFECTIVE-974
   opened_date: '2026-08-23'
   outcome_id: EFFECTIVE-000
 
@@ -41208,6 +41217,443 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-959
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create enricher module file with imports (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - File crates/chump-gap-store/src/maintenance/enricher.rs exists
+    - "File contains module declaration and imports: serde::{Deserialize, Serialize}, crate::{GapFieldUpdate, GapRow, GapStore}, and re-exports ArchitectError, LlmClient"
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-960
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement thinness classification utilities (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Functions is_thin, tags, has_file_pointer, and classify_thinness compile and are pure
+    - Unit tests can verify thin vs non‑thin gaps based on description length and presence of file tokens
+  depends_on: [EFFECTIVE-959]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-961
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add AlmanacClient trait and CliAlmanacClient stub (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Trait AlmanacClient with fn search(&self, query: &str) -> Result<String, anyhow::Error> defined"
+    - CliAlmanacClient struct implements AlmanacClient and shells out to `almanac` binary
+    - "CliAlmanacClient::new returns an instance"
+    - Search method can be mocked in tests
+  depends_on: [EFFECTIVE-959]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-962
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Parse almanac JSON hits (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Function parse_almanac_hits extracts a Vec<AlmanacHit> from raw almanac JSON
+    - Handles missing fields gracefully and returns Err on malformed JSON
+  depends_on: [EFFECTIVE-961]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-963
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Build almanac query from gap title (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Function build_almanac_query creates a deterministic query string given a GapRow
+    - Unit test confirms query contains gap title and repository identifier
+  depends_on: [EFFECTIVE-959]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-964
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement CommandLlmClient (env‑driven) (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Struct CommandLlmClient implements LlmClient
+    - from_env reads CHUMP_ENRICH_LLM_CMD, splits on whitespace, and falls back to a default command
+    - complete writes prompt to the command's stdin and returns stdout as a String
+    - Error handling for missing command or non‑zero exit
+  depends_on: [EFFECTIVE-959]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-965
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create EnrichedSpec and parsing helpers (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Struct EnrichedSpec with fields file_path, line, description, tests
+    - Functions strip_fences, coerce_str_list, parse_enriched_spec, is_usable, and to_field_update compile
+    - to_field_update returns a GapFieldUpdate that can be applied to a GapRow
+    - Unit tests cover JSON‑first parsing, fence stripping, and usability detection
+  depends_on: [EFFECTIVE-964, EFFECTIVE-963]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-966
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Define Enricher struct and basic pipeline skeleton (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Struct Enricher<A, L> holds an AlmanacClient and an LlmClient
+    - "Enricher::new constructs the struct from generic clients"
+    - "Method enrich(&self, gap: &GapRow, mode: EnrichMode) -> Result<EnrichOutcome, anyhow::Error> exists"
+    - Skeleton returns early for non‑thin gaps
+  depends_on: [EFFECTIVE-960, EFFECTIVE-961, EFFECTIVE-964, EFFECTIVE-965]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-967
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate thinness detection into enrich pipeline (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - enrich method calls classify_thinness and proceeds only when Thinness.is_thin() is true
+    - Logs include ThinReason tags
+    - "Unit test verifies that a non‑thin gap results in EnrichOutcome::Skipped"
+  depends_on: [EFFECTIVE-966]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-968
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create standalone CLI binary chump-gap-enricher (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Binary entry point at crates/chump-gap-store/src/bin/chump-gap-enricher.rs registers in Cargo.toml
+    - Supports flags --apply and --dry-run
+    - "Instantiates Enricher with CommandLlmClient::from_env and CliAlmanacClient::new"
+    - Iterates over gaps from GapStore, runs enrich, and writes back only in --apply mode
+    - "Exit codes: 0 on success, non‑zero on fatal errors"
+  depends_on: [EFFECTIVE-966, EFFECTIVE-967]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-970
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add unit tests for thinness classification (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Test module under enricher.rs::tests verifies classify_thinness returns Thinness with correct reasons"
+    - Covers description length threshold and file pointer detection
+  depends_on: [EFFECTIVE-960]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-971
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add unit tests for Almanac client and hit parsing (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Mock implementation of AlmanacClient returns predefined JSON
+    - parse_almanac_hits correctly yields AlmanacHit structs
+    - Tests assert correct handling of empty and malformed responses
+  depends_on: [EFFECTIVE-961, EFFECTIVE-962]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-972
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add unit tests for LLM client and enriched spec parsing (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Mock CommandLlmClient returns a canned model response
+    - parse_enriched_spec extracts file_path, line, description, tests
+    - is_usable returns true only when required fields are present
+    - to_field_update produces a GapFieldUpdate matching expected values
+  depends_on: [EFFECTIVE-964, EFFECTIVE-965]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-973
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integration test for full enrichment pipeline (dry‑run) (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test spins up Enricher with mocked AlmanacClient and CommandLlmClient
+    - "Runs enrich on a thin gap in EnrichMode::DryRun"
+    - Asserts EnrichOutcome indicates a concrete spec would be written
+    - Ensures no actual file modifications occur
+  depends_on: [EFFECTIVE-968, EFFECTIVE-970, EFFECTIVE-971, EFFECTIVE-972]
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-974
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Document enricher mechanism in MODEL_ROUTING_LADDER markdown (EFFECTIVE-446 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "docs/strategy/MODEL_ROUTING_LADDER_2026-07-22.md contains a new \"Enricher\" section"
+    - Section explains detection, almanac lookup, prompt building, model call, and write‑back
+    - Includes before/after proof snippet referencing EFFECTIVE-445
+    - No duplicate content with existing sections
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: EVAL-085
