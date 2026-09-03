@@ -668,6 +668,19 @@ jobs:
       - name: Install manifest gate
         run: bash scripts/ci/test-install-script-manifest.sh
 
+      # CREDIBLE-237: dead-grep-detector — scripts/ci/*.sh tests must not grep
+      # a hardcoded source path that no longer exists (the class that made 5
+      # gates fail/vacuous-pass when INFRA-1965 moved gap.rs out of main.rs).
+      # Was built + tested (CREDIBLE-332) but never actually wired into CI —
+      # this step closes that gap. Known false positives (heuristic can't see
+      # existence guards, globs, or multi-line grep args) are tracked in
+      # scripts/ci/dead-grep-detector-allowlist.txt.
+      - name: Dead-grep-target gate (CREDIBLE-237)
+        run: bash scripts/ci/dead-grep-detector.sh .
+
+      - name: Dead-grep-detector self-test (CREDIBLE-332)
+        run: bash scripts/ci/test-dead-grep-detector.sh
+
       # INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
       # install-bot-merge-watchdog.sh shipped 0644 and silently never ran
       # via chump-fleet-bootstrap.sh for days (2026-05-23 curator finding).

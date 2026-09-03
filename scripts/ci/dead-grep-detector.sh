@@ -31,6 +31,22 @@ if ! ROOT="$(cd "$ROOT" 2>/dev/null && pwd)"; then
 fi
 SCAN_DIR="$ROOT/scripts/ci"
 
+# Allowlist for known false positives (heuristic can't see a surrounding
+# `[[ -f ... ]]` guard, a glob expansion, or a heredoc fixture that embeds
+# example grep calls as literal text). Format: "rel/path:line  # reason".
+# Kept narrow and per-line so it can't silently absorb a real dead target.
+SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+ALLOWLIST_FILE="${DEAD_GREP_ALLOWLIST:-$SELF_DIR/dead-grep-detector-allowlist.txt}"
+declare -A ALLOWLISTED
+if [[ -f "$ALLOWLIST_FILE" ]]; then
+    while IFS= read -r aline || [[ -n "$aline" ]]; do
+        aline="${aline%%#*}"
+        aline="$(printf '%s' "$aline" | tr -d '[:space:]')"
+        [[ -z "$aline" ]] && continue
+        ALLOWLISTED["$aline"]=1
+    done < "$ALLOWLIST_FILE"
+fi
+
 if [[ ! -d "$SCAN_DIR" ]]; then
     echo "dead-grep-detector: no scripts/ci directory under $ROOT" >&2
     echo "Total absent targets: 0"
@@ -120,6 +136,7 @@ is_skippable_literal() {
 }
 
 findings_count=0
+allowlisted_count=0
 findings_out=""
 
 while IFS= read -r -d '' file; do
@@ -243,6 +260,11 @@ while IFS= read -r -d '' file; do
         esac
 
         if [[ ! -e "$candidate" ]]; then
+            key="${rel_file}:${line_no}"
+            if [[ -n "${ALLOWLISTED[$key]:-}" ]]; then
+                allowlisted_count=$((allowlisted_count + 1))
+                continue
+            fi
             findings_out+="${rel_file}:${line_no}  target=${resolved}
     ${line#"${line%%[![:space:]]*}"}
 "
@@ -257,5 +279,8 @@ if [[ "$findings_count" -gt 0 ]]; then
 fi
 
 echo "Total absent targets: $findings_count"
+if [[ "${allowlisted_count:-0}" -gt 0 ]]; then
+    echo "Allowlisted (known false positives, see $ALLOWLIST_FILE): $allowlisted_count"
+fi
 
-exit 0
+[[ "$findings_count" -eq 0 ]]

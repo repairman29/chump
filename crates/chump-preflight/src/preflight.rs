@@ -1029,6 +1029,14 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // CREDIBLE-237: dead-grep-detector self-test — proves the scanner
+        // still flags a hardcoded-path grep target that no longer exists
+        // (the vacuous-pass class from INFRA-1965). Pure bash, no network.
+        "scripts/ci/test-dead-grep-detector.sh",
+        // CREDIBLE-237: the dead-grep-detector gate itself, run the same way
+        // ci.yml runs it (against the real repo, no args = defaults to cwd).
+        // Pure bash, no network, ~1s.
+        "scripts/ci/dead-grep-detector.sh",
     ];
     candidates
         .iter()
