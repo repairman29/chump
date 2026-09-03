@@ -79017,23 +79017,26 @@ gaps:
 - id: INFRA-3364
   domain: INFRA
   title: "preflight mirror: audit-shard-2 event-registry/observability/webhook-cache gates (27 scripts, META-086 cluster 2/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"event-registry-observability (shard 2)\" for the current unmirrored-script list (27 at filing time; re-check for drift).\n2. For each unmirrored script, add a preflight.rs entry that mirrors its .github/workflows/audit.yml invocation exactly (env vars like CHUMP_REGISTRY_GATE_MODE=strict, BASE_REF=origin/main, etc).\n3. Group event-registry-coverage-family scripts under one preflight scope tag so `chump preflight --scope registry` can run just this cluster.\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
   notes: |
     Decomposed into 10 slices: INFRA-4040, INFRA-4041, INFRA-4042, INFRA-4043, INFRA-4044, INFRA-4045, INFRA-4046, INFRA-4047, INFRA-4048, INFRA-4049
+    [2026-09-03T05:25:10Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3365
   domain: INFRA
   title: "preflight mirror: audit-shard-3 bash/coordinator/worker/bot-merge/PWA gates (33 scripts, META-086 cluster 3/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"bash-script-gates (shard 3)\" for the current unmirrored-script list (33 at filing time, the largest cluster; re-check for drift).\n2. Split into at most 2 sibling PRs if the diff exceeds ~400 LOC (coordinator/worker/bot-merge gates vs PWA/precommit gates) — note the split explicitly in the PR description; do not silently drop scripts.\n3. For each unmirrored script, add a preflight.rs entry mirroring its .github/workflows/audit.yml invocation exactly (including any CHUMP_BIN cargo-build prerequisite).\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR(s).\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  notes: |
+    [2026-09-03T05:32:43Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3366
