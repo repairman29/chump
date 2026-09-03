@@ -22357,9 +22357,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new boolean field `batched_integrator_healthy` (exposed as the configuration key `batched_integrator.healthy`) to the configuration struct used by the integrator, give it a default value of `true`, and update `build_integration_branch` to read this flag from the loaded configuration while preserving existing settings.
+    
+    Target file(s):
+    - crates/chump-integrator/src/cycle/merge_branch.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new configuration entry `batched_integrator.healthy` with a sensible default (true) is added
-    - Existing configuration loading respects the new default without breaking other settings
+    - "In `crates/chump-integrator/src/cycle/merge_branch.rs`, the configuration struct now contains a `pub batched_integrator_healthy: bool` field with `Default::default()` setting it to `true`."
+    - The function `build_integration_branch` in the same file uses `config.batched_integrator_healthy` to decide whether to enable the healthy‑check path, and the code compiles without altering other configuration fields.
+    - "A unit test in `crates/chump-integrator/src/cycle/merge_branch.rs::tests::default_config_has_healthy_true` asserts that `Config::default().batched_integrator_healthy == true`."
+    - When a TOML configuration file omits the `batched_integrator.healthy` entry, running the binary and invoking `build_integration_branch` results in the flag being `true` (observable via the function’s returned status or a log message).
   depends_on: [EFFECTIVE-1022]
 
 - id: EFFECTIVE-1024
@@ -88241,7 +88250,7 @@ gaps:
 - id: INFRA-3582
   domain: INFRA
   title: bot-merge.sh gh_api_probe hangs 10s when stdin not redirected from /dev/null (--silent reads stdin)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -88250,6 +88259,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 6 slices: INFRA-4224, INFRA-4225, INFRA-4226, INFRA-4227, INFRA-4228, INFRA-4229
+    [2026-09-03T21:51:06Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3583
@@ -122006,6 +122016,8 @@ gaps:
     - "The change described by \"Pixel GPU is always there). AC: Pixel node profile declares GPU/inference capability; scheduler places inference-suitable work on Pixel; a real job verified running on Pixel local compute.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 8 slices: RESILIENT-738, RESILIENT-739, RESILIENT-740, RESILIENT-741, RESILIENT-742, RESILIENT-743, RESILIENT-744, RESILIENT-745
   opened_date: '2026-08-20'
 
 - id: RESILIENT-352
@@ -132852,6 +132864,234 @@ gaps:
     
     === cross-pollination briefs mentioning 'hygiene' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: RESILIENT-738
+  domain: RESILIENT
+  title: "RESILIENT: Research current node profiling and scheduler code paths (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Identify the source files where node capabilities are defined and where the scheduler reads them.
+    - Document the data structures used for node profiles and the decision‑making flow for job placement.
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-739
+  domain: RESILIENT
+  title: "RESILIENT: Define GPU/inference capability flag in node profile struct (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Add a new enum variant or boolean field (e.g., `has_gpu_inference: bool`) to the node profile type."
+    - Update serialization/deserialization so the flag persists across restarts.
+    - Compile without errors.
+  depends_on: [RESILIENT-738]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-740
+  domain: RESILIENT
+  title: "RESILIENT: Update Pixel node registration to set GPU/inference capability flag (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Pixel node startup code sets the new capability flag to true.
+    - Running `cargo test` shows the flag present in the node profile returned by the registry.
+    - No regression in existing node‑registration tests.
+  depends_on: [RESILIENT-739]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-741
+  domain: RESILIENT
+  title: "RESILIENT: Extend scheduler to consider GPU/inference capability for inference jobs (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scheduler filters candidate nodes by the new capability when the job type is marked `inference`.
+    - Existing scheduling behavior for non‑inference jobs remains unchanged.
+    - Unit tests for scheduler logic pass.
+  depends_on: [RESILIENT-740]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-742
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test for node profile GPU/inference capability (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test creates a mock Pixel node and asserts `has_gpu_inference` is true in its profile.
+    - Test fails before slice 2 is merged and passes after.
+  depends_on: [RESILIENT-740]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-743
+  domain: RESILIENT
+  title: "RESILIENT: Add integration test verifying scheduler places inference job on Pixel node (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test submits an inference‑type job to a cluster containing a Pixel node and a generic node.
+    - Assert that the job is scheduled on the Pixel node.
+    - Test fails without the scheduler changes and passes after slice 3 is merged.
+  depends_on: [RESILIENT-741, RESILIENT-742]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-744
+  domain: RESILIENT
+  title: "RESILIENT: Update CI scripts to run new tests (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline executes the new unit and integration tests.
+    - Pipeline fails if the tests are missing or error.
+  depends_on: [RESILIENT-743]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-745
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt, clippy and ensure no warnings; verify all tests pass (RESILIENT-351 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --check` reports no formatting issues."
+    - "`cargo clippy --all-targets -D warnings` reports no warnings."
+    - All existing and new tests pass (`cargo test`).
+  depends_on: [RESILIENT-743, RESILIENT-744]
+  notes: |
+    [chump harvest check 'aware']
+    === primitives_index match for 'aware' ===
+    
+    === cluster keyword match for 'aware' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'aware' ===
+    
+    === repo-description match for 'aware' ===
+    
+    === HARVEST_ROADMAP.md mention of 'aware' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+    
+    === cross-pollination briefs mentioning 'aware' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: SMOKE-001
   domain: SMOKE
