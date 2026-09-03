@@ -3249,7 +3249,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 9 slices: CREDIBLE-657, CREDIBLE-658, CREDIBLE-659, CREDIBLE-660, CREDIBLE-661, CREDIBLE-662, CREDIBLE-663, CREDIBLE-664, CREDIBLE-665
+    Decomposed into 9 slices: CREDIBLE-697, CREDIBLE-698, CREDIBLE-699, CREDIBLE-700, CREDIBLE-701, CREDIBLE-702, CREDIBLE-703, CREDIBLE-704, CREDIBLE-705
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-208
@@ -13858,10 +13858,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `complete` function in `src/provider_cascade.rs` to detect a git‑fetch failure, capture the underlying error message (or use a generic placeholder when none is available), and format the fleet‑brief ship count line as `Ships: unavailable (<reason>)` instead of the current misleading `Ships: 0` when such a failure occurs.
+    
+    Target file(s):
+    - src/provider_cascade.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "When git fetch ultimately fails, fleet‑brief output shows \"Ships: unavailable (git fetch error)\""
-    - "The message replaces the misleading \"Ships: 0\""
-    - The reason string includes the captured git error or a generic placeholder
+    - "? In `src/provider_cascade.rs::complete`, when the internal git‑fetch call returns `Err(e)`, the generated fleet‑brief string contains the exact substring `Ships : unavailable (` followed by either the captured error text `e` or the placeholder `git fetch error`."
+    - "In the same function, the previous output `Ships: 0` is never emitted for a git‑fetch failure scenario."
+    - "? Executing the program with a forced git‑fetch failure (e.g., by mocking the fetch to return `Err(\"network timeout\")`) produces a fleet‑brief line exactly matching `Ships : unavailable (network timeout)`."
+    - "? Executing the program with a git‑fetch failure that yields an empty error message produces a fleet‑brief line exactly matching `Ships : unavailable (git fetch error)`."
   depends_on: [CREDIBLE-599]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -16080,6 +16088,239 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-697
+  domain: CREDIBLE
+  title: "CREDIBLE: Reproduce non-deterministic CONCERN verdict behavior locally (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A minimal reproducible example (e.g., a cargo test or script) can trigger the flip‑flop verdict on identical diffs.
+    - The example runs without panics and logs the current (incorrect) behavior.
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-698
+  domain: CREDIBLE
+  title: "CREDIBLE: Add detailed logging for CONCERN reasons in the reviewer agent (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Log statements emit each CONCERN reason before any decision is made.
+    - Logs are visible when running the reproducible example from slice 0.
+  depends_on: [CREDIBLE-697]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-699
+  domain: CREDIBLE
+  title: "CREDIBLE: Refactor verdict calculation to be deterministic (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Verdict logic sorts diffs or otherwise guarantees stable ordering.
+    - Running the example from slice 0 yields the same verdict on repeated executions.
+  depends_on: [CREDIBLE-698]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-700
+  domain: CREDIBLE
+  title: "CREDIBLE: Fix swallowing of CONCERN reasons during verdict aggregation (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All CONCERN reasons collected in earlier stages are present in the final verdict output.
+    - No reason is silently dropped as verified by the logs from slice 1.
+  depends_on: [CREDIBLE-699]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-701
+  domain: CREDIBLE
+  title: "CREDIBLE: Write unit test asserting consistent verdict for identical diffs (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The new unit test fails before the changes in slice 3 and passes after.
+    - Test asserts that the verdict and its CONCERN reasons are identical across multiple runs.
+  depends_on: [CREDIBLE-700]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-702
+  domain: CREDIBLE
+  title: "CREDIBLE: Add integration test script to CI (scripts/ci/test-concern.sh) (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The script executes the reproducible scenario and exits with status 0 only when the verdict is stable.
+    - Script is executable and included in the repository.
+  depends_on: [CREDIBLE-701]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-703
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy, fix any warnings (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes."
+    - "`cargo clippy --all-targets -D warnings` completes without warnings."
+  depends_on: [CREDIBLE-702]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-704
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI pipeline to run the new integration test script (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI configuration (e.g., .github/workflows/ci.yml) includes a step that runs scripts/ci/test-concern.sh.
+    - CI passes on a clean branch after the changes.
+  depends_on: [CREDIBLE-702]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: CREDIBLE-705
+  domain: CREDIBLE
+  title: "CREDIBLE: Update documentation/changelog for the deterministic CONCERN fix (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CHANGELOG entry describes the fix for non‑deterministic verdicts and CONCERN reason propagation.
+    - Documentation (e.g., README or docs/architecture.md) notes the new deterministic behavior.
+  depends_on: [CREDIBLE-703]
+  notes: |
+    [chump harvest check 'opaque']
+    === primitives_index match for 'opaque' ===
+    
+    === cluster keyword match for 'opaque' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'opaque' ===
+    
+    === repo-description match for 'opaque' ===
+    
+    === HARVEST_ROADMAP.md mention of 'opaque' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'opaque' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: DOC-031
   domain: DOC
