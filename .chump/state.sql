@@ -3690,6 +3690,8 @@ gaps:
     - "REPORT PER TIER, per stage: where does each tier fail? Tool-call refusal, wrong edit, broken build, failed CI, or ship-wall? A per-stage failure map is the useful artifact; a single pass/fail rate is not. Reuse eval_harness.rs and the existing 7-type round taxonomy rather than inventing a parallel harness"
     - "OUTCOME IS A ROUTING POLICY, not a leaderboard: the deliverable is 'tier X is sufficient for effort<=s in language Y' — a rule the cascade and EFFECTIVE-409's tender can consume. Today's policy (Claude last rung) is a reasonable default derived from one negative result, and it may be leaving both money and throughput on the table in BOTH directions"
     - "COST THE ANSWER: record tokens and dollars per successful merge per tier. 'Cheaper model succeeded' is only a win if the retries, failed CI runs and escalations do not exceed the price of doing it right the first time"
+  notes: |
+    Decomposed into 15 slices: CREDIBLE-607, CREDIBLE-608, CREDIBLE-609, CREDIBLE-610, CREDIBLE-611, CREDIBLE-612, CREDIBLE-613, CREDIBLE-614, CREDIBLE-615, CREDIBLE-616, CREDIBLE-617, CREDIBLE-618, CREDIBLE-619, CREDIBLE-620, CREDIBLE-621
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -13992,6 +13994,449 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-607
+  domain: CREDIBLE
+  title: "CREDIBLE: Define representative gaps across Rust and TypeScript (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A document (README.md) lists at least three Rust and three TypeScript coding gaps.
+    - Each gap is classified by expected effort level (xs, s, m) and includes a short description and expected outcome.
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-608
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement core test harness framework using eval_harness.rs (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A Rust binary `harness` can be built and run without errors.
+    - "The harness accepts a gap definition JSON and orchestrates the stages: claim → edit → commit → PR → CI → merge."
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-609
+  domain: CREDIBLE
+  title: "CREDIBLE: Add configurable model‑tier selection to the harness (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A command‑line flag `--model-tier` (values: free, cheap, best) is parsed and stored in the harness config."
+    - The selected tier is passed to all model‑calling components.
+  depends_on: [CREDIBLE-608]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-610
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement claim‑generation step for a given gap (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a gap, the harness invokes the selected model tier and captures the claim output.
+    - The claim is saved to a file and the harness logs a success flag if the model returns a non‑empty claim.
+  depends_on: [CREDIBLE-608, CREDIBLE-609]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-611
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement edit‑generation step and apply to codebase (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The harness calls the model to produce an edit patch for the previously generated claim.
+    - The patch is applied to a temporary checkout without syntax errors (git apply succeeds).
+    - The harness records whether the edit step succeeded.
+  depends_on: [CREDIBLE-608, CREDIBLE-609, CREDIBLE-610]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-612
+  domain: CREDIBLE
+  title: "CREDIBLE: Automate commit creation and PR opening in a test repository (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - After a successful edit, the harness creates a git commit with a standard message.
+    - The harness opens a pull request via the GitHub API (or a mock) and stores the PR URL.
+    - The PR appears in the test repository with the correct diff.
+  depends_on: [CREDIBLE-608, CREDIBLE-611]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-613
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect CI run and verify green status (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The harness triggers the repository's CI (e.g., GitHub Actions) for the opened PR.
+    - It polls the CI status and records a pass/fail flag when the run completes.
+    - A green status is required to proceed to the merge step.
+  depends_on: [CREDIBLE-612]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-614
+  domain: CREDIBLE
+  title: "CREDIBLE: Automate PR merge when CI is green (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When CI reports success, the harness merges the PR via the GitHub API.
+    - The merge action is logged and the target branch contains the new commit.
+  depends_on: [CREDIBLE-613]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-615
+  domain: CREDIBLE
+  title: "CREDIBLE: Run full end‑to‑end harness for the free model tier (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The harness executes all stages for every defined gap using the `free` tier.
+    - A JSON result file is produced containing a per‑gap, per‑stage pass/fail flag.
+    - All intermediate artifacts (claims, patches, CI logs) are retained for debugging.
+  depends_on: [CREDIBLE-607, CREDIBLE-608, CREDIBLE-609, CREDIBLE-610, CREDIBLE-611, CREDIBLE-612, CREDIBLE-613, CREDIBLE-614]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-616
+  domain: CREDIBLE
+  title: "CREDIBLE: Run full end‑to‑end harness for the cheap model tier (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The harness executes all stages for every defined gap using the `cheap` tier.
+    - A JSON result file analogous to the free‑tier run is generated.
+    - Results are stored in a separate directory labeled `cheap`.
+  depends_on: [CREDIBLE-607, CREDIBLE-608, CREDIBLE-609, CREDIBLE-610, CREDIBLE-611, CREDIBLE-612, CREDIBLE-613, CREDIBLE-614]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-617
+  domain: CREDIBLE
+  title: "CREDIBLE: Run full end‑to‑end harness for the best model tier (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The harness executes all stages for every defined gap using the `best` tier.
+    - A JSON result file analogous to the other runs is generated and saved under `best`.
+    - No uncaught errors occur during the run.
+  depends_on: [CREDIBLE-607, CREDIBLE-608, CREDIBLE-609, CREDIBLE-610, CREDIBLE-611, CREDIBLE-612, CREDIBLE-613, CREDIBLE-614]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-618
+  domain: CREDIBLE
+  title: "CREDIBLE: Aggregate per‑stage failure data across tiers (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A script reads the three result JSON files and produces a consolidated failure map:"
+    - "{ tier: { stage: failureCount, ... }, ... }"
+    - The failure map is saved as `failure_map.json` and matches the expected schema.
+  depends_on: [CREDIBLE-615, CREDIBLE-616, CREDIBLE-617]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-619
+  domain: CREDIBLE
+  title: "CREDIBLE: Record token usage and dollar cost per successful merge per tier (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - During each run, token counts returned by the model API are logged.
+    - Using the known pricing for each tier, the script computes total cost per successful merge.
+    - A `cost_report.json` file lists `tier`, `successfulMerges`, `totalTokens`, `totalCostUSD`.
+  depends_on: [CREDIBLE-618]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-620
+  domain: CREDIBLE
+  title: "CREDIBLE: Draft routing policy based on observed capabilities (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A policy document (`routing_policy.md`) states, for each language (Rust, TypeScript) and effort level (xs, s), the minimum model tier required.
+    - The policy is derived solely from the failure map and cost report.
+    - The document includes a concise decision table.
+  depends_on: [CREDIBLE-618, CREDIBLE-619]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-621
+  domain: CREDIBLE
+  title: "CREDIBLE: Integrate routing policy into EFFECTIVE‑409 tender (CREDIBLE-230 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The policy section is added to the existing EFFECTIVE‑409 documentation repository.
+    - A pull request is opened, reviewed, and merged.
+    - The CI for the documentation repo passes after the change.
+  depends_on: [CREDIBLE-620]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: DOC-031
   domain: DOC
