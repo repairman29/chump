@@ -2540,3 +2540,16 @@ CHUMP_PROVIDER_N_MODEL_CLASS
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_MAX_CONSECUTIVE_GIT_COMMITS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CI_FLEET_SWEEP_ARSENAL
+# detected in: (standard input)
+CHUMP_CI_FLEET_SWEEP_DAYS
+# detected in: (standard input)
+CHUMP_CI_FLEET_SWEEP_DISABLE
+# detected in: (standard input)
+CHUMP_CI_FLEET_SWEEP_OWNER
+# detected in: (standard input)
+CHUMP_CI_FLEET_SWEEP_STATE
