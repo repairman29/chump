@@ -22296,6 +22296,110 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: EFFECTIVE-1021
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Set up local development environment for EFFECTIVE repository (EFFECTIVE-427 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Repository cloned and all required toolchains installed
+    - "`cargo build` succeeds locally"
+    - CI scripts (scripts/ci/*.sh) can be executed without errors
+
+- id: EFFECTIVE-1022
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Identify code paths related to the batched integrator (EFFECTIVE-427 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - List of source files and functions handling batched integration is documented
+    - Location of the health‑check flag and conflict‑skip handling is pinpointed
+  depends_on: [EFFECTIVE-1021]
+
+- id: EFFECTIVE-1023
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add default configuration for \"batched integrator healthy\" flag (EFFECTIVE-427 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new configuration entry `batched_integrator.healthy` with a sensible default (true) is added
+    - Existing configuration loading respects the new default without breaking other settings
+  depends_on: [EFFECTIVE-1022]
+
+- id: EFFECTIVE-1024
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement conflict‑skip logic in the batched integrator (EFFECTIVE-427 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When a conflict is detected, the integrator skips the offending batch instead of aborting
+    - The logic is gated behind the `batched_integrator.healthy` flag and respects the default value
+    - Code compiles and unit tests (pre‑existing) still pass
+  depends_on: [EFFECTIVE-1023]
+
+- id: EFFECTIVE-1025
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit test for healthy + default behavior (EFFECTIVE-427 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A new `#[test]` verifies that with the default configuration the integrator runs without skipping"
+    - The test fails when the conflict‑skip code is disabled
+    - Test runs via `cargo test` and passes
+  depends_on: [EFFECTIVE-1024]
+
+- id: EFFECTIVE-1026
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create integration test that validates N green PRs in a single CI run (EFFECTIVE-427 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script under `scripts/ci/test-batched-integrator.sh` triggers the batched integrator on a fixture containing N PRs
+    - The script asserts that all N PRs finish green in one CI execution
+    - The script fails if the conflict‑skip change is absent
+  depends_on: [EFFECTIVE-1025]
+
+- id: EFFECTIVE-1027
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI pipeline to execute the new integration test (EFFECTIVE-427 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI configuration (`.github/workflows/ci.yml` or equivalent) includes the new script
+    - Running the CI locally with `scripts/ci/run_all.sh` executes the new test
+    - No other CI steps are altered unintentionally
+  depends_on: [EFFECTIVE-1026]
+
+- id: EFFECTIVE-1028
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run `cargo fmt` and `cargo clippy`, fix any warnings (EFFECTIVE-427 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` reports no changes needed"
+    - "`cargo clippy --all-targets -- -D warnings` exits with status 0"
+    - All newly added code complies with formatting and linting rules
+  depends_on: [EFFECTIVE-1027]
+
+- id: EFFECTIVE-1029
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Verify that all existing tests continue to pass (EFFECTIVE-427 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo test` runs without failures"
+    - No regression is observed in previously passing test suites
+  depends_on: [EFFECTIVE-1028]
+
 - id: EFFECTIVE-103
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire test-rustfmt-parity.sh into role curator-opus-ci-audit"
@@ -22307,6 +22411,303 @@ gaps:
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
+- id: EFFECTIVE-1030
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create PR and confirm CI passes with the new changes (EFFECTIVE-427 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Pull request is opened against the main branch
+    - CI pipeline completes successfully, showing green status for all jobs
+    - Reviewers can merge the PR without additional changes
+  depends_on: [EFFECTIVE-1029]
+
+- id: EFFECTIVE-1031
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Locate existing mission HTML assets and generation pipeline (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Repository path to the current mission HTML files is identified and documented
+    - Current build or deployment steps that produce the mission HTML are listed
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1032
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add placeholder SonnetAgent struct and module (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new `sonnet_agent` module compiles without errors
+    - "`SonnetAgent` struct is defined with a `new()` constructor"
+  depends_on: [EFFECTIVE-1031]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1033
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement live fleet state fetcher (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function `fetch_live_fleet_state()` returns a deserialized `FleetState` object
+    - Function handles network errors and returns a Result type
+    - Unit test with a mocked HTTP response compiles
+  depends_on: [EFFECTIVE-1032]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1034
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create HTML template rendering for dynamic sections (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Template file (e.g., `mission_dynamic.html.tmpl`) includes placeholders for current-state numbers, gap statuses, and live_pct/debt
+    - Renderer function `render_dynamic_sections(&FleetState) -> String` replaces placeholders correctly
+    - Rendered output matches expected HTML fragment in a unit test
+  depends_on: [EFFECTIVE-1033]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1035
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate renderer into mission-doc keeper flow (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Mission-doc keeper reads the template, calls `render_dynamic_sections`, and writes the final HTML to the canonical repo location
+    - Generated HTML file is committed to the version‑controlled path when the agent runs
+    - Running the agent locally updates the HTML file without panics
+  depends_on: [EFFECTIVE-1034]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1036
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add scheduled execution of SonnetAgent (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A scheduler entry (e.g., using `tokio::time::interval` or existing cron framework) triggers the agent every configurable interval (default 15 min)"
+    - Scheduler start‑up is wired into the main EFFECTIVE binary
+    - Log entry confirms each scheduled run
+  depends_on: [EFFECTIVE-1035]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1037
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit test for dynamic section rendering (EFFECTIVE-514 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test supplies a fabricated `FleetState` with known values
+    - Test asserts that the rendered HTML contains those values in the correct locations
+    - Test fails when the rendering function is stubbed out
+  depends_on: [EFFECTIVE-1034]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1038
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write integration test for full mission‑doc keeper update (EFFECTIVE-514 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test runs the SonnetAgent in a temporary directory with a mock fleet‑state server
+    - Test verifies that the mission HTML file is created/updated with expected dynamic content
+    - Test fails when the integration code in slice 4 is removed
+  depends_on: [EFFECTIVE-1036, EFFECTIVE-1037]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1039
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI pipeline to run new tests and enforce formatting (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI script includes `cargo test --workspace` and the new integration test
+    - CI script runs `cargo fmt -- --check` and `cargo clippy -- -D warnings` for all targets
+    - Pipeline passes when all new tests succeed
+  depends_on: [EFFECTIVE-1038]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: EFFECTIVE-104
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire RESILIENT-075.yaml into role curator-opus-target"
@@ -22317,6 +22718,37 @@ gaps:
     - "1. Edit the role-doc for curator-opus-target to reference RESILIENT-075.yaml (shipped in RESILIENT-075) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'RESILIENT-075.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1040
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Document Mission‑doc keeper behavior and configuration (EFFECTIVE-514 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README or docs section describes the purpose of the SonnetAgent, how to configure the cadence, and where the generated HTML lives
+    - Documentation is built without lint warnings
+  depends_on: [EFFECTIVE-1035]
+  notes: |
+    [chump harvest check 'sonnet']
+    === primitives_index match for 'sonnet' ===
+    
+    === cluster keyword match for 'sonnet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sonnet' ===
+    
+    === repo-description match for 'sonnet' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sonnet' (deep-scan findings) ===
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'sonnet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: EFFECTIVE-105
   domain: EFFECTIVE
@@ -26910,6 +27342,8 @@ gaps:
     - "The change described by \"batched integrator healthy + default — conflict-skip (RESILIENT-269) proven to land N green PRs in ONE CI run\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: EFFECTIVE-1021, EFFECTIVE-1022, EFFECTIVE-1023, EFFECTIVE-1024, EFFECTIVE-1025, EFFECTIVE-1026, EFFECTIVE-1027, EFFECTIVE-1028, EFFECTIVE-1029, EFFECTIVE-1030
   opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
@@ -29226,6 +29660,8 @@ gaps:
     - "The change described by \"Mission-doc keeper — sonnet agent keeps the OS/mission HTML assets current from live state\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: EFFECTIVE-1031, EFFECTIVE-1032, EFFECTIVE-1033, EFFECTIVE-1034, EFFECTIVE-1035, EFFECTIVE-1036, EFFECTIVE-1037, EFFECTIVE-1038, EFFECTIVE-1039, EFFECTIVE-1040
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-515
