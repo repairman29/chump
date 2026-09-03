@@ -13255,10 +13255,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the `run_detector` function in `scripts/ci/test-pr-title-drift-detector.sh` to (1) store the set of `real` drift flags from the current run, (2) compare them against the set from the previous nightly run saved in `ci_artifacts/prev_real_drifts.json`, (3) output the count of newly introduced real drifts, and (4) invoke the existing Slack/Email notification helper to alert when the count is greater than zero, thereby creating a dedicated nightly CI step for drift triage.
+    
+    Target file(s):
+    - scripts/ci/test-pr-title-drift-detector.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CI pipeline includes a step that executes the filtering script from slice 7
-    - If new `real` drift flags are detected compared to the previous run, a Slack/Email alert is sent with details
-    - Job runs successfully on the CI platform and logs the number of new real drifts
+    - The `run_detector` function writes a JSON file `ci_artifacts/current_real_drifts.json` containing all `real` drift identifiers detected in the current run.
+    - "After execution, the script logs a line matching the regex `Drift triage completed: \\d+ new real drifts` to the CI console output."
+    - When the count of new real drifts is >0, the script calls the `notify_slack` command with a payload that includes the list of new drift IDs, and the Slack channel receives a message containing those IDs.
+    - A subsequent nightly run reads `ci_artifacts/prev_real_drifts.json`, compares it to `ci_artifacts/current_real_drifts.json`, updates `prev_real_drifts.json` with the latest data, and only triggers the Slack alert if the comparison yields at least one new `real` drift.
   depends_on: [CREDIBLE-576]
   notes: |
     [chump harvest check 'almanac']
@@ -113727,7 +113735,7 @@ gaps:
 - id: RESILIENT-201
   domain: RESILIENT
   title: "repo_tools::/repo_path::/tool_middleware:: tests fail only inside linked git worktrees (20 tests) — forces test-gate bypass on every worktree push"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -113736,6 +113744,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 8 slices: RESILIENT-682, RESILIENT-683, RESILIENT-684, RESILIENT-685, RESILIENT-686, RESILIENT-687, RESILIENT-688, RESILIENT-689
+    [2026-09-03T14:43:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
