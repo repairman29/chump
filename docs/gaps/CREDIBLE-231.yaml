@@ -1,7 +1,7 @@
 - id: CREDIBLE-231
   domain: CREDIBLE
   title: software-factory matrix is a DELIVERY org chart — the business chairs (support, money, legal) are not layers at all
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -12,5 +12,7 @@
     - "ALSO ALREADY EXISTS OUTSIDE THE MAP: LICENSING.md, RELEASE_CHECKLIST.md's revoke-before-publish gate, GIVEAWAY_SOP Phase E, and the cost governor / waste taxonomy in L6. The business functions are partly PRESENT as artifacts and gates while being ABSENT as roles — which is the same built-not-wired shape as ZERO-WASTE-036, one level up"
     - "DELIVERABLE: extend the matrix (or add a companion) with the business layers, each audited the same honest way — what exists, status, receipt — so 'autonomous software COMPANY' (essay phase 6, currently marked ❌ overall) is scored against the full org rather than the delivery half"
     - "GRAIN NOTE WORTH PRESERVING from DOC-079: stage-specialization wins where the artifact is a DIFF; job-title specialization matters at the boundaries where the artifact is a DECISION. Every missing business chair is a decision-artifact chair, which predicts they will need role shape, not stage shape"
+  closed_date: '2026-09-03'
+  closed_pr: 4441
   outcome_id: CHUMPOS
 
