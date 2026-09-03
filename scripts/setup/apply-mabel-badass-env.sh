@@ -11,6 +11,21 @@ set -e
 CHUMP_DIR="${CHUMP_DIR:-$HOME/chump}"
 ENV_FILE="$CHUMP_DIR/.env"
 
+# CREDIBLE-185: opus/sonnet/haiku slot tags come from a tracked manifest, not
+# an ad-hoc value baked into this script, so they survive a fresh checkout.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+MANIFEST="${PROVIDER_MODEL_CLASS_MANIFEST:-$SCRIPT_DIR/provider-model-classes.env}"
+if [[ -f "$MANIFEST" ]]; then
+  # shellcheck disable=SC1090
+  source "$MANIFEST"
+else
+  echo "Warning: provider-model-class manifest not found at $MANIFEST; MODEL_CLASS tags will default to sonnet." >&2
+fi
+provider_model_class() {
+  local var="PROVIDER_MODEL_CLASS_$1"
+  echo "${!var:-sonnet}"
+}
+
 if [[ ! -d "$CHUMP_DIR" ]]; then
   echo "Error: $CHUMP_DIR not found. Run setup-and-run.sh first or set CHUMP_DIR."
   exit 1
@@ -78,6 +93,7 @@ CHUMP_PROVIDER_1_RPM=24
 CHUMP_PROVIDER_1_RPD=800
 CHUMP_PROVIDER_1_TIER=cloud
 CHUMP_PROVIDER_1_PRIORITY=10
+CHUMP_PROVIDER_1_MODEL_CLASS=$(provider_model_class groq)
 CASCADEEOF
     echo "  Added Groq to cascade (slot 1)."
   fi
@@ -92,6 +108,7 @@ CHUMP_PROVIDER_2_RPM=24
 CHUMP_PROVIDER_2_RPD=10000
 CHUMP_PROVIDER_2_TIER=cloud
 CHUMP_PROVIDER_2_PRIORITY=15
+CHUMP_PROVIDER_2_MODEL_CLASS=$(provider_model_class cerebras)
 CASCADEEOF
     echo "  Added Cerebras to cascade (slot 2)."
   fi
