@@ -2300,8 +2300,8 @@ async fn main() -> Result<()> {
 
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
     // emit a FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
-    // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1; prints "feature flag off,
-    // vote not emitted" and exits 0 when flag is unset.
+    // Enabled by default (CREDIBLE-179); CHUMP_FLEET_RECV_SIDE_V0=0 opts out,
+    // printing "feature flag off, vote not emitted" and exiting 0.
     if args.get(1).map(String::as_str) == Some("vote") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::vote::run(&sub_args));
@@ -2312,7 +2312,7 @@ async fn main() -> Result<()> {
     // decision question onto the existing FEEDBACK kind=proposal channel
     // and return a consensus_id; --block polls ambient.jsonl for the
     // deliberator's consensus_result up to --timeout seconds.
-    // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1, same as `chump vote`.
+    // Enabled by default (CREDIBLE-179), same flag as `chump vote`.
     if args.get(1).map(String::as_str) == Some("consensus")
         && args.get(2).map(String::as_str) == Some("ask")
     {
