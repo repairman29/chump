@@ -2493,3 +2493,24 @@ CHUMP_PROVIDER_1_ENABLED
 CHUMP_PROVIDER_1_KEY
 # detected in: (standard input)
 CHUMP_PROVIDER_1_MODEL
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NBA_COOLDOWN_SEC
+# detected in: (standard input)
+CHUMP_NBA_DISPATCH_STATE
+# detected in: (standard input)
+CHUMP_NBA_FLEET_PAUSE_FILE
+# detected in: (standard input)
+CHUMP_NBA_HEAL_RELAPSE_SEC
+# detected in: (standard input)
+CHUMP_NBA_MAX_AGE_SEC
+# detected in: (standard input)
+CHUMP_NBA_NEEDS_HUMAN_LOG
+# detected in: (standard input)
+CHUMP_NBA_NEEDS_HUMAN_SNAP
+# detected in: (standard input)
+CHUMP_NBA_OUT
+# detected in: (standard input)
+CHUMP_NBA_SYSTEMCTL_BIN
