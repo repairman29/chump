@@ -2535,3 +2535,8 @@ CHUMP_PROVIDER_2_MODEL_CLASS
 CHUMP_PROVIDER_2_PRIORITY
 # detected in: (standard input)
 CHUMP_PROVIDER_N_MODEL_CLASS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_MAX_CONSECUTIVE_GIT_COMMITS

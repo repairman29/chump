@@ -64,6 +64,10 @@ impl<'a> ToolRunner<'a> {
             if crate::agent_loop::edit_was_applied(&tr.tool_name, &tr.result) {
                 outcome.edits_applied += 1;
             }
+            // EFFECTIVE-918: count git_commit invocations for the storm breaker.
+            if tr.tool_name == "git_commit" {
+                outcome.git_commit_calls += 1;
+            }
             ctx.send(AgentEvent::ToolCallResult {
                 call_id: tr.tool_call_id.clone(),
                 tool_name: tr.tool_name.clone(),
@@ -132,6 +136,7 @@ impl<'a> ToolRunner<'a> {
                 fail_count: n_failed,
                 last_failed_tool,
                 edits_applied: 0,
+                git_commit_calls: 0,
             });
         }
 
@@ -277,11 +282,18 @@ impl<'a> ToolRunner<'a> {
             .filter(|tr| crate::agent_loop::edit_was_applied(&tr.tool_name, &tr.result))
             .count();
 
+        // EFFECTIVE-918: count git_commit invocations for the storm breaker.
+        let git_commit_calls = tool_results
+            .iter()
+            .filter(|tr| tr.tool_name == "git_commit")
+            .count();
+
         Ok(BatchOutcome {
             success_count: tool_results.len() - strict_fail_count,
             fail_count: strict_fail_count,
             last_failed_tool,
             edits_applied,
+            git_commit_calls,
         })
     }
 
