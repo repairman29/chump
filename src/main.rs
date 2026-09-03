@@ -715,6 +715,72 @@ fn parse_duration_to_secs(s: &str) -> Option<u64> {
     n.checked_mul(unit_secs)
 }
 
+// CREDIBLE-623: unit tests for helpers shared by the `gap reserve`, `gap
+// claim`, `gap show`, and `gap ship` subcommands (CREDIBLE-004 slice).
+#[cfg(test)]
+mod credible_623_subcommand_helper_tests {
+    use super::{parse_duration_to_secs, ship_plan_count_behind_ahead};
+
+    // ── parse_duration_to_secs — used by `gap show --since` / `gap list
+    // --since` / stuck-gap discipline shared with claim/ship flows ──
+
+    #[test]
+    fn parse_duration_plain_seconds() {
+        assert_eq!(parse_duration_to_secs("30s"), Some(30));
+        assert_eq!(parse_duration_to_secs("30"), Some(30));
+    }
+
+    #[test]
+    fn parse_duration_minutes_hours_days() {
+        assert_eq!(parse_duration_to_secs("5m"), Some(300));
+        assert_eq!(parse_duration_to_secs("2h"), Some(7_200));
+        assert_eq!(parse_duration_to_secs("1d"), Some(86_400));
+    }
+
+    #[test]
+    fn parse_duration_empty_is_none() {
+        assert_eq!(parse_duration_to_secs(""), None);
+        assert_eq!(parse_duration_to_secs("   "), None);
+    }
+
+    #[test]
+    fn parse_duration_non_numeric_is_none() {
+        assert_eq!(parse_duration_to_secs("abc"), None);
+        assert_eq!(parse_duration_to_secs("dh"), None);
+    }
+
+    #[test]
+    fn parse_duration_overflow_is_none() {
+        // u64::MAX days would overflow the multiply — checked_mul must catch it.
+        assert_eq!(parse_duration_to_secs("18446744073709551615d"), None);
+    }
+
+    #[test]
+    fn parse_duration_trims_whitespace() {
+        assert_eq!(parse_duration_to_secs("  10m  "), Some(600));
+    }
+
+    // ── ship_plan_count_behind_ahead — used by `gap ship` to compute the
+    // BEHIND/AHEAD counts printed in the ship plan ──
+
+    #[test]
+    fn ship_plan_count_behind_ahead_identical_refs_is_zero() {
+        // HEAD...HEAD has nothing on either side.
+        let (behind, ahead) = ship_plan_count_behind_ahead("HEAD", "HEAD")
+            .expect("git rev-list should succeed in a git worktree");
+        assert_eq!((behind, ahead), (0, 0));
+    }
+
+    #[test]
+    fn ship_plan_count_behind_ahead_invalid_spec_is_zero() {
+        // An unresolvable ref makes the underlying `git rev-list` fail;
+        // the helper degrades to (0, 0) rather than propagating an error.
+        let (behind, ahead) = ship_plan_count_behind_ahead("not-a-real-ref-credible-623", "HEAD")
+            .expect("command itself should still run and exit non-zero");
+        assert_eq!((behind, ahead), (0, 0));
+    }
+}
+
 /// INFRA-1719: surface file-path-like tokens from arbitrary text (gap
 /// description, notes) for the AST crawler to consume.
 ///
