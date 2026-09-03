@@ -23531,6 +23531,249 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
+- id: EFFECTIVE-1053
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Define design‑pass heuristic checklist for UI/brand/interaction review (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown checklist file exists in the repository under docs/design-pass-checklist.md
+    - Checklist contains at least five items covering layout, spacing, typography, interaction consistency, and brand token usage
+    - The checklist is referenced in the design‑pass CI stage documentation
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1054
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement design‑pass CI stage that validates PRs against the checklist (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new CI job named design-pass runs after the lint gate
+    - The job fails if any checklist item is marked as non‑compliant in a generated report
+    - Job output includes a link to the checklist report in the PR checks UI
+  depends_on: [EFFECTIVE-1053]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1055
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Create per‑product brand token specification (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A JSON/YAML file defining brand tokens (colors, fonts, spacing) exists for each product under brand-tokens/<product>.json
+    - Each token file validates against the schema defined in infra/css-token-schema.json
+    - Tokens are version‑controlled and referenced in the design‑pass documentation
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1056
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate brand tokens with the existing CSS token lint gate (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The lint gate (INFRA-1590) now loads the per‑product brand token files
+    - Lint fails when a UI component uses a token not defined in the product’s brand token spec
+    - Successful lint run produces a summary of used brand tokens in the CI report
+  depends_on: [EFFECTIVE-1055]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1057
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Build automated screenshot capture for PRs (before/after) (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script runs in the design‑pass CI job that renders the UI component in a headless browser
+    - "The script produces two PNG files: before‑change.png and after‑change.png"
+    - Screenshots are stored as artifacts and are accessible via the CI job UI
+  depends_on: [EFFECTIVE-1054]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1058
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add PR bot that posts before/after screenshots to the PR comment thread (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When the design‑pass CI job succeeds, the bot posts a comment containing the before and after images
+    - Comment includes a link to the checklist report and a brief status (pass/fail)
+    - Bot does not post duplicate comments on subsequent runs of the same PR
+  depends_on: [EFFECTIVE-1057]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1059
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update documentation and onboarding for the design‑pass flow (EFFECTIVE-358 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Docs site includes a new section \"Design‑Pass Process\" with step‑by‑step instructions"
+    - Onboarding checklist for new contributors references the design‑pass stage and brand token files
+    - All links in the docs point to the actual checklist, token specs, and CI job examples
+  depends_on: [EFFECTIVE-1053, EFFECTIVE-1054, EFFECTIVE-1055, EFFECTIVE-1056, EFFECTIVE-1057, EFFECTIVE-1058]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: EFFECTIVE-106
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire test-bot-merge-progress-file.sh into role curator-opus-ci-audit"
@@ -26836,7 +27079,7 @@ gaps:
     - After intake produces requirements, a design pass emits a UI/brand/interaction spec so the shipped artifact is USABLE not just functional
     - "Proven: for a product gap the design chair emits an interaction+visual spec the implement stage consumes; the shipped artifact has coherent UI, not a raw CLI dump"
   notes: |
-    Decomposed into 7 slices: EFFECTIVE-827, EFFECTIVE-828, EFFECTIVE-829, EFFECTIVE-830, EFFECTIVE-831, EFFECTIVE-832, EFFECTIVE-833
+    Decomposed into 7 slices: EFFECTIVE-1053, EFFECTIVE-1054, EFFECTIVE-1055, EFFECTIVE-1056, EFFECTIVE-1057, EFFECTIVE-1058, EFFECTIVE-1059
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -106411,7 +106654,7 @@ gaps:
 - id: INFRA-4240
   domain: INFRA
   title: "INFRA: Document threat model and obtain external review sign‑off (INFRA-1123 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -106454,6 +106697,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-03T23:15:39Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1070B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4241
   domain: INFRA
@@ -117669,7 +117913,294 @@ gaps:
     - "The change described by \"ONE Opus companion Jeff talks to freely, that opens each day with something genuinely delightful + useful (what the fleet did overnight in his voice, a real win, a wry line, the one thing worth his attention) and answers anything conversationally. The daily-joy bar: he should WANT to open it. Parked till post-ribbon per Jeff, but logged so it is never lost. AC: a daily DM Jeff rates a delight (not a chore); real talk not status-spam; pages only when nuts; sustains on cheap inference with Opus only for judgment.\" is implemented in the relevant PRODUCT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 11 slices: PRODUCT-203, PRODUCT-204, PRODUCT-205, PRODUCT-206, PRODUCT-207, PRODUCT-208, PRODUCT-209, PRODUCT-210, PRODUCT-211, PRODUCT-212, PRODUCT-213
   opened_date: '2026-08-20'
+
+- id: PRODUCT-203
+  domain: PRODUCT
+  title: "PRODUCT: Add feature flag and config for Golden Ticket DM (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A new boolean flag `golden_ticket_enabled` is added to the product configuration file.
+    - The flag defaults to `false` and can be toggled via the config without code changes.
+    - Code can query the flag via a public accessor function.
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-204
+  domain: PRODUCT
+  title: "PRODUCT: Implement daily DM scheduler (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A scheduler runs once per day at a configurable UTC time.
+    - When the time is reached, the scheduler invokes a `send_golden_ticket()` function.
+    - Scheduler respects the `golden_ticket_enabled` flag and does nothing when disabled.
+  depends_on: [PRODUCT-203]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-205
+  domain: PRODUCT
+  title: "PRODUCT: Create placeholder content generator (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A function `generate_delightful_message()` returns a non‑empty string.
+    - "The returned string contains at least one of the keywords: \"win\", \"wry\", or \"delight\"."
+    - The function is pure and deterministic for a given seed.
+  depends_on: [PRODUCT-204]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-206
+  domain: PRODUCT
+  title: "PRODUCT: Integrate cheap Opus inference for content judgment (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A thin wrapper around the Opus inference API is added.
+    - "`evaluate_message_delight(message: &str) -> bool` returns `true` for messages deemed delightful by the cheap model."
+    - A mock implementation is provided for CI that always returns `true`.
+  depends_on: [PRODUCT-205]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-207
+  domain: PRODUCT
+  title: "PRODUCT: Send Discord DM to Jeff with generated content (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When `send_golden_ticket()` is called, the system uses the Discord bot client to DM the configured user ID for Jeff.
+    - The DM payload contains the string returned by `generate_delightful_message()`.
+    - The DM is only sent if `evaluate_message_delight` returns `true` and the `golden_ticket_enabled` flag is on.
+  depends_on: [PRODUCT-204, PRODUCT-206]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-208
+  domain: PRODUCT
+  title: "PRODUCT: Add rating UI for Jeff to mark the DM as a delight (PRODUCT-200 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Jeff can react to the DM with a 👍 (delight) or 👎 (not delight).
+    - The reaction is captured by the bot and stored in an in‑memory rating map keyed by message ID.
+    - Only Jeff’s reactions are considered; other users’ reactions are ignored.
+  depends_on: [PRODUCT-207]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-209
+  domain: PRODUCT
+  title: "PRODUCT: Persist rating logs to durable storage (PRODUCT-200 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a rating is recorded, an entry is appended to `golden_ticket_ratings.json` with timestamp, message ID, rating value, and Jeff’s user ID.
+    - The file is created if it does not exist and is valid JSON after each write.
+    - A simple read‑back function can retrieve all stored ratings.
+  depends_on: [PRODUCT-208]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-210
+  domain: PRODUCT
+  title: "PRODUCT: Skip DM when a high‑priority page flag is set (PRODUCT-200 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A global flag `high_priority_page_active` can be toggled at runtime.
+    - If the flag is true at the time the scheduler fires, `send_golden_ticket()` returns early and no DM is sent.
+    - The flag check is logged with a clear message indicating the DM was skipped.
+  depends_on: [PRODUCT-207]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-211
+  domain: PRODUCT
+  title: "PRODUCT: Write unit tests for scheduler, generator, and inference (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Tests verify that the scheduler triggers `send_golden_ticket()` at the mocked time.
+    - Tests assert that `generate_delightful_message()` returns a non‑empty string containing a required keyword.
+    - Tests confirm that the mock Opus inference returns `true` for the placeholder message.
+    - All new tests pass and fail when the corresponding implementation is removed.
+  depends_on: [PRODUCT-204, PRODUCT-205, PRODUCT-206]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-212
+  domain: PRODUCT
+  title: "PRODUCT: Create end‑to‑end integration test for the Golden Ticket flow (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The test runs the scheduler in a controlled environment, verifies that a DM is sent, a rating reaction is recorded, and the rating is persisted to the JSON log.
+    - The test cleans up any created messages or log entries after execution.
+    - The integration test fails if any step (scheduler, DM send, rating capture, persistence) is broken.
+  depends_on: [PRODUCT-207, PRODUCT-208, PRODUCT-209]
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
+
+- id: PRODUCT-213
+  domain: PRODUCT
+  title: "PRODUCT: Run cargo fmt, clippy, and ensure no warnings (PRODUCT-200 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` runs without changes needed."
+    - "`cargo clippy --all-targets -- -D warnings` completes with zero warnings."
+    - All existing and new tests continue to pass after formatting and linting.
+  notes: |
+    [chump harvest check 'TICKET']
+    === primitives_index match for 'TICKET' ===
+    
+    === cluster keyword match for 'TICKET' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'TICKET' ===
+    
+    === repo-description match for 'TICKET' ===
+    
+    === HARVEST_ROADMAP.md mention of 'TICKET' (deep-scan findings) ===
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'TICKET' ===
 
 - id: RESEARCH-001
   domain: RESEARCH
@@ -135719,7 +136250,7 @@ gaps:
 - id: ZERO-WASTE-061
   domain: ZERO-WASTE
   title: "Retire gap-dedup-check.sh (INFRA-881): redundant + scale-broken duplicate of chump gap consolidate (INFRA-935) — it argv-overflowed at fleet scale and false-reported no-dupes (green facade). Delete or make it a thin wrapper over consolidate. AC: one canonical dedup path; false-clean facade gone; no references to the old script."
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -135728,6 +136259,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 7 slices: ZERO-WASTE-097, ZERO-WASTE-098, ZERO-WASTE-099, ZERO-WASTE-100, ZERO-WASTE-101, ZERO-WASTE-102, ZERO-WASTE-103
+    [2026-09-03T23:45:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1083B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-20'
 
 - id: ZERO-WASTE-062
