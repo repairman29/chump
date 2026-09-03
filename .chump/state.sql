@@ -3539,7 +3539,7 @@ gaps:
 - id: CREDIBLE-222
   domain: CREDIBLE
   title: "[almanac] triage chump's 211-flag drift backlog — the flagship claim is mostly parser noise at scale"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -3551,7 +3551,8 @@ gaps:
     - "REAL examples that must survive triage: BEAST_MODE_API localhost:3000 vs https://beast-mode.com across 270 reads; BEAST_MODE_API_URL with 5 values including the typo domain beastmode.dev vs beast-mode.dev; BASE_URL 3000 vs 7777; BEAST_MODE_CLOUD_MODEL llama-3.3-70b vs gpt-4o-mini; CHUMPBAR_SSH_TIMEOUT 15 vs 6"
     - "Normalize before comparing: empty/unset spellings collapse to one value, and $VAR-interpolated paths compare by resolved shape not literal text. Then re-report the real count — ROADMAP O2 calls drift the organ's flagship claim and says it is unverified at scale; this is that verification"
   notes: |
-    Decomposed into 12 slices: CREDIBLE-675, CREDIBLE-676, CREDIBLE-677, CREDIBLE-678, CREDIBLE-679, CREDIBLE-680, CREDIBLE-681, CREDIBLE-682, CREDIBLE-683, CREDIBLE-684, CREDIBLE-685, CREDIBLE-686
+    Decomposed into 12 slices: CREDIBLE-721, CREDIBLE-722, CREDIBLE-723, CREDIBLE-724, CREDIBLE-725, CREDIBLE-726, CREDIBLE-727, CREDIBLE-728, CREDIBLE-729, CREDIBLE-730, CREDIBLE-731, CREDIBLE-732
+    [2026-09-03T19:29:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
@@ -3601,7 +3602,7 @@ gaps:
 - id: CREDIBLE-225
   domain: CREDIBLE
   title: tmp
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -3609,7 +3610,8 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 5 slices: CREDIBLE-581, CREDIBLE-582, CREDIBLE-583, CREDIBLE-584, CREDIBLE-585
+    Decomposed into 5 slices: CREDIBLE-716, CREDIBLE-717, CREDIBLE-718, CREDIBLE-719, CREDIBLE-720
+    [2026-09-03T19:22:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-226
@@ -3638,7 +3640,7 @@ gaps:
 - id: CREDIBLE-227
   domain: CREDIBLE
   title: provider slot limits are hand-entered and never verified — two slots declare the SAME model with a 57x RPD difference
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -3650,6 +3652,7 @@ gaps:
     - "HONEST CONSEQUENCE TO RECORD: a same-session capacity claim ('100K+ free requests/day idle') was made from the 86400 figure and had to be retracted. Config read as measurement is exactly the signal-vs-outcome error this fleet keeps making"
   notes: |
     Decomposed into 11 slices: CREDIBLE-586, CREDIBLE-587, CREDIBLE-588, CREDIBLE-589, CREDIBLE-590, CREDIBLE-591, CREDIBLE-592, CREDIBLE-593, CREDIBLE-594, CREDIBLE-595, CREDIBLE-596
+    [2026-09-03T19:30:35Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
 
@@ -16669,6 +16672,377 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-716
+  domain: CREDIBLE
+  title: "CREDIBLE: Analyze required code changes for tmp (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Design notes identify the exact CREDIBLE modules and functions to modify
+    - All edge‑cases and failure modes are documented
+    - Implementation plan is reviewed and approved by the team
+
+- id: CREDIBLE-717
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement tmp change in CREDIBLE code path (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Code compiles without errors
+    - "The new behavior described by \"tmp\" is present in the relevant code path(s)"
+    - No existing functionality is altered unintentionally
+  depends_on: [CREDIBLE-716]
+
+- id: CREDIBLE-718
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit test for tmp behavior (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test fails on the pre‑change code base
+    - Test passes after the implementation is merged
+    - Test covers at least one positive and one negative scenario
+  depends_on: [CREDIBLE-717]
+
+- id: CREDIBLE-719
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy checks (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt reports no formatting issues
+    - clippy runs with `-D warnings` and reports zero warnings
+    - All files remain unchanged except for the intended modifications
+  depends_on: [CREDIBLE-717]
+
+- id: CREDIBLE-720
+  domain: CREDIBLE
+  title: "CREDIBLE: Integrate and verify end‑to‑end (CREDIBLE-225 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All CI test suites (`cargo test` and `scripts/ci/test-*.sh`) pass
+    - No regression is detected in existing tests
+    - Change is merged to the main branch after successful verification
+  depends_on: [CREDIBLE-718, CREDIBLE-719]
+
+- id: CREDIBLE-721
+  domain: CREDIBLE
+  title: "CREDIBLE: Identify noise patterns in drift flags (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Document all observed empty/unset spellings (e.g., \"default= \", \"(unset)\", \"<unset>\")"
+    - Document all observed $VAR‑interpolated path variants (e.g., CHUMP_AMBIENT_LOG variants)
+    - Create a reference list of noise patterns to be used by subsequent normalization steps
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-722
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement normalization for empty/unset values (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "All empty/unset spellings collapse to a single canonical value (e.g., \"<unset>\")"
+    - Normalization runs as part of the drift‑flag parsing pipeline without errors
+    - Unit tests cover each documented empty/unset spelling
+  depends_on: [CREDIBLE-721]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-723
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement path normalization for $VAR‑interpolated values (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Paths containing environment variable references are resolved to their canonical shape (e.g., \"$HOME/project/target\" → \"/home/user/project/target\")"
+    - Normalized paths are compared by shape, not literal string
+    - Unit tests verify normalization for at least three distinct $VAR patterns
+  depends_on: [CREDIBLE-721]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-724
+  domain: CREDIBLE
+  title: "CREDIBLE: Filter out ANTHROPIC_API_KEY noise variants (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "All 78 reads of ANTHROPIC_API_KEY with spellings \"default= \", \"(unset)\", \"<unset>\" are excluded from drift reports"
+    - No legitimate ANTHROPIC_API_KEY values are removed
+    - Integration test confirms drift count drops by exactly 78 after filter
+  depends_on: [CREDIBLE-722]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-725
+  domain: CREDIBLE
+  title: "CREDIBLE: Filter out CARGO_MANIFEST_DIR noise variants (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "All reads of CARGO_MANIFEST_DIR with values \"default= \" or \"unknown\" are excluded"
+    - Real CARGO_MANIFEST_DIR values remain in the drift set
+    - Regression test ensures count reduction matches documented noise
+  depends_on: [CREDIBLE-722]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-726
+  domain: CREDIBLE
+  title: "CREDIBLE: Filter out CHUMP_AMBIENT_LOG path noise variants (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - 44 variants of CHUMP_AMBIENT_LOG that resolve to the same canonical path are collapsed into a single entry
+    - No distinct CHUMP_AMBIENT_LOG paths are lost
+    - Test validates that after filtering, unique path count equals expected distinct set
+  depends_on: [CREDIBLE-723]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-727
+  domain: CREDIBLE
+  title: "CREDIBLE: Filter out CARGO_TARGET_DIR noise variants (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "All 15 variants of CARGO_TARGET_DIR ending with \"/target\" are normalized and de‑duplicated"
+    - Only one representative entry remains for the target directory
+    - Unit test confirms de‑duplication logic works for at least three sample variants
+  depends_on: [CREDIBLE-722]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-728
+  domain: CREDIBLE
+  title: "CREDIBLE: Verify BEAST_MODE_API real variations survive triage (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Both \"localhost:3000\" and \"https://beast-mode.com\" remain reported as distinct drift flags"
+    - Count of BEAST_MODE_API reads stays at 270 after noise filters
+    - Test asserts that no BEAST_MODE_API entry is removed by previous filters
+  depends_on: [CREDIBLE-724, CREDIBLE-725, CREDIBLE-726, CREDIBLE-727]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-729
+  domain: CREDIBLE
+  title: "CREDIBLE: Verify BEAST_MODE_API_URL typo handling (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Both \"beastmode.dev\" and \"beast-mode.dev\" are retained as separate valid values"
+    - No accidental merging of the two domains occurs
+    - Integration test confirms both values appear in final drift report
+  depends_on: [CREDIBLE-724, CREDIBLE-725, CREDIBLE-726, CREDIBLE-727]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-730
+  domain: CREDIBLE
+  title: "CREDIBLE: Verify BASE_URL port variations survive triage (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "BASE_URL values \"3000\" and \"7777\" are both present after filtering"
+    - Drift count for BASE_URL reflects both ports
+    - Test ensures that port differences are not normalized away
+  depends_on: [CREDIBLE-724, CREDIBLE-725, CREDIBLE-726, CREDIBLE-727]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-731
+  domain: CREDIBLE
+  title: "CREDIBLE: Verify BEAST_MODE_CLOUD_MODEL variations survive triage (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Both \"llama-3.3-70b\" and \"gpt-4o-mini\" remain in the drift output"
+    - No model name is mistakenly collapsed
+    - Automated test validates presence of both model identifiers
+  depends_on: [CREDIBLE-724, CREDIBLE-725, CREDIBLE-726, CREDIBLE-727]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
+
+- id: CREDIBLE-732
+  domain: CREDIBLE
+  title: "CREDIBLE: Re‑run drift detection and publish updated counts (CREDIBLE-222 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Drift detection runs end‑to‑end with all filters applied
+    - Reported drift count matches expected real count (211 flags after noise removal)
+    - Report is stored in the ROADMAP O2 dashboard and includes a summary of noise removed vs. real flags
+    - Smoke test confirms the pipeline completes within acceptable time (<5 min)
+  depends_on: [CREDIBLE-728, CREDIBLE-729, CREDIBLE-730, CREDIBLE-731]
+  notes: |
+    [chump harvest check 'almanac']
+    === primitives_index match for 'almanac' ===
+    
+    === cluster keyword match for 'almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'almanac' ===
+    
+    === repo-description match for 'almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'almanac' ===
 
 - id: DOC-031
   domain: DOC
@@ -129596,7 +129970,7 @@ gaps:
 - id: RESILIENT-701
   domain: RESILIENT
   title: "RESILIENT: Sanitize and treat incoming rows as untrusted input (RESILIENT-241 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -129618,6 +129992,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'holler' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'holler' ===
+    [2026-09-03T19:27:58Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-702
   domain: RESILIENT
@@ -130793,7 +131168,7 @@ gaps:
 - id: ZERO-WASTE-049
   domain: ZERO-WASTE
   title: "scheduled curation loop: triage+consolidate+write-ac exist, none is scheduled, and a gap that cannot be qualified has no retirement path"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -130806,6 +131181,7 @@ gaps:
     - "SELF-CHECK — the loop must be honest about its own author: triage today flags MISSION-076, MISSION-077 and ZERO-WASTE-036 as too-large/decompose. Two of those were filed hours earlier in this same session. A curation loop that exempts recent or self-filed gaps is not a curation loop"
   notes: |
     Decomposed into 9 slices: ZERO-WASTE-088, ZERO-WASTE-089, ZERO-WASTE-090, ZERO-WASTE-091, ZERO-WASTE-092, ZERO-WASTE-093, ZERO-WASTE-094, ZERO-WASTE-095, ZERO-WASTE-096
+    [2026-09-03T19:20:42Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1083B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
