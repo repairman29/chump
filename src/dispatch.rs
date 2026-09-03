@@ -957,8 +957,23 @@ fn ship(ws: &Workspace) -> Result<ShipResult> {
         .status()
         .context("invoke bot-merge.sh")?;
     if !status.success() {
+        let exit_code = status.code().unwrap_or(-1);
+        // CREDIBLE-297: exit 13 is bot-merge.sh's clippy-fail code, raised by
+        // a full-workspace local clippy stage that runs BEFORE this
+        // invocation's push. A *prior* invocation may already have pushed
+        // and armed auto-merge on a PR whose own (scoped) CI clippy already
+        // passed and merged — this run's local clippy noise on unrelated
+        // pre-existing lint must not overwrite that landed outcome. Trust
+        // the actual PR merge state over the local exit code.
+        if is_locally_recoverable_exit_code(exit_code) {
+            if let Ok(pr) = current_pr_number(ws.working_dir()) {
+                if pr_is_merged(ws.working_dir(), pr) {
+                    return Ok(ShipResult::Shipped { pr_number: pr });
+                }
+            }
+        }
         return Ok(ShipResult::Aborted {
-            error: format!("bot-merge.sh exited {}", status.code().unwrap_or(-1)),
+            error: format!("bot-merge.sh exited {exit_code}"),
         });
     }
 
@@ -989,6 +1004,39 @@ fn current_pr_number(repo_root: &Path) -> Result<u64> {
     let s = String::from_utf8_lossy(&out.stdout).trim().to_string();
     s.parse::<u64>()
         .with_context(|| format!("parse PR# from {s:?}"))
+}
+
+/// CREDIBLE-297: bot-merge.sh exit codes that reflect a *local-only* gate
+/// (this invocation's own repo-wide clippy pass) rather than the PR's own
+/// scoped CI — a prior invocation may have already landed the PR while this
+/// run's local check is still noisy on unrelated pre-existing lint. `13` is
+/// bot-merge.sh's clippy-fail code (see `scripts/coord/bot-merge.sh`
+/// `_bm_fail "clippy" 13 ...`).
+fn is_locally_recoverable_exit_code(exit_code: i32) -> bool {
+    exit_code == 13
+}
+
+/// Best-effort check of whether `pr_number` has actually merged. Used only
+/// to recover from a locally-recoverable bot-merge.sh failure (see
+/// [`is_locally_recoverable_exit_code`]) — any `gh` error is treated as
+/// "not merged" so we fall back to reporting the original failure honestly.
+fn pr_is_merged(repo_root: &Path, pr_number: u64) -> bool {
+    let out = Command::new("gh")
+        .args([
+            "pr",
+            "view",
+            &pr_number.to_string(),
+            "--json",
+            "state",
+            "-q",
+            ".state",
+        ])
+        .current_dir(repo_root)
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout).trim() == "MERGED",
+        _ => false,
+    }
 }
 
 /// Attempt one `chump --release` subprocess call. Returns an error if the
@@ -1143,6 +1191,14 @@ mod tests {
             ShipResult::Blocked { ref reason } => assert_eq!(reason, "test"),
             _ => panic!("expected Blocked"),
         }
+    }
+
+    #[test]
+    fn clippy_exit_code_is_locally_recoverable() {
+        assert!(is_locally_recoverable_exit_code(13));
+        assert!(!is_locally_recoverable_exit_code(1));
+        assert!(!is_locally_recoverable_exit_code(14));
+        assert!(!is_locally_recoverable_exit_code(-1));
     }
 
     /// Test helper: build a Workspace with a fixed working_dir, skipping
