@@ -1,11 +1,11 @@
 {
   "name": "publisher",
   "version": "1.0.0",
-  "description": "EFFECTIVE-483/484: PUBLISHER.md platform rules + Jeff's-voice style loader, codified as typed config",
+  "description": "EFFECTIVE-483/484/365: PUBLISHER.md platform rules, Jeff's-voice style loader, draft generator, and approval queue",
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --import tsx --test platforms.test.ts style.test.ts"
+    "test": "node --import tsx --test platforms.test.ts style.test.ts draft.test.ts queue.test.ts"
   },
   "keywords": [],
   "author": "",
