@@ -4497,7 +4497,7 @@ gaps:
 - id: CREDIBLE-272
   domain: CREDIBLE
   title: "SHIP-INFRA 7/7 [MEASUREMENT]: ship-pipeline scoreboard — green-first-try%, time-to-land, admin-merge count, gate FP rate; published so we lead on measured quality+speed"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -4506,6 +4506,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 4 slices: CREDIBLE-623, CREDIBLE-624, CREDIBLE-625, CREDIBLE-626
+    [2026-09-03T22:24:40Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
@@ -17905,7 +17906,7 @@ gaps:
 - id: DOC-097
   domain: DOC
   title: "[olive] the headless MCP rail is LIVE in production and appears in no product doc — half of recent commits are a strategy the roadmap does not know about"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -17920,6 +17921,7 @@ gaps:
     - DO NOT ADD AN 18TH ROADMAP — same lesson as DOC-089. One track in the existing roadmap plus a README line
   notes: |
     Decomposed into 10 slices: DOC-144, DOC-145, DOC-146, DOC-147, DOC-148, DOC-149, DOC-150, DOC-151, DOC-152, DOC-153
+    [2026-09-03T22:25:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1066B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -22252,7 +22254,7 @@ gaps:
 - id: EFFECTIVE-1019
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement chump ship --manual fallback command (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -22282,6 +22284,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-03T22:30:58Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1087B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-102
   domain: EFFECTIVE
@@ -22501,9 +22504,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a new `pub mod sonnet_agent` block into `src/improve.rs` that defines a placeholder `pub struct SonnetAgent` and implements a `pub fn new() -> Self` constructor returning an empty instance, ensuring the module is publicly visible and compiles without errors.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new `sonnet_agent` module compiles without errors
-    - "`SonnetAgent` struct is defined with a `new()` constructor"
+    - "`src/improve.rs` contains a `pub mod sonnet_agent` with a `pub struct SonnetAgent` and an `impl SonnetAgent { pub fn new() -> Self { Self } }` definition."
+    - "`cargo build` completes successfully with no compilation errors originating from the new `sonnet_agent` module."
+    - "`src/improve.rs` includes a unit test `test_sonnet_agent_new` that calls `SonnetAgent::new()` and asserts the returned value is of type `SonnetAgent`."
   depends_on: [EFFECTIVE-1031]
   notes: |
     [chump harvest check 'sonnet']
@@ -88337,7 +88348,7 @@ gaps:
 - id: INFRA-3589
   domain: INFRA
   title: "code-reviewer-agent.sh: pipefail+grep-no-match crashes as false CONCERN instead of ESCALATE fallback"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -88366,6 +88377,8 @@ gaps:
     instead of crashing the whole script with a misleading exit code.
   acceptance_criteria:
     - "1. scripts/coord/code-reviewer-agent.sh's VERDICT_LINE grep no longer aborts\n   the script under set -euo pipefail when the LLM response doesn't contain\n   an APPROVE:/CONCERN:/ESCALATE: prefixed line.\n2. A malformed/non-matching LLM response reaches the existing \"ESCALATE:\n   code-reviewer response did not match expected format\" fallback (exit 2),\n   not a silent crash reported upstream as CONCERN (exit 1).\n3. Regression test in scripts/ci/test-code-reviewer-agent.sh covering a\n   RESPONSE value with no colon-suffixed verdict line on its own."
+  notes: |
+    [2026-09-03T22:32:10Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3594
@@ -122195,13 +122208,16 @@ gaps:
 - id: RESILIENT-279
   domain: RESILIENT
   title: "SHIP-INFRA 6/7 [OWNERSHIP]: duty-officer owns ship-pipeline health (extends RESILIENT-274) — catches a broken gate in minutes not hours, drives admin-merge count to 0"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"duty-officer owns ship-pipeline health (extends RESILIENT-274) — catches a broken gate in minutes not hours, drives admin-merge count to 0\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 9 slices: RESILIENT-746, RESILIENT-747, RESILIENT-748, RESILIENT-749, RESILIENT-750, RESILIENT-751, RESILIENT-752, RESILIENT-753, RESILIENT-754
+    [2026-09-03T22:24:08Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
@@ -122358,7 +122374,7 @@ gaps:
 - id: RESILIENT-317
   domain: RESILIENT
   title: reap-orphan-claude-procs.sh is macOS-only (Claude.app via launchctl) — Linux port for owned worker nodes
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -122366,12 +122382,13 @@ gaps:
     - installed via the COTG housekeeping suite (RESILIENT-318 sibling); guards against the hung-child wedge class (a no-timeout child froze both workers 4h40m on 2026-08-17)
   notes: |
     Decomposed into 10 slices: RESILIENT-721, RESILIENT-722, RESILIENT-723, RESILIENT-724, RESILIENT-725, RESILIENT-726, RESILIENT-727, RESILIENT-728, RESILIENT-729, RESILIENT-730
+    [2026-09-03T22:38:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: RESILIENT-319
   domain: RESILIENT
   title: "COTG: data-node (Postgres) + integrator as role-gated installers — repeatable, not hand-stood-up"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -122380,6 +122397,7 @@ gaps:
     - both flow through the role-aware installer; --role data on a fresh box yields a reachable Postgres, --role factory yields the integrator timer
   notes: |
     [2026-08-19T20:16:14Z] Both hand-installed tonight (Pixel Postgres, CJ integrator). Depends on the role model (sibling gap ).
+    [2026-09-03T22:38:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: RESILIENT-320
@@ -122441,7 +122459,7 @@ gaps:
 - id: RESILIENT-333
   domain: RESILIENT
   title: "primary-checkout hygiene organ: keep the node repo checkout ON main (drifted to a stale integration branch tonight, hand-restored) — COTG self-heal"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -122450,6 +122468,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 7 slices: RESILIENT-731, RESILIENT-732, RESILIENT-733, RESILIENT-734, RESILIENT-735, RESILIENT-736, RESILIENT-737
+    [2026-09-03T22:45:13Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: RESILIENT-337
@@ -132633,7 +132652,7 @@ gaps:
 - id: RESILIENT-705
   domain: RESILIENT
   title: "RESILIENT: Investigate disk usage on /System/Volumes/Data (RESILIENT-268 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -132669,6 +132688,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-03T22:31:24Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-706
   domain: RESILIENT
@@ -132878,7 +132898,7 @@ gaps:
 - id: RESILIENT-711
   domain: RESILIENT
   title: "RESILIENT: Locate auto‑merge and admin‑merge code paths in RESILIENT (RESILIENT-278 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -132898,6 +132918,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'guarantee' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+    [2026-09-03T22:37:39Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-712
   domain: RESILIENT
@@ -133682,6 +133703,242 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: RESILIENT-746
+  domain: RESILIENT
+  title: "RESILIENT: Document existing ship-pipeline health checks (RESILIENT-274) and entry points (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown file summarizing current health‑check mechanisms and their code locations is added to the repo
+    - All existing health‑check entry points are listed and verified against the codebase
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-747
+  domain: RESILIENT
+  title: "RESILIENT: Design duty‑officer ownership model for pipeline health (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A design document describing duty‑officer responsibilities, data flow, and failure handling is created
+    - The design document is reviewed and approved by the RESILIENT team
+  depends_on: [RESILIENT-746]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-748
+  domain: RESILIENT
+  title: "RESILIENT: Implement health‑monitor component that detects broken gate within minutes (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new Rust module `health_monitor` compiles without warnings
+    - The monitor polls gate status at least once per minute and sets a `broken_gate` flag within 2 minutes of failure
+    - Log messages indicate detection of a broken gate
+  depends_on: [RESILIENT-747]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-749
+  domain: RESILIENT
+  title: "RESILIENT: Add admin‑merge counter reset logic triggered by healthy gate (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When the monitor reports the gate as healthy, the admin‑merge counter is set to zero
+    - The reset logic is covered by a unit test that asserts the counter value after a healthy report
+  depends_on: [RESILIENT-748]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-750
+  domain: RESILIENT
+  title: "RESILIENT: Integrate health monitor into ship‑pipeline execution flow (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The pipeline invokes `health_monitor` at the start of each run
+    - Existing pipeline functionality remains unchanged (all current tests still pass)
+    - Duty‑officer can view monitor status via the existing CLI output
+  depends_on: [RESILIENT-748, RESILIENT-749]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-751
+  domain: RESILIENT
+  title: "RESILIENT: Write unit test for broken‑gate detection timing (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A cargo test `test_broken_gate_detection` simulates a gate failure and asserts the `broken_gate` flag is set within 2 minutes
+    - The test fails when the new monitor code is removed
+  depends_on: [RESILIENT-750]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-752
+  domain: RESILIENT
+  title: "RESILIENT: Write integration test verifying admin‑merge count reaches zero after recovery (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - An integration test runs the full ship‑pipeline with a simulated broken gate, triggers recovery, and asserts the admin‑merge count ends at 0
+    - The test fails without the reset logic from slice 4
+  depends_on: [RESILIENT-751]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-753
+  domain: RESILIENT
+  title: "RESILIENT: Update CI scripts to run new health‑monitor tests (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-*.sh` includes commands to execute the new unit and integration tests"
+    - CI pipeline reports success for the added tests
+  depends_on: [RESILIENT-751, RESILIENT-752]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-754
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt + clippy across all targets and ensure zero warnings (RESILIENT-279 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all -- --check` passes without changes"
+    - "`cargo clippy --all-targets -- -D warnings` passes with zero warnings"
+    - CI step for fmt+clippy succeeds
+  depends_on: [RESILIENT-753]
+  notes: |
+    [chump harvest check 'OWNERSHIP']
+    === primitives_index match for 'OWNERSHIP' ===
+    
+    === cluster keyword match for 'OWNERSHIP' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'OWNERSHIP' ===
+    
+    === repo-description match for 'OWNERSHIP' ===
+    
+    === HARVEST_ROADMAP.md mention of 'OWNERSHIP' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'OWNERSHIP' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
@@ -134930,6 +135187,8 @@ gaps:
     - "The change described by \"redundant + scale-broken duplicate of chump gap consolidate (INFRA-935) — it argv-overflowed at fleet scale and false-reported no-dupes (green facade). Delete or make it a thin wrapper over consolidate. AC: one canonical dedup path; false-clean facade gone; no references to the old script.\" is implemented in the relevant ZERO-WASTE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: ZERO-WASTE-097, ZERO-WASTE-098, ZERO-WASTE-099, ZERO-WASTE-100, ZERO-WASTE-101, ZERO-WASTE-102, ZERO-WASTE-103
   opened_date: '2026-08-20'
 
 - id: ZERO-WASTE-062
@@ -136066,4 +136325,181 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-097
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Identify all references to gap-dedup-check.sh in the codebase (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A generated report lists every file (including scripts, CI configs, and documentation) that imports or executes gap-dedup-check.sh
+    - "No false positives: each listed reference actually invokes the script"
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: ZERO-WASTE-098
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Create a thin wrapper script gap-dedup-check.sh that forwards to chump gap consolidate (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "gap-dedup-check.sh exists, is executable, and simply calls `chump gap consolidate \"$@\"`"
+    - The wrapper returns the same exit code and stdout/stderr as the underlying consolidate command
+    - Running the wrapper with a sample argument set produces identical behavior to calling consolidate directly
+  depends_on: [ZERO-WASTE-097]
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: ZERO-WASTE-099
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Update all call sites to use chump gap consolidate directly (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Every script, CI job, or Makefile that previously invoked gap-dedup-check.sh now invokes chump gap consolidate with identical arguments
+    - No remaining invocation of gap-dedup-check.sh in the repository
+  depends_on: [ZERO-WASTE-097, ZERO-WASTE-098]
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: ZERO-WASTE-100
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Delete the obsolete gap-dedup-check.sh script from the repository (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - gap-dedup-check.sh file is removed from the repo
+    - "`git grep gap-dedup-check.sh` returns no results"
+  depends_on: [ZERO-WASTE-099]
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: ZERO-WASTE-101
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Update documentation and README to reflect the single canonical dedup path (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All mentions of gap-dedup-check.sh are removed from README, wiki, and internal docs
+    - Documentation now points to `chump gap consolidate` as the sole dedup command
+  depends_on: [ZERO-WASTE-099]
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: ZERO-WASTE-102
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Add test verifying dedup uses the canonical consolidate path and false-clean facade is gone (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new cargo test (or scripts/ci/test-*.sh) asserts that dedup behavior matches consolidate output
+    - The test fails on the current codebase before the change and passes after the change
+    - "The test explicitly checks that no \"no-dupes\" false‑positive facade is reported at fleet scale"
+  depends_on: [ZERO-WASTE-099, ZERO-WASTE-100]
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: ZERO-WASTE-103
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Run cargo fmt, clippy, and CI checks to ensure no warnings or regressions (ZERO-WASTE-061 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all -- --check` passes with no changes required"
+    - "`cargo clippy --all-targets -- -D warnings` reports zero warnings"
+    - All CI pipelines (including the new test) complete successfully
+  depends_on: [ZERO-WASTE-102]
+  notes: |
+    [chump harvest check 'redundant']
+    === primitives_index match for 'redundant' ===
+    
+    === cluster keyword match for 'redundant' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'redundant' ===
+    
+    === repo-description match for 'redundant' ===
+    
+    === HARVEST_ROADMAP.md mention of 'redundant' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'redundant' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
