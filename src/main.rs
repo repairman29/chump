@@ -14697,12 +14697,19 @@ async fn main() -> Result<()> {
                     .skip(3)
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
-                    println!("Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json]");
+                    println!(
+                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply]"
+                    );
                     println!();
                     println!(
                         "Scans DIR (default: repo root) for todo!() holes left by a scaffold PR"
                     );
                     println!("and prints one fill-this-hole leaf-gap spec (title + AC) per hole.");
+                    println!(
+                        "--apply files one leaf gap per hole via chump-gap-store instead of \
+                         just printing specs (INFRA-2515 A2A voting still applies to what those \
+                         leaf gaps become — this only reserves them)."
+                    );
                     return Ok(());
                 }
                 let gap_id = match args.get(3) {
@@ -14716,6 +14723,7 @@ async fn main() -> Result<()> {
                     .map(std::path::PathBuf::from)
                     .unwrap_or_else(|| repo_root.clone());
                 let as_json = json_out || args.iter().any(|a| a == "--json");
+                let do_apply = args.iter().any(|a| a == "--apply");
 
                 let holes = match scaffold_holes::find_todo_holes_in_dir(&scan_dir) {
                     Ok(h) => h,
@@ -14727,6 +14735,79 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                 };
+
+                if do_apply {
+                    // One leaf gap per hole: tiny, disjoint, mechanically
+                    // verifiable ("fill this hole, make this test pass").
+                    // Filing (not just printing) is what turns the scaffold
+                    // PR into N pickable leaf gaps instead of one open-ended
+                    // gap the fleet has to interpret.
+                    let domain = store
+                        .get(&gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.domain)
+                        .unwrap_or_else(|| {
+                            gap_id.split('-').next().unwrap_or("EFFECTIVE").to_string()
+                        });
+                    let session_id = crate::ambient_stream::env_session_id()
+                        .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                    let mut filed_ids: Vec<String> = Vec::new();
+                    for h in &holes {
+                        let (title, ac) = scaffold_holes::hole_to_gap_spec(h, &gap_id);
+                        match store.reserve_verified(&domain, &title, "P2", "xs", &session_id) {
+                            Ok(new_id) => {
+                                let ac_json = serde_json::to_string(&vec![ac])
+                                    .unwrap_or_else(|_| "[]".into());
+                                let _ = store.set_fields(
+                                    &new_id,
+                                    gap_store::GapFieldUpdate {
+                                        acceptance_criteria: Some(ac_json),
+                                        depends_on: Some(
+                                            serde_json::to_string(&vec![gap_id.clone()])
+                                                .unwrap_or_else(|_| "[]".into()),
+                                        ),
+                                        notes: Some(format!(
+                                            "scaffold-and-holes leaf: {}:{} (parent {})",
+                                            h.file.display(),
+                                            h.line,
+                                            gap_id
+                                        )),
+                                        ..Default::default()
+                                    },
+                                );
+                                filed_ids.push(new_id);
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "chump gap scaffold-holes: failed to reserve leaf gap for {}:{}: {e:#}",
+                                    h.file.display(),
+                                    h.line
+                                );
+                            }
+                        }
+                    }
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "filed": filed_ids,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "--- filed {} leaf gap(s) for {} ---",
+                            filed_ids.len(),
+                            gap_id
+                        );
+                        for id in &filed_ids {
+                            println!("{id}");
+                        }
+                    }
+                    return Ok(());
+                }
 
                 if as_json {
                     let specs: Vec<serde_json::Value> = holes
