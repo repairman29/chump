@@ -79057,17 +79057,20 @@ gaps:
 - id: INFRA-3367
   domain: INFRA
   title: "audit-required-tail: shard the 12 unsharded serial scripts + preflight mirror (META-086 cluster 5/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"audit-required-tail\" — 12 scripts bolted onto the audit-required job outside the INFRA-2565 shard matrix, running serially and un-parallelized.\n2. Move these 12 steps into the audit-shard matrix (assign each to whichever of shard 1-4 fits its theme, per the existing shard comments in .github/workflows/audit.yml) so they benefit from the 4-way parallelism; audit-required goes back to being a thin aggregate-only job.\n3. For each of the 12 scripts, also add a preflight.rs mirror entry (same standard as the other 4 clusters).\n4. Verify CI wall-clock for the audit workflow does not regress (shard max-time should not exceed pre-change audit-shard max, since these were previously serial add-ons).\n5. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n6. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  notes: |
+    Decomposed into 16 slices: INFRA-4079, INFRA-4080, INFRA-4081, INFRA-4082, INFRA-4083, INFRA-4084, INFRA-4085, INFRA-4086, INFRA-4087, INFRA-4088, INFRA-4089, INFRA-4090, INFRA-4091, INFRA-4092, INFRA-4093, INFRA-4094
+    [2026-09-03T05:51:53Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3368
   domain: INFRA
   title: "audit-job preflight mirror: gap-state-consistency gates (META-086 cluster 1)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -79076,30 +79079,35 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 7 slices: INFRA-4056, INFRA-4057, INFRA-4058, INFRA-4059, INFRA-4060, INFRA-4061, INFRA-4062
+    [2026-09-03T05:52:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3369
   domain: INFRA
   title: "META-070: preflight mirror for gap-registry & claim-lifecycle audit-job scripts (10 scripts, cluster 1/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster gap-registry-claim-lifecycle).
   acceptance_criteria:
     - "1. src/preflight.rs gains a gap_registry_claim_lifecycle gate covering the 10 unmirrored scripts: test-claim-fuzzy-match.sh, test-gap-divergence-guard.sh, test-gap-doctor-safe-sweep.sh, test-gap-id-cross-session.sh, test-gap-id-lease-uniqueness.sh, test-gap-reserve-concurrency.sh, test-gap-reserve-padding.sh, test-gap-status-flip.sh, test-infra-1025-atomic-claim.sh, test-pick-and-claim-lockdir.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_GAP_LIFECYCLE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-gap-lifecycle.sh smoke asserts the gate runs all 10 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  notes: |
+    [2026-09-03T05:58:04Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3370
   domain: INFRA
   title: "META-070: preflight mirror for PR/merge-lifecycle audit-job scripts (18 scripts, cluster 2/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster pr-merge-lifecycle).
   acceptance_criteria:
     - "1. src/preflight.rs gains a pr_merge_lifecycle gate covering the 18 unmirrored scripts: test-bot-merge-auto-close.sh, test-bot-merge-conflict-wiring.sh, test-ci-flake-rerun.sh, test-conflict-resolver.sh, test-flake-autorerun.sh, test-install-pr-auto-rebase.sh, test-open-pr-dup-detection.sh, test-pr-auto-rebase.sh, test-pr-blocked-watch.sh, test-pr-explain-block.sh, test-pr-terminal-state.sh, test-pr-triage-bot.sh, test-pr-watch-auto-resolve.sh, test-pr-watch-shepherd-smoke.sh, test-rebase-coordination.sh, test-speculative-on-speculative-guard.sh, test-stale-branch-rebase.sh, test-status-flip-proof-of-merge.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_PR_LIFECYCLE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-pr-lifecycle.sh smoke asserts the gate runs all 18 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  notes: |
+    [2026-09-03T05:58:42Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3371
@@ -94946,6 +94954,484 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4079
+  domain: INFRA
+  title: "INFRA: Read audit-required-tail documentation (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Open docs/process/AUDIT_JOB_DECOMPOSITION.md and locate the \"audit-required-tail\" cluster section"
+    - Document the list of the 12 unsharded serial scripts and any existing comments about their themes
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4080
+  domain: INFRA
+  title: "INFRA: Move Script 1 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 1 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 1 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 1 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4081
+  domain: INFRA
+  title: "INFRA: Move Script 2 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 2 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 2 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 2 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4082
+  domain: INFRA
+  title: "INFRA: Move Script 3 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 3 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 3 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 3 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4083
+  domain: INFRA
+  title: "INFRA: Move Script 4 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 4 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 4 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 4 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4084
+  domain: INFRA
+  title: "INFRA: Move Script 5 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 5 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 5 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 5 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4085
+  domain: INFRA
+  title: "INFRA: Move Script 6 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 6 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 6 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 6 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4086
+  domain: INFRA
+  title: "INFRA: Move Script 7 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 7 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 7 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 7 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4087
+  domain: INFRA
+  title: "INFRA: Move Script 8 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 8 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 8 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 8 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4088
+  domain: INFRA
+  title: "INFRA: Move Script 9 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 9 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 9 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 9 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4089
+  domain: INFRA
+  title: "INFRA: Move Script 10 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 10 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 10 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 10 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4090
+  domain: INFRA
+  title: "INFRA: Move Script 11 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 11 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 11 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 11 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4091
+  domain: INFRA
+  title: "INFRA: Move Script 12 to appropriate shard and add preflight mirror (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script 12 is referenced in .github/workflows/audit.yml under the correct shard (1‑4) based on its theme
+    - A matching entry for Script 12 is added to preflight.rs following the standard format used for other clusters
+    - Running `cargo test` for the audit workflow includes Script 12 in the selected shard
+  depends_on: [INFRA-4079]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4092
+  domain: INFRA
+  title: "INFRA: Run CI audit workflow and verify wall‑clock time does not regress (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI audit workflow completes successfully for all shards
+    - Maximum shard duration is captured and compared against the pre‑change baseline
+    - Maximum shard duration does not exceed the previous audit‑shard max time
+  depends_on: [INFRA-4080, INFRA-4081, INFRA-4082, INFRA-4083, INFRA-4084, INFRA-4085, INFRA-4086, INFRA-4087, INFRA-4088, INFRA-4089, INFRA-4090, INFRA-4091]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4093
+  domain: INFRA
+  title: "INFRA: Execute test-audit-job-decomposition.sh and update documentation mirrored column (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`scripts/ci/test-audit-job-decomposition.sh` runs and exits with status 0"
+    - "Documentation docs/process/AUDIT_JOB_DECOMPOSITION.md is updated: the mirrored column for the audit-required-tail cluster reflects the new shard assignments"
+    - Commit includes both script changes and documentation update
+  depends_on: [INFRA-4092]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4094
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy, and cargo check across the workspace (INFRA-3367 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`cargo fmt -- --check` reports no formatting issues"
+    - "`cargo clippy --workspace --all-targets -D warnings` reports no warnings"
+    - "`cargo check --workspace --all-targets` completes without errors"
+  depends_on: [INFRA-4093]
+  notes: |
+    [chump harvest check 'serial']
+    === primitives_index match for 'serial' ===
+    
+    === cluster keyword match for 'serial' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'serial' ===
+    
+    === repo-description match for 'serial' ===
+    
+    === HARVEST_ROADMAP.md mention of 'serial' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'serial' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: INFRA-416
   domain: INFRA
