@@ -79376,7 +79376,7 @@ gaps:
 - id: INFRA-3380
   domain: INFRA
   title: preflight-mirror worker/PR-lifecycle + merge-safety gates (~23 scripts, META-086 cluster 2/5)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79386,12 +79386,14 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  notes: |
+    [2026-09-03T08:46:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3381
   domain: INFRA
   title: preflight-mirror fleet daemon/reaper/isolation gates (~21 scripts, META-086 cluster 3/5)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79403,6 +79405,7 @@ gaps:
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
   notes: |
     Decomposed into 12 slices: INFRA-4115, INFRA-4116, INFRA-4117, INFRA-4118, INFRA-4119, INFRA-4120, INFRA-4121, INFRA-4122, INFRA-4123, INFRA-4124, INFRA-4125, INFRA-4126
+    [2026-09-03T08:46:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3382
@@ -79425,7 +79428,7 @@ gaps:
 - id: INFRA-3383
   domain: INFRA
   title: preflight-mirror docs/CLI/git-hooks hygiene guards (~30 scripts, META-086 cluster 5/5, self-closes META-086)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79436,6 +79439,9 @@ gaps:
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
     - META-086 is closed after this gap ships (last of the 5 cluster sub-gaps)
+  notes: |
+    Decomposed into 15 slices: INFRA-4140, INFRA-4141, INFRA-4142, INFRA-4143, INFRA-4144, INFRA-4145, INFRA-4146, INFRA-4147, INFRA-4148, INFRA-4149, INFRA-4150, INFRA-4151, INFRA-4152, INFRA-4153, INFRA-4154
+    [2026-09-03T08:54:29Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1076B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3384
@@ -97031,6 +97037,433 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4140
+  domain: INFRA
+  title: "INFRA: Extract misc‑hygiene script list from documentation (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A JSON/YAML file `misc_hygiene_scripts.json` is generated containing exactly the script names listed under the misc‑hygiene cluster in docs/process/AUDIT_JOB_DECOMPOSITION.md
+    - The list matches the documentation line‑for‑line (no missing or extra entries)
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4141
+  domain: INFRA
+  title: "INFRA: Add guard registration scaffolding in src/preflight.rs (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - src/preflight.rs contains a new `register_misc_hygiene_guards` function that can be called from the main preflight entry point
+    - The function compiles and is reachable via a public call from `src/preflight.rs`
+  depends_on: [INFRA-4140]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4142
+  domain: INFRA
+  title: "INFRA: Mirror first 5 hygiene scripts into preflight (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Functions for the first 5 scripts (book-sync-guard, doc-freshness, docs-delta-guard/commit‑msg, no‑claude‑leak, no‑verify‑audit) are added to src/preflight.rs
+    - Each function invokes the corresponding script under scripts/ci/ and returns the script’s exit code
+    - preflight exits non‑zero if any of these 5 scripts fail
+  depends_on: [INFRA-4141]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4143
+  domain: INFRA
+  title: "INFRA: Add tests for first 5 mirrored scripts (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit tests in tests/preflight_misc_hygiene.rs verify that each of the first 5 guard functions correctly propagates success (exit 0) and failure (non‑zero) codes
+    - All new tests pass
+  depends_on: [INFRA-4142]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4144
+  domain: INFRA
+  title: "INFRA: Mirror second 5 hygiene scripts into preflight (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Functions for the next 5 scripts (css-token-discipline, cross-judge-guard, prereg-content-guard, effective-010-completion, default-flip-guard) are added and callable
+    - Each function runs its script and propagates the exit status
+    - preflight exits non‑zero if any of these 5 scripts fail
+  depends_on: [INFRA-4141]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4145
+  domain: INFRA
+  title: "INFRA: Add tests for second 5 mirrored scripts (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit tests verify success and failure propagation for the second batch of 5 guards
+    - All new tests pass
+  depends_on: [INFRA-4144]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4146
+  domain: INFRA
+  title: "INFRA: Mirror third 5 hygiene scripts into preflight (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Functions for install-ambient-hooks, md-links-loop, merge-driver-*, infra-1025-atomic-claim, infra-250/254/257/258 are added
+    - Each function invokes its script and returns the correct exit code
+    - preflight exits non‑zero on failure of any of these guards
+  depends_on: [INFRA-4141]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4147
+  domain: INFRA
+  title: "INFRA: Add tests for third 5 mirrored scripts (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Tests confirm proper exit‑code handling for the third batch of 5 guards
+    - All new tests pass
+  depends_on: [INFRA-4146]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4148
+  domain: INFRA
+  title: "INFRA: Mirror fourth 5 hygiene scripts into preflight (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Functions for attribution-portable, review-handoff-smoke, rollup-semantic, cli-help/integration/version-debug, subagent-budget-kill are added
+    - Each function runs its script and propagates exit status
+    - preflight exits non‑zero if any of these fail
+  depends_on: [INFRA-4141]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4149
+  domain: INFRA
+  title: "INFRA: Add tests for fourth 5 mirrored scripts (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Tests verify success/failure handling for the fourth batch of 5 guards
+    - All new tests pass
+  depends_on: [INFRA-4148]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4150
+  domain: INFRA
+  title: "INFRA: Mirror final 5 hygiene scripts into preflight (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Functions for subagent-epilogue-ref, pick-and-claim-lockdir, meta-011-git-stomp, research-026-preflight, and any remaining script are added
+    - Each function correctly invokes its script and returns the script’s exit code
+    - preflight exits non‑zero on failure of any of these final guards
+  depends_on: [INFRA-4141]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4151
+  domain: INFRA
+  title: "INFRA: Add tests for final 5 mirrored scripts (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit tests confirm proper exit‑code propagation for the final batch of 5 guards
+    - All new tests pass
+  depends_on: [INFRA-4150]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4152
+  domain: INFRA
+  title: "INFRA: Validate CI parity file has no entries for misc‑hygiene scripts (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/preflight-ci-parity-exceptions.txt contains zero lines referencing any script from the misc‑hygiene cluster
+    - A CI check (`scripts/ci/test-preflight-ci-parity.sh`) runs locally and passes
+  depends_on: [INFRA-4142, INFRA-4144, INFRA-4146, INFRA-4148, INFRA-4150]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4153
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy, and ensure preflight CI parity test passes (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt -- --check` reports no formatting issues"
+    - "`cargo clippy -- -D warnings` reports no warnings"
+    - "`scripts/ci/test-preflight-ci-parity.sh` runs and exits 0"
+    - All existing unit and integration tests pass
+  depends_on: [INFRA-4152]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+
+- id: INFRA-4154
+  domain: INFRA
+  title: "INFRA: Close META‑086 after shipping (INFRA-3383 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - META‑086 is automatically transitioned to Closed in the issue tracker
+    - "Commit message includes \"Closes META-086\""
+    - All acceptance criteria for INFRA‑3383 are satisfied
+  depends_on: [INFRA-4153]
+  notes: |
+    [chump harvest check 'hygiene']
+    === primitives_index match for 'hygiene' ===
+    
+    === cluster keyword match for 'hygiene' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'hygiene' ===
+    
+    === repo-description match for 'hygiene' ===
+    
+    === HARVEST_ROADMAP.md mention of 'hygiene' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+      92:None engine-relevant. **Skip.** Recommend an archive pass on the duplicate `2029-*` and `project-forge*` repos as a separate hygiene gap.
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+    
+    === cross-pollination briefs mentioning 'hygiene' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
 
 - id: INFRA-416
   domain: INFRA
