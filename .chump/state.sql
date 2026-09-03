@@ -78773,11 +78773,13 @@ gaps:
 - id: INFRA-3359
   domain: INFRA
   title: "META-070 Tier-C: mirror C1 doc/commit-hygiene audit-job guards into chump preflight"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. src/preflight.rs audit-gate discovery list (fn near line 581) extended with the 21 unmirrored C1 doc/commit-hygiene scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md C1 table\n2. Gated behind CHUMP_PREFLIGHT_SKIP_DOCHYGIENE env var per existing CHUMP_PREFLIGHT_SKIP_REGISTRY pattern\n3. scripts/ci/test-preflight-audit-c1-dochygiene.sh smoke test asserts the cluster's scripts run by default and skip cleanly via the env var\n4. chump preflight wall-clock stays under the documented target (<60s warm) — measure before/after"
+  notes: |
+    [2026-09-03T04:56:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3360
@@ -78930,6 +78932,8 @@ gaps:
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster docs-hygiene-guard).
   acceptance_criteria:
     - "1. src/preflight.rs gains a docs_hygiene_guard gate covering the 21 unmirrored scripts: test-credential-pattern-guard.sh, test-cross-judge-guard.sh, test-css-token-discipline.sh, test-default-flip-guard.sh, test-doc-freshness.sh, test-docs-delta-commit-msg.sh, test-docs-delta-guard.sh, test-gate-promotion-no-regression.sh, test-git-identity-guard.sh, test-hardcoded-date-guard.sh, test-md-links-loop.sh, test-merge-driver-ci-yml.sh, test-merge-driver-pre-commit.sh, test-merge-driver-state-sql.sh, test-no-claude-leak.sh, test-no-verify-audit.sh, test-preflight-ci-parity.sh, test-prereg-content-guard.sh, test-raw-yaml-guard.sh, test-schema-version-assert.sh, test-submodule-guard.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-docs-hygiene.sh smoke asserts the gate runs all 21 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  notes: |
+    Decomposed into 8 slices: INFRA-4063, INFRA-4064, INFRA-4065, INFRA-4066, INFRA-4067, INFRA-4068, INFRA-4069, INFRA-4070
   opened_date: '2026-07-26'
 
 - id: INFRA-3373
@@ -94312,6 +94316,211 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4063
+  domain: INFRA
+  title: "INFRA: Add docs_hygiene_guard gate registration in src/preflight.rs (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Gate struct `DocsHygieneGuard` is defined and registered in the preflight gate registry
+    - Compilation succeeds with the new gate code
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4064
+  domain: INFRA
+  title: "INFRA: Implement execution of the 21 audit-job scripts within the gate (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Gate iterates over the exact list of 21 script filenames
+    - Each script is invoked with the same environment as other preflight scripts
+    - Failure of any script aborts the gate with a non‑zero exit code
+  depends_on: [INFRA-4063]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4065
+  domain: INFRA
+  title: "INFRA: Add skip logic via CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE and emit skip audit event (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When `CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE=1` is set, the gate is bypassed
+    - Gate emits an audit‑trail event named `docs_hygiene_guard_skipped`
+    - No scripts are executed when the gate is skipped
+  depends_on: [INFRA-4063]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4066
+  domain: INFRA
+  title: "INFRA: Emit audit‑trail events for each script execution (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Before each script runs, an event `docs_hygiene_guard_script_start` with script name is logged
+    - After each script finishes, an event `docs_hygiene_guard_script_end` with script name and exit status is logged
+    - Audit events are sent to the existing audit‑trail infrastructure
+  depends_on: [INFRA-4064]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4067
+  domain: INFRA
+  title: "INFRA: Ensure the gate runs by default under `chump preflight` (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`chump preflight` invokes the `DocsHygieneGuard` without additional flags"
+    - The gate can be disabled only via the skip env var
+  depends_on: [INFRA-4063]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4068
+  domain: INFRA
+  title: "INFRA: Create smoke test script scripts/ci/test-preflight-docs-hygiene.sh (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script runs `chump preflight` and verifies that all 21 scripts are executed when skip is not set
+    - Script sets `CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE=1` and verifies the gate is skipped and the skip audit event appears
+    - Script exits with 0 on success and non‑zero on failure
+  depends_on: [INFRA-4064, INFRA-4065, INFRA-4066, INFRA-4067]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4069
+  domain: INFRA
+  title: "INFRA: Add unit tests for skip behavior and script execution count (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite includes a test that the gate runs 21 scripts when env var is unset
+    - Test suite includes a test that the gate is bypassed and emits the skip event when env var is set
+    - All tests pass in CI
+  depends_on: [INFRA-4065, INFRA-4066]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4070
+  domain: INFRA
+  title: "INFRA: Update documentation docs/process/CI_PREFLIGHT_PARITY.md (INFRA-3372 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Document mentions the new `docs_hygiene_guard` cluster and its default inclusion in `chump preflight`
+    - Skip mechanism via `CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE` is described
+    - Link to the new smoke test script is added
+  depends_on: [INFRA-4068]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-416
   domain: INFRA
