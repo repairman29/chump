@@ -22539,7 +22539,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 7 slices: EFFECTIVE-734, EFFECTIVE-735, EFFECTIVE-736, EFFECTIVE-737, EFFECTIVE-738, EFFECTIVE-739, EFFECTIVE-740
+    Decomposed into 7 slices: EFFECTIVE-908, EFFECTIVE-909, EFFECTIVE-910, EFFECTIVE-911, EFFECTIVE-912, EFFECTIVE-913, EFFECTIVE-914
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -38766,6 +38766,188 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-908
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Identify code path that scans repositories for intent documents (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Code locations responsible for repository scanning are documented
+    - A placeholder test file is created to verify the identified path
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-909
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement detection of readable intent documents (CLAUDE.md, MANIFESTO.md, README.md, docs/*.md) (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scanner correctly reports presence of any of the listed markdown files
+    - No false positives when files are absent
+  depends_on: [EFFECTIVE-908]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-910
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update autonomous scout to ignore repositories that have readable intent documents (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scout does not flag repositories containing any of the detected intent documents
+    - Existing scout behavior for repositories without intent docs remains unchanged
+  depends_on: [EFFECTIVE-909]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-911
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add unit test for intent‑document detection logic (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test passes when a mock repository includes at least one intent markdown file
+    - Test fails when the mock repository contains none
+  depends_on: [EFFECTIVE-909]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-912
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add integration test for autonomous scout handling of repos with intent documents (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test fails before the change (scout flags repo) and passes after the change (scout skips repo)
+    - Test runs via cargo test and validates end‑to‑end behavior
+  depends_on: [EFFECTIVE-910, EFFECTIVE-911]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-913
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update CI script to execute the new integration test (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-*.sh includes the new integration test
+    - CI run reports the test as part of the suite
+  depends_on: [EFFECTIVE-912]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: EFFECTIVE-914
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Run cargo fmt, clippy and verify no regressions (EFFECTIVE-416 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt completes without changes
+    - clippy runs with -D warnings and reports zero warnings
+    - All existing tests plus new tests pass
+  depends_on: [EFFECTIVE-913]
+  notes: |
+    [chump harvest check 'readable']
+    === primitives_index match for 'readable' ===
+    
+    === cluster keyword match for 'readable' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'readable' ===
+    
+    === repo-description match for 'readable' ===
+      oracle: Machine-readable knowledge layer for AI development tools
+    
+    === HARVEST_ROADMAP.md mention of 'readable' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'readable' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
 
 - id: EVAL-085
   title: test eval 085
@@ -78810,11 +78992,13 @@ gaps:
 - id: INFRA-3362
   domain: INFRA
   title: "META-070 Tier-C: mirror C4 fleet-daemon/resilience audit-job smoke tests into chump preflight"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Run chump gap decompose INFRA-3362 to split the 42-script C4 fleet-daemon/resilience cluster (docs/process/AUDIT_JOB_DECOMPOSITION.md C4 table) into ship-sized sub-slices — do not mirror all 42 in one PR\n2. Each sub-slice extends src/preflight.rs audit-gate discovery list, gated behind its own CHUMP_PREFLIGHT_SKIP_* env var\n3. Each sub-slice ships its own scripts/ci/test-preflight-audit-c4-<slice>.sh smoke test\n4. This gap self-closes when all C4 sub-slices have shipped"
+  notes: |
+    [2026-09-03T05:19:01Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3363
