@@ -1,0 +1,69 @@
+# Known env-var documentation debt surfaced by widening the CREDIBLE-239
+# coverage scan from src/ only to src/ + crates/**/src/.
+#
+# These vars are read exclusively (or additionally) from workspace crates
+# and were undocumented (in neither .env.example nor env-vars-internal.txt)
+# the day the scan was widened (2026-09-03). They are NOT pre-triaged as
+# "internal" — many of these look operator-tunable (e.g. CHUMP_TEAM_API_KEY,
+# CHUMP_COST_CEILING_USD) and belong in .env.example, not here.
+#
+# This file exists so the coverage gate can widen its scope without an
+# instant 51-var CI break, while keeping the debt visible and counted
+# instead of silently laundering it into env-vars-internal.txt (see
+# CREDIBLE-239 AC 6 — do not bulk-allowlist). Entries should be triaged one
+# at a time: move each to .env.example (Tier 1, operator-tunable) or
+# env-vars-internal.txt (Tier 2/3, debug/runtime/test), then delete the
+# line here. This file should shrink to empty, never grow.
+#
+# Tracking gap: file INFRA to triage this backlog.
+CHUMPD_FLEET_BACKEND
+CHUMPD_TAKEOVER
+CHUMP_ALMANAC_DISPATCH_GROUNDING
+CHUMP_CLAUDE_BIN
+CHUMP_COORD_FILES
+CHUMP_COST_CEILING_USD
+CHUMP_COST_WARN_USD
+CHUMP_CURATOR_SUPERVISOR_DRY_RUN
+CHUMP_CURATOR_TICK_INTERVAL_S
+CHUMP_CURATOR_TMUX_SESSION
+CHUMP_DISPATCH_CAPACITY
+CHUMP_DISPATCH_MODEL
+CHUMP_DISPATCH_PROVIDER_PFX
+CHUMP_ENRICH_LLM_CMD
+CHUMP_FAULT_INJECT
+CHUMP_FLEET_EVENTS_DB
+CHUMP_FLEET_RECORDER_TTL_DAYS
+CHUMP_FLEET_WIRE_FETCH_TIMEOUT_MS
+CHUMP_FLEET_WIRE_V1
+CHUMP_GAP_DECOMPOSE_MODEL
+CHUMP_GAP_SHIP_NO_ORPHAN_CLOSE
+CHUMP_GAP_SHIP_ORPHAN_FRESHNESS_MIN
+CHUMP_HANDOFF_RUNNER_CMD
+CHUMP_HELP_REQUEST_TTL_SECS
+CHUMP_INTEGRATOR_DO_NOT_BATCH_LABEL
+CHUMP_INTEGRATOR_DRY_RUN
+CHUMP_INTEGRATOR_SAMPLING_PCT
+CHUMP_LOCAL_BIN
+CHUMP_MEMORY_DB
+CHUMP_NATS_GAP_BUCKET
+CHUMP_NATS_HELP_REQUESTS_BUCKET
+CHUMP_PICKER_BIAS_THRESHOLD
+CHUMP_PICKER_BIAS_WINDOW
+CHUMP_SESSION_BUDGET_REQUESTS
+CHUMP_SESSION_BUDGET_TAVILY
+CHUMP_TEAM_API_KEY
+CHUMP_TEAM_JWT
+CHUMP_TEAM_SLUG
+CHUMP_VERIFY_CI_REQUIRED_ONLY
+CHUMP_WORKTREE_NAME
+CHUMP_WORK_BOARD_TTL_SECS
+FLEET_TIMEOUT_S
+OPENAI_EMBED_ENDPOINT
+PARAMEDIC_BACKOFF_BASE_MS
+PARAMEDIC_BACKOFF_JITTER
+PARAMEDIC_BACKOFF_MAX_MS
+PARAMEDIC_LLM_ENDPOINT
+PARAMEDIC_LLM_MAX_ATTEMPTS
+WORKER_BACKEND
+WORKER_MACHINE
+WORKER_SKILLS
