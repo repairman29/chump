@@ -94534,7 +94534,7 @@ gaps:
 - id: INFRA-4063
   domain: INFRA
   title: "INFRA: Add docs_hygiene_guard gate registration in src/preflight.rs (INFRA-3372 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -94554,6 +94554,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'META-070' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-03T06:40:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4064
   domain: INFRA
