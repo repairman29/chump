@@ -1919,7 +1919,7 @@ gaps:
 - id: CREDIBLE-129
   domain: CREDIBLE
   title: fleet-brief ship-count intermittently returns 0 while fleet is actively shipping — false fleet-dead signal at SessionStart
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -1928,6 +1928,7 @@ gaps:
     - "1. fleet-brief ship-count NEVER silently returns 0 on a transient error — it retries, reports the real count, or prints an explicit 'ship-count unavailable (<reason>)' instead of a misleading 0. 2. Root-cause the intermittent-0 (candidate: git fetch failure / swallowed subshell error inside the script). 3. The 'looks healthy' verdict incorporates ship-rate — a 0-ship state with live workers is NOT 'healthy', it is 'measurement failed / investigate'. 4. Regression test: synthetic scenario where the count query fails -> brief shows 'unavailable', not '0 + healthy'."
   notes: |
     Decomposed into 10 slices: CREDIBLE-597, CREDIBLE-598, CREDIBLE-599, CREDIBLE-600, CREDIBLE-601, CREDIBLE-602, CREDIBLE-603, CREDIBLE-604, CREDIBLE-605, CREDIBLE-606
+    [2026-09-03T01:24:13Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: CREDIBLE-000
 
@@ -22312,7 +22313,7 @@ gaps:
 - id: EFFECTIVE-425
   domain: EFFECTIVE
   title: "EFFECTIVE: wire chump roadmap-from-vision --apply — vision string to >=1 outcome-linked gap (COTG spine slice 1; Phase-1 contract already built at contracts.rs:753)"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -22322,6 +22323,8 @@ gaps:
   notes: |
     Decomposed into 2 slices: EFFECTIVE-741, EFFECTIVE-742
   opened_date: '2026-08-19'
+  closed_date: '2026-09-03'
+  closed_pr: 3584
   outcome_id: COTG
 
 - id: EFFECTIVE-426
@@ -35664,7 +35667,7 @@ gaps:
 - id: EFFECTIVE-827
   domain: EFFECTIVE
   title: "EFFECTIVE: Define design‑pass stage process and deliverable spec (EFFECTIVE-358 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -35694,6 +35697,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-03T01:29:47Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-828
   domain: EFFECTIVE
@@ -85453,10 +85457,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify `crates/chump-preflight/src/preflight.rs` to invoke the ambient‑logging helper when a startup timeout is detected, and extend the `emit` function in `scripts/ops/almanac-liveness-refresh.sh` so that it writes a JSON‑L line to `ambient.jsonl` with `"kind":"chump_startup_timeout"` and the required `cmd`, `args`, `elapsed_ms`, and `suspected_subsystem` fields.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/ops/almanac-liveness-refresh.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - On startup timeout, a JSON line is appended to ambient.jsonl with kind=chump_startup_timeout
-    - The line includes cmd, args, elapsed_ms, and suspected_subsystem fields
-    - "Test: trigger a timeout and verify the JSONL entry is written correctly"
+    - In `crates/chump-preflight/src/preflight.rs`, after the code path that determines a startup timeout, a call to `scripts/ops/almanac-liveness-refresh.sh emit` is added with the appropriate arguments.
+    - The `emit` function in `scripts/ops/almanac-liveness-refresh.sh` appends a JSON line to `ambient.jsonl` where the `kind` field is exactly `chump_startup_timeout` and the object contains `cmd`, `args`, `elapsed_ms`, and `suspected_subsystem` keys.
+    - Executing the preflight binary in a test harness that forces a startup timeout results in a new last line in `ambient.jsonl` that matches the expected JSON structure.
+    - The newly written line can be parsed with `jq` (or equivalent) without error, confirming it is valid JSON and contains the correct field values.
   depends_on: [INFRA-3784]
   notes: |
     [chump harvest check 'RESILIENT']
@@ -103840,13 +103853,15 @@ gaps:
 - id: RESILIENT-141
   domain: RESILIENT
   title: bot-merge RECOVERY_MODE push blocked by its own INFRA-719 guard — fast-path doesn't signal bot-merge-initiated
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     Observed 2026-06-08 shipping INFRA-2826 (audit-unjam keystone). 'CHUMP_BOT_MERGE_RECOVERY_MODE=1 bash scripts/coord/bot-merge.sh --gap INFRA-2826 --auto-merge' does fast-path push+PR+auto-merge but its push does NOT set the bot-merge-initiated signal (CHUMP_BOT_MERGE_IN_PROGRESS=1) that pre-push Guard 4 (INFRA-719) requires. The pre-push hook BLOCKED bot-merge's OWN push as a manual direct push ('BLOCKED (INFRA-719): direct push of gap branch ... to a new PR', hook aborted line 1047, exit 1). So the documented recovery path for a wedged bot-merge is itself broken — cannot ship a new gap branch without a forbidden bypass. Part of MISSION-044; reinforces RESILIENT-140.
   acceptance_criteria:
     - 1. bot-merge RECOVERY_MODE push sets the bot-merge-initiated signal so pre-push Guard 4 (INFRA-719) allows it. 2. A recovery-mode ship of a NEW gap branch reaches PR-create + auto-merge-arm with no INFRA-719 block. 3. Regression test asserts the signal is exported on the recovery push path.
+  notes: |
+    [2026-09-03T01:30:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4808B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
 
