@@ -8,6 +8,8 @@
     - "\n(a) Add unit tests to src/main.rs covering: gap reserve, gap claim, gap show, gap ship subcommands\n(b) Add unit tests to src/web_server.rs covering: handle_gap_list, handle_gap_work, spawn_gap_workflow phases\n(c) Add unit tests to src/repo_tools.rs covering: all public functions with mock filesystem\n(d) Add tests to src/discord.rs covering: message parsing, webhook validation\n(e) Minimum 70% line coverage on all 4 files (verify via cargo tarpaulin)\n(f) CI gate: cargo test --lib main web_server repo_tools discord must pass\n"
   notes: |
     demoted P1→P2 by 2026-05-11 decomp: work moved to children CREDIBLE-030 (main.rs), CREDIBLE-031 (web_server.rs), CREDIBLE-032 (repo_tools.rs), CREDIBLE-033 (discord.rs). Parent stays open as umbrella; closes when all 4 ship.
+
+    Closing umbrella: all 4 children shipped (CREDIBLE-030 #1856, CREDIBLE-031 #1552, CREDIBLE-032 #3019, CREDIBLE-033 #1626). Verified #[test] blocks present in src/main.rs, src/web_server.rs, src/repo_tools.rs, src/discord.rs on main as of this session. Administrative close, no further code change needed.
   opened_date: '2026-05-08'
   outcome_id: CREDIBLE-000
 
