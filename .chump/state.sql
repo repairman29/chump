@@ -22041,7 +22041,7 @@ gaps:
 - id: EFFECTIVE-389
   domain: EFFECTIVE
   title: "code-posse: schedule almanac's organs across the fleet and file what they find (posse has no code-side member)"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -22055,6 +22055,8 @@ gaps:
   notes: |
     Decomposed into 11 slices: EFFECTIVE-863, EFFECTIVE-864, EFFECTIVE-865, EFFECTIVE-866, EFFECTIVE-867, EFFECTIVE-868, EFFECTIVE-869, EFFECTIVE-870, EFFECTIVE-871, EFFECTIVE-872, EFFECTIVE-873
   opened_date: '2026-08-19'
+  closed_date: '2026-09-03'
+  closed_pr: 4414
   outcome_id: ZERO-WASTE-000
 
 - id: EFFECTIVE-390
@@ -79125,7 +79127,7 @@ gaps:
 - id: INFRA-3372
   domain: INFRA
   title: "META-070: preflight mirror for docs/hygiene/commit-guard audit-job scripts (21 scripts, cluster 4/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79134,6 +79136,7 @@ gaps:
     - "1. src/preflight.rs gains a docs_hygiene_guard gate covering the 21 unmirrored scripts: test-credential-pattern-guard.sh, test-cross-judge-guard.sh, test-css-token-discipline.sh, test-default-flip-guard.sh, test-doc-freshness.sh, test-docs-delta-commit-msg.sh, test-docs-delta-guard.sh, test-gate-promotion-no-regression.sh, test-git-identity-guard.sh, test-hardcoded-date-guard.sh, test-md-links-loop.sh, test-merge-driver-ci-yml.sh, test-merge-driver-pre-commit.sh, test-merge-driver-state-sql.sh, test-no-claude-leak.sh, test-no-verify-audit.sh, test-preflight-ci-parity.sh, test-prereg-content-guard.sh, test-raw-yaml-guard.sh, test-schema-version-assert.sh, test-submodule-guard.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_DOCS_HYGIENE=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-docs-hygiene.sh smoke asserts the gate runs all 21 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
   notes: |
     Decomposed into 8 slices: INFRA-4063, INFRA-4064, INFRA-4065, INFRA-4066, INFRA-4067, INFRA-4068, INFRA-4069, INFRA-4070
+    [2026-09-03T06:06:44Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4999B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3373
@@ -79161,11 +79164,13 @@ gaps:
 - id: INFRA-3375
   domain: INFRA
   title: "META-070: mirror pr-lifecycle-bot-merge fast-checks scripts (26) into chump preflight"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. For each of the 26 pr-lifecycle-bot-merge scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#pr-lifecycle-bot-merge-infra-3375, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-pr-lifecycle-mirrors.sh asserts all 26 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  notes: |
+    [2026-09-03T06:15:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3376
@@ -79176,6 +79181,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. For each of the 20 observability-fleet-signals scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#observability-fleet-signals-infra-3376, add a mirror gate in src/preflight.rs (GateKind::Scripts) following the established pattern (conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard, audit-trail emit on bypass, steps.push).\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md's already-mirrored table with the new gates.\n3. Smoke test scripts/ci/test-preflight-observability-mirrors.sh asserts all 20 gates are reachable from the preflight binary.\n4. chump preflight still completes within the documented speed-target budget for Scripts scope after the additions."
+  notes: |
+    Decomposed into 11 slices: INFRA-4095, INFRA-4096, INFRA-4097, INFRA-4098, INFRA-4099, INFRA-4100, INFRA-4101, INFRA-4102, INFRA-4103, INFRA-4104, INFRA-4105
   opened_date: '2026-07-26'
 
 - id: INFRA-3377
@@ -95432,6 +95439,283 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4095
+  domain: INFRA
+  title: "INFRA: Review existing mirror gate pattern in src/preflight.rs (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Identify the code structure used for existing mirror gates (conditional CHUMP_PREFLIGHT_SKIP_<NAME>, audit‑trail emit, steps.push).
+    - Document the pattern in a short markdown note for reference.
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4096
+  domain: INFRA
+  title: "INFRA: Create a reusable template for adding a mirror gate (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Add a function or code snippet that encapsulates the conditional guard, audit‑trail emission, and steps.push logic.
+    - Template is compiled without errors and passes rustfmt.
+  depends_on: [INFRA-4095]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4097
+  domain: INFRA
+  title: "INFRA: Add mirror gate for the first observability‑fleet‑signals script (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "GateKind::Scripts entry for the first script is added to src/preflight.rs using the template."
+    - Conditional CHUMP_PREFLIGHT_SKIP_<NAME> guard works and emits audit‑trail on bypass.
+    - "`steps.push` includes the script execution step."
+  depends_on: [INFRA-4096]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4098
+  domain: INFRA
+  title: "INFRA: Add mirror gates for scripts 2‑6 (batch 1) (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Five new GateKind::Scripts entries (scripts 2‑6) are added following the template."
+    - Each gate respects its own CHUMP_PREFLIGHT_SKIP_<NAME> environment variable.
+    - Audit‑trail entries are emitted on bypass for each new gate.
+  depends_on: [INFRA-4096]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4099
+  domain: INFRA
+  title: "INFRA: Add mirror gates for scripts 7‑11 (batch 2) (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Five new GateKind::Scripts entries (scripts 7‑11) are added following the template."
+    - Conditional guards and audit‑trail behavior are verified via unit compile.
+  depends_on: [INFRA-4096]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4100
+  domain: INFRA
+  title: "INFRA: Add mirror gates for scripts 12‑16 (batch 3) (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Five new GateKind::Scripts entries (scripts 12‑16) are added following the template."
+    - All guards and audit‑trail emissions function as defined.
+  depends_on: [INFRA-4096]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4101
+  domain: INFRA
+  title: "INFRA: Add mirror gates for scripts 17‑20 (batch 4) (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Four new GateKind::Scripts entries (scripts 17‑20) are added following the template."
+    - Each gate includes its specific CHUMP_PREFLIGHT_SKIP_<NAME> guard and audit‑trail emit.
+  depends_on: [INFRA-4096]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4102
+  domain: INFRA
+  title: "INFRA: Update PREFLIGHT_COVERAGE_AUDIT.md table with new gates (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The table in docs/process/PREFLIGHT_COVERAGE_AUDIT.md lists all 20 new gates with correct names and statuses.
+    - Documentation builds without markdown errors.
+  depends_on: [INFRA-4097, INFRA-4098, INFRA-4099, INFRA-4100, INFRA-4101]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4103
+  domain: INFRA
+  title: "INFRA: Extend smoke‑test script to assert all 20 gates are reachable (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-preflight-observability-mirrors.sh includes assertions for each of the 20 gates.
+    - Running the script exits with status 0 when all gates are reachable.
+  depends_on: [INFRA-4097, INFRA-4098, INFRA-4099, INFRA-4100, INFRA-4101]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4104
+  domain: INFRA
+  title: "INFRA: Run smoke test and verify all gates are reachable (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Execution of test-preflight-observability-mirrors.sh passes all assertions.
+    - Any failures are logged and traced to the corresponding gate implementation.
+  depends_on: [INFRA-4103]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4105
+  domain: INFRA
+  title: "INFRA: Measure preflight Scripts‑scope performance and ensure it meets speed target (INFRA-3376 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Run the preflight binary with the Scripts scope and record execution time.
+    - Execution time is within the documented speed‑target budget.
+    - If the budget is exceeded, performance regressions are identified.
+  depends_on: [INFRA-4104, INFRA-4105]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-416
   domain: INFRA
