@@ -16714,10 +16714,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update the `write_pr_checks` function in `scripts/ci/test-pr-fmt-shepherd.sh` to invoke `cargo fmt -- --check` and `cargo clippy -- -D warnings` as part of the PR formatting checks, capture their exit codes, and cause the script to fail with a non‑zero status and a clear error message when either tool reports issues, while leaving all other behavior unchanged.
+    
+    Target file(s):
+    - scripts/ci/test-pr-fmt-shepherd.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt reports no formatting issues
-    - clippy runs with `-D warnings` and reports zero warnings
-    - All files remain unchanged except for the intended modifications
+    - Running `scripts/ci/test-pr-fmt-shepherd.sh` on a repository with no formatting or clippy warnings exits with status 0 and prints “cargo fmt --check passed”.
+    - Running `scripts/ci/test-pr-fmt-shepherd.sh` on a repository with a Rust file that fails `cargo fmt -- --check` exits with a non‑zero status and prints the formatting diff output.
+    - Running `scripts/ci/test-pr-fmt-shepherd.sh` on a repository where `cargo clippy -- -D warnings` emits any warning exits with a non‑zero status and prints the clippy warning messages.
+    - The `write_pr_checks` function in `scripts/ci/test-pr-fmt-shepherd.sh` invokes both `cargo fmt -- --check` and `cargo clippy -- -D warnings` in that order before completing.
   depends_on: [CREDIBLE-717]
 
 - id: CREDIBLE-720
@@ -26355,7 +26363,7 @@ gaps:
 - id: EFFECTIVE-414
   domain: EFFECTIVE
   title: "build bin-bloat-guard CI gate: flag new large src/*.rs files landing in the bin (enforce crate-first, WHEN_TO_CRATE.md)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -26364,6 +26372,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 10 slices: EFFECTIVE-988, EFFECTIVE-989, EFFECTIVE-990, EFFECTIVE-991, EFFECTIVE-992, EFFECTIVE-993, EFFECTIVE-994, EFFECTIVE-995, EFFECTIVE-996, EFFECTIVE-997
+    [2026-09-03T19:38:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -131188,7 +131197,7 @@ gaps:
 - id: ZERO-WASTE-050
   domain: ZERO-WASTE
   title: idle free inference quota is shelved capability — allocate the daily budget or it evaporates
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -131197,6 +131206,8 @@ gaps:
     - "Scarce high-value slots are reserved by SHAPE not by arrival order: free models exist at 262K and 1M context, and gemini-2.5-pro carries ~2M at roughly 50 requests/day. Whole-repo reads should get those; a triage classification must not consume one"
     - "MEASURE THE OUTCOME, not the run: report quota consumed vs available per slot per day, and what work it bought. 'The allocator ran' is a signal; 'the summarize backlog dropped by N and the organ sweep covered M repos' is an outcome"
     - Depends on EFFECTIVE-409 (inference tender) for live per-slot capacity, and on real-traffic failure classification rather than synthetic probes — the operator has ruled probing out because it spends the budget being measured
+  notes: |
+    [2026-09-03T19:37:08Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1087B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
