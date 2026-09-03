@@ -10230,6 +10230,25 @@ events:
     # payload: {finding_id: int, finding_class: str, severity: str, tier: int (0|1|2),
     #           detail: str, artifact_path?: str, pr_number?: int, gap_id?: str}
 
+  # ── CREDIBLE-356: Debt Index 3/5 — compute+emit live_pct, debt, prune_ledger ─
+  - kind: debt_index_computed
+    effect_metric: credible
+    emitter: crates/chump-inventory/src/inventory.rs class_stats (CREDIBLE-356)
+    trigger: >
+      Emitted once per finding_class every time `class_stats()` is called
+      (i.e. every `chump inventory class-stats` run). live_pct is the
+      Crit-weighted (severity-weighted) fraction of the class's findings
+      whose artifact has reached stage>=running (activation_state
+      "referenced"); debt is sum(Crit x stages-short) over the class's
+      high-severity findings whose artifact is NOT running; prune_count is
+      the size of the low-severity-dormant prune ledger
+      (`chump inventory prune-ledger`) for that class. Deterministic and
+      reproducible from tech_debt_findings + artifact_index — never
+      hand-claimed.
+    consumers: [ops-audit, inventory-cli, fleet-brief]
+    fields_required: [ts, kind, finding_class, live_pct, debt, prune_count]
+    # payload: {finding_class: str, live_pct: float (0.0-1.0), debt: int, prune_count: int}
+
   # ── INFRA-2397: main-preflight-watchdog daemon ───────────────────────────────
   - kind: main_preflight_red
     effect_metric: main_preflight_recovered_within_60min

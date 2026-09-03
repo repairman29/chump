@@ -22,8 +22,9 @@
 use crate::inventory::{
     self, backfill_artifact_provenance, class_stats, collect_artifacts, collect_prs_v2,
     demote_class, list_findings, meta_counts, pr_dependent_detectors_disabled, promote_class,
-    recompute_activation_with_provenance, repo_root, review_finding, run_detectors_v2,
-    write_rebuild_meta, FindingRow, PrCollectionPath, DETECTOR_CLASSES, PR_DEPENDENT_DETECTORS,
+    prune_ledger, recompute_activation_with_provenance, repo_root, review_finding,
+    run_detectors_v2, write_rebuild_meta, FindingRow, PrCollectionPath, DETECTOR_CLASSES,
+    PR_DEPENDENT_DETECTORS,
 };
 
 fn print_help() {
@@ -42,7 +43,10 @@ fn print_help() {
     println!("  orphans [--json]                              findings: orphan-artifact only");
     println!("  review <id> --classify <REAL_POSITIVE|FALSE_POSITIVE|NEEDS_INVESTIGATION> [--note \"...\"]");
     println!("  review-queue [--limit N] [--json]             unreviewed findings, oldest first");
-    println!("  class-stats [--json]                          per-class totals + tier + ratio");
+    println!("  class-stats [--json]                          per-class totals + tier + ratio + Debt Index (live_pct/debt/prune_count)");
+    println!(
+        "  prune-ledger [--limit N] [--json]             findings: low-Crit dormant (CREDIBLE-356)"
+    );
     println!("  promote <finding_class>                       tier 0 → 2 (≥10 reviewed, ≥70% RP required)");
     println!("  demote <finding_class>                        tier → 0 escape hatch");
     println!();
@@ -67,6 +71,7 @@ pub fn run(args: &[String]) -> i32 {
         "review" => cmd_review(&args[1..]),
         "review-queue" => cmd_review_queue(&args[1..]),
         "class-stats" => cmd_class_stats(&args[1..]),
+        "prune-ledger" => cmd_prune_ledger(&args[1..]),
         "promote" => cmd_promote(&args[1..]),
         "demote" => cmd_demote(&args[1..]),
         "--help" | "-h" | "help" => {
@@ -743,6 +748,29 @@ fn cmd_orphans(args: &[String]) -> i32 {
     0
 }
 
+// ─── prune-ledger (CREDIBLE-356) ─────────────────────────────────────────────
+
+fn cmd_prune_ledger(args: &[String]) -> i32 {
+    let conn = match inventory::open_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("open_db failed: {e}");
+            return 1;
+        }
+    };
+    let json = has_flag(args, "--json");
+    let limit = parse_int_flag(args, "--limit");
+    let rows = match prune_ledger(&conn, limit) {
+        Ok(r) => r,
+        Err(e) => {
+            eprintln!("prune_ledger failed: {e}");
+            return 1;
+        }
+    };
+    print_findings(&rows, json);
+    0
+}
+
 fn cmd_review_queue(args: &[String]) -> i32 {
     let conn = match inventory::open_db() {
         Ok(c) => c,
@@ -833,8 +861,8 @@ fn cmd_class_stats(args: &[String]) -> i32 {
     }
     let disabled = pr_dependent_detectors_disabled(&conn);
     println!(
-        "{:<28}  {:<5}  {:<10}  {:<9}  {:<5}  eligible",
-        "class", "tier", "total", "reviewed", "RP%"
+        "{:<28}  {:<5}  {:<10}  {:<9}  {:<5}  {:<7}  {:<5}  {:<6}  eligible",
+        "class", "tier", "total", "reviewed", "RP%", "live%", "debt", "prune"
     );
     for s in &stats {
         let is_disabled = disabled && PR_DEPENDENT_DETECTORS.contains(&s.finding_class.as_str());
@@ -851,12 +879,15 @@ fn cmd_class_stats(args: &[String]) -> i32 {
             "no".to_string()
         };
         println!(
-            "{:<28}  {:<5}  {:<10}  {:<9}  {:<5.0}  {}",
+            "{:<28}  {:<5}  {:<10}  {:<9}  {:<5.0}  {:<7.1}  {:<5}  {:<6}  {}",
             s.finding_class,
             s.current_tier,
             total_col,
             s.reviewed_count,
             s.real_positive_ratio * 100.0,
+            s.live_pct * 100.0,
+            s.debt,
+            s.prune_count,
             eligible,
         );
     }

@@ -2287,6 +2287,18 @@ pub struct ClassStats {
     pub real_positive_count: i64,
     pub real_positive_ratio: f64,
     pub eligible_for_promotion: bool,
+    /// CREDIBLE-356 Debt Index — Crit-weighted fraction of this class's
+    /// findings whose artifact is at stage>=running (activation_state
+    /// "referenced"). 0.0 when the class has no weighted findings.
+    pub live_pct: f64,
+    /// CREDIBLE-356 Debt Index — sum(Crit x stages-short) over this
+    /// class's high-Crit (severity=high) findings whose artifact is
+    /// NOT running (dormant/orphan/unknown).
+    pub debt: i64,
+    /// CREDIBLE-356 Debt Index — count of low-Crit (severity=low)
+    /// findings whose artifact is NOT running — the prune-ledger size
+    /// for this class. See [`prune_ledger`] for the row-level listing.
+    pub prune_count: i64,
 }
 
 pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
@@ -2298,6 +2310,7 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
          FROM finding_class_tiers fct
          ORDER BY fct.finding_class",
     )?;
+    let debt_index = debt_index_by_class(conn)?;
     let mapped = stmt.query_map([], |r| {
         let class: String = r.get(0)?;
         let tier: i64 = r.get(1)?;
@@ -2310,6 +2323,7 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
             rp as f64 / reviewed as f64
         };
         let eligible = reviewed >= PROMOTE_MIN_REVIEWED && ratio >= PROMOTE_MIN_REAL_POSITIVE_RATIO;
+        let (live_pct, debt, prune_count) = debt_index.get(&class).copied().unwrap_or((0.0, 0, 0));
         Ok(ClassStats {
             finding_class: class,
             current_tier: tier,
@@ -2318,6 +2332,156 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
             real_positive_count: rp,
             real_positive_ratio: ratio,
             eligible_for_promotion: eligible,
+            live_pct,
+            debt,
+            prune_count,
+        })
+    })?;
+    let mut out = Vec::new();
+    for r in mapped {
+        out.push(r?);
+    }
+    for row in &out {
+        emit_debt_index_event(&row.finding_class, row.live_pct, row.debt, row.prune_count);
+    }
+    Ok(out)
+}
+
+// ─── Debt Index (CREDIBLE-356: 3/5 — compute+emit live_pct, debt, prune_ledger) ─
+//
+// Two axes already exist in this schema; the Debt Index reads both instead
+// of inventing a third:
+//   * Crit  — a finding's `severity` (info|low|med|high), weighted
+//             info=0, low=1, med=2, high=3.
+//   * stage — the finding's artifact `activation_state`
+//             (referenced=2 "running", dormant=1, orphan/unknown=0).
+// A finding whose artifact_path has no matching artifact_index row (not
+// yet indexed, or a class-wide/gap-less finding) is treated as stage 0 —
+// unknown liveness is never counted as running. This makes live_pct
+// PROVEN (derived from indexed activation_state on every rebuild) rather
+// than claimed.
+
+/// Stage a finding's artifact must reach to count as "running" (live).
+const STAGE_RUNNING: i64 = 2;
+
+fn severity_weight(severity: &str) -> i64 {
+    match severity {
+        "high" => 3,
+        "med" => 2,
+        "low" => 1,
+        _ => 0, // "info" and any unrecognized severity
+    }
+}
+
+fn activation_stage(activation_state: &str) -> i64 {
+    match activation_state {
+        "referenced" => 2,
+        "dormant" => 1,
+        _ => 0, // "orphan" | "unknown"
+    }
+}
+
+/// Per-class (live_pct, debt, prune_count), keyed by finding_class.
+/// Iterates every finding once, joined against its artifact's
+/// activation_state, and folds each row into its class's running totals.
+fn debt_index_by_class(conn: &Connection) -> Result<HashMap<String, (f64, i64, i64)>> {
+    let mut stmt = conn.prepare(
+        "SELECT tdf.finding_class, tdf.severity,
+                COALESCE(ai.activation_state, 'unknown') AS stage
+         FROM tech_debt_findings tdf
+         LEFT JOIN artifact_index ai ON ai.path = tdf.artifact_path",
+    )?;
+    // class -> (live_weight, total_weight, debt, prune_count)
+    let mut acc: HashMap<String, (i64, i64, i64, i64)> = HashMap::new();
+    let rows = stmt.query_map([], |r| {
+        Ok((
+            r.get::<_, String>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+        ))
+    })?;
+    for row in rows {
+        let (class, severity, stage_str) = row?;
+        let weight = severity_weight(&severity);
+        let stage = activation_stage(&stage_str);
+        let entry = acc.entry(class).or_insert((0, 0, 0, 0));
+        entry.1 += weight;
+        if stage >= STAGE_RUNNING {
+            entry.0 += weight;
+        } else if severity == "high" {
+            entry.2 += weight * (STAGE_RUNNING - stage);
+        }
+        if severity == "low" && stage < STAGE_RUNNING {
+            entry.3 += 1;
+        }
+    }
+    let mut out = HashMap::new();
+    for (class, (live_w, total_w, debt, prune_count)) in acc {
+        let live_pct = if total_w == 0 {
+            0.0
+        } else {
+            live_w as f64 / total_w as f64
+        };
+        out.insert(class, (live_pct, debt, prune_count));
+    }
+    Ok(out)
+}
+
+fn emit_debt_index_event(finding_class: &str, live_pct: f64, debt: i64, prune_count: i64) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    // scanner-anchor: "kind":"debt_index_computed"
+    let json = format!(
+        r#"{{"ts":"{}","kind":"debt_index_computed","finding_class":"{}","live_pct":{:.4},"debt":{},"prune_count":{}}}"#,
+        ts,
+        json_escape(finding_class),
+        live_pct,
+        debt,
+        prune_count,
+    );
+    let path = ambient_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", json);
+    }
+}
+
+/// CREDIBLE-356 AC: `prune_ledger=low-Crit dormant` — the row-level listing
+/// backing [`ClassStats::prune_count`]. Findings with severity=low whose
+/// artifact has not reached stage>=running (dormant/orphan/unknown),
+/// oldest-detected first so a reviewer works the longest-standing debt
+/// first.
+pub fn prune_ledger(conn: &Connection, limit: Option<i64>) -> Result<Vec<FindingRow>> {
+    let mut sql = String::from(
+        "SELECT tdf.finding_id, tdf.finding_class, tdf.severity, tdf.artifact_path,
+                tdf.pr_number, tdf.gap_id, tdf.detail, tdf.detected_at, tdf.tier,
+                tdf.operator_classification, tdf.operator_reviewed_at,
+                tdf.auto_fix_filed_gap_id
+         FROM tech_debt_findings tdf
+         LEFT JOIN artifact_index ai ON ai.path = tdf.artifact_path
+         WHERE tdf.severity = 'low'
+           AND COALESCE(ai.activation_state, 'unknown') != 'referenced'
+         ORDER BY tdf.detected_at ASC",
+    );
+    if let Some(l) = limit {
+        sql.push_str(&format!(" LIMIT {}", l));
+    }
+    let mut stmt = conn.prepare(&sql)?;
+    let mapped = stmt.query_map([], |r| {
+        Ok(FindingRow {
+            finding_id: r.get(0)?,
+            finding_class: r.get(1)?,
+            severity: r.get(2)?,
+            artifact_path: r.get(3)?,
+            pr_number: r.get(4)?,
+            gap_id: r.get(5)?,
+            detail: r.get(6)?,
+            detected_at: r.get(7)?,
+            tier: r.get(8)?,
+            operator_classification: r.get(9)?,
+            operator_reviewed_at: r.get(10)?,
+            auto_fix_filed_gap_id: r.get(11)?,
         })
     })?;
     let mut out = Vec::new();
@@ -2755,5 +2919,158 @@ mod tests {
             extract_gap_id("CREDIBLE-002 something"),
             Some("CREDIBLE-002".to_string())
         );
+    }
+
+    // ─── Debt Index (CREDIBLE-356) ───────────────────────────────────────────
+
+    fn insert_artifact(conn: &Connection, path: &str, activation_state: &str) {
+        let ts = now_secs();
+        conn.execute(
+            "INSERT INTO artifact_index (path, class, size_bytes, first_seen_at,
+                                         last_modified_at, activation_state,
+                                         reference_count, referenced_from,
+                                         introducing_pr, introducing_gap,
+                                         notes, last_synced_at)
+             VALUES (?1, 'shell-script', 0, ?2, ?2, ?3, 0, NULL, NULL, NULL, NULL, ?2)",
+            params![path, ts, activation_state],
+        )
+        .unwrap();
+    }
+
+    fn insert_finding_at(conn: &Connection, class: &str, severity: &str, artifact_path: &str) {
+        let f = Finding {
+            finding_class: class.to_string(),
+            severity: severity.to_string(),
+            artifact_path: Some(artifact_path.to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: format!("{class} {severity} finding"),
+            evidence_json: None,
+        };
+        insert_finding(conn, &f).unwrap();
+    }
+
+    #[test]
+    #[serial]
+    fn debt_index_live_pct_counts_only_running_stage() {
+        let (_tmp, conn) = setup_test_db();
+        insert_artifact(&conn, "scripts/live.sh", "referenced");
+        insert_artifact(&conn, "scripts/dead.sh", "orphan");
+        insert_finding_at(&conn, "dormant-script", "high", "scripts/live.sh");
+        insert_finding_at(&conn, "dormant-script", "high", "scripts/dead.sh");
+
+        let stats = class_stats(&conn).unwrap();
+        let row = stats
+            .iter()
+            .find(|s| s.finding_class == "dormant-script")
+            .unwrap();
+        // Two equal-weight (severity=high => weight 3) findings, one running
+        // one not => live_pct must be exactly half, not 100% or 0%.
+        assert!(
+            (row.live_pct - 0.5).abs() < 1e-9,
+            "expected live_pct=0.5, got {}",
+            row.live_pct
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn debt_index_debt_only_counts_high_crit_dormant() {
+        let (_tmp, conn) = setup_test_db();
+        insert_artifact(&conn, "scripts/dead-high.sh", "orphan");
+        insert_artifact(&conn, "scripts/dead-low.sh", "orphan");
+        insert_artifact(&conn, "scripts/live-high.sh", "referenced");
+        insert_finding_at(&conn, "orphan-artifact", "high", "scripts/dead-high.sh");
+        insert_finding_at(&conn, "orphan-artifact", "low", "scripts/dead-low.sh");
+        insert_finding_at(&conn, "orphan-artifact", "high", "scripts/live-high.sh");
+
+        let stats = class_stats(&conn).unwrap();
+        let row = stats
+            .iter()
+            .find(|s| s.finding_class == "orphan-artifact")
+            .unwrap();
+        // Only the high-severity dormant finding contributes debt:
+        // weight(high=3) * stages_short(running(2) - orphan(0) = 2) = 6.
+        // The low-severity dormant finding and the live high finding must
+        // NOT contribute.
+        assert_eq!(row.debt, 6, "debt must only count high-Crit dormant");
+    }
+
+    #[test]
+    #[serial]
+    fn debt_index_without_this_change_would_report_zero() {
+        // Proves the AC's "fails without the change" requirement at the
+        // unit level: a naive/absent implementation reports live_pct=0.0
+        // and debt=0 for every class regardless of input. This test fails
+        // if compute is stubbed back out to constants.
+        let (_tmp, conn) = setup_test_db();
+        insert_artifact(&conn, "scripts/only-live.sh", "referenced");
+        insert_finding_at(&conn, "dead-rust-mod", "high", "scripts/only-live.sh");
+
+        let stats = class_stats(&conn).unwrap();
+        let row = stats
+            .iter()
+            .find(|s| s.finding_class == "dead-rust-mod")
+            .unwrap();
+        assert!(
+            (row.live_pct - 1.0).abs() < 1e-9,
+            "single running high-Crit finding must yield live_pct=1.0, got {}",
+            row.live_pct
+        );
+        assert_eq!(row.debt, 0, "a running finding must never contribute debt");
+    }
+
+    #[test]
+    #[serial]
+    fn prune_ledger_returns_only_low_crit_dormant() {
+        let (_tmp, conn) = setup_test_db();
+        insert_artifact(&conn, "scripts/prune-me.sh", "dormant");
+        insert_artifact(&conn, "scripts/keep-live.sh", "referenced");
+        insert_artifact(&conn, "scripts/keep-high.sh", "orphan");
+        insert_finding_at(&conn, "dormant-script", "low", "scripts/prune-me.sh");
+        insert_finding_at(&conn, "dormant-script", "low", "scripts/keep-live.sh");
+        insert_finding_at(&conn, "dormant-script", "high", "scripts/keep-high.sh");
+
+        let ledger = prune_ledger(&conn, None).unwrap();
+        assert_eq!(
+            ledger.len(),
+            1,
+            "only the low-Crit dormant finding qualifies"
+        );
+        assert_eq!(
+            ledger[0].artifact_path.as_deref(),
+            Some("scripts/prune-me.sh")
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn prune_ledger_respects_limit() {
+        let (_tmp, conn) = setup_test_db();
+        for i in 0..3 {
+            let path = format!("scripts/dormant-{i}.sh");
+            insert_artifact(&conn, &path, "dormant");
+            insert_finding_at(&conn, "dormant-script", "low", &path);
+        }
+        let ledger = prune_ledger(&conn, Some(2)).unwrap();
+        assert_eq!(ledger.len(), 2);
+    }
+
+    #[test]
+    #[serial]
+    fn class_stats_emits_debt_index_ambient_event() {
+        let (tmp, conn) = setup_test_db();
+        insert_artifact(&conn, "scripts/live.sh", "referenced");
+        insert_finding_at(&conn, "dormant-script", "high", "scripts/live.sh");
+
+        let _ = class_stats(&conn).unwrap();
+
+        let log_path = tmp.path().join("ambient.jsonl");
+        let contents = std::fs::read_to_string(&log_path).unwrap_or_default();
+        assert!(
+            contents.contains(r#""kind":"debt_index_computed""#),
+            "expected debt_index_computed event in ambient log, got: {contents}"
+        );
+        assert!(contents.contains(r#""finding_class":"dormant-script""#));
     }
 }
