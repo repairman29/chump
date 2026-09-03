@@ -1,0 +1,43 @@
+- id: EFFECTIVE-464
+  domain: EFFECTIVE
+  title: gap-drain standing organ — keep the DeepSeek floor fed with surgical landable gaps (enrich thin + decompose broad)
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"gap-drain standing organ — keep the DeepSeek floor fed with surgical landable gaps (enrich thin + decompose broad)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-09-03'
+  closed_pr: 4387
+  evidence: |
+    RESOLUTION: implemented by PR #4197 (merge commit 976ea972, 2026-08-24) —
+    scripts/dispatch/gap-drain.sh (the DRAIN LOOP: STEP A decomposes open
+    effort=m/l gaps via `chump gap decompose --apply`, STEP B enriches thin
+    gaps in place via `chump-gap-enricher --apply`, both behind a shared
+    attempt-cooldown ledger so a persistently-failing gap can't monopolize the
+    tick), plus scripts/dispatch/chump-gap-drain.service /
+    chump-gap-drain.timer (rostered in scripts/setup/install-helsinki-atc.sh
+    and scripts/ops/organ-manifest.txt so organ-reconcile keeps it alive) and
+    the gap_drain_tick ambient event (docs/observability/EVENT_REGISTRY.yaml).
+
+    AC-2 (regression test) closed by PR #4387 (commit 69a1408, 2026-09-02) —
+    scripts/ci/test-gap-drain.sh drives gap-drain.sh against fake `chump` /
+    `chump-gap-enricher` binaries on PATH (no real fleet DB or LLM calls) and
+    asserts: (1) a first tick decomposes the one open effort=m broad gap AND
+    enriches the one thin gap; (2) both land in the attempted-cooldown ledger;
+    (3) a second tick within the cooldown window skips both (decomposed=0
+    enriched=0); (4) a zero-cooldown tick re-attempts both immediately; (5)
+    the run ledger accumulates one summary line per tick. `bash
+    scripts/ci/test-gap-drain.sh` passes clean on current main.
+
+    AC-3 (fmt/clippy/check) — gap-drain.sh and its test are shell, not Rust;
+    `cargo fmt --all -- --check`, `cargo clippy --workspace --all-targets -D
+    warnings`, and `cargo check --workspace` are unaffected by this change and
+    pass on current main.
+
+    This worktree's HEAD is on top of origin/main with all of the above
+    already merged — doc-only close, no code change needed. The gap had no
+    docs/gaps/EFFECTIVE-464.yaml on disk (filed straight into state.db, never
+    synced to a per-gap YAML file), so this commit creates it rather than
+    editing an existing one.
