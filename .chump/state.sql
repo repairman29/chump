@@ -37203,10 +37203,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new top‑level section titled “Almanac Sweep (code‑side sibling)” to the repository’s README.md, providing a brief justification for why the sweep code resides in this repository and referencing the original gap ID EFFECTIVE-872.
+    
+    Target file(s):
+    - README.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The README in the chosen location contains a section titled \"Almanac Sweep (code‑side sibling)\""
-    - The section explains why the sweep lives in this repo and references the original gap ID
-    - The note is visible in the repository’s rendered README on GitHub
+    - "README.md contains a heading line exactly matching `## Almanac Sweep (code‑side sibling)`."
+    - The new section in README.md includes the phrase `EFFECTIVE-872` and a sentence explaining why the sweep lives in this repo.
+    - Viewing the repository on GitHub shows the “Almanac Sweep (code‑side sibling)” section rendered in the README.
+    - No other files in the repository are modified.
   depends_on: [EFFECTIVE-863]
   notes: |
     [chump harvest check 'schedule']
@@ -77983,6 +77991,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"cargo-gates (shard 1)\" for the current unmirrored-script list (29 at filing time; re-check for drift since META-086 shipped, list may have grown/shrunk).\n2. For each unmirrored script in that cluster, add an entry to src/preflight.rs (the DEFAULT_TEST_SCRIPTS whitelist / relevant Step) so `chump preflight --with-tests` runs it, mirroring the invocation exactly as it appears in .github/workflows/audit.yml (same env vars, same CHUMP_BIN setup).\n3. Scripts requiring `cargo build --bin chump` first must reuse the existing cargo-build step in preflight.rs rather than re-invoking cargo per script.\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes (doc stays in sync); update the doc's \"mirrored: yes/no\" column for this cluster's rows in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  notes: |
+    Decomposed into 11 slices: INFRA-4029, INFRA-4030, INFRA-4031, INFRA-4032, INFRA-4033, INFRA-4034, INFRA-4035, INFRA-4036, INFRA-4037, INFRA-4038, INFRA-4039
   opened_date: '2026-07-26'
 
 - id: INFRA-3364
@@ -92488,6 +92498,332 @@ gaps:
     
     === cross-pollination briefs mentioning 'META-070' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4029
+  domain: INFRA
+  title: "INFRA: Identify current unmirrored scripts list for cargo‑gates (shard 1) (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "List of unmirrored scripts extracted from docs/process/AUDIT_JOB_DECOMPOSITION.md for cluster \"cargo‑gates (shard 1)\" is captured in a markdown file in the PR."
+    - Cross‑checked the list against .github/workflows/audit.yml; any drift (added or removed scripts) is documented.
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4030
+  domain: INFRA
+  title: "INFRA: Refactor preflight.rs to expose reusable cargo‑build step (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - preflight.rs contains a new helper function (e.g., `run_cargo_build_chump()`) that performs `cargo build --bin chump` with the same env as existing steps.
+    - All existing preflight steps that need a cargo build are updated to call the helper instead of invoking cargo directly.
+    - No duplicate cargo invocations are introduced; `cargo build` runs at most once per preflight execution.
+  depends_on: [INFRA-4029]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4031
+  domain: INFRA
+  title: "INFRA: Add preflight entries for scripts 1‑5 (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DEFAULT_TEST_SCRIPTS whitelist in src/preflight.rs includes entries for scripts 1‑5 with exact command line, env vars, and CHUMP_BIN setup as defined in audit.yml.
+    - "`chump preflight --with-tests` runs these five scripts and mirrors their invocation correctly."
+    - Scripts that require `cargo build --bin chump` use the new reusable cargo‑build helper.
+  depends_on: [INFRA-4029, INFRA-4030]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4032
+  domain: INFRA
+  title: "INFRA: Add preflight entries for scripts 6‑10 (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DEFAULT_TEST_SCRIPTS whitelist includes entries for scripts 6‑10 with correct parameters.
+    - "`chump preflight --with-tests` runs these five scripts correctly."
+    - Cargo‑build step is reused via the helper where needed.
+  depends_on: [INFRA-4029, INFRA-4030]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4033
+  domain: INFRA
+  title: "INFRA: Add preflight entries for scripts 11‑15 (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DEFAULT_TEST_SCRIPTS whitelist includes entries for scripts 11‑15 with exact invocation.
+    - "`chump preflight --with-tests` runs these five scripts correctly."
+    - Reusable cargo‑build helper is used for scripts that need it.
+  depends_on: [INFRA-4029, INFRA-4030]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4034
+  domain: INFRA
+  title: "INFRA: Add preflight entries for scripts 16‑20 (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DEFAULT_TEST_SCRIPTS whitelist includes entries for scripts 16‑20 with exact invocation.
+    - "`chump preflight --with-tests` runs these five scripts correctly."
+    - Reusable cargo‑build helper is used for scripts that need it.
+  depends_on: [INFRA-4029, INFRA-4030]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4035
+  domain: INFRA
+  title: "INFRA: Add preflight entries for scripts 21‑25 (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DEFAULT_TEST_SCRIPTS whitelist includes entries for scripts 21‑25 with exact invocation.
+    - "`chump preflight --with-tests` runs these five scripts correctly."
+    - Reusable cargo‑build helper is used for scripts that need it.
+  depends_on: [INFRA-4029, INFRA-4030]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4036
+  domain: INFRA
+  title: "INFRA: Add preflight entries for scripts 26‑29 (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DEFAULT_TEST_SCRIPTS whitelist includes entries for scripts 26‑29 with exact invocation.
+    - "`chump preflight --with-tests` runs these four scripts correctly."
+    - Reusable cargo‑build helper is used for scripts that need it.
+  depends_on: [INFRA-4029, INFRA-4030]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4037
+  domain: INFRA
+  title: "INFRA: Update documentation mirrored column for cargo‑gates (shard 1) (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "AUDIT_JOB_DECOMPOSITION.md rows for all 29 scripts in the cluster have the \"mirrored\" column set to \"yes\"."
+    - Documentation changes are included in the same PR as the code changes.
+  depends_on: [INFRA-4031, INFRA-4032, INFRA-4033, INFRA-4034, INFRA-4035, INFRA-4036]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4038
+  domain: INFRA
+  title: "INFRA: Run CI test script and verify it passes (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`bash scripts/ci/test-audit-job-decomposition.sh` exits with status 0."
+    - All newly mirrored scripts execute without errors and produce expected output.
+  depends_on: [INFRA-4037]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4039
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy, and cargo check across workspace (INFRA-3363 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`cargo fmt -- --check` reports no formatting changes."
+    - "`cargo clippy --workspace --all-targets -D warnings` reports no warnings."
+    - "`cargo check --workspace --all-targets` succeeds."
+  depends_on: [INFRA-4038]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: INFRA-416
   domain: INFRA
