@@ -6034,6 +6034,34 @@ mod proof_of_merge_tests {
     use super::*;
     use tempfile::tempdir;
 
+    // CREDIBLE-280: every git invocation in this module must be hermetic (no
+    // ambient global/system config, no leaked GIT_* env) and its exit status
+    // must be checked. Before this fix, `empty_repo_with_no_commits_passes`,
+    // `repo_with_commits_but_no_main_branch_fails_closed`,
+    // `real_repo_with_matching_commit_subject_passes`, and
+    // `real_repo_with_pr_number_in_subject_passes_when_closed_pr_set` ran
+    // `git init`/`git config`/`git commit` against whatever global/system
+    // gitconfig happened to be present on the runner and silently discarded
+    // the exit status of `git commit` (`let _ = ... .status()`). On a
+    // CI-hosted runner with an ambient gitconfig (e.g. `commit.gpgsign` or a
+    // `core.hooksPath` pointing at this repo's hooks), `git commit` could
+    // fail without the test noticing, leaving the fixture repo with fewer
+    // commits than the assertions below assume — an intermittent failure
+    // that never reproduced locally where no such ambient config exists.
+    fn hermetic_git(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .expect("git should spawn")
+    }
+
     #[test]
     fn fixture_without_git_dir_passes_through() {
         // Tests use synthetic stores without a real .git tree. The guard
@@ -6065,20 +6093,7 @@ mod proof_of_merge_tests {
         let dir = tempdir().unwrap();
         // Hermetic git: no ambient global/system config and no leaked GIT_* env can
         // perturb this fixture on a shared runner.
-        let git = |args: &[&str]| -> std::process::Output {
-            std::process::Command::new("git")
-                .args(args)
-                .current_dir(dir.path())
-                .env("GIT_CONFIG_GLOBAL", "/dev/null")
-                .env("GIT_CONFIG_SYSTEM", "/dev/null")
-                .env("GIT_TERMINAL_PROMPT", "0")
-                .env_remove("GIT_DIR")
-                .env_remove("GIT_WORK_TREE")
-                .env_remove("GIT_INDEX_FILE")
-                .output()
-                .expect("git should spawn")
-        };
-        if !git(&["init", "--initial-branch=main", "--quiet"])
+        if !hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"])
             .status
             .success()
         {
@@ -6149,11 +6164,12 @@ mod proof_of_merge_tests {
         // synthetic gap. Zero commits = test fixture, not production.
         // Guard passes so tests can ship synthetic gaps.
         let dir = tempdir().unwrap();
-        std::process::Command::new("git")
-            .args(["init", "--quiet"])
-            .current_dir(dir.path())
-            .status()
-            .unwrap();
+        let init = hermetic_git(dir.path(), &["init", "--quiet"]);
+        assert!(
+            init.status.success(),
+            "git init must succeed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
         assert!(verify_proof_of_merge(dir.path(), "INFRA-9501", Some(123)));
     }
 
@@ -6163,30 +6179,26 @@ mod proof_of_merge_tests {
         // branch, but `main` doesn't. We have no way to verify proof
         // there — fail closed.
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=other", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
-            return; // older git
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=other", "--quiet"]);
+        if !init.status.success() {
+            return; // older git without --initial-branch
         }
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.local"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args([
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
+        let commit = hermetic_git(
+            dir.path(),
+            &[
                 "commit",
                 "--allow-empty",
                 "-m",
                 "feat: INFRA-9501 on side branch",
-            ])
-            .current_dir(dir.path())
-            .status();
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
         // HEAD exists (commit on "other") but `git log main` will fail.
         assert!(!verify_proof_of_merge(dir.path(), "INFRA-9501", Some(123)));
     }
@@ -6194,32 +6206,28 @@ mod proof_of_merge_tests {
     #[test]
     fn real_repo_with_matching_commit_subject_passes() {
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=main", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"]);
+        if !init.status.success() {
             // Older git without --initial-branch; skip gracefully.
             return;
         }
         // Configure local user.email/name for the commit.
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.local"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args([
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
+        let commit = hermetic_git(
+            dir.path(),
+            &[
                 "commit",
                 "--allow-empty",
                 "-m",
                 "feat(INFRA-9502): RESILIENT — proof-of-merge fixture",
-            ])
-            .current_dir(dir.path())
-            .status();
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
         assert!(verify_proof_of_merge(dir.path(), "INFRA-9502", None));
         // Case-insensitive: lowercase claim should still hit the
         // uppercase commit subject.
@@ -6231,33 +6239,29 @@ mod proof_of_merge_tests {
     #[test]
     fn real_repo_with_pr_number_in_subject_passes_when_closed_pr_set() {
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=main", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"]);
+        if !init.status.success() {
             return;
         }
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.local"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(dir.path())
-            .status();
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
         // Subject mentions only the PR number (squash-merge convention),
         // NOT the gap ID. The gap-ID branch of the check should miss but
         // the `(#PR)` branch should hit.
-        let _ = std::process::Command::new("git")
-            .args([
+        let commit = hermetic_git(
+            dir.path(),
+            &[
                 "commit",
                 "--allow-empty",
                 "-m",
                 "feat: ship a thing (#4242)",
-            ])
-            .current_dir(dir.path())
-            .status();
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
         assert!(verify_proof_of_merge(
             dir.path(),
             "INFRA-NO-MATCH",
