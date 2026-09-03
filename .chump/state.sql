@@ -23852,7 +23852,7 @@ gaps:
 - id: EFFECTIVE-351
   domain: EFFECTIVE
   title: "Agent produces syntactically-invalid/truncated code under tool-storm: photo-renamer rename_photos.py shipped with an unclosed print() paren after the agent stormed on git_commit + aborted mid-write (heat 2026-08-02, 1397s flail). The real V1.5->V2 capability gap. Add a syntax pre-check before scoring (fail fast + feed the error back), and harden the tool-call loop against the git_commit storm (seen 3x)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -23861,6 +23861,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 6 slices: EFFECTIVE-821, EFFECTIVE-822, EFFECTIVE-823, EFFECTIVE-824, EFFECTIVE-825, EFFECTIVE-826
+    [2026-09-03T17:24:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: EFFECTIVE-352
@@ -41406,7 +41407,7 @@ gaps:
 - id: EFFECTIVE-957
   domain: EFFECTIVE
   title: "EFFECTIVE: EFFECTIVE-753: Define data structures for who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
-  status: open
+  status: closed
   priority: P2
   effort: s
   acceptance_criteria:
@@ -41430,6 +41431,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-03T17:21:03Z] Duplicate of EFFECTIVE-956 (PR #4439, commit 1f8289fad) — JtbdSummary struct (who/struggling_moment/done_signal) already shipped to crates/chump-handoff/src/contracts.rs on main, satisfying all 3 AC. Verified cargo check -p chump-handoff passes clean. Closing as duplicate; no new PR needed.
 
 - id: EFFECTIVE-958
   domain: EFFECTIVE
@@ -84319,7 +84321,7 @@ gaps:
 - id: INFRA-3528
   domain: INFRA
   title: "proof-of-merge: external_repo gaps should verify against the registered repo's main, not chump's"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -84328,6 +84330,9 @@ gaps:
     - chump gap ship succeeds for an external_repo gap whose fix commit (subject carrying the gap ID) is on the registered repo's main
     - no bypass env vars required
     - GAME-001 shippable as the worked example
+  notes: |
+    Decomposed into 9 slices: INFRA-4203, INFRA-4204, INFRA-4205, INFRA-4206, INFRA-4207, INFRA-4208, INFRA-4209, INFRA-4210, INFRA-4211
+    [2026-09-03T17:22:51Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3529
@@ -84350,7 +84355,7 @@ gaps:
 - id: INFRA-3530
   domain: INFRA
   title: almanac never indexes SQL — blind to migrations/RLS/schema, directly relevant to this fleet's recurring Supabase questions
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -84359,6 +84364,8 @@ gaps:
     - "The change described by \"almanac never indexes SQL — blind to migrations/RLS/schema, directly relevant to this fleet's recurring Supabase questions\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-03T17:23:28Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3531
@@ -101574,6 +101581,317 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4203
+  domain: INFRA
+  title: "INFRA: Analyze existing proof‑of‑merge implementation (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Current proof‑of‑merge flow that inspects chump's local main branch is documented
+    - Location in code where the main branch SHA is retrieved is identified
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4204
+  domain: INFRA
+  title: "INFRA: Create helper to resolve registered external repo path (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Function `get_registered_repo_path(owner, repo)` returns the absolute path of the cloned repo from the infra registry
+    - Returns an error if the repo is not registered
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4205
+  domain: INFRA
+  title: "INFRA: Implement function to fetch HEAD SHA of external repo's main branch (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function `get_external_main_commit_hash(path)` returns the SHA of the HEAD of the `main` branch
+    - Handles cases where the branch is missing with a clear exception
+  depends_on: [INFRA-4204]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4206
+  domain: INFRA
+  title: "INFRA: Extend proof‑of‑merge verification to check external repo main (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "When a gap has `external_repo:owner/repo`, verification looks up the registered repo path"
+    - Verification succeeds if the fix commit (subject containing the gap ID) exists on that repo's main SHA
+    - Existing chump‑local main verification remains unchanged for non‑external gaps
+  depends_on: [INFRA-4205]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4207
+  domain: INFRA
+  title: "INFRA: Adjust closed‑PR guard to allow external_repo gaps without a PR number (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Guard no longer requires a numeric PR when `external_repo` is present
+    - Direct‑commit shipping for external repos passes the guard
+    - All other gap types still require a PR number
+  depends_on: [INFRA-4206]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4208
+  domain: INFRA
+  title: "INFRA: Add unit tests for external repo verification logic (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test case where the fix commit is on the external repo's main passes
+    - Test case where the fix commit is not on the external repo's main fails
+    - Mocks are used for repo path resolution and git commands
+  depends_on: [INFRA-4206]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4209
+  domain: INFRA
+  title: "INFRA: Create integration test reproducing GAME‑001 scenario (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test sets up a fake external repo `repairman29/realm-of-shadows` with commit d1b9802 on main
+    - "Gap INFRA‑3528 is created with `external_repo:repairman29/realm-of-shadows`"
+    - Ship command runs without any bypass environment variables and succeeds
+    - Surveyor acceptance is reported as PASS
+  depends_on: [INFRA-4207, INFRA-4208]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4210
+  domain: INFRA
+  title: "INFRA: Update documentation for external_repo gap shipping (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README/infra docs include a section describing how external_repo gaps are verified against the registered repo's main
+    - Explicit note that no bypass env vars are required
+    - Example using GAME‑001 is added
+  depends_on: [INFRA-4206]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4211
+  domain: INFRA
+  title: "INFRA: Integrate new tests into CI pipeline (INFRA-3528 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI configuration runs the new unit and integration tests
+    - Pipeline fails if any of the new tests fail
+    - No existing pipelines are broken
+  depends_on: [INFRA-4208, INFRA-4209]
+  notes: |
+    [chump harvest check 'should']
+    === primitives_index match for 'should' ===
+    
+    === cluster keyword match for 'should' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'should' ===
+    
+    === repo-description match for 'should' ===
+    
+    === HARVEST_ROADMAP.md mention of 'should' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'should' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-476
   domain: INFRA
