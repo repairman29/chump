@@ -1,13 +1,18 @@
 - id: CREDIBLE-221
   domain: CREDIBLE
   title: "[almanac] organ binaries log no usage — we cannot tell whether the release gate is ever run"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
     - "All 6 organ binaries (comprehend, flagmap, gatemap, livemap, tracemap, whymap) append to ~/.almanac/usage.jsonl the same way MCP tools and CLI search/api already do — measured 2026-08-07: 0 of 6 log anything"
     - "Why this is CREDIBLE-class not nice-to-have: RELEASE_CHECKLIST.md item 1e REQUIRES 'flagmap --repo <path> --top' for credential-shaped defaults (it caught olive's real TEST_USER_PASSWORD), and 1.5 requires comprehend. Today an auditor could skip both entirely and nothing anywhere would show it. A gate whose execution cannot be observed is a signal, not an outcome — the fleet's own rule"
     - almanac usage then distinguishes retrieval calls from inspection calls, so 'are we actually inspecting or only searching' is answerable from data rather than argued
+  notes: |
+    [2026-09-02T04:16:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5005B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+  opened_date: '2026-08-19'
+  closed_date: '2026-09-03'
+  closed_pr: 13
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CREDIBLE-000
 
