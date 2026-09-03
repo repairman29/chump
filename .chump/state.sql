@@ -16567,9 +16567,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a new unit‑test function named `test_debt_computation_high_criticality_dormant` inside the existing `#[cfg(test)] mod tests` block in `src/pr_rescue.rs`. The test will build a synthetic dataset containing high‑criticality dormant PR entries, invoke the debt‑calculation routine (e.g., `fix_debt_ceiling`), and assert that the returned debt amount matches the expected constant for that scenario.
+    
+    Target file(s):
+    - src/pr_rescue.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test validates debt value for a dataset with high‑criticality dormant entries
-    - Test fails without the debt implementation and passes once it is added
+    - Running `cargo test` executes a test called `test_debt_computation_high_criticality_dormant` defined in `src/pr_rescue.rs`.
+    - The test initially fails (panics or asserts mismatch) when `fix_debt_ceiling` is stubbed or returns an error for the synthetic dataset.
+    - After the debt implementation is completed, the test passes and asserts that the debt value equals the expected numeric result (e.g., `42`) for the high‑criticality dormant dataset.
+    - All pre‑existing tests in `src/pr_rescue.rs` continue to pass after the new test is added.
   depends_on: [CREDIBLE-708, CREDIBLE-710]
   notes: |
     [chump harvest check 'Index']
