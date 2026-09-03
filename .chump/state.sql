@@ -14965,13 +14965,15 @@ gaps:
 - id: CREDIBLE-646
   domain: CREDIBLE
   title: "CREDIBLE: Fix apply-mabel-badass-env.sh drift issue (CREDIBLE-185 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - Script no longer overwrites or removes entries defined in the provider manifest
     - Running the script on a clean repo leaves the manifest unchanged
     - No warnings or errors are emitted during script execution
+  notes: |
+    [2026-09-03T13:21:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-647
   domain: CREDIBLE
@@ -17637,23 +17639,28 @@ gaps:
 - id: DOC-144
   domain: DOC
   title: "DOC: Update ROADMAP.md top section with two‑surface architecture statement (DOC-097 slice)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
     - "The top of docs/ROADMAP.md contains a clear paragraph stating that Olive now has two first‑class product surfaces: web (/shop) and MCP (api/mcp)."
     - Monetisation is explicitly noted as deferred.
     - The paragraph is no longer than three sentences and uses the exact wording from the operator statement.
+  closed_date: '2026-09-03'
+  closed_pr: 4431
+  outcome_id: COTG
 
 - id: DOC-145
   domain: DOC
   title: "DOC: Update README.md top section with two‑surface architecture statement (DOC-097 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
     - The top of README.md mirrors the architecture paragraph added to ROADMAP.md.
     - It mentions web (/shop) and MCP (api/mcp) as first‑class surfaces and that monetisation decisions are deferred.
+  notes: |
+    [2026-09-03T13:27:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1062B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: DOC-146
   domain: DOC
@@ -113043,11 +113050,13 @@ gaps:
 - id: RESILIENT-195
   domain: RESILIENT
   title: daemonize ci-audit + shepherd + orchestrator curators on the hub (close autonomous ops loops)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - ci-audit, shepherd, and orchestrator curators run as standing daemons on the hub (unit present + is-active), each writing a heartbeat, closing the ops loops without manual kicks.
+  notes: |
+    [2026-09-03T13:22:25Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1083B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: RESILIENT-196
@@ -113125,6 +113134,8 @@ gaps:
     - "The change described by \":/repo_path::/tool_middleware:: tests fail only inside linked git worktrees (20 tests) — forces test-gate bypass on every worktree push\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 8 slices: RESILIENT-682, RESILIENT-683, RESILIENT-684, RESILIENT-685, RESILIENT-686, RESILIENT-687, RESILIENT-688, RESILIENT-689
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -124441,6 +124452,284 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: RESILIENT-682
+  domain: RESILIENT
+  title: "RESILIENT: Reproduce failing tests in a linked git worktree (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A linked git worktree is created locally for the repository.
+    - Running `cargo test` (or the relevant `scripts/ci/test-*.sh`) inside the worktree reproduces the 20 failing tests.
+    - Failure logs are captured and can be referenced for debugging.
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-683
+  domain: RESILIENT
+  title: "RESILIENT: Identify the code path responsible for the failure (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Source files in `repo_tools::/repo_path::/tool_middleware` are examined."
+    - The exact function(s) that behave differently in a worktree versus a normal checkout are pinpointed.
+    - A short document (or comment) records the root cause (e.g., path resolution, git metadata handling).
+  depends_on: [RESILIENT-682]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-684
+  domain: RESILIENT
+  title: "RESILIENT: Design a fix for worktree‑specific path handling (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A design note outlines the intended change (e.g., using `git rev-parse --show-toplevel` or handling `.git` file symlinks).
+    - The design does not introduce new unsafe filesystem operations.
+    - The design is reviewed and approved by a teammate.
+  depends_on: [RESILIENT-683]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-685
+  domain: RESILIENT
+  title: "RESILIENT: Implement the code change in the middleware (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The code modifications are merged into the appropriate module(s).
+    - "`cargo fmt` runs without changes, and `cargo clippy --all-targets -D warnings` passes."
+    - Local compilation succeeds with no warnings.
+  depends_on: [RESILIENT-684]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-686
+  domain: RESILIENT
+  title: "RESILIENT: Add a test that reproduces the worktree scenario (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new integration test creates a temporary linked worktree, runs the affected functionality, and asserts success.
+    - "The test is placed under `tests/` or the appropriate CI script and is marked as `#[ignore]` with a clear comment on how to enable it."
+    - Running the test in a normal checkout passes, and running it in a worktree passes after the fix.
+  depends_on: [RESILIENT-685]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-687
+  domain: RESILIENT
+  title: "RESILIENT: Update CI script to execute the new worktree test (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-*.sh` (or equivalent) includes a step that runs the new worktree test."
+    - The CI pipeline runs the test on every push and reports success.
+    - The script fails if the test fails.
+  depends_on: [RESILIENT-686]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-688
+  domain: RESILIENT
+  title: "RESILIENT: Run full test suite and verify no regressions (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing tests (`cargo test` and CI scripts) pass without failures.
+    - "`cargo fmt` and `cargo clippy --all-targets -D warnings` succeed."
+    - A summary report shows zero new warnings or errors.
+  depends_on: [RESILIENT-687, RESILIENT-688]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-689
+  domain: RESILIENT
+  title: "RESILIENT: Document the change and update changelog (RESILIENT-201 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The repository's `CHANGELOG.md` includes an entry describing the fix for worktree test failures.
+    - Any relevant developer documentation (e.g., README or CONTRIBUTING) notes the new worktree test and how to run it locally.
+  depends_on: [RESILIENT-688]
+  notes: |
+    [chump harvest check 'tests']
+    === primitives_index match for 'tests' ===
+    
+    === cluster keyword match for 'tests' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'tests' ===
+    
+    === repo-description match for 'tests' ===
+      upshift-cli: AI-powered dependency upgrades. Explains what breaks, runs your tests, rolls back on failure. Apache-2.0.
+    
+    === HARVEST_ROADMAP.md mention of 'tests' (deep-scan findings) ===
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'tests' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
