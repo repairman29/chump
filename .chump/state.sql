@@ -4912,6 +4912,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 2 slices: CREDIBLE-352, CREDIBLE-353
+    [2026-09-03T21:29:00Z] rot-reaper: PR #4400 auto-closed (required-check-red, 24h) 2026-09-03; re-attempt on fresh main.
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -17873,7 +17874,7 @@ gaps:
 - id: DOC-095
   domain: DOC
   title: "DOC: fleet build-speed plan-of-record + update DISK_AWARE_FLEET/ROADMAP (disk-bounded, receipts)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -17881,6 +17882,7 @@ gaps:
     - " Cross-link + update docs/strategy/DISK_AWARE_FLEET_2026-05-29.md and docs/ROADMAP.md to point at this plan."
   notes: |
     Decomposed into 17 slices: DOC-127, DOC-128, DOC-129, DOC-130, DOC-131, DOC-132, DOC-133, DOC-134, DOC-135, DOC-136, DOC-137, DOC-138, DOC-139, DOC-140, DOC-141, DOC-142, DOC-143
+    [2026-09-03T21:03:11Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1066B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
 
@@ -21783,10 +21785,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new shell function `detect_auto_stash_branch` to `scripts/ci/test-claim-force-recover-wip.sh` that scans the current Git repository for a branch whose name matches the stale‑worktree‑reaper auto‑stash pattern (e.g., `auto-stash*`). The function returns the branch name if found, otherwise returns the literal string `not found`. Integrate the function into the script’s main flow so that it logs “Detected auto‑stash branch: <name>” when a branch is found or “No auto‑stash branch detected” when none is present, without causing an error exit.
+    
+    Target file(s):
+    - scripts/ci/test-claim-force-recover-wip.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The detection routine scans the repository for the auto‑stash branch created by the stale‑worktree‑reaper.
-    - When the branch exists, the routine returns its name and logs a detection message.
-    - When no such branch exists, the routine returns a clear ‘not found’ status without error.
+    - In `scripts/ci/test-claim-force-recover-wip.sh`, the function `detect_auto_stash_branch` returns the exact branch name when an `auto-stash*` branch exists in the repository.
+    - "? When the repository contains an `auto-stash*` branch, executing `scripts/ci/test-claim-force-recover-wip.sh` prints a line matching `Detected auto‑stash branch : <branch-name>` to stdout."
+    - When no `auto-stash*` branch exists, `detect_auto_stash_branch` returns `not found` and the script prints `No auto‑stash branch detected` to stdout.
+    - The script exits with status code 0 in both detection and non‑detection scenarios, indicating no error condition.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -120904,13 +120914,16 @@ gaps:
 - id: RESILIENT-278
   domain: RESILIENT
   title: "SHIP-INFRA 3/7 [RELIABILITY]: green-means-landed — guarantee auto-merge fires on green; admin-merge becomes an alerting INCIDENT (tracked, trends to 0), not a routine tool"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"green-means-landed — guarantee auto-merge fires on green; admin-merge becomes an alerting INCIDENT (tracked, trends to 0), not a routine tool\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: RESILIENT-711, RESILIENT-712, RESILIENT-713, RESILIENT-714, RESILIENT-715, RESILIENT-716, RESILIENT-717, RESILIENT-718, RESILIENT-719, RESILIENT-720
+    [2026-09-03T21:04:43Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: SHIP-INFRA
 
@@ -121086,6 +121099,8 @@ gaps:
   acceptance_criteria:
     - a Linux variant reaps orphaned claude subprocesses on systemd nodes (parent reparented to pid 1, or not under the live worker process tree) older than REAP_AGE (default 1h), while PROTECTING active leased worker claude -p procs — the macOS version keys off the Claude.app PID which does not exist on Linux
     - installed via the COTG housekeeping suite (RESILIENT-318 sibling); guards against the hung-child wedge class (a no-timeout child froze both workers 4h40m on 2026-08-17)
+  notes: |
+    Decomposed into 10 slices: RESILIENT-721, RESILIENT-722, RESILIENT-723, RESILIENT-724, RESILIENT-725, RESILIENT-726, RESILIENT-727, RESILIENT-728, RESILIENT-729, RESILIENT-730
   opened_date: '2026-08-19'
 
 - id: RESILIENT-319
@@ -131590,6 +131605,387 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-711
+  domain: RESILIENT
+  title: "RESILIENT: Locate auto‑merge and admin‑merge code paths in RESILIENT (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Code locations for auto‑merge trigger and admin‑merge handling are identified and documented in a markdown file within the repo
+    - The documentation includes file paths, function names, and a brief description of current behavior
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-712
+  domain: RESILIENT
+  title: "RESILIENT: Add config flag to enforce \"green‑means‑landed\" for auto‑merge (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new boolean config option `enforce_green_for_auto_merge` is added to the RESILIENT configuration schema
+    - The flag defaults to `true` and can be overridden via environment variable `RESILIENT_ENFORCE_GREEN`
+    - Configuration loading code is updated to expose the flag without breaking existing config parsing
+  depends_on: [RESILIENT-711]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-713
+  domain: RESILIENT
+  title: "RESILIENT: Update auto‑merge logic to require green status (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Auto‑merge now checks the `enforce_green_for_auto_merge` flag and proceeds only when the PR status is green
+    - When the flag is true and status is not green, auto‑merge is skipped and a debug log entry is emitted
+    - Existing auto‑merge behavior is unchanged when the flag is false
+  depends_on: [RESILIENT-712]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-714
+  domain: RESILIENT
+  title: "RESILIENT: Create alerting path for admin‑merge attempts on non‑green PRs (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Admin‑merge code now detects a non‑green PR and calls the new `raise_admin_merge_incident` function
+    - The function returns a structured incident payload without performing the merge
+    - A log entry with level `WARN` is emitted indicating the admin‑merge was blocked
+  depends_on: [RESILIENT-711]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-715
+  domain: RESILIENT
+  title: "RESILIENT: Integrate incident payload with RESILIENT INCIDENT tracking system (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`raise_admin_merge_incident` sends the incident payload to the existing INCIDENT API endpoint"
+    - The incident is recorded with a unique ID, timestamp, and a tag `admin_merge_blocked`
+    - Metrics for incidents are incremented and can be queried to show a trend toward zero
+  depends_on: [RESILIENT-714]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-716
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test for green‑only auto‑merge behavior (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new test `test_auto_merge_requires_green` is added under `tests/auto_merge.rs`
+    - The test sets the config flag to true, simulates a non‑green PR, and asserts that merge is not performed
+    - The test passes only when the new logic is present
+  depends_on: [RESILIENT-713]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-717
+  domain: RESILIENT
+  title: "RESILIENT: Add integration test for admin‑merge incident alert (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new test `test_admin_merge_triggers_incident` is added under `tests/admin_merge.rs`
+    - The test simulates an admin‑merge on a non‑green PR and verifies that an incident is created via a mock INCIDENT client
+    - The test fails if the incident is not raised
+  depends_on: [RESILIENT-715]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-718
+  domain: RESILIENT
+  title: "RESILIENT: Update CI scripts to run the new tests (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/ci/test-*.sh` is modified to include the new test files"
+    - Running the CI script locally executes both new tests and reports success
+    - CI pipeline passes with the updated script
+  depends_on: [RESILIENT-716, RESILIENT-717]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-719
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt and clippy, fix any warnings (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` completes without changes after a second run"
+    - "`cargo clippy --all-targets -- -D warnings` passes with zero warnings"
+    - All code modifications from previous slices conform to formatting and linting rules
+  depends_on: [RESILIENT-713, RESILIENT-714, RESILIENT-715]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-720
+  domain: RESILIENT
+  title: "RESILIENT: Execute full test suite to confirm no regressions (RESILIENT-278 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo test` runs all existing and new tests with 0 failures"
+    - Test coverage report shows no drop in coverage for modified modules
+    - No new warnings appear in CI logs
+  depends_on: [RESILIENT-719, RESILIENT-718]
+  notes: |
+    [chump harvest check 'guarantee']
+    === primitives_index match for 'guarantee' ===
+    
+    === cluster keyword match for 'guarantee' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'guarantee' ===
+    
+    === repo-description match for 'guarantee' ===
+    
+    === HARVEST_ROADMAP.md mention of 'guarantee' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'guarantee' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+
+- id: RESILIENT-721
+  domain: RESILIENT
+  title: "RESILIENT: Research Linux process hierarchy and systemd mechanisms for orphan detection (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documented method for identifying orphaned Claude processes on systemd nodes (e.g., parent PID = 1 or not under live worker tree).
+    - Decision recorded on whether to use /proc, systemd-cgls, or other APIs.
+
+- id: RESILIENT-722
+  domain: RESILIENT
+  title: "RESILIENT: Implement REAP_AGE configuration handling (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script reads REAP_AGE from environment variable or defaults to 1 hour.
+    - Value is parsed into seconds and validated (must be >0).
+    - Logs the effective REAP_AGE at start-up.
+  depends_on: [RESILIENT-721]
+
+- id: RESILIENT-723
+  domain: RESILIENT
+  title: "RESILIENT: Core reaping logic: identify orphaned Claude processes older than REAP_AGE (RESILIENT-317 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Script enumerates all Claude processes (matching \"claude\" binary)."
+    - Filters processes whose parent PID is 1 or whose ancestor chain does not include the live worker process tree.
+    - Filters by process start time to keep only those older than REAP_AGE.
+    - Logs each candidate PID with reason for reaping.
+  depends_on: [RESILIENT-721, RESILIENT-722]
+
+- id: RESILIENT-724
+  domain: RESILIENT
+  title: "RESILIENT: Protection logic: exclude active leased worker Claude processes (-p flag) (RESILIENT-317 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Active leased workers identified via command‑line flag \"-p\" are never selected for reaping."
+    - Protection rule is applied after orphan detection and before kill.
+    - "Protected PIDs are logged with a \"protected\" tag."
+  depends_on: [RESILIENT-723]
+
+- id: RESILIENT-725
+  domain: RESILIENT
+  title: "RESILIENT: Unit tests for process identification and protection logic (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Test suite runs with mocked /proc trees covering:"
+    - "  • Orphaned Claude process older than REAP_AGE (should be reaped)."
+    - "  • Orphaned Claude process younger than REAP_AGE (should not be reaped)."
+    - "  • Active leased worker with \"-p\" flag (should be protected)."
+    - All tests pass on CI.
+    - Coverage for identification functions ≥ 90%.
+  depends_on: [RESILIENT-723, RESILIENT-724]
+
+- id: RESILIENT-726
+  domain: RESILIENT
+  title: "RESILIENT: Integrate script into COTG housekeeping suite (RESILIENT-318) installation flow (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Installation script copies reap-orphan-claude-procs.sh to /opt/cotg/housekeeping/.
+    - Script is registered to run via systemd timer as defined by COTG suite.
+    - Installation succeeds on a clean Linux node and logs success.
+  depends_on: [RESILIENT-723, RESILIENT-724]
+
+- id: RESILIENT-727
+  domain: RESILIENT
+  title: "RESILIENT: Hung‑child wedge detection and safe handling (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script detects any Claude child process that has been running > 4h40m without a timeout.
+    - When such a wedge is found, script logs a warning and skips reaping to avoid killing active workers.
+    - No false positives in unit tests.
+  depends_on: [RESILIENT-724]
+
+- id: RESILIENT-728
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end test on a Linux systemd node (RESILIENT-317 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test environment with systemd, a live worker process tree, and simulated orphaned Claude processes is provisioned.
+    - Running the script reaps only the orphaned processes older than REAP_AGE.
+    - Active leased workers remain running.
+    - Logs contain expected entries for reaped, protected, and wedge‑detected processes.
+    - Test passes on CI.
+  depends_on: [RESILIENT-725, RESILIENT-726, RESILIENT-727]
+
+- id: RESILIENT-729
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation for Linux variant (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes usage example, REAP_AGE configuration, installation steps via COTG, and troubleshooting for wedge detection.
+    - Documentation is version‑controlled and rendered correctly in the project site.
+  depends_on: [RESILIENT-728]
+
+- id: RESILIENT-730
+  domain: RESILIENT
+  title: "RESILIENT: Packaging and deployment script for Linux variant (RESILIENT-317 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Packaging script creates a tarball/DEB with the script and systemd unit files.
+    - COTG pipeline can consume the package and deploy it to a target node.
+    - Verification step confirms script is executable and timer is enabled after deployment.
+  depends_on: [RESILIENT-726]
 
 - id: SMOKE-001
   domain: SMOKE
