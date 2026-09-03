@@ -165,6 +165,57 @@ pub(crate) fn track_batch_outcome(
     None
 }
 
+/// EFFECTIVE-918: max consecutive `git_commit` tool calls allowed without an
+/// intervening successful write (edit) before the controller aborts. A model
+/// that repeatedly calls `git_commit` (e.g. retrying on "nothing to commit"
+/// or misreading the result) without ever landing a fix burns the iteration
+/// budget the same way the fail-storm above does — except each `git_commit`
+/// call can succeed (exit 0, empty diff) so the fail-storm breaker never
+/// trips. Default 2: a 3rd consecutive `git_commit` call with no edit in
+/// between aborts the run. Overridable via `CHUMP_MAX_CONSECUTIVE_GIT_COMMITS`.
+const DEFAULT_MAX_CONSECUTIVE_GIT_COMMITS: u32 = 2;
+
+fn max_consecutive_git_commits() -> u32 {
+    std::env::var("CHUMP_MAX_CONSECUTIVE_GIT_COMMITS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_MAX_CONSECUTIVE_GIT_COMMITS)
+}
+
+/// Decide whether a batch's `git_commit` calls should trip the git_commit-storm
+/// breaker.
+///
+/// Returns `Some(error_msg)` when `counter` (after accounting for this batch)
+/// exceeds `max_consecutive_commits`. Returns `None` otherwise.
+///
+/// Mutates `counter`:
+///   - reset to 0 when the batch applied at least one successful edit
+///     (`edits_applied > 0` — a real "intervening successful write")
+///   - incremented by the batch's `git_commit_calls` count
+pub(crate) fn track_git_commit_storm(
+    outcome: &BatchOutcome,
+    counter: &mut u32,
+    max_consecutive_commits: u32,
+) -> Option<String> {
+    if outcome.edits_applied > 0 {
+        *counter = 0;
+    }
+    if outcome.git_commit_calls == 0 {
+        return None;
+    }
+    *counter += outcome.git_commit_calls as u32;
+    if *counter > max_consecutive_commits {
+        return Some(format!(
+            "Aborting: {} consecutive git_commit calls with no intervening successful write. \
+             The model appears to be storming on git_commit without making progress. \
+             Override the threshold via CHUMP_MAX_CONSECUTIVE_GIT_COMMITS=<N>.",
+            counter
+        ));
+    }
+    None
+}
+
 pub struct IterationController<'a> {
     pub max_iterations: usize,
     pub provider: &'a dyn Provider,
@@ -194,6 +245,11 @@ impl<'a> IterationController<'a> {
         let mut tool_calls_count: u32 = 0;
         let mut consecutive_failed_batches: u32 = 0;
         let max_consecutive_fails = max_consecutive_tool_fails();
+        // EFFECTIVE-918: git_commit-storm breaker state — separate from the
+        // fail-storm counter above because a storming `git_commit` call can
+        // itself succeed (empty diff, nothing to commit) each time.
+        let mut consecutive_git_commits: u32 = 0;
+        let max_consecutive_git_commits = max_consecutive_git_commits();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
 
@@ -249,7 +305,17 @@ impl<'a> IterationController<'a> {
         let mut last_failed_tool: Option<String> = None;
 
         // Capture max fails up-front so the per-call helper doesn't re-read env.
-        let track_outcome = |outcome: BatchOutcome, counter: &mut u32| -> Option<String> {
+        // EFFECTIVE-918: also runs the git_commit-storm check against the same
+        // batch outcome before handing it to the fail-storm tracker, so both
+        // breakers are evaluated from a single call site.
+        let mut track_outcome = |outcome: BatchOutcome, counter: &mut u32| -> Option<String> {
+            if let Some(err) = track_git_commit_storm(
+                &outcome,
+                &mut consecutive_git_commits,
+                max_consecutive_git_commits,
+            ) {
+                return Some(err);
+            }
             track_batch_outcome(outcome, counter, max_consecutive_fails)
         };
 
@@ -811,6 +877,7 @@ mod tests {
             fail_count: 0,
             last_failed_tool: None,
             edits_applied: 0,
+            git_commit_calls: 0,
         }
     }
     fn fail_batch(n: usize) -> BatchOutcome {
@@ -819,6 +886,7 @@ mod tests {
             fail_count: n,
             last_failed_tool: None,
             edits_applied: 0,
+            git_commit_calls: 0,
         }
     }
     fn mixed_batch(ok: usize, fail: usize) -> BatchOutcome {
@@ -827,7 +895,84 @@ mod tests {
             fail_count: fail,
             last_failed_tool: None,
             edits_applied: 0,
+            git_commit_calls: 0,
         }
+    }
+
+    /// A batch consisting of a single successful `git_commit` call.
+    fn git_commit_batch() -> BatchOutcome {
+        BatchOutcome {
+            success_count: 1,
+            fail_count: 0,
+            last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 1,
+        }
+    }
+
+    /// A batch consisting of a single successful `str_replace` edit (an
+    /// "intervening successful write" that should reset the git_commit-storm
+    /// counter).
+    fn edit_batch() -> BatchOutcome {
+        BatchOutcome {
+            success_count: 1,
+            fail_count: 0,
+            last_failed_tool: None,
+            edits_applied: 1,
+            git_commit_calls: 0,
+        }
+    }
+
+    #[test]
+    fn git_commit_storm_no_trip_under_threshold() {
+        let mut counter = 0u32;
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert_eq!(counter, 1);
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert_eq!(counter, 2);
+    }
+
+    #[test]
+    fn git_commit_storm_trips_on_third_consecutive_call() {
+        let mut counter = 0u32;
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        let err = track_git_commit_storm(&git_commit_batch(), &mut counter, 2);
+        assert!(
+            err.is_some(),
+            "expected git_commit storm breaker to trip on 3rd consecutive call"
+        );
+        let msg = err.unwrap();
+        assert!(msg.contains("3 consecutive"), "msg: {}", msg);
+        assert!(
+            msg.contains("CHUMP_MAX_CONSECUTIVE_GIT_COMMITS"),
+            "msg: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn git_commit_storm_resets_on_intervening_edit() {
+        let mut counter = 0u32;
+        track_git_commit_storm(&git_commit_batch(), &mut counter, 2);
+        track_git_commit_storm(&git_commit_batch(), &mut counter, 2);
+        assert_eq!(counter, 2);
+        // A successful write in between resets the counter.
+        track_git_commit_storm(&edit_batch(), &mut counter, 2);
+        assert_eq!(
+            counter, 0,
+            "intervening successful write must reset counter"
+        );
+        // Then two more git_commit calls should not immediately trip.
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+    }
+
+    #[test]
+    fn git_commit_storm_ignores_non_git_commit_batches() {
+        let mut counter = 0u32;
+        assert!(track_git_commit_storm(&ok_batch(3), &mut counter, 2).is_none());
+        assert_eq!(counter, 0);
     }
 
     #[test]

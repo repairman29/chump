@@ -614,6 +614,12 @@ pub struct BatchOutcome {
     /// has produced ANY edit — a run that investigates but never edits gets
     /// pushed to apply one (bounded) instead of Completing into an empty diff.
     pub edits_applied: usize,
+    /// EFFECTIVE-918: number of `git_commit` tool calls in this batch
+    /// (regardless of success/failure). The iteration controller tracks this
+    /// across batches to detect a `git_commit` storm — the model repeatedly
+    /// invoking `git_commit` without any intervening successful edit — and
+    /// aborts the run rather than burning the iteration budget.
+    pub git_commit_calls: usize,
 }
 
 impl BatchOutcome {
@@ -781,6 +787,7 @@ mod batch_outcome_tests {
             fail_count: 3,
             last_failed_tool: None,
             edits_applied: 0,
+            git_commit_calls: 0,
         };
         assert!(o.all_failed());
         assert_eq!(o.total(), 3);
@@ -802,6 +809,7 @@ mod batch_outcome_tests {
             fail_count: 4,
             last_failed_tool: None,
             edits_applied: 0,
+            git_commit_calls: 0,
         };
         assert!(!o.all_failed());
         assert_eq!(o.total(), 5);
