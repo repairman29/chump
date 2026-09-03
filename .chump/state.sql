@@ -2804,7 +2804,7 @@ gaps:
 - id: CREDIBLE-179
   domain: CREDIBLE
   title: zero real votes ever cast on any FEEDBACK proposal despite mandatory-voting doctrine
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -2817,6 +2817,8 @@ gaps:
   notes: |
     Decomposed into 8 slices: CREDIBLE-634, CREDIBLE-635, CREDIBLE-636, CREDIBLE-637, CREDIBLE-638, CREDIBLE-639, CREDIBLE-640, CREDIBLE-641
   opened_date: '2026-08-19'
+  closed_date: '2026-09-03'
+  closed_pr: 4425
 
 - id: CREDIBLE-180
   domain: CREDIBLE
@@ -81513,11 +81515,14 @@ gaps:
 - id: INFRA-3422
   domain: INFRA
   title: "CI streamline: collapse 3 redundant Rust compiles into one build-once job"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "STRUCTURAL win (do after INFRA-3420/3421): the chump dep-graph compiles 3x/PR across clippy (x86), cargo-test (aarch64), fast-checks (x86) sharing nothing = ~10-15 machine-min/PR waste (58% of ~44 machine-min/PR total). Collapse the x86 compiles into ONE ubuntu job, one CARGO_TARGET_DIR: cargo clippy --workspace --all-targets (compiles everything incl test targets) -> cargo nextest run --workspace (reuses clippy's objects, only links+runs) -> bash guards reuse target/debug/chump. Keep e2e-pwa separate (macOS-only) and optionally a smaller aarch64 cargo-test leg for arch coverage. The clippy/cargo-test/fast-checks '-required' aggregator stubs (L1608-1668) already exist to keep required-check names green post-merge. Verify: workspace compiles ONCE/PR (warm), required checks still all present."
+  notes: |
+    Decomposed into 11 slices: INFRA-4173, INFRA-4174, INFRA-4175, INFRA-4176, INFRA-4177, INFRA-4178, INFRA-4179, INFRA-4180, INFRA-4181, INFRA-4182, INFRA-4183
+    [2026-09-03T14:05:13Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3423
@@ -99473,6 +99478,286 @@ gaps:
     
     === cross-pollination briefs mentioning 'META-070' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4173
+  domain: INFRA
+  title: "INFRA: Analyze existing CI pipelines to identify the three redundant Rust compile jobs (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documented list of the three current compile jobs (clippy x86, cargo-test aarch64, fast-checks x86)
+    - Measured total machine minutes per PR for each job
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4174
+  domain: INFRA
+  title: "INFRA: Create a new unified Ubuntu CI job definition (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - New job appears in CI config with a clear name (e.g., rust-build-once)
+    - Job runs on Ubuntu and is scheduled for every PR
+  depends_on: [INFRA-4173]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4175
+  domain: INFRA
+  title: "INFRA: Configure shared CARGO_TARGET_DIR and adjust clippy command (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI job sets CARGO_TARGET_DIR to a shared workspace directory
+    - Clippy runs with `cargo clippy --workspace --all-targets` and succeeds
+    - Artifacts from clippy are persisted for later steps
+  depends_on: [INFRA-4174]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4176
+  domain: INFRA
+  title: "INFRA: Add cargo nextest step that reuses clippy artifacts (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Nextest runs with `cargo nextest run --workspace` after clippy
+    - Only linking and test execution occurs (no recompilation)
+    - Job passes when all tests succeed
+  depends_on: [INFRA-4175]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4177
+  domain: INFRA
+  title: "INFRA: Implement guard script to reuse `target/debug/chump` binary (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script checks existence of `target/debug/chump` before rebuilding
+    - CI logs show reuse of the binary across steps
+  depends_on: [INFRA-4176]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4178
+  domain: INFRA
+  title: "INFRA: Update required‑check aggregator stubs to reference the new job (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Aggregator definitions (L1608‑1668) list the new unified job name
+    - All required checks remain green after a PR merge
+  depends_on: [INFRA-4177]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4179
+  domain: INFRA
+  title: "INFRA: Verify e2e‑pwa macOS job remains unchanged and functional (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - macOS e2e‑pwa job still runs on every PR
+    - No regression in e2e‑pwa test results
+  depends_on: [INFRA-4178]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4180
+  domain: INFRA
+  title: "INFRA: Add optional aarch64 cargo‑test leg for architecture coverage (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Separate aarch64 cargo‑test job runs after the unified build
+    - Job reports success/failure independently
+    - Coverage metrics for aarch64 are collected
+  depends_on: [INFRA-4178]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4181
+  domain: INFRA
+  title: "INFRA: Update CI pipeline YAML: remove old jobs and integrate the new unified job (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Old clippy, cargo‑test, and fast‑checks jobs are removed from the pipeline
+    - New unified job and optional aarch64 leg are present
+    - Pipeline graph reflects the new dependencies
+  depends_on: [INFRA-4174, INFRA-4180]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4182
+  domain: INFRA
+  title: "INFRA: Validate end‑to‑end: workspace compiles once per PR and all required checks appear (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For a sample PR, CI shows only one Rust compilation phase (warm) across clippy, nextest, and fast‑checks
+    - Total machine minutes per PR drop by ~58% compared to baseline
+    - All required checks listed in the aggregator are present and green
+  depends_on: [INFRA-4181]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
+
+- id: INFRA-4183
+  domain: INFRA
+  title: "INFRA: Document CI changes in project README and CI guide (INFRA-3422 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes a section describing the new unified Rust build job
+    - CI guide lists the optional aarch64 leg and notes that e2e‑pwa remains macOS‑only
+    - Documentation is reviewed and merged
+  depends_on: [INFRA-4182]
+  notes: |
+    [chump harvest check 'streamline']
+    === primitives_index match for 'streamline' ===
+    
+    === cluster keyword match for 'streamline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'streamline' ===
+    
+    === repo-description match for 'streamline' ===
+      smuggler: Core Smugglers RPG game - streamlined version without AI utilities
+    
+    === HARVEST_ROADMAP.md mention of 'streamline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'streamline' ===
 
 - id: INFRA-476
   domain: INFRA
