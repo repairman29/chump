@@ -16901,10 +16901,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify `src/patch_apply.rs` by adding a `normalize_cargo_target_dir` helper that strips trailing slashes, resolves `.` and `..` components, and canonicalizes any path ending with “/target” to a single form. Update `install_patch_panic_filter_once` to invoke this helper on every `CARGO_TARGET_DIR` entry before inserting it into the panic‑filter list, thereby de‑duplicating the 15 noise variants. Add a unit test in the same file that supplies three representative variants and asserts that only one normalized entry remains.
+    
+    Target file(s):
+    - src/patch_apply.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "All 15 variants of CARGO_TARGET_DIR ending with \"/target\" are normalized and de‑duplicated"
-    - Only one representative entry remains for the target directory
-    - Unit test confirms de‑duplication logic works for at least three sample variants
+    - In `src/patch_apply.rs`, the function `install_patch_panic_filter_once` calls `normalize_cargo_target_dir` for each `CARGO_TARGET_DIR` value before adding it to the internal filter collection.
+    - The new `normalize_cargo_target_dir` returns the exact same canonical string for all inputs that end with “/target”, regardless of leading `./`, trailing `/`, or absolute vs. relative prefixes.
+    - "A unit test named `test_cargo_target_dir_normalization` in `src/patch_apply.rs` passes the strings `\"target\"`, `\"./target\"`, and `\"/tmp/project/target/\"` to the normalization logic and asserts that the resulting set contains exactly one unique entry."
+    - Running `cargo test` succeeds and the test output shows that the panic‑filter list contains a single entry for the target directory even when the environment variable `CARGO_TARGET_DIR` is set to any of the three sample variants.
   depends_on: [CREDIBLE-722]
   notes: |
     [chump harvest check 'almanac']
@@ -19389,7 +19397,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 8 slices: DOCS-019, DOCS-020, DOCS-021, DOCS-022, DOCS-023, DOCS-024, DOCS-025, DOCS-026
+    Decomposed into 8 slices: DOCS-027, DOCS-028, DOCS-029, DOCS-030, DOCS-031, DOCS-032, DOCS-033, DOCS-034
   opened_date: '2026-08-19'
 
 - id: DOCS-003
@@ -20104,6 +20112,229 @@ gaps:
     - "`cargo clippy --all-targets -- -D warnings` passes with zero warnings."
     - All existing tests plus the new RUN half tests pass (`cargo test`).
   depends_on: [DOCS-022, DOCS-023, DOCS-024, DOCS-025]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-027
+  domain: DOCS
+  title: "DOCS: Analyze RUN half requirements (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Requirements for RUN half are documented in a design note.
+    - Relevant DOCS code paths are identified.
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-028
+  domain: DOCS
+  title: "DOCS: Update DOCS code to include RUN half placeholders (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - DOCS codebase includes placeholders for RUN half logic.
+    - Code compiles without errors after changes.
+  depends_on: [DOCS-027]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-029
+  domain: DOCS
+  title: "DOCS: Implement RUN half functionality in code (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - RUN half functionality behaves as specified in design.
+    - Running cargo test shows new behavior passes.
+  depends_on: [DOCS-028]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-030
+  domain: DOCS
+  title: "DOCS: Add unit test for RUN half behavior (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit test asserts RUN half behavior.
+    - Test fails before implementation and passes after.
+  depends_on: [DOCS-029]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-031
+  domain: DOCS
+  title: "DOCS: Add CI script test for RUN half behavior (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI test script scripts/ci/test-run.sh executes RUN half scenario.
+    - Script returns success only when RUN half works.
+  depends_on: [DOCS-029]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-032
+  domain: DOCS
+  title: "DOCS: Update CI pipeline to run new tests (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI pipeline runs the new unit and script tests.
+    - Pipeline passes with new tests included.
+  depends_on: [DOCS-030, DOCS-031]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-033
+  domain: DOCS
+  title: "DOCS: Run cargo fmt and clippy checks (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt runs without changes needed.
+    - cargo clippy runs with -D warnings passes.
+  depends_on: [DOCS-032]
+  notes: |
+    [chump harvest check 'roadmap']
+    === primitives_index match for 'roadmap' ===
+    
+    === cluster keyword match for 'roadmap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'roadmap' ===
+    
+    === repo-description match for 'roadmap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'roadmap' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      5:> _Sources: 3 waves of parallel cluster scans (74/76 = 97% coverage) + cross-check against [docs/ROADMAP.md](../ROADMAP.md) + [docs/strategy/PRODUCTIZATION_PLAN_2026-05-22.md](../strategy/PRODUCTIZATION_PLAN_2026-05-22.md)._
+      75:| `BEAST-MODE` | Active (67d) | **HIGHEST-leverage harvest of the entire arsenal** — see #1. Also: enterprise AuditLogger pattern for compliance, task hierarchy (Roadmap→Feature→Task) richer than Chump's current workthread model |
+    
+    === cross-pollination briefs mentioning 'roadmap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: DOCS-034
+  domain: DOCS
+  title: "DOCS: Verify no regression on existing tests (DOCS-002 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing tests pass unchanged.
+    - No new warnings or failures introduced.
+  depends_on: [DOCS-033]
   notes: |
     [chump harvest check 'roadmap']
     === primitives_index match for 'roadmap' ===
