@@ -19794,13 +19794,14 @@ gaps:
 - id: EFFECTIVE-268
   domain: EFFECTIVE
   title: "Bootstrap: Another intent"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
   notes: |
     Decomposed into 5 slices: EFFECTIVE-874, EFFECTIVE-875, EFFECTIVE-876, EFFECTIVE-877, EFFECTIVE-878
+    [2026-09-03T03:26:30Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
@@ -77871,25 +77872,30 @@ gaps:
 - id: INFRA-3354
   domain: INFRA
   title: "META-070: mirror gap-state-consistency audit-job gates into chump preflight (cluster A)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     Cluster A from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the gap-CLI-subcommand consistency test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs so they run locally via 'chump preflight', not just in CI. 19 scripts: test-gap-ac-requirement.sh, test-gap-add-note.sh, test-gap-audit-ac-open.sh, test-gap-closure-consistency-fixture.sh, test-gap-consolidate.sh, test-gap-impact-rating.sh, test-gap-lifecycle-manager.sh, test-gap-list-domain-summary.sh, test-gap-list-done-format.sh, test-gap-list-since-json-schema.sh, test-gap-list-since.sh, test-gap-profiling.sh, test-gap-quality-gate.sh, test-gap-rebalance.sh, test-gap-run-now.sh, test-gap-show-ac-render.sh, test-gap-templates.sh, test-gap-workflow-status.sh, test-release-lease-flag.sh. (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml — see survey doc revision.)
   acceptance_criteria:
     - 1. All 19 cluster-A scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster (no unmirrored-gate drift). 3. chump preflight run locally exercises all 19 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster A shipped. Splitting into 2 PRs is acceptable if each is intent-atomic.
+  notes: |
+    Decomposed into 8 slices: INFRA-4021, INFRA-4022, INFRA-4023, INFRA-4024, INFRA-4025, INFRA-4026, INFRA-4027, INFRA-4028
+    [2026-09-03T03:27:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3355
   domain: INFRA
   title: "META-070: mirror PR/worker-lifecycle audit-job gates into chump preflight (cluster B)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     Cluster B from META-086 survey (docs/process/AUDIT_JOB_DECOMPOSITION.md): mirror the bot-merge/PR-lifecycle test scripts run in .github/workflows/audit.yml's audit job into src/preflight.rs. 16 scripts: test-bot-merge-arm-ship-order.sh, test-bot-merge-exit-codes.sh, test-bot-merge-exit-phases.sh, test-bot-merge-graphql-preflight.sh, test-bot-merge-stacked-rebase.sh, test-bot-merge-watchdog.sh, test-bounced-pr-detector.sh, test-cache-mergestatestatus.sh, test-merge-driver-ci-yml-add-row.sh, test-pr-failure-auto-rescue.sh, test-pr-rescue-audit-handler.sh, test-pr-scope-title-fallback.sh, test-review-handoff-reengage.sh, test-rollup-cascade-cancel.sh, test-stale-binary-ship-blocked.sh, test-stale-worktree-reaper-tmp.sh. (Corrects earlier draft: the audit job lives in audit.yml, not ci.yml.)
   acceptance_criteria:
     - 1. All 16 cluster-B scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md are invoked from src/preflight.rs. 2. scripts/ci/test-preflight-ci-parity.sh passes for this cluster. 3. chump preflight run locally exercises all 16 scripts and exits non-zero if any fails. 4. docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub-gaps' table updated to mark cluster B shipped.
+  notes: |
+    [2026-09-03T03:28:27Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3356
@@ -92264,6 +92270,210 @@ gaps:
     - The binary exits with code 0 only if every script returns 0; otherwise it exits non‑zero.
     - Manual run `./chump-preflight` reports success/failure for each script and matches CI parity results.
   depends_on: [INFRA-4014, INFRA-4015, INFRA-4016, INFRA-4017]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4021
+  domain: INFRA
+  title: "INFRA: Add script runner utility to src/preflight.rs (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "src/preflight.rs contains a function `run_audit_script(path: &str) -> Result<(), std::process::ExitStatus>` that executes a given script and returns success or failure."
+    - The function is unit‑testable (exposed as pub) and compiles without errors.
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4022
+  domain: INFRA
+  title: "INFRA: Invoke first half (9) of cluster‑A audit scripts from preflight (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "preflight.rs calls `run_audit_script` for the following scripts: test-gap-ac-requirement.sh, test-gap-add-note.sh, test-gap-audit-ac-open.sh, test-gap-closure-consistency-fixture.sh, test-gap-consolidate.sh, test-gap-impact-rating.sh, test-gap-lifecycle-manager.sh, test-gap-list-domain-summary.sh, test-gap-list-done-format.sh."
+    - Each script path is resolved relative to the repository root and passed to the runner.
+    - Compilation succeeds and `cargo test` passes (no preflight tests yet).
+  depends_on: [INFRA-4021]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4023
+  domain: INFRA
+  title: "INFRA: Invoke remaining half (10) of cluster‑A audit scripts from preflight (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "preflight.rs calls `run_audit_script` for the remaining scripts: test-gap-list-since-json-schema.sh, test-gap-list-since.sh, test-gap-profiling.sh, test-gap-quality-gate.sh, test-gap-rebalance.sh, test-gap-run-now.sh, test-gap-show-ac-render.sh, test-gap-templates.sh, test-gap-workflow-status.sh, test-release-lease-flag.sh."
+    - All 19 script invocations are reachable via a single `run_all_audit_scripts()` entry point.
+    - Compilation succeeds.
+  depends_on: [INFRA-4021]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4024
+  domain: INFRA
+  title: "INFRA: Add aggregate error handling to preflight runner (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`run_all_audit_scripts()` returns an Err if any individual script exits with non‑zero status."
+    - When a script fails, the error includes the script name and exit code.
+    - The `chump preflight` CLI exits with a non‑zero status when any script fails.
+  depends_on: [INFRA-4022, INFRA-4023]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4025
+  domain: INFRA
+  title: "INFRA: Update CI parity test (scripts/ci/test-preflight-ci-parity.sh) for cluster‑A (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The CI script now runs `chump preflight` and asserts that it succeeds for cluster‑A.
+    - The script fails if `chump preflight` exits non‑zero, indicating drift.
+    - The script runs in CI without requiring manual input.
+  depends_on: [INFRA-4024]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4026
+  domain: INFRA
+  title: "INFRA: Verify CI parity test passes locally (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `scripts/ci/test-preflight-ci-parity.sh` on a clean checkout completes with exit code 0.
+    - All 19 scripts are executed and no failures are observed.
+  depends_on: [INFRA-4025]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4027
+  domain: INFRA
+  title: "INFRA: Update docs/process/AUDIT_JOB_DECOMPOSITION.md 'Filed sub‑gaps' table (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The table entry for cluster A is marked as shipped.
+    - The markdown file remains syntactically valid and renders correctly.
+  depends_on: [INFRA-4026]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4028
+  domain: INFRA
+  title: "INFRA: Add integration test exercising all 19 scripts via `chump preflight` (INFRA-3354 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new test `tests/preflight_integration.rs` invokes the CLI with `--dry-run` (or equivalent) and asserts that the process exits 0 when all scripts succeed.
+    - The test fails if any script returns a non‑zero status.
+    - The test is part of `cargo test` suite and passes on CI.
+  depends_on: [INFRA-4022, INFRA-4023, INFRA-4024]
   notes: |
     [chump harvest check 'META-070']
     === primitives_index match for 'META-070' ===
