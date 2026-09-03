@@ -878,3 +878,8 @@ parked      # reason: RESILIENT-352 — same record type as up_to_date above; wr
 
 # ── INFRA-2395: ghost-gap audit — one-shot manual emission ─────────────────
 ghost_gap_audit_finding  # reason: INFRA-2395 — emitted once via a manual audit pass (105 events, one per ghost gap_id found), not by a persistent script/emitter with a grep-scannable "kind":"X" literal in tracked source. Registered in EVENT_REGISTRY.yaml for consumer documentation; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
+
+# ── CREDIBLE-622 (CREDIBLE-109 slice): halt-predicate observability ────────
+halt_predicate_success  # reason: CREDIBLE-622 — emitted by scripts/lib/halt-class-emit.sh::halt_predicate_emit; `kind` is computed dynamically ("success"|"failure"|"timeout" -> halt_predicate_*), not a grep-scannable "kind":"X" literal at the emit call. scanner-anchor comments are present at the top of the file (scripts/lib/ is outside the coverage scanner's PROD_PATHS); reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
+halt_predicate_failure  # reason: CREDIBLE-622 — same as halt_predicate_success above; emitted by scripts/lib/halt-class-emit.sh::halt_predicate_emit.
+halt_predicate_timeout  # reason: CREDIBLE-622 — same as halt_predicate_success above; emitted by scripts/lib/halt-class-emit.sh::halt_predicate_emit and halt_predicate_run.

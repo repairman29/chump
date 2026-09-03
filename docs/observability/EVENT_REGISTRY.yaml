@@ -6312,6 +6312,35 @@ events:
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, restored_level, reason]
 
+  # ── CREDIBLE-622 (CREDIBLE-109 slice): halt-class predicate observability ─
+  # halt_predicate_emit/halt_predicate_run in scripts/lib/halt-class-emit.sh
+  # emit one of these three distinct kinds per predicate execution (rather
+  # than one kind + a status field) so consumers can filter/aggregate
+  # per-outcome without parsing JSON. Fields follow the same field-naming
+  # convention as the OTel-semconv shaping in src/genai_conv.rs so any
+  # OTel-compatible collector can ingest ambient.jsonl without a bespoke
+  # parser.
+  - kind: halt_predicate_success
+    effect_metric: self
+    emitter: scripts/lib/halt-class-emit.sh (halt_predicate_emit/halt_predicate_run)
+    trigger: a halt-class predicate ran to completion with exit code 0.
+    consumers: [ambient, fleet-brief (future)]
+    fields_required: [ts, kind, predicate, duration_ms]
+  - kind: halt_predicate_failure
+    effect_metric: self
+    emitter: scripts/lib/halt-class-emit.sh (halt_predicate_emit/halt_predicate_run)
+    trigger: a halt-class predicate ran to completion with a non-zero,
+      non-timeout exit code.
+    consumers: [ambient, fleet-brief (future)]
+    fields_required: [ts, kind, predicate, duration_ms]
+  - kind: halt_predicate_timeout
+    effect_metric: self
+    emitter: scripts/lib/halt-class-emit.sh (halt_predicate_emit/halt_predicate_run)
+    trigger: a halt-class predicate exceeded its configured timeout budget
+      (exit code 124 under `timeout`).
+    consumers: [ambient, fleet-brief (future)]
+    fields_required: [ts, kind, predicate, duration_ms]
+
   # ── ZERO-WASTE-053: steady-state cargo-target GC (2026-08-09) ────────────
   # cargo-sweep-gc.sh holds the shared target under a hard cap via LRU eviction,
   # so cargo's unbounded growth becomes a bounded plateau (days-and-days autonomy).
