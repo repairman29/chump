@@ -32962,9 +32962,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a module‑level constant `MAX_SRC_RS_SIZE_BYTES` (default 100 KB, overridable via the `MAX_SRC_RS_SIZE_BYTES` environment variable) to `crates/chump-orchestrator/src/lib.rs` and modify the size‑checking logic inside the `pick_gap_with_kind` function to compare source sizes against this constant instead of a hard‑coded literal.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A constant `MAX_SRC_RS_SIZE_BYTES` (default 100 KB) is defined and can be overridden via an env var.
-    - The detection function uses this constant.
+    - "In `crates/chump-orchestrator/src/lib.rs` a `pub const MAX_SRC_RS_SIZE_BYTES: usize` is defined, defaulting to 102_400 bytes and reading an overriding value from the `MAX_SRC_RS_SIZE_BYTES` environment variable."
+    - The size comparison inside the `pick_gap_with_kind` function in the same file uses `MAX_SRC_RS_SIZE_BYTES` to decide whether a source file exceeds the threshold.
+    - Running the built binary with `MAX_SRC_RS_SIZE_BYTES=50000` causes `pick_gap_with_kind` to reject a test input larger than 50 KB (observable via the program’s exit code or log message) while accepting a smaller input.
+    - When the `MAX_SRC_RS_SIZE_BYTES` environment variable is unset, `pick_gap_with_kind` applies the default 102_400‑byte limit (observable via the same exit code or log message for a 100 KB test file).
   depends_on: [EFFECTIVE-726]
   notes: |
     [chump harvest check 'build']
@@ -79124,13 +79133,16 @@ gaps:
 - id: INFRA-3371
   domain: INFRA
   title: "META-070: preflight mirror for fleet-daemon & reaper-cadence audit-job scripts (14 scripts, cluster 3/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     Sub-gap of META-086 audit-job decomposition survey (docs/process/AUDIT_JOB_DECOMPOSITION.md, cluster fleet-daemon-reaper).
   acceptance_criteria:
     - "1. src/preflight.rs gains a fleet_daemon_reaper gate covering the 14 unmirrored scripts: test-auto-arm-sweeper.sh, test-autoscale-decisions.sh, test-cargo-target-reaper.sh, test-claude-reaper.sh, test-fleet-brief.sh, test-fleet-fanout.sh, test-fleet-kill-switch.sh, test-fleet-spec.sh, test-fleet-starve-auto-action.sh, test-infra-258-reaper-partial-delivery.sh, test-stale-process-watchdog.sh, test-subagent-budget-kill.sh, test-supervision-trees.sh, test-worktree-reaper-safety.sh\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_FLEET_DAEMON=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-fleet-daemon.sh smoke asserts the gate runs all 14 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored"
+  notes: |
+    Decomposed into 3 slices: INFRA-4112, INFRA-4113, INFRA-4114
+    [2026-09-03T07:08:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3372
@@ -79210,17 +79222,19 @@ gaps:
 - id: INFRA-3378
   domain: INFRA
   title: "META-070: mirror cli-product-acceptance fast-checks scripts (23) into chump preflight"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. For each of the 23 cli-product-acceptance scripts listed under docs/process/AUDIT_JOB_DECOMPOSITION.md#cli-product-acceptance-infra-3378, classify as Mirror (add to src/preflight.rs), Tier-D (add to docs/process/CI_GATES_INVENTORY.md, e.g. self-hosted-runner-only checks), or Allowlist (add to scripts/ci/preflight-ci-parity-exceptions.txt with reason) — most in this cluster are slow feature-acceptance tests, so Tier-D/Allowlist is expected to dominate over Mirror.\n2. Update docs/process/PREFLIGHT_COVERAGE_AUDIT.md accordingly for every script in this cluster.\n3. Smoke test scripts/ci/test-preflight-cli-acceptance-classification.sh asserts every script in the cluster has a classification (mirrored, Tier-D, or allowlisted) — none left unclassified."
+  notes: |
+    [2026-09-03T07:18:04Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3379
   domain: INFRA
   title: preflight-mirror gap/state-registry consistency gates (~20 scripts, META-086 cluster 1/5)
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79230,6 +79244,8 @@ gaps:
     - chump preflight exits non-zero when any of these gates would fail, matching CI behavior
     - scripts/ci/preflight-ci-parity-exceptions.txt has no entries for scripts in this cluster (either mirrored or Tier-D documented in CI_GATES_INVENTORY.md)
     - cargo fmt/clippy/check pass; scripts/ci/test-preflight-ci-parity.sh passes
+  notes: |
+    [2026-09-03T07:19:08Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3380
@@ -95873,6 +95889,81 @@ gaps:
     - Execution time does not exceed the documented speed‑target budget for Scripts scope
     - Performance results are recorded and any regression is reported
   depends_on: [INFRA-4106, INFRA-4107, INFRA-4108, INFRA-4110]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4112
+  domain: INFRA
+  title: "INFRA: Add fleet_daemon_reaper gate and skip env var to src/preflight.rs (INFRA-3371 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs contains a fleet_daemon_reaper gate targeting all 14 scripts (test-auto-arm-sweeper.sh, test-autoscale-decisions.sh, test-cargo-target-reaper.sh, test-claude-reaper.sh, test-fleet-brief.sh, test-fleet-fanout.sh, test-fleet-kill-switch.sh, test-fleet-spec.sh, test-fleet-starve-auto-action.sh, test-infra-258-reaper-partial-delivery.sh, test-stale-process-watchdog.sh, test-subagent-budget-kill.sh, test-supervision-trees.sh, test-worktree-reaper-safety.sh)
+    - The fleet_daemon_reaper gate runs by default under 'chump preflight'
+    - Setting CHUMP_PREFLIGHT_SKIP_FLEET_DAEMON=1 skips execution of the gate and emits a skip audit-trail event
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4113
+  domain: INFRA
+  title: "INFRA: Add smoke test script for fleet daemon preflight gate (INFRA-3371 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-preflight-fleet-daemon.sh is created and executable
+    - Smoke test asserts that the fleet_daemon_reaper gate runs all 14 scripts by default
+    - Smoke test asserts CHUMP_PREFLIGHT_SKIP_FLEET_DAEMON=1 skips the gate independently and emits the audit-trail skip event
+  depends_on: [INFRA-4112]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4114
+  domain: INFRA
+  title: "INFRA: Mark fleet-daemon & reaper-cadence cluster as mirrored in CI_PREFLIGHT_PARITY.md (INFRA-3371 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/process/CI_PREFLIGHT_PARITY.md is updated to reflect cluster 3/5 (fleet-daemon & reaper-cadence) as mirrored
+  depends_on: [INFRA-4113]
   notes: |
     [chump harvest check 'META-070']
     === primitives_index match for 'META-070' ===
