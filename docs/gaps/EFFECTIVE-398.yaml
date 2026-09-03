@@ -1,7 +1,7 @@
 - id: EFFECTIVE-398
   domain: EFFECTIVE
   title: "[almanac] organs emit prose only — give them --findings-json so they can file into holler"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -12,6 +12,10 @@
     - "Coverage honesty travels with every finding: a partial/none organ result must say so in the row, so a thin scan can never be read as a clean bill of health (RELEASE_CHECKLIST 1.5c already requires this for humans — the machine path needs it too)"
     - context.repo uses a BARE slug, not owner/repo — the bridge prefixes the owner and double-prefixed tags route to a repo that does not exist (fixed at source 2026-08-07, do not reintroduce)
     - "Unblocks three things that are all currently manual or impossible: EFFECTIVE-389 (scheduled code-posse sweep), the RELEASE_CHECKLIST 1e/1.5 auditor filing what it finds instead of only printing it, and CREDIBLE-221 (organ usage telemetry)"
+  notes: |
+    [2026-09-03T01:24:00Z] Shipped as repairman29/almanac PR #8 (external_repo gap): https://github.com/repairman29/almanac/pull/8 — comprehend/flagmap/gatemap/livemap/tracemap gain --findings-json backed by a shared findings module (crates/almanac-organs/src/findings.rs): stable dedupe-safe titles (keyed on flag/gate/capability name, never fluctuating counts), coverage-honesty rows (coverage_status/coverage_label on every finding + a placeholder row when partial/none coverage produces zero findings), bare repo slug via git remote origin. Findings stay pure JSON on stdout (no network/creds) for a thin holler-filing script to consume, reusing posse's report-holler.mjs fileFinding pattern with reporter=almanac-<organ>. PR merged.
+    [2026-09-03T01:24:46Z] 2026-09-03T01:24:46Z Closed via chump gap set (not chump gap ship): INFRA-1392 proof-of-merge only scans chump's own main for the gap ID, but this gap's skills_required=external_repo:repairman29/almanac — the actual code landed as repairman29/almanac PR #8 (merged), a different repo entirely. closed_pr=8 refers to that external PR number, not a chump PR.
+  closed_pr: 8
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: CHUMPOS
 
