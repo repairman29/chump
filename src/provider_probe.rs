@@ -202,6 +202,7 @@ pub async fn probe_all_slots() -> Vec<(ObservedSlotLimits, Vec<SlotDriftFinding>
 /// this ambient event the same way it does for every other drift class.
 pub fn holler_findings(findings: &[SlotDriftFinding]) {
     for f in findings {
+        // scanner-anchor: "kind":"provider_slot_drift"
         crate::tool_policy::emit_ambient_json(
             "provider_slot_drift",
             serde_json::json!({

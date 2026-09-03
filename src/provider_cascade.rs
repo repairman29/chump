@@ -691,6 +691,7 @@ impl ProviderCascade {
                      Set CHUMP_PROVIDER_{}_RPM/PRIORITY/CONTEXT_K explicitly.",
                     n, name, n * 10, n
                 );
+                // scanner-anchor: "kind":"provider_slot_incomplete"
                 crate::tool_policy::emit_ambient_json(
                     "provider_slot_incomplete",
                     serde_json::json!({
