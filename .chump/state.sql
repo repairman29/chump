@@ -2815,7 +2815,7 @@ gaps:
     - Propose + ship at least one concrete fix (e.g. a lane-scoped auto-vote step in one curator loop, or a fleet-doctor check that flags proposals with total=0 votes past N hours) that gets real votes flowing, and verify via a real (not fabricated) proposal reaching quorum
     - "Test: after the fix, a newly-broadcast FEEDBACK proposal accumulates >=1 real vote within one curator-loop cycle, observable via scripts/coord/deliberator-loop.sh audit --corr-id <new-corr-id>"
   notes: |
-    Decomposed into 8 slices: CREDIBLE-466, CREDIBLE-467, CREDIBLE-468, CREDIBLE-469, CREDIBLE-470, CREDIBLE-471, CREDIBLE-472, CREDIBLE-473
+    Decomposed into 8 slices: CREDIBLE-634, CREDIBLE-635, CREDIBLE-636, CREDIBLE-637, CREDIBLE-638, CREDIBLE-639, CREDIBLE-640, CREDIBLE-641
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-180
@@ -2899,7 +2899,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 10 slices: CREDIBLE-544, CREDIBLE-545, CREDIBLE-546, CREDIBLE-547, CREDIBLE-548, CREDIBLE-549, CREDIBLE-550, CREDIBLE-551, CREDIBLE-552, CREDIBLE-553
+    Decomposed into 10 slices: CREDIBLE-642, CREDIBLE-643, CREDIBLE-644, CREDIBLE-645, CREDIBLE-646, CREDIBLE-647, CREDIBLE-648, CREDIBLE-649, CREDIBLE-650, CREDIBLE-651
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-186
@@ -3246,7 +3246,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    STRONGER SIGNAL 2026-08-07 (PR #3495 EFFECTIVE-373): reviewer raised CONCERN listing 'new unwrap()/expect() in production' + 'new external dependencies added' — BOTH demonstrably FALSE in the diff (0 bare unwrap/expect, no Cargo.toml change). It dumped its entire boilerplate concern-reason list rather than specific verified findings. So the reviewer doesn't just flip-flop (non-determinism) — it HALLUCINATES concerns that don't apply. Fix must make the reviewer cite SPECIFIC evidence per concern (file:line) or it's noise that blocks clean changes; ties to the COTG judge's 'reasoning must be grounded' requirement.
+    Decomposed into 9 slices: CREDIBLE-657, CREDIBLE-658, CREDIBLE-659, CREDIBLE-660, CREDIBLE-661, CREDIBLE-662, CREDIBLE-663, CREDIBLE-664, CREDIBLE-665
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-208
@@ -8616,6 +8616,8 @@ gaps:
   acceptance_criteria:
     - chump kpi report shows a non-empty Mission Grade History trend (snapshots recording on a cadence)
     - untagged 30d ships drop below 20% (tag enforcement or backfill)
+  notes: |
+    Decomposed into 5 slices: CREDIBLE-652, CREDIBLE-653, CREDIBLE-654, CREDIBLE-655, CREDIBLE-656
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-422
@@ -9821,11 +9823,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new integration test function `test_bookkeeping_pr_flag_persistence` inside the `mod tests` block of `crates/chump-preflight/src/preflight.rs` that creates a PR modifying only `docs/gaps/*.yaml` files, runs the audit pipeline, verifies the bookkeeping‑only flag is set on the gap, updates the gap text to list the same files, re‑runs the audit, and asserts the flag remains.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A test creates a PR that only modifies `docs/gaps/*.yaml` files and runs the audit pipeline.
-    - The audit flags the gap as a bookkeeping‑only closure.
-    - The flag remains associated with the gap even after the gap text is updated to list the same files, reproducing the CREDIBLE‑175 false‑negative scenario.
-    - The test is part of CI and fails if the flag is missing.
+    - "In `crates/chump-preflight/src/preflight.rs`, a `#[test]` function named `test_bookkeeping_pr_flag_persistence` is present and compiles."
+    - Executing `cargo test --test preflight` runs `test_bookkeeping_pr_flag_persistence` and the test completes without panics.
+    - The test asserts that after the first audit run the gap’s metadata includes a `bookkeeping-only` flag (observable via the audit output JSON).
+    - After the test updates the gap text to list the same `docs/gaps/*.yaml` files and re‑runs the audit, it asserts that the `bookkeeping-only` flag is still present in the gap’s metadata.
   depends_on: [CREDIBLE-459]
   notes: |
     [chump harvest check 'closed']
@@ -12201,9 +12210,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update the `run` function in `crates/chump-preflight/src/preflight.rs` to eliminate all Clippy warnings (e.g., replace `unwrap`/`expect` with proper error propagation, rename or remove unused variables, add missing documentation comments) and apply rustfmt styling so that the file is fully formatted.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all` completes with no changes needed"
-    - "`cargo clippy --all-targets -- -D warnings` exits with zero warnings"
+    - Running `cargo fmt --all` reports “All files formatted, no changes needed” for `crates/chump-preflight/src/preflight.rs`.
+    - Running `cargo clippy --all-targets -- -D warnings` exits with status 0 and produces no warnings related to `crates/chump-preflight/src/preflight.rs`.
+    - The `run` function in `crates/chump-preflight/src/preflight.rs` compiles without any Clippy warnings and retains its original behavior as verified by the existing unit tests.
   depends_on: [CREDIBLE-536, CREDIBLE-537, CREDIBLE-538, CREDIBLE-539]
   notes: |
     [chump harvest check 'Index']
@@ -14598,7 +14615,7 @@ gaps:
 - id: CREDIBLE-628
   domain: CREDIBLE
   title: "CREDIBLE: Triage the 79 bookkeeping‑only gaps (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -14625,11 +14642,12 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-03T11:38:25Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-629
   domain: CREDIBLE
   title: "CREDIBLE: Refactor done_auditor::audit to iterate by closed_at or resume cursor (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -14656,6 +14674,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-03T11:39:03Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-630
   domain: CREDIBLE
@@ -14692,7 +14711,7 @@ gaps:
 - id: CREDIBLE-631
   domain: CREDIBLE
   title: "CREDIBLE: Exclude boilerplate acceptance‑criteria lines from auditor denominator (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -14719,6 +14738,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-03T11:44:40Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1078B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-632
   domain: CREDIBLE
@@ -14758,10 +14778,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `load_ac_bullets` function in `crates/chump-verify/src/pr_ac_coverage.rs` to filter out the generic boilerplate acceptance‑criteria line, and adjust the `build_scout_prompt` function in `src/onboard.rs` so that the generated PR template no longer inserts that boilerplate line.
+    
+    Target file(s):
+    - crates/chump-verify/src/pr_ac_coverage.rs
+    - src/onboard.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - New PR templates no longer include the generic boilerplate AC line
-    - Documentation is updated to explain the new AC expectations
-    - A lint check confirms that no generated PR contains the removed boilerplate line
+    - "? In `crates/chump-verify/src/pr_ac_coverage.rs`, the `load_ac_bullets` function returns no bullet equal to the exact string “Acceptance Criteria : (add your criteria here)”."
+    - In `src/onboard.rs`, the `build_scout_prompt` function’s output string for a new PR template does not contain the generic boilerplate AC line.
+    - Running the repository lint command `cargo run --bin lint-pr-templates` exits with status 0 and reports zero occurrences of the removed boilerplate line in any PR template.
   notes: |
     [chump harvest check 'closed']
     === primitives_index match for 'closed' ===
@@ -14782,6 +14810,383 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-634
+  domain: CREDIBLE
+  title: "CREDIBLE: Investigate inbox peek behavior for FEEDBACK proposals (CREDIBLE-179 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Run scripts/coord/deliberator-loop.sh with the _peek_inbox function and capture its output.
+    - Confirm that the output includes JSON lines where kind=proposal and kind=feedback for the current session.
+    - Document whether FEEDBACK proposals are being filtered out or omitted.
+
+- id: CREDIBLE-635
+  domain: CREDIBLE
+  title: "CREDIBLE: Audit curator loop scripts for missing vote step (CREDIBLE-179 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Search ci-audit-loop.sh, handoff-loop.sh, deliberator-loop.sh for calls to _nudge_curators_to_vote or any voting logic.
+    - Produce a report listing which scripts currently invoke a vote step and which do not.
+    - Identify any comments or TODOs indicating the mandatory‑voting mandate.
+
+- id: CREDIBLE-636
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement auto‑vote in deliberator-loop.sh (CREDIBLE-179 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Modify scripts/coord/deliberator-loop.sh to call _nudge_curators_to_vote for each FEEDBACK proposal returned by _peek_inbox.
+    - Ensure the new call respects existing idempotency checks (e.g., _has_consensus_result).
+    - After the change, a fresh FEEDBACK proposal receives at least one real vote when the loop runs once.
+  depends_on: [CREDIBLE-634, CREDIBLE-635]
+
+- id: CREDIBLE-637
+  domain: CREDIBLE
+  title: "CREDIBLE: Add auto‑vote step to other curator loops (ci-audit-loop.sh, handoff-loop.sh) (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Insert a call to _nudge_curators_to_vote (or equivalent) in ci-audit-loop.sh and handoff-loop.sh for each FEEDBACK proposal.
+    - Run each script in audit mode and verify that a vote line is emitted for a newly created proposal.
+    - "No regression: existing non‑proposal handling remains unchanged."
+  depends_on: [CREDIBLE-635]
+
+- id: CREDIBLE-638
+  domain: CREDIBLE
+  title: "CREDIBLE: Add fleet‑doctor check for zero‑vote proposals (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Create a new fleet‑doctor rule that scans .chump-locks/feedback.jsonl for proposals with total=0 older than N hours (configurable, default 4h).
+    - When such a proposal is found, emit a warning with the corr_id.
+    - Unit‑test the rule with synthetic JSON lines to confirm detection and non‑detection cases.
+  depends_on: [CREDIBLE-636]
+
+- id: CREDIBLE-639
+  domain: CREDIBLE
+  title: "CREDIBLE: Create integration test for auto‑vote behavior (CREDIBLE-179 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Write a test script that creates a real FEEDBACK proposal (using the system’s broadcast command).
+    - Execute scripts/coord/deliberator-loop.sh audit once.
+    - Assert that the proposal now has a vote entry (kind=vote) with yes/no/abstain fields populated.
+    - The test must clean up any generated files to keep the repo state unchanged.
+  depends_on: [CREDIBLE-636]
+
+- id: CREDIBLE-640
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CLAUDE.md to reflect enforced mandatory voting (CREDIBLE-179 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Add a section in CLAUDE.md under INFRA-2515 stating that the mandatory‑voting mandate is now enforced by code in deliberator-loop.sh, ci-audit-loop.sh, and handoff-loop.sh.
+    - Link to the newly added fleet‑doctor rule.
+    - The documentation change must be reviewed and merged without altering existing wording unrelated to voting.
+  depends_on: [CREDIBLE-636]
+
+- id: CREDIBLE-641
+  domain: CREDIBLE
+  title: "CREDIBLE: Release fix and monitor real proposal voting (CREDIBLE-179 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Deploy the updated scripts to the production environment.
+    - Create a real FEEDBACK proposal (not fabricated) and record its corr_id.
+    - Within one curator‑loop cycle, verify via scripts/coord/deliberator-loop.sh audit --corr-id <corr_id> that the proposal has >=1 real vote.
+    - Log the observation and close the CREDIBLE-179 gap if the vote is present.
+  depends_on: [CREDIBLE-639]
+
+- id: CREDIBLE-642
+  domain: CREDIBLE
+  title: "CREDIBLE: Design provider manifest schema for slot tags (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A YAML/JSON schema file defining required fields for provider manifest is created in the repo
+    - Schema is reviewed and approved by the team
+
+- id: CREDIBLE-643
+  domain: CREDIBLE
+  title: "CREDIBLE: Add tracked provider manifest file to repository (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A manifest file (e.g., provider_manifest.yaml) exists in the tracked source tree
+    - File contains placeholder entries for opus, sonnet, and haiku slot tags following the schema
+  depends_on: [CREDIBLE-642]
+
+- id: CREDIBLE-644
+  domain: CREDIBLE
+  title: "CREDIBLE: Update code to load provider manifest for slot tags (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Runtime loads the manifest file at startup without panicking
+    - Missing or malformed manifest produces a clear error message
+    - Existing code paths that previously read .env fallback to manifest values
+  depends_on: [CREDIBLE-643]
+
+- id: CREDIBLE-645
+  domain: CREDIBLE
+  title: "CREDIBLE: Refactor routing config generation to use manifest data (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Routing configuration is built from the provider manifest instead of .env
+    - Generated routing config matches expected structure for opus, sonnet, and haiku slots
+    - Fresh checkout without .env produces identical routing config as a checkout with .env
+  depends_on: [CREDIBLE-644]
+
+- id: CREDIBLE-646
+  domain: CREDIBLE
+  title: "CREDIBLE: Fix apply-mabel-badass-env.sh drift issue (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script no longer overwrites or removes entries defined in the provider manifest
+    - Running the script on a clean repo leaves the manifest unchanged
+    - No warnings or errors are emitted during script execution
+
+- id: CREDIBLE-647
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit test for manifest loading and routing config generation (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test verifies that loading a valid manifest yields correct in‑memory structures
+    - Test asserts that routing config derived from the manifest matches expected output
+    - Test fails when manifest is missing or malformed
+  depends_on: [CREDIBLE-645, CREDIBLE-646]
+
+- id: CREDIBLE-648
+  domain: CREDIBLE
+  title: "CREDIBLE: Add integration test ensuring routing works without .env (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test checks that a fresh checkout (no .env) can start the application and serve routes for opus, sonnet, and haiku
+    - Test confirms that the manifest is the sole source of slot tag configuration
+    - Test fails if .env is required for routing
+  depends_on: [CREDIBLE-647]
+
+- id: CREDIBLE-649
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI scripts to execute new tests (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Add invocations of the new unit‑test and integration‑test binaries to the CI script `scripts/ci/test-subagent-epilogue-ref.sh`, placing the commands after the existing test steps and connecting their exit status to the existing `fail` function so the script returns a non‑zero code on failure and zero on success.
+    
+    Target file(s):
+    - scripts/ci/test-subagent-epilogue-ref.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - The file `scripts/ci/test-subagent-epilogue-ref.sh` contains a line `cargo test --test new_unit_tests` (or the exact binary name) before the final success message.
+    - The file `scripts/ci/test-subagent-epilogue-ref.sh` contains a line `cargo test --test new_integration_tests` whose exit status is passed to the `fail` function defined at line 33.
+    - Executing `scripts/ci/test-subagent-epilogue-ref.sh` exits with status 0 when both new test commands succeed and exits with a non‑zero status when either command fails.
+    - "A comment `# Added new unit and integration tests for CREDIBLE-185` appears directly above the newly added test commands."
+  depends_on: [CREDIBLE-647]
+
+- id: CREDIBLE-650
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy checks across the new code (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt completes without changes
+    - cargo clippy --all-targets -D warnings passes with zero warnings
+    - No new lint warnings are introduced by the changes
+  depends_on: [CREDIBLE-649]
+
+- id: CREDIBLE-651
+  domain: CREDIBLE
+  title: "CREDIBLE: Update documentation for provider manifest and env handling (CREDIBLE-185 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README or docs folder includes a section describing the provider manifest format and its role
+    - Instructions for running apply-mabel-badass-env.sh after manifest changes are added
+    - Documentation is reviewed and approved
+  depends_on: [CREDIBLE-645]
+
+- id: CREDIBLE-652
+  domain: CREDIBLE
+  title: "CREDIBLE: Add JSON output to mission-scoreboard.sh for mission-grade score (CREDIBLE-421 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running scripts/dev/mission-scoreboard.sh prints a single JSON object to stdout
+    - "JSON contains keys \"timestamp\" (ISO‑8601 string) and \"mission_score\" (numeric)"
+    - JSON is valid according to a simple schema (no extra fields, proper types)
+
+- id: CREDIBLE-653
+  domain: CREDIBLE
+  title: "CREDIBLE: Calculate 30‑day untagged ship percentage and add to JSON output (CREDIBLE-421 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/dev/mission-scoreboard.sh includes a new key \"untagged_pct\" in its JSON output"
+    - The value is a number between 0 and 100 representing the percentage of ships without a pillar tag in the last 30 days
+    - Manual verification on a known data set matches the script’s calculation
+  depends_on: [CREDIBLE-652]
+
+- id: CREDIBLE-654
+  domain: CREDIBLE
+  title: "CREDIBLE: Persist snapshot JSON to a rolling log file (CREDIBLE-421 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each execution of scripts/dev/mission-scoreboard.sh appends its JSON output as a new line to data/mission_snapshots.log
+    - The log file is created if it does not exist and is readable by the KPI report process
+    - After two consecutive runs, the log contains at least two distinct JSON lines
+  depends_on: [CREDIBLE-652, CREDIBLE-653]
+
+- id: CREDIBLE-655
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit tests for mission-scoreboard.sh output and untagged calculation (CREDIBLE-421 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A test suite (e.g., using bats) validates that the script’s JSON output conforms to the schema
+    - "Tests verify that \"untagged_pct\" matches expected values for a mocked repository list"
+    - All tests pass on a clean checkout
+  depends_on: [CREDIBLE-652, CREDIBLE-653, CREDIBLE-654]
+
+- id: CREDIBLE-656
+  domain: CREDIBLE
+  title: "CREDIBLE: Validate KPI report reads snapshot log and shows a non‑empty trend (CREDIBLE-421 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A simple verification script reads data/mission_snapshots.log and confirms at least two entries exist
+    - "When the verification script runs, it outputs a message indicating the KPI trend is available (no \"No mission‑grade snapshots recorded yet\" message)"
+    - The verification script exits with status 0 only when the trend condition is satisfied
+  depends_on: [CREDIBLE-654]
+
+- id: CREDIBLE-657
+  domain: CREDIBLE
+  title: "CREDIBLE: Investigate current reviewer-agent concern handling logic (CREDIBLE-207 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Source files where concerns are generated are identified and documented
+    - Current flow that leads to concern list being swallowed or flipped is described in a short markdown file
+
+- id: CREDIBLE-658
+  domain: CREDIBLE
+  title: "CREDIBLE: Make concern verdict deterministic for identical diffs (CREDIBLE-207 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Given the same diff input, the reviewer-agent returns the same verdict on repeated runs
+    - Determinism is enforced without introducing global mutable state
+  depends_on: [CREDIBLE-657]
+
+- id: CREDIBLE-659
+  domain: CREDIBLE
+  title: "CREDIBLE: Attach concrete evidence (file:line) to each generated concern (CREDIBLE-207 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Every concern object includes a non‑empty `evidence` field with a `file` and `line` entry
+    - Evidence points to the exact source location that triggered the concern
+  depends_on: [CREDIBLE-658]
+
+- id: CREDIBLE-660
+  domain: CREDIBLE
+  title: "CREDIBLE: Filter out hallucinated concerns that have no matching evidence (CREDIBLE-207 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - No concern is emitted without a corresponding evidence entry
+    - "Running the reviewer on the PR from PR #3495 produces only the expected concerns"
+  depends_on: [CREDIBLE-659]
+
+- id: CREDIBLE-661
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit test for deterministic verdict on identical diff (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test feeds the same diff twice and asserts that the verdicts are equal
+    - Test fails before the fix and passes after the fix
+  depends_on: [CREDIBLE-660]
+
+- id: CREDIBLE-662
+  domain: CREDIBLE
+  title: "CREDIBLE: Add integration test verifying evidence (file:line) is present (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test runs the reviewer on a diff that triggers a known concern and asserts that the concern's `evidence.file` and `evidence.line` match expected values
+    - Test fails before the fix and passes after the fix
+  depends_on: [CREDIBLE-659]
+
+- id: CREDIBLE-663
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI scripts to execute new tests (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-*.sh includes commands to run the new unit and integration tests
+    - CI pipeline reports success when the new tests pass
+  depends_on: [CREDIBLE-661, CREDIBLE-662]
+
+- id: CREDIBLE-664
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy, fix any warnings (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes"
+    - "`cargo clippy --all-targets -D warnings` completes without warnings"
+  depends_on: [CREDIBLE-658, CREDIBLE-659, CREDIBLE-660]
+
+- id: CREDIBLE-665
+  domain: CREDIBLE
+  title: "CREDIBLE: Update developer documentation to describe evidence requirement (CREDIBLE-207 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README or CONTRIBUTING file contains a section explaining that concerns must include `file:line` evidence"
+    - Documentation change is reviewed and merged
+  depends_on: [CREDIBLE-659]
 
 - id: DOC-031
   domain: DOC
@@ -15601,7 +16006,7 @@ gaps:
     - "Create docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md as plan-of-record. MUST capture: (a) ROOT CAUSE = target-dir precedence bug — INFRA-2183 per-worktree isolation (crates/chump-atomic-claim/src/worktree_build_cache.rs) is silently overridden because worker.sh:171-180 exports CARGO_TARGET_DIR and cargo reads env-var before .cargo/config.toml target-dir; (b) DISK REALITY — Mac /System/Volumes/Data is 96%% full, 20GB free, shared target already 72GB, so per-worker dirs would BLOW the Mac disk => per-worker only viable on hosts WITH headroom; Mac levers = free-disk + linker + offload; (c) sccache OFF for measured 0%% hit (ZERO-WASTE-021: worktree paths poison rustc arg hashes) not just the RESILIENT-112 wedge; needs --remap-path-prefix first; (d) TIERS: 1 reconcile target-dir per-host-disk, 2 linker (lld Mac needs brew install, mold Linux — currently MISSING), 3 cargo-hakari, 4 sccache-after-remap, 5 revive helsinki(online,0/10 on junk gaps)+closetjunky(prep-only); (e) DISPATCH is built-not-wired: preferred_machine field + chump-coord assign daemon exist but assign daemon not running. "
     - " Cross-link + update docs/strategy/DISK_AWARE_FLEET_2026-05-29.md and docs/ROADMAP.md to point at this plan."
   notes: |
-    Decomposed into 17 slices: DOC-100, DOC-101, DOC-102, DOC-103, DOC-104, DOC-105, DOC-106, DOC-107, DOC-108, DOC-109, DOC-110, DOC-111, DOC-112, DOC-113, DOC-114, DOC-115, DOC-116
+    Decomposed into 17 slices: DOC-127, DOC-128, DOC-129, DOC-130, DOC-131, DOC-132, DOC-133, DOC-134, DOC-135, DOC-136, DOC-137, DOC-138, DOC-139, DOC-140, DOC-141, DOC-142, DOC-143
   opened_date: '2026-08-19'
   outcome_id: FLEET-BUILD-SPEED
 
@@ -15638,7 +16043,7 @@ gaps:
     - "TRUST BOUNDARY IN THE MCP CONTEXT: olive promise is \"Olive fills the cart; the user taps Buy. Olive never touches money.\" add_to_cart writes a real Kroger cart from inside a THIRD-PARTY assistant — a materially different consent surface from a click in olive own UI. Document how consent is obtained and what the key gates"
     - DO NOT ADD AN 18TH ROADMAP — same lesson as DOC-089. One track in the existing roadmap plus a README line
   notes: |
-    Decomposed into 10 slices: DOC-117, DOC-118, DOC-119, DOC-120, DOC-121, DOC-122, DOC-123, DOC-124, DOC-125, DOC-126
+    Decomposed into 10 slices: DOC-144, DOC-145, DOC-146, DOC-147, DOC-148, DOC-149, DOC-150, DOC-151, DOC-152, DOC-153
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -16772,6 +17177,304 @@ gaps:
       151:- **content-apps (13 repos):** `postsub` Stripe pattern is the prize. `olive`, `trove-app`, `pvc` remain shelf (domain-coupled, governance docs, or claimed-but-absent rules engines).
     
     === cross-pollination briefs mentioning 'olive' ===
+
+- id: DOC-127
+  domain: DOC
+  title: "DOC: Create FLEET_BUILD_SPEED plan-of-record markdown file (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - File docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md exists in the repository
+    - File contains a YAML front‑matter block with title and date placeholders
+
+- id: DOC-128
+  domain: DOC
+  title: "DOC: Write ROOT CAUSE section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Section \"ROOT CAUSE\" is added under a level‑2 heading"
+    - Text describes INFRA-2183 target‑dir precedence bug and references worktree_build_cache.rs
+  depends_on: [DOC-127]
+
+- id: DOC-129
+  domain: DOC
+  title: "DOC: Write DISK REALITY section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Section \"DISK REALITY\" is added under a level‑2 heading"
+    - Includes Mac disk‑usage numbers (96% full, 20 GB free) and impact analysis
+  depends_on: [DOC-127]
+
+- id: DOC-130
+  domain: DOC
+  title: "DOC: Write sccache OFF section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Section \"sccache OFF\" is added under a level‑2 heading"
+    - Explains 0 % hit rate, ZERO‑WASTE‑021, and required --remap-path-prefix flag
+  depends_on: [DOC-127]
+
+- id: DOC-131
+  domain: DOC
+  title: "DOC: Write TIERS section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Section \"TIERS\" is added under a level‑2 heading"
+    - Lists tiers 1‑5 exactly as described in the gap
+  depends_on: [DOC-127]
+
+- id: DOC-132
+  domain: DOC
+  title: "DOC: Write DISPATCH section (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Section \"DISPATCH\" is added under a level‑2 heading"
+    - Mentions preferred_machine field, chump‑coord assign daemon, and that the daemon is not running
+  depends_on: [DOC-127]
+
+- id: DOC-133
+  domain: DOC
+  title: "DOC: Add executive summary to plan document (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A top‑level summary paragraph precedes the first heading
+    - Summary concisely states purpose, scope, and high‑level recommendations
+  depends_on: [DOC-127, DOC-128, DOC-129, DOC-130, DOC-131, DOC-132]
+
+- id: DOC-134
+  domain: DOC
+  title: "DOC: Format markdown and generate TOC (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Document uses consistent heading levels and bullet syntax
+    - A table of contents is inserted after the front‑matter and renders correctly in the preview
+  depends_on: [DOC-127, DOC-128, DOC-129, DOC-130, DOC-131, DOC-132, DOC-133]
+
+- id: DOC-135
+  domain: DOC
+  title: "DOC: Add cross‑link from DISK_AWARE_FLEET doc to new plan (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/strategy/DISK_AWARE_FLEET_2026-05-29.md contains a markdown link to FLEET_BUILD_SPEED_2026-08-09.md
+    - Link text clearly indicates it points to the fleet build‑speed plan
+  depends_on: [DOC-127]
+
+- id: DOC-136
+  domain: DOC
+  title: "DOC: Update DISK_AWARE_FLEET doc to reference plan (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - DISK_AWARE_FLEET document includes a sentence that directs readers to the new plan
+    - The sentence contains the link added in slice 8
+  depends_on: [DOC-135]
+
+- id: DOC-137
+  domain: DOC
+  title: "DOC: Update ROADMAP doc to reference plan (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/ROADMAP.md contains a markdown link to FLEET_BUILD_SPEED_2026-08-09.md
+    - The link is placed under the appropriate roadmap section
+  depends_on: [DOC-135]
+
+- id: DOC-138
+  domain: DOC
+  title: "DOC: Verify all markdown links resolve in local preview (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running the docs preview locally shows no broken link warnings
+    - Clicking each new link navigates to the correct target file
+  depends_on: [DOC-134, DOC-136, DOC-137]
+
+- id: DOC-139
+  domain: DOC
+  title: "DOC: Add front‑matter metadata to plan document (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Front‑matter includes title: \"Fleet Build‑Speed Plan of Record\""
+    - "Front‑matter includes date set to 2026‑08‑09 and tags: [\"fleet\",\"build-speed\",\"strategy\"]"
+  depends_on: [DOC-127]
+
+- id: DOC-140
+  domain: DOC
+  title: "DOC: Commit documentation changes with proper message (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All modified files are staged and committed
+    - "Commit message follows the format: \"docs: add fleet build‑speed plan of record and update DISK_AWARE_FLEET / ROADMAP\""
+  depends_on: [DOC-134, DOC-136, DOC-137, DOC-138, DOC-139]
+
+- id: DOC-141
+  domain: DOC
+  title: "DOC: Open pull request for documentation updates (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A PR is opened against the main branch containing the commit from slice 13
+    - PR title matches the commit message and description outlines the changes
+  depends_on: [DOC-140]
+
+- id: DOC-142
+  domain: DOC
+  title: "DOC: Run CI docs build and ensure it passes (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI pipeline for the PR completes the documentation build stage without errors
+    - Generated site preview includes the new plan and updated links
+  depends_on: [DOC-141]
+
+- id: DOC-143
+  domain: DOC
+  title: "DOC: Merge PR after approval and CI success (DOC-095 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - PR receives at least one approving review
+    - CI status is green and the PR is merged into main
+    - Merged commit appears in the repository history
+  depends_on: [DOC-142]
+
+- id: DOC-144
+  domain: DOC
+  title: "DOC: Update ROADMAP.md top section with two‑surface architecture statement (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The top of docs/ROADMAP.md contains a clear paragraph stating that Olive now has two first‑class product surfaces: web (/shop) and MCP (api/mcp)."
+    - Monetisation is explicitly noted as deferred.
+    - The paragraph is no longer than three sentences and uses the exact wording from the operator statement.
+
+- id: DOC-145
+  domain: DOC
+  title: "DOC: Update README.md top section with two‑surface architecture statement (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The top of README.md mirrors the architecture paragraph added to ROADMAP.md.
+    - It mentions web (/shop) and MCP (api/mcp) as first‑class surfaces and that monetisation decisions are deferred.
+
+- id: DOC-146
+  domain: DOC
+  title: "DOC: Add per‑tool status section to ROADMAP.md (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new subsection under the MCP rail lists the three tools (price_grocery_list, add_to_cart, send_feedback).
+    - Each tool shows its risk profile and current status (e.g., read‑only, key‑gated, production‑ready).
+    - "The information matches the live API response from https://shopolive.xyz/api/mcp/tools/list."
+  depends_on: [DOC-144]
+
+- id: DOC-147
+  domain: DOC
+  title: "DOC: Remove stale /dashboard/next references from ROADMAP.md (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "All eight occurrences of \"/dashboard/next\" are removed or replaced with the correct route (/shop)."
+    - No broken markdown links remain after the edit.
+  depends_on: [DOC-144]
+
+- id: DOC-148
+  domain: DOC
+  title: "DOC: Remove stale /dashboard/next reference from OLIVE_PRODUCT_MASTER_MANUAL.md (section 0) (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The sentence \"The real product is the hidden route /dashboard/next\" is replaced with the correct description of the /shop surface."
+    - The manual builds without referencing the retired route.
+  depends_on: [DOC-144]
+
+- id: DOC-149
+  domain: DOC
+  title: "DOC: Remove stale /dashboard/next reference from REDESIGN-PLAN.md (section 1) (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The sign‑off request that mentions \"one app, not two\" is updated to reflect the two‑surface reality."
+    - "All mentions of \"/dashboard/next\" are eliminated."
+  depends_on: [DOC-144]
+
+- id: DOC-150
+  domain: DOC
+  title: "DOC: Create CONSENT.md documenting MCP trust boundary and consent flow for add_to_cart (DOC-097 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - CONSENT.md explains that Olive never handles money and that add_to_cart writes a real Kroger cart via a third‑party assistant.
+    - The document describes how the key‑gate obtains user consent and links to the relevant code (oliveKey.ts).
+    - The file is linked from the MCP section of ROADMAP.md.
+  depends_on: [DOC-144]
+
+- id: DOC-151
+  domain: DOC
+  title: "DOC: Add consent documentation link to README.md (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md contains a bullet pointing to docs/CONSENT.md with a brief description of the trust boundary.
+    - The link works and opens the newly created CONSENT.md.
+  depends_on: [DOC-145, DOC-150]
+
+- id: DOC-152
+  domain: DOC
+  title: "DOC: Verify live MCP API schema and update docs/api.md accordingly (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A manual curl/post to https://shopolive.xyz/api/mcp/tools/list returns the expected JSON schema."
+    - docs/api.md is updated to reflect the current schema and includes example responses for each tool.
+    - The documentation notes that the endpoint returned HTTP 200 on 2026‑08‑09.
+
+- id: DOC-153
+  domain: DOC
+  title: "DOC: Add single roadmap track line to README.md (no 18th roadmap) (DOC-097 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README.md includes a one‑line note stating that the roadmap now has a single track covering both web and MCP surfaces.
+    - The line explicitly references DOC‑089 guidance to avoid adding an 18th roadmap.
+  depends_on: [DOC-145]
 
 - id: DOCS-001
   domain: DOCS
@@ -79673,7 +80376,7 @@ gaps:
 - id: INFRA-3384
   domain: INFRA
   title: "META-070: preflight-mirror gap-state & claim/lease consistency gates (14 scripts, audit-job decomposition cluster 1/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79687,6 +80390,8 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 14 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  notes: |
+    [2026-09-03T09:56:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3385
@@ -79714,7 +80419,7 @@ gaps:
 - id: INFRA-3386
   domain: INFRA
   title: "META-070: preflight-mirror observability/reaper/fleet-daemon gates (23 scripts, audit-job decomposition cluster 3/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79728,12 +80433,14 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 23 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  notes: |
+    [2026-09-03T11:51:27Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3387
   domain: INFRA
   title: "META-070: preflight-mirror doc/content/security guard gates (30 scripts, audit-job decomposition cluster 4/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -79747,6 +80454,9 @@ gaps:
     - "docs/process/AUDIT_JOB_DECOMPOSITION.md updated: these 30 rows flip from mirrored=no to mirrored=yes"
     - scripts/ci/test-preflight-ci-parity.sh continues to pass (no new unmirrored-gate regressions introduced)
     - chump preflight still completes within the documented <60s warm / <120s cold budget (INFRA-1670)
+  notes: |
+    Decomposed into 8 slices: INFRA-4165, INFRA-4166, INFRA-4167, INFRA-4168, INFRA-4169, INFRA-4170, INFRA-4171, INFRA-4172
+    [2026-09-03T09:48:06Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1076B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3388
@@ -97948,6 +98658,213 @@ gaps:
     - The test passes in CI and locally
     - Documentation notes the requirement in the script comments
   depends_on: [INFRA-4155]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4165
+  domain: INFRA
+  title: "INFRA: Add mirror gates for first 6 guard scripts in preflight.rs (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs includes mirror gate calls for test-attribution-portable.sh, test-book-sync-guard.sh, test-credential-pattern-guard.sh, test-cross-judge-guard.sh, test-css-token-discipline.sh, test-default-flip-guard.sh following the existing pattern used for test-markdown-intra-doc-links.sh
+    - preflight builds without compilation errors
+    - When chump preflight is executed, the six added scripts are invoked and their pass/fail results match the CI fast‑check job semantics
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4166
+  domain: INFRA
+  title: "INFRA: Add mirror gates for next 6 guard scripts in preflight.rs (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs includes mirror gate calls for test-doc-freshness.sh, test-docs-delta-commit-msg.sh, test-docs-delta-guard.sh, test-git-identity-guard.sh, test-hardcoded-date-guard.sh, test-infra-124-docs-delta-trailer.sh following the existing pattern
+    - preflight builds without compilation errors
+    - When chump preflight is executed, the newly added six scripts are invoked and their pass/fail results match the CI fast‑check job semantics
+  depends_on: [INFRA-4165]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4167
+  domain: INFRA
+  title: "INFRA: Add mirror gates for third set of 6 guard scripts in preflight.rs (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs includes mirror gate calls for test-infra-250-v1-retirement.sh, test-infra-254-pwa-root-redirect.sh, test-infra-257-doc-only-guards.sh, test-infra-109-worktree-boundary.sh, test-keystone-cascade.sh, test-md-links-loop.sh following the existing pattern
+    - preflight builds without compilation errors
+    - When chump preflight is executed, the newly added six scripts are invoked and their pass/fail results match the CI fast‑check job semantics
+  depends_on: [INFRA-4166]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4168
+  domain: INFRA
+  title: "INFRA: Add mirror gates for fourth set of 6 guard scripts in preflight.rs (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs includes mirror gate calls for test-merge-driver-ci-yml.sh, test-merge-driver-pre-commit.sh, test-meta-011-git-stomp.sh, test-no-claude-leak.sh, test-no-verify-audit.sh, test-preflight-ci-parity.sh following the existing pattern
+    - preflight builds without compilation errors
+    - When chump preflight is executed, the newly added six scripts are invoked and their pass/fail results match the CI fast‑check job semantics
+  depends_on: [INFRA-4167]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4169
+  domain: INFRA
+  title: "INFRA: Add mirror gates for final 6 guard scripts in preflight.rs (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs includes mirror gate calls for test-prereg-content-guard.sh, test-raw-yaml-guard.sh, test-research-026-preflight.sh, test-rollup-semantic.sh, test-subagent-epilogue-ref.sh, test-submodule-guard.sh following the existing pattern
+    - preflight builds without compilation errors
+    - When chump preflight is executed, the newly added six scripts are invoked and their pass/fail results match the CI fast‑check job semantics
+  depends_on: [INFRA-4168]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4170
+  domain: INFRA
+  title: "INFRA: Update AUDIT_JOB_DECOMPOSITION.md to mark 30 scripts as mirrored=yes (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/process/AUDIT_JOB_DECOMPOSITION.md contains rows for all 30 guard scripts with the column mirrored set to yes
+    - No other rows in the file are unintentionally modified
+    - The markdown renders correctly in the repository viewer
+  depends_on: [INFRA-4169]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4171
+  domain: INFRA
+  title: "INFRA: Validate preflight CI parity script passes with no new regressions (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running scripts/ci/test-preflight-ci-parity.sh exits with status 0
+    - The output reports no unmirrored‑gate regressions for any of the 30 scripts
+    - The test is executed on a clean CI environment to confirm reproducibility
+  depends_on: [INFRA-4170]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4172
+  domain: INFRA
+  title: "INFRA: Verify preflight execution time stays within warm (<60s) and cold (<120s) budgets (INFRA-3387 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - On a warm machine (preflight already cached), chump preflight completes in ≤60 seconds
+    - On a cold machine (no cache), chump preflight completes in ≤120 seconds
+    - Timing measurements are captured and attached to the PR for review
+  depends_on: [INFRA-4171]
   notes: |
     [chump harvest check 'META-070']
     === primitives_index match for 'META-070' ===
