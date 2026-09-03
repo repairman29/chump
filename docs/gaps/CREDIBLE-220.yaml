@@ -1,7 +1,7 @@
 - id: CREDIBLE-220
   domain: CREDIBLE
   title: nothing watches CI health on non-chump fleet repos — two sat red for ~6 months unnoticed
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -9,5 +9,7 @@
     - "Receipt: ai-gm-service red since 2026-01-21 and jarvis-rog-ed red since 2026-01-31 — both discovered only incidentally on 2026-08-07 while assessing unrelated PRs, roughly six months later"
     - Distinguish 'red because broken workflow config' from 'red because tests fail' where cheaply possible — both examples were the former (missing lint script; setup-node cache with no lockfile), which is a different and much cheaper fix class
     - "Pairs with EFFECTIVE-389 (code-posse sweep): same pattern, different instrument — this one reads CI state rather than code"
+  closed_date: '2026-09-03'
+  closed_pr: 4434
   outcome_id: CREDIBLE-000
 
