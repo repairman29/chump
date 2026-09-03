@@ -1,7 +1,7 @@
 - id: EFFECTIVE-389
   domain: EFFECTIVE
   title: "code-posse: schedule almanac's organs across the fleet and file what they find (posse has no code-side member)"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -14,5 +14,7 @@
     - "FROM CREDIBLE-217: the CONFIG organ's proven finding classes are the acceptance bar for signal quality — the sweep must be able to surface incoherences of the kind already found by hand (CARGO_TARGET_DIR resolved 14 ways across 171 sites in chump; three conflicting BEAST_MODE endpoint flags across 356 reads including a beast-mode.dev vs beastmode.dev typo-domain; OPENAI_API_KEY with 4 defaults over 49 reads in Maclawd)"
   notes: |
     Bumped P2->P1 2026-08-07: operator asked for this capability directly ('can we build tech debt agents with/on posse using almanac'), and it is the trunk of a four-gap cluster all parked at P2 — CREDIBLE-217 (folded in, superseded), ZERO-WASTE-036 (the ACT-on-detection loop, now depends on this), EFFECTIVE-374 (posse + fluff-audit sweep, depends on CREDIBLE-209). Detection must land before the act layer has anything to act on. Outcome linked at bump time, not via the set --priority side door (cf CREDIBLE-213).
+  closed_date: '2026-09-03'
+  closed_pr: 4414
   outcome_id: ZERO-WASTE-000
 
