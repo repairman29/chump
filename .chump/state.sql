@@ -36408,6 +36408,8 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-03T05:42:56Z] EFFECTIVE-441: escalated required_model -> opus after 3 consecutive unverified_ship attempts
+  required_model: opus
 
 - id: EFFECTIVE-835
   domain: EFFECTIVE
@@ -79042,11 +79044,14 @@ gaps:
 - id: INFRA-3366
   domain: INFRA
   title: "preflight mirror: audit-shard-4 cross-PR-contract/security gates (12 scripts, META-086 cluster 4/5)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Read docs/process/AUDIT_JOB_DECOMPOSITION.md cluster \"cross-pr-security (shard 4)\" for the current unmirrored-script list (12 at filing time; re-check for drift).\n2. For each unmirrored script, add a preflight.rs entry mirroring its .github/workflows/audit.yml invocation exactly.\n3. Cross-PR-contract gate (test-cross-pr-contract.sh) and security guards must be flagged as \"requires network/GH context\" in preflight.rs comments if they cannot run fully offline — document any script that can only partially mirror (e.g. runs a local-only subset).\n4. bash scripts/ci/test-audit-job-decomposition.sh still passes; update the doc's mirrored column for this cluster in the same PR.\n5. cargo fmt + clippy --workspace --all-targets -D warnings + cargo check pass."
+  notes: |
+    Decomposed into 8 slices: INFRA-4071, INFRA-4072, INFRA-4073, INFRA-4074, INFRA-4075, INFRA-4076, INFRA-4077, INFRA-4078
+    [2026-09-03T05:41:36Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4799B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
 
 - id: INFRA-3367
@@ -94708,6 +94713,239 @@ gaps:
     
     === cross-pollination briefs mentioning 'META-070' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4071
+  domain: INFRA
+  title: "INFRA: Read audit job decomposition docs and capture current unmirrored script list (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Documentation AUDIT_JOB_DECOMPOSITION.md for cluster \"cross-pr-security (shard 4)\" is opened"
+    - A list of the 12 unmirrored script filenames is recorded in a markdown file in the PR
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4072
+  domain: INFRA
+  title: "INFRA: Validate unmirrored script list against repository for drift (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All 12 script names exist in the repository at the expected paths
+    - Any missing or extra scripts are noted and the list is updated accordingly
+  depends_on: [INFRA-4071]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4073
+  domain: INFRA
+  title: "INFRA: Add preflight.rs entries mirroring each script's audit.yml invocation (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - preflight.rs contains a new entry for each of the 12 scripts
+    - Each entry reproduces the exact command line and environment used in .github/workflows/audit.yml for that script
+    - The code compiles after adding the entries
+  depends_on: [INFRA-4072]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4074
+  domain: INFRA
+  title: "INFRA: Flag network/GH‑context requirements in preflight.rs comments (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Each preflight.rs entry includes a comment indicating \"requires network/GH context\" for cross‑PR‑contract gate and security guards when applicable"
+    - At least one comment documents a script that can only be partially mirrored
+  depends_on: [INFRA-4073]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4075
+  domain: INFRA
+  title: "INFRA: Document partially mirrored scripts and their limitations (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A section in the PR notes lists any scripts that cannot be fully mirrored
+    - For each such script, the limitation (e.g., runs only a local subset) is described
+  depends_on: [INFRA-4074]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4076
+  domain: INFRA
+  title: "INFRA: Update mirrored column in AUDIT_JOB_DECOMPOSITION.md for shard 4 (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The \"mirrored\" column for cluster META-086 shard 4 reflects the newly added entries"
+    - The markdown table renders correctly in the repository
+  depends_on: [INFRA-4075]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4077
+  domain: INFRA
+  title: "INFRA: Run scripts/ci/test-audit-job-decomposition.sh and verify success (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The test script executes without errors and exits with status 0
+    - All expected output lines indicating successful mirroring are present
+  depends_on: [INFRA-4076]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: INFRA-4078
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy (warnings as errors), and cargo check across workspace (INFRA-3366 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - cargo fmt reports no formatting changes needed
+    - cargo clippy completes with no warnings (treated as errors)
+    - cargo check succeeds for all targets in the workspace
+  depends_on: [INFRA-4077]
+  notes: |
+    [chump harvest check 'preflight']
+    === primitives_index match for 'preflight' ===
+    
+    === cluster keyword match for 'preflight' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'preflight' ===
+    
+    === repo-description match for 'preflight' ===
+    
+    === HARVEST_ROADMAP.md mention of 'preflight' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'preflight' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: INFRA-416
   domain: INFRA
