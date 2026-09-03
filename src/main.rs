@@ -6325,26 +6325,45 @@ async fn main() -> Result<()> {
             // dial (EFFECTIVE-086) layers nuance on top; this is the dumb
             // write that every entry-point checks.
             "level" => {
+                // EFFECTIVE-086: query-only flags read the current level
+                // and report a derived fact rather than writing anything.
+                if args.iter().any(|a| a == "--max-workers") {
+                    let level =
+                        autonomy_level::read_autonomy_level(&autonomy_level::default_path());
+                    match level.max_workers() {
+                        Some(n) => println!("{n}"),
+                        None => println!("unbounded"),
+                    }
+                    std::process::exit(0);
+                }
                 let n_str = args.get(3).cloned().unwrap_or_else(|| {
-                    // No arg: print current level and exit 0.
-                    let level = autonomy_level::read_level(&autonomy_level::default_path());
-                    println!("{level}");
+                    // No arg: print current level (name + number) and exit 0.
+                    let level =
+                        autonomy_level::read_autonomy_level(&autonomy_level::default_path());
+                    println!("{} ({})", i64::from(level), level.name());
                     std::process::exit(0);
                 });
                 let n: i64 = n_str.parse().unwrap_or_else(|_| {
                     eprintln!("chump fleet level: N must be an integer, got '{n_str}'");
                     std::process::exit(2);
                 });
-                if n < 0 {
-                    eprintln!("chump fleet level: N must be >= 0 (0 = STOP)");
+                // EFFECTIVE-086: the graduated dial is 0-5 (STOP..UNLEASHED)
+                // — reject anything outside that range so the dial can't be
+                // set to a value with no defined action set.
+                if !(0..=5).contains(&n) {
+                    eprintln!(
+                        "chump fleet level: N must be 0-5 (0=STOP 1=OBSERVE 2=ASSIST \
+                         3=SUPERVISED 4=AUTONOMOUS 5=UNLEASHED), got '{n}'"
+                    );
                     std::process::exit(2);
                 }
                 let al_path = autonomy_level::default_path();
                 match autonomy_level::write_level(n, &al_path) {
                     Ok(()) => {
-                        let status_word = if n == 0 { "STOP" } else { "GO" };
+                        let level = autonomy_level::AutonomyLevel::from(n);
                         println!(
-                            "AUTONOMY_LEVEL={n} ({status_word}) written to {}",
+                            "AUTONOMY_LEVEL={n} ({}) written to {}",
+                            level.name(),
                             al_path.display()
                         );
                     }

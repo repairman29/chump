@@ -226,6 +226,34 @@ elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
 fi
 
 FLEET_SIZE="${FLEET_SIZE:-8}"
+
+# EFFECTIVE-086 AC #3: bind worker concurrency to the graduated autonomy
+# dial via the existing fleet scaling gate (docs/process/FLEET_SLOS.md /
+# INFRA-518) rather than a separate cap. The dial is a *ceiling* — the
+# scale-up criteria in FLEET_SLOS.md still govern whether the fleet may
+# actually use up to that ceiling. Mirrors
+# crates/chump-atomic-claim/src/autonomy_level.rs::AutonomyLevel::max_workers
+# — keep both in sync if the level->cap mapping changes.
+if [[ "$FLEET_SIZE" != "0" ]]; then
+    _al_path="${HOME:-/tmp}/.chump/AUTONOMY_LEVEL"
+    _al_level=0
+    if [[ -r "$_al_path" ]]; then
+        _al_raw="$(tr -d '[:space:]' < "$_al_path" 2>/dev/null || echo "")"
+        [[ "$_al_raw" =~ ^[0-9]+$ ]] && _al_level="$_al_raw"
+    fi
+    case "$_al_level" in
+        0|1) _al_max_workers=0 ;;
+        2) _al_max_workers=1 ;;
+        3) _al_max_workers=2 ;;
+        4) _al_max_workers=4 ;;
+        *) _al_max_workers="" ;; # 5 (UNLEASHED) or out-of-range: no level-imposed ceiling
+    esac
+    if [[ -n "$_al_max_workers" ]] && (( FLEET_SIZE > _al_max_workers )); then
+        echo "[run-fleet.sh] AUTONOMY_LEVEL=$_al_level caps FLEET_SIZE $FLEET_SIZE -> $_al_max_workers (EFFECTIVE-086)" >&2
+        FLEET_SIZE=$_al_max_workers
+    fi
+fi
+
 # INFRA-371: timeout default lowered 1800→600.
 # INFRA-707: raised 600→900. Post-rebalancing (FLEET-046) the fleet picks
 # substantive EFFECTIVE/CREDIBLE gaps that write 600-900 lines of Rust —
