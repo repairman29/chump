@@ -3241,7 +3241,7 @@ gaps:
 - id: CREDIBLE-207
   domain: CREDIBLE
   title: "code-reviewer-agent non-deterministic + opaque: CONCERN reasons swallowed, verdict flip-flops on identical diff"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -3250,6 +3250,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 9 slices: CREDIBLE-697, CREDIBLE-698, CREDIBLE-699, CREDIBLE-700, CREDIBLE-701, CREDIBLE-702, CREDIBLE-703, CREDIBLE-704, CREDIBLE-705
+    [2026-09-03T18:12:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-208
@@ -10611,10 +10612,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Modify the debt‑index calculation function (e.g., `compute_debt_index`) in `crates/chump-inventory/src/inventory.rs` to invoke the existing `compute_crit` scorer for each registry entry, passing the entry’s data and storing the result in the entry’s `crit_score` field; guard the call with the entry’s `need` flag so that entries where `need` is false are left unchanged, and ensure the function’s return type and existing logic are preserved.
+    
+    Target file(s):
+    - crates/chump-inventory/src/inventory.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Debt index pipeline now calls `compute_crit` for each registry entry
-    - Existing Debt Index results remain unchanged for entries where Need is false
-    - Compilation and existing tests pass after integration
+    - In `crates/chump-inventory/src/inventory.rs`, the function `compute_debt_index` contains a call to `compute_crit` for every registry entry with `need == true`.
+    - A new unit test `test_compute_debt_index_crit_integration` in `crates/chump-inventory/src/inventory.rs` verifies that an entry with `need == true` receives a non‑zero `crit_score` after `compute_debt_index` runs.
+    - The same unit test confirms that an entry with `need == false` retains its original debt‑index values and has a `crit_score` of `None` (or zero), demonstrating no change to existing results.
+    - Running `cargo test` in the repository completes without failures, confirming compilation and test suite pass after the integration.
   depends_on: [CREDIBLE-488]
   notes: |
     [chump harvest check 'Index']
@@ -85066,7 +85075,7 @@ gaps:
 - id: INFRA-3533
   domain: INFRA
   title: "SCOUT: stranger-bot edge-sweep nav can't route around interior obstacles — false 'stuck' on human-navigable rooms (realm forest_east water-pool), inflating deep-milestone 0/N"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -85075,6 +85084,8 @@ gaps:
     - "Re-measure the deep milestones after the nav fix: cavern_entrance and forest_west sweeps reflect real reachability, not nav-limit noise"
   notes: |
     The Scout stranger-agent navigates by sweeping SCREEN EDGES to find area exits (adapters/realm-of-shadows.mjs edge-sweep). When an exit requires routing AROUND an interior obstacle, the bot gets stuck. MEASURED 2026-08-04 (live repeat.mjs on canonical ~/Projects/games/realm-of-shadows): realm forest_east (depth 1, human-trivial — a large central WATER POOL with the east exit a narrow strip reached by pathing around the pool) = 0/5 completed, ALL 'stuck' at maxProgress 3, deaths ~0. Pure navigation failure, NOT lethality. This is the ACTUAL blocker behind the deep milestones (cavern_entrance 0/5, forest_west 0/3) — it produced false GAME-004/005 gaps blaming lethality (a lethality/aggro/difficulty fix was built + measured + REVERTED: cavern still 0/5; DEPTH.md corroborates: Easy 0.7x -> deep 0/3, warm-start adjacent -> 3/3). Fix direction: obstacle-aware pathing for the stranger bot — detect the walkable corridor / route around water+walls toward a candidate exit, instead of pure edge-sweep. A human reads these rooms instantly; the bot shouldn't score 0/5 on them. Blocks GAME-004/005 (realm deep milestones). Evidence run dirs: scout/runs/repeat-realm-of-shadows-2026-08-04T15-37-51* (forest_east 0/5).
+    
+    [2026-09-03T18:12:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3534
@@ -112950,7 +112961,7 @@ gaps:
 - id: PRODUCT-196
   domain: PRODUCT
   title: "[almanac] Ruby + PHP crawler adapters — unparsed languages make prior-art reading impossible"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -112958,6 +112969,8 @@ gaps:
     - PHP follows by the same pattern; both appear in detect_language + is_supported
     - Re-indexing the chatwoot ref (already at ~/.almanac/refs-cache/chatwoot, v4.16.2) yields non-zero Ruby symbols, and a fleet search for 'conversation handoff bot assignee' returns chatwoot hits — measured 2026-08-07 as 0 Ruby files indexed out of 1527, so app/models/conversation.rb and db/schema.rb were invisible
     - DEPTH.md updated in the same commit
+  notes: |
+    [2026-09-03T18:13:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1078B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   skills_required: "external_repo:repairman29/almanac"
   outcome_id: MISSION-032
@@ -117260,13 +117273,15 @@ gaps:
 - id: RESILIENT-238
   domain: RESILIENT
   title: provider cascade per-request timeout 300s too long for hosted providers — a hung provider stalls the whole run instead of failing over
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"provider cascade per-request timeout 300s too long for hosted providers — a hung provider stalls the whole run instead of failing over\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-03T18:13:12Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: RESILIENT-239
@@ -129453,6 +129468,8 @@ gaps:
     - "RETIREMENT IS PROPOSED, NEVER EXECUTED, and carries its reason. Auto-closing real work is strictly worse than carrying a vague gap. Reuse the existing statuses rather than inventing one: superseded when consolidate finds it is a duplicate/subset, wontfix when it is no longer true or never was actionable. Record who/what decided and why, so a re-detected gap is not re-proposed forever (same allowlist discipline as ZERO-WASTE-036)"
     - "UPSTREAM FIX IS THE REAL LEVERAGE — without it this loop runs forever: 74 template ACs exist because default_acceptance_criteria (src/main.rs:18442) fires whenever 'chump gap reserve' omits --acceptance-criteria. Either reserve calls write-ac inline, or it refuses to create a P0/P1 without real criteria (the same shape as the MISSION-045 outcome gate and the CREDIBLE-107 evidence gate that already work). Stop producing them, do not just sweep them"
     - "SELF-CHECK — the loop must be honest about its own author: triage today flags MISSION-076, MISSION-077 and ZERO-WASTE-036 as too-large/decompose. Two of those were filed hours earlier in this same session. A curation loop that exempts recent or self-filed gaps is not a curation loop"
+  notes: |
+    Decomposed into 9 slices: ZERO-WASTE-088, ZERO-WASTE-089, ZERO-WASTE-090, ZERO-WASTE-091, ZERO-WASTE-092, ZERO-WASTE-093, ZERO-WASTE-094, ZERO-WASTE-095, ZERO-WASTE-096
   opened_date: '2026-08-19'
   outcome_id: ZERO-WASTE-000
 
@@ -130471,4 +130488,256 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: ZERO-WASTE-088
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Create scheduled job for triage (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "A cron or launchd entry named `chump_gap_triage` is added and runs daily at 02:00 UTC"
+    - Execution logs show `chump gap triage --apply` invoked without error
+    - The job can be manually triggered and completes within 5 minutes
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-089
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Create scheduled job for consolidate (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "A cron or launchd entry named `chump_gap_consolidate` is added and runs daily at 03:00 UTC"
+    - Logs record successful invocation of `chump gap consolidate`
+    - Manual trigger runs to completion in under 5 minutes
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-090
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Create scheduled job for write‑AC (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "A cron or launchd entry named `chump_gap_write_ac` is added and runs daily at 04:00 UTC"
+    - Logs show `chump gap write-ac` executed and exit code 0
+    - Manual run produces expected AC files for at least one test gap
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-091
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Fix detectors to treat default acceptance criteria as vague (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`chump gap triage` now counts gaps with `default_acceptance_criteria` as vague‑AC"
+    - "`chump gap audit-ac` reports the same count for vague‑AC as triage"
+    - Unit tests cover a gap with the default template and assert it is classified as vague
+  depends_on: [ZERO-WASTE-088, ZERO-WASTE-089, ZERO-WASTE-090]
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-092
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Handle add‑AC failure with explicit unqualifiable status (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When `chump gap write-ac` cannot generate testable criteria, the gap status is set to `wontfix`
+    - "The reason field records \"add‑ac failed – insufficient information\""
+    - A log entry is emitted with gap ID and failure reason
+    - Integration test simulates a gap lacking repo files and verifies the status change
+  depends_on: [ZERO-WASTE-091]
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-093
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Automate retirement based on consolidate and write‑AC outcomes (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If `consolidate` finds a duplicate or subset, the gap status is changed to `superseded`
+    - If `write‑ac` fails (as defined in slice 4), the gap status is changed to `wontfix`
+    - Decision metadata (who, when, why) is stored in the gap record
+    - A regression test confirms that a duplicate gap becomes `superseded` after consolidation
+  depends_on: [ZERO-WASTE-091, ZERO-WASTE-092]
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-094
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Prevent creation of P0/P1 gaps without real acceptance criteria (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`chump gap reserve` now validates that `--acceptance-criteria` is provided and non‑default before allowing P0/P1 creation"
+    - Attempting to reserve a P0/P1 without real criteria aborts with error code 1 and a clear message
+    - Existing gaps created with the default template are automatically flagged for manual review
+  depends_on: [ZERO-WASTE-093]
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-095
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: Self‑check: ensure triage does not exempt recent or self‑filed gaps (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Triage runs on gaps created within the last 2 hours and does not skip them
+    - Gaps filed by the same author as the triage runner are processed like any other gap
+    - Unit test creates a recent self‑filed gap and asserts it appears in triage output
+  depends_on: [ZERO-WASTE-091]
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: ZERO-WASTE-096
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: End‑to‑end validation of the scheduled curation loop (ZERO-WASTE-049 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A test pipeline creates three gaps: one duplicate, one lacking repo data, and one with default acceptance criteria"
+    - After a full day run of the scheduled jobs, the duplicate gap is `superseded`, the insufficient‑info gap is `wontfix`, and the default‑template gap is either resolved by write‑AC or flagged for manual review
+    - No gap remains in an unscheduled state after the loop completes
+    - Logs from each scheduled job are captured and contain the expected status transitions
+  depends_on: [ZERO-WASTE-088, ZERO-WASTE-089, ZERO-WASTE-090, ZERO-WASTE-091, ZERO-WASTE-092, ZERO-WASTE-093, ZERO-WASTE-094, ZERO-WASTE-095]
+  notes: |
+    [chump harvest check 'curation']
+    === primitives_index match for 'curation' ===
+    
+    === cluster keyword match for 'curation' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'curation' ===
+    
+    === repo-description match for 'curation' ===
+    
+    === HARVEST_ROADMAP.md mention of 'curation' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'curation' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
