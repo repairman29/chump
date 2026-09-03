@@ -79,6 +79,79 @@ pub fn write_level(level: i64, path: &Path) -> Result<(), String> {
     std::fs::write(path, format!("{level}\n")).map_err(|e| format!("write {:?}: {e}", path))
 }
 
+/// EFFECTIVE-086 slice (EFFECTIVE-955): the graduated autonomy dial.
+///
+/// `read_level`/`write_level` above operate on the raw `i64` and are the
+/// fail-closed kill-switch primitive (RESILIENT-073) — keep them
+/// dependency-free. This enum is a typed view over the same file/value so
+/// callers can match on named levels instead of magic numbers. Any value
+/// outside 0-5 (including all failure modes of `read_level`) maps to
+/// `Stop`, preserving the fail-closed contract.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Default)]
+pub enum AutonomyLevel {
+    #[default]
+    Stop = 0,
+    Observe = 1,
+    Assist = 2,
+    Supervised = 3,
+    Autonomous = 4,
+    Unleashed = 5,
+}
+
+impl AutonomyLevel {
+    /// Human-readable name, matching EFFECTIVE-086's level names.
+    pub fn name(self) -> &'static str {
+        match self {
+            AutonomyLevel::Stop => "STOP",
+            AutonomyLevel::Observe => "OBSERVE",
+            AutonomyLevel::Assist => "ASSIST",
+            AutonomyLevel::Supervised => "SUPERVISED",
+            AutonomyLevel::Autonomous => "AUTONOMOUS",
+            AutonomyLevel::Unleashed => "UNLEASHED",
+        }
+    }
+}
+
+impl From<AutonomyLevel> for i64 {
+    fn from(level: AutonomyLevel) -> i64 {
+        level as i64
+    }
+}
+
+/// Out-of-range values (including everything `read_level` fails closed to)
+/// map to `Stop` — there is no invalid `AutonomyLevel`.
+impl From<i64> for AutonomyLevel {
+    fn from(n: i64) -> AutonomyLevel {
+        match n {
+            0 => AutonomyLevel::Stop,
+            1 => AutonomyLevel::Observe,
+            2 => AutonomyLevel::Assist,
+            3 => AutonomyLevel::Supervised,
+            4 => AutonomyLevel::Autonomous,
+            5 => AutonomyLevel::Unleashed,
+            _ => AutonomyLevel::Stop,
+        }
+    }
+}
+
+/// Typed counterpart to `read_level`: same fail-closed file read, decoded
+/// into `AutonomyLevel`. Default (missing/unreadable/corrupt/out-of-range)
+/// is `AutonomyLevel::Stop`.
+pub fn read_autonomy_level(path: &Path) -> AutonomyLevel {
+    AutonomyLevel::from(read_level(path))
+}
+
+/// Typed counterpart to `read_autonomy_level` using the default
+/// `~/.chump/AUTONOMY_LEVEL` path.
+pub fn current_autonomy_level() -> AutonomyLevel {
+    read_autonomy_level(&default_path())
+}
+
+/// Typed counterpart to `write_level`: persists the enum's numeric value.
+pub fn write_autonomy_level(level: AutonomyLevel, path: &Path) -> Result<(), String> {
+    write_level(level.into(), path)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -163,5 +236,63 @@ mod tests {
         assert_eq!(read_level(&p), 5);
         write_level(0, &p).unwrap();
         assert_eq!(read_level(&p), 0);
+    }
+
+    #[test]
+    fn autonomy_level_default_is_stop() {
+        assert_eq!(AutonomyLevel::default(), AutonomyLevel::Stop);
+        assert_eq!(i64::from(AutonomyLevel::default()), 0);
+    }
+
+    #[test]
+    fn autonomy_level_from_i64_round_trips_0_through_5() {
+        let expected = [
+            AutonomyLevel::Stop,
+            AutonomyLevel::Observe,
+            AutonomyLevel::Assist,
+            AutonomyLevel::Supervised,
+            AutonomyLevel::Autonomous,
+            AutonomyLevel::Unleashed,
+        ];
+        for (n, level) in expected.into_iter().enumerate() {
+            assert_eq!(AutonomyLevel::from(n as i64), level);
+            assert_eq!(i64::from(level), n as i64);
+        }
+    }
+
+    #[test]
+    fn autonomy_level_out_of_range_fails_closed_to_stop() {
+        assert_eq!(AutonomyLevel::from(6), AutonomyLevel::Stop);
+        assert_eq!(AutonomyLevel::from(-1), AutonomyLevel::Stop);
+        assert_eq!(AutonomyLevel::from(999), AutonomyLevel::Stop);
+    }
+
+    #[test]
+    fn autonomy_level_names() {
+        assert_eq!(AutonomyLevel::Stop.name(), "STOP");
+        assert_eq!(AutonomyLevel::Observe.name(), "OBSERVE");
+        assert_eq!(AutonomyLevel::Assist.name(), "ASSIST");
+        assert_eq!(AutonomyLevel::Supervised.name(), "SUPERVISED");
+        assert_eq!(AutonomyLevel::Autonomous.name(), "AUTONOMOUS");
+        assert_eq!(AutonomyLevel::Unleashed.name(), "UNLEASHED");
+    }
+
+    #[test]
+    fn read_autonomy_level_missing_file_is_stop() {
+        let dir = tmp();
+        let p = dir.path().join("AUTONOMY_LEVEL");
+        assert_eq!(read_autonomy_level(&p), AutonomyLevel::Stop);
+    }
+
+    #[test]
+    fn write_then_read_autonomy_level_round_trips() {
+        let dir = tmp();
+        let p = dir.path().join("AUTONOMY_LEVEL");
+        write_autonomy_level(AutonomyLevel::Supervised, &p).unwrap();
+        assert_eq!(read_autonomy_level(&p), AutonomyLevel::Supervised);
+        assert_eq!(read_level(&p), 3);
+
+        write_autonomy_level(AutonomyLevel::Unleashed, &p).unwrap();
+        assert_eq!(read_autonomy_level(&p), AutonomyLevel::Unleashed);
     }
 }
