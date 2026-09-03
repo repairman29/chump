@@ -5,9 +5,10 @@
   priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "events emitted on success/failure/timeout: kind=halt_class_emit (all three statuses, failure_class field carries transient|permanent|none) and kind=halt_predicate_success|halt_predicate_failure|halt_predicate_timeout — documented in docs/process/HALT_CLASS_EMIT_OBSERVABILITY.md"
+    - "cost tracking: zero direct $-cost (local file writes only, no LLM/network calls); halt_predicate_run duration_ms is the tracked signal, documented under \"Cost tracking\" in the doc"
+    - "failure-class taxonomy: halt_class_categorize keyword-matches REASON into transient|permanent, defaulting to transient; documented as a table under \"Failure-class taxonomy\" in the doc"
+    - "smoke test command: bash scripts/ci/test-halt-predicate-events.sh (16/16 passing) plus a manual halt_class_emit one-liner, both documented under \"Smoke test\" in the doc"
+    - "halt_class_emit kind registered in docs/observability/EVENT_REGISTRY.yaml with scanner-anchor + event-registry-reserved.txt entry (scripts/lib/ is outside PROD_PATHS, same precedent as halt_predicate_*)"
   outcome_id: CREDIBLE-000
 

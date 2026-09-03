@@ -6328,6 +6328,19 @@ events:
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, restored_level, reason]
 
+  # ── CREDIBLE-365/CREDIBLE-108: halt-class emit wrapper ───────────────────
+  # halt_class_emit() in scripts/lib/halt-class-emit.sh emits one event per
+  # call, carrying the caller-supplied name/status/reason plus a derived
+  # failure_class (transient|permanent|none) so consumers don't have to
+  # re-run halt_class_categorize themselves. See
+  # docs/process/HALT_CLASS_EMIT_OBSERVABILITY.md for the full reference.
+  - kind: halt_class_emit
+    effect_metric: self
+    emitter: scripts/lib/halt-class-emit.sh (halt_class_emit)
+    trigger: any caller invokes halt_class_emit NAME STATUS [REASON] [DETAIL_JSON].
+    consumers: [ambient]
+    fields_required: [ts, kind, name, status, reason, failure_class, detail]
+
   # ── CREDIBLE-622 (CREDIBLE-109 slice): halt-class predicate observability ─
   # halt_predicate_emit/halt_predicate_run in scripts/lib/halt-class-emit.sh
   # emit one of these three distinct kinds per predicate execution (rather

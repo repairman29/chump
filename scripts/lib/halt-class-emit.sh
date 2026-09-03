@@ -44,6 +44,7 @@
 # Bash 3.2+ compatible (macOS default). Uses python3 for JSON when
 # available, falls back to a hand-rolled emitter otherwise.
 
+# scanner-anchor: "kind":"halt_class_emit"
 # scanner-anchor: "kind":"halt_predicate_success"
 # scanner-anchor: "kind":"halt_predicate_failure"
 # scanner-anchor: "kind":"halt_predicate_timeout"
