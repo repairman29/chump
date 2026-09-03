@@ -6,5 +6,13 @@
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.A3W0z4BnHT has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    Closed as duplicate of EFFECTIVE-136 (identical title "Bootstrap: Another intent",
+    same AC shape, same outcome_id — only the ephemeral macOS /var/folders tmp path
+    differs). Same pattern as EFFECTIVE-266 (closed as duplicate of EFFECTIVE-136,
+    PR #4417). The underlying capability this AC exercises (`chump bootstrap <intent>
+    --dir <path>` — scaffold repo, README, umbrella + sub-gap filing) is fully
+    implemented in src/commands/bootstrap.rs; no new code required. Tracking
+    consolidated onto EFFECTIVE-136.
   outcome_id: EFFECTIVE-000
 
