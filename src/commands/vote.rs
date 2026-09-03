@@ -1,8 +1,9 @@
 //! META-159: `chump vote <corr_id> <+1|-1|0> --reason <text>` — emit a
 //! FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
 //!
-//! Gated behind `CHUMP_FLEET_RECV_SIDE_V0=1`. When the flag is unset,
-//! prints "feature flag off, vote not emitted" and exits 0.
+//! Enabled by default (CREDIBLE-179). Set `CHUMP_FLEET_RECV_SIDE_V0=0` to
+//! opt out; when explicitly disabled, prints "feature flag off, vote not
+//! emitted" and exits 0.
 //!
 //! Shells out to `scripts/coord/broadcast.sh FEEDBACK preference <subject>
 //! <reason> <vote>` which emits the FEEDBACK event (ambient.jsonl +
@@ -106,8 +107,16 @@ fn emit_vote_event(
 }
 
 pub fn run(args: &[String]) -> i32 {
-    // Feature flag gate (AC7).
-    if std::env::var("CHUMP_FLEET_RECV_SIDE_V0").as_deref() != Ok("1") {
+    // CREDIBLE-179: default ON per CLAUDE.md's "A2A consensus is always-on
+    // and mandatory" doctrine. The flag used to require an explicit "1",
+    // which was only ever set via a macOS-only `launchctl setenv` call in
+    // chump-fleet-bootstrap.sh — on Linux hosts (and any session that
+    // doesn't go through that bootstrap step) the flag was silently never
+    // set, so every `chump vote` call printed this message and exited 0
+    // without ever emitting a vote. Root cause of zero real votes ever cast
+    // on any FEEDBACK proposal despite the mandatory-voting doctrine.
+    // Explicit CHUMP_FLEET_RECV_SIDE_V0=0 remains the opt-out escape hatch.
+    if std::env::var("CHUMP_FLEET_RECV_SIDE_V0").as_deref() == Ok("0") {
         println!("feature flag off, vote not emitted");
         return 0;
     }
