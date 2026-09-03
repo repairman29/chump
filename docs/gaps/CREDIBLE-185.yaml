@@ -1,11 +1,19 @@
 - id: CREDIBLE-185
   domain: CREDIBLE
   title: "Model-class tags have no committed home: opus/sonnet/haiku slot tags live only in gitignored/drifted .env — need a tracked provider manifest (or fix apply-mabel-badass-env.sh drift) so routing config survives a fresh checkout"
-  status: open
+  status: closed
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"opus/sonnet/haiku slot tags live only in gitignored/drifted .env — need a tracked provider manifest (or fix apply-mabel-badass-env.sh drift) so routing config survives a fresh checkout\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    CLOSED 2026-09-03: already shipped in #4421 (commit 8feda08). scripts/setup/provider-model-classes.env
+    is now the tracked manifest sourced by apply-mabel-badass-env.sh, so opus/sonnet/haiku
+    CHUMP_PROVIDER_N_MODEL_CLASS tags survive a fresh checkout instead of living only in
+    gitignored/drifted .env. Regression coverage: scripts/ci/test-provider-model-class-manifest.sh
+    (7 cases, verified passing on main). All 3 acceptance criteria satisfied. This gap record
+    was left open after the code shipped; closing to match reality.
+  closed_pr: 4421
 
