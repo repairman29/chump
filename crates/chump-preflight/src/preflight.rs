@@ -2038,6 +2038,126 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // INFRA-4050 (META-070/META-086 audit-job decomposition, cluster
+        // C3-pr-worker-lifecycle): mirror the 22 remaining unmirrored
+        // PR/worker-lifecycle & merge-automation gates from
+        // docs/process/AUDIT_JOB_DECOMPOSITION.md's C3 table (23 total in
+        // that table; test-no-verify-audit.sh was already mirrored above).
+        // Each is pure shell/fixture-based, no chump binary build required
+        // — safe for the fast local loop. All always-on (no per-gate bypass
+        // env var) per the EFFECTIVE-094 bypass-var debt-ceiling, same
+        // precedent as the INFRA-3379 cluster mirror above.
+        steps.push(step(
+            "bot-merge-auto-close",
+            &["bash", "scripts/ci/test-bot-merge-auto-close.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-conflict-wiring",
+            &["bash", "scripts/ci/test-bot-merge-conflict-wiring.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "conflict-resolver",
+            &["bash", "scripts/ci/test-conflict-resolver.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "external-verify-merge",
+            &["bash", "scripts/ci/test-external-verify-merge.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "gate-promotion-no-regression",
+            &["bash", "scripts/ci/test-gate-promotion-no-regression.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-hang",
+            &["bash", "scripts/ci/test-infra-119-bot-merge-hang.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "install-pr-auto-rebase",
+            &["bash", "scripts/ci/test-install-pr-auto-rebase.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-auto-rebase",
+            &["bash", "scripts/ci/test-pr-auto-rebase.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-blocked-watch",
+            &["bash", "scripts/ci/test-pr-blocked-watch.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-explain-block",
+            &["bash", "scripts/ci/test-pr-explain-block.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-terminal-state",
+            &["bash", "scripts/ci/test-pr-terminal-state.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-triage-bot",
+            &["bash", "scripts/ci/test-pr-triage-bot.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-watch-auto-resolve",
+            &["bash", "scripts/ci/test-pr-watch-auto-resolve.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-watch-shepherd-smoke",
+            &["bash", "scripts/ci/test-pr-watch-shepherd-smoke.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-preflight-hook",
+            &["bash", "scripts/ci/test-pre-push-preflight-hook.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-rebase-allow",
+            &["bash", "scripts/ci/test-pre-push-rebase-allow.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-test-gate",
+            &["bash", "scripts/ci/test-pre-push-test-gate.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "preflight-ci-parity-smoke",
+            &["bash", "scripts/ci/test-preflight-ci-parity.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "rebase-coordination",
+            &["bash", "scripts/ci/test-rebase-coordination.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "review-handoff-smoke",
+            &["bash", "scripts/ci/test-review-handoff-smoke.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "stale-branch-rebase",
+            &["bash", "scripts/ci/test-stale-branch-rebase.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "status-flip-proof-of-merge",
+            &["bash", "scripts/ci/test-status-flip-proof-of-merge.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-3383 (META-086 misc-hygiene cluster): mirror 25 docs/CLI/
         // git-hooks hygiene gates that were previously only allowlisted in
         // preflight-ci-parity-exceptions.txt. Each is a fixture-based or
