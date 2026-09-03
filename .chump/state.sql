@@ -34901,7 +34901,7 @@ gaps:
 - id: EFFECTIVE-805
   domain: EFFECTIVE
   title: "EFFECTIVE: Create repository scaffold with initial commit (EFFECTIVE-265 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -34922,6 +34922,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'Bootstrap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+    [2026-09-03T00:54:42Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=5008B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-806
   domain: EFFECTIVE
