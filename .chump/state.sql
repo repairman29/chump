@@ -25530,10 +25530,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Remove the duplicate gemini‑2.5‑flash definition at slot 8 by editing the slot‑initialisation table in src/provider_cascade.rs so that only slot 4 defines gemini‑2.5‑flash with RPD 86400, CONTEXT_K 128 and the required privacy flag, and adjust the slot‑ordering logic in crates/chump-integrator/src/daemon.rs::run_cycle to no longer depend on the removed slot, ensuring deterministic configuration output.
+    
+    Target file(s):
+    - src/provider_cascade.rs
+    - crates/chump-integrator/src/daemon.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Only one gemini‑2.5‑flash slot remains in the final configuration
-    - The retained slot has the correct RPD (86400), CONTEXT_K=128, and privacy settings
-    - Ordering between the two former entries is removed, eliminating nondeterminism
+    - "src/provider_cascade.rs: after the change the slot definition array contains exactly one entry for gemini‑2.5‑flash (at index 4) and no entry at index 8."
+    - "crates/chump-integrator/src/daemon.rs::run_cycle: the generated configuration reports a single gemini‑2.5‑flash slot with RPD 86400, CONTEXT_K 128 and privacy enabled."
+    - "scripts/ci/test-cascade-bandit-extended.sh: the CI test that validates slot count passes, confirming that the final configuration has only one gemini‑2.5‑flash slot and that slot ordering is deterministic."
   depends_on: [EFFECTIVE-1092]
   notes: |
     [chump harvest check 'inference']
