@@ -12283,3 +12283,32 @@ events:
       signal proving the drain is actually running, not just registered.
     consumers: [ambient, Roll Call]
     fields_required: [ts, kind, surfaces_checked, surfaces_breached]
+
+  - kind: audit_orphan_landed
+    effect_metric: self
+    emitter: scripts/ops/audit-orphan-landed-detector.sh (INFRA-4535)
+    trigger: a register-without-emit orphan (an EVENT_REGISTRY.yaml entry
+      with no matching emit site anywhere in the tree) is detected on the
+      current tree and was not already flagged in the detector's prior run
+      (.chump-locks/audit-orphan-seen.json state).
+    consumers: [chump pr-rescue audit-orphan-prune (src/pr_rescue.rs, INFRA-4535)]
+    fields_required: [ts, kind, orphan_kind, hash]
+
+  - kind: audit_orphan_prune_pr_opened
+    effect_metric: self
+    emitter: src/pr_rescue.rs (chump pr-rescue, INFRA-4535)
+    trigger: chump pr-rescue found one or more unhandled kind=audit_orphan_landed
+      events and successfully opened a batch-allowlist PR (title
+      "auto-allowlist: resolve orphan <hash>") appending the orphan kinds to
+      scripts/ci/event-registry-reserved.txt.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, hash, orphan_kinds, pr_url]
+
+  - kind: audit_orphan_prune_failed
+    effect_metric: self
+    emitter: src/pr_rescue.rs (chump pr-rescue, INFRA-4535)
+    trigger: chump pr-rescue found unhandled kind=audit_orphan_landed events
+      but the batch-allowlist PR (worktree/commit/push/gh pr create) failed —
+      the batch stays pending and is retried on the next tick.
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, hash, orphan_kinds, error]

@@ -138,6 +138,14 @@ pub fn run(opts: RescueOpts) -> Result<()> {
     );
 
     println!("pr-rescue: applied={applied} skipped={skipped} failed={failed} unknown={unknown}");
+
+    // INFRA-4535 (INFRA-1861 slice c): every tick also drains the
+    // audit-orphan-prune queue — no separate loop/daemon needed, this IS the
+    // "daemon subscribes to kind=audit_orphan_landed events" requirement.
+    if let Err(e) = prune_audit_orphans(opts.dry_run) {
+        eprintln!("[pr-rescue] audit-orphan-prune: error: {e}");
+    }
+
     Ok(())
 }
 
@@ -1289,6 +1297,248 @@ fn mark_attempt(pr: u32) {
     save_stats(&stats);
 }
 
+// ── INFRA-4535: audit-allowlist auto-pruner (INFRA-1861 slice c) ───────────
+//
+// scripts/ops/audit-orphan-landed-detector.sh emits `kind=audit_orphan_landed
+// {orphan_kind, hash}` to ambient.jsonl whenever a register-without-emit
+// orphan lands on main. This subscriber (run every `chump pr-rescue` tick —
+// see `run()` above) batches any not-yet-handled orphan kinds into ONE PR
+// that appends them to scripts/ci/event-registry-reserved.txt, titled
+// "auto-allowlist: resolve orphan <hash>".
+
+#[derive(Default, Serialize, Deserialize)]
+struct OrphanPruneState {
+    /// orphan_kind values already turned into a batch PR — never re-batch
+    /// these even if the event is still sitting in ambient.jsonl.
+    handled: std::collections::HashSet<String>,
+}
+
+fn orphan_prune_state_path() -> PathBuf {
+    let root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    PathBuf::from(root).join(".chump/audit_orphan_prune_state.json")
+}
+
+fn load_orphan_prune_state() -> OrphanPruneState {
+    let p = orphan_prune_state_path();
+    std::fs::read_to_string(&p)
+        .ok()
+        .and_then(|s| serde_json::from_str(&s).ok())
+        .unwrap_or_default()
+}
+
+fn save_orphan_prune_state(s: &OrphanPruneState) {
+    let p = orphan_prune_state_path();
+    if let Some(parent) = p.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    if let Ok(j) = serde_json::to_string_pretty(s) {
+        let _ = std::fs::write(p, j);
+    }
+}
+
+/// Deterministic 8-hex-char id derived from the batch's orphan kinds, used
+/// both in the PR title/branch and (for correlation) in the ambient events —
+/// same batch of kinds always hashes to the same id.
+fn short_hash(input: &str) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    input.hash(&mut hasher);
+    format!("{:08x}", hasher.finish() as u32)
+}
+
+/// Read `.chump-locks/ambient.jsonl` for `kind=audit_orphan_landed` events
+/// whose `orphan_kind` isn't in the handled set yet. Returns the sorted,
+/// deduped list of pending orphan kinds.
+fn pending_orphan_kinds(ambient_body: &str, state: &OrphanPruneState) -> Vec<String> {
+    let mut pending: std::collections::BTreeSet<String> = std::collections::BTreeSet::new();
+    for line in ambient_body.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("audit_orphan_landed") {
+            continue;
+        }
+        let Some(orphan_kind) = v.get("orphan_kind").and_then(|k| k.as_str()) else {
+            continue;
+        };
+        if !state.handled.contains(orphan_kind) {
+            pending.insert(orphan_kind.to_string());
+        }
+    }
+    pending.into_iter().collect()
+}
+
+fn prune_audit_orphans(dry_run: bool) -> Result<()> {
+    let root = std::env::var("CHUMP_REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+    let ambient_path = PathBuf::from(&root).join(".chump-locks/ambient.jsonl");
+    let Ok(body) = std::fs::read_to_string(&ambient_path) else {
+        return Ok(());
+    };
+
+    let state = load_orphan_prune_state();
+    let pending = pending_orphan_kinds(&body, &state);
+    if pending.is_empty() {
+        return Ok(());
+    }
+
+    let hash = short_hash(&pending.join(","));
+    println!(
+        "[pr-rescue] audit-orphan-prune: {} new orphan kind(s) pending -> batch PR (hash {hash})",
+        pending.len()
+    );
+    for k in &pending {
+        println!("[pr-rescue]   orphan: {k}");
+    }
+
+    if dry_run {
+        return Ok(());
+    }
+
+    match open_orphan_allowlist_pr(&root, &pending, &hash) {
+        Ok(pr_url) => {
+            let mut state = load_orphan_prune_state();
+            for k in &pending {
+                state.handled.insert(k.clone());
+            }
+            save_orphan_prune_state(&state);
+            emit_ambient(
+                "audit_orphan_prune_pr_opened",
+                serde_json::json!({"hash": hash, "orphan_kinds": pending, "pr_url": pr_url}),
+            );
+        }
+        Err(e) => {
+            emit_ambient(
+                "audit_orphan_prune_failed",
+                serde_json::json!({"hash": hash, "orphan_kinds": pending, "error": e.to_string()}),
+            );
+            eprintln!("[pr-rescue] audit-orphan-prune: failed to open PR: {e}");
+        }
+    }
+    Ok(())
+}
+
+/// Opens the batch-allowlist PR: fresh worktree off origin/main, append each
+/// pending kind to scripts/ci/event-registry-reserved.txt, commit, push,
+/// `gh pr create`. Title MUST follow "auto-allowlist: resolve orphan <hash>"
+/// (INFRA-4535 AC3) so operators can correlate it back to the batched
+/// audit_orphan_landed events.
+fn open_orphan_allowlist_pr(repo_root: &str, kinds: &[String], hash: &str) -> Result<String> {
+    let branch = format!("chump/auto-allowlist-orphan-{hash}");
+    let wt = format!("/tmp/chump-audit-orphan-prune-{hash}");
+
+    let _ = Command::new("git")
+        .current_dir(repo_root)
+        .args(["worktree", "remove", "--force", &wt])
+        .status();
+    let status = Command::new("git")
+        .current_dir(repo_root)
+        .args(["worktree", "add", "-B", &branch, &wt, "origin/main"])
+        .status()
+        .context("git worktree add")?;
+    if !status.success() {
+        bail!("git worktree add failed for {branch}");
+    }
+
+    let reserved_path = PathBuf::from(&wt).join("scripts/ci/event-registry-reserved.txt");
+    let mut content = std::fs::read_to_string(&reserved_path)
+        .with_context(|| format!("read {}", reserved_path.display()))?;
+    if !content.ends_with('\n') {
+        content.push('\n');
+    }
+    content.push('\n');
+    content.push_str(&format!(
+        "# INFRA-4535 audit-orphan auto-pruner: batch {hash}\n"
+    ));
+    for kind in kinds {
+        if !content.contains(&format!("\n{kind} ")) && !content.contains(&format!("\n{kind}\n")) {
+            content.push_str(&format!(
+                "{kind}  # reason: auto-allowlisted by chump pr-rescue audit-orphan-prune (INFRA-4535); orphan batch {hash}, canonical EVENT_REGISTRY entry or emit site pending\n"
+            ));
+        }
+    }
+    std::fs::write(&reserved_path, &content)?;
+
+    let add_status = Command::new("git")
+        .current_dir(&wt)
+        .args(["add", "scripts/ci/event-registry-reserved.txt"])
+        .status()
+        .context("git add")?;
+    if !add_status.success() {
+        let _ = Command::new("git")
+            .current_dir(repo_root)
+            .args(["worktree", "remove", "--force", &wt])
+            .status();
+        bail!("git add failed");
+    }
+
+    let commit_msg = format!(
+        "auto-allowlist: resolve orphan {hash}\n\nAuto-applied by `chump pr-rescue` audit-orphan-prune (INFRA-4535, INFRA-1861\nslice c) — batches {} newly-landed register-without-emit orphan kind(s)\ninto scripts/ci/event-registry-reserved.txt:\n{}\n",
+        kinds.len(),
+        kinds
+            .iter()
+            .map(|k| format!("  - {k}"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let commit_status = Command::new("git")
+        .current_dir(&wt)
+        .args(["commit", "-m", &commit_msg])
+        .status()
+        .context("git commit")?;
+    if !commit_status.success() {
+        let _ = Command::new("git")
+            .current_dir(repo_root)
+            .args(["worktree", "remove", "--force", &wt])
+            .status();
+        bail!("git commit failed (possibly nothing to add)");
+    }
+
+    let push_status = Command::new("git")
+        .current_dir(&wt)
+        .args(["push", "--force-with-lease", "-u", "origin", &branch])
+        .status()
+        .context("git push")?;
+    if !push_status.success() {
+        let _ = Command::new("git")
+            .current_dir(repo_root)
+            .args(["worktree", "remove", "--force", &wt])
+            .status();
+        bail!("git push failed for {branch}");
+    }
+
+    let pr_title = format!("auto-allowlist: resolve orphan {hash}");
+    let pr_body = format!(
+        "Auto-opened by `chump pr-rescue` audit-orphan-prune (INFRA-4535, INFRA-1861 slice c).\n\nBatches {} newly-landed register-without-emit orphan kind(s) into the allowlist:\n{}\n\nEach kind either needs a real emit site (recommended) or a canonical EVENT_REGISTRY.yaml entry — this PR only stops the register-without-emit gate from blocking unrelated PRs while that follow-up happens.",
+        kinds.len(),
+        kinds
+            .iter()
+            .map(|k| format!("- `{k}`"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    );
+    let out = Command::new("gh")
+        .current_dir(&wt)
+        .args([
+            "pr", "create", "--base", "main", "--title", &pr_title, "--body", &pr_body,
+        ])
+        .output()
+        .context("gh pr create")?;
+
+    let _ = Command::new("git")
+        .current_dir(repo_root)
+        .args(["worktree", "remove", "--force", &wt])
+        .status();
+
+    if !out.status.success() {
+        bail!(
+            "gh pr create failed: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
 // ── github + ambient helpers ──────────────────────────────────────────────
 
 fn list_open_prs() -> Result<Vec<u32>> {
@@ -1575,5 +1825,49 @@ fast-checks	env-var coverage — all src/ reads documented or allowlisted (DOC-0
                 "CHUMP_TEAM_USER_ID"
             ]
         );
+    }
+
+    // ── INFRA-4535: audit-allowlist auto-pruner ────────────────────────────
+
+    #[test]
+    fn pending_orphan_kinds_picks_up_unhandled_landed_events() {
+        let ambient = "\
+{\"ts\":\"2026-09-04T00:00:00Z\",\"kind\":\"unrelated_event\"}
+{\"ts\":\"2026-09-04T00:00:01Z\",\"kind\":\"audit_orphan_landed\",\"orphan_kind\":\"foo_bar_baz\",\"hash\":\"aaaaaaaa\"}
+{\"ts\":\"2026-09-04T00:00:02Z\",\"kind\":\"audit_orphan_landed\",\"orphan_kind\":\"already_handled\",\"hash\":\"bbbbbbbb\"}
+";
+        let mut state = OrphanPruneState::default();
+        state.handled.insert("already_handled".to_string());
+        let pending = pending_orphan_kinds(ambient, &state);
+        assert_eq!(pending, vec!["foo_bar_baz".to_string()]);
+    }
+
+    #[test]
+    fn pending_orphan_kinds_dedupes_repeated_landings_of_the_same_kind() {
+        let ambient = "\
+{\"kind\":\"audit_orphan_landed\",\"orphan_kind\":\"dup_kind\"}
+{\"kind\":\"audit_orphan_landed\",\"orphan_kind\":\"dup_kind\"}
+";
+        let state = OrphanPruneState::default();
+        let pending = pending_orphan_kinds(ambient, &state);
+        assert_eq!(pending, vec!["dup_kind".to_string()]);
+    }
+
+    #[test]
+    fn pending_orphan_kinds_empty_when_nothing_new() {
+        let ambient = "{\"kind\":\"audit_orphan_landed\",\"orphan_kind\":\"seen_already\"}\n";
+        let mut state = OrphanPruneState::default();
+        state.handled.insert("seen_already".to_string());
+        assert!(pending_orphan_kinds(ambient, &state).is_empty());
+    }
+
+    #[test]
+    fn short_hash_is_deterministic_and_batch_order_independent_when_sorted() {
+        let a = short_hash("foo,bar");
+        let b = short_hash("foo,bar");
+        assert_eq!(a, b);
+        assert_eq!(a.len(), 8);
+        // Different input -> (overwhelmingly likely) different hash.
+        assert_ne!(a, short_hash("bar,foo"));
     }
 }

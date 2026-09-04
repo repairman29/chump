@@ -886,3 +886,7 @@ halt_predicate_timeout  # reason: CREDIBLE-622 — same as halt_predicate_succes
 
 # ── CREDIBLE-108: halt-class-emit wrapper observability doc ────────────────
 halt_class_emit  # reason: CREDIBLE-108 — emitted by scripts/lib/halt-class-emit.sh::halt_class_emit as a literal "kind":"halt_class_emit", but scripts/lib/ is outside the coverage scanner's PROD_PATHS (same structural gap as halt_predicate_* above). A scanner-anchor comment is present at the top of the file. Registered in EVENT_REGISTRY.yaml + documented in docs/process/HALT_CLASS_EMIT_OBSERVABILITY.md; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
+
+# ── INFRA-4535: audit-allowlist auto-pruner (INFRA-1861 slice c) ───────────
+audit_orphan_prune_pr_opened  # reason: INFRA-4535 — emitted by src/pr_rescue.rs::prune_audit_orphans via the shared emit_ambient(kind, fields) helper (`"kind": kind` at the call site is a variable binding, not a grep-scannable "kind":"X" literal — same class as the halt_predicate_* entries above). Registered in EVENT_REGISTRY.yaml; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
+audit_orphan_prune_failed  # reason: INFRA-4535 — same as audit_orphan_prune_pr_opened above; emitted by src/pr_rescue.rs::prune_audit_orphans on PR-open failure.
