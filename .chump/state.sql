@@ -13556,9 +13556,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add strict validation in `validate_required_fields` (architect.rs) so that it checks for the presence of the five required keys (RPM, RPD, TIER, PRIORITY, CONTEXT_K) for each slot and, on any missing key, returns an `Err` whose message contains the slot identifier (e.g., CHUMP_PROVIDER_12) and the missing field name. Propagate this error in `probe_slot_health` (recurring-gap-pattern-detector.sh) so the script exits with a non‑zero status and prints the same clear error message.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/maintenance/architect.rs
+    - scripts/coord/recurring-gap-pattern-detector.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Parser throws a clear error when a slot is missing RPM, RPD, TIER, PRIORITY, or CONTEXT_K fields
-    - Error message includes the slot identifier (e.g., CHUMP_PROVIDER_12) and the missing field name
+    - The function `validate_required_fields` in `crates/chump-gap-store/src/maintenance/architect.rs` returns an `Err` whose string includes both the slot identifier (e.g., CHUMP_PROVIDER_12) and the exact missing field name when any of RPM, RPD, TIER, PRIORITY, or CONTEXT_K is absent.
+    - When `scripts/coord/recurring-gap-pattern-detector.sh` is executed against a `.env` file where slot `CHUMP_PROVIDER_12` lacks the `PRIORITY` field, the script exits with a non‑zero status and prints an error line containing “CHUMP_PROVIDER_12” and “PRIORITY”.
+    - The CI integration script `scripts/ci/test-integration-pr-template.sh` detects the above error condition and fails the job, outputting the same error message that includes the slot identifier and missing field name.
   notes: |
     [chump harvest check 'provider']
     === primitives_index match for 'provider' ===
@@ -13725,9 +13734,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a guard in the `implement_gap` function (src/improve.rs) that detects when the target path ends with “.env”. When such a path is encountered, the function logs an INFO message “Drift detection: .env file left unchanged” and returns without performing any file‑write operation, thereby preventing automatic modification of .env files during drift reporting.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - After a drift detection run, the original .env file remains unchanged
-    - A log entry confirms that no automatic rewrite was attempted
+    - After running the drift detection command, the SHA‑256 checksum of the repository’s .env file is identical before and after the run, confirming the file was not altered.
+    - "The drift detection log contains the exact line “Drift detection: .env file left unchanged”."
+    - A unit test that calls `implement_gap` with a path ending in “.env” verifies that no write to the file system occurs (e.g., the file’s modification timestamp remains unchanged or a mock write function is not invoked).
+    - The drift detection process exits with status code 0, indicating the new guard does not cause an error.
   depends_on: [CREDIBLE-590]
   notes: |
     [chump harvest check 'provider']
@@ -19868,7 +19886,7 @@ gaps:
 - id: CREDIBLE-822
   domain: CREDIBLE
   title: "CREDIBLE: Implement guard to ensure summarized_pct stays above 95% in relevant CREDIBLE code paths (CREDIBLE-300 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -19889,6 +19907,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'Almanac' ===
+    [2026-09-04T16:30:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-823
   domain: CREDIBLE
