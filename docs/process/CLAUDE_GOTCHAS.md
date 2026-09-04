@@ -1487,6 +1487,66 @@ even on failure, so `statusCheckRollup.state` stays `SUCCESS`.
 - `changes` — `dorny/paths-filter` can fail transiently (network/runner issue); COE makes failure neutral so downstream jobs safely skip rather than blocking
 - `test-e2e` — aggregates e2e shards (which already have COE); COE here guards against runner errors in the aggregator itself
 
+## `chump-chat` selector confirmed NOT stale — it's an app-init timing/routing race (INFRA-1433 / INFRA-4301, 2026-09-04)
+
+Definitive answer to the open question in INFRA-1433 ("dead selector, renamed
+to `chat-room`? OR app fails to mount in CI's xvfb env?"): **the selector is
+current, not renamed.** `customElements.define('chump-chat', ChumpChat)` still
+lives at `web/v2/chat.js:417`, and `e2e-tauri/run.mjs:116` still waits on
+`By.css('chump-chat')` — same string, both sides. Grepping `web/v2/` for
+`chat-room` or any other candidate rename turns up nothing; there is no
+renamed element to point the test at.
+
+**Actual root cause: two competing initial-view mechanisms race on boot,**
+and the outcome depends on script-execution order rather than a single
+declared default:
+
+1. `<chump-nav>` (`web/v2/app.js:456` `connectedCallback`) resolves an
+   *initial cadence* (URL `?cadence=` > URL `?view=` map > `chumpPrefs`
+   `last_cadence` > `'now'`) and, for the `'now'` cadence, its
+   `default_view` is `'cockpit'` (`web/v2/app.js:378`) — **not** `'chat'`.
+   It dispatches `chump:navigate` with `detail: 'cockpit'`
+   (`web/v2/app.js:571`) synchronously from inside its `connectedCallback`,
+   which fires the instant `customElements.define('chump-nav', ChumpNav)`
+   runs (`web/v2/app.js:593`) and upgrades the already-parsed `<chump-nav>`
+   element.
+2. Separately, the `DOMContentLoaded` handler at `web/v2/app.js:5330`
+   defaults to `'chat'` (`chumpPrefs.get('last-view', 'chat')`) and appends
+   `VIEWS.chat()` (`<chump-view-chat>`, which mounts `<chump-chat>`) directly
+   into `#main-content`.
+
+The `document.addEventListener('chump:navigate', …)` router listener itself
+isn't registered until `web/v2/app.js:5314` — **after** the `ChumpNav` class
+body and its `customElements.define` call (line 593) earlier in the same
+file. So step 1's synchronous `'cockpit'` dispatch fires into a
+document with no listener yet attached and is silently dropped; step 2's
+`DOMContentLoaded`-time append (which runs after all module scripts,
+including the listener registration, have executed) is what actually lands
+in `#main-content`. On a normal-speed machine this ordering is stable and
+`<chump-chat>` does appear — which is why the flake reproduces on **slow**
+CI VMs specifically (per the existing INFRA-1342 note on 18+ `type="module"`
+scripts delaying `DOMContentLoaded`), not on every run: the race is between
+"listener registration + `DOMContentLoaded` append" finishing, vs. anything
+downstream (a stored `chumpPrefs.last-view` other than `'chat'`, a `?view=`
+URL param, or the cadence nav's own default reasserting itself, e.g. via a
+prefs write from a *previous* CI run's leftover `localStorage` state, or a
+user-set cadence in local dev) resolving to a non-chat view before that
+`DOMContentLoaded` append happens. **In a genuinely fresh browser profile
+(no `localStorage`, no URL params) — which is what CI's xvfb session and
+`tauri-driver` provide by default — `'chat'` wins and `<chump-chat>` mounts;
+the flake class is state-carryover / ordering-sensitivity, not a missing
+element.** This is consistent with `RESILIENT-016`'s decision to move
+`tauri-cowork-e2e` off the PR-blocking path to nightly-only
+(`.github/workflows/ci.yml:291`, `if: false` with a comment pointing at
+`ci-nightly.yml`) rather than treating it as a hard app regression.
+
+No selector rename is needed. If this class of flake resurfaces, the fix
+belongs in the boot sequence (e.g. register the `chump:navigate` listener
+*before* `customElements.define('chump-nav', …)` so the cadence nav's
+initial dispatch isn't silently dropped, and make `'chat'` vs. `'cockpit'`
+agree as the single source of truth for the default view) — not in the
+e2e test's selector.
+
 **Ongoing enforcement:** `scripts/ci/test-rollup-not-blocked-by-flaky-job.sh` parses
 `ci.yml` and asserts every non-required job has either `continue-on-error: true` or
 a PR-trigger exclusion. Run it after any ci.yml change.
