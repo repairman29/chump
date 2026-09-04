@@ -17905,9 +17905,16 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update `run_trial` in `scripts/ab-harness/run-ablation-sweep.py` to accept and execute trials against a free-tier model tier, ensuring each execution stage completes or reports failure while capturing per-stage status and latency metrics into the trial JSON report.
+    
+    Target file(s):
+    - scripts/ab-harness/run-ablation-sweep.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All stages run to completion (or fail) using the free‑tier model
-    - Per‑stage results are recorded in the JSON report
+    - Running `scripts/ab-harness/run-ablation-sweep.py` with a free-tier model target executes all stages and generates a JSON report containing a `stages` dictionary.
+    - Each entry in the JSON report's `stages` dictionary records the stage execution status (`success` or `failed`), completion timestamp, and error payload if the stage failed.
   depends_on: [CREDIBLE-759]
   notes: |
     [chump harvest check 'inference']
