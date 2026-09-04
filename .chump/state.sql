@@ -12562,9 +12562,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add fresh-checkout routing manifest verification logic to scripts/ci/test-node-refresh-artifact-pull.sh by removing any local .env file in a temporary checkout directory, executing the routing configuration resolution check, asserting that routing tags are loaded directly from the manifest, and ensuring fn fail is invoked with exit code 1 if the manifest is missing or contains invalid tag values.
+    
+    Target file(s):
+    - scripts/ci/test-node-refresh-artifact-pull.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test clones the repo, removes .env, runs the application, and asserts that routing uses the tags from the manifest
-    - Test fails when the manifest is missing or contains wrong values
+    - Executing scripts/ci/test-node-refresh-artifact-pull.sh without a .env file passes when the routing manifest contains valid tags.
+    - Executing scripts/ci/test-node-refresh-artifact-pull.sh invokes fn fail with an error output when the manifest file is missing.
+    - Executing scripts/ci/test-node-refresh-artifact-pull.sh invokes fn fail with an error output when the manifest tags contain invalid or wrong values.
   depends_on: [CREDIBLE-547, CREDIBLE-548]
   notes: |
     [chump harvest check 'committed']
@@ -19099,7 +19107,7 @@ gaps:
 - id: CREDIBLE-799
   domain: CREDIBLE
   title: "CREDIBLE: Prevent auto‑fill of placeholder acceptance criteria for unauthored gaps (CREDIBLE-284 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -19128,6 +19136,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-04T11:11:59Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-800
   domain: CREDIBLE
