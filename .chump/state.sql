@@ -39968,9 +39968,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add two new event variants `OperatorRecall` and `OperatorRecallSuppressed` to the `RoadmapFromVisionInput` definition in `crates/chump-handoff/src/contracts.rs`, extend the event‑grouping logic in `src/web_server.rs::build_api_router` to recognize these variants and compute their summary metrics (rate, spike detection, ratio), and update the test feedback script to emit sample events for each new type so the end‑to‑end pipeline can be exercised.
+    
+    Target file(s):
+    - crates/chump-handoff/src/contracts.rs
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Running `tracemap --events .chump-locks/ambient.jsonl` with the updated configuration shows summary lines for operator_recall (247 events) and operator_recall_suppressed (522 events)
-    - Each summary line includes derived metrics (rate, spike detection, ratio) that align with the event counts
+    - "Running `tracemap --events .chump-locks/ambient.jsonl` prints a summary line containing the exact text `operator_recall: 247 events`."
+    - "Running the same command prints a summary line containing the exact text `operator_recall_suppressed: 522 events`."
+    - Each of the two summary lines includes the derived fields `rate`, `spike`, and `ratio` with non‑empty numeric values (e.g., `rate=0.12`, `spike=true`, `ratio=1.34`).
+    - Executing `scripts/ci/test-feedback-event.sh` emits an event of type `operator_recall` (verified by the script’s stdout JSON) and exits with status code 0.
   depends_on: [EFFECTIVE-688]
   notes: |
     [chump harvest check 'almanac']
