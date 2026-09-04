@@ -24004,6 +24004,55 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
 
+- id: EFFECTIVE-1068
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Detect zero edit-tool calls in EndTurn branch (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - IterationController identifies when an EndTurn prose response occurs with no prior edit-tool calls (str_replace, write_file, patch_file) in the current loop iteration.
+    - The detection does not consider model_calls_count; it solely checks edit-tool call count.
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-1069
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Inject edit‑nudge when zero edits detected (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When detection from slice 0 is true, the controller fires an edit‑nudge retry regardless of the current model_calls_count.
+    - The retry is scheduled before the loop terminates.
+  depends_on: [EFFECTIVE-1068]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
 - id: EFFECTIVE-107
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire DOC-065.yaml into role curator-opus-target"
@@ -24014,6 +24063,106 @@ gaps:
     - "1. Edit the role-doc for curator-opus-target to reference DOC-065.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'DOC-065.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1070
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Define explicit nudge instruction content (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A constant string is created that instructs the model to stop investigating and emit a `str_replace` edit immediately.
+    - The instruction is concise, self‑contained, and passes linting checks.
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-1071
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate nudge instruction into controller flow (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The edit‑nudge injected by slice 1 uses the instruction defined in slice 2.
+    - The controller sends the nudge as a tool call payload identical to other tool invocations.
+  depends_on: [EFFECTIVE-1069, EFFECTIVE-1070]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-1072
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add bounded retry cap for edit‑nudges (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A counter limits the number of consecutive edit‑nudges to a maximum of 2 per iteration.
+    - When the cap is reached, the controller proceeds to terminate without further nudges.
+  depends_on: [EFFECTIVE-1071]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+
+- id: EFFECTIVE-1073
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit tests for zero‑edit nudge behavior (EFFECTIVE-448 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Mock LlmClient returns >2 read‑only tool calls followed by an EndTurn prose reply.
+    - Test asserts that at least one edit‑nudge is injected before termination.
+    - Test also verifies that the retry cap prevents more than 2 nudges.
+  depends_on: [EFFECTIVE-1072]
+  notes: |
+    [chump harvest check 'execute-gap']
+    === primitives_index match for 'execute-gap' ===
+    
+    === cluster keyword match for 'execute-gap' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'execute-gap' ===
+    
+    === repo-description match for 'execute-gap' ===
+    
+    === HARVEST_ROADMAP.md mention of 'execute-gap' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'execute-gap' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
 
 - id: EFFECTIVE-108
   domain: EFFECTIVE
@@ -28702,7 +28851,7 @@ gaps:
     - A bounded retry cap (e.g. <=2 extra nudges) prevents an infinite loop when a model genuinely cannot edit.
     - "Test: a mock LlmClient emitting >2 read-only tool calls then an EndTurn prose reply triggers at least one edit-nudge before terminating, asserted in iteration_controller tests."
   notes: |
-    Decomposed into 6 slices: EFFECTIVE-975, EFFECTIVE-976, EFFECTIVE-977, EFFECTIVE-978, EFFECTIVE-979, EFFECTIVE-980
+    Decomposed into 6 slices: EFFECTIVE-1068, EFFECTIVE-1069, EFFECTIVE-1070, EFFECTIVE-1071, EFFECTIVE-1072, EFFECTIVE-1073
   opened_date: '2026-08-23'
 
 - id: EFFECTIVE-449
@@ -90170,13 +90319,16 @@ gaps:
 - id: INFRA-3667
   domain: INFRA
   title: "Unify worker unit naming: instantiate node-neutral chump-worker@N template on CJ, retire cj-worker aliases"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"instantiate node-neutral chump-worker@N template on CJ, retire cj-worker aliases\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 9 slices: INFRA-4274, INFRA-4275, INFRA-4276, INFRA-4277, INFRA-4278, INFRA-4279, INFRA-4280, INFRA-4281, INFRA-4282
+    [2026-09-04T00:31:36Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-22'
 
 - id: INFRA-3677
@@ -107868,6 +108020,355 @@ gaps:
     === cross-pollination briefs mentioning 'baseline' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4274
+  domain: INFRA
+  title: "INFRA: Locate existing CJ worker alias definitions (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All source files, configuration files, and scripts that define or reference `cj-worker` aliases are listed in a markdown document.
+    - The document includes file paths and line numbers for each occurrence.
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4275
+  domain: INFRA
+  title: "INFRA: Create node‑neutral `chump-worker@N` template (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new template directory `templates/chump-worker@N` with placeholder files is added to the repository.
+    - The template follows the same structure as existing worker templates and passes `cargo fmt`.
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4276
+  domain: INFRA
+  title: "INFRA: Update worker instantiation logic to use `chump-worker@N` on CJ nodes (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The code path that creates workers on CJ nodes now references the `chump-worker@N` template instead of `cj-worker`.
+    - Compilation succeeds and `cargo test` runs without failures for unrelated tests.
+  depends_on: [INFRA-4274, INFRA-4275]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4277
+  domain: INFRA
+  title: "INFRA: Remove `cj-worker` alias definitions from code and config (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All references to `cj-worker` identified in slice 0 are deleted or replaced.
+    - Running `git grep cj-worker` returns no matches in the production codebase.
+  depends_on: [INFRA-4276]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4278
+  domain: INFRA
+  title: "INFRA: Update CI scripts and deployment manifests to reference `chump-worker@N` (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All CI scripts (`scripts/ci/*.sh`) and deployment YAML/JSON files that previously used `cj-worker` now use `chump-worker@N`.
+    - CI pipeline runs to the point of worker instantiation without errors.
+  depends_on: [INFRA-4276]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4279
+  domain: INFRA
+  title: "INFRA: Add unit test confirming correct worker naming on CJ (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new Rust test in `tests/worker_naming.rs` asserts that a worker instantiated on a CJ node has the name pattern `chump-worker@N`.
+    - The test fails when the old `cj-worker` alias is present and passes after slice 2 implementation.
+  depends_on: [INFRA-4276, INFRA-4277, INFRA-4278]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4280
+  domain: INFRA
+  title: "INFRA: Add integration test script that fails without the change (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new script `scripts/ci/test-chump-worker.sh` runs the full worker creation flow and exits with non‑zero status when `cj-worker` is still used.
+    - The script exits with zero status after slices 2‑5 are applied.
+  depends_on: [INFRA-4279]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4281
+  domain: INFRA
+  title: "INFRA: Run `cargo fmt` and `cargo clippy` across the repository (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes."
+    - "`cargo clippy --all-targets -- -D warnings` completes without warnings."
+  depends_on: [INFRA-4274, INFRA-4275, INFRA-4276, INFRA-4277, INFRA-4278, INFRA-4279, INFRA-4280]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4282
+  domain: INFRA
+  title: "INFRA: Update documentation to reflect new worker naming (INFRA-3667 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All README, INFRA design docs, and inline comments mention `chump-worker@N` instead of `cj-worker`.
+    - Documentation build passes without broken links.
+  depends_on: [INFRA-4277]
+  notes: |
+    [chump harvest check 'worker']
+    === primitives_index match for 'worker' ===
+    
+    === cluster keyword match for 'worker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'worker' ===
+    
+    === repo-description match for 'worker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'worker' (deep-scan findings) ===
+      70:| `upshift` | Active (43d) | **Future Microservice** for gap workers — `upshift fix --dry-run --json` exposes a clean integration surface for "is this dep upgrade safe?" decisions. Not P0 today, but worth a CP brief once Marcus arc lands and Chump touches more Cargo.toml/package.json changes |
+      132:**Further correction:** ACP is a Zed-led editor↔agent JSON-RPC standard (1:1 editor-to-agent over stdio). Chump coord is N:M worker-to-worker coordination over NATS. **Different problem spaces, not competing standards.**
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+    
+    === cross-pollination briefs mentioning 'worker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: INFRA-476
   domain: INFRA
@@ -125781,6 +126282,8 @@ gaps:
     - "The change described by \"heal active-but-unscheduled/stale timer-organs (silent-dark blind spot)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: RESILIENT-769, RESILIENT-770, RESILIENT-771, RESILIENT-772, RESILIENT-773, RESILIENT-774, RESILIENT-775
   outcome_id: CHUMPOS
 
 - id: RESILIENT-425
@@ -135756,6 +136259,86 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-769
+  domain: RESILIENT
+  title: "RESILIENT: Locate timer‑organ handling code in RESILIENT (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The source file(s) and function(s) that manage timer‑organs are identified and documented in a comment within the repository.
+    - A link to the identified code is added to the issue description.
+
+- id: RESILIENT-770
+  domain: RESILIENT
+  title: "RESILIENT: Add diagnostic logging for stale timer‑organs detection (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a timer‑organ is found to be active but unscheduled, a log entry at INFO level is emitted containing the organ ID and timestamp.
+    - The new log statements compile without warnings.
+  depends_on: [RESILIENT-769]
+
+- id: RESILIENT-771
+  domain: RESILIENT
+  title: "RESILIENT: Implement healing logic for active‑but‑unscheduled (stale) timer‑organs (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Stale timer‑organs are automatically removed or rescheduled so that they no longer appear as active but unscheduled.
+    - The healing path is exercised only for organs matching the stale condition and does not affect normal timer‑organ flow.
+    - No new warnings or errors are introduced in the build.
+  depends_on: [RESILIENT-770]
+
+- id: RESILIENT-772
+  domain: RESILIENT
+  title: "RESILIENT: Create unit test that reproduces a stale timer‑organ and verifies healing (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A `#[test]` function constructs a scenario with an active‑but‑unscheduled timer‑organ."
+    - The test asserts that after invoking the healing function the organ is no longer stale.
+    - Running `cargo test` fails the test before the healing implementation and passes after it is merged.
+  depends_on: [RESILIENT-771]
+
+- id: RESILIENT-773
+  domain: RESILIENT
+  title: "RESILIENT: Add CI script (`scripts/ci/test-heal-timer-organ.sh`) to validate healing behavior (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script sets up a minimal RESILIENT environment, triggers a stale timer‑organ, runs the healing code, and exits with status 0 on success.
+    - The script is referenced in the CI configuration and runs as part of `scripts/ci/run-all.sh`.
+    - The script passes on the current branch and would fail on a clean checkout without the healing change.
+  depends_on: [RESILIENT-772]
+
+- id: RESILIENT-774
+  domain: RESILIENT
+  title: "RESILIENT: Run `cargo fmt` and `cargo clippy -- -D warnings` and fix any issues (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes to the repository."
+    - "`cargo clippy --all-targets -- -D warnings` completes without any warnings."
+    - All existing tests continue to pass after formatting and linting.
+  depends_on: [RESILIENT-771, RESILIENT-772, RESILIENT-773]
+
+- id: RESILIENT-775
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation/comments to describe timer‑organ healing (RESILIENT-424 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The module/file containing the healing logic includes a top‑level comment explaining the stale timer‑organ problem and the implemented fix.
+    - The project README includes a brief note linking to the issue ID RESILIENT‑424.
+  depends_on: [RESILIENT-771]
 
 - id: SMOKE-001
   domain: SMOKE
