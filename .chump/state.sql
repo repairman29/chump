@@ -127050,7 +127050,7 @@ gaps:
 - id: RESILIENT-426
   domain: RESILIENT
   title: organ oneshots hang in activating(start) with no TimeoutStartSec, blocking timer re-arm
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -127059,6 +127059,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 8 slices: RESILIENT-785, RESILIENT-786, RESILIENT-787, RESILIENT-788, RESILIENT-789, RESILIENT-790, RESILIENT-791, RESILIENT-792
+    [2026-09-04T02:28:09Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-427
@@ -132924,7 +132925,7 @@ gaps:
     - verify-build no longer fails from OOM -> fewer artifact/rc=1 cycles
     - node stays network-reachable through build activity
   notes: |
-    Decomposed into 6 slices: RESILIENT-616, RESILIENT-617, RESILIENT-618, RESILIENT-619, RESILIENT-620, RESILIENT-621
+    Decomposed into 6 slices: RESILIENT-793, RESILIENT-794, RESILIENT-795, RESILIENT-796, RESILIENT-797, RESILIENT-798
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
     COMMAND: journalctl -k | grep -c oom-kill ; free -h ; uptime -s ; git show #4371.
@@ -137717,6 +137718,164 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-793
+  domain: RESILIENT
+  title: "RESILIENT: Create global build semaphore service (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A lightweight semaphore daemon can be started on the node
+    - It exposes acquire and release APIs (e.g., via a Unix socket)
+    - Only one client can hold the semaphore at any time
+    - Unit tests verify acquire blocks when already held and releases correctly
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-794
+  domain: RESILIENT
+  title: "RESILIENT: Integrate semaphore into worker build workflow (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Worker processes request the semaphore before invoking rustc/cargo
+    - If the semaphore is unavailable, the worker waits and retries
+    - During a concurrent build test, only one rustc process is observed running at any moment on the node
+    - Integration tests confirm builds succeed after acquiring the lock
+  depends_on: [RESILIENT-793]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-795
+  domain: RESILIENT
+  title: "RESILIENT: Implement dynamic CARGO_BUILD_JOBS calculation based on RAM and CPU (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A function reads free RAM and CPU count (nproc) and computes a safe job count (e.g., floor(free_ram_gb / 2))
+    - The computed value is exported as CARGO_BUILD_JOBS for the build process
+    - "Unit tests cover scenarios: 7 GiB free RAM → 2 jobs, 12 GiB → 4 jobs, etc."
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-796
+  domain: RESILIENT
+  title: "RESILIENT: Update chumpd main.rs to use dynamic job count and remove hard‑coded 24 GB comment (RESILIENT-614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chumpd now sets CARGO_BUILD_JOBS using the function from slice 2
+    - "The old hard‑coded \"CARGO_BUILD_JOBS=4\" line and 24 GB comment are removed or corrected"
+    - Code compiles and passes existing unit/integration tests
+    - Build logs show the derived job count rather than a static value
+  depends_on: [RESILIENT-795]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-797
+  domain: RESILIENT
+  title: "RESILIENT: Add OOM‑kill monitoring script and alert metric (RESILIENT-614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A script parses `journalctl -k` for \"oom-kill\" entries and aggregates count per hour"
+    - The script can be run manually and returns zero when no OOM events are present
+    - A Prometheus metric (or simple log) is emitted with the current OOM‑kill rate
+    - Unit test injects a mock journal entry and verifies the count increments
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-798
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end verification: run verify‑build under load and ensure stability (RESILIENT-614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A test harness launches multiple workers to perform verify‑build cycles for at least 2 hours
+    - During the run, the OOM‑kill monitoring from slice 4 reports ≤1 OOM event
+    - Network reachability (e.g., ping/tailscale status) remains true throughout the test
+    - All verify‑build cycles complete with rc=0 and no artifact failures
+  depends_on: [RESILIENT-794, RESILIENT-796, RESILIENT-797]
+  notes: |
+    [chump harvest check 'concurrent']
+    === primitives_index match for 'concurrent' ===
+    
+    === cluster keyword match for 'concurrent' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concurrent' ===
+    
+    === repo-description match for 'concurrent' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concurrent' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'concurrent' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
