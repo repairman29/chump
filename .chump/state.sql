@@ -8621,7 +8621,7 @@ gaps:
 - id: CREDIBLE-421
   domain: CREDIBLE
   title: "mission-grade gauge dark: KPI report shows 'No mission-grade snapshots recorded yet' — the honest-measure gauge isn't recording"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -8631,6 +8631,7 @@ gaps:
     - untagged 30d ships drop below 20% (tag enforcement or backfill)
   notes: |
     Decomposed into 5 slices: CREDIBLE-652, CREDIBLE-653, CREDIBLE-654, CREDIBLE-655, CREDIBLE-656
+    [2026-09-04T02:15:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-422
@@ -58366,11 +58367,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the GET /api/content-bots/status handler in web/v2/app.js to read the set of enabled content‑bot identifiers and their last‑run timestamps from the Scratchpad (crates/chump-coord/src/scratchpad.rs), emit a “contentBotsStatusSuccess” event on success (or “contentBotsStatusFailure” on error), record the request latency in the existing metrics collector under api.contentBots.status.duration, and return a JSON payload containing `enabledBots` and `lastRunTimestamps`.
+    
+    Target file(s):
+    - web/v2/app.js
+    - crates/chump-coord/src/scratchpad.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - In web/v2/app.js the `/api/content-bots/status` endpoint returns HTTP 200 with a JSON body that includes an `enabledBots` array and a `lastRunTimestamps` object whose keys are bot IDs and values are ISO‑8601 timestamps.
+    - The endpoint emits a `contentBotsStatusSuccess` event (observable via the event logger) when the response is sent, and emits a `contentBotsStatusFailure` event if any error occurs while reading from Scratchpad.
+    - The request handling duration is recorded in the metrics system under the metric name `api.contentBots.status.duration` with tags `status=success` or `status=failure` as appropriate.
+    - Executing the command `npm run smoke-test-status` runs a one‑off request against the local server and exits with code 0 while printing “STATUS OK” to stdout.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -127012,7 +127021,7 @@ gaps:
 - id: RESILIENT-424
   domain: RESILIENT
   title: "organ-watchdog: heal active-but-unscheduled/stale timer-organs (silent-dark blind spot)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -127021,6 +127030,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 7 slices: RESILIENT-769, RESILIENT-770, RESILIENT-771, RESILIENT-772, RESILIENT-773, RESILIENT-774, RESILIENT-775
+    [2026-09-04T02:08:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-425
@@ -130854,7 +130864,7 @@ gaps:
 - id: RESILIENT-553
   domain: RESILIENT
   title: "fleet node security baseline as an installer step — auto-harden every node (rpcbind off, PermitRootLogin no, only :22 public) instead of hand-hardening"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -130863,6 +130873,7 @@ gaps:
     - "a fresh node install ends hardened (rpcbind off, root-login no, only :22 public) with no operator hand-steps"
   notes: |
     Decomposed into 9 slices: RESILIENT-776, RESILIENT-777, RESILIENT-778, RESILIENT-779, RESILIENT-780, RESILIENT-781, RESILIENT-782, RESILIENT-783, RESILIENT-784
+    [2026-09-04T02:05:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: COTG
 
 - id: RESILIENT-554
@@ -137721,14 +137732,365 @@ gaps:
 - id: SOVEREIGN-001
   domain: SOVEREIGN
   title: operator Mac runs a stale chump binary + stale checkout — a latent canonical writer; make non-fleet machines route-only or auto-refresh
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
     2026-08-31: the operator Mac's chump binary is pre-3689 (lacks gap_route) and its checkout drifts 177+ behind — every hand gap-reserve from it risks the split-brain (INFRA-3687 now fails-closed, but the Mac is still a latent writer). INFRA-3689 gives the delegation path (CHUMP_GAP_SERVER → fleet-server /api/gap) but the Mac isn't configured to use it and its binary is stale. Make non-fleet/operator machines either (a) auto-refresh their chump binary, or (b) run route-only (CHUMP_GAP_SERVER set, all mutations delegate to CJ) so an operator laptop can NEVER be a canonical writer. Companion to INFRA-3894 (network write path) + INFRA-3687.
   acceptance_criteria:
     - an operator laptop's gap mutations either delegate to the fleet-server or fail-closed — never write a local canonical replica; its binary is not silently stale
+  notes: |
+    Decomposed into 9 slices: SOVEREIGN-002, SOVEREIGN-003, SOVEREIGN-004, SOVEREIGN-005, SOVEREIGN-006, SOVEREIGN-007, SOVEREIGN-008, SOVEREIGN-009, SOVEREIGN-010
+    [2026-09-04T02:08:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: SOVEREIGN
+
+- id: SOVEREIGN-002
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Add binary version check utility (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Utility function `IsBinaryStale(currentVersion string) bool` returns true for versions < 3689 and false otherwise
+    - Unit test covers versions 3688, 3689, and 3690 with expected true/false outcomes
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-003
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Implement auto‑refresh command for chump binary (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Command `chump-refresh` downloads the latest binary from `https://fleet-server/api/gap/binary/latest` and replaces the local binary"
+    - Command exits with code 0 on success and updates a version file with the new version
+    - Failure to download returns a non‑zero exit code and leaves the existing binary untouched
+  depends_on: [SOVEREIGN-002]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-004
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Add `route_only_mode` configuration flag (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`config.yaml` includes a boolean `route_only_mode` (default false)"
+    - Environment variable `CHUMP_GAP_SERVER` can enable route‑only mode when set
+    - Configuration loader correctly populates an internal `RouteOnlyMode` variable
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-005
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Modify startup to respect route‑only mode (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Startup script reads `route_only_mode` (or `CHUMP_GAP_SERVER`) and sets internal flag `delegateOnly`
+    - Log entry `Route‑only mode enabled` appears when the flag is true
+  depends_on: [SOVEREIGN-004]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-006
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Delegate all mutations to fleet‑server when in route‑only mode (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When `delegateOnly` is true, any mutation request results in an HTTP POST to `/api/gap` on the fleet‑server
+    - Local state is never modified for those requests
+    - If the HTTP request fails, the operation returns an error and does not write locally
+  depends_on: [SOVEREIGN-005]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-007
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Fallback to route‑only mode on stale binary or refresh failure (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If `IsBinaryStale` returns true and `chump-refresh` exits with non‑zero status, the process automatically sets `delegateOnly` true for the current session
+    - Log entry `Stale binary detected, switching to route‑only mode` is emitted
+    - No local canonical replica is written after the fallback
+  depends_on: [SOVEREIGN-002, SOVEREIGN-003, SOVEREIGN-005]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-008
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Write unit tests for version check, auto‑refresh, and delegation logic (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All unit tests for slices 0‑5 pass
+    - Test coverage for the new code paths is ≥ 90%
+    - Tests assert correct behavior for stale detection, refresh success/failure, and delegation outcomes
+  depends_on: [SOVEREIGN-002, SOVEREIGN-003, SOVEREIGN-004, SOVEREIGN-005, SOVEREIGN-006, SOVEREIGN-007]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-009
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Integration test simulating operator Mac with stale binary (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test runs chump binary version 3688 with an outdated checkout
+    - Mutation attempts result in HTTP calls to a mock fleet‑server and no local canonical file is created
+    - If the mock server returns an error, the client fails closed and logs the appropriate message
+    - Test verifies that the process never writes a local replica under any scenario
+  depends_on: [SOVEREIGN-008]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: SOVEREIGN-010
+  domain: SOVEREIGN
+  title: "SOVEREIGN: Update documentation and release notes (SOVEREIGN-001 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes a section describing auto‑refresh behavior and how to enable/disable route‑only mode
+    - Operator guide explains why the Mac will never act as a canonical writer and how to verify the setting
+    - Release notes list the new feature with version 3689 and reference INFRA‑3689, INFRA‑3687, INFRA‑3894
+  depends_on: [SOVEREIGN-009]
+  notes: |
+    [chump harvest check 'operator']
+    === primitives_index match for 'operator' ===
+    
+    === cluster keyword match for 'operator' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'operator' ===
+    
+    === repo-description match for 'operator' ===
+    
+    === HARVEST_ROADMAP.md mention of 'operator' (deep-scan findings) ===
+      167:Operator instruction: "you'd be surprised what you find in all of them." Dispatched 5 parallel Explore subagents to cover the 44 untouched repos via `gh api`. Coverage now **74/76 = 97%** (2 unreachable: `jarvis-android` 404, `homebrew-chump` skipped as trivial Ruby formula).
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      188:- `zendesk-background-agent` — Vercel + OpenAI embeddings for semantic ticket matching. Pattern reference for operator-recall de-duplication.
+    
+    === cross-pollination briefs mentioning 'operator' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: SYSTEM-CURATOR-ROUTINE
   title: Opus Curator — fleet health audit + decisions
