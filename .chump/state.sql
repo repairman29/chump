@@ -25804,10 +25804,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a new function `schedule_ephemeral` to `scripts/coord/mesh-worker-loop.sh` that accepts a shell command, an interval in seconds, an optional max‑iteration count, and a cancellable context (via a passed‑in PID file). The function launches the command in a background subshell, repeats it at the fixed interval, stops after the max‑iteration limit if supplied, and terminates cleanly when the context PID is killed. It also prints a “[EPHEMERAL]” prefix before each execution for observability.
+    
+    Target file(s):
+    - scripts/coord/mesh-worker-loop.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The library exposes a function to schedule an arbitrary shell command at a fixed interval with an optional max‑iteration limit.
-    - Scheduled commands run in a separate goroutine/process and can be cancelled via a context.
-    - Unit tests verify correct timing, max‑iteration enforcement, and graceful shutdown.
+    - In `scripts/coord/mesh-worker-loop.sh`, the function `schedule_ephemeral` exists, takes parameters `(cmd, interval, max_iter, ctx_pid)` and spawns a background loop that runs `cmd` at the specified `interval`.
+    - A test script `scripts/coord/mesh-worker-loop.sh` includes a unit‑test block `test_schedule_ephemeral_max_iter` that verifies the command is executed exactly `max_iter` times by counting lines written to a temporary file.
+    - A test script `scripts/coord/mesh-worker-loop.sh` includes a unit‑test block `test_schedule_ephemeral_cancel` that starts the scheduler with a large `max_iter`, then kills the `ctx_pid` and asserts that no further command executions occur after cancellation.
+    - Each execution logged by `schedule_ephemeral` is prefixed with “[EPHEMERAL]” and the function exits without error or stray background processes after reaching the limit or receiving cancellation.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -122186,7 +122194,7 @@ gaps:
 - id: INFRA-4540
   domain: INFRA
   title: "INFRA: Enforce hard timeouts in pre‑push hook (INFRA-1861 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -122223,6 +122231,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-04T23:06:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4541
   domain: INFRA
@@ -122269,7 +122278,7 @@ gaps:
 - id: INFRA-4542
   domain: INFRA
   title: "INFRA: Emit hourly CI/QA telemetry and compute score (INFRA-1861 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -122306,6 +122315,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-04T23:07:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4543
   domain: INFRA
@@ -122354,7 +122364,7 @@ gaps:
 - id: INFRA-4544
   domain: INFRA
   title: "INFRA: Implement `chump init-session-key` to generate ED25519 keypair (INFRA-1123 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -122397,6 +122407,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-04T23:12:41Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4545
   domain: INFRA
