@@ -160,6 +160,7 @@ pub use chump_kpi_report::kpi_report; // EFFECTIVE-418: extracted to crates/chum
 mod lesson_action;
 mod lesson_embeddings;
 mod limits;
+mod chump_loop; // EFFECTIVE-1138: `chump loop <cmd> --interval N [--max-iters M]` ephemeral scheduler
 mod llm_backend_metrics;
 mod local_openai;
 mod mcp_bridge;
@@ -2251,6 +2252,14 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump loop <cmd...> --interval N [--max-iters M] [--json]` (EFFECTIVE-1138,
+    // EFFECTIVE-178 slice) — ephemeral scheduler: re-run <cmd> every N seconds,
+    // harness-agnostic (no Claude/launchd dependency), graceful SIGINT/SIGTERM.
+    if args.get(1).map(String::as_str) == Some("loop") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(chump_loop::run(&sub_args));
     }
 
     // `chump cron install|uninstall|status` (INFRA-2057) — declarative cron
