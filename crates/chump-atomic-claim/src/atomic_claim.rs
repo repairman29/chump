@@ -1154,8 +1154,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             .unwrap_or(false);
     if !allow_path_overlap_bypass {
         if let Some(paths) = &args.paths {
-            if let Some(overlap) =
-                check_open_pr_path_overlap(&args.repo_root, paths, &args.gap_id)
+            if let Some(overlap) = check_open_pr_path_overlap(&args.repo_root, paths, &args.gap_id)
             {
                 let ambient_log = args.repo_root.join(".chump-locks/ambient.jsonl");
                 emit_claim_path_overlap_blocked(
@@ -2400,7 +2399,10 @@ fn emit_claim_path_overlap_blocked(
     let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
     let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
     let paths_json = {
-        let parts: Vec<String> = paths.iter().map(|p| format!("\"{}\"", json_escape(p))).collect();
+        let parts: Vec<String> = paths
+            .iter()
+            .map(|p| format!("\"{}\"", json_escape(p)))
+            .collect();
         format!("[{}]", parts.join(","))
     };
     let line = format!(
@@ -7900,7 +7902,8 @@ mod open_pr_path_overlap_tests {
 
     #[test]
     fn find_open_pr_path_overlap_ignores_disjoint_paths() {
-        let json = br#"[{"number":42,"title":"INFRA-9000: unrelated fix","files":[{"path":"other.sh"}]}]"#;
+        let json =
+            br#"[{"number":42,"title":"INFRA-9000: unrelated fix","files":[{"path":"other.sh"}]}]"#;
         let claimed = vec!["foo.sh".to_string()];
         assert!(find_open_pr_path_overlap(json, &claimed, "INFRA-4401").is_none());
     }
