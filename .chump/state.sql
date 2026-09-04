@@ -9836,10 +9836,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `_bm_health_init` function in `scripts/coord/bot-merge.sh` to invoke the `audit-done` command on each health‑check run and pipe its stdout into the existing health‑log mechanism, and extend the `open` function in `crates/chump-gap-store/src/lib.rs` to deserialize and expose an `audit_findings` field so that the audit‑done output can be persisted and later displayed on the operator dashboard.
+    
+    Target file(s):
+    - scripts/coord/bot-merge.sh
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A launchd plist (macOS) or CI pipeline job is added that invokes `audit-done` on a regular schedule.
-    - When audit‑done runs, its findings are posted to the operator dashboard/logs that are routinely reviewed.
-    - Manual trigger of the schedule results in the same output, confirming correct wiring.
+    - "Running `scripts/coord/bot-merge.sh --health-check` prints a line beginning with `audit-done:` that contains the exact string `audit-done completed` in the console output."
+    - "? After the health‑check run, the file `var/log/health.log` (or the log target used by `_bm_health_init`) contains a new entry matching the regex `^\\[.*\\] audit-done : .*`."
+    - The `open` function in `crates/chump-gap-store/src/lib.rs` returns a struct that includes a non‑empty `audit_findings` vector when the underlying store file contains a previously recorded audit‑done JSON payload.
+    - An integration test that loads the gap store via `open()` and asserts `store.audit_findings.len() > 0` passes after a successful `audit-done` execution.
   depends_on: [CREDIBLE-461]
   notes: |
     [chump harvest check 'closed']
@@ -18833,7 +18842,7 @@ gaps:
 - id: CREDIBLE-791
   domain: CREDIBLE
   title: "CREDIBLE: Implement false-done-sweep script with --multi-close-only and --json output (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -18860,6 +18869,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-04T10:30:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=timeout, rc=124, cycle_log=802877B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-792
   domain: CREDIBLE
@@ -72325,6 +72335,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - All ~47 bogus/typo action versions across ci-advisory, ci-nightly, audit-weekly and experimental workflows are corrected to valid published versions; actionlint passes on those files.
+  notes: |
+    Decomposed into 8 slices: INFRA-4384, INFRA-4385, INFRA-4386, INFRA-4387, INFRA-4388, INFRA-4389, INFRA-4390, INFRA-4391
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -72643,6 +72655,8 @@ gaps:
   effort: m
   acceptance_criteria:
     - Running Claude Code sessions poll URGENT-INBOX mid-session and act on fix_trunk signals within a bounded interval; a test signal is picked up without a session restart.
+  notes: |
+    Decomposed into 9 slices: INFRA-4392, INFRA-4393, INFRA-4394, INFRA-4395, INFRA-4396, INFRA-4397, INFRA-4398, INFRA-4399, INFRA-4400
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -74266,7 +74280,7 @@ gaps:
     - "[\"chump claim INFRA-X --paths foo.sh,bar.rs scans every currently-open PR (gh pr list --json files) for path overlap\",\"On any overlap with an open PR: refuse claim with clear message: [claim] paths overlap with open PR #N (gap INFRA-Y, paths: foo.sh). Options: (a) coordinate with #N author and merge into that PR, (b) wait for #N to land then rebase, (c) --allow-overlap to proceed anyway (audit-logged via kind=claim_path_overlap_allowed).\",\"Auto-detection of same-region work (not just same-file): when same file overlaps, run git diff to extract modified line-ranges; only flag as collision if the proposed claim would touch the same line-range. Single-file with disjoint line-ranges still allowed.\",\"Operator-mode: when CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1 (operator-only env, source-controlled), claim proceeds without check (operator may know they want to ship 2 PRs touching same file)\",\"Emit kind=claim_path_overlap_blocked (and recovered) to ambient.jsonl with {claimed_gap, blocking_pr, blocking_gap, overlapping_paths}\",\"Smoke test scripts/ci/test-claim-path-overlap.sh: mock 1 open PR with file [a.sh]; claim with --paths a.sh exits non-zero with redirect message; claim with --paths b.sh succeeds\",\"Today trigger 2026-06-02: INFRA-2343 (PR #2924, 37h old) and INFRA-2347 both fixed the same 3 printf"
     - "grep -q patterns in scripts/coord/trunk-sentinel-daemon.sh. Different gap IDs, different titles, same code. Bypassed every existing dedup gate.\",\"Filing-time companion follow-up (separate gap if scope grows): chump gap reserve also checks title-similarity against OPEN PR titles (not just other gaps). Catches the case where 2 authors independently file 2 gaps for the same problem.\"]"
   notes: |
-    Decomposed into 4 slices: INFRA-3798, INFRA-3799, INFRA-3800, INFRA-3801
+    Decomposed into 4 slices: INFRA-4401, INFRA-4402, INFRA-4403, INFRA-4404
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -114014,6 +114028,7 @@ gaps:
   acceptance_criteria:
     - A mapping document (e.g., JSON or markdown table) that pairs each bogus version string with the correct published version
     - All 47 bogus versions have an entry in the mapping
+  depends_on: [INFRA-4384]
   notes: |
     [chump harvest check 'sweep']
     === primitives_index match for 'sweep' ===
@@ -114042,6 +114057,7 @@ gaps:
   acceptance_criteria:
     - All ci-advisory workflow files reference the correct action versions as per the mapping
     - No remaining bogus version strings exist in any ci-advisory workflow
+  depends_on: [INFRA-4384, INFRA-4385]
   notes: |
     [chump harvest check 'sweep']
     === primitives_index match for 'sweep' ===
@@ -114070,6 +114086,7 @@ gaps:
   acceptance_criteria:
     - All ci-nightly workflow files reference the correct action versions as per the mapping
     - No remaining bogus version strings exist in any ci-nightly workflow
+  depends_on: [INFRA-4384, INFRA-4385]
   notes: |
     [chump harvest check 'sweep']
     === primitives_index match for 'sweep' ===
@@ -114095,6 +114112,461 @@ gaps:
   status: open
   priority: P2
   effort: s
+  acceptance_criteria:
+    - All audit-weekly workflow files reference the correct action versions as per the mapping
+    - No remaining bogus version strings exist in any audit-weekly workflow
+  depends_on: [INFRA-4384, INFRA-4385]
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4389
+  domain: INFRA
+  title: "INFRA: Update experimental/* workflows with correct action versions (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All experimental workflow files reference the correct action versions as per the mapping
+    - No remaining bogus version strings exist in any experimental workflow
+  depends_on: [INFRA-4384, INFRA-4385]
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4390
+  domain: INFRA
+  title: "INFRA: Run actionlint on all updated workflow files (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - actionlint runs without any errors or warnings on the updated ci-advisory, ci-nightly, audit-weekly, and experimental workflow files
+    - A lint report confirming zero issues is attached to the PR
+  depends_on: [INFRA-4386, INFRA-4387, INFRA-4388, INFRA-4389]
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4391
+  domain: INFRA
+  title: "INFRA: Create PR, obtain approval, and merge changes (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A pull request containing all corrected workflow files is opened
+    - The PR passes CI checks (including actionlint) and receives required reviewer approvals
+    - The PR is merged into the main branch
+  depends_on: [INFRA-4390]
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4392
+  domain: INFRA
+  title: "INFRA: Investigate existing URGENT-INBOX polling implementation for Claude Code sessions (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Current polling code paths are identified and documented
+    - Entry points for session start, stop, and polling are listed
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4393
+  domain: INFRA
+  title: "INFRA: Design bounded interval requirements for mid‑session polling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A design doc specifies the polling interval (e.g., every 30 seconds) and maximum latency
+    - The design includes error‑handling and back‑off strategy
+  depends_on: [INFRA-4392]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4394
+  domain: INFRA
+  title: "INFRA: Implement mid‑session polling hook into Claude Code session lifecycle (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Polling is triggered automatically after a session starts, without requiring a restart
+    - Polling runs at the interval defined in the design doc
+    - The hook can be disabled via configuration
+  depends_on: [INFRA-4393]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4395
+  domain: INFRA
+  title: "INFRA: Add handling for `fix_trunk` signals in polling response (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a `fix_trunk` signal is received, the session invokes the existing fix_trunk routine
+    - No unhandled exceptions are thrown during signal processing
+  depends_on: [INFRA-4394]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4396
+  domain: INFRA
+  title: "INFRA: Write unit tests for the new mid‑session polling mechanism (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Tests verify that polling starts after session launch
+    - Tests assert that polling occurs at the configured interval
+    - All tests pass in the CI pipeline
+  depends_on: [INFRA-4394]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4397
+  domain: INFRA
+  title: "INFRA: Write integration test to verify `fix_trunk` signal is processed without session restart (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test injects a mock `fix_trunk` signal into the URGENT‑INBOX while a session is active
+    - The session reacts to the signal and continues running
+    - The test asserts that the session was not restarted
+  depends_on: [INFRA-4395, INFRA-4396]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4398
+  domain: INFRA
+  title: "INFRA: Add configuration flag to enable/disable mid‑session polling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new config key `enable_mid_session_polling` is introduced
+    - When set to false, the polling hook is not activated
+    - Configuration can be toggled at runtime and takes effect immediately
+  depends_on: [INFRA-4394]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4399
+  domain: INFRA
+  title: "INFRA: Add logging for polling events and `fix_trunk` signal handling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Each poll execution logs a timestamp and result status at INFO level
+    - Reception and handling of a `fix_trunk` signal are logged at DEBUG level
+    - Logs are searchable in the existing logging framework
+  depends_on: [INFRA-4394]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4400
+  domain: INFRA
+  title: "INFRA: Update developer documentation with new mid‑session polling behavior (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documentation describes the polling interval, configuration flag, and signal handling flow
+    - Examples show how to test the `fix_trunk` signal in a running session
+    - Docs are published to the project wiki and linked from the README
+  depends_on: [INFRA-4394]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4401
+  domain: INFRA
+  title: "INFRA: Detect path overlap with open PRs and reject claim (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Running `chump claim INFRA-X --paths foo.sh,bar.rs` triggers a call to `gh pr list --json number,files` for all currently open PRs in the repository
+    - "If any of the supplied paths appear in the file list of an open PR, the claim command exits with a non‑zero status and prints a clear message: \"[claim] paths overlap with open PR #N (gap INFRA‑Y, paths: foo.sh)\""
+    - The message lists the blocking PR number, the gap ID that opened the PR, and the overlapping paths
+    - The command does not create a claim when overlap is detected
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4402
+  domain: INFRA
+  title: "INFRA: Detect line‑range overlap within the same file (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a file overlap is found, the tool runs `git diff` between the PR head and base to extract modified line‑ranges for that file
+    - The claim is blocked only if the line‑ranges of the proposed claim intersect the line‑ranges modified by the open PR
+    - If the overlapping file has disjoint line‑ranges, the claim succeeds
+    - The same clear refusal message is emitted, now indicating line‑range collision
+  depends_on: [INFRA-4401]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4403
+  domain: INFRA
+  title: "INFRA: Operator‑mode bypass for path‑overlap checks (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When the environment variable `CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1` is set, the claim command skips all path‑overlap and line‑range checks
+    - The claim proceeds as if no overlap existed and exits with success
+    - A log entry is written indicating that operator bypass was used
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4404
+  domain: INFRA
+  title: "INFRA: Emit telemetry events and add smoke test (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - On a blocked claim, a JSON line with `kind=claim_path_overlap_blocked` is appended to `ambient.jsonl` containing `{claimed_gap, blocking_pr, blocking_gap, overlapping_paths}`
+    - When a previously blocked claim is retried after the blocking PR is merged, a `kind=claim_path_overlap_recovered` event is emitted
+    - "A smoke‑test script `scripts/ci/test-claim-path-overlap.sh` is added that:"
+    - "  • Mocks an open PR containing file `a.sh` and verifies that `chump claim --paths a.sh` exits non‑zero with the expected message"
+    - "  • Verifies that `chump claim --paths b.sh` succeeds"
+    - The test suite runs the script and passes
+  depends_on: [INFRA-4401, INFRA-4402]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: INFRA-476
   domain: INFRA
