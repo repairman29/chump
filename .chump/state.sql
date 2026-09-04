@@ -16893,10 +16893,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `scripts/ci/test-bypass-trailer-validator.sh` by inserting a `cargo fmt --check` step followed by a `cargo clippy -- -D warnings` step before the existing test execution. Both commands must abort the script with a non‑zero exit status on failure, ensuring the CI run only proceeds to `cargo test` when formatting is clean and no clippy warnings exist.
+    
+    Target file(s):
+    - scripts/ci/test-bypass-trailer-validator.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt completes with no changes needed
-    - clippy runs with -D warnings and reports zero warnings
-    - All existing tests plus the three new tests pass
+    - Running `scripts/ci/test-bypass-trailer-validator.sh` invokes `cargo fmt --check` and exits with status 0 only when no formatting changes are required; otherwise it exits non‑zero.
+    - The script invokes `cargo clippy -- -D warnings` and exits with a non‑zero status if any clippy warnings are emitted.
+    - After successful fmt and clippy checks, the script runs `cargo test --all` and exits with status 0 only when all existing tests plus the three new tests pass.
+    - The overall exit code of `scripts/ci/test-bypass-trailer-validator.sh` is non‑zero if any of the fmt, clippy, or test steps fail.
   depends_on: [CREDIBLE-711, CREDIBLE-712, CREDIBLE-713, CREDIBLE-714]
   notes: |
     [chump harvest check 'Index']
@@ -20347,7 +20355,7 @@ gaps:
 - id: CREDIBLE-835
   domain: CREDIBLE
   title: "CREDIBLE: Implement live_pct computation (CREDIBLE-356 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -20376,6 +20384,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-04T18:58:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-836
   domain: CREDIBLE
@@ -29002,6 +29011,237 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
+- id: EFFECTIVE-1122
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire top action to dispatch/escalate with auto-file P0 for predicted breakage (EFFECTIVE-510 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When a top‑action predicts breakage, the system triggers a dispatch/escalate call.
+    - An automatic P0 incident is filed in the incident tracker.
+    - The new code compiles with `cargo fmt`, `clippy` passes, and no existing tests regress.
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1123
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement outcome settlement logic for dispatched actions (EFFECTIVE-510 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Dispatched actions transition to a settled state once outcomes are known.
+    - State updates are persisted and observable via the existing API.
+    - No new warnings from `cargo clippy` and formatting passes.
+  depends_on: [EFFECTIVE-1122]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1124
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add Brier score calibration for outcome predictions (EFFECTIVE-510 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The system computes a Brier score for each prediction.
+    - A calibration routine updates the score to improve future predictions.
+    - A unit test verifies that calibrated scores are lower (better) than raw scores on a sample dataset.
+  depends_on: [EFFECTIVE-1123]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1125
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Collect realized‑EV metric: incidents prevented (EFFECTIVE-510 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A counter increments each time a predicted breakage is prevented by the auto‑filed P0 workflow.
+    - The counter is exposed via the existing monitoring endpoint (`/metrics`).
+    - Metric collection does not affect request latency beyond 5 ms.
+  depends_on: [EFFECTIVE-1122]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1126
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Collect realized‑EV metric: MTTR (Mean Time To Recovery) (EFFECTIVE-510 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - MTTR is calculated from incident open to close timestamps for all P0 incidents.
+    - The calculated MTTR is exported as a gauge metric.
+    - Metric updates are verified in a unit test with simulated incident lifecycles.
+  depends_on: [EFFECTIVE-1123]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1127
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Collect realized‑EV metric: P0 caught pre‑breakage (EFFECTIVE-510 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A counter tracks how many P0 incidents are auto‑filed before an actual breakage occurs.
+    - The counter is visible on the `/metrics` endpoint.
+    - A test confirms the counter increments only when the pre‑breakage condition is met.
+  depends_on: [EFFECTIVE-1122]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1128
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit tests for dispatch/escalate and auto‑file P0 behavior (EFFECTIVE-510 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Tests fail when the dispatch/escalate wiring is removed.
+    - Tests pass when the wiring is present, confirming a P0 incident is created.
+    - All tests run via `cargo test` and are included in CI.
+  depends_on: [EFFECTIVE-1122, EFFECTIVE-1123, EFFECTIVE-1124]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: EFFECTIVE-1129
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write integration tests for realized‑EV meta‑gauge metrics and CI validation (EFFECTIVE-510 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Integration test simulates predicted breakage scenarios and verifies all three realized‑EV metrics update correctly.
+    - The test suite runs in CI (`scripts/ci/test-*.sh`) and fails without the new metric code.
+    - No regression is introduced; existing test suite remains green.
+  depends_on: [EFFECTIVE-1125, EFFECTIVE-1126, EFFECTIVE-1127, EFFECTIVE-1128]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
 - id: EFFECTIVE-113
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire INFRA-2436.yaml into role curator-opus-target"
@@ -35767,7 +36007,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 8 slices: EFFECTIVE-998, EFFECTIVE-999, EFFECTIVE-1000, EFFECTIVE-1001, EFFECTIVE-1002, EFFECTIVE-1003, EFFECTIVE-1004, EFFECTIVE-1005
+    Decomposed into 8 slices: EFFECTIVE-1122, EFFECTIVE-1123, EFFECTIVE-1124, EFFECTIVE-1125, EFFECTIVE-1126, EFFECTIVE-1127, EFFECTIVE-1128, EFFECTIVE-1129
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-511
