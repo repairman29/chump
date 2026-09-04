@@ -4739,7 +4739,7 @@ gaps:
     - chump gap decompose PRESERVES author-provided acceptance_criteria as the fixed done-definition (the WHAT) and only generates the implementation sub-steps (the HOW); never overwrites authored AC
     - "CI smoke test proves: (a) reserve P1 without AC is refused, (b) with it the AC is stored verbatim, (c) decompose leaves authored AC unchanged"
   notes: |
-    Decomposed into 3 slices: CREDIBLE-392, CREDIBLE-393, CREDIBLE-394
+    Decomposed into 3 slices: CREDIBLE-798, CREDIBLE-799, CREDIBLE-800
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
@@ -9646,10 +9646,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend `seed_starter_cases` in `crates/chump-eval-harness/src/eval_harness.rs` to register a new starter case named `historical_rot_case1` that points at a fixture representing a known dead check, and add a corresponding test `test_historical_rot_cases` in `tests/entity_resolution_accuracy.rs` which loads that fixture, runs the CI rot scanner, and asserts that the scanner flags a vacuous assertion and a missing target as expected.
+    
+    Target file(s):
+    - crates/chump-eval-harness/src/eval_harness.rs
+    - tests/entity_resolution_accuracy.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test suite verifies the CI rot scanner against test fixtures representing known dead checks (e.g. moved stale-binary target)
-    - Test asserts scanner correctly flags vacuous assertions and absent targets in fixture scripts
-    - Test runs cleanly in local test runner and CI
+    - Running `cargo test --test entity_resolution_accuracy` executes a test named `test_historical_rot_cases` that completes without panic.
+    - The `test_historical_rot_cases` function reads the fixture file `tests/fixtures/historical_rot_case1.toml` and asserts that the scanner output contains the exact string “Vacuous assertion detected” for the dead check.
+    - The new case `historical_rot_case1` appears in the vector returned by `seed_starter_cases()` in `crates/chump-eval-harness/src/eval_harness.rs`.
+    - Executing `scripts/ci/test-curator-supervisor.sh` exits with status 0, indicating the added test suite runs cleanly in the CI environment.
   depends_on: [CREDIBLE-455]
 
 - id: CREDIBLE-457
@@ -11897,9 +11906,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add detailed error logging to the `ship` function in `crates/chump-gap-store/src/lib.rs` so that when ship‑count retrieval fails it records a log entry containing the current UTC timestamp, the specific error type, and the retry attempt count, using the existing fleet‑brief logging macro and format.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When ship‑count retrieval fails, a log entry is written with timestamp, error type, and retry count
-    - Log format matches existing fleet‑brief logging conventions
+    - "In `crates/chump-gap-store/src/lib.rs::ship`, when a simulated ship‑count error is triggered, the function calls the fleet‑brief logger with a message that includes an ISO‑8601 timestamp, the error's `Display` string, and the retry counter value."
+    - "The log message format matches the pattern used elsewhere in the codebase, e.g., `\"[YYYY-MM-DDTHH:MM:SSZ] ship_error: <error_type> (retry <n>)\"`."
+    - Running the unit test `test_ship_error_logging` (added to `crates/chump-gap-store/tests/ship.rs`) asserts that the logger receives exactly one entry with the expected substring components.
+    - The project builds without warnings and all existing tests continue to pass.
   depends_on: [CREDIBLE-521]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -19031,6 +19049,107 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-798
+  domain: CREDIBLE
+  title: "CREDIBLE: Add --acceptance-criteria flag and enforce requirement for P0/P1 gaps (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CLI `gap reserve` accepts a new `--acceptance-criteria <text>` option and stores the exact text in the gap metadata.
+    - When creating a P0 or P1 gap without `--acceptance-criteria`, the command exits with a clear error message and does not create the gap.
+    - Providing `--no-ac-required` bypasses the requirement and allows gap creation without AC.
+    - The stored acceptance criteria matches the input verbatim (no trimming or formatting changes).
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-799
+  domain: CREDIBLE
+  title: "CREDIBLE: Prevent auto‑fill of placeholder acceptance criteria for unauthored gaps (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If a gap is created without `--acceptance-criteria`, the acceptance‑criteria field in metadata is empty/null, not a placeholder string.
+    - The audit tool `audit‑ac` flags gaps with an empty acceptance‑criteria field as missing.
+    - Existing gaps that previously contained the tautological placeholder are migrated to have an empty acceptance‑criteria field.
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-800
+  domain: CREDIBLE
+  title: "CREDIBLE: Preserve author‑provided acceptance criteria during gap decomposition (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - During `gap decompose`, the original acceptance‑criteria stored on the parent gap is copied unchanged to each generated sub‑step’s done‑definition.
+    - No new acceptance‑criteria are generated or overwritten; the text remains identical to the author‑provided value.
+    - "After decomposition, a CI smoke test confirms: (a) reserving a P1 gap without AC is refused, (b) reserving with AC stores the text verbatim, (c) decomposition leaves the AC unchanged in all sub‑steps."
+  depends_on: [CREDIBLE-798]
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
@@ -113322,7 +113441,7 @@ gaps:
 - id: INFRA-4367
   domain: INFRA
   title: "INFRA: Add startup wallclock budget and timeout enforcement in main.rs (INFRA-1809 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -113346,6 +113465,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-04T09:51:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4368
   domain: INFRA
@@ -113856,6 +113976,125 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4384
+  domain: INFRA
+  title: "INFRA: Identify all workflow files with bogus action versions (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A comprehensive list of workflow file paths (ci-advisory, ci-nightly, audit-weekly, experimental/*) containing bogus or typo action versions is produced
+    - The list includes the exact line numbers and the incorrect version strings
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4385
+  domain: INFRA
+  title: "INFRA: Determine correct published versions for each bogus action (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A mapping document (e.g., JSON or markdown table) that pairs each bogus version string with the correct published version
+    - All 47 bogus versions have an entry in the mapping
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4386
+  domain: INFRA
+  title: "INFRA: Update ci-advisory workflows with correct action versions (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All ci-advisory workflow files reference the correct action versions as per the mapping
+    - No remaining bogus version strings exist in any ci-advisory workflow
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4387
+  domain: INFRA
+  title: "INFRA: Update ci-nightly workflows with correct action versions (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All ci-nightly workflow files reference the correct action versions as per the mapping
+    - No remaining bogus version strings exist in any ci-nightly workflow
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4388
+  domain: INFRA
+  title: "INFRA: Update audit-weekly workflows with correct action versions (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: s
 
 - id: INFRA-476
   domain: INFRA
