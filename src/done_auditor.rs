@@ -11,8 +11,9 @@
 
 use crate::pr_ac_coverage::{self, AcCoverageResult};
 use anyhow::Result;
+use chump_gap_store::GapRow;
 use std::io::Write;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 /// Pure decision (no network) over an already-computed coverage result: a done
 /// gap over-claims if its PR left acceptance bullets uncovered AND unwaived.
@@ -49,6 +50,13 @@ pub struct DoneAuditReport {
     pub skipped_no_ac: usize,
     pub fetch_errors: usize,
     pub flagged: Vec<OverClaim>,
+    /// CREDIBLE-794: ids of the gaps this run's batch examined, in the order
+    /// examined — printed so consecutive runs can be diffed in logs to prove
+    /// disjoint batches.
+    pub batch_gap_ids: Vec<String>,
+    /// CREDIBLE-794: resume cursor (`closed_at`) before/after this run.
+    pub cursor_before: Option<i64>,
+    pub cursor_after: Option<i64>,
 }
 
 impl DoneAuditReport {
@@ -79,8 +87,68 @@ impl DoneAuditReport {
         if self.flagged.is_empty() {
             out.push_str("  \u{2713} no over-claims among audited done gaps\n");
         }
+        out.push_str(&format!(
+            "  cursor: {:?} -> {:?}, batch ({} gaps): {:?}\n",
+            self.cursor_before,
+            self.cursor_after,
+            self.batch_gap_ids.len(),
+            self.batch_gap_ids
+        ));
         out
     }
+}
+
+/// Path to the persisted resume cursor (CREDIBLE-794).
+fn cursor_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".chump-locks").join("done_auditor_cursor.json")
+}
+
+/// Read the persisted cursor: the `closed_at` of the last-audited gap from
+/// the prior run. `None` means "no prior run" — the next batch starts from
+/// the very oldest done gap.
+fn read_cursor(repo_root: &Path) -> Option<i64> {
+    let raw = std::fs::read_to_string(cursor_path(repo_root)).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    v.get("last_closed_at").and_then(|x| x.as_i64())
+}
+
+/// Persist the cursor so the next run resumes past it.
+fn write_cursor(repo_root: &Path, cursor: i64) {
+    let dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&dir);
+    let body = format!(r#"{{"last_closed_at":{cursor}}}"#);
+    let _ = std::fs::write(cursor_path(repo_root), body);
+}
+
+/// Pure batch-selection: given all done gaps ordered by `closed_at` ASC and a
+/// persisted cursor, pick up to `limit` gaps strictly newer (by `closed_at`)
+/// than the cursor, and compute the new cursor to persist after the run.
+/// Gaps with no `closed_at` sort as the oldest possible value so they are
+/// picked up on the first run and never re-picked once passed.
+///
+/// Split out from `audit()` so cursor advancement is unit-testable without
+/// `pr_ac_coverage::run`'s `gh` network dependency.
+pub fn select_batch(
+    gaps: &[GapRow],
+    cursor: Option<i64>,
+    limit: usize,
+) -> (Vec<GapRow>, Option<i64>) {
+    let threshold = cursor.unwrap_or(i64::MIN);
+    let batch: Vec<GapRow> = gaps
+        .iter()
+        .filter(|g| {
+            let closed_at = g.closed_at.unwrap_or(i64::MIN);
+            cursor.is_none() || closed_at > threshold
+        })
+        .take(limit)
+        .cloned()
+        .collect();
+    let new_cursor = batch
+        .iter()
+        .map(|g| g.closed_at.unwrap_or(i64::MIN))
+        .max()
+        .or(cursor);
+    (batch, new_cursor)
 }
 
 /// Sweep up to `limit` DONE gaps (bounded because each check fetches its PR via
@@ -90,11 +158,28 @@ impl DoneAuditReport {
 ///
 /// CREDIBLE-339: gaps returned oldest-closed-first so each limited run
 /// makes forward progress without re-auditing the same set.
+///
+/// CREDIBLE-794: a persisted resume cursor (`.chump-locks/done_auditor_cursor.json`)
+/// tracks the `closed_at` of the last gap audited so consecutive runs sweep
+/// disjoint sets of gaps instead of re-auditing the same oldest `limit` every
+/// time — coverage grows across runs rather than plateauing at `limit`.
 pub fn audit(repo_root: &Path, limit: usize) -> Result<DoneAuditReport> {
     let store = chump_gap_store::GapStore::open(repo_root)?;
     let done = store.list_by_status_ordered("done")?;
+    let cursor = read_cursor(repo_root);
+    let (mut batch, mut new_cursor) = select_batch(&done, cursor, limit);
+    // Cursor ran off the newest done gap — wrap around so the sweep keeps
+    // making forward progress (and coverage) instead of stalling forever.
+    if batch.is_empty() && !done.is_empty() && cursor.is_some() {
+        let (b, c) = select_batch(&done, None, limit);
+        batch = b;
+        new_cursor = c;
+    }
     let mut report = DoneAuditReport::default();
-    for g in done.iter().take(limit) {
+    report.cursor_before = cursor;
+    report.cursor_after = new_cursor;
+    report.batch_gap_ids = batch.iter().map(|g| g.id.clone()).collect();
+    for g in batch.iter() {
         let pr = match g.closed_pr {
             Some(p) if p > 0 => p,
             _ => {
@@ -124,6 +209,9 @@ pub fn audit(repo_root: &Path, limit: usize) -> Result<DoneAuditReport> {
             });
         }
     }
+    if let Some(c) = new_cursor {
+        write_cursor(repo_root, c);
+    }
     Ok(report)
 }
 
@@ -151,6 +239,35 @@ fn emit_over_claim(repo_root: &Path, gap_id: &str, pr: i64, uncovered: &[usize],
 mod tests {
     use super::*;
     use crate::pr_ac_coverage::{AcCoverageResult, BulletResult, CoverageStatus};
+
+    fn gap(id: &str, closed_at: Option<i64>) -> GapRow {
+        GapRow {
+            id: id.to_string(),
+            domain: "CREDIBLE".to_string(),
+            title: id.to_string(),
+            description: String::new(),
+            priority: "P2".to_string(),
+            effort: "s".to_string(),
+            status: "done".to_string(),
+            acceptance_criteria: "1. did the thing".to_string(),
+            depends_on: String::new(),
+            notes: String::new(),
+            source_doc: String::new(),
+            created_at: 0,
+            closed_at,
+            opened_date: String::new(),
+            closed_date: String::new(),
+            closed_pr: Some(1),
+            skills_required: String::new(),
+            preferred_backend: String::new(),
+            preferred_machine: String::new(),
+            estimated_minutes: String::new(),
+            required_model: String::new(),
+            shipped_in: None,
+            outcome_id: None,
+            evidence: None,
+        }
+    }
 
     fn bullet(index: usize, covered: bool, waived: bool) -> BulletResult {
         BulletResult {
@@ -201,5 +318,85 @@ mod tests {
             bullets: vec![],
         };
         assert!(is_over_claim(&cov).is_none());
+    }
+
+    // CREDIBLE-794: resume cursor tests.
+
+    #[test]
+    fn select_batch_first_run_starts_from_oldest() {
+        let gaps = vec![gap("A", Some(10)), gap("B", Some(20)), gap("C", Some(30))];
+        let (batch, cursor) = select_batch(&gaps, None, 2);
+        assert_eq!(
+            batch.iter().map(|g| g.id.as_str()).collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+        assert_eq!(cursor, Some(20));
+    }
+
+    #[test]
+    fn select_batch_second_run_is_disjoint_from_first() {
+        let gaps = vec![
+            gap("A", Some(10)),
+            gap("B", Some(20)),
+            gap("C", Some(30)),
+            gap("D", Some(40)),
+        ];
+        let (first, cursor1) = select_batch(&gaps, None, 2);
+        let (second, cursor2) = select_batch(&gaps, cursor1, 2);
+
+        let first_ids: std::collections::HashSet<_> = first.iter().map(|g| g.id.clone()).collect();
+        let second_ids: std::collections::HashSet<_> =
+            second.iter().map(|g| g.id.clone()).collect();
+        assert!(
+            first_ids.is_disjoint(&second_ids),
+            "expected disjoint batches, got {first_ids:?} and {second_ids:?}"
+        );
+        assert_eq!(
+            second.iter().map(|g| g.id.as_str()).collect::<Vec<_>>(),
+            vec!["C", "D"]
+        );
+        assert_eq!(cursor2, Some(40));
+    }
+
+    #[test]
+    fn select_batch_cursor_persists_past_batches_and_covers_more_over_time() {
+        // 4 done gaps, limit 2: two runs cover 100% instead of a single run's
+        // 50%. This mirrors the real fixture: without a cursor, every run
+        // re-audits the same oldest `limit` gaps and coverage plateaus.
+        let gaps = vec![
+            gap("A", Some(10)),
+            gap("B", Some(20)),
+            gap("C", Some(30)),
+            gap("D", Some(40)),
+        ];
+        let mut covered = std::collections::HashSet::new();
+        let mut cursor = None;
+        for _ in 0..2 {
+            let (batch, new_cursor) = select_batch(&gaps, cursor, 2);
+            covered.extend(batch.iter().map(|g| g.id.clone()));
+            cursor = new_cursor;
+        }
+        assert_eq!(covered.len(), gaps.len(), "two runs should cover all gaps");
+    }
+
+    #[test]
+    fn select_batch_handles_missing_closed_at_on_first_run_only() {
+        let gaps = vec![gap("A", None), gap("B", Some(10))];
+        let (first, cursor1) = select_batch(&gaps, None, 10);
+        assert_eq!(
+            first.iter().map(|g| g.id.as_str()).collect::<Vec<_>>(),
+            vec!["A", "B"]
+        );
+        // Second run with the persisted cursor sees nothing new left.
+        let (second, _) = select_batch(&gaps, cursor1, 10);
+        assert!(second.is_empty());
+    }
+
+    #[test]
+    fn select_batch_empty_input_returns_empty_batch_and_keeps_cursor() {
+        let gaps: Vec<GapRow> = vec![];
+        let (batch, cursor) = select_batch(&gaps, Some(5), 10);
+        assert!(batch.is_empty());
+        assert_eq!(cursor, Some(5));
     }
 }
