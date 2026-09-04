@@ -52,6 +52,7 @@ mod checkpoint_db;
 mod checkpoint_tool;
 mod chump_init;
 mod chump_log;
+mod ci_dispatch;
 mod ci_lesson;
 mod ci_summary;
 mod cli_tool;
