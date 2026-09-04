@@ -4552,7 +4552,7 @@ gaps:
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-531, CREDIBLE-532, CREDIBLE-533, CREDIBLE-534
+    Decomposed into 4 slices: CREDIBLE-787, CREDIBLE-788, CREDIBLE-789, CREDIBLE-790
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -9358,10 +9358,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a concise documentation block to `scripts/eval/doc-hygiene-round-prompt.bash` that explains the new “Ships: unavailable” message and its meaning, and augment the health‑verdict comment in `crates/chump-coord/src/main.rs::main` to describe the revised ship‑count logic and troubleshooting steps.
+    
+    Target file(s):
+    - scripts/eval/doc-hygiene-round-prompt.bash
+    - crates/chump-coord/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "README/ops guide includes a section describing the \"Ships: unavailable\" message and its meaning."
-    - Documentation explains the revised health‑verdict logic and how to troubleshoot repeated unavailable messages.
-    - All documentation links are validated and no broken references remain.
+    - "The file `scripts/eval/doc-hygiene-round-prompt.bash` contains a comment line exactly matching `# Ships: unavailable – indicates the fleet has no ships ready for dispatch.`"
+    - "? The function `main` in `crates/chump-coord/src/main.rs` includes a comment block that outlines the revised health‑verdict logic and references the “Ships : unavailable” condition."
+    - "Executing `bash scripts/eval/doc-hygiene-round-prompt.bash --help` prints a section titled “Ships: unavailable” with the description added in the previous bullet."
+    - Running the repository’s documentation link checker (`scripts/eval/doc-hygiene-round-prompt.bash --check-links`) exits with status 0, confirming no broken links remain.
   depends_on: [CREDIBLE-441, CREDIBLE-442]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -18742,6 +18751,57 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-787
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CI grep target sweep (detect missing grep targets) (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A script scans all files under scripts/ci for grep commands and extracts the target path argument.
+    - For each extracted target, the script checks that the file or directory exists in the repository.
+    - The script outputs a JSON report containing the total count of missing targets and a list of each missing target with its source file and line number.
+    - Running the script on the current main branch completes without error and returns an empty list when no missing targets exist.
+
+- id: CREDIBLE-788
+  domain: CREDIBLE
+  title: "CREDIBLE: Schedule periodic execution of the CI grep sweep (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - The sweep script is added to a launchd/plist job (or equivalent scheduler) that runs at least once per day.
+    - Each scheduled run writes a timestamped entry to a log file indicating start and completion.
+    - The scheduled job can be triggered manually for testing without affecting the schedule.
+    - No manual invocation is required for the daily execution.
+  depends_on: [CREDIBLE-787]
+
+- id: CREDIBLE-789
+  domain: CREDIBLE
+  title: "CREDIBLE: Report sweep findings as non‑failing CI artifacts (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "When the sweep finds missing targets, the results are uploaded as a CI artifact named \"rot‑detector‑report.json\"."
+    - The CI job always exits with status 0, regardless of findings, so it does not block PR merges.
+    - The artifact contains the same JSON structure produced by the sweep script (count and list of missing targets).
+    - A link to the artifact is added to the CI job summary for easy human access.
+  depends_on: [CREDIBLE-787]
+
+- id: CREDIBLE-790
+  domain: CREDIBLE
+  title: "CREDIBLE: Add regression test to verify sweep detects known dead instruments (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A test checks out the repository at the commit dated 2026-08-08.
+    - The test runs the CI grep sweep against that historic tree.
+    - "The test asserts that the known dead instrument \"operator‑recall\" and the stale‑binary assertion are present in the report."
+    - The test passes in CI and fails if either known item is missing from the report.
+  depends_on: [CREDIBLE-787]
 
 - id: DOC-031
   domain: DOC
