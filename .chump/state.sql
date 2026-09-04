@@ -25623,10 +25623,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new branch in the CLI dispatcher of `src/main.rs` to recognize the subcommand `chump lease ls`, implement a `list_leases()` function in the same file that queries `state.db`, NATS‑KV and the git lease store, aggregates the results, and prints a table with columns ID, Owner, and Timestamp; when the aggregate is empty it prints “no leases found” and exits with code 0.
+    
+    Target file(s):
+    - src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The subcommand prints a table of all current leases drawn from state.db, NATS‑KV and git.
-    - Output format matches existing chump lease commands and includes lease ID, owner, and timestamp.
-    - When no leases exist, the command prints a friendly ‘no leases found’ message and exits with code 0.
+    - "In `src/main.rs`, the argument‑parsing logic includes a case for `args[1] == \"lease\"` and `args[2] == \"ls\"` that invokes `list_leases()`."
+    - The `list_leases()` function in `src/main.rs` reads lease entries from `state.db`, NATS‑KV and the git lease store, merges them, and writes to stdout a table whose header line is exactly `ID  Owner  Timestamp` and whose rows are aligned with the same spacing as other `chump lease` commands.
+    - When `list_leases()` finds zero lease entries, it writes exactly `no leases found` to stdout and the program terminates with exit status 0.
+    - A test that runs `chump lease ls` against an empty lease environment asserts that the stdout matches `no leases found\n` and that the process exit code is 0; a second test with a known lease entry asserts that the stdout contains a line with that lease’s ID, owner, and timestamp formatted like the existing lease command output.
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -30112,6 +30120,240 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
+- id: EFFECTIVE-1154
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Analyze existing diff handling and identify integration point for blast‑radius preview (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The current diff parsing code is documented with comments indicating where the blast‑radius preview can be hooked.
+    - A short design note (markdown file) outlines the data flow for the new enumeration feature.
+    - No existing tests fail after the analysis changes.
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1155
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement core function to enumerate gates/tests affected by a diff (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A public function `enumerate_affected(diff: &str) -> Vec<String>` is added to the EFFECTIVE codebase."
+    - The function returns the correct list of gate/test identifiers for at least three representative diff samples.
+    - Unit tests cover these samples and pass.
+  depends_on: [EFFECTIVE-1154]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1156
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integrate enumeration into the preview command output (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Running `effective preview <diff>` now prints a \"Blast‑radius preview\" section listing the gates/tests returned by `enumerate_affected`."
+    - The preview command exits with status 0 and does not alter existing functionality.
+    - Manual verification shows the new section appears for a sample diff.
+  depends_on: [EFFECTIVE-1155]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1157
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add CLI formatting and user‑friendly display of affected gates/tests (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The preview output formats the list as a bullet list and optionally as JSON with a `--json` flag.
+    - Help text (`effective preview --help`) documents the new output.
+    - Formatting changes do not break existing output parsers.
+  depends_on: [EFFECTIVE-1156]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1158
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write integration tests for the new enumeration feature and ensure CI passes (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least one CI test (`cargo test` or `scripts/ci/test-*.sh`) verifies that the preview command lists the correct gates/tests for a given diff and fails without the new code.
+    - Running `cargo fmt` and `cargo clippy --all-targets -D warnings` succeeds with no warnings.
+    - All existing tests continue to pass, confirming no regression.
+  depends_on: [EFFECTIVE-1157]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
 - id: EFFECTIVE-116
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire test-system-integration.sh into role curator-opus-ci-audit"
@@ -32666,7 +32908,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 5 slices: EFFECTIVE-1048, EFFECTIVE-1049, EFFECTIVE-1050, EFFECTIVE-1051, EFFECTIVE-1052
+    Decomposed into 5 slices: EFFECTIVE-1154, EFFECTIVE-1155, EFFECTIVE-1156, EFFECTIVE-1157, EFFECTIVE-1158
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -121859,7 +122101,7 @@ gaps:
 - id: INFRA-4538
   domain: INFRA
   title: "INFRA: Update pr‑hygiene check to recognise bypass mentions (INFRA-1861 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -121898,6 +122140,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-04T23:00:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4539
   domain: INFRA
