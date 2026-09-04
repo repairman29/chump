@@ -61991,7 +61991,7 @@ gaps:
     - "CI test scripts/ci/test-chump-startup-fast.sh: assert chump --version completes <100ms warm-cache, <2000ms cold-cache; assert under simulated load (parallel invocations) p99 <5s"
     - cargo fmt/clippy clean; no new runtime deps
   notes: |
-    Decomposed into 8 slices: INFRA-3784, INFRA-3785, INFRA-3786, INFRA-3787, INFRA-3788, INFRA-3789, INFRA-3790, INFRA-3791
+    Decomposed into 8 slices: INFRA-4367, INFRA-4368, INFRA-4369, INFRA-4370, INFRA-4371, INFRA-4372, INFRA-4373, INFRA-4374
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -113011,6 +113011,231 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4367
+  domain: INFRA
+  title: "INFRA: Add startup wallclock budget and timeout enforcement in main.rs (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Environment variable CHUMP_STARTUP_TIMEOUT_MS is read with default 5000ms
+    - A timeout guard is installed at the very start of fn main() before any Tokio runtime or subsystem initialization
+    - If the timeout expires, the process exits with code 4 and writes a diagnostic message to stderr
+    - The timeout guard does not interfere with normal successful startup
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4368
+  domain: INFRA
+  title: "INFRA: Short‑circuit --version and --help before any subsystem init (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`chump --version` and `chump --help` return in <100 ms on an idle machine"
+    - The code path for these commands returns before Tokio runtime creation, memory_db connection, and any LLM‑provider init
+    - Unit test verifies that the early‑exit branch is taken when those flags are present
+  depends_on: [INFRA-4367]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4369
+  domain: INFRA
+  title: "INFRA: Emit timeout diagnostics to ambient.jsonl (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "When the startup timeout fires, a JSON line with `kind\":\"chump_startup_timeout` is appended to ambient.jsonl"
+    - The JSON object includes cmd, args, elapsed_ms, and suspected_subsystem fields
+    - The log entry is written atomically and does not crash the process
+  depends_on: [INFRA-4367]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4370
+  domain: INFRA
+  title: "INFRA: Instrument subsystem initialization for bisecting the hang source (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each major subsystem (Tokio runtime, memory_db pool, Anthropic SDK, other LLM providers) logs a start and completion timestamp at INFO level
+    - When a startup timeout occurs, the logged timestamps are included in the diagnostic dump
+    - CI verifies that the logs appear for a normal fast startup
+  depends_on: [INFRA-4367]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4371
+  domain: INFRA
+  title: "INFRA: Configure r2d2 connection timeout and diagnostic on lock contention (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - memory_db pool builder sets `connection_timeout` using a configurable value (default 2 s)
+    - On timeout, a warning with the attempted connection duration is logged and included in the startup timeout dump
+    - Unit test simulates a locked DB and confirms the timeout path is exercised
+  depends_on: [INFRA-4370]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4372
+  domain: INFRA
+  title: "INFRA: Lazy‑init Anthropic SDK after argument parsing (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Anthropic SDK initialization is moved behind a `lazy_static`/`once_cell` guard that is only invoked after argparse processing for non‑trivial commands
+    - Running `chump --version` or `chump --help` does not trigger the Anthropic SDK init
+    - Integration test confirms that a simulated Anthropic endpoint failure does not affect the fast‑path commands
+  depends_on: [INFRA-4370]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4373
+  domain: INFRA
+  title: "INFRA: Add CI test script for startup latency under load (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-chump-startup-fast.sh spawns 200 parallel `chump --version` processes
+    - The script asserts all processes finish within 5 s (p99 ≤ 5 s) and that warm‑cache runs complete <100 ms, cold‑cache <2 s
+    - The script is integrated into the CI pipeline and fails the build if thresholds are exceeded
+  depends_on: [INFRA-4367, INFRA-4368, INFRA-4369, INFRA-4373]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4374
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy and ensure no new runtime dependencies (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt -- --check` passes without changes"
+    - "`cargo clippy -- -D warnings` passes with zero warnings"
+    - "`cargo tree` shows no new runtime crates introduced by the changes"
+    - All tests, including the new CI startup test, pass
+  depends_on: [INFRA-4367, INFRA-4368, INFRA-4369, INFRA-4370, INFRA-4371, INFRA-4372, INFRA-4373]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-476
   domain: INFRA
