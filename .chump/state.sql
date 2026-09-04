@@ -122772,6 +122772,127 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
+- id: INFRA-4558
+  domain: INFRA
+  title: "INFRA: Schema validation and strict mode for broadcast.sh (INFRA-1862 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - broadcast.sh exits with non-zero status for malformed events
+    - Error message clearly indicates expected schema shape
+    - Existing callers without --strict continue to work unchanged
+    - When --strict is used, any deviation from the typed schema causes rejection
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4559
+  domain: INFRA
+  title: "INFRA: Delivery confirmation receipts (INFRA-1862 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - broadcast.sh writes a receipt file containing sender, recipient, correlation_id, and timestamp
+    - Receipt is stored in a known KV path accessible to the recipient
+    - CI test validates that a receipt appears for each successful broadcast
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4560
+  domain: INFRA
+  title: "INFRA: Role‑typed capability publishing (INFRA-1862 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Each curator session writes a JSON record {role, skills, session_id} to a shared KV store
+    - The record is updated on session start and removed on graceful shutdown
+    - Router can query the KV store and retrieve sessions matching a required skill set
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4561
+  domain: INFRA
+  title: "INFRA: Dead‑letter queue and operator recall page (INFRA-1862 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Undeliverable events are written to dead‑letter queue files with full metadata
+    - A simple HTML page lists recent dead‑letter entries with a link to re‑queue them
+    - Operator can click a re‑queue button and the event is re‑dispatched
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
