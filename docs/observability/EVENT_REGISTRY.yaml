@@ -648,6 +648,15 @@ events:
     consumers: [fleet-brief, waste-tally, audit-log]
     fields_required: [ts, kind, gap_id, files_lost_count, first_paths]
 
+  - kind: chump_unwedge
+    effect_metric: self
+    emitter: src/unwedge_cmd.rs emit_ambient (EFFECTIVE-1136)
+    trigger: chump unwedge <GAP-ID> ran to completion; summarizes whether a wedge
+      was detected, which bot-merge.sh pid(s) were terminated, whether
+      `claim --force-recover` succeeded, and whether the repo ended clean.
+    consumers: [fleet-brief, waste-tally, audit-log]
+    fields_required: [ts, kind, gap_id, wedge_found, killed_pids, recovered, clean]
+
   - kind: claim_aborted_pr_in_flight
     effect_metric: waste_prevented
     emitter: src/atomic_claim.rs emit_claim_aborted_pr_in_flight_event (INFRA-1503)

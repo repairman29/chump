@@ -199,6 +199,7 @@ mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
 mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
+mod unwedge_cmd; // EFFECTIVE-1136: `chump unwedge <gap>` — on-demand kill + recover of wedged bot-merge
 mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
@@ -2745,6 +2746,65 @@ async fn main() -> Result<()> {
             Ok(()) => return Ok(()),
             Err(e) => {
                 eprintln!("pr-rescue: {e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump unwedge <GAP-ID>` (EFFECTIVE-1136): on-demand kill + recover of
+    // a wedged bot-merge run for a single gap.
+    if args.get(1).map(String::as_str) == Some("unwedge") {
+        let mut gap_id: Option<String> = None;
+        let mut opts = unwedge_cmd::UnwedgeOpts::default();
+        let mut i = 2;
+        while i < args.len() {
+            match args[i].as_str() {
+                "--dry-run" => opts.dry_run = true,
+                "--discard-wip" => opts.discard_wip = true,
+                "--force" => opts.force = true,
+                "--threshold-s" => {
+                    i += 1;
+                    if i < args.len() {
+                        opts.threshold_s = args[i].parse().unwrap_or(0);
+                    }
+                }
+                "--help" | "-h" => {
+                    println!(
+                        "chump unwedge <GAP-ID> [--dry-run] [--force] [--discard-wip] [--threshold-s N]"
+                    );
+                    println!();
+                    println!("Detects a wedged bot-merge for <GAP-ID> (live bot-merge.sh process");
+                    println!("and/or a stale .chump-locks/bot-merge-progress/<gap>.json ledger),");
+                    println!("terminates the offending process, and invokes the canonical");
+                    println!("`chump claim <GAP-ID> --force-recover` recovery flow.");
+                    println!();
+                    println!("  --dry-run        print what would happen without killing/recovering");
+                    println!("  --force           run recovery even if no wedge signal was detected");
+                    println!("  --discard-wip     pass through to claim --force-recover (wipes uncommitted changes)");
+                    println!("  --threshold-s N   staleness threshold in seconds (default 900)");
+                    return Ok(());
+                }
+                other if gap_id.is_none() && !other.starts_with('-') => {
+                    gap_id = Some(other.to_string());
+                }
+                other => {
+                    eprintln!("unwedge: unknown arg: {other}");
+                    std::process::exit(2);
+                }
+            }
+            i += 1;
+        }
+        let gap_id = match gap_id {
+            Some(g) => g,
+            None => {
+                eprintln!("unwedge: missing <GAP-ID>. Usage: chump unwedge <GAP-ID> [--dry-run] [--force] [--discard-wip]");
+                std::process::exit(2);
+            }
+        };
+        match unwedge_cmd::run(&gap_id, opts) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("unwedge: {e}");
                 std::process::exit(1);
             }
         }
