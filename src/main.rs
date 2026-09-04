@@ -69,6 +69,7 @@ mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
+mod credible_debt;
 mod curator_bell;
 mod dashboard;
 mod sourcing_resolver; // INFRA-3508 (COTG-S.1): repo -> arsenal -> world prior-art resolver
