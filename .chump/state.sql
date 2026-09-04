@@ -3818,7 +3818,7 @@ gaps:
 - id: CREDIBLE-237
   domain: CREDIBLE
   title: "CI gates assert code LOCATION not behaviour: one refactor tripped 5 path-pinned greps, and one of them then passed vacuously"
-  status: blocked
+  status: open
   priority: P2
   effort: m
   acceptance_criteria:
@@ -3830,7 +3830,7 @@ gaps:
     - "GUARD AGAINST THE VACUOUS-PASS CLASS SPECIFICALLY: any negative assertion (grep -q ... && fail) must first prove its search target EXISTS somewhere, else the test is asserting nothing. That precondition is what would have caught INFRA-825 Test 3 automatically"
     - "Filed from the fix session, not speculative: all four repairs and the vacuous-pass analysis are in PR #3499's commit 'unpin four CI gates from src/main.rs'"
   notes: |
-    [2026-08-29T02:01:45Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=0B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    Decomposed into 10 slices: CREDIBLE-777, CREDIBLE-778, CREDIBLE-779, CREDIBLE-780, CREDIBLE-781, CREDIBLE-782, CREDIBLE-783, CREDIBLE-784, CREDIBLE-785, CREDIBLE-786
   opened_date: '2026-08-19'
   outcome_id: MISSION-010
 
@@ -17999,9 +17999,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Insert calls to the existing metrics collector inside `src/log_triage.rs::find_still_dirty_rebase_failures` and `src/precision_controller.rs::battle_cli_style_failure` so that each stage logs its failure type, increments a per‑tier failure counter, records the latency of the failure handling, and makes the data available to `skill_health_ranking` for the aggregated report.
+    
+    Target file(s):
+    - src/log_triage.rs
+    - src/precision_controller.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Aggregated report shows, for each tier, which stage(s) failed and why (tool‑call refusal, wrong edit, build break, CI fail, merge wall)
-    - Metrics include count of failures, success rate, and average latency per stage
+    - Running a test that forces `find_still_dirty_rebase_failures` to return an error verifies that the metrics collector records a failure count increment for the “rebase” stage under the “log_triage” tier and logs the latency value.
+    - Running a test that triggers a simulated CLI‑style failure in `battle_cli_style_failure` verifies that the metrics collector records a failure count increment for the “battle_cli” stage under the “precision_controller” tier and captures the handling latency.
+    - Executing `skill_health_ranking()` after the above failures produces a report JSON that includes, for each tier, the failure count, success rate, and average latency for the modified stages.
+    - The command `cargo run --bin metrics_export` (or equivalent) outputs a JSON file containing the per‑tier, per‑stage failure metrics matching the events recorded in the two modified functions.
   depends_on: [CREDIBLE-762]
   notes: |
     [chump harvest check 'inference']
@@ -18028,9 +18038,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new public function `generate_routing_policy` to `crates/chump-reviewer-routing/src/lib.rs` that iterates over measured capability data, builds a policy rule string of the form `"Tier X is sufficient for effort ≤ s in language Y"` for each language and effort bucket, serializes the collection to a JSON file named `routing_policy.json`, and expose this function to the CLI entry point in `scripts/ab-harness/run-cloud-v2.py` so the script invokes it during its main execution path.
+    
+    Target file(s):
+    - crates/chump-reviewer-routing/src/lib.rs
+    - scripts/ab-harness/run-cloud-v2.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Policy rule generated: \"Tier X is sufficient for effort ≤ s in language Y\" for each language and effort bucket"
-    - Policy is exported as a JSON file consumable by EFFECTIVE‑409 tender
+    - "Running `cargo test --package chump-reviewer-routing` passes a new test in `crates/chump-reviewer-routing/src/lib.rs` that calls `generate_routing_policy` with a mock capability set and asserts that the produced JSON contains a rule `\"Tier 2 is sufficient for effort ≤ 5 in language Rust\"`."
+    - Executing `python scripts/ab-harness/run-cloud-v2.py --output-dir tmp` creates a file `tmp/routing_policy.json` whose content matches the expected JSON structure and includes at least one rule for each language present in the mock data.
+    - The function `generate_routing_policy` returns a `Policy` struct (or equivalent) whose `rules` field length equals the number of language‑effort bucket combinations supplied in the input capability map.
   depends_on: [CREDIBLE-763]
   notes: |
     [chump harvest check 'inference']
@@ -18086,9 +18105,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new pytest unit‑test module that builds a mock PullRequest containing gap IDs in both the title and the body, invokes the private function `_extract_gap_ids` defined in `scripts/ops/github-webhook-receiver.py`, and asserts that the returned list includes only the IDs extracted from the title and excludes any IDs present solely in the body.
+    
+    Target file(s):
+    - scripts/ops/github-webhook-receiver.py
+    - scripts/ops/tests/test_github_webhook_receiver.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Unit test creates a mock PR with gap IDs in both title and body
-    - Test asserts that _extract_gap_ids returns only the IDs from the title and none from the body
+    - Running `pytest scripts/ops/tests/test_github_webhook_receiver.py` completes with exit code 0 and reports exactly one passed test.
+    - The test imports `_extract_gap_ids` from `scripts/ops/github-webhook-receiver.py`.
+    - "The test creates a mock PR whose `title` contains “CREDIBLE-111” and “CREDIBLE-222” and whose `body` contains “CREDIBLE-333”, then asserts that `_extract_gap_ids(mock_pr)` returns `[\"CREDIBLE-111\", \"CREDIBLE-222\"]` and does not include “CREDIBLE-333”."
+    - The test file resides at `scripts/ops/tests/test_github_webhook_receiver.py` and contains no references to external services or network calls.
   notes: |
     [chump harvest check 'merging']
     === primitives_index match for 'merging' ===
@@ -18374,6 +18403,286 @@ gaps:
     
     === cross-pollination briefs mentioning 'merging' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-777
+  domain: CREDIBLE
+  title: "CREDIBLE: Search CI scripts for hardcoded src/*.rs paths (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All files under scripts/ci/ are scanned
+    - A list of grep commands containing a literal 'src/' path is produced
+    - The list is stored in a machine‑readable JSON file
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-778
+  domain: CREDIBLE
+  title: "CREDIBLE: Classify each hardcoded path grep as behaviour‑oriented or location‑oriented (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Each entry from slice 0 is labelled \"behaviour\" or \"location\""
+    - Classification rationale is documented per entry
+    - Output is appended to the JSON file from slice 0
+  depends_on: [CREDIBLE-777]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-779
+  domain: CREDIBLE
+  title: "CREDIBLE: Report count of location‑based assertions (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A markdown report is generated showing total number of location‑based greps
+    - Report includes a table of script name, line number, and classification
+    - Report is committed to the repository in docs/ci‑assertion‑audit.md
+  depends_on: [CREDIBLE-778]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-780
+  domain: CREDIBLE
+  title: "CREDIBLE: Create reusable helper to resolve dispatch source at runtime with fallback (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new Rust module (e.g., src/ci_dispatch.rs) provides `resolve_source()` returning the current file containing the command
+    - Function falls back to the old hard‑coded path when the new location is unavailable
+    - Helper is covered by unit tests exercising both paths
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-781
+  domain: CREDIBLE
+  title: "CREDIBLE: Refactor the four existing location‑based CI gates to use the new helper (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Each of the four scripts modified in PR #3499 now calls `resolve_source()` instead of a literal path"
+    - All CI checks continue to pass on current main branch
+    - No new warnings appear in CI logs
+  depends_on: [CREDIBLE-780]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-782
+  domain: CREDIBLE
+  title: "CREDIBLE: Add guard to negative assertions that verifies the target exists before failing (CREDIBLE-237 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A shell function `assert_target_exists()` is introduced and used in all negative‑assertion scripts
+    - If the target file or symbol is missing, the script aborts with a clear error instead of passing vacuously
+    - Existing negative‑assertion CI gates (including INFRA‑825) are updated to use the guard
+  depends_on: [CREDIBLE-780]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-783
+  domain: CREDIBLE
+  title: "CREDIBLE: Update negative‑assertion CI scripts to use the existence guard (CREDIBLE-237 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All scripts that contain `grep -q … && fail` now invoke `assert_target_exists()` first
+    - Running the scripts on a clean checkout where the target is absent results in a failure with a descriptive message
+    - CI pipeline remains green after the change
+  depends_on: [CREDIBLE-782]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-784
+  domain: CREDIBLE
+  title: "CREDIBLE: Add example CI gate that asserts behaviour via binary output instead of grepping source (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new script (e.g., test-gap-subcommand-help.sh) runs the built binary with `--help` and checks for expected subcommand text
+    - The script is added to the CI gate list and passes on current main
+    - Documentation notes the preferred pattern for future gates
+  depends_on: [CREDIBLE-780]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-785
+  domain: CREDIBLE
+  title: "CREDIBLE: Write unit tests for the dispatch helper and existence guard (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite includes cases where the new source file exists, where it does not (fallback path used), and where the guard detects missing targets
+    - All tests pass locally and in CI
+    - Coverage for the new module is at least 80%
+  depends_on: [CREDIBLE-780, CREDIBLE-782]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-786
+  domain: CREDIBLE
+  title: "CREDIBLE: Update project documentation with new CI gate patterns and guard usage (CREDIBLE-237 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README or CONTRIBUTING guide contains a section \"Writing CI gates\" describing:"
+    - "  * Use of `resolve_source()` for location‑based checks"
+    - "  * Use of `assert_target_exists()` for negative assertions"
+    - "  * Preference for behaviour‑based checks via binary execution"
+    - Documentation is reviewed and merged
+  depends_on: [CREDIBLE-780, CREDIBLE-782, CREDIBLE-784]
+  notes: |
+    [chump harvest check 'gates']
+    === primitives_index match for 'gates' ===
+    
+    === cluster keyword match for 'gates' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'gates' ===
+    
+    === repo-description match for 'gates' ===
+    
+    === HARVEST_ROADMAP.md mention of 'gates' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'gates' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: DOC-031
   domain: DOC
@@ -111152,6 +111461,8 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-04T05:58:05Z] EFFECTIVE-441: escalated required_model -> opus after 3 consecutive unverified_ship attempts
+  required_model: opus
 
 - id: INFRA-4321
   domain: INFRA
