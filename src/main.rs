@@ -318,6 +318,7 @@ mod e2e_bot_tests;
 mod embed_inprocess;
 
 mod metrics;
+mod metrics_registry;
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
