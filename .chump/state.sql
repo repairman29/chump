@@ -27827,6 +27827,63 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: EFFECTIVE-1108
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add JTBD intake fields for who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The JTBD intake struct includes new fields: `who: String`, `struggling_moment: String`, and `done_signal: String`."
+    - The code compiles with `cargo check` and `cargo fmt` without formatting changes.
+    - Running `cargo clippy --all-targets -D warnings` produces no new warnings.
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1109
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update intake processing to capture and store who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The intake logic extracts the three new fields from the incoming payload and populates the JTBD intake struct.
+    - Existing JTBD functionality remains unchanged and all pre‑existing tests continue to pass.
+    - "`cargo test` runs without failures on the existing test suite."
+  depends_on: [EFFECTIVE-1108]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
 - id: EFFECTIVE-111
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire INFRA-2665.yaml into role curator-opus-target"
@@ -27837,6 +27894,36 @@ gaps:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2665.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2665.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1110
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add test verifying capture of who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A unit/integration test creates a sample intake payload with known values for who, struggling-moment, and done-signal.
+    - The test asserts that the populated JTBD intake struct contains the exact values supplied.
+    - The test fails when run against the code base prior to the implementation changes and passes after the changes are merged.
+    - The test is executed by `cargo test` and is included in CI via `scripts/ci/test-*.sh`.
+  depends_on: [EFFECTIVE-1109]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: EFFECTIVE-112
   domain: EFFECTIVE
@@ -32417,7 +32504,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: EFFECTIVE-957, EFFECTIVE-958
+    Decomposed into 3 slices: EFFECTIVE-1108, EFFECTIVE-1109, EFFECTIVE-1110
   opened_date: '2026-08-22'
 
 - id: EFFECTIVE-445
