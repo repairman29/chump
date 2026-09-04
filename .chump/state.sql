@@ -17491,10 +17491,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new function `generate_high_crit_candidates` to `scripts/ci/test-nba-dispatch-beat.sh` that filters a JSON array of dormant capabilities by a configurable Crit threshold and returns the filtered list; modify the existing `write_nba` function to invoke this new helper, write its output to the NBA feed file, and log the number of candidates produced.
+    
+    Target file(s):
+    - scripts/ci/test-nba-dispatch-beat.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A function `generate_high_crit_candidates` filters dormant capabilities by Crit threshold and returns a list for the NBA feed.
-    - The function is called by the NBA client (slice 3) and its output is logged in the pane.
-    - A unit test validates that the function returns exactly the expected items for a given input set.
+    - The file `scripts/ci/test-nba-dispatch-beat.sh` contains a function named `generate_high_crit_candidates` that takes a JSON array and a numeric threshold and outputs only entries whose `crit` field is greater than or equal to the threshold.
+    - The `write_nba` function in the same file calls `generate_high_crit_candidates` with the threshold defined by the variable `HIGH_CRIT_THRESHOLD` and writes the returned JSON to the path stored in `NBA_FEED_PATH`.
+    - Executing `scripts/ci/test-nba-dispatch-beat.sh` with a test input file containing capabilities with crit values 70, 85, and 90 creates an NBA feed file that contains exactly the two entries with crit 85 and 90; a unit test script asserts this file content.
+    - "The script prints a line to stdout matching the pattern `NBA candidates: <count>` where `<count>` equals the number of high‑crit items written to the NBA feed."
   depends_on: [CREDIBLE-745, CREDIBLE-746]
   notes: |
     [chump harvest check 'Index']
@@ -31353,7 +31361,7 @@ gaps:
 - id: EFFECTIVE-514
   domain: EFFECTIVE
   title: Mission-doc keeper — sonnet agent keeps the OS/mission HTML assets current from live state
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -31364,6 +31372,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 10 slices: EFFECTIVE-1031, EFFECTIVE-1032, EFFECTIVE-1033, EFFECTIVE-1034, EFFECTIVE-1035, EFFECTIVE-1036, EFFECTIVE-1037, EFFECTIVE-1038, EFFECTIVE-1039, EFFECTIVE-1040
+    [2026-09-04T01:52:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CHUMPOS
 
 - id: EFFECTIVE-515
@@ -97026,7 +97035,7 @@ gaps:
 - id: INFRA-3894
   domain: INFRA
   title: "SOVEREIGN: OS integrity must not depend on operator-machine env — route gap writes through the network store so no client holds a writable canonical replica"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -97035,6 +97044,8 @@ gaps:
     - chump gap mutations route through CHUMP_GAP_STORE_URL when set (Rust CLI reads it)
     - a stale/offline client cannot corrupt canonical gap state — write-through-queue-on-reconnect or fail-closed
     - the operator Mac is never a canonical writer; canonical authority lives on owned iron
+  notes: |
+    [2026-09-04T01:59:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: SOVEREIGN
 
 - id: INFRA-3895
@@ -108203,7 +108214,7 @@ gaps:
 - id: INFRA-4268
   domain: INFRA
   title: "INFRA: Re‑key baseline token mapping to use file+rule+color instead of line number (INFRA-3840 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -108225,6 +108236,7 @@ gaps:
     === cross-pollination briefs mentioning 'baseline' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+    [2026-09-04T01:58:51Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4269
   domain: INFRA
@@ -127014,13 +127026,15 @@ gaps:
 - id: RESILIENT-425
   domain: RESILIENT
   title: "owned-node deploy path is dead: install-helsinki-atc --auto + organ-reconcile skip when non-root"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"install-helsinki-atc --auto + organ-reconcile skip when non-root\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-04T01:53:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-426
