@@ -64,20 +64,19 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, String> {
                 let val = args
                     .get(i + 1)
                     .ok_or_else(|| "--interval requires a value".to_string())?;
-                interval_secs = Some(
-                    val.parse::<u64>()
-                        .map_err(|_| format!("--interval value '{val}' is not a valid number of seconds"))?,
-                );
+                interval_secs = Some(val.parse::<u64>().map_err(|_| {
+                    format!("--interval value '{val}' is not a valid number of seconds")
+                })?);
                 i += 2;
             }
             "--max-iters" => {
                 let val = args
                     .get(i + 1)
                     .ok_or_else(|| "--max-iters requires a value".to_string())?;
-                max_iters = Some(
-                    val.parse::<u64>()
-                        .map_err(|_| format!("--max-iters value '{val}' is not a valid integer"))?,
-                );
+                max_iters =
+                    Some(val.parse::<u64>().map_err(|_| {
+                        format!("--max-iters value '{val}' is not a valid integer")
+                    })?);
                 i += 2;
             }
             "--json" => {
@@ -97,7 +96,8 @@ fn parse_args(args: &[String]) -> Result<ParsedArgs, String> {
         }
     }
 
-    let interval_secs = interval_secs.ok_or_else(|| "--interval <seconds> is required".to_string())?;
+    let interval_secs =
+        interval_secs.ok_or_else(|| "--interval <seconds> is required".to_string())?;
     if interval_secs == 0 {
         return Err("--interval must be greater than 0".to_string());
     }
@@ -221,10 +221,18 @@ mod tests {
 
     #[test]
     fn parses_max_iters_and_json() {
-        let args: Vec<String> = ["echo", "hi", "--interval", "1", "--max-iters", "3", "--json"]
-            .iter()
-            .map(|s| s.to_string())
-            .collect();
+        let args: Vec<String> = [
+            "echo",
+            "hi",
+            "--interval",
+            "1",
+            "--max-iters",
+            "3",
+            "--json",
+        ]
+        .iter()
+        .map(|s| s.to_string())
+        .collect();
         let parsed = parse_args(&args).unwrap();
         assert_eq!(parsed.max_iters, Some(3));
         assert!(parsed.json);
@@ -255,7 +263,10 @@ mod tests {
 
     #[test]
     fn zero_interval_errors() {
-        let args: Vec<String> = ["echo", "--interval", "0"].iter().map(|s| s.to_string()).collect();
+        let args: Vec<String> = ["echo", "--interval", "0"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         assert!(parse_args(&args).is_err());
     }
 

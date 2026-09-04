@@ -157,10 +157,10 @@ mod scan; // INFRA-1882: chump scan <repo-path> — repo takeover opener (2026 d
 pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
 pub use chump_kpi_report::kpi_report; // EFFECTIVE-418: extracted to crates/chump-kpi-report (build-speed)
+mod chump_loop; // EFFECTIVE-1138: `chump loop <cmd> --interval N [--max-iters M]` ephemeral scheduler
 mod lesson_action;
 mod lesson_embeddings;
 mod limits;
-mod chump_loop; // EFFECTIVE-1138: `chump loop <cmd> --interval N [--max-iters M]` ephemeral scheduler
 mod llm_backend_metrics;
 mod local_openai;
 mod mcp_bridge;
