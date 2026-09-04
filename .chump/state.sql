@@ -19246,7 +19246,7 @@ gaps:
 - id: CREDIBLE-801
   domain: CREDIBLE
   title: "CREDIBLE: Add unit test harness to simulate shell/doc PR auto‑close stage (CREDIBLE-295 slice)"
-  status: open
+  status: already_satisfied
   priority: P2
   effort: s
   acceptance_criteria:
@@ -19268,6 +19268,10 @@ gaps:
     === cross-pollination briefs mentioning 'bot-merge' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+  closed_date: '2026-09-04'
+  closed_pr: 4453
+  evidence: |
+    already-satisfied backstop (INFRA-3826): worker cycle log agent-2-cycle4-CREDIBLE-801.log reports the work already shipped in PR #4453 (merged 2026-09-04); worktree had no diff to ship. Auto-closed by gap-doctor-reconcile --check-already-satisfied.
 
 - id: CREDIBLE-802
   domain: CREDIBLE
@@ -93004,8 +93008,7 @@ gaps:
     - a retired/closed redundant PR is NOT revived by the reopener (pr-shepherd); reopener only revives a PR whose work is still needed AND branch is rebaseable
     - "receipt 2026-08-19: only 3 open PRs existed, ALL 3 CONFLICTING + already-shipped — #3919/#3924 were pure gap-YAML-sync zombies, #3910 was real code the fleet could not content-rebase. Auto-rebaser only fast-forwards clean branches; batched merge-train only pulls CLEAN; reopener revived closes → permanent limbo. Retired by hand (close+delete-branch)."
   notes: |
-    [2026-08-19T13:19:59Z] Jeff 2026-08-19: fleet not picking up 100% of GitHub PRs — this is why. COTG keystone: a human-facing factory cannot silently strand PRs. Prioritized AHEAD of INFRA-3612 (effective-priority, P1). Relates INFRA-3604 (reopener revives closes), the ZERO-WASTE-020 yaml/state.db split, and the CLEAN-only merge-train.
-    [2026-08-19T13:33:57Z] RECONCILE 2026-08-19: the CONFLICTING-PR-drain half is ALREADY the rot-reaper organ (RESILIENT-324) — now ported+running on CJ as chump-rot-reaper.timer. Do NOT rebuild it (that IS the duplicate-work waste). Remaining UNIQUE scope here = WASTE-PREVENTION: stop the fleet opening pointless gap-YAML-sync PRs (post-ZERO-WASTE-020 YAML is non-canonical). Demoted P0->P2; the reaping side is covered by RESILIENT-324 + porting under RESILIENT-318.
+    Decomposed into 9 slices: INFRA-4443, INFRA-4444, INFRA-4445, INFRA-4446, INFRA-4447, INFRA-4448, INFRA-4449, INFRA-4450, INFRA-4451
   opened_date: '2026-08-19'
 
 - id: INFRA-3618
@@ -93026,7 +93029,7 @@ gaps:
     - "Reversible: CHUMP_STORE_SHADOW=0 fully disables with zero residue; rollback documented"
     - "Test: fault-injection — a mutation with the shadow store unreachable still succeeds on canonical + emits shadow_write_failed. VERIFY-LIVE: >=5 real gaps appear in shared_gaps after enabling on CJ. Depth tier + gaps named per green-not-covered"
   notes: |
-    Decomposed into 9 slices: INFRA-3868, INFRA-3869, INFRA-3870, INFRA-3871, INFRA-3872, INFRA-3873, INFRA-3874, INFRA-3875, INFRA-3876
+    Decomposed into 9 slices: INFRA-4452, INFRA-4453, INFRA-4454, INFRA-4455, INFRA-4456, INFRA-4457, INFRA-4458, INFRA-4459, INFRA-4460
   opened_date: '2026-08-21'
   outcome_id: MISSION-010
   evidence: |
@@ -116426,6 +116429,678 @@ gaps:
     
     === cross-pollination briefs mentioning 'Picker' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-4443
+  domain: INFRA
+  title: "INFRA: Analyze PR creation flow for gap‑YAML‑sync (INFRA-3614 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Locate the code path that generates gap‑YAML‑sync PRs in the fleet service
+    - Identify the list of files considered for PR creation
+    - Document the decision point where file changes are evaluated
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4444
+  domain: INFRA
+  title: "INFRA: Add guard to skip PR creation when only docs/gaps/*.yaml changed (INFRA-3614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Fleet checks changed files; if the diff consists solely of files matching docs/gaps/*.yaml, PR creation is aborted
+    - "A log entry \"skip yaml‑only gap sync PR\" is emitted at INFO level"
+    - No PR is opened on GitHub for such a change
+  depends_on: [INFRA-4443]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4445
+  domain: INFRA
+  title: "INFRA: Unit test for guard logic (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite includes a case where the simulated change set contains only docs/gaps/123.yaml
+    - The PR creation function returns false / does not call the GitHub client
+    - Test fails if a PR creation attempt is made
+  depends_on: [INFRA-4444]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4446
+  domain: INFRA
+  title: "INFRA: Integration test for fleet run with yaml‑only change (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A full fleet run is executed against a test repository with a commit that modifies only docs/gaps/*.yaml
+    - No pull request appears in the test GitHub repo after the run
+    - "The fleet logs contain the \"skip yaml‑only gap sync PR\" message"
+  depends_on: [INFRA-4445]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4447
+  domain: INFRA
+  title: "INFRA: Update reopener to ignore auto‑retired redundant PRs (INFRA-3614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Reopener reads a PR flag (e.g., label \"redundant\" or a DB field) indicating it was auto‑retired"
+    - When such a flag is present, the reopener does not attempt to revive the PR
+    - "A log entry \"reopener skipping redundant PR #XYZ\" is emitted"
+  depends_on: [INFRA-4443]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4448
+  domain: INFRA
+  title: "INFRA: Unit test for reopener guard (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test creates a mock PR marked as redundant
+    - Reopener is invoked and confirms the PR is not revived
+    - Test asserts that the GitHub client’s revive method is never called
+  depends_on: [INFRA-4447]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4449
+  domain: INFRA
+  title: "INFRA: Update documentation for PR creation rules (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "README/ops guide includes a section \"Gap‑YAML‑sync PR suppression\" describing the new rule"
+    - "Changelog entry notes \"fleet no longer opens PRs that only modify docs/gaps/*.yaml\""
+    - Documentation build passes without warnings
+  depends_on: [INFRA-4444, INFRA-4447]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4450
+  domain: INFRA
+  title: "INFRA: Deploy changes to staging and perform smoke test (INFRA-3614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All code changes are deployed to the staging environment without errors
+    - A staged fleet run with a yaml‑only change produces no PR in the staging GitHub repo
+    - Logs show both the guard message and the reopener skip message where applicable
+  depends_on: [INFRA-4446, INFRA-4448, INFRA-4449]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4451
+  domain: INFRA
+  title: "INFRA: Add monitoring script to ensure all open PRs reach terminal state within N ticks (INFRA-3614 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Script runs daily, queries open PRs, and flags any PR that has been in CONFLICTING state longer than N ticks
+    - When a violation is detected, an alert is sent to the infra‑alerts channel
+    - Initial run on staging reports zero violations
+  depends_on: [INFRA-4450]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4452
+  domain: INFRA
+  title: "INFRA: Add CHUMP_STORE_SHADOW env flag with default OFF (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CHUMP_STORE_SHADOW flag is read from environment and defaults to false
+    - Flag value is accessible in configuration module for downstream use
+    - Enabling the flag logs a message to docs/process/CAPABILITY_DECISIONS.md
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4453
+  domain: INFRA
+  title: "INFRA: Wire CHUMP_TEAM_URL and CHUMP_TEAM_API_KEY into worker/CLI env (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CHUMP_TEAM_URL and CHUMP_TEAM_API_KEY are read from environment variables
+    - Values are exposed to the PostgREST client configuration
+    - Documentation updated to show required env vars on CJ
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4454
+  domain: INFRA
+  title: "INFRA: Implement shadow write for gap mutations (reserve/set/claim/ship/close) (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When CHUMP_STORE_SHADOW is true, each gap mutation also sends a POST/PUT to shared_gaps via PostgREST client
+    - Shadow write uses CHUMP_TEAM_URL and CHUMP_TEAM_API_KEY for authentication
+    - Canonical mutation behavior remains unchanged
+  depends_on: [INFRA-4452, INFRA-4453]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4455
+  domain: INFRA
+  title: "INFRA: Add best‑effort failure handling for shadow writes (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Any error from the shadow write (network, schema, timeout) is caught
+    - Error is logged with kind=shadow_write_failed and relevant context
+    - Error does not block the canonical mutation, adds <250 ms latency, and does not raise an exception
+  depends_on: [INFRA-4454]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4456
+  domain: INFRA
+  title: "INFRA: Verify reads remain unchanged (state.db only) (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Automated test confirms that read‑path queries still hit state.db and never query shared_gaps
+    - No code changes introduce reads from shared_gaps
+  depends_on: [INFRA-4454]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4457
+  domain: INFRA
+  title: "INFRA: Document toggle activation in CAPABILITY_DECISIONS.md (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Enabling CHUMP_STORE_SHADOW=1 appends a line to docs/process/CAPABILITY_DECISIONS.md with timestamp and rationale
+    - File is version‑controlled and the entry is searchable
+  depends_on: [INFRA-4452]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4458
+  domain: INFRA
+  title: "INFRA: Make shadow write reversible when CHUMP_STORE_SHADOW=0 (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Setting CHUMP_STORE_SHADOW=0 disables all shadow writes
+    - No residual data or side‑effects remain after disabling
+    - Rollback procedure documented in the PR description
+  depends_on: [INFRA-4452]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4459
+  domain: INFRA
+  title: "INFRA: Fault‑injection test for unreachable shadow store (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test simulates network failure to shared_gaps during a mutation
+    - Canonical mutation succeeds and returns expected result
+    - Log entry with kind=shadow_write_failed is produced
+    - Test asserts that the failure does not affect canonical state
+  depends_on: [INFRA-4454, INFRA-4455]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4460
+  domain: INFRA
+  title: "INFRA: Enhance substrate-parity.sh to report row‑count and drift (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script outputs total rows in state.db and shared_gaps
+    - Script computes per‑field differences (drift) between the two tables
+    - Output is parsable and used as gating metric for S2
+    - Script runs without error when CHUMP_STORE_SHADOW is disabled
+  depends_on: [INFRA-4454]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: INFRA-476
   domain: INFRA
