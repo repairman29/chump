@@ -36,6 +36,13 @@ pub struct ExplainReport {
     pub overall: String, // local | sibling_blocked | fleet_wide | green
     pub rows: Vec<CheckRow>,
     pub summary: String,
+    /// INFRA-4539 (INFRA-1861 slice): names of checks that were CANCELLED
+    /// as collateral of a sibling check's real failure in the same rollup
+    /// — i.e. GitHub Actions cascade-cancelled them, not an independent
+    /// bug. Surfaced here so the cascade-cancellation is visible in
+    /// chump's PR status API/JSON output instead of requiring a dig
+    /// through workflow run logs.
+    pub cancelled_jobs: Vec<String>,
 }
 
 /// Pluggable provider: for a given PR number, return its status-check
@@ -58,6 +65,24 @@ pub fn build_report(
 ) -> ExplainReport {
     let mut rows: Vec<CheckRow> = Vec::new();
     let mut worst_scope: Option<String> = None;
+
+    // INFRA-4539 (INFRA-1861 slice): a check is cascade-cancelled (rather
+    // than an independent failure) when it's CANCELLED and at least one
+    // OTHER check in the same rollup has a real FAILURE — mirrors the
+    // ci.yml INFRA-1002 shard-classification rule.
+    let any_real_failure = rollup.iter().any(|entry| {
+        entry.get("conclusion").and_then(|v| v.as_str()) == Some("FAILURE")
+    });
+    let mut cancelled_jobs: Vec<String> = Vec::new();
+    if any_real_failure {
+        for entry in &rollup {
+            if entry.get("conclusion").and_then(|v| v.as_str()) == Some("CANCELLED") {
+                if let Some(name) = entry.get("name").and_then(|v| v.as_str()) {
+                    cancelled_jobs.push(name.to_string());
+                }
+            }
+        }
+    }
 
     for entry in &rollup {
         let name = entry
@@ -112,6 +137,7 @@ pub fn build_report(
         overall,
         rows,
         summary,
+        cancelled_jobs,
     }
 }
 
@@ -306,6 +332,12 @@ pub fn render_text(r: &ExplainReport) -> String {
         "=== chump pr explain-block #{} ===\n  overall: {}\n  summary: {}\n",
         r.pr_number, r.overall, r.summary
     ));
+    if !r.cancelled_jobs.is_empty() {
+        s.push_str(&format!(
+            "\n  cascade-cancelled (collateral of a sibling failure, not an independent bug): {}\n",
+            r.cancelled_jobs.join(", ")
+        ));
+    }
     if r.rows.is_empty() {
         s.push_str("\n  no blocking checks found.\n");
         return s;
@@ -416,6 +448,31 @@ mod tests {
         assert!(out.contains("[local]"));
         assert!(out.contains("fast-checks"));
         assert!(out.contains("→"));
+    }
+
+    #[test]
+    fn cancelled_job_alongside_real_failure_is_reported_as_cascade_cancel() {
+        // INFRA-4539: a CANCELLED check with a sibling FAILURE in the same
+        // rollup is collateral damage, not an independent bug — it must
+        // show up in `cancelled_jobs` on the report.
+        let rollup = vec![
+            json!({"name": "clippy", "conclusion": "FAILURE", "status": "COMPLETED"}),
+            json!({"name": "cargo-test", "conclusion": "CANCELLED", "status": "COMPLETED"}),
+        ];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+        assert_eq!(r.cancelled_jobs, vec!["cargo-test".to_string()]);
+        let out = render_text(&r);
+        assert!(out.contains("cascade-cancelled"));
+        assert!(out.contains("cargo-test"));
+    }
+
+    #[test]
+    fn cancelled_job_with_no_sibling_failure_is_not_reported_as_cascade_cancel() {
+        // All-cancelled with no real failure looks like a supersedure
+        // (newer run on same SHA), not a cascade-cancel — don't mislabel it.
+        let rollup = vec![json!({"name": "cargo-test", "conclusion": "CANCELLED", "status": "COMPLETED"})];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+        assert!(r.cancelled_jobs.is_empty());
     }
 
     #[test]
