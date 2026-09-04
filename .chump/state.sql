@@ -62254,7 +62254,7 @@ gaps:
 - id: INFRA-1808
   domain: INFRA
   title: "RESILIENT: chump-fleet-bootstrap durability — auto-chmod install scripts, fix false-negative checks, run hourly via launchd (3 issues found by curator-opus-shepherd 2026-05-23)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -62271,6 +62271,8 @@ gaps:
     - CI test scripts/ci/test-bootstrap-auto-install.sh asserts the launchd job loads cleanly and emits the expected ambient kind on a synthetic invocation
   notes: |
     Pillar: RESILIENT. Discovered 2026-05-23 by curator-opus-shepherd during investigation of stale PR queue. INFRA-1777 (pr-auto-rebase daemon shipped 2026-05-22 23:36Z) and INFRA-1779 (its launchd plist installer shipped 23:48Z) were never installed on this host until manual run today. Same pattern as INFRA-1662 reaper from prior day. This gap closes the structural pattern: code shipped to repo != code running on host. Effort=s because each individual fix is a few lines; the wiring is the work.
+    
+    [2026-09-04T09:26:01Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -64857,11 +64859,13 @@ gaps:
 - id: INFRA-1931
   domain: INFRA
   title: "RESILIENT: sub-agent dispatch lacks per-exit worktree self-cleanup — every Agent-dispatched Sonnet leaves /tmp/chump-<GID>/ behind on both success and failure paths; trap EXIT cleanup in chump claim + SUBAGENT_DISPATCH.md contract update"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
     - Every Agent-dispatched subagent removes its /tmp/chump-<GAPID> worktree on exit (success, failure, or kill); a post-run sweep finds zero orphaned chump worktrees in /tmp.
+  notes: |
+    [2026-09-04T09:26:31Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
