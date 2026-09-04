@@ -95383,13 +95383,16 @@ gaps:
 - id: INFRA-3808
   domain: INFRA
   title: "Fix done-doesnt-stick: unverified_ship cooldown wrote invalid JSON (silent no-op) + auto-close already-satisfied gaps"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"unverified_ship cooldown wrote invalid JSON (silent no-op) + auto-close already-satisfied gaps\" is implemented in the relevant infra code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 8 slices: INFRA-4293, INFRA-4294, INFRA-4295, INFRA-4296, INFRA-4297, INFRA-4298, INFRA-4299, INFRA-4300
+    [2026-09-04T01:19:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-26'
 
 - id: INFRA-3832
@@ -95474,7 +95477,7 @@ gaps:
 - id: INFRA-3840
   domain: INFRA
   title: "css-token-discipline: make baseline line-drift-proof (re-key file+rule+color, not line) OR tokenize cockpit.js/dashboard-tiles.js — recurring main-red root (red #4275, #4281, #4305)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -95483,6 +95486,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 8 slices: INFRA-4266, INFRA-4267, INFRA-4268, INFRA-4269, INFRA-4270, INFRA-4271, INFRA-4272, INFRA-4273
+    [2026-09-04T01:26:41Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3841
   domain: INFRA
@@ -108687,6 +108691,93 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4293
+  domain: INFRA
+  title: "INFRA: Reproduce unverified_ship cooldown invalid JSON scenario (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A reproducible script or test case triggers the unverified_ship cooldown path and captures the generated JSON output.
+    - The captured output shows invalid JSON as described.
+
+- id: INFRA-4294
+  domain: INFRA
+  title: "INFRA: Identify code path generating cooldown JSON (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Source files and functions responsible for cooldown JSON generation are documented.
+    - Comments added with file and line references.
+  depends_on: [INFRA-4293]
+
+- id: INFRA-4295
+  domain: INFRA
+  title: "INFRA: Fix cooldown JSON generation to produce valid JSON or no‑op (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When cooldown is triggered, the infra code emits well‑formed JSON (or no output) without causing a silent no‑op.
+    - Running the reproduction script now yields valid JSON.
+  depends_on: [INFRA-4294]
+
+- id: INFRA-4296
+  domain: INFRA
+  title: "INFRA: Implement auto‑close of already‑satisfied gaps (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Infra logic detects gaps that are already satisfied and automatically closes them.
+    - No duplicate open gaps are created for satisfied conditions.
+  depends_on: [INFRA-4294]
+
+- id: INFRA-4297
+  domain: INFRA
+  title: "INFRA: Add unit test for cooldown JSON validity (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test invokes cooldown path and asserts the output parses as valid JSON.
+    - Test fails before the fix and passes after.
+  depends_on: [INFRA-4295]
+
+- id: INFRA-4298
+  domain: INFRA
+  title: "INFRA: Add unit test for auto‑close behavior (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates a gap that becomes satisfied and verifies it is auto‑closed.
+    - Test fails before the fix and passes after.
+  depends_on: [INFRA-4296]
+
+- id: INFRA-4299
+  domain: INFRA
+  title: "INFRA: Run cargo fmt and clippy, fix warnings (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt runs without changes needed.
+    - cargo clippy --all-targets -D warnings passes with zero warnings.
+  depends_on: [INFRA-4295, INFRA-4296]
+
+- id: INFRA-4300
+  domain: INFRA
+  title: "INFRA: Execute full test suite to confirm no regressions (INFRA-3808 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing cargo tests pass.
+    - New tests from slices 4 and 5 are included in the suite.
+  depends_on: [INFRA-4299]
 
 - id: INFRA-476
   domain: INFRA
@@ -126627,6 +126718,8 @@ gaps:
     - "The change described by \"organ oneshots hang in activating(start) with no TimeoutStartSec, blocking timer re-arm\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 8 slices: RESILIENT-785, RESILIENT-786, RESILIENT-787, RESILIENT-788, RESILIENT-789, RESILIENT-790, RESILIENT-791, RESILIENT-792
   outcome_id: CHUMPOS
 
 - id: RESILIENT-427
@@ -137085,6 +137178,206 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-785
+  domain: RESILIENT
+  title: "RESILIENT: Reproduce organ oneshot hang issue locally (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A minimal reproducer (test or script) can be executed and demonstrates the organ oneshot hanging during activating(start) when TimeoutStartSec is omitted.
+    - The reproducer logs clearly show the hang and the timer not being re‑armed.
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-786
+  domain: RESILIENT
+  title: "RESILIENT: Add default TimeoutStartSec handling when missing (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Code path that reads TimeoutStartSec now falls back to a sensible default (e.g., 30 seconds) if the field is absent.
+    - Compilation succeeds with no warnings related to the new code.
+  depends_on: [RESILIENT-785]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-787
+  domain: RESILIENT
+  title: "RESILIENT: Implement timeout logic in activation start to prevent hang (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When an organ oneshot is started without an explicit TimeoutStartSec, the activation start returns after the default timeout instead of hanging.
+    - Timer re‑arm logic proceeds normally after the activation completes.
+    - Existing unit tests continue to pass.
+  depends_on: [RESILIENT-786]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-788
+  domain: RESILIENT
+  title: "RESILIENT: Validate timer re‑arm is not blocked after change (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After the activation start returns, the timer can be re‑armed within the expected interval.
+    - Logs confirm successful re‑arming and no residual lock or hang.
+  depends_on: [RESILIENT-787]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-789
+  domain: RESILIENT
+  title: "RESILIENT: Add unit test confirming non‑hanging behavior and timer re‑arm (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new `cargo test` verifies that an organ oneshot without TimeoutStartSec completes without hanging and that the timer is re‑armed.
+    - Running the test suite before the code change fails (times out), and after the change it passes.
+  depends_on: [RESILIENT-787, RESILIENT-788]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-790
+  domain: RESILIENT
+  title: "RESILIENT: Add CI integration test script for the scenario (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script under `scripts/ci/test-*.sh` reproduces the issue and asserts successful completion after the fix.
+    - The CI job fails before the change and passes after the change.
+  depends_on: [RESILIENT-789]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-791
+  domain: RESILIENT
+  title: "RESILIENT: Run `cargo fmt` and `cargo clippy` with warnings as errors, fix any issues (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes."
+    - "`cargo clippy --all-targets -D warnings` completes without any warnings."
+  depends_on: [RESILIENT-789, RESILIENT-790]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-792
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation/comments to describe default TimeoutStartSec behavior (RESILIENT-426 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Relevant module and function docs mention the default timeout applied when TimeoutStartSec is omitted.
+    - Documentation builds without errors.
+  depends_on: [RESILIENT-787]
+  notes: |
+    [chump harvest check 'organ']
+    === primitives_index match for 'organ' ===
+    
+    === cluster keyword match for 'organ' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'organ' ===
+    
+    === repo-description match for 'organ' ===
+    
+    === HARVEST_ROADMAP.md mention of 'organ' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'organ' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: SMOKE-001
   domain: SMOKE
