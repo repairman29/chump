@@ -117669,6 +117669,90 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-4471
+  domain: INFRA
+  title: "INFRA: Create reusable Gap Assay validator library (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Library exports a function `assay(gap)` returning boolean and detailed failure reasons
+    - Validates non‑empty description, right‑sized scope, no false dependencies, presence of outcome+evidence
+    - Detects near‑duplicate of any open gap using existing consolidate logic
+    - Unit tests cover all validation rules with passing and failing examples
+
+- id: INFRA-4472
+  domain: INFRA
+  title: "INFRA: Add Admission Gate to gap intake pipeline (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When a gap is newly reserved its status is set to `needs-prep`
+    - Gate invokes the Gap Assay validator; only gaps that pass are transitioned to `ready`/pickable
+    - Rejected gaps remain `needs-prep` and emit a clear audit log entry
+    - Integration test confirms a good gap becomes pickable and a bad gap does not
+
+- id: INFRA-4473
+  domain: INFRA
+  title: "INFRA: Wrap existing INFRA-935 consolidate tool as callable service (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A Python/Go wrapper exposing `consolidate(cluster)` returns the chosen keeper gap ID
+    - Wrapper returns `null` when cluster is empty and logs the decision
+    - Automated test verifies keeper selection criteria (priority, AC count, age)
+
+- id: INFRA-4474
+  domain: INFRA
+  title: "INFRA: Implement continuous Deduplication step in furnace cycle (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Each furnace run queries open gaps, groups them into near‑duplicate clusters
+    - For each cluster the consolidate wrapper is called and losers are auto‑closed with reason `duplicate`
+    - Closed duplicates retain their records (archived, not deleted)
+    - Metric `deduped_count` increments per run and is observable in logs
+
+- id: INFRA-4475
+  domain: INFRA
+  title: "INFRA: Implement Prime step: tighten vague/empty AC and split oversized gaps (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Gaps with empty or placeholder AC are automatically populated with a generated template and marked `needs-prep`
+    - Gaps whose description exceeds 500 characters are split into logical sub‑gaps, each inheriting priority and tags
+    - Resulting sub‑gaps are inserted with status `ready` if they pass the assay
+    - Metric `primed_count` reflects number of gaps transformed per cycle
+
+- id: INFRA-4476
+  domain: INFRA
+  title: "INFRA: Implement Furnace Unsalvageable step: auto‑close stale/cruft gaps (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Gaps that have failed the assay N (configurable, default 3) times are auto‑closed with reason `furnaced` and a human‑readable explanation
+    - Only gaps with priority P2 or lower are eligible; P0/P1 are never auto‑closed
+    - Closed gaps are archived and can be re‑queued via the requeue command
+    - Metric `furnaced_count` increments per run
+
+- id: INFRA-4477
+  domain: INFRA
+  title: "INFRA: Add Guardrails: protect P0/P1, daily cap, dry‑run mode, feature toggle (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Environment variable `CHUMP_GAP_FAIRY_ENABLED` defaults to OFF; furnace does nothing when disabled
+    - When enabled, a daily cap (`CHUMP_FAIRY_FURNACE_CAP`, default 50) limits total auto‑closes per day
+    - Dry‑run mode (`CHUMP_FAIRY_DRY_RUN=1`) logs actions without persisting changes
+    - P0 and P1 gaps are excluded from any auto‑close path; attempts are logged as `guardrail_skip`
+    - All guardrail decisions are recorded in `gap_fairy.log`
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
