@@ -27861,10 +27861,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add optional `who`, `struggling_moment`, and `done_signal` fields to `VisionIntakeInput` in `crates/chump-handoff/src/contracts.rs`, and update the intake payload processing handler in `src/web_server.rs` to extract these fields from incoming JSON requests into the struct.
+    
+    Target file(s):
+    - crates/chump-handoff/src/contracts.rs
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The intake logic extracts the three new fields from the incoming payload and populates the JTBD intake struct.
-    - Existing JTBD functionality remains unchanged and all pre‑existing tests continue to pass.
-    - "`cargo test` runs without failures on the existing test suite."
+    - Add `who`, `struggling_moment`, and `done_signal` as `Option<String>` fields on `VisionIntakeInput` in `crates/chump-handoff/src/contracts.rs`.
+    - Update the intake route handler in `src/web_server.rs` to parse `who`, `struggling_moment`, and `done_signal` from input payloads and populate the corresponding `VisionIntakeInput` struct fields.
+    - Execute `cargo test` to verify all pre-existing and updated tests pass cleanly.
   depends_on: [EFFECTIVE-1108]
   notes: |
     [chump harvest check 'capture']
