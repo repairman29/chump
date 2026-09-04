@@ -23785,6 +23785,225 @@ gaps:
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
+- id: EFFECTIVE-1060
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Detect empty diffs in DeepSeek floor processing (EFFECTIVE-465 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "When DeepSeek processes a gap, an empty diff is logged with message \"empty diff detected\""
+    - "The response code is rc=1 with reason \"empty-diff\" for empty diffs"
+    - Unit test verifies detection on a synthetic gap that produces no str_replace edits
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1061
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add edit‑nudge to encourage str_replace edits (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "After an empty‑diff detection, the model prompt is automatically augmented with a nudge phrase (e.g., \"Please make at least one code edit\")"
+    - For a gap that previously yielded an empty diff, the next model invocation produces at least one str_replace edit
+    - Log entry records that the nudge was applied
+  depends_on: [EFFECTIVE-1060]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1062
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement escalation on persistent empty diffs (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If the edit‑nudge still results in an empty diff, the system retries with an increased per‑gap iteration budget
+    - If the retry also fails, the system falls back to an alternative stronger model (configurable)
+    - Escalation path logs the escalation reason and the parameters used
+    - A test gap that fails the first two attempts now yields a non‑empty diff after escalation
+  depends_on: [EFFECTIVE-1061]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1063
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Drop patch_file artifact for empty diffs (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a diff is empty, no patch_file is written to the filesystem
+    - "Log entry indicates \"patch_file dropped due to empty diff\""
+    - Unit test confirms absence of patch_file after empty‑diff processing
+  depends_on: [EFFECTIVE-1060]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1064
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Refine circuit breaker to handle empty‑diff failures (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Circuit breaker does not open after three consecutive empty‑diff rc=1 failures if escalation succeeded and produced a non‑empty diff
+    - After a successful non‑empty diff, the consecutive_failure counter resets to zero
+    - State transitions are logged (open → closed, reset)
+    - Test verifies that the breaker stays closed across a sequence of empty‑diff → escalation → success
+  depends_on: [EFFECTIVE-1060]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1065
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Write unit tests for detection, nudge, escalation, patch drop, and circuit breaker (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite includes separate tests for slices 0‑4 covering all acceptance criteria
+    - All tests pass in CI with coverage > 80% for the modified modules
+    - Tests are deterministic and do not require external network calls
+  depends_on: [EFFECTIVE-1060, EFFECTIVE-1061, EFFECTIVE-1062, EFFECTIVE-1063, EFFECTIVE-1064]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1066
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Integration test: dispatch INFRA‑3679 surgical gap through chump‑local DeepSeek (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The gap is dispatched via chump‑local with model=deepseek
+    - Resulting diff contains at least one str_replace edit
+    - Verify gate passes (no empty‑diff rejection)
+    - Circuit breaker remains closed after the run
+    - The change can be merged as a PR
+  depends_on: [EFFECTIVE-1065]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: EFFECTIVE-1067
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update documentation for edit‑nudge, escalation, and circuit‑breaker behavior (EFFECTIVE-465 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and developer docs describe the new empty‑diff handling flow, configuration flags (iteration_budget, fallback_model), and circuit‑breaker semantics
+    - Changelog entry added noting the feature
+    - Documentation builds without warnings
+  depends_on: [EFFECTIVE-1066]
+  notes: |
+    [chump harvest check 'floor']
+    === primitives_index match for 'floor' ===
+    
+    === cluster keyword match for 'floor' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'floor' ===
+    
+    === repo-description match for 'floor' ===
+    
+    === HARVEST_ROADMAP.md mention of 'floor' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'floor' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
 - id: EFFECTIVE-107
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire DOC-065.yaml into role curator-opus-target"
@@ -28940,6 +29159,8 @@ gaps:
     - A surgical single-file gap dispatched through the chump-local deepseek floor produces a non-empty diff (real str_replace edits) and passes the verify gate
     - The worker circuit breaker stops tripping on consecutive empty-diff rc=1 failures
     - At least one gap-drain-produced surgical sub-gap (e.g. INFRA-3679..3687) is claimed by the floor and MERGED as a PR
+  notes: |
+    Decomposed into 8 slices: EFFECTIVE-1060, EFFECTIVE-1061, EFFECTIVE-1062, EFFECTIVE-1063, EFFECTIVE-1064, EFFECTIVE-1065, EFFECTIVE-1066, EFFECTIVE-1067
   opened_date: '2026-08-24'
 
 - id: EFFECTIVE-466
@@ -123924,7 +124145,7 @@ gaps:
 - id: RESILIENT-373
   domain: RESILIENT
   title: board-cycle beat pages operator every cycle (38/24h); make escalation severity-gated + deduped
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -123933,6 +124154,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     [2026-08-22T22:59:38Z] Organ built + PR #4159 (auto-merge armed). board-cycle-escalate.sh: severity-gated+deduped paging. Test proves clean=0/breach=1/persist=dedup; real-cycle replay 21->4. Registry: board_cycle_alert=page, board_cycle_report=suppress. 4 event kinds registered, coverage gate exit 0.
+    [2026-09-04T00:14:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-22'
 
 - id: RESILIENT-375
@@ -123973,13 +124195,16 @@ gaps:
 - id: RESILIENT-377
   domain: RESILIENT
   title: merge-flow organs missing from install-helsinki-atc roster so never installed on owned nodes
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"merge-flow organs missing from install-helsinki-atc roster so never installed on owned nodes\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: RESILIENT-762, RESILIENT-763, RESILIENT-764, RESILIENT-765, RESILIENT-766, RESILIENT-767, RESILIENT-768
+    [2026-09-04T00:15:39Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-23'
 
 - id: RESILIENT-378
@@ -124004,6 +124229,8 @@ gaps:
     - "The change described by \"reap abandoned empty-branch worktrees past grace (fixes 677-worktree/52G pileup on CJ; empty_branch skip had no age ceiling)\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: RESILIENT-755, RESILIENT-756, RESILIENT-757, RESILIENT-758, RESILIENT-759, RESILIENT-760, RESILIENT-761
   opened_date: '2026-08-23'
 
 - id: RESILIENT-381
@@ -135008,6 +135235,309 @@ gaps:
     === cross-pollination briefs mentioning 'OWNERSHIP' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-755
+  domain: RESILIENT
+  title: "RESILIENT: Investigate current worktree-reaper implementation for empty-branch handling (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Location of the worktree-reaper code identified in the RESILIENT repository
+    - Current logic that skips empty-branch worktrees documented
+    - Existing unit/integration tests that cover worktree-reaper listed
+
+- id: RESILIENT-756
+  domain: RESILIENT
+  title: "RESILIENT: Define configurable grace period constant for empty-branch worktrees (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A constant (e.g., `EMPTY_BRANCH_GRACE`) added to the appropriate module
+    - "Constant is expressed as a `std::time::Duration` with a sensible default (e.g., 24 h)"
+    - Constant is publicly documented for future configuration
+  depends_on: [RESILIENT-755]
+
+- id: RESILIENT-757
+  domain: RESILIENT
+  title: "RESILIENT: Implement age‑check logic for empty‑branch worktree reaping (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worktree‑reaper now compares the creation/modification age of an empty‑branch worktree against `EMPTY_BRANCH_GRACE`
+    - Empty‑branch worktrees younger than the grace period are still skipped
+    - Empty‑branch worktrees older than the grace period are reaped like regular worktrees
+    - All existing worktree‑reaper code paths compile with the new logic
+  depends_on: [RESILIENT-755, RESILIENT-756]
+
+- id: RESILIENT-758
+  domain: RESILIENT
+  title: "RESILIENT: Add test: reaping an old abandoned empty‑branch worktree (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates an empty‑branch worktree with a timestamp older than `EMPTY_BRANCH_GRACE`
+    - Invokes the worktree‑reaper
+    - Asserts that the worktree directory is removed
+    - Test passes only when the new age‑check logic is present
+  depends_on: [RESILIENT-757]
+
+- id: RESILIENT-759
+  domain: RESILIENT
+  title: "RESILIENT: Add test: preserving a recent empty‑branch worktree (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates an empty‑branch worktree with a timestamp newer than `EMPTY_BRANCH_GRACE`
+    - Invokes the worktree‑reaper
+    - Asserts that the worktree directory still exists
+    - Test fails without the new age‑check implementation
+  depends_on: [RESILIENT-757]
+
+- id: RESILIENT-760
+  domain: RESILIENT
+  title: "RESILIENT: Integrate new tests into CI (scripts/ci/test-*.sh) if needed (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - New tests are executed by the CI test script
+    - CI logs show the tests running and passing
+    - No duplicate test execution occurs
+  depends_on: [RESILIENT-758, RESILIENT-759]
+
+- id: RESILIENT-761
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt and clippy, fix any warnings (RESILIENT-380 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` completes with no changes needed"
+    - "`cargo clippy --all-targets -D warnings` completes without warnings"
+    - No new warnings are introduced by the changes
+  depends_on: [RESILIENT-757]
+
+- id: RESILIENT-762
+  domain: RESILIENT
+  title: "RESILIENT: Locate and document the code path that builds the install‑helsinki‑atc roster (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The file and function responsible for generating the install‑helsinki‑atc roster are identified and recorded in a brief markdown note.
+    - A comment is added in the code linking to the documentation note.
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-763
+  domain: RESILIENT
+  title: "RESILIENT: Add missing merge‑flow organ entries to the roster generation logic (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The roster now includes the merge‑flow organ identifiers for all owned nodes.
+    - A log statement (debug level) prints the added organ names when the roster is built.
+  depends_on: [RESILIENT-762]
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-764
+  domain: RESILIENT
+  title: "RESILIENT: Update configuration constants to expose merge‑flow organ identifiers (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - New constants for the merge‑flow organ names are defined in the appropriate config module.
+    - Existing code references the new constants instead of hard‑coded strings.
+  depends_on: [RESILIENT-763]
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-765
+  domain: RESILIENT
+  title: "RESILIENT: Write unit test confirming roster contains merge‑flow organs for owned nodes (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A cargo test (`cargo test roster_contains_merge_flow`) asserts that the generated roster includes the new organ entries.
+    - The test fails when the change from slice 1 is reverted.
+  depends_on: [RESILIENT-763]
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-766
+  domain: RESILIENT
+  title: "RESILIENT: Create integration test script verifying organ installation on owned nodes (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script under `scripts/ci/test‑install‑merge‑flow.sh` runs the install‑helsinki‑atc flow on a simulated owned node and checks that the merge‑flow organ is installed.
+    - The script exits with status 0 only when the organ is present; it fails without the change.
+  depends_on: [RESILIENT-763]
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-767
+  domain: RESILIENT
+  title: "RESILIENT: Run cargo fmt and clippy, fix any warnings introduced by the changes (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` makes no changes."
+    - "`cargo clippy --all-targets -- -D warnings` completes without warnings."
+  depends_on: [RESILIENT-763, RESILIENT-764, RESILIENT-765, RESILIENT-766]
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: RESILIENT-768
+  domain: RESILIENT
+  title: "RESILIENT: Validate CI pipeline passes with new tests and no regressions (RESILIENT-377 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All existing CI jobs succeed.
+    - The new unit and integration tests run and pass.
+    - No existing test suite failures are introduced.
+  depends_on: [RESILIENT-767]
+  notes: |
+    [chump harvest check 'missing']
+    === primitives_index match for 'missing' ===
+    
+    === cluster keyword match for 'missing' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'missing' ===
+    
+    === repo-description match for 'missing' ===
+    
+    === HARVEST_ROADMAP.md mention of 'missing' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'missing' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: SMOKE-001
   domain: SMOKE
