@@ -4905,7 +4905,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 6 slices: CREDIBLE-563, CREDIBLE-564, CREDIBLE-565, CREDIBLE-566, CREDIBLE-567, CREDIBLE-568
+    Decomposed into 6 slices: CREDIBLE-810, CREDIBLE-811, CREDIBLE-812, CREDIBLE-813, CREDIBLE-814, CREDIBLE-815
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -10300,9 +10300,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a structured logging call inside the error‑handling block of `fn migrate` in `crates/chump-gap-store/src/lib.rs` so that any caught error is logged with the consistent prefix `[auto-close-tolerant]` using the project’s logging macro, ensuring the message is emitted to stdout/stderr per the existing logging convention.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All captured errors from the advisory and else‑branch are logged with a consistent prefix (e.g., `[auto‑close‑tolerant]`)
-    - Logs are emitted to stdout/stderr as the project’s logging convention dictates
+    - In `crates/chump-gap-store/src/lib.rs`, the `catch`/`Err` branch of `fn migrate` invokes the logger with a message that begins with the exact prefix `[auto-close-tolerant]` and includes the original error value.
+    - Executing a test that forces `fn migrate` to return an error produces a line on stderr containing `[auto-close-tolerant]` followed by the error text.
+    - The modification does not change the return type, success path, or any other behavior of `fn migrate`; only the error path emits the new log line.
   depends_on: [CREDIBLE-475, CREDIBLE-476, CREDIBLE-477]
   notes: |
     [chump harvest check 'bot-merge']
@@ -19445,6 +19453,180 @@ gaps:
     === cross-pollination briefs mentioning 'bot-merge' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-810
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"built\" stage in CREDIBLE lifecycle (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Code path records a \"built\" event in the lifecycle gauge."
+    - A unit test verifies that invoking the build function increments the gauge to the built stage.
+    - cargo fmt, clippy, and existing test suite pass without warnings.
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-811
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"merged\" stage in CREDIBLE lifecycle (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Code path records a \"merged\" event after a successful merge."
+    - A unit test confirms that after a merge operation the gauge reflects the merged stage.
+    - No new lint or formatting errors are introduced.
+  depends_on: [CREDIBLE-810]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-812
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"deployed\" stage in CREDIBLE lifecycle (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Deployment logic updates the lifecycle gauge to the deployed stage.
+    - A test script (scripts/ci/test-deploy.sh) validates that a mock deployment triggers the gauge change.
+    - All existing tests and clippy checks continue to pass.
+  depends_on: [CREDIBLE-811]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-813
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"wired\" stage in CREDIBLE lifecycle (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Wiring step sets the gauge to the wired stage.
+    - Integration test ensures that after wiring the gauge reports the wired state.
+    - Code formatting and linting remain clean.
+  depends_on: [CREDIBLE-812]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-814
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"running\" stage in CREDIBLE lifecycle (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Runtime start-up updates the gauge to the running stage.
+    - A functional test confirms that a running instance reports the running gauge value.
+    - No regressions in existing test suite.
+  depends_on: [CREDIBLE-813]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-815
+  domain: CREDIBLE
+  title: "CREDIBLE: Add gauge for \"doing-its-job\" (DONE) stage and enforce DONE only at stage 6 (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When the component reaches the final operational state, the gauge is set to DONE.
+    - A test asserts that the DONE state is not reachable before the running stage is completed.
+    - Full lifecycle test (cargo test) fails without this change and passes with it, confirming end‑to‑end behavior.
+    - All formatting, clippy, and existing tests succeed.
+  depends_on: [CREDIBLE-814]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: DOC-031
   domain: DOC
