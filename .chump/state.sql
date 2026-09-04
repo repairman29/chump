@@ -15320,9 +15320,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a new unit‑test function `test_deterministic_verdict_identical_diff` into the existing `#[cfg(test)] mod tests` block in `src/execute_gap.rs` (around line 1446). The test builds a representative `Diff`, invokes `determine_verdict(&diff)` twice, and asserts that the two returned `Verdict` values are equal, exposing nondeterministic behavior.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test feeds the same diff twice and asserts that the verdicts are equal
-    - Test fails before the fix and passes after the fix
+    - The new test `test_deterministic_verdict_identical_diff` is present in `src/execute_gap.rs` inside the `mod tests` section.
+    - The test constructs a `Diff`, calls `determine_verdict(&diff)` twice, and contains an `assert_eq!` comparing the two `Verdict` results.
+    - "Running `cargo test --quiet` before the deterministic‑verdict fix reports `test src::execute_gap::tests::test_deterministic_verdict_identical_diff ... FAILED`."
+    - "After applying the fix that makes `determine_verdict` deterministic, the same command reports `test src::execute_gap::tests::test_deterministic_verdict_identical_diff ... ok`."
   depends_on: [CREDIBLE-660]
 
 - id: CREDIBLE-662
@@ -90429,6 +90438,8 @@ gaps:
     - "The change described by \"comprehension->work engine — organs emit STRUCTURED findings + wire verifier to --apply (external_repo gaps)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 10 slices: INFRA-4415, INFRA-4416, INFRA-4417, INFRA-4418, INFRA-4419, INFRA-4420, INFRA-4421, INFRA-4422, INFRA-4423, INFRA-4424
   opened_date: '2026-08-19'
 
 - id: INFRA-3472
@@ -114914,6 +114925,7 @@ gaps:
     - Define a Rust struct (or enum) that captures all required fields for a structured finding.
     - Include serde Serialize/Deserialize traits and a version field.
     - Add the schema definition to the project documentation.
+  depends_on: [INFRA-4415]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -114948,6 +114960,7 @@ gaps:
     - "Add the new struct(s) to the appropriate crate with #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]."
     - Compile the workspace with no errors.
     - Run `cargo fmt` and `cargo clippy` on the changed files; warnings must be zero.
+  depends_on: [INFRA-4416]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -114982,6 +114995,7 @@ gaps:
     - Modify each organ that currently emits raw findings to construct and emit the new STRUCTURED finding struct.
     - Ensure the emission path returns the struct without breaking existing callers.
     - Add inline comments describing the mapping from old to new format.
+  depends_on: [INFRA-4417]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -115016,6 +115030,7 @@ gaps:
     - Create a verifier module that accepts a STRUCTURED finding and validates required fields and version compatibility.
     - "Expose a public `verify(finding: &StructuredFinding) -> Result<(), VerificationError>` function."
     - Include unit tests that cover success and failure cases.
+  depends_on: [INFRA-4417]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -115050,6 +115065,7 @@ gaps:
     - Call the verifier for each emitted STRUCTURED finding before the engine applies it.
     - If verification fails, abort the apply step and return a clear error.
     - Log verification results at INFO level.
+  depends_on: [INFRA-4418, INFRA-4419]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -115083,6 +115099,7 @@ gaps:
   acceptance_criteria:
     - Add a `cargo test` that triggers an organ and asserts the emitted object matches the STRUCTURED schema.
     - Test must fail before the emission code is added and pass after.
+  depends_on: [INFRA-4418]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -115117,6 +115134,7 @@ gaps:
     - Create a test that runs the work engine with a valid structured finding and expects successful apply.
     - Create a test with an invalid finding and expects the engine to abort with a verification error.
     - Both tests must be part of the CI test suite.
+  depends_on: [INFRA-4420]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
@@ -115147,6 +115165,68 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  acceptance_criteria:
+    - Add the new unit and integration test binaries to `scripts/ci/test-*.sh` or equivalent CI entry point.
+    - CI run must report success when all tests pass.
+  depends_on: [INFRA-4421, INFRA-4422]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4424
+  domain: INFRA
+  title: "INFRA: Run cargo fmt and clippy across the whole workspace, fix warnings (INFRA-3470 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` completes with no changes pending."
+    - "`cargo clippy --all-targets -D warnings` completes with zero warnings."
+    - All existing tests continue to pass.
+  depends_on: [INFRA-4420, INFRA-4421, INFRA-4422]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-476
   domain: INFRA
