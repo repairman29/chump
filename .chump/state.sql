@@ -107302,7 +107302,7 @@ gaps:
 - id: INFRA-4261
   domain: INFRA
   title: "INFRA: Create smoke test script for Phase 3 (INFRA-1319 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -107325,6 +107325,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'ZERO-WASTE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+    [2026-09-03T23:59:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4262
   domain: INFRA
