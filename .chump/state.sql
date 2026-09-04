@@ -7094,9 +7094,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new smoke‑test script `scripts/ci/test-halt-emission-smoke.sh` that exercises the halt‑class emission binary in four modes (transient failure, permanent failure, timeout, success) and validates that the emitted JSON logs conform to the taxonomy and cost‑reporting schema; extend `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` to include this script in the list of discovered test scripts.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/ci/test-halt-emission-smoke.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Smoke test script executes emission paths for transient failure, permanent failure, timeout, and success
-    - Smoke test verifies emitted log output matches expected taxonomy and cost reporting schema
+    - Running `scripts/ci/test-halt-emission-smoke.sh` exits with status code 0.
+    - "The script invokes the emission binary with `--mode transient-failure` and asserts that the resulting log contains `\"type\":\"transient_failure\"` and a valid `cost` field per the schema."
+    - "The script invokes the emission binary with `--mode permanent-failure` and asserts that the resulting log contains `\"type\":\"permanent_failure\"` and matches the taxonomy schema."
+    - The function `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` returns the path `scripts/ci/test-halt-emission-smoke.sh` as part of its discovered test script collection.
   depends_on: [CREDIBLE-367]
 
 - id: CREDIBLE-369
@@ -9021,12 +9031,20 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new CLI subcommand `credible-halt-smoke-test` in `src/commands/roadmap_from_vision.rs`, implement a `run_halt_smoke_test` function that invokes the halt‑emitter wrapper, exercises success, failure, and timeout paths, validates that each emitted event contains a `cost_usd` field and that failure events carry the correct `failure_class`, and register the subcommand in the CLI dispatcher. Extend `scripts/ci/test-recurring-gap-pattern-detector.sh` to invoke this command and fail the CI job on a non‑zero exit. Add a unit test in `crates/chump-gap-store/src/sync.rs` that runs the smoke‑test logic and asserts the required event fields.
+    
+    Target file(s):
+    - src/commands/roadmap_from_vision.rs
+    - scripts/ci/test-recurring-gap-pattern-detector.sh
+    - crates/chump-gap-store/src/sync.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - New command `credible-halt-smoke-test` is added to the CLI
-    - Smoke test runs the wrapper, triggers success, failure, and timeout paths, and validates that corresponding events are emitted
-    - "Test asserts that each emitted event contains the \"cost_usd\" field and, for failures, the correct \"failure_class\" value"
-    - Command exits with status 0 when all checks pass and logs a concise summary
-    - Automated CI job executes the smoke test and fails the build on any regression
+    - src/commands/roadmap_from_vision.rs defines a `run_halt_smoke_test` function and registers the `credible-halt-smoke-test` subcommand to call it.
+    - Executing `credible-halt-smoke-test` from the command line exits with status 0 and prints a concise summary line reporting the counts of success, failure, and timeout events.
+    - scripts/ci/test-recurring-gap-pattern-detector.sh includes a step that runs `credible-halt-smoke-test` and aborts the CI job if the command returns a non‑zero exit code.
+    - crates/chump-gap-store/src/sync.rs contains a test `test_halt_smoke_test_events` that invokes the smoke‑test logic and asserts each emitted event JSON includes a numeric `cost_usd` field and that failure events contain the expected `failure_class` value.
   depends_on: [CREDIBLE-433]
 
 - id: CREDIBLE-435
