@@ -7815,10 +7815,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify `crates/chump-preflight/src/preflight.rs::discover_test_scripts` to correctly scan the `scripts/ci/` directory for files matching `test-*.sh` and include them in the returned script list, and adjust `scripts/ci/test-resilient-366-organ-roll-call.sh::is_exempt` so that these test scripts are not mistakenly marked exempt.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/ci/test-resilient-366-organ-roll-call.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo test` runs all existing tests and the new test passes."
-    - All scripts in `scripts/ci/test-*.sh` execute successfully.
-    - No existing tests regress after the change.
+    - Running `cargo test` executes the test module in `crates/chump-verify/src/pr_ac_coverage.rs` and the test passes.
+    - Executing `scripts/ci/test-resilient-366-organ-roll-call.sh` exits with status code 0, confirming no exempt scripts are flagged.
+    - "A unit test (or direct invocation) of `crates/chump-preflight/src/preflight.rs::discover_test_scripts` returns a list that includes `scripts/ci/test-resilient-366-organ-roll-call.sh`."
+    - All previously existing tests continue to pass when `cargo test` is run (no regressions).
   depends_on: [CREDIBLE-397, CREDIBLE-398]
 
 - id: CREDIBLE-400
