@@ -17191,10 +17191,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update `scripts/ci/test-triage-cargo-test-failure.sh` and `crates/chump-gap-store/src/lib.rs` to verify that noise filters preserve distinct BEAST_MODE_API configuration variations ("localhost:3000" and "https://beast-mode.com") during triage. Ensure that the total BEAST_MODE_API read count stays at 270 after noise filter execution and that no valid BEAST_MODE_API entry is erroneously pruned as noise.
+    
+    Target file(s):
+    - scripts/ci/test-triage-cargo-test-failure.sh
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Both \"localhost:3000\" and \"https://beast-mode.com\" remain reported as distinct drift flags"
-    - Count of BEAST_MODE_API reads stays at 270 after noise filters
-    - Test asserts that no BEAST_MODE_API entry is removed by previous filters
+    - "`scripts/ci/test-triage-cargo-test-failure.sh` asserts both \"localhost:3000\" and \"https://beast-mode.com\" are reported as distinct drift flags."
+    - "`cargo test --package chump-gap-store` passes and confirms BEAST_MODE_API read count remains exactly 270 post-filtering."
+    - Test assertions in `scripts/ci/test-triage-cargo-test-failure.sh` verify zero BEAST_MODE_API entries are removed by preceding noise filters.
   depends_on: [CREDIBLE-724, CREDIBLE-725, CREDIBLE-726, CREDIBLE-727]
   notes: |
     [chump harvest check 'almanac']
@@ -29615,7 +29623,7 @@ gaps:
 - id: EFFECTIVE-1140
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement `chump ship --manual <gap>` for blessed manual fallback ship (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -29645,6 +29653,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-04T20:05:24Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1083B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-1141
   domain: EFFECTIVE
@@ -101373,12 +101382,14 @@ gaps:
   domain: INFRA
   title: "NBA spine phase 1 — canonical ChumpOS metrics registry + bus: ~50 computed gauges from 10 emitters write to one source of truth so the pane and NBA engine read one board instead of scattered json/ambient/journal/discord"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
     - "The change described by \"~50 computed gauges from 10 emitters write to one source of truth so the pane and NBA engine read one board instead of scattered json/ambient/journal/discord\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 12 slices: INFRA-4493, INFRA-4494, INFRA-4495, INFRA-4496, INFRA-4497, INFRA-4498, INFRA-4499, INFRA-4500, INFRA-4501, INFRA-4502, INFRA-4503, INFRA-4504
   outcome_id: FLEET-RADIO
 
 - id: INFRA-3843
@@ -120505,6 +120516,7 @@ gaps:
     - A concrete struct `GlobalMetricsRegistry` implements `MetricsRegistry` using `RwLock<HashMap<String, f64>>`
     - "`GlobalMetricsRegistry::instance()` returns a `'static` reference to the singleton"
     - All methods are safe for concurrent use and compile without warnings
+  depends_on: [INFRA-4493]
   notes: |
     [chump harvest check 'phase']
     === primitives_index match for 'phase' ===
@@ -120533,6 +120545,7 @@ gaps:
     - "A `MetricsBus` struct with `subscribe(callback: Arc<dyn Fn(&str, f64) + Send + Sync>)` and `publish(name: &str, value: f64)` is added"
     - Bus forwards published updates to all registered callbacks
     - Unit test verifies that a callback receives the correct name/value pair
+  depends_on: [INFRA-4494]
   notes: |
     [chump harvest check 'phase']
     === primitives_index match for 'phase' ===
@@ -120561,6 +120574,239 @@ gaps:
     - "A new module `cpu_emitter` reads CPU usage and calls `MetricsBus::publish(\"cpu_usage\", value)`"
     - The emitter is registered to run at least once during a test harness
     - Running the emitter results in the gauge being present in the registry with a non‑zero value
+  depends_on: [INFRA-4495]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4497
+  domain: INFRA
+  title: "INFRA: Integrate second emitter (memory usage) with bus (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new module `memory_emitter` publishes `memory_used` gauge via `MetricsBus`
+    - When executed, the registry contains a `memory_used` entry with a realistic value
+    - No panic occurs if the emitter runs before the registry is initialized
+  depends_on: [INFRA-4495]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4498
+  domain: INFRA
+  title: "INFRA: Implement computed gauge aggregation (average latency) (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "A function `record_latency(ms: f64)` updates an internal sliding window and publishes `avg_latency` gauge"
+    - After feeding 5 latency samples, `avg_latency` equals the arithmetic mean of the samples
+    - The gauge is stored in the registry and can be retrieved via `get_gauge`
+  depends_on: [INFRA-4494]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4499
+  domain: INFRA
+  title: "INFRA: Write unit tests for registry core operations (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Test `register_gauge` adds a new entry and `get_gauge` returns the correct value
+    - Test `update_gauge` changes an existing value
+    - All tests pass with `cargo test` and fail if the implementation is removed
+  depends_on: [INFRA-4494]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4500
+  domain: INFRA
+  title: "INFRA: Write integration test for emitter → bus → registry flow (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test starts the `cpu_emitter`, waits for a publish event, and asserts that `cpu_usage` gauge exists in the registry with a value > 0
+    - The test fails when the emitter or bus is disabled
+    - The test is included in the CI test suite
+  depends_on: [INFRA-4496, INFRA-4499]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4501
+  domain: INFRA
+  title: "INFRA: Update pane component to read metrics from the registry (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Pane code replaces file‑based JSON reads with calls to `MetricsRegistry::get_gauge` for required gauges"
+    - Running the pane displays values that match those published by emitters
+    - No runtime panic occurs when a gauge is missing; a default of 0.0 is shown
+  depends_on: [INFRA-4494]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4502
+  domain: INFRA
+  title: "INFRA: Update NBA engine to consume metrics from the registry (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - NBA engine replaces its previous ambient/journal metric sources with registry lookups
+    - Engine calculations using `avg_latency` and `cpu_usage` reflect the values stored in the registry
+    - Engine unit tests pass with the new source and fail if the registry is not populated
+  depends_on: [INFRA-4494]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4503
+  domain: INFRA
+  title: "INFRA: Add CI script to run new tests and verify failure without changes (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A new script `scripts/ci/test-metrics.sh` invokes `cargo test` and asserts that the integration test from slice 7 fails when the emitter is disabled
+    - The script returns a non‑zero exit code on failure and is referenced in the CI pipeline configuration
+    - Running the script locally reproduces the expected pass/fail behavior
+  depends_on: [INFRA-4500]
+  notes: |
+    [chump harvest check 'phase']
+    === primitives_index match for 'phase' ===
+    
+    === cluster keyword match for 'phase' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'phase' ===
+    
+    === repo-description match for 'phase' ===
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+    
+    === HARVEST_ROADMAP.md mention of 'phase' (deep-scan findings) ===
+      186:- `mythseeker2` — ACTIVE refactor in progress (Feb 7, "75% REFACTORED — PHASE 2 COMPLETE"). Firebase Cloud Functions + Vertex AI → OpenAI fallback. Worth re-checking quarterly.
+    
+    === cross-pollination briefs mentioning 'phase' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4504
+  domain: INFRA
+  title: "INFRA: Run cargo fmt, clippy, and full test suite to ensure no regressions (INFRA-3842 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Command `cargo fmt --all -- --check` passes without changes
+    - Command `cargo clippy --all-targets -- -D warnings` passes
+    - Full `cargo test` suite succeeds, including the new tests
+  depends_on: [INFRA-4493, INFRA-4494, INFRA-4495, INFRA-4496, INFRA-4497, INFRA-4498, INFRA-4499, INFRA-4500, INFRA-4501, INFRA-4502, INFRA-4503]
   notes: |
     [chump harvest check 'phase']
     === primitives_index match for 'phase' ===
