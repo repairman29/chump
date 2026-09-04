@@ -62,6 +62,12 @@ is false; whether the work landed in some OTHER PR still needs the per-gap
 check, because a bookkeeping PR can legitimately record work done elsewhere.
 Either way the registry's receipt points at a diff that does not contain it.
 
+NOTE ON THE COUNTS ABOVE: "47 multi-close PRs" / "79 gaps" / "6 such PRs" were
+the live registry state on 2026-08-10, the day this was first run. The
+registry keeps growing, so a later run will report different numbers — that
+is expected drift, not a regression. Treat this file's counts as a point-in-
+time citation, never as an invariant to assert against in a test.
+
 Usage:
   python3 scripts/ops/false-done-sweep.py --multi-close-only      # cheapest, highest yield
   python3 scripts/ops/false-done-sweep.py --all --limit 400       # broader
