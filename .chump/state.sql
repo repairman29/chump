@@ -15091,10 +15091,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the ChumpChat.buildRoutingConfig method in web/v2/chat.js to obtain routing information from the provider‑manifest.json file instead of reading .env variables, and adjust the CI test script (scripts/ci/test-bug-fix-auto-promotion.sh) to invoke the routing‑config generation step and verify that the output matches the expected snapshot for opus, sonnet, and haiku slots.
+    
+    Target file(s):
+    - web/v2/chat.js
+    - scripts/ci/test-bug-fix-auto-promotion.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Routing configuration is built from the provider manifest instead of .env
-    - Generated routing config matches expected structure for opus, sonnet, and haiku slots
-    - Fresh checkout without .env produces identical routing config as a checkout with .env
+    - "web/v2/chat.js: ChumpChat.buildRoutingConfig returns identical JSON when the .env file is absent as when it is present, proving manifest‑driven generation."
+    - "web/v2/chat.js: The buildRoutingConfig implementation no longer references process.env and reads provider‑manifest.json from the config directory."
+    - "scripts/ci/test-bug-fix-auto-promotion.sh: The script runs `node scripts/generate-routing-config.js`, exits with status 0, and the produced routing-config.json exactly matches the stored snapshot containing opus, sonnet, and haiku slot definitions."
   depends_on: [CREDIBLE-644]
 
 - id: CREDIBLE-646
@@ -15128,10 +15136,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new async integration test function named `integration_routing_without_env` inside the existing `mod tests` block of `src/pr_rescue.rs`. The test will delete any existing `.env` file in a temporary checkout, start the application binary, issue HTTP GET requests to the `/opus`, `/sonnet`, and `/haiku` endpoints, assert that each returns a 200 status with expected payload, and verify that the slot‑tag configuration is sourced exclusively from the manifest by checking a manifest‑defined header in the responses. The test will also assert that the server starts successfully without loading a `.env` file, causing the test to fail if the application aborts due to missing environment variables.
+    
+    Target file(s):
+    - src/pr_rescue.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test checks that a fresh checkout (no .env) can start the application and serve routes for opus, sonnet, and haiku
-    - Test confirms that the manifest is the sole source of slot tag configuration
-    - Test fails if .env is required for routing
+    - "src/pr_rescue.rs contains a `#[tokio::test] async fn integration_routing_without_env()` that compiles without errors."
+    - Running `cargo test --test integration_routing_without_env` on a fresh clone that has no `.env` file starts the server and receives HTTP 200 responses for `/opus`, `/sonnet`, and `/haiku` with bodies matching the expected static content.
+    - The test asserts that the response headers include `x-slot-tag` (or another manifest‑defined header) with the value defined in the manifest file, confirming the manifest is the sole source of slot‑tag configuration.
+    - If a `.env` file is present and contains a routing‑related variable, the test process exits with an error, causing the test to fail, thereby confirming that the application does not rely on `.env` for routing.
   depends_on: [CREDIBLE-647]
 
 - id: CREDIBLE-649
@@ -15160,10 +15176,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the CI helper script `scripts/ci/run-local-ci.sh` (function `run_test_script`) and the merge helper script `scripts/coord/bot-merge.sh` (function `_run_cargo_with_lock_detect`) to invoke `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` after building, aborting with a non‑zero status and printing clear success messages when the checks pass.
+    
+    Target file(s):
+    - scripts/ci/run-local-ci.sh
+    - scripts/coord/bot-merge.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt completes without changes
-    - cargo clippy --all-targets -D warnings passes with zero warnings
-    - No new lint warnings are introduced by the changes
+    - Running `./scripts/ci/run-local-ci.sh` prints “cargo fmt --check passed” and exits with status 0 only when `cargo fmt -- --check` reports no changes.
+    - Running `./scripts/ci/run-local-ci.sh` prints “cargo clippy passed” and exits with status 0 only when `cargo clippy --all-targets -D warnings` reports zero warnings.
+    - Invoking `./scripts/coord/bot-merge.sh` on a PR that introduces a new clippy warning causes the script to exit with a non‑zero status and display the clippy warning output.
+    - The modifications do not alter the existing exit code behavior of `run_test_script` or `_run_cargo_with_lock_detect` for unrelated failures.
   depends_on: [CREDIBLE-649]
 
 - id: CREDIBLE-651
@@ -90217,6 +90242,8 @@ gaps:
     - "The change described by \"bot-merge code-reviewer hard-requires ANTHROPIC_API_KEY — falls over (auto-merge NOT armed) in OAuth-only envs\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 7 slices: INFRA-4408, INFRA-4409, INFRA-4410, INFRA-4411, INFRA-4412, INFRA-4413, INFRA-4414
   opened_date: '2026-08-19'
 
 - id: INFRA-3458
@@ -114655,6 +114682,194 @@ gaps:
     
     === cross-pollination briefs mentioning 'META-070' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4408
+  domain: INFRA
+  title: "INFRA: Locate ANTHROPIC_API_KEY requirement in bot-merge code (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Source files where ANTHROPIC_API_KEY is read or validated are identified
+    - A short document (README‑style comment) lists the exact functions/modules involved
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4409
+  domain: INFRA
+  title: "INFRA: Add conditional check to bypass ANTHROPIC_API_KEY when auto‑merge is disabled (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Code returns early or uses a default path if `auto_merge` flag is false
+    - The new branch compiles without errors
+  depends_on: [INFRA-4408]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4410
+  domain: INFRA
+  title: "INFRA: Implement graceful handling for missing ANTHROPIC_API_KEY in OAuth‑only environments (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When `auto_merge` is false and `ANTHROPIC_API_KEY` is absent, the bot‑merge flow continues without panicking
+    - A log entry at INFO level is emitted indicating the key is optional in this mode
+  depends_on: [INFRA-4409]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4411
+  domain: INFRA
+  title: "INFRA: Add unit test verifying bot‑merge does not panic without ANTHROPIC_API_KEY in OAuth‑only env (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test sets environment to OAuth‑only, clears ANTHROPIC_API_KEY, and calls the bot‑merge entry point
+    - Test asserts the function returns `Ok` (or expected non‑error result) and does not panic
+  depends_on: [INFRA-4410]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4412
+  domain: INFRA
+  title: "INFRA: Add CI script (scripts/ci/test‑anthropic‑key.sh) to run the new unit test (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The script executes `cargo test` with the new test filter and exits with status 0 on success
+    - CI configuration includes the script in the test matrix
+  depends_on: [INFRA-4411]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4413
+  domain: INFRA
+  title: "INFRA: Run cargo fmt and clippy, fix any warnings introduced (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` reports no formatting changes"
+    - "`cargo clippy --all-targets -- -D warnings` reports zero warnings"
+  depends_on: [INFRA-4410]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4414
+  domain: INFRA
+  title: "INFRA: Execute full test suite to confirm no regressions (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo test` completes with all existing tests passing"
+    - No new failures appear in CI after adding the new test
+  depends_on: [INFRA-4411, INFRA-4413]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-476
   domain: INFRA
