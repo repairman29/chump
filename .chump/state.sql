@@ -3414,7 +3414,7 @@ gaps:
     - a test reproduces the CREDIBLE-200 shape — a diff containing only an added assert-true test and no source change, against a gap naming a source target — and proves it is flagged; fails without the change
     - explicitly linked to EFFECTIVE-354 and CREDIBLE-200 so whichever ships first records what it did and did not cover
   notes: |
-    Decomposed into 6 slices: CREDIBLE-315, CREDIBLE-316, CREDIBLE-317, CREDIBLE-318, CREDIBLE-319, CREDIBLE-320
+    Decomposed into 6 slices: CREDIBLE-816, CREDIBLE-817, CREDIBLE-818, CREDIBLE-819, CREDIBLE-820, CREDIBLE-821
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
@@ -15507,9 +15507,20 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new integration test script `scripts/ci/test-shell-doc-merge.sh` that creates a mock shell/doc pull‑request, invokes the `bot-merge` command, and verifies that the output contains no `bot_merge_uncaught_error`. Register this script in `discover_test_scripts` (crates/chump-preflight/src/preflight.rs) so the CI runner picks it up, and ensure `run_test_script` (scripts/ci/run-local-ci.sh) executes it and returns its exit status.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    - scripts/ci/run-local-ci.sh
+    - scripts/ci/test-shell-doc-merge.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CI script creates a mock shell/doc PR, runs bot‑merge, and checks that no bot_merge_uncaught_error appears
-    - Test runs in CI and reports success only when the new behavior is present
+    - The file `scripts/ci/test-shell-doc-merge.sh` creates a temporary git branch representing a shell/doc PR, runs `bot-merge`, and exits with status 0 only if the command’s stdout/stderr do not contain the string `bot_merge_uncaught_error`.
+    - The function `discover_test_scripts` in `crates/chump-preflight/src/preflight.rs` adds `test-shell-doc-merge.sh` to the vector of discovered test script paths.
+    - The function `run_test_script` in `scripts/ci/run-local-ci.sh` invokes `test-shell-doc-merge.sh` and propagates its exit code to the surrounding CI process.
+    - In CI, the overall job exits with code 0 only when `test-shell-doc-merge.sh` passes; a non‑zero exit from that script causes the CI job to fail.
   depends_on: [CREDIBLE-668]
   notes: |
     [chump harvest check 'bot-merge']
@@ -19627,6 +19638,177 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-816
+  domain: CREDIBLE
+  title: "CREDIBLE: Define verdict enum and output format (CREDIBLE-215 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Enum includes exactly REACHES, TEST-ONLY, UNRELATED
+    - "Processor emits JSON with fields: verdict, citations (list of file paths/line numbers), and optional metadata"
+    - Output schema validated against a JSON schema test
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-817
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement test‑only detection logic (CREDIBLE-215 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - When every changed file matches test/fixture/snapshot patterns, verdict is TEST‑ONLY
+    - Verdict is NOT TEST‑ONLY if any changed file is a source file, even if gap asks only for tests
+    - Citations list all changed test files
+  depends_on: [CREDIBLE-816]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-818
+  domain: CREDIBLE
+  title: "CREDIBLE: Integrate almanac path resolution to detect REACHES (CREDIBLE-215 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Given a PR diff and a gap target, the module queries almanac for resolved intra‑repo import edges
+    - If any changed file has a transitive resolved path to the target, verdict is REACHES
+    - Citations include the concrete import chain(s) that reach the target
+    - Performance benchmark shows resolution completes < 500 ms for typical repo size
+  depends_on: [CREDIBLE-816]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-819
+  domain: CREDIBLE
+  title: "CREDIBLE: Add UNRELATED verdict with edge‑resolution rate metadata (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When no changed file resolves to the target, verdict is UNRELATED
+    - Output includes repo's current edge‑resolution rate (e.g., 0.32) as metadata
+    - UNRELATED is explicitly labelled as a review‑signal, never an automatic reject
+    - Citations field is empty
+  depends_on: [CREDIBLE-818]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-820
+  domain: CREDIBLE
+  title: "CREDIBLE: Hook verdict check into CI pre‑push / bot‑merge pipeline (CREDIBLE-215 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The check runs as the first step of the ship path (pre‑push or bot‑merge) and aborts further CI only on fatal errors, not on UNRELATED
+    - CI logs contain the JSON verdict output for auditability
+    - If the check fails to run, the pipeline reports a clear error and does not proceed
+    - Integration test confirms the step executes before unit‑test step in a sample pipeline
+  depends_on: [CREDIBLE-817, CREDIBLE-818, CREDIBLE-819]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-821
+  domain: CREDIBLE
+  title: "CREDIBLE: Write integration test reproducing CREDIBLE‑200 shape (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates a diff that adds only an assert‑true test file and no source changes
+    - When run against a gap that names a source target, the system returns TEST‑ONLY with correct citations
+    - Removing the test change causes the verdict to be UNRELATED, proving the detection works
+    - Test also verifies that the verdict links to EFFECTIVE‑354 and CREDIBLE‑200 via metadata fields
+  depends_on: [CREDIBLE-820]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: DOC-031
   domain: DOC
