@@ -2030,6 +2030,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-runner-orchestrator"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+]
+
+[[package]]
 name = "chump-ship"
 version = "0.2.0"
 dependencies = [

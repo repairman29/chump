@@ -1,0 +1,23 @@
+[package]
+name = "chump-runner-orchestrator"
+version = "0.1.0"
+edition = "2021"
+description = "INFRA-1579 slice: scaffold for the runner-orchestrator crate (fleet-runner lifecycle coordination)"
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+keywords = ["agent", "fleet", "runner", "orchestrator"]
+categories = ["development-tools"]
+
+[[bin]]
+name = "chump-runner-orchestrator"
+path = "src/main.rs"
+
+[lib]
+name = "chump_runner_orchestrator"
+path = "src/lib.rs"
+
+[dependencies]
+anyhow = "1.0"
+
+[lints]
+workspace = true
