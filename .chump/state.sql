@@ -29308,7 +29308,7 @@ gaps:
 - id: EFFECTIVE-465
   domain: EFFECTIVE
   title: "DeepSeek floor empty-diffs surgical gaps too: model explores (read_file/grep) instead of str_replace — verify-gate empty-diff, circuit-open (M1 tool-selection wall recurrence)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -29319,6 +29319,7 @@ gaps:
     - At least one gap-drain-produced surgical sub-gap (e.g. INFRA-3679..3687) is claimed by the floor and MERGED as a PR
   notes: |
     Decomposed into 8 slices: EFFECTIVE-1060, EFFECTIVE-1061, EFFECTIVE-1062, EFFECTIVE-1063, EFFECTIVE-1064, EFFECTIVE-1065, EFFECTIVE-1066, EFFECTIVE-1067
+    [2026-09-04T01:12:48Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: EFFECTIVE-466
@@ -32091,9 +32092,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Insert a new integration test function `test_full_post_intake_flow` inside the `mod tests` block of `src/main.rs`. The test will start the fleet server (or assume it is running), POST a well‑formed mission JSON to the `/mission` endpoint, assert that the HTTP response status is 200, verify that a file named `mission_<uuid>.json` appears in the configured mission directory, and confirm that the orchestrator logs a line containing `Job received:` for the same UUID.
+    
+    Target file(s):
+    - src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test sends a valid mission JSON to the running fleet server, asserts 200 response, checks file creation, and verifies orchestrator received the job.
-    - Test fails if any step is missing.
+    - "src/main.rs contains a `#[tokio::test] async fn test_full_post_intake_flow()` definition compiled without errors."
+    - Executing `cargo test --test integration` runs `test_full_post_intake_flow` and the test asserts a 200 HTTP status from the POST request.
+    - After the POST, the test checks that a file matching `mission_*.json` exists in the mission storage directory and fails if the file is absent.
+    - "The test reads the orchestrator log file and asserts that it contains a line `Job received: <uuid>` matching the posted mission’s UUID."
   depends_on: [EFFECTIVE-544]
   notes: |
     [chump harvest check 'external']
@@ -125249,7 +125259,7 @@ gaps:
 - id: RESILIENT-380
   domain: RESILIENT
   title: "worktree-reaper: reap abandoned empty-branch worktrees past grace (fixes 677-worktree/52G pileup on CJ; empty_branch skip had no age ceiling)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -125258,6 +125268,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 7 slices: RESILIENT-755, RESILIENT-756, RESILIENT-757, RESILIENT-758, RESILIENT-759, RESILIENT-760, RESILIENT-761
+    [2026-09-04T01:12:20Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-23'
 
 - id: RESILIENT-381
@@ -130428,6 +130439,8 @@ gaps:
     2026-08-31 I hand-hardened the two fresh Oracle nodes (161.153.42.233, 137.131.14.145): disabled rpcbind (DDoS-amplification vector, was 0.0.0.0:111), set PermitRootLogin no, confirmed only :22 public + key-only SSH. That should be a REPRODUCIBLE installer step, not operator hand-work — a fresh node must come up hardened. Fold a security-baseline phase into chump-node-install.sh (or a hardening organ): disable rpcbind, PermitRootLogin no, assert no unexpected 0.0.0.0 listeners, key-only SSH. Ties to the FTUE reproducibility work (INFRA-3680..3685).
   acceptance_criteria:
     - "a fresh node install ends hardened (rpcbind off, root-login no, only :22 public) with no operator hand-steps"
+  notes: |
+    Decomposed into 9 slices: RESILIENT-776, RESILIENT-777, RESILIENT-778, RESILIENT-779, RESILIENT-780, RESILIENT-781, RESILIENT-782, RESILIENT-783, RESILIENT-784
   outcome_id: COTG
 
 - id: RESILIENT-554
@@ -136647,6 +136660,431 @@ gaps:
     - The module/file containing the healing logic includes a top‑level comment explaining the stale timer‑organ problem and the implemented fix.
     - The project README includes a brief note linking to the issue ID RESILIENT‑424.
   depends_on: [RESILIENT-771]
+
+- id: RESILIENT-776
+  domain: RESILIENT
+  title: "RESILIENT: Identify insertion point in chump-node-install.sh for security baseline (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Current installer script location documented
+    - Commented placeholder added indicating where hardening steps will be inserted
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-777
+  domain: RESILIENT
+  title: "RESILIENT: Add function to disable and stop rpcbind service (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function `disable_rpcbind` stops rpcbind and disables it from starting on boot
+    - Script returns success when rpcbind is not running
+    - Logs indicate rpcbind was disabled
+  depends_on: [RESILIENT-776]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-778
+  domain: RESILIENT
+  title: "RESILIENT: Add SSH hardening function (PermitRootLogin no, key‑only, port 22) (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function updates /etc/ssh/sshd_config with `PermitRootLogin no` and `PasswordAuthentication no`
+    - Ensures `Port 22` is present and no other ports are configured
+    - Restarts sshd and verifies service is active
+    - SSH login with password is rejected, key‑only login succeeds
+  depends_on: [RESILIENT-776]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-779
+  domain: RESILIENT
+  title: "RESILIENT: Add listener validation step to assert no unexpected 0.0.0.0 listeners (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script runs `netstat -tuln` (or equivalent) after hardening
+    - Fails with clear error if any service is listening on 0.0.0.0 other than ssh on port 22
+    - Passes when only expected listeners are present
+  depends_on: [RESILIENT-776]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-780
+  domain: RESILIENT
+  title: "RESILIENT: Integrate hardening functions into installer flow (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - chump-node-install.sh calls `disable_rpcbind`, `harden_ssh`, and `validate_listeners` in sequence
+    - Installer exits with non‑zero status if any hardening step fails
+    - Log output shows each step was executed
+  depends_on: [RESILIENT-777, RESILIENT-778, RESILIENT-779]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-781
+  domain: RESILIENT
+  title: "RESILIENT: Write unit tests for rpcbind and SSH hardening functions (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite mocks systemctl and file edits
+    - Tests verify rpcbind is stopped and disabled
+    - Tests verify sshd_config contains required directives
+    - All tests pass in local CI run
+  depends_on: [RESILIENT-777, RESILIENT-778, RESILIENT-779]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-782
+  domain: RESILIENT
+  title: "RESILIENT: End‑to‑end test: provision fresh node and verify hardened state (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Automated script provisions a fresh VM using the installer
+    - After install, checks that rpcbind service is inactive
+    - Confirms `PermitRootLogin no` and password authentication disabled in sshd_config
+    - Validates only port 22 is listening on 0.0.0.0
+    - Attempts SSH login with password and expects failure
+  depends_on: [RESILIENT-780]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-783
+  domain: RESILIENT
+  title: "RESILIENT: Update documentation to describe new security‑baseline installer step (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README/INSTALL.md includes a section on automatic hardening
+    - Instructions explain that no manual steps are required for rpcbind and SSH
+    - Documentation versioned with the code change
+  depends_on: [RESILIENT-780]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: RESILIENT-784
+  domain: RESILIENT
+  title: "RESILIENT: Add CI job to run end‑to‑end hardening test on each commit (RESILIENT-553 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI pipeline includes a job that executes the e2e test from slice 6
+    - Job reports success/failure clearly
+    - Pipeline passes when hardening test passes
+  depends_on: [RESILIENT-782]
+  notes: |
+    [chump harvest check 'fleet']
+    === primitives_index match for 'fleet' ===
+    
+    === cluster keyword match for 'fleet' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet' ===
+    
+    === repo-description match for 'fleet' ===
+      jeffadkins-dev: Source for jeffadkins.dev — Jeff Adkins' builder portfolio (edge AI, agent fleets, digital-scrapper tools).
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'fleet' (deep-scan findings) ===
+      174:| **2** | `bot-simulation-service` (smugglers-rpg) | 11.2 MB REAL synthetic-load generator with 5 bot archetypes, fatigue sim, funnel analytics, Railway-native — not the scaffolded UI test stub the description implied | **HIGH** — Chump's fleet test harness could harvest directly for synthetic worker simulation, regression load gen |
+      183:- `analytics-platform-service` — REAL ML-driven retention scoring (`aiInsightsEngine.js` with weighted models, conversion thresholds, churn risk). Relevant to **fleet telemetry layer (INFRA-721 adjacent)** if Chump grows behavioral analytics.
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'fleet' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: SMOKE-001
   domain: SMOKE
