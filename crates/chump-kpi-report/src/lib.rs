@@ -15,3 +15,4 @@
 //!     `chump-waste-tally` uses (EFFECTIVE-411). This keeps the crate a clean
 //!     leaf that depends only on the two data crates above.
 pub mod kpi_report;
+pub mod live_pct;
