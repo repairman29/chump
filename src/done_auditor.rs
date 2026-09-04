@@ -100,7 +100,9 @@ impl DoneAuditReport {
 
 /// Path to the persisted resume cursor (CREDIBLE-794).
 fn cursor_path(repo_root: &Path) -> PathBuf {
-    repo_root.join(".chump-locks").join("done_auditor_cursor.json")
+    repo_root
+        .join(".chump-locks")
+        .join("done_auditor_cursor.json")
 }
 
 /// Read the persisted cursor: the `closed_at` of the last-audited gap from
