@@ -35607,10 +35607,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update the `requeue_gaps` function in `scripts/ops/rot-reaper.sh` to sort incoming template‑AC gaps by priority (P0 → P1 → lower) and by unblocking‑score, then enqueue them in that order; adjust the `seed_gaps` function in `scripts/coord/gap-gardener.py` to call the revised runner, record the ordered queue, and generate candidate AC entries without invoking the auto‑apply path.
+    
+    Target file(s):
+    - scripts/ops/rot-reaper.sh
+    - scripts/coord/gap-gardener.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Runner identifies open template-AC gaps identified by audit-ac
-    - Queue ordering processes higher priority gaps (P0/P1) and high unblocking score gaps first
-    - Supports generating candidate ACs without forcing auto-apply
+    - Running `scripts/ops/rot-reaper.sh` with a mixed‑priority input list logs “Requeued gap <ID> with priority P0” before any “P1” or lower‑priority entries, confirming priority‑ordered enqueueing.
+    - After executing `scripts/coord/gap-gardener.py seed_gaps`, the first line of the generated queue file (`/var/tmp/gap_queue.txt` or equivalent) contains the ID of a P0 template‑AC gap, proving that `seed_gaps` respects the new ordering.
+    - The runner’s output includes only gaps that have the `template-AC` label as reported by `audit-ac`; verify by grepping the queue file for the label and confirming no non‑template‑AC IDs are present.
+    - Invoking the runner to generate candidate ACs does not trigger the auto‑apply script; assert that no “apply_ac.sh” execution log entry appears in the run log while candidate files are created in the `candidates/` directory.
   depends_on: [EFFECTIVE-579]
   notes: |
     [chump harvest check 'queue']
@@ -39346,10 +39355,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update `scripts/ops/stale-pr-reaper.sh` by enhancing the filing workflow to compute a diff against a persisted snapshot of previously filed stable identities (stored in a hidden state file). The diff is calculated before any filing actions, and only identifiers not present in the prior snapshot are passed to the filing logic. The `is_filing_pr_title` function is amended to consult this snapshot so that titles already filed are ignored, preventing re‑filing of standing conditions.
+    
+    Target file(s):
+    - scripts/ops/stale-pr-reaper.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The filing path uses the state/diff from the reuse slice so only new stable identities are filed.
-    - Running the sweep twice against an unchanged repo produces zero holler filings on the second run.
-    - A standing condition is not refiled each cycle; the diff is wired before filing, not as a post-hoc delete.
+    - "? Running `scripts/ops/stale-pr-reaper.sh` on a repository that contains a single new stable identity creates exactly one filing message (e.g., “Filing : <id>”) and writes that `<id>` to the hidden state file `.effective_filed_ids` in the repository root."
+    - "? Executing `scripts/ops/stale-pr-reaper.sh` a second time on the same unchanged repository produces no filing messages, leaves the `.effective_filed_ids` file unchanged, and logs “Diff computed : 0 new items”."
+    - The updated `is_filing_pr_title` function returns `false` for any PR title that already exists in `.effective_filed_ids`, as verified by a unit test that calls `is_filing_pr_title` with a previously recorded title and asserts a false result.
+    - "A log entry “Diff computed: X new items” appears in the script output before any “Filing:” lines, confirming that the diff calculation occurs prior to filing."
   depends_on: [EFFECTIVE-672]
   notes: |
     [chump harvest check 'schedule']
