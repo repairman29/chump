@@ -554,6 +554,29 @@ jobs:
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha || github.sha }}"
 
+  # ── Bypass-message audit (INFRA-1861 slice, INFRA-4537) ────────────────────
+  # False-positive heuristic-check audit AC: "every check that produces FAIL
+  # must have a 'how to bypass cleanly' line in its output." Scans the logs
+  # of every job that FAILED in this run and flags the ones with no line
+  # starting "How to bypass cleanly:". Advisory (continue-on-error) until the
+  # existing check scripts are retrofitted with bypass guidance — flip to
+  # blocking once that backlog is cleared.
+  bypass-message-audit:
+    name: bypass-message-audit
+    needs: [fast-checks, clippy, cargo-test, pr-hygiene, test]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - name: Audit failing jobs for a bypass line (INFRA-1861)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          bash scripts/ci/audit-bypass-messaging.sh --run-id "${{ github.run_id }}"
+
   # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
   # Runs on EVERY pull_request regardless of which paths changed. Catches the
   # two PR-shape failure classes that produced the worst incidents in early

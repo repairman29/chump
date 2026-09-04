@@ -82,6 +82,7 @@ Documented for completeness; do **not** file follow-ups.
 | `no-anthropic-smoke.yml` | Validates chump-first contract under no-network |
 | `sccache health probe` | Probes R2 remote-cache connectivity in CI runner environment; local dev has different network + credentials — meaningless to run locally (INFRA-2288) |
 | `actionlint — workflow syntax gate` (META-199) | Uses `rhysd/actionlint` GitHub Action; requires the actionlint binary not in standard preflight env |
+| `audit-bypass-messaging.sh` (INFRA-1861 / INFRA-4537, job `bypass-message-audit`) | Reads *other jobs'* logs via `gh run view --job --log` in the current GitHub Actions run; no equivalent exists pre-push |
 | `coverage-nightly.yml` (META-200) | Nightly cron only; llvm-cov instrument pass is too slow for per-PR preflight |
 | commit-msg docs-delta trailer check | INFRA-1969/INFRA-3379 — `test-docs-delta-commit-msg.sh` validates the commit-msg git hook itself; runs as a `commit-msg` hook, not a preflight gate — mirroring would duplicate hook logic rather than test something preflight doesn't already cover |
 | gap-reserve concurrency | INFRA-021/301/INFRA-3379 — `test-gap-reserve-concurrency.sh` requires a freshly `cargo build`-ed `chump` binary on `PATH`; the parallel-claim race it tests only reproduces against the compiled binary, too slow for the preflight fast loop |
