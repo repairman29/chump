@@ -1,0 +1,51 @@
+# Dockerfile.ci-builder — INFRA-4375 (INFRA-2287 slice)
+#
+# chump-rust-builder image: Rust 1.82 toolchain plus the accelerants used by
+# fleet build/test loops (sccache for compile caching, mold for fast linking,
+# rustc_codegen_cranelift for fast debug codegen, cargo-nextest for the test
+# runner) and the CLI utilities fleet scripts shell out to (jq, gh, python3).
+#
+# Usage:
+#   docker build . -f docker/Dockerfile.ci-builder -t chump-rust-builder
+#   docker run --rm chump-rust-builder rustc --version   # -> rustc 1.82.x
+
+FROM rust:1.82-bookworm
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+        git curl jq python3 ca-certificates \
+        build-essential pkg-config libssl-dev \
+        mold \
+    && rm -rf /var/lib/apt/lists/*
+
+# GitHub CLI (gh) — official apt repo per cli.github.com/packages.
+RUN curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+        -o /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+        > /etc/apt/sources.list.d/github-cli.list \
+    && apt-get update && apt-get install -y --no-install-recommends gh \
+    && rm -rf /var/lib/apt/lists/*
+
+# sccache + cargo-nextest via cargo-binstall (falls back to source build).
+RUN cargo install --locked cargo-binstall \
+    && cargo binstall -y --no-confirm sccache cargo-nextest \
+        || cargo install --locked sccache cargo-nextest
+
+# rustc_codegen_cranelift backend — ships as a nightly rustup component.
+RUN rustup toolchain install nightly \
+    && rustup component add rustc-codegen-cranelift-preview --toolchain nightly
+
+ENV CARGO_HOME=/usr/local/cargo \
+    PATH=/usr/local/cargo/bin:$PATH \
+    RUSTC_WRAPPER=sccache \
+    SCCACHE_DIR=/sccache
+
+# Sanity check on build (fails the image build if any tool is missing).
+RUN rustc --version && cargo --version \
+    && sccache --version && cargo nextest --version \
+    && mold --version && jq --version && gh --version && python3 --version \
+    && rustup component list --toolchain nightly | grep -q 'rustc-codegen-cranelift-preview.*installed'
+
+LABEL org.opencontainers.image.source="https://github.com/repairman29/chump"
+LABEL org.opencontainers.image.description="chump-rust-builder: Rust 1.82 + sccache + mold + cranelift + nextest + jq + gh + python3"
+LABEL org.opencontainers.image.licenses="MIT"
