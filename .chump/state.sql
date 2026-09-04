@@ -18337,9 +18337,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a concise comment block to the `run_chump` function in `scripts/dev/heartbeat-ship.sh` and to the `ship` function in `crates/chump-gap-store/src/lib.rs` that explains the current “stop‑receiver” lever, how to invoke it as an off‑switch for the local receiver, and notes that this is a temporary measure pending the resolution of INFRA‑3580.
+    
+    Target file(s):
+    - scripts/dev/heartbeat-ship.sh
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - README and inline comments describe how to stop the local receiver process as an off‑switch
-    - Documentation mentions that this is the intended temporary lever until INFRA‑3580 is resolved
+    - "scripts/dev/heartbeat-ship.sh: the `run_chump` function contains a new comment block describing the interim stop‑receiver lever and referencing INFRA‑3580."
+    - "crates/chump-gap-store/src/lib.rs: the `ship` function includes a new comment block that documents the temporary off‑switch mechanism and mentions that it will be replaced once INFRA‑3580 is resolved."
   depends_on: [CREDIBLE-773]
   notes: |
     [chump harvest check 'merging']
@@ -18363,11 +18371,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `_notify_operator_escalation` function in `scripts/ops/github-webhook-receiver.py` to invoke the regression harness defined in `scripts/ci/eval-gate-fpr-baseline.sh` for the eight PRs listed in the bug, then validate that exactly one `gap_flipped_done_on_merge` event is emitted per PR, that no extra such events appear, and that every gap marked closed receives a populated `closed_date` field.
+    
+    Target file(s):
+    - scripts/ops/github-webhook-receiver.py
+    - scripts/ci/eval-gate-fpr-baseline.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Execute the regression suite on the eight PRs listed in the bug description
-    - Exactly one gap is flipped to `done` per PR
-    - No extra `gap_flipped_done_on_merge` events are emitted
-    - All closed gaps have `closed_date` populated
+    - When a merge webhook is handled, `_notify_operator_escalation` calls `scripts/ci/eval-gate-fpr-baseline.sh` with the eight PR IDs and the script exits with status 0.
+    - After processing each PR, the application log contains exactly one line matching the pattern `gap_flipped_done_on_merge` for that PR (verified via `grep` on the log file).
+    - The total count of `gap_flipped_done_on_merge` lines in the log after a full run equals eight, confirming no extra events are emitted.
+    - "A post‑run API query (`curl` to the gaps endpoint) returns JSON where every object with `\"status\":\"closed\"` includes a non‑null `\"closed_date\"` field."
   depends_on: [CREDIBLE-773]
   notes: |
     [chump harvest check 'merging']
