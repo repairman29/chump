@@ -28661,7 +28661,7 @@ gaps:
 - id: EFFECTIVE-446
   domain: EFFECTIVE
   title: "gap-spec enricher: thin open gaps -> concrete file-pointed specs the cheap DeepSeek floor can ship"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -28673,6 +28673,7 @@ gaps:
     - docs/strategy/MODEL_ROUTING_LADDER_2026-07-22.md gains an enricher section (extends EFFECTIVE-445, no dup) documenting the mechanism + before/after proof
   notes: |
     Decomposed into 15 slices: EFFECTIVE-959, EFFECTIVE-960, EFFECTIVE-961, EFFECTIVE-962, EFFECTIVE-963, EFFECTIVE-964, EFFECTIVE-965, EFFECTIVE-966, EFFECTIVE-967, EFFECTIVE-968, EFFECTIVE-970, EFFECTIVE-971, EFFECTIVE-972, EFFECTIVE-973, EFFECTIVE-974
+    [2026-09-04T00:22:20Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-23'
   outcome_id: EFFECTIVE-000
 
@@ -95308,6 +95309,8 @@ gaps:
     - "The change described by \"make baseline line-drift-proof (re-key file+rule+color, not line) OR tokenize cockpit.js/dashboard-tiles.js — recurring main-red root (red #4275, #4281, #4305)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 8 slices: INFRA-4266, INFRA-4267, INFRA-4268, INFRA-4269, INFRA-4270, INFRA-4271, INFRA-4272, INFRA-4273
 
 - id: INFRA-3841
   domain: INFRA
@@ -107654,6 +107657,218 @@ gaps:
     === cross-pollination briefs mentioning 'ZERO-WASTE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
+- id: INFRA-4266
+  domain: INFRA
+  title: "INFRA: Identify recurring main‑red color codes in the codebase (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A document (e.g., MARKDOWN file) lists all occurrences of the red colors #4275, #4281, #4305 with file paths and line numbers."
+    - The list is reviewed and approved by the infra lead.
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4267
+  domain: INFRA
+  title: "INFRA: Add a new CSS token for the main‑red colour (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A token named `--main-red` (or equivalent) is added to the token definition file.
+    - "The token value matches the primary red shade (#4275) and is documented."
+    - Running `cargo fmt` and `cargo clippy` reports no warnings related to the new token file.
+  depends_on: [INFRA-4266]
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4268
+  domain: INFRA
+  title: "INFRA: Re‑key baseline token mapping to use file+rule+color instead of line number (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The mapping file now uses a composite key of `<file>::<css‑rule>::<color>`."
+    - All existing mappings are migrated without loss of data.
+    - A unit test confirms that a known rule/color pair resolves correctly using the new key format.
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4269
+  domain: INFRA
+  title: "INFRA: Refactor `cockpit.js` to use the new `--main-red` token (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "All hard‑coded occurrences of #4275, #4281, or #4305 in `cockpit.js` are replaced with a reference to the `--main-red` token."
+    - "`git diff` shows no remaining literal red hex values in the file."
+    - The file passes linting (`cargo clippy`) after the change.
+  depends_on: [INFRA-4267, INFRA-4268]
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4270
+  domain: INFRA
+  title: "INFRA: Refactor `dashboard-tiles.js` to use the new `--main-red` token (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "All hard‑coded occurrences of #4275, #4281, or #4305 in `dashboard-tiles.js` are replaced with a reference to the `--main-red` token."
+    - "`git diff` shows no remaining literal red hex values in the file."
+    - The file passes linting (`cargo clippy`) after the change.
+  depends_on: [INFRA-4267, INFRA-4268]
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4271
+  domain: INFRA
+  title: "INFRA: Add unit test confirming token resolves to the correct colour (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A test in `tests/css_token.rs` (or equivalent) asserts that `--main-red` resolves to `#4275`."
+    - The test fails when the token definition is removed or altered.
+  depends_on: [INFRA-4267]
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4272
+  domain: INFRA
+  title: "INFRA: Add integration test verifying UI renders the main‑red colour (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "An end‑to‑end test loads a component that uses the main‑red token and asserts the computed style colour is `rgb(66, 117, 255)` (or the equivalent of `#4275`)."
+    - The test fails when the token reference is replaced with a hard‑coded value.
+  depends_on: [INFRA-4271, INFRA-4269, INFRA-4270]
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-4273
+  domain: INFRA
+  title: "INFRA: Run full CI checks (cargo fmt, clippy, all tests) and ensure no regressions (INFRA-3840 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt -- --check` reports no formatting issues."
+    - "`cargo clippy -- -D warnings` reports zero warnings."
+    - All existing tests plus the newly added unit and integration tests pass.
+    - No existing functionality is broken (verified by the CI pipeline).
+  depends_on: [INFRA-4269, INFRA-4270, INFRA-4271, INFRA-4272]
+  notes: |
+    [chump harvest check 'baseline']
+    === primitives_index match for 'baseline' ===
+    
+    === cluster keyword match for 'baseline' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'baseline' ===
+    
+    === repo-description match for 'baseline' ===
+    
+    === HARVEST_ROADMAP.md mention of 'baseline' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'baseline' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
@@ -118128,7 +118343,7 @@ gaps:
 - id: PRODUCT-200
   domain: PRODUCT
   title: "GOLDEN TICKET — the Discord DM sidekick that makes Jeff\\x27s day, every day. Not notifications, not a firehose: ONE Opus companion Jeff talks to freely, that opens each day with something genuinely delightful + useful (what the fleet did overnight in his voice, a real win, a wry line, the one thing worth his attention) and answers anything conversationally. The daily-joy bar: he should WANT to open it. Parked till post-ribbon per Jeff, but logged so it is never lost. AC: a daily DM Jeff rates a delight (not a chore); real talk not status-spam; pages only when nuts; sustains on cheap inference with Opus only for judgment."
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -118137,6 +118352,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 11 slices: PRODUCT-203, PRODUCT-204, PRODUCT-205, PRODUCT-206, PRODUCT-207, PRODUCT-208, PRODUCT-209, PRODUCT-210, PRODUCT-211, PRODUCT-212, PRODUCT-213
+    [2026-09-04T00:29:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1074B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-20'
 
 - id: PRODUCT-203
@@ -124045,13 +124261,15 @@ gaps:
 - id: RESILIENT-363
   domain: RESILIENT
   title: "Worktree-reaper does not cover SECONDARY/abandoned checkouts — barnacle-busting (RESILIENT-359) concrete instance. chump-host (HEAD 11d stale, no procs/units) accumulated 36G of agent worktrees a MONTH+ old (167 dirs + 1009 dangling git registrations); nothing reaped them, root disk crept to 84% before a hand-drain reclaimed 36G (84%->51%, 2026-08-21). The reaper is scoped to the main checkout only. Durable fix: reaper sweeps stale (>N-day) .claude/worktrees across ALL known checkouts on the node (main + chump-host + any others) + prunes dangling git worktree registrations, OR an abandoned-checkout detector (stale HEAD + no procs/units) archives them. AC: a stale worktree in ANY node checkout is reaped within a cycle; prove by seeding an old worktree in a secondary checkout and watching it drain hands-off; disk headroom stays >20%."
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"reaper sweeps stale (>N-day) .claude/worktrees across ALL known checkouts on the node (main + chump-host + any others) + prunes dangling git worktree registrations, OR an abandoned-checkout detector (stale HEAD + no procs/units) archives them. AC: a stale worktree in ANY node checkout is reaped within a cycle; prove by seeding an old worktree in a secondary checkout and watching it drain hands-off; disk headroom stays >20%.\" is implemented in the relevant RESILIENT code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-09-04T00:30:20Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-21'
 
 - id: RESILIENT-364
