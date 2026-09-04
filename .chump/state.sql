@@ -24496,6 +24496,182 @@ gaps:
     === cross-pollination briefs mentioning 'execute-gap' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
 
+- id: EFFECTIVE-1074
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-886: Fetch OpenRouter model registry (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "API call to https://openrouter.ai/api/v1/models using slot 11 succeeds with HTTP 200"
+    - "Response contains exactly 400 model objects each with fields: context_length, pricing, per_request_limits, expiration_date, knowledge_cutoff, architecture, reasoning, supported_parameters"
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1075
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-887: Store fetched metadata in existing index without rebuilding (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Fetched model list is persisted to the shared index used by the tender
+    - No duplicate entries are created and the index schema remains unchanged
+  depends_on: [EFFECTIVE-1074]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1076
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-888: Filter tool‑capable models (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Filtered list contains only models where supported_parameters includes the string \"tools\""
+    - Count of filtered models matches the measured value (14) on 2026‑08‑07
+  depends_on: [EFFECTIVE-1075]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1077
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-889: Verify declared rate‑limit and context limits (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For each configured slot, a probe to /v1/models retrieves rate‑limit headers and declared limits
+    - Any mismatch between observed RPM/RPD/CONTEXT_K and the values stored in .env is written to a findings report
+    - Report includes the known discrepancies for slots 4, 8, 12‑15
+  depends_on: [EFFECTIVE-1074]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1078
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-890: Detect retired or unreachable models (deprecation & connectivity watch) (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Models with expiration_date in the past are flagged as retired in the index
+    - Models absent from the live /v1/models endpoint are flagged as unreachable
+    - A warning entry is added to the findings report for each flagged model
+  depends_on: [EFFECTIVE-1074]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1079
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-891: Join measured fitness data with metadata (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Provider_quality.rs records (success, failure, latency, tool_call_success) are aggregated per model
+    - Each model entry in the index now includes a computed fitness_score derived from the aggregated data
+    - Models that advertise tools but have low tool_call_success rank lower than successful tool‑capable models
+  depends_on: [EFFECTIVE-1074]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
 - id: EFFECTIVE-108
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire INFRA-2662.yaml into role curator-opus-target"
@@ -24506,6 +24682,184 @@ gaps:
     - "1. Edit the role-doc for curator-opus-target to reference INFRA-2662.yaml (shipped in DOC-065) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'INFRA-2662.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1080
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-892: Implement per‑task‑class ranking using CascadeStrategy::TaskAware & provider_bandit (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For each task class (work, cursor_improve, doc_hygiene, battle_qa, research, opportunity, discovery) a ranked list of slots is produced
+    - Ranking algorithm consumes fitness_score, tool capability flag, and declared limits
+    - The Thompson Sampling bandit is enabled but defaults to off unless explicitly toggled
+  depends_on: [EFFECTIVE-1079, EFFECTIVE-1076]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1081
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-893: Add big‑context routing logic (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Tasks that request a context window >200 000 tokens are automatically filtered to models with context_length ≥ requested size
+    - Free tool‑capable models with 1 000 000 and 262 144 context lengths appear in the candidate set for such tasks
+  depends_on: [EFFECTIVE-1074]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1082
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-894: Wire per‑task‑class rankings into existing routing machinery (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Global slot ordering is replaced by the per‑task‑class ranking produced in EFFECTIVE-892
+    - All downstream request dispatches consult the new ranking when selecting a slot
+  depends_on: [EFFECTIVE-1080, EFFECTIVE-1081]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1083
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-895: Create scheduled launchd job for the tender (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A launchd plist is installed that runs the indexing and ranking pipeline on the schedule defined in SCHEDULING_LAYERS.md
+    - Job survives user logout and system sleep, logs start/completion timestamps, and retries on failure
+    - Successful run produces a fresh ranked artifact
+  depends_on: [EFFECTIVE-1075, EFFECTIVE-1076, EFFECTIVE-1079, EFFECTIVE-1080, EFFECTIVE-1081, EFFECTIVE-1082]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1084
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-896: Produce ranked, dated artifact for fleet and humans (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A JSON (or YAML) file is written to the configured path after each scheduled run
+    - File includes a UTC timestamp and, for each task class, an ordered list of slot identifiers with their fitness scores
+    - File is readable by automated agents and by humans (pretty‑printed)
+  depends_on: [EFFECTIVE-1083]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1085
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-897: Add unit tests and documentation for the new tender (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite covers fetching, filtering, limit verification, deprecation detection, fitness joining, ranking, and scheduled execution
+    - All new tests pass in CI
+    - README and SCHEDULING_LAYERS.md are updated with description of the tender, its configuration knobs, and troubleshooting steps
+  depends_on: [EFFECTIVE-1074, EFFECTIVE-1075, EFFECTIVE-1076, EFFECTIVE-1077, EFFECTIVE-1078, EFFECTIVE-1079, EFFECTIVE-1080, EFFECTIVE-1081, EFFECTIVE-1082, EFFECTIVE-1083, EFFECTIVE-1084]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: EFFECTIVE-109
   domain: EFFECTIVE
@@ -28673,7 +29027,7 @@ gaps:
     - "BIG-CONTEXT ROUTING IS FREE MONEY LEFT ON THE TABLE: free tool-capable models exist at 1,000,000 context (nvidia/nemotron-3-ultra-550b:free) and several at 262,144. Nothing today routes 'this task needs a huge window' to them — the cascade orders by priority and rate limit only"
     - "OUTPUT IS A RANKED, DATED ARTIFACT the fleet and a human can both read, refreshed on a schedule (launchd per SCHEDULING_LAYERS.md — it must survive session close). Not a one-shot script someone remembers to run: see ZERO-WASTE-036, this fleet's most repeated failure is the built-and-never-scheduled instrument"
   notes: |
-    Decomposed into 12 slices: EFFECTIVE-886, EFFECTIVE-887, EFFECTIVE-888, EFFECTIVE-889, EFFECTIVE-890, EFFECTIVE-891, EFFECTIVE-892, EFFECTIVE-893, EFFECTIVE-894, EFFECTIVE-895, EFFECTIVE-896, EFFECTIVE-897
+    Decomposed into 12 slices: EFFECTIVE-1074, EFFECTIVE-1075, EFFECTIVE-1076, EFFECTIVE-1077, EFFECTIVE-1078, EFFECTIVE-1079, EFFECTIVE-1080, EFFECTIVE-1081, EFFECTIVE-1082, EFFECTIVE-1083, EFFECTIVE-1084, EFFECTIVE-1085
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -131413,7 +131767,7 @@ gaps:
 - id: RESILIENT-554
   domain: RESILIENT
   title: "wake the Pixel: 8-core node dark since Aug26 — port worker self-heal to proot + re-arm sv worker (fleet's biggest idle capacity)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -131422,7 +131776,8 @@ gaps:
     - Pixel sshd reachable + a proot worker running with the self-heal fixes, authoring PRs again
     - the cap-wasting loop that caused the Aug26 pause cannot recur (cooldown/auto-block ported)
   notes: |
-    Decomposed into 12 slices: RESILIENT-556, RESILIENT-557, RESILIENT-558, RESILIENT-559, RESILIENT-560, RESILIENT-561, RESILIENT-562, RESILIENT-563, RESILIENT-564, RESILIENT-565, RESILIENT-566, RESILIENT-567
+    Decomposed into 12 slices: RESILIENT-799, RESILIENT-800, RESILIENT-801, RESILIENT-802, RESILIENT-803, RESILIENT-804, RESILIENT-805, RESILIENT-806, RESILIENT-807, RESILIENT-808, RESILIENT-809, RESILIENT-810
+    [2026-09-04T03:01:49Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: SOVEREIGN
 
 - id: RESILIENT-555
@@ -138411,6 +138766,387 @@ gaps:
     
     === cross-pollination briefs mentioning 'concurrent' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: RESILIENT-799
+  domain: RESILIENT
+  title: "RESILIENT: Document manual SSH restart procedure for Pixel device (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A markdown file with step‑by‑step instructions to restart Termux sshd on the Pixel is added to the docs repository
+    - The document is reviewed and approved by the infra lead
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-800
+  domain: RESILIENT
+  title: "RESILIENT: Add health‑check script to verify sshd reachable on Pixel (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A script that attempts a TCP connection to port 22 on the Pixel returns success/failure
+    - The script is added to the monitoring repo and passes unit tests
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-801
+  domain: RESILIENT
+  title: "RESILIENT: Implement INFRA‑3808 cooldown logic in worker code (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Cooldown module prevents the worker from restarting more than once within the configured interval
+    - Unit tests cover the cooldown edge cases and all pass
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-802
+  domain: RESILIENT
+  title: "RESILIENT: Implement INFRA‑3832 wedge‑kill logic in worker code (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Wedge‑kill detects a stuck worker and terminates it safely
+    - Unit tests verify wedge‑kill triggers under simulated stall conditions
+  depends_on: [RESILIENT-801]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-803
+  domain: RESILIENT
+  title: "RESILIENT: Port self‑heal fixes (cooldown + wedge‑kill) to proot‑glibc worker path (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The proot‑glibc worker binary includes the new cooldown and wedge‑kill code
+    - Integration tests confirm the worker builds and runs in the proot environment
+  depends_on: [RESILIENT-801, RESILIENT-802]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-804
+  domain: RESILIENT
+  title: "RESILIENT: Update runit sv worker config to re‑arm on start (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - runit service file includes a post‑start hook that ensures the worker is armed
+    - Service reload on a test node shows the worker starts automatically
+  depends_on: [RESILIENT-803]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-805
+  domain: RESILIENT
+  title: "RESILIENT: Add auto‑block to prevent cap‑wasting loop from recurring (RESILIENT-554 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Configuration flag disables the loop that caused the Aug 26 pause
+    - Automated test validates that the loop does not start when the flag is enabled
+  depends_on: [RESILIENT-803]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-806
+  domain: RESILIENT
+  title: "RESILIENT: Create CI pipeline step to deploy updated worker to Pixel node (RESILIENT-554 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI job builds the proot‑glibc worker and pushes it to the Pixel device via the fleet deploy tool
+    - Job logs show successful transfer and checksum verification
+  depends_on: [RESILIENT-804, RESILIENT-805]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-807
+  domain: RESILIENT
+  title: "RESILIENT: Run deployment to Pixel node and start the worker (RESILIENT-554 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Deployment job executes without errors and the worker process appears in `ps` on the Pixel
+    - Runit reports the sv worker as `run`
+  depends_on: [RESILIENT-806]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-808
+  domain: RESILIENT
+  title: "RESILIENT: Validate worker is running and self‑heals on failure (RESILIENT-554 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Simulated failure triggers cooldown and wedge‑kill, and the worker restarts automatically
+    - Logs contain entries confirming self‑heal actions
+  depends_on: [RESILIENT-807]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-809
+  domain: RESILIENT
+  title: "RESILIENT: Validate sshd reachable after worker activation (RESILIENT-554 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Health‑check script from slice 2 returns success for port 22 on the Pixel
+    - Manual SSH connection from a fleet node succeeds
+  depends_on: [RESILIENT-808]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: RESILIENT-810
+  domain: RESILIENT
+  title: "RESILIENT: Add monitoring alert for future cap‑wasting loops (RESILIENT-554 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Monitoring rule fires if the worker enters the prohibited loop state
+    - Alert is routed to the infra on‑call channel and tested with a synthetic trigger
+  depends_on: [RESILIENT-809]
+  notes: |
+    [chump harvest check 'Pixel']
+    === primitives_index match for 'Pixel' ===
+    
+    === cluster keyword match for 'Pixel' ===
+      cluster tools-platform (9 repos): pixel-edge-server, neural-farm, workbench, openclaw, slides, daisy-chain, code-roach, oracle, coderoach
+    
+    === extracted_primitives (per-file, line-refd) match for 'Pixel' ===
+    
+    === repo-description match for 'Pixel' ===
+      pixel-edge-server: Pixel 8 Pro edge-AI stack: Jarvis Android app + Termux/Debian gateway — run a local agent on your phone.
+      neural-farm: Local Neural Farm: MacBook + iPhone + Pixel, one API for Cursor (LiteLLM + InferrLM)
+    
+    === HARVEST_ROADMAP.md mention of 'Pixel' (deep-scan findings) ===
+      55:| `pixel-edge-server` | n/a | Outside Chump engine scope |
+      143:| `pixel-edge-server` bicameral-mind blueprint (BLUEPRINT_BEST_IN_CLASS.md) — Reflexive on-device + Neocortex cloud routing | Pi mesh / neural-farm architecture | Vendor architectural pattern | not yet filed (consider) |
+      152:- **tools-platform → pixel-edge-server:** unshelved. Bicameral-mind architecture is directly aligned with neural-farm and Pi mesh vision.
+    
+    === cross-pollination briefs mentioning 'Pixel' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: SMOKE-001
   domain: SMOKE
