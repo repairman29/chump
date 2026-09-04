@@ -10314,6 +10314,32 @@ async fn main() -> Result<()> {
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
 
+                // ── CREDIBLE-798: acceptance-criteria gate for P0/P1 gaps ──────
+                // P0/P1 gaps historically shipped with only the auto-generated
+                // obs-AC template (INFRA-756), which is generic and doesn't
+                // capture what "done" means for that specific gap. Require an
+                // explicit --acceptance-criteria for the highest-stakes gaps;
+                // --no-ac-required is the audited bypass (falls back to the
+                // default template / --skip-obs-acs behavior below).
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str())
+                        && custom_acceptance_criteria.is_none()
+                        && !no_ac_required
+                    {
+                        eprintln!();
+                        eprintln!(
+                            "chump gap: P0/P1 gaps require --acceptance-criteria <text> (per CREDIBLE-798)."
+                        );
+                        eprintln!(
+                            "Bypass: --no-ac-required (allows gap creation without explicit AC)."
+                        );
+                        std::process::exit(1);
+                    }
+                }
+                // ── end CREDIBLE-798 AC gate ────────────────────────────────────
+
                 // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
                 // unless --skip-obs-acs is set or --acceptance-criteria is provided.
                 let acceptance_criteria_json = match custom_acceptance_criteria {
