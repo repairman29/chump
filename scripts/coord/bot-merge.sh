@@ -4461,7 +4461,7 @@ except Exception:
                     _ac_pre="$(CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
                         chump pr ac-coverage "$TARGET_PR" 2>&1 || true)"
                     if grep -q '"status":"miss"' <<<"$_ac_pre"; then
-                        _ac_pre_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_pre")"
+                        _ac_pre_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_pre" || true)"
                         red "[PEER-VERI-08] BLOCKING: $_gid PR #$TARGET_PR has an unproven proof-AC live outcome (${_ac_pre_misses:-misses}) and CHUMP_VERIFY_LIVE_BLOCKING=1 — refusing to auto-close. Verify the live outcome, then close manually: chump gap ship $_gid --closed-pr $TARGET_PR --update-yaml"
                         CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
                             chump gap set "$_gid" --add-note "PEER-VERI-08: auto-close BLOCKED — PR #$TARGET_PR merged but a proof AC's live outcome is unverified (${_ac_pre_misses:-}). CHUMP_VERIFY_LIVE_BLOCKING=1 held the close; verify manually then run chump gap ship." >/dev/null 2>&1 || true
@@ -4506,7 +4506,7 @@ except Exception:
                         _ac_out="$(CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
                             chump pr ac-coverage "$TARGET_PR" 2>&1 || true)"
                         if grep -q '"status":"miss"' <<<"$_ac_out"; then
-                            _ac_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_out")"
+                            _ac_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_out" || true)"
                             yellow "[CREDIBLE-178] AC-coverage MISS: $_gid closed via PR #$TARGET_PR but the merged diff did not cover all acceptance criteria (${_ac_misses:-misses}). Work may be PARTIAL — verify before trusting 'done'. (ac_coverage_miss emitted to ambient.)"
                             CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
                                 chump gap set "$_gid" --add-note "CREDIBLE-178: closed via PR #$TARGET_PR with UNCOVERED acceptance criteria ${_ac_misses:-}. Verify the work is complete before trusting status=done." >/dev/null 2>&1 || true
