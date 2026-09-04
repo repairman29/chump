@@ -66833,13 +66833,7 @@ gaps:
     - "Backward-compat: existing broadcast.sh callers continue to work; new typed-schema is opt-in via --strict flag; flip to default after 7-day clean window"
     - "Smoke: scripts/ci/test-a2a-mesh.sh spawns 3 ephemeral sessions, exchanges messages across all 6 pair-directions, asserts 100% delivery + <100ms median latency"
   notes: |
-    DECOMPOSED 2026-05-24T17:42Z by wizard (owning the offline decompose-curator task per operator 17:31Z directive). 5 sub-slices filed:
-      - INFRA-1944 slice A: broadcast.sh delivery-confirmation receipts (P1/s)
-      - INFRA-1945 slice B: role-typed routing via fleet-registry.jsonl (P1/s)
-      - INFRA-1946 slice C: dead-letter queue + operator-recall page (P1/s)
-      - INFRA-1947 slice D: opt-in NATS transport with file-fallback (P2/m)
-      - INFRA-1948 slice E: schema validation + 4 ambient kinds (P1/xs, ships last)
-    Recommended ship order: E (gates) → A → B → C → D. Slices A-C usable independently for single-machine fleet; D enables Pi-mesh.
+    Decomposed into 10 slices: INFRA-4558, INFRA-4559, INFRA-4560, INFRA-4561, INFRA-4562, INFRA-4563, INFRA-4564, INFRA-4565, INFRA-4566, INFRA-4567
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -122813,6 +122807,7 @@ gaps:
     - broadcast.sh writes a receipt file containing sender, recipient, correlation_id, and timestamp
     - Receipt is stored in a known KV path accessible to the recipient
     - CI test validates that a receipt appears for each successful broadcast
+  depends_on: [INFRA-4558]
   notes: |
     [chump harvest check 'extend']
     === primitives_index match for 'extend' ===
@@ -122843,6 +122838,7 @@ gaps:
     - Each curator session writes a JSON record {role, skills, session_id} to a shared KV store
     - The record is updated on session start and removed on graceful shutdown
     - Router can query the KV store and retrieve sessions matching a required skill set
+  depends_on: [INFRA-4558]
   notes: |
     [chump harvest check 'extend']
     === primitives_index match for 'extend' ===
@@ -122873,6 +122869,194 @@ gaps:
     - Undeliverable events are written to dead‑letter queue files with full metadata
     - A simple HTML page lists recent dead‑letter entries with a link to re‑queue them
     - Operator can click a re‑queue button and the event is re‑dispatched
+  depends_on: [INFRA-4559]
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4562
+  domain: INFRA
+  title: "INFRA: Opt‑in NATS transport layer (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When --transport=nats is passed, broadcast.sh publishes events to a NATS subject
+    - Subscribers can receive events via NATS push without polling
+    - If NATS connection fails, the script falls back to file‑based inbox
+  depends_on: [INFRA-4558]
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4563
+  domain: INFRA
+  title: "INFRA: File‑fallback inbox transport (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When NATS is unavailable, events are written to a per‑session inbox directory
+    - Receiver monitors the directory and processes new files in FIFO order
+    - Fallback transport preserves ordering and correlation IDs
+  depends_on: [INFRA-4562]
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4564
+  domain: INFRA
+  title: "INFRA: Atomic gap handoff command (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - chump gap handoff <gap> --to <session> updates lease, claim record, and worktree pointer in a single transaction
+    - Receiver session automatically resumes processing the handed‑off gap without manual re‑claim
+    - No observable gap > 1 second between handoff and receiver start
+  depends_on: [INFRA-4560]
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4565
+  domain: INFRA
+  title: "INFRA: Push‑notification subscription for agents (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Agents subscribe to their session inbox via NATS push subscription
+    - Agents receive events instantly without polling loops
+    - CPU usage of polling agents drops by at least 90 % in a load test
+  depends_on: [INFRA-4562]
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4566
+  domain: INFRA
+  title: "INFRA: Audit trail logging and nightly digest (INFRA-1862 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Every broadcast writes a JSON line to ambient.jsonl with sender, recipient, event, correlation_id, timestamp
+    - A nightly cron job aggregates ambient.jsonl and produces a digest report containing delivery rate, median latency, and dead‑letter count
+    - Digest report is stored in logs/digest/YYYY‑MM‑DD.txt and is parsable by CI
+  depends_on: [INFRA-4558]
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4567
+  domain: INFRA
+  title: "INFRA: End‑to‑end smoke test for the A2A mesh (INFRA-1862 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-a2a-mesh.sh spawns three temporary curator sessions
+    - Each session broadcasts events to the other two sessions covering all six pair‑directions
+    - Test asserts 100 % delivery and median latency < 100 ms
+    - Test fails if any receipt, routing, or handoff step is missing
+  depends_on: [INFRA-4559, INFRA-4560, INFRA-4561, INFRA-4563, INFRA-4564, INFRA-4565, INFRA-4566]
   notes: |
     [chump harvest check 'extend']
     === primitives_index match for 'extend' ===
