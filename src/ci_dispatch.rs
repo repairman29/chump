@@ -18,7 +18,10 @@ const LEGACY_GAP_DISPATCH_SOURCE: &str = "src/main.rs";
 /// dispatch wiring: the new location if it exists on disk, else the old
 /// hard-coded path as a fallback.
 pub fn resolve_source(repo_root: &Path) -> PathBuf {
-    resolve_from_candidates(repo_root, &[NEW_GAP_DISPATCH_SOURCE, LEGACY_GAP_DISPATCH_SOURCE])
+    resolve_from_candidates(
+        repo_root,
+        &[NEW_GAP_DISPATCH_SOURCE, LEGACY_GAP_DISPATCH_SOURCE],
+    )
 }
 
 /// Generic version of [`resolve_source`]: returns the first candidate
