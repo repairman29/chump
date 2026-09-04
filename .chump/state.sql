@@ -19515,7 +19515,7 @@ gaps:
 - id: CREDIBLE-810
   domain: CREDIBLE
   title: "CREDIBLE: Add gauge for \"built\" stage in CREDIBLE lifecycle (CREDIBLE-299 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -19539,6 +19539,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+    [2026-09-04T16:13:38Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1077B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-811
   domain: CREDIBLE
@@ -19747,11 +19748,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Insert almanac path‑resolution logic into the `detect_reaches` function in `src/commands/reachability.rs`; add a helper that queries the Almanac service for transitive intra‑repo import edges of each changed file, construct the concrete import chain, and return a `REACHES` verdict that includes that chain.
+    
+    Target file(s):
+    - src/commands/reachability.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Given a PR diff and a gap target, the module queries almanac for resolved intra‑repo import edges
-    - If any changed file has a transitive resolved path to the target, verdict is REACHES
-    - Citations include the concrete import chain(s) that reach the target
-    - Performance benchmark shows resolution completes < 500 ms for typical repo size
+    - "In `src/commands/reachability.rs::detect_reaches`, a PR diff that changes a file with a transitive import to the target yields a verdict object whose `status` field equals `REACHES` and whose `chain` field contains the full import sequence."
+    - A new unit test `test_detect_reaches_uses_almanac` in `src/commands/reachability.rs` verifies that the Almanac client is invoked for each changed file and that the returned `chain` matches the mocked almanac response.
+    - "? Running the CLI command `credible reachability --diff fixtures/sample.diff --target src/lib/target.rs` completes in ≤ 500 ms on a typical repository and prints a line `REACHES : src/a.rs → src/b.rs → src/lib/target.rs`."
+    - All existing tests in `src/commands/reachability.rs` (including the test at line 576) pass unchanged, confirming no regression.
   depends_on: [CREDIBLE-816]
   notes: |
     [chump harvest check 'mechanical']
@@ -93336,7 +93344,7 @@ gaps:
     - "DETECTABLE: emits kind=gap_assay_report each cycle (primed N, deduped N, furnaced N, pickable-pool% = ready/open) so Race Control + the board see intake health. Wired as chump-gap-fairy.timer + .service + organ manifest (built+wired+detectable+revivable, Roll-Call)."
     - "PROOF: on the current live backlog it must collapse the 573 near-dup clusters and lift pickable-pool% measurably; test with a seeded dirty-backlog fixture asserts dups closed + vague-AC primed + P0/P1 never furnaced + a furnaced gap requeues cleanly. Depth tier + gaps named per green-not-covered. VERIFY-LIVE: chump-gap-fairy.timer is-active on CJ + one real gap_assay_report in ambient."
   notes: |
-    Decomposed into 11 slices: INFRA-3877, INFRA-3878, INFRA-3879, INFRA-3880, INFRA-3881, INFRA-3882, INFRA-3883, INFRA-3884, INFRA-3885, INFRA-3886, INFRA-3887
+    Decomposed into 11 slices: INFRA-4471, INFRA-4472, INFRA-4473, INFRA-4474, INFRA-4475, INFRA-4476, INFRA-4477, INFRA-4478, INFRA-4479, INFRA-4480, INFRA-4481
   opened_date: '2026-08-21'
   outcome_id: MISSION-010
   evidence: |
@@ -117692,6 +117700,7 @@ gaps:
     - Gate invokes the Gap Assay validator; only gaps that pass are transitioned to `ready`/pickable
     - Rejected gaps remain `needs-prep` and emit a clear audit log entry
     - Integration test confirms a good gap becomes pickable and a bad gap does not
+  depends_on: [INFRA-4471]
 
 - id: INFRA-4473
   domain: INFRA
@@ -117715,6 +117724,7 @@ gaps:
     - For each cluster the consolidate wrapper is called and losers are auto‑closed with reason `duplicate`
     - Closed duplicates retain their records (archived, not deleted)
     - Metric `deduped_count` increments per run and is observable in logs
+  depends_on: [INFRA-4473, INFRA-4472]
 
 - id: INFRA-4475
   domain: INFRA
@@ -117727,6 +117737,7 @@ gaps:
     - Gaps whose description exceeds 500 characters are split into logical sub‑gaps, each inheriting priority and tags
     - Resulting sub‑gaps are inserted with status `ready` if they pass the assay
     - Metric `primed_count` reflects number of gaps transformed per cycle
+  depends_on: [INFRA-4472]
 
 - id: INFRA-4476
   domain: INFRA
@@ -117739,6 +117750,7 @@ gaps:
     - Only gaps with priority P2 or lower are eligible; P0/P1 are never auto‑closed
     - Closed gaps are archived and can be re‑queued via the requeue command
     - Metric `furnaced_count` increments per run
+  depends_on: [INFRA-4472]
 
 - id: INFRA-4477
   domain: INFRA
@@ -117752,6 +117764,63 @@ gaps:
     - Dry‑run mode (`CHUMP_FAIRY_DRY_RUN=1`) logs actions without persisting changes
     - P0 and P1 gaps are excluded from any auto‑close path; attempts are logged as `guardrail_skip`
     - All guardrail decisions are recorded in `gap_fairy.log`
+  depends_on: [INFRA-4475, INFRA-4476]
+
+- id: INFRA-4478
+  domain: INFRA
+  title: "INFRA: Create systemd timer & service (chump-gap-fairy.timer/.service) (INFRA-3619 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Timer triggers the furnace service every hour
+    - "Service executes steps in order: Dedup → Prime → Furnace Unsalvageable, respecting guardrails"
+    - Service exits with status 0 on success and logs a summary line
+    - Unit files are installed under `/etc/systemd/system/` and enabled on deployment
+  depends_on: [INFRA-4474, INFRA-4475, INFRA-4476, INFRA-4477]
+
+- id: INFRA-4479
+  domain: INFRA
+  title: "INFRA: Emit gap_assay_report metric after each furnace cycle (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After the service runs, a JSON event `gap_assay_report` is sent to the central logging pipeline
+    - "Event includes fields: `primed`, `deduped`, `furnaced`, `pickable_pool_percent`"
+    - Race Control dashboard can query the latest report and display health indicators
+    - Unit test verifies correct payload structure given mock counts
+  depends_on: [INFRA-4478]
+
+- id: INFRA-4480
+  domain: INFRA
+  title: "INFRA: Implement reversible auto‑close (requeue) workflow (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Closed gaps with reason `duplicate` or `furnaced` expose a CLI command `gap requeue <id>`
+    - Requeue changes status back to `needs-prep` and moves the record from archive to active backlog
+    - Requeue operation is idempotent and logs `requeue_success`
+    - Integration test closes a gap then requeues it and verifies it reappears in the pickable pool after passing assay
+  depends_on: [INFRA-4475, INFRA-4476]
+
+- id: INFRA-4481
+  domain: INFRA
+  title: "INFRA: End‑to‑end test suite with seeded dirty‑backlog fixture (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Fixture contains 573 near‑duplicate clusters, vague AC gaps, oversized gaps, and a mix of P0‑P3 priorities
+    - "Running the furnace on the fixture results in:"
+    - "  • All duplicate clusters reduced to a single keeper"
+    - "  • All vague/empty AC gaps primed and promoted to `ready`"
+    - "  • No P0/P1 gaps are auto‑closed"
+    - "  • At least one gap is requeued successfully after being furnaced"
+    - Test asserts final `pickable_pool_percent` increased relative to initial state
+    - Test is automated in CI and fails if any guardrail is violated
+  depends_on: [INFRA-4471, INFRA-4472, INFRA-4474, INFRA-4475, INFRA-4476, INFRA-4477, INFRA-4478, INFRA-4479, INFRA-4480]
 
 - id: INFRA-476
   domain: INFRA
