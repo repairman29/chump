@@ -4836,7 +4836,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 9 slices: CREDIBLE-733, CREDIBLE-734, CREDIBLE-735, CREDIBLE-736, CREDIBLE-737, CREDIBLE-738, CREDIBLE-739, CREDIBLE-740, CREDIBLE-741
+    Decomposed into 9 slices: CREDIBLE-801, CREDIBLE-802, CREDIBLE-803, CREDIBLE-804, CREDIBLE-805, CREDIBLE-806, CREDIBLE-807, CREDIBLE-808, CREDIBLE-809
   opened_date: '2026-08-21'
 
 - id: CREDIBLE-296
@@ -19205,6 +19205,246 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-801
+  domain: CREDIBLE
+  title: "CREDIBLE: Add unit test harness to simulate shell/doc PR auto‑close stage (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A test harness can invoke the auto‑close stage with a shell/doc PR payload
+    - The harness runs and fails because bot_merge_uncaught_error is emitted before changes
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-802
+  domain: CREDIBLE
+  title: "CREDIBLE: Make else‑branch in auto‑close stage failure‑tolerant (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Else‑branch errors are captured with `|| true` or similar guard
+    - The branch logs the error but never exits with non‑zero status
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-803
+  domain: CREDIBLE
+  title: "CREDIBLE: Wrap ac‑coverage advisory call with error handling (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The advisory is executed inside a `set +e` / `|| true` block
+    - Any failure is logged and does not propagate as an uncaught error
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-804
+  domain: CREDIBLE
+  title: "CREDIBLE: Add structured logging for caught errors in else‑branch and advisory (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When an error is caught, a log entry with level WARN and context is emitted
+    - Log format matches existing CI logging conventions
+  depends_on: [CREDIBLE-802, CREDIBLE-803]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-805
+  domain: CREDIBLE
+  title: "CREDIBLE: Guarantee zero bot_merge_uncaught_error for shell/doc PRs (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Running the auto‑close stage on a shell/doc PR never sets the bot_merge_uncaught_error flag
+    - Manual verification shows the flag remains unset even when advisory or else‑branch fail
+  depends_on: [CREDIBLE-802, CREDIBLE-803, CREDIBLE-804]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-806
+  domain: CREDIBLE
+  title: "CREDIBLE: Run integration test on a live shell PR to verify behavior (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A real shell/doc PR is merged in a test environment
+    - Post‑merge logs show no bot_merge_uncaught_error and gap closes successfully
+  depends_on: [CREDIBLE-801, CREDIBLE-805]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-807
+  domain: CREDIBLE
+  title: "CREDIBLE: Update CI script (scripts/ci/test-*.sh) to include new integration test (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI script executes the new integration test and fails if bot_merge_uncaught_error appears
+    - Script returns success when the test passes
+  depends_on: [CREDIBLE-806]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-808
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt and clippy, fix any warnings (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` reports no formatting issues"
+    - "`cargo clippy --all-targets -- -D warnings` passes without warnings"
+  depends_on: [CREDIBLE-807]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-809
+  domain: CREDIBLE
+  title: "CREDIBLE: Update documentation/changelog to describe failure‑tolerant auto‑close (CREDIBLE-295 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Changelog entry notes that auto‑close stage is now failure‑tolerant for shell/doc PRs
+    - Documentation page on bot‑merge behavior reflects the new guarantee
+  depends_on: [CREDIBLE-808]
+  notes: |
+    [chump harvest check 'bot-merge']
+    === primitives_index match for 'bot-merge' ===
+    
+    === cluster keyword match for 'bot-merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'bot-merge' ===
+    
+    === repo-description match for 'bot-merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'bot-merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'bot-merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
 
 - id: DOC-031
   domain: DOC
@@ -90598,7 +90838,7 @@ gaps:
     - "With CHUMP_GONOGO_FORCE_VERDICT=NO-GO, `chump bootstrap \"x\" --dir <tmp> --skip-arch-decision` exits non-zero, creates no .git/ or Cargo.toml in <tmp>, and prints the plain-language reason; with CHUMP_GONOGO_SKIP=1 it scaffolds exactly as today — both asserted in scripts/ci/test-gonogo.sh."
     - scripts/ci/test-gonogo.sh is mirrored into src/preflight.rs (or classified Tier-D/allowlist per CLAUDE.md) so `chump preflight` and the preflight-vs-CI parity gate stay green after the new gate is added.
   notes: |
-    Decomposed into 9 slices: INFRA-3679, INFRA-3680, INFRA-3681, INFRA-3682, INFRA-3683, INFRA-3684, INFRA-3685, INFRA-3686, INFRA-3687
+    Decomposed into 9 slices: INFRA-4425, INFRA-4426, INFRA-4427, INFRA-4428, INFRA-4429, INFRA-4430, INFRA-4431, INFRA-4432, INFRA-4433
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -115227,6 +115467,267 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4425
+  domain: INFRA
+  title: "INFRA: Create src/gonogo.rs with Verdict enum, blocks_build, and parse_verdict stub (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Verdict enum with variants Go, NoGo, NeedsNarrowing, NoGoOnCost is defined
+    - "Verdict::blocks_build() returns true for NoGo and NoGoOnCost, false otherwise"
+    - parse_verdict function compiles and returns a Verdict given a line of LLM output
+    - "`cargo test` passes compilation without runtime failures"
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4426
+  domain: INFRA
+  title: "INFRA: Add unit tests for parse_verdict mapping fixture lines to Verdict and blocks_build behavior (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test fixture of 5 LLM‑shaped lines (2 GO, 2 NO‑GO, 1 NEEDS‑NARROWING) is parsed into the correct Verdict values
+    - "Verdict::blocks_build() returns true for the two NoGo verdicts and false for Go and NeedsNarrowing"
+    - "`cargo test gonogo::` passes green"
+  depends_on: [INFRA-4425]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4427
+  domain: INFRA
+  title: "INFRA: Implement cost_axis function in src/gonogo.rs (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "cost_axis(estimate_usd, ceiling_usd) returns Verdict::NoGoOnCost when estimate > ceiling"
+    - When estimate <= ceiling, the input Verdict is returned unchanged
+    - Unit tests covering (8.0,5.0)->NoGoOnCost and (3.0,5.0)->passthrough pass
+  depends_on: [INFRA-4425]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4428
+  domain: INFRA
+  title: "INFRA: Add unit tests for cost_axis behavior (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test cases (8.0,5.0) and (3.0,5.0) execute and assert the expected Verdicts
+    - "`cargo test` reports all cost_axis tests passing"
+  depends_on: [INFRA-4427]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4429
+  domain: INFRA
+  title: "INFRA: Implement run_llm_gonogo function (LLM shell‑out and parsing) (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Function invokes `chump llm-complete --model $MODEL --max-tokens $N` with the proper prompt
+    - Output from the LLM is fed to parse_verdict and the resulting Verdict is returned
+    - A deterministic unit test (using a mock or fixture for the LLM output) confirms correct Verdict mapping
+  depends_on: [INFRA-4425, INFRA-4426, INFRA-4427]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4430
+  domain: INFRA
+  title: "INFRA: Add render_json and render_human helpers for CLI output (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - render_json(verdict, reason, cost, tier) returns a JSON string with keys verdict, reason, cost_estimate_usd, tier_ceiling_usd
+    - render_human returns a plain‑language string suitable for terminal display
+    - Both functions are covered by unit tests checking field names and values
+  depends_on: [INFRA-4425]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4431
+  domain: INFRA
+  title: "INFRA: Add `chump gonogo` command dispatch in main.rs (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`chump gonogo \"<vision>\" --json` prints the JSON from render_json and exits with code 1 for NoGo/NoGoOnCost, 0 otherwise"
+    - "`chump gonogo \"<vision>\"` (human mode) prints the human string and uses the same exit‑code rules"
+    - Command integrates with the new src/gonogo.rs functions and compiles
+  depends_on: [INFRA-4425, INFRA-4429, INFRA-4430]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4432
+  domain: INFRA
+  title: "INFRA: Integrate gonogo gate into bootstrap flow with env‑var bypasses (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "commands/bootstrap.rs::run() invokes gonogo before proceeding unless CHOMP_GONOGO_SKIP=1"
+    - When CHOMP_GONOGO_FORCE_VERDICT=NO-GO, bootstrap exits non‑zero, creates no .git/ or Cargo.toml, and prints the reason
+    - When CHOMP_GONOGO_SKIP=1, bootstrap behaves exactly as before
+    - All scenarios are verified by scripts/ci/test-gonogo.sh
+  depends_on: [INFRA-4431, INFRA-4432]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4433
+  domain: INFRA
+  title: "INFRA: Mirror CI test script to src/preflight.rs and ensure parity (INFRA-3481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-gonogo.sh logic is duplicated into src/preflight.rs (or appropriate tier‑allowlist module)
+    - Running `chump preflight` yields the same exit‑code outcomes as the CI script for all test cases
+    - Parity test confirms both implementations stay green after changes
+  depends_on: [INFRA-4433]
+  notes: |
+    [chump harvest check 'honest']
+    === primitives_index match for 'honest' ===
+    
+    === cluster keyword match for 'honest' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'honest' ===
+    
+    === repo-description match for 'honest' ===
+    
+    === HARVEST_ROADMAP.md mention of 'honest' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'honest' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: INFRA-476
   domain: INFRA
