@@ -40000,9 +40000,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `run` function in `crates/chump-preflight/src/preflight.rs` to invoke `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` as part of its pre‑flight checks, propagating any non‑zero exit status as a failure of the `run` command.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt` makes no changes"
-    - "`cargo clippy --all-targets -D warnings` passes cleanly"
+    - In `crates/chump-preflight/src/preflight.rs`, the `run` function executes `cargo fmt -- --check` and aborts with an error if formatting changes are required.
+    - In `crates/chump-preflight/src/preflight.rs`, the `run` function executes `cargo clippy --all-targets -D warnings` and aborts with an error if any clippy warnings are emitted.
+    - Running the preflight command on a repository that is already formatted and clippy‑clean exits with status code 0.
+    - Introducing a formatting deviation or a new clippy warning causes the `run` function to exit with a non‑zero status and prints a descriptive error message.
   depends_on: [EFFECTIVE-738]
   notes: |
     [chump harvest check 'readable']
@@ -133032,7 +133041,7 @@ gaps:
 - id: RESILIENT-590
   domain: RESILIENT
   title: "fleet has NO sustainable inference floor: sub exhausts (~5h cap), chump-local routes to OpenRouter DeepSeek at $0 (rc=75), live Cerebras free-tier unwired"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -133042,6 +133051,7 @@ gaps:
     - chump-local cascade falls back deepseek-402 -> live-Cerebras instead of failing rc=75
   notes: |
     Decomposed into 2 slices: RESILIENT-591, RESILIENT-592
+    [2026-09-04T03:16:13Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1084B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: SOVEREIGN
 
 - id: RESILIENT-591
@@ -133801,7 +133811,7 @@ gaps:
 - id: RESILIENT-614
   domain: RESILIENT
   title: "CJ OOM-storm: 7GB box + concurrent worker rustc builds = 454 OOM-kills -> failed verify-cycles (artifacts/rc=1) AND node unreachability; serialize builds + kill the false 24GB assumption"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   description: |
@@ -133815,6 +133825,7 @@ gaps:
     - node stays network-reachable through build activity
   notes: |
     Decomposed into 6 slices: RESILIENT-793, RESILIENT-794, RESILIENT-795, RESILIENT-796, RESILIENT-797, RESILIENT-798
+    [2026-09-04T03:22:59Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: FLEET-BUILD-SPEED
   evidence: |
     COMMAND: journalctl -k | grep -c oom-kill ; free -h ; uptime -s ; git show #4371.
