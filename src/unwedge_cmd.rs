@@ -153,7 +153,14 @@ fn kill_pid(pid: i64, log: &mut Vec<String>) {
     }
 }
 
-fn emit_ambient(repo_root: &Path, gap_id: &str, wedge_found: bool, killed: &[i64], recovered: bool, clean: bool) {
+fn emit_ambient(
+    repo_root: &Path,
+    gap_id: &str,
+    wedge_found: bool,
+    killed: &[i64],
+    recovered: bool,
+    clean: bool,
+) {
     let ambient = repo_root.join(".chump-locks").join("ambient.jsonl");
     let ts = chrono_now_rfc3339();
     let killed_str = killed
@@ -165,7 +172,11 @@ fn emit_ambient(repo_root: &Path, gap_id: &str, wedge_found: bool, killed: &[i64
     let line = format!(
         "{{\"ts\":\"{ts}\",\"kind\":\"chump_unwedge\",\"gap_id\":\"{gap_id}\",\"wedge_found\":{wedge_found},\"killed_pids\":[{killed_str}],\"recovered\":{recovered},\"clean\":{clean}}}\n"
     );
-    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&ambient) {
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient)
+    {
         use std::io::Write;
         let _ = f.write_all(line.as_bytes());
     }
@@ -206,7 +217,10 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
     let repo_root = repo_path::repo_root();
     let mut log: Vec<String> = Vec::new();
 
-    log.push(format!("START: chump unwedge {gap_id} (repo={})", repo_root.display()));
+    log.push(format!(
+        "START: chump unwedge {gap_id} (repo={})",
+        repo_root.display()
+    ));
 
     // ── Detect ──────────────────────────────────────────────────────────
     let ledger_path = progress_ledger_path(&repo_root, gap_id);
@@ -268,7 +282,9 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
     }
 
     if !wedge_found && opts.force {
-        log.push("DETECT: no wedge signal, but --force passed — proceeding to recovery".to_string());
+        log.push(
+            "DETECT: no wedge signal, but --force passed — proceeding to recovery".to_string(),
+        );
     }
 
     // ── Kill ────────────────────────────────────────────────────────────
@@ -283,7 +299,10 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
     if candidate_pids.is_empty() {
         log.push("KILL: no live pid to terminate (process already exited)".to_string());
     } else if opts.dry_run {
-        log.push(format!("KILL: DRY-RUN would terminate pid(s) {:?}", candidate_pids));
+        log.push(format!(
+            "KILL: DRY-RUN would terminate pid(s) {:?}",
+            candidate_pids
+        ));
     } else {
         for pid in &candidate_pids {
             kill_pid(*pid, &mut log);
@@ -294,7 +313,10 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
     // Stale progress ledger is no longer meaningful once we've intervened.
     if ledger_path.exists() && !opts.dry_run {
         match std::fs::remove_file(&ledger_path) {
-            Ok(()) => log.push(format!("KILL: removed stale progress ledger {}", ledger_path.display())),
+            Ok(()) => log.push(format!(
+                "KILL: removed stale progress ledger {}",
+                ledger_path.display()
+            )),
             Err(e) => log.push(format!(
                 "KILL: WARNING failed to remove progress ledger {}: {e}",
                 ledger_path.display()
@@ -307,7 +329,11 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
     if opts.dry_run {
         log.push(format!(
             "RECOVER: DRY-RUN would run `chump claim {gap_id} --force-recover{}`",
-            if opts.discard_wip { " --discard-wip" } else { "" }
+            if opts.discard_wip {
+                " --discard-wip"
+            } else {
+                ""
+            }
         ));
     } else {
         let exe = std::env::current_exe().context("resolving current chump executable path")?;
@@ -319,7 +345,11 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
         cmd.current_dir(&repo_root);
         log.push(format!(
             "RECOVER: invoking `chump claim {gap_id} --force-recover{}`",
-            if opts.discard_wip { " --discard-wip" } else { "" }
+            if opts.discard_wip {
+                " --discard-wip"
+            } else {
+                ""
+            }
         ));
         match cmd.output() {
             Ok(out) => {
@@ -338,7 +368,9 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
                 ));
             }
             Err(e) => {
-                log.push(format!("RECOVER: failed to spawn claim --force-recover: {e}"));
+                log.push(format!(
+                    "RECOVER: failed to spawn claim --force-recover: {e}"
+                ));
             }
         }
     }
@@ -358,7 +390,8 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
             }
             Some(false) => {
                 log.push(
-                    "VERIFY: repository has uncommitted changes — review before re-claiming".to_string(),
+                    "VERIFY: repository has uncommitted changes — review before re-claiming"
+                        .to_string(),
                 );
                 false
             }
@@ -379,7 +412,14 @@ pub fn run(gap_id: &str, opts: UnwedgeOpts) -> Result<()> {
     }
 
     if !opts.dry_run {
-        emit_ambient(&repo_root, gap_id, wedge_found, &killed_pids, recovered, clean);
+        emit_ambient(
+            &repo_root,
+            gap_id,
+            wedge_found,
+            &killed_pids,
+            recovered,
+            clean,
+        );
     }
 
     Ok(())

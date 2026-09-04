@@ -199,8 +199,8 @@ mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
 mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
-mod unwedge_cmd; // EFFECTIVE-1136: `chump unwedge <gap>` — on-demand kill + recover of wedged bot-merge
 mod precision_controller;
+mod unwedge_cmd; // EFFECTIVE-1136: `chump unwedge <gap>` — on-demand kill + recover of wedged bot-merge
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
 mod provider_cascade;
@@ -2778,8 +2778,12 @@ async fn main() -> Result<()> {
                     println!("terminates the offending process, and invokes the canonical");
                     println!("`chump claim <GAP-ID> --force-recover` recovery flow.");
                     println!();
-                    println!("  --dry-run        print what would happen without killing/recovering");
-                    println!("  --force           run recovery even if no wedge signal was detected");
+                    println!(
+                        "  --dry-run        print what would happen without killing/recovering"
+                    );
+                    println!(
+                        "  --force           run recovery even if no wedge signal was detected"
+                    );
                     println!("  --discard-wip     pass through to claim --force-recover (wipes uncommitted changes)");
                     println!("  --threshold-s N   staleness threshold in seconds (default 900)");
                     return Ok(());
