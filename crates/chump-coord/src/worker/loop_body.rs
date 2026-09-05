@@ -55,6 +55,12 @@ pub enum CycleOutcome {
     LostClaimRace { gap_id: String },
     /// `git worktree add` failed.
     WorktreeError { gap_id: String, reason: String },
+    /// RESILIENT-1014 (e): child exited 0 but produced no working-tree
+    /// changes. VERIFIED waste class: an agent that "completes" without
+    /// touching a single file burned a full cycle for nothing. The lease is
+    /// left in place (same convention as `ChildFailed`) so a follow-up
+    /// cycle or the recovery queue can re-route the gap.
+    EmptyDiffWaste { gap_id: String },
 }
 
 impl CycleOutcome {
@@ -83,6 +89,7 @@ impl CycleOutcome {
             CycleOutcome::ChildFailed { .. } => "child_failed",
             CycleOutcome::ChildTimeout { .. } => "child_timeout",
             CycleOutcome::Shipped { .. } => "shipped",
+            CycleOutcome::EmptyDiffWaste { .. } => "empty_diff_waste",
         }
     }
 
@@ -228,9 +235,37 @@ pub async fn run_one_cycle(env: &CycleEnv) -> CycleOutcome {
 
     // 6. Classify outcome based on rc.
     if rc == 0 {
-        emit_worker_exit(&env.session_id, &gap.id, 0, "shipped");
-        CycleOutcome::Shipped {
-            gap_id: gap.id.clone(),
+        // RESILIENT-1014 (e): a clean exit that touched nothing is a wasted
+        // cycle, not a ship. VERIFIED waste class: agents that "complete"
+        // without a diff still consume a full claim + build slot.
+        match worktree_has_changes(&wt).await {
+            Ok(true) => {
+                emit_worker_exit(&env.session_id, &gap.id, 0, "shipped");
+                CycleOutcome::Shipped {
+                    gap_id: gap.id.clone(),
+                }
+            }
+            Ok(false) => {
+                emit_worker_exit(&env.session_id, &gap.id, 0, "empty_diff_waste");
+                let outcome = CycleOutcome::EmptyDiffWaste {
+                    gap_id: gap.id.clone(),
+                };
+                let _ = remove_worktree(&env.repo_root, &wt).await;
+                outcome
+            }
+            Err(e) => {
+                // Can't tell — don't falsely report a ship. Treat like a
+                // benign child failure so the lease stays in place.
+                eprintln!(
+                    "[chump-worker] {} could not check worktree diff for {}: {e}",
+                    env.session_id, gap.id
+                );
+                emit_worker_exit(&env.session_id, &gap.id, 0, "diff_check_failed");
+                CycleOutcome::ChildFailed {
+                    gap_id: gap.id.clone(),
+                    rc: 0,
+                }
+            }
         }
     } else {
         emit_worker_exit(&env.session_id, &gap.id, rc, "child_failed");
@@ -290,6 +325,35 @@ async fn spawn_execute_gap(
             Ok(None)
         }
     }
+}
+
+/// RESILIENT-1014 (e): does `git status --porcelain` output indicate any
+/// working-tree change? Pure so the empty/non-empty classification is
+/// testable without a real git checkout.
+fn porcelain_output_has_changes(porcelain: &str) -> bool {
+    porcelain.lines().any(|l| !l.trim().is_empty())
+}
+
+/// Run `git status --porcelain` in `worktree` and classify whether the
+/// child process actually changed anything.
+async fn worktree_has_changes(worktree: &Path) -> Result<bool> {
+    let out = Command::new("git")
+        .arg("-C")
+        .arg(worktree)
+        .args(["status", "--porcelain"])
+        .output()
+        .await
+        .context("running git status --porcelain")?;
+    if !out.status.success() {
+        anyhow::bail!(
+            "git status --porcelain exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+    Ok(porcelain_output_has_changes(&String::from_utf8_lossy(
+        &out.stdout,
+    )))
 }
 
 fn emit_worker_exit(session_id: &str, gap_id: &str, rc: i32, exit_class: &str) {
@@ -371,5 +435,34 @@ mod tests {
             .stuck_reason(),
             "worktree_create_fail"
         );
+        assert_eq!(
+            CycleOutcome::EmptyDiffWaste {
+                gap_id: "x".to_string(),
+            }
+            .stuck_reason(),
+            "empty_diff_waste"
+        );
+    }
+
+    // RESILIENT-1014 (e): a clean-exit-no-diff cycle is waste, not a ship.
+    #[test]
+    fn empty_diff_waste_is_not_shipped_and_not_stuck() {
+        let outcome = CycleOutcome::EmptyDiffWaste {
+            gap_id: "x".to_string(),
+        };
+        assert!(!outcome.shipped());
+        assert!(!outcome.is_stuck());
+    }
+
+    #[test]
+    fn porcelain_output_has_changes_detects_empty() {
+        assert!(!porcelain_output_has_changes(""));
+        assert!(!porcelain_output_has_changes("\n\n"));
+    }
+
+    #[test]
+    fn porcelain_output_has_changes_detects_dirty() {
+        assert!(porcelain_output_has_changes(" M src/lib.rs\n"));
+        assert!(porcelain_output_has_changes("?? new_file.txt"));
     }
 }

@@ -148,7 +148,7 @@ async fn main() -> ExitCode {
         }
     };
     let session_id = resolve_session_id(cli.session_id_override);
-    let cenv = CycleEnv::from_env(repo_root, session_id.clone());
+    let mut cenv = CycleEnv::from_env(repo_root, session_id.clone());
 
     eprintln!(
         "[chump-worker] starting session={} skills={:?} machine={:?} backend={:?} once={} idle={}s",
@@ -169,27 +169,53 @@ async fn main() -> ExitCode {
         );
     }
 
+    // RESILIENT-1014 (d): never idle-spin on no-pickable-gap. A worker that
+    // sleeps idle_sleep_s and retries the *same* narrow skill filter
+    // forever, while other gaps sit pickable under a different skill tag,
+    // is wasted capacity. After IDLE_WIDEN_THRESHOLD consecutive
+    // no-pickable cycles, widen the lane once (drop the skill filter —
+    // machine/backend describe this worker's identity, not a preference,
+    // see `WorkerCapability::widen`) instead of spinning unchanged.
+    let mut consecutive_no_pickable: u32 = 0;
+    let mut lane_widened = false;
+
     loop {
         let outcome = run_one_cycle(&cenv).await;
         let should_sleep = outcome.should_idle_sleep();
         match &outcome {
             CycleOutcome::Shipped { gap_id } => {
                 eprintln!("[chump-worker] {} SHIPPED {}", session_id, gap_id);
+                consecutive_no_pickable = 0;
             }
             CycleOutcome::ChildFailed { gap_id, rc } => {
                 eprintln!(
                     "[chump-worker] {} CHILD_FAILED {} rc={}",
                     session_id, gap_id, rc
                 );
+                consecutive_no_pickable = 0;
             }
             CycleOutcome::ChildTimeout { gap_id, timeout_s } => {
                 eprintln!(
                     "[chump-worker] {} CHILD_TIMEOUT {} after {}s",
                     session_id, gap_id, timeout_s
                 );
+                consecutive_no_pickable = 0;
             }
             CycleOutcome::NoPickableGap => {
-                eprintln!("[chump-worker] {} no pickable gap", session_id);
+                consecutive_no_pickable += 1;
+                eprintln!(
+                    "[chump-worker] {} no pickable gap ({} consecutive)",
+                    session_id, consecutive_no_pickable
+                );
+                if !lane_widened && should_widen_lane(consecutive_no_pickable) {
+                    eprintln!(
+                        "[chump-worker] {} RESILIENT-1014(d): {} consecutive no-pickable cycles — \
+                         widening lane (dropping skill filter) instead of idle-spinning",
+                        session_id, consecutive_no_pickable
+                    );
+                    cenv.capability.widen();
+                    lane_widened = true;
+                }
             }
             CycleOutcome::StateError { reason } => {
                 eprintln!("[chump-worker] {} state-error: {}", session_id, reason);
@@ -199,12 +225,20 @@ async fn main() -> ExitCode {
                     "[chump-worker] {} lost claim race for {}",
                     session_id, gap_id
                 );
+                consecutive_no_pickable = 0;
             }
             CycleOutcome::WorktreeError { gap_id, reason } => {
                 eprintln!(
                     "[chump-worker] {} worktree-error gap={} reason={}",
                     session_id, gap_id, reason
                 );
+            }
+            CycleOutcome::EmptyDiffWaste { gap_id } => {
+                eprintln!(
+                    "[chump-worker] {} EMPTY_DIFF_WASTE {} — child exited 0 with no changes",
+                    session_id, gap_id
+                );
+                consecutive_no_pickable = 0;
             }
         }
         if cli.once {
@@ -215,6 +249,35 @@ async fn main() -> ExitCode {
         }
         if should_sleep {
             tokio::time::sleep(Duration::from_secs(cli.idle_sleep_s)).await;
+        }
+    }
+}
+
+/// RESILIENT-1014 (d): number of consecutive `NoPickableGap` cycles before
+/// the worker widens its own lane. VERIFIED failure mode: a narrowly-scoped
+/// worker (WORKER_SKILLS=x) idle-spins forever on `idle_sleep_s` even when
+/// gaps outside its filter sit pickable.
+const IDLE_WIDEN_THRESHOLD: u32 = 5;
+
+fn should_widen_lane(consecutive_no_pickable: u32) -> bool {
+    consecutive_no_pickable >= IDLE_WIDEN_THRESHOLD
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn should_widen_lane_fires_at_threshold() {
+        assert!(!should_widen_lane(IDLE_WIDEN_THRESHOLD - 1));
+        assert!(should_widen_lane(IDLE_WIDEN_THRESHOLD));
+        assert!(should_widen_lane(IDLE_WIDEN_THRESHOLD + 1));
+    }
+
+    #[test]
+    fn should_widen_lane_stays_false_below_threshold() {
+        for n in 0..IDLE_WIDEN_THRESHOLD {
+            assert!(!should_widen_lane(n), "n={n} must not trigger widen yet");
         }
     }
 }

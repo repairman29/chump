@@ -131,6 +131,20 @@ impl WorkerCapability {
         }
     }
 
+    /// RESILIENT-1014 (d): widen this worker's lane by dropping the skill
+    /// filter. Called by the supervising loop after N consecutive
+    /// `NoPickableGap` cycles — the never-idle-spin mandate is "widen lane /
+    /// help merge queue / scale down + log" rather than sleeping forever on
+    /// a narrow filter while other skill-tagged gaps sit pickable.
+    ///
+    /// `machine`/`backend` are NOT cleared here: unlike skills (a
+    /// conservative preference), they describe *what this worker physically
+    /// is* — clearing them would make `matches()` claim gaps pinned to a
+    /// specific machine/backend this worker cannot actually satisfy.
+    pub fn widen(&mut self) {
+        self.skills = vec!["any".to_string()];
+    }
+
     /// Picker filter: does this worker match the gap's preferred routing?
     ///
     /// Match rules (all must hold):
@@ -191,7 +205,12 @@ impl WorkerCapability {
             if self.skills.is_empty() {
                 return false;
             }
-            let has_match = gap_skills.iter().any(|gs| self.skills.contains(gs));
+            // RESILIENT-1014 (d): a widened worker (see `widen()`) carries
+            // the "any" sentinel skill and matches every skill-tagged gap —
+            // widening must be able to open up skill-gated gaps too, not
+            // just machine/backend ones.
+            let has_match = self.skills.iter().any(|s| s == "any")
+                || gap_skills.iter().any(|gs| self.skills.contains(gs));
             if !has_match {
                 return false;
             }
@@ -558,5 +577,29 @@ mod tests {
         assert!(has_workspace_scope_tag(&g_mixed));
         assert!(!has_workspace_scope_tag(&g_no));
         assert!(!has_workspace_scope_tag(&g_empty));
+    }
+
+    // RESILIENT-1014 (d): widen() must drop every filter so a starved worker
+    // can pick up gaps it previously excluded, instead of idle-spinning.
+    #[test]
+    fn widen_clears_skill_filter_only() {
+        let mut w = WorkerCapability {
+            skills: vec!["rust".to_string()],
+            machine: Some("macbook".to_string()),
+            backend: Some("claude".to_string()),
+            session_id: "s".to_string(),
+        };
+        // Excluded only by the skill filter — machine/backend already match.
+        let gap_previously_excluded = gap_with("python", "macbook", "claude");
+        assert!(!w.matches(&gap_previously_excluded));
+
+        w.widen();
+
+        assert_eq!(w.skills, vec!["any".to_string()]);
+        // machine/backend are identity, not preference — widen() must not
+        // touch them (see doc comment on `widen`).
+        assert_eq!(w.machine.as_deref(), Some("macbook"));
+        assert_eq!(w.backend.as_deref(), Some("claude"));
+        assert!(w.matches(&gap_previously_excluded));
     }
 }

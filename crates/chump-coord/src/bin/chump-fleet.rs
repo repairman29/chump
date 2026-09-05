@@ -29,8 +29,11 @@
 //! - Restart with linear 5s backoff for now (exponential deferred).
 
 use anyhow::{Context, Result};
+use chump_ambient_cli::ambient_emit::{emit, EmitArgs};
 use std::env;
 use std::process::ExitCode;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::Arc;
 use std::time::Duration;
 use tokio::process::Command;
 use tokio::signal;
@@ -167,6 +170,105 @@ fn node_id_component() -> String {
     "unknown-node".to_string()
 }
 
+/// One row of `ps -eo pid,ppid,comm`.
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct ProcEntry {
+    pid: u32,
+    ppid: u32,
+    comm: String,
+}
+
+/// RESILIENT-1014 (b): find worker processes that are NOT children of this
+/// supervisor process. VERIFIED bug: 9 `worker.sh` processes alive for 1
+/// supervised unit on cuphead — stacked/orphaned workers survive a
+/// supervisor restart (or a supervisor crash that leaves children
+/// reparented) and silently keep claiming leases forever, invisible to a
+/// `--size N` cap that only counts this generation's direct children.
+fn find_orphaned_worker_pids(procs: &[ProcEntry], own_pid: u32, worker_bin_name: &str) -> Vec<u32> {
+    procs
+        .iter()
+        .filter(|p| p.pid != own_pid && p.ppid != own_pid && p.comm.contains(worker_bin_name))
+        .map(|p| p.pid)
+        .collect()
+}
+
+/// Best-effort `ps` scan. Returns an empty list on any failure (missing
+/// `ps`, permission denied, non-Linux quirks) — reaping is a hygiene pass,
+/// not a correctness gate, so it must never crash the supervisor.
+fn list_processes() -> Vec<ProcEntry> {
+    let out = std::process::Command::new("ps")
+        .args(["-eo", "pid,ppid,comm", "--no-headers"])
+        .output();
+    let Ok(out) = out else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .filter_map(|line| {
+            let mut parts = line.split_whitespace();
+            let pid = parts.next()?.parse().ok()?;
+            let ppid = parts.next()?.parse().ok()?;
+            let comm = parts.next()?.to_string();
+            Some(ProcEntry { pid, ppid, comm })
+        })
+        .collect()
+}
+
+/// Reap orphaned/stacked worker processes via SIGKILL. Returns the count
+/// reaped. Skips entirely when `CHUMP_FLEET_NO_REAP=1` (test/CI seam — CI
+/// containers often run unrelated `*-worker`-named processes that must
+/// never be killed by an unrelated supervisor's test run).
+fn reap_orphaned_workers(own_pid: u32, worker_bin_name: &str) -> usize {
+    if env::var("CHUMP_FLEET_NO_REAP").is_ok() {
+        return 0;
+    }
+    let procs = list_processes();
+    let orphans = find_orphaned_worker_pids(&procs, own_pid, worker_bin_name);
+    for pid in &orphans {
+        eprintln!(
+            "[chump-fleet] RESILIENT-1014(b): reaping orphaned worker pid={pid} (not a child of this supervisor, pid={own_pid})"
+        );
+        let _ = std::process::Command::new("kill")
+            .args(["-9", &pid.to_string()])
+            .status();
+    }
+    orphans.len()
+}
+
+/// RESILIENT-1014: worker-pool health gauge, emitted to `ambient.jsonl` as
+/// `kind=worker_pool_health` so `fleet-brief` can surface pool saturation,
+/// idle-lane-widening, and reap activity without an operator having to
+/// grep supervisor stderr by hand.
+struct WorkerPoolHealth {
+    node_id: String,
+    size: usize,
+    cpus: usize,
+    active: usize,
+    reaped_orphans: usize,
+}
+
+fn worker_pool_health_emit_args(h: &WorkerPoolHealth) -> EmitArgs {
+    EmitArgs {
+        kind: "worker_pool_health".to_string(),
+        source: Some("chump-fleet".to_string()),
+        fields: vec![
+            ("node_id".to_string(), h.node_id.clone()),
+            ("size".to_string(), h.size.to_string()),
+            ("cpus".to_string(), h.cpus.to_string()),
+            ("active".to_string(), h.active.to_string()),
+            ("reaped_orphans".to_string(), h.reaped_orphans.to_string()),
+        ],
+        ..Default::default()
+    }
+}
+
+fn emit_worker_pool_health(h: &WorkerPoolHealth) {
+    let _ = emit(&worker_pool_health_emit_args(h));
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
     let argv: Vec<String> = env::args().collect();
@@ -195,6 +297,22 @@ async fn main() -> ExitCode {
         size, cli.once, cli.idle_sleep_s, bin, node_id
     );
 
+    // RESILIENT-1014 (b): reap any stacked/orphaned worker processes left
+    // behind by a prior supervisor generation before spawning our own, so
+    // `--size N` reflects the real process count, not N-plus-leftovers.
+    let reaped = reap_orphaned_workers(std::process::id(), &bin);
+    if reaped > 0 {
+        eprintln!("[chump-fleet] RESILIENT-1014(b): reaped {reaped} orphaned worker(s) at startup");
+    }
+    emit_worker_pool_health(&WorkerPoolHealth {
+        node_id: node_id.clone(),
+        size,
+        cpus,
+        active: size,
+        reaped_orphans: reaped,
+    });
+
+    let active = Arc::new(AtomicUsize::new(0));
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
     let mut handles = Vec::with_capacity(size);
     for i in 0..size {
@@ -207,12 +325,14 @@ async fn main() -> ExitCode {
         let once = cli.once;
         let idle = cli.idle_sleep_s;
         let mut rx = shutdown_rx.clone();
+        let active = active.clone();
         let h = tokio::spawn(async move {
             let mut restart_backoff_s = 5u64;
             loop {
                 if *rx.borrow() {
                     break;
                 }
+                active.fetch_add(1, Ordering::SeqCst);
                 let rc = run_one_worker(&WorkerSpawnSpec {
                     bin: &bin,
                     session_id: &session_id,
@@ -224,6 +344,7 @@ async fn main() -> ExitCode {
                     idle_sleep_s: idle,
                 })
                 .await;
+                active.fetch_sub(1, Ordering::SeqCst);
                 match rc {
                     Ok(0) => {
                         eprintln!("[chump-fleet] worker {} exit 0", session_id);
@@ -260,6 +381,43 @@ async fn main() -> ExitCode {
         handles.push(h);
     }
 
+    // RESILIENT-1014: periodic worker_pool_health gauge + orphan-reap sweep
+    // while supervising (skipped in --once, which is a single test cycle).
+    let health_task = if cli.once {
+        None
+    } else {
+        let node_id = node_id.clone();
+        let bin = bin.clone();
+        let active = active.clone();
+        let mut rx = shutdown_rx.clone();
+        Some(tokio::spawn(async move {
+            loop {
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(60)) => {}
+                    _ = rx.changed() => {
+                        if *rx.borrow() { break; }
+                    }
+                }
+                if *rx.borrow() {
+                    break;
+                }
+                let reaped = reap_orphaned_workers(std::process::id(), &bin);
+                if reaped > 0 {
+                    eprintln!(
+                        "[chump-fleet] RESILIENT-1014(b): reaped {reaped} orphaned worker(s) mid-flight"
+                    );
+                }
+                emit_worker_pool_health(&WorkerPoolHealth {
+                    node_id: node_id.clone(),
+                    size,
+                    cpus,
+                    active: active.load(Ordering::SeqCst),
+                    reaped_orphans: reaped,
+                });
+            }
+        }))
+    };
+
     // Wait for signal or all workers to exit.
     let all_done = async {
         for h in handles {
@@ -276,6 +434,9 @@ async fn main() -> ExitCode {
             // Give workers a moment to notice the flag, but don't wait forever.
             tokio::time::sleep(Duration::from_secs(2)).await;
         }
+    }
+    if let Some(h) = health_task {
+        h.abort();
     }
     ExitCode::SUCCESS
 }
@@ -395,5 +556,76 @@ mod tests {
         let mugman_id = format!("{}-{}", node_id_component(), 1);
         env::remove_var("CHUMP_NODE_ID_OVERRIDE");
         assert_ne!(cuphead_id, mugman_id);
+    }
+
+    // RESILIENT-1014 (b): orphan detection must never flag our own children
+    // (ppid == own_pid) or ourselves, only stacked leftovers from a prior
+    // supervisor generation.
+    #[test]
+    fn find_orphaned_worker_pids_flags_only_non_children() {
+        let own_pid = 100;
+        let procs = vec![
+            ProcEntry {
+                pid: 101,
+                ppid: 100,
+                comm: "chump-worker".to_string(),
+            }, // our own child — not an orphan
+            ProcEntry {
+                pid: 202,
+                ppid: 1,
+                comm: "chump-worker".to_string(),
+            }, // VERIFIED case: reparented to init after a prior supervisor died
+            ProcEntry {
+                pid: 303,
+                ppid: 1,
+                comm: "chump-fleet".to_string(),
+            }, // different binary — not a worker, must not be reaped
+            ProcEntry {
+                pid: 100,
+                ppid: 1,
+                comm: "chump-worker".to_string(),
+            }, // our own pid — never self-reap
+        ];
+        let orphans = find_orphaned_worker_pids(&procs, own_pid, "chump-worker");
+        assert_eq!(orphans, vec![202]);
+    }
+
+    #[test]
+    fn find_orphaned_worker_pids_empty_when_all_are_children() {
+        let own_pid = 5;
+        let procs = vec![ProcEntry {
+            pid: 6,
+            ppid: 5,
+            comm: "chump-worker".to_string(),
+        }];
+        assert!(find_orphaned_worker_pids(&procs, own_pid, "chump-worker").is_empty());
+    }
+
+    // RESILIENT-1014: worker_pool_health gauge fields must reflect the
+    // clamped size (not the raw --size request) and the reap count from
+    // this cycle, since fleet-brief reads these to detect oversubscription
+    // and stacked-worker leaks without an operator grepping stderr.
+    #[test]
+    fn worker_pool_health_gauge_carries_reap_and_saturation_fields() {
+        let h = WorkerPoolHealth {
+            node_id: "cuphead".to_string(),
+            size: 2,
+            cpus: 2,
+            active: 2,
+            reaped_orphans: 3,
+        };
+        let args = worker_pool_health_emit_args(&h);
+        assert_eq!(args.kind, "worker_pool_health");
+        let field = |k: &str| {
+            args.fields
+                .iter()
+                .find(|(fk, _)| fk == k)
+                .map(|(_, v)| v.clone())
+        };
+        assert_eq!(field("node_id"), Some("cuphead".to_string()));
+        assert_eq!(field("size"), Some("2".to_string()));
+        assert_eq!(field("cpus"), Some("2".to_string()));
+        assert_eq!(field("active"), Some("2".to_string()));
+        assert_eq!(field("reaped_orphans"), Some("3".to_string()));
     }
 }

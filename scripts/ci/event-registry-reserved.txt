@@ -886,3 +886,6 @@ halt_predicate_timeout  # reason: CREDIBLE-622 — same as halt_predicate_succes
 
 # ── CREDIBLE-108: halt-class-emit wrapper observability doc ────────────────
 halt_class_emit  # reason: CREDIBLE-108 — emitted by scripts/lib/halt-class-emit.sh::halt_class_emit as a literal "kind":"halt_class_emit", but scripts/lib/ is outside the coverage scanner's PROD_PATHS (same structural gap as halt_predicate_* above). A scanner-anchor comment is present at the top of the file. Registered in EVENT_REGISTRY.yaml + documented in docs/process/HALT_CLASS_EMIT_OBSERVABILITY.md; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
+
+# ── RESILIENT-1014: per-node supervisor organ ────────────────────────────
+worker_pool_health  # reason: RESILIENT-1014 emitted by crates/chump-coord/src/bin/chump-fleet.rs via EmitArgs { kind: "worker_pool_health".to_string(), ... } — the Rust struct-init form uses an unquoted `kind:` field key, which the coverage scanner's quoted-`"kind":"X"` patterns (and the event-registry verify rule's `"kind"` needle) don't match; same structural gap as worker_exit/worker_stuck above. Registered in EVENT_REGISTRY.yaml; reserved here so the register-without-emit check doesn't flag it as an orphan.

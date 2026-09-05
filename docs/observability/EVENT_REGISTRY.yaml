@@ -469,6 +469,21 @@ events:
     consumers: [waste-tally, kpi-report]
     fields_required: [agent_id, gap_id, rc, exit_class]
 
+  # RESILIENT-1014: per-node supervisor organ health gauge
+  - kind: worker_pool_health
+    effect_metric: resilient
+    emitter: crates/chump-coord/src/bin/chump-fleet.rs (RESILIENT-1014)
+    trigger: >
+      Emitted by chump-fleet on supervisor startup and every 60s while
+      supervising. Reports the clamped pool size vs. requested (VERIFIED
+      oversubscription bug: 4 build agents on a 2-core box), live active
+      worker count, and orphaned/stacked workers reaped this cycle
+      (VERIFIED bug: 9 worker.sh procs alive for 1 supervised unit on
+      cuphead). Consumed by fleet-brief to surface pool saturation and
+      reap activity without an operator grepping supervisor stderr.
+    consumers: [fleet-brief]
+    fields_required: [node_id, size, cpus, active, reaped_orphans]
+
   # ── INFRA-740: tool-call normalizer ──────────────────────────────────────
   - kind: tool_normalize
     effect_metric: self
