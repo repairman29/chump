@@ -3414,7 +3414,7 @@ gaps:
     - a test reproduces the CREDIBLE-200 shape — a diff containing only an added assert-true test and no source change, against a gap naming a source target — and proves it is flagged; fails without the change
     - explicitly linked to EFFECTIVE-354 and CREDIBLE-200 so whichever ships first records what it did and did not cover
   notes: |
-    Decomposed into 6 slices: CREDIBLE-816, CREDIBLE-817, CREDIBLE-818, CREDIBLE-819, CREDIBLE-820, CREDIBLE-821
+    Decomposed into 6 slices: CREDIBLE-885, CREDIBLE-886, CREDIBLE-887, CREDIBLE-888, CREDIBLE-889, CREDIBLE-890
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
@@ -15760,9 +15760,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new helper function `run_fmt_and_clippy_on_modified` to `scripts/run-local-ci.sh` that (1) determines the set of Rust source files changed in the current git diff, (2) runs `cargo fmt --quiet --` on each of those files and aborts with a non‑zero exit if any file would be reformatted, and (3) runs `cargo clippy -- -D warnings` (restricted to the same changed files via `--manifest-path` or workspace filtering) and aborts with a non‑zero exit if any new clippy warnings are emitted. Wire this function into the script’s main CI flow so that the fmt check is performed first, followed by the clippy check, before any other test steps.
+    
+    Target file(s):
+    - scripts/run-local-ci.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt formats all changed files without changes
-    - clippy runs with -D warnings and reports no new warnings
+    - Executing `scripts/run-local-ci.sh fmt-check` on a repo where `src/lib.rs` (or any changed Rust file) is not properly formatted causes the script to exit with a non‑zero status and prints a message containing “cargo fmt” and the path of the offending file.
+    - "? Executing `scripts/run-local-ci.sh fmt-check` on a repo where all changed Rust files are already formatted exits with status 0 and prints “cargo fmt : all changed files formatted”."
+    - Executing `scripts/run-local-ci.sh clippy-check` on a repo where a changed file introduces a new clippy warning (e.g., an `unused_mut` lint) causes the script to exit with a non‑zero status and prints the warning text emitted by `cargo clippy`.
+    - "? Executing `scripts/run-local-ci.sh clippy-check` on a repo with no new clippy warnings exits with status 0 and prints “cargo clippy : no new warnings”."
   depends_on: [CREDIBLE-668]
   notes: |
     [chump harvest check 'bot-merge']
@@ -19548,9 +19557,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    In scripts/ci/test-pr-watch-auto-resolve.sh, update the else-branch of the auto-close stage so command failures are guarded with `|| true` or equivalent error capture, ensuring failure logs are written without causing the script to exit with a non-zero status.
+    
+    Target file(s):
+    - scripts/ci/test-pr-watch-auto-resolve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Else‑branch errors are captured with `|| true` or similar guard
-    - The branch logs the error but never exits with non‑zero status
+    - The else-branch in scripts/ci/test-pr-watch-auto-resolve.sh uses `|| true` on failure-prone cleanup commands to prevent script termination.
+    - Executing bash scripts/ci/test-pr-watch-auto-resolve.sh exits with code 0 even when the auto-close else-branch encounters an error.
+    - An error message is logged to standard output or standard error when the else-branch failure path is triggered.
   notes: |
     [chump harvest check 'bot-merge']
     === primitives_index match for 'bot-merge' ===
@@ -19600,9 +19617,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add structured `tracing::warn!` logging to caught error handling in the else-branch and advisory processing logic within `crates/chump-gap-store/src/lib.rs`, attaching contextual fields such as gap details and error context to match existing crate logging standards.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When an error is caught, a log entry with level WARN and context is emitted
-    - Log format matches existing CI logging conventions
+    - "In `crates/chump-gap-store/src/lib.rs`, caught errors in else-branches and advisory paths emit `tracing::warn!` log messages with structured field context."
+    - Running `cargo test -p chump-gap-store` completes successfully without errors.
+    - Log outputs emitted during error and advisory evaluation contain log level `WARN` alongside structured context keys.
   depends_on: [CREDIBLE-802, CREDIBLE-803]
   notes: |
     [chump harvest check 'bot-merge']
@@ -22031,6 +22056,177 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-885
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-816: Define API contract and data model for stub detection (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A public function `detect_stub(gap_id: str, pr_diff: Diff) -> Verdict` is defined"
+    - The function validates input types and returns a structured result containing `verdict` (REACHES/TEST-ONLY/UNRELATED), `citations`, and `edge_resolution_rate`
+    - Error handling returns clear messages for malformed gap IDs or diff objects
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-886
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-817: Implement test‑only file classification (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All changed files are classified as test, fixture, or snapshot based on path patterns and file extensions
+    - When every changed file is classified as test‑only, the API returns the TEST‑ONLY verdict
+    - The classification does NOT trigger TEST‑ONLY for gaps whose acceptance criteria explicitly require source changes
+  depends_on: [CREDIBLE-885]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-887
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-818: Integrate Almanac graph lookup for import‑path resolution (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Given a repository file path, the component queries Almanac and returns the set of reachable targets (transitive imports)
+    - The component also returns the repository's current edge‑resolution rate (percentage of intra‑repo edges that are resolvable)
+    - Performance of the lookup stays under 200 ms for typical PR sizes
+  depends_on: [CREDIBLE-885]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-888
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-819: Verdict computation logic (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Combines test‑only classification and Almanac reachability to emit one of REACHES, TEST‑ONLY, or UNRELATED
+    - UNRELATED verdict includes a label `review-signal` and never triggers an automatic reject
+    - Verdict payload includes the citations that justify the decision and the edge‑resolution rate from Almanac
+    - All three verdicts are mutually exclusive and correctly prioritized (TEST‑ONLY overrides REACHES when applicable)
+  depends_on: [CREDIBLE-886, CREDIBLE-887]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-889
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-820: Early CI integration (pre‑push / bot‑merge hook) (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The stub‑detection step is executed as the first check in the ship pipeline (pre‑push or bot‑merge)
+    - The step publishes its verdict to the CI console and annotates the PR with the result
+    - When the step runs, no subsequent CI jobs are started if the verdict is UNRELATED and the repository is configured to block further checks
+    - Integration does not increase total CI time by more than 30 seconds on average
+  depends_on: [CREDIBLE-888]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-890
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-821: End‑to‑end test reproducing CREDIBLE‑200 shape (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates a diff that adds only an assert‑true test file with no source changes
+    - A gap is defined that targets a source file (not a test)
+    - Running the detection on this diff returns TEST‑ONLY and includes correct citations
+    - If the test file is removed from the diff, the detection no longer returns TEST‑ONLY (fails the test)
+    - The test is part of the CI suite and passes on the first run
+  depends_on: [CREDIBLE-889]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: DOC-031
   domain: DOC
@@ -159286,7 +159482,7 @@ gaps:
 - id: RESILIENT-746
   domain: RESILIENT
   title: "RESILIENT: Document existing ship-pipeline health checks (RESILIENT-274) and entry points (RESILIENT-279 slice)"
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -159307,6 +159503,7 @@ gaps:
     === cross-pollination briefs mentioning 'OWNERSHIP' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+  closed_pr: 4465
 
 - id: RESILIENT-747
   domain: RESILIENT
