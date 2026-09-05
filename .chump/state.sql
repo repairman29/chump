@@ -22620,10 +22620,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new unit‑test function `test_low_scoring_dead_cli` inside the existing `#[cfg(test)]` module of `atomic_claim.rs`. The test constructs a dead‑CLI entry with zero fan‑in and emission values, checks that its `crit.value` is less than a small epsilon (e.g., 0.01), and asserts that its `need` field equals `Need::Orphaned`. No production code is altered; only the test is introduced.
+    
+    Target file(s):
+    - .claude/worktrees/infra-3643-fleet-1-20260822-081649/crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test creates a dead‑CLI entry with zero fan‑in and emission values.
-    - Assert that its `crit.value` is near zero and `need` is `Orphaned`.
-    - Test fails before the implementation and passes after.
+    - Running `cargo test --package chump-atomic-claim` executes `test_low_scoring_dead_cli` defined in `atomic_claim.rs`.
+    - In `atomic_claim.rs`, `test_low_scoring_dead_cli` creates a CLI entry with `fan_in = 0` and `emission = 0` and asserts `crit.value < 0.01`.
+    - "In the same test, it asserts that the entry’s `need` field is exactly `Need::Orphaned`."
+    - The test fails (panics) on the current code base and passes only after the scoring implementation that sets near‑zero `crit.value` for dead CLI entries is added.
   depends_on: [CREDIBLE-896, CREDIBLE-897]
   notes: |
     [chump harvest check 'Index']
@@ -59291,7 +59299,7 @@ gaps:
     - EVENT_REGISTRY.yaml entries for `deliberation_started`, `deliberation_resolved`, `deliberation_handoff`, `deliberation_fairness_violation` present before code ships
     - "Release gate: 7-day fleet run with > 5 deliberations resolved (verified via `kind=deliberation_resolved` events in ambient.jsonl), zero operator-interventions for overlap conflicts"
   notes: |
-    Decomposed into 14 slices: INFRA-4517, INFRA-4518, INFRA-4519, INFRA-4520, INFRA-4521, INFRA-4522, INFRA-4523, INFRA-4524, INFRA-4525, INFRA-4526, INFRA-4527, INFRA-4528, INFRA-4529, INFRA-4530
+    Decomposed into 14 slices: INFRA-4800, INFRA-4801, INFRA-4802, INFRA-4803, INFRA-4804, INFRA-4805, INFRA-4806, INFRA-4807, INFRA-4808, INFRA-4809, INFRA-4810, INFRA-4811, INFRA-4812, INFRA-4813
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -136299,6 +136307,386 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  acceptance_criteria:
+    - Comparator selects winner by (1) higher `percent_complete`, (2) if tie newer `last_commit_sha`, (3) if still tie older `started_at`
+    - Function signature matches `deliberate(gap_id, my_progress, other_session) -> DeliberationOutcome`
+    - No compile warnings or errors
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4801
+  domain: INFRA
+  title: "INFRA: INFRA-4518: Property‑test comparator over 10K random progress pairs (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test file `tests/a2a_deliberation_comparator.rs` generates 10,000 random `(my_progress, other_progress)` pairs
+    - Both sides running the same comparator always agree on the winner
+    - Test passes in CI with 100% success
+  depends_on: [INFRA-4800]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4802
+  domain: INFRA
+  title: "INFRA: INFRA-4519: Implement `ask_progress` RPC client call (Layer 2b) (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When overlap is detected, session opens `ask_progress` RPC to the other session
+    - RPC payload includes `{percent_complete, last_commit_sha, last_activity_ts, remaining_ac[]}`
+    - Successful response is parsed and stored for deliberation
+  depends_on: [INFRA-4803]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4803
+  domain: INFRA
+  title: "INFRA: INFRA-4520: Detect INTENT overlap and trigger deliberation flow (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Overlap detection logic identifies when two sessions have conflicting INTENTs (INFRA‑1116 scenario)
+    - "Detection emits `deliberation_started` event and invokes `chump-coord::deliberate`"
+    - No false positives in unit tests covering overlapping and non‑overlapping intents
+  depends_on: [INFRA-4800]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4804
+  domain: INFRA
+  title: "INFRA: INFRA-4521: Broadcast HANDOFF with WIP commit SHA and retract lease (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Loser of deliberation sends `HANDOFF` event containing the WIP commit SHA
+    - Loser retracts its lease within 5 seconds of losing
+    - Receiver acknowledges HANDOFF and can resume work
+  depends_on: [INFRA-4803, INFRA-4800]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4805
+  domain: INFRA
+  title: "INFRA: INFRA-4522: Fairness monitor tracking wins/losses and violation emission (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Per‑session counters `deliberation_wins` and `deliberation_losses` are stored in the scratchpad (Layer 3d)
+    - When a session wins > 80 % of the last 50 deliberations, a `deliberation_fairness_violation` event is emitted
+    - Counters reset after each violation
+  depends_on: [INFRA-4800]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4806
+  domain: INFRA
+  title: "INFRA: INFRA-4523: Edge case – unresponsive side timeout handling (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If the remote side does not respond within the RPC deadline, `a2a_rpc_timeout` is raised
+    - Local side is automatically declared the winner of the deliberation
+    - Timeout scenario is covered by a unit test
+  depends_on: [INFRA-4803]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4807
+  domain: INFRA
+  title: "INFRA: INFRA-4524: Edge case – both at 0 % progress seniority rule (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When both sessions report `percent_complete == 0`, comparator falls back to seniority (`started_at` older wins)
+    - Unit test verifies correct winner for equal 0 % progress
+  depends_on: [INFRA-4800]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4808
+  domain: INFRA
+  title: "INFRA: INFRA-4525: Edge case – WIP conflict diff patch attachment (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If loser’s WIP commit conflicts with winner’s code, loser generates a diff patch and attaches it to the `HANDOFF` event
+    - Patch can be applied by the winner without manual intervention
+    - Integration test confirms patch is attached and applied successfully
+  depends_on: [INFRA-4804]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4809
+  domain: INFRA
+  title: "INFRA: INFRA-4526: Edge case – three‑way overlap pairwise deliberation (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When three sessions overlap, pairwise deliberations are performed in lexical order of `session_id`
+    - Final winner is the session that wins the majority of pairwise comparisons
+    - Test scenario with three mock sessions validates correct ordering and outcome
+  depends_on: [INFRA-4803]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4810
+  domain: INFRA
+  title: "INFRA: INFRA-4527: Add EVENT_REGISTRY.yaml entries for deliberation events (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`deliberation_started`, `deliberation_resolved`, `deliberation_handoff`, and `deliberation_fairness_violation` entries exist in `EVENT_REGISTRY.yaml` with correct schema"
+    - Schema validation passes in CI
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4811
+  domain: INFRA
+  title: "INFRA: INFRA-4528: Persist fairness metrics in scratchpad storage (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Counters from INFRA‑4522 are written to and read from the scratchpad without data loss across restarts
+    - Metrics are observable via a debug endpoint
+  depends_on: [INFRA-4805]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4812
+  domain: INFRA
+  title: "INFRA: INFRA-4529: Release‑gate verification script for fleet run (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script scans `ambient.jsonl` for `kind=deliberation_resolved` events
+    - Fails if fewer than 5 deliberations resolved in a 7‑day window or any operator intervention is recorded
+    - Script runs as part of the release pipeline and reports pass/fail
+  depends_on: [INFRA-4807, INFRA-4808, INFRA-4809, INFRA-4810]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4813
+  domain: INFRA
+  title: "INFRA: INFRA-4530: End‑to‑end documentation and integration test (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Documentation describes the full deliberation flow, edge cases, and fairness monitoring
+    - Integration test spins up two mock agents, triggers overlap, and verifies winner, HANDOFF, fairness event, and release‑gate script success
+    - All CI checks pass
+  depends_on: [INFRA-4800, INFRA-4801, INFRA-4803, INFRA-4804, INFRA-4805, INFRA-4806, INFRA-4807, INFRA-4808, INFRA-4809, INFRA-4810, INFRA-4811, INFRA-4812]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-487
   domain: INFRA
