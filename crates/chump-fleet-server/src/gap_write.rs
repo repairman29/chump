@@ -69,6 +69,12 @@ pub struct GapWriteRequest {
     pub acceptance_criteria: Option<Vec<String>>,
     #[serde(default)]
     pub status: Option<String>,
+    /// RESILIENT-1030: `--evidence` text for the CREDIBLE-107 P0/P1
+    /// RESILIENT/MISSION/CREDIBLE gate in `chump gap reserve`. Forwarded
+    /// verbatim when non-empty; see `execute_gap_write`'s `reserve` arm for
+    /// the exemption behavior when this is omitted.
+    #[serde(default)]
+    pub evidence: Option<String>,
 }
 
 /// Result of a successful gap mutation, serialized back to the caller.
@@ -94,6 +100,20 @@ fn run_chump(chump: &Path, repo_root: &Path, args: &[&str]) -> anyhow::Result<St
         );
     }
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+}
+
+/// RESILIENT-1030 / CREDIBLE-107: `chump gap reserve` refuses P0/P1
+/// RESILIENT/MISSION/CREDIBLE gaps without `--evidence`. The bat-phone
+/// bearer token already gates this whole route, so a caller who cleared
+/// auth is treated the same as an operator dispatching from the CLI:
+/// forward real evidence when given, otherwise pass
+/// `--no-evidence-required` so an authed P0/P1 dispatch never 500s on the
+/// evidence gate. Pure + unit-testable (no shell-out).
+fn evidence_gate_args(evidence: Option<&str>) -> Vec<String> {
+    match evidence.map(str::trim) {
+        Some(ev) if !ev.is_empty() => vec!["--evidence".into(), ev.to_string()],
+        _ => vec!["--no-evidence-required".into()],
+    }
 }
 
 /// Execute a `reserve|set|ship` gap mutation canonically (blocking; call
@@ -128,22 +148,22 @@ pub fn execute_gap_write(
             let effort = sanitize_effort(req.effort.as_deref());
             let domain_up = crate::mission::sanitize_domain(domain);
 
-            let stdout = run_chump(
-                &chump,
-                repo_root,
-                &[
-                    "gap",
-                    "reserve",
-                    "--domain",
-                    &domain_up,
-                    "--title",
-                    title,
-                    "--priority",
-                    &priority,
-                    "--effort",
-                    &effort,
-                ],
-            )?;
+            let mut reserve_args: Vec<String> = vec![
+                "gap".into(),
+                "reserve".into(),
+                "--domain".into(),
+                domain_up,
+                "--title".into(),
+                title.to_string(),
+                "--priority".into(),
+                priority,
+                "--effort".into(),
+                effort,
+            ];
+            reserve_args.extend(evidence_gate_args(req.evidence.as_deref()));
+            let reserve_args_ref: Vec<&str> = reserve_args.iter().map(String::as_str).collect();
+
+            let stdout = run_chump(&chump, repo_root, &reserve_args_ref)?;
             let gap_id = parse_gap_id(&stdout).ok_or_else(|| {
                 anyhow::anyhow!(
                     "could not parse gap id from reserve output: {}",
@@ -292,6 +312,28 @@ pub fn execute_gap_write(
     }
 }
 
+/// `GET /api/gaps` (RESILIENT-1030): authed read of the open-gap queue
+/// state, so the operator can see what's pickable over the tailnet instead
+/// of SSH+sqlite. Blocking (shells out to `chump gap list --json`); call
+/// from `spawn_blocking`. Returns the raw JSON array `chump gap list`
+/// already produces — no reshaping, so the CLI and the API never drift.
+pub fn list_open_gaps(repo_root: &Path) -> anyhow::Result<serde_json::Value> {
+    let chump = resolve_chump_bin(repo_root);
+    let stdout = run_chump(
+        &chump,
+        repo_root,
+        &["gap", "list", "--status", "open", "--json"],
+    )?;
+    parse_gap_list_json(&stdout)
+}
+
+/// Pure JSON-parse step, split out from `list_open_gaps` so it's
+/// unit-testable without shelling out to a real `chump` binary.
+fn parse_gap_list_json(stdout: &str) -> anyhow::Result<serde_json::Value> {
+    serde_json::from_str(stdout)
+        .map_err(|e| anyhow::anyhow!("could not parse `chump gap list --json` output: {e}"))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -319,6 +361,7 @@ mod tests {
             description: None,
             acceptance_criteria: None,
             status: None,
+            evidence: None,
         };
         let err = execute_gap_write(Path::new("/nonexistent"), req).unwrap_err();
         assert!(err.to_string().contains("unsupported op"));
@@ -337,6 +380,7 @@ mod tests {
             description: None,
             acceptance_criteria: None,
             status: None,
+            evidence: None,
         };
         let err = execute_gap_write(Path::new("/nonexistent"), req).unwrap_err();
         assert!(err.to_string().contains("domain"));
@@ -355,6 +399,7 @@ mod tests {
             description: None,
             acceptance_criteria: None,
             status: None,
+            evidence: None,
         };
         let err = execute_gap_write(Path::new("/nonexistent"), req).unwrap_err();
         assert!(err.to_string().contains("gap_id"));
@@ -373,8 +418,41 @@ mod tests {
             description: None,
             acceptance_criteria: None,
             status: None,
+            evidence: None,
         };
         let err = execute_gap_write(Path::new("/nonexistent"), req).unwrap_err();
         assert!(err.to_string().contains("gap_id"));
+    }
+
+    // RESILIENT-1030: the evidence gate must forward real evidence when
+    // given, and otherwise exempt the (already bearer-authed) dispatch via
+    // `--no-evidence-required` instead of letting P0/P1 RESILIENT/MISSION/
+    // CREDIBLE reserves 500 against the CREDIBLE-107 CLI gate.
+    #[test]
+    fn evidence_gate_forwards_real_evidence_when_present() {
+        let args = evidence_gate_args(Some("COMMAND/OUTPUT/THEORY/ALT"));
+        assert_eq!(args, vec!["--evidence", "COMMAND/OUTPUT/THEORY/ALT"]);
+    }
+
+    #[test]
+    fn evidence_gate_exempts_authed_dispatch_when_absent() {
+        assert_eq!(evidence_gate_args(None), vec!["--no-evidence-required"]);
+        assert_eq!(evidence_gate_args(Some("")), vec!["--no-evidence-required"]);
+        assert_eq!(
+            evidence_gate_args(Some("   ")),
+            vec!["--no-evidence-required"]
+        );
+    }
+
+    #[test]
+    fn parse_gap_list_json_accepts_a_valid_array() {
+        let parsed = parse_gap_list_json(r#"[{"id":"RESILIENT-1","status":"open"}]"#).unwrap();
+        assert_eq!(parsed[0]["id"], "RESILIENT-1");
+    }
+
+    #[test]
+    fn parse_gap_list_json_rejects_garbage() {
+        let err = parse_gap_list_json("not json").unwrap_err();
+        assert!(err.to_string().contains("could not parse"));
     }
 }
