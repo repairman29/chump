@@ -29,6 +29,7 @@ set -uo pipefail
 
 # ---------- args ----------
 ROLE="brain"; NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"; SELF_TEST_ONLY=0; DRY=0; CREDS_FILE=""
+RECONCILE_ORGANS_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
     --role) ROLE="$2"; shift 2;;
@@ -36,6 +37,17 @@ while [ $# -gt 0 ]; do
     --self-test-only|--check) SELF_TEST_ONLY=1; shift;;
     --dry-run) DRY=1; shift;;
     --creds-file) CREDS_FILE="$2"; shift 2;;
+    # RESILIENT-1035: fast path for the per-node auto-deploy timer
+    # (scripts/ops/node-refresh-chump.sh). A full run re-clones/re-fetches
+    # $NODE_DIR/repo, re-checks creds, and rebuilds the binary — all
+    # redundant work when the caller already git-pulled + refreshed the
+    # binary in ITS OWN mirror checkout a moment ago. This flag skips
+    # straight to detect_host + install_organs (writes/updates the
+    # role-scoped organ wrappers, e.g. muscle's worker.sh, and runs
+    # reconcile_role_organs to restart any organ whose manifest entry
+    # changed) so a timer-driven refresh actually converges organs to the
+    # freshly-deployed code, not just the binary on disk.
+    --reconcile-organs-only) RECONCILE_ORGANS_ONLY=1; shift;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
@@ -1101,6 +1113,13 @@ if [ "${BASH_SOURCE[0]}" = "${0}" ]; then
 printf '\033[1m=== chump-node-install: role=%s home=%s ===\033[0m\n' "$ROLE" "$NODE_DIR"
 info GAP-STORE "canonical shared gap store pinned: CHUMP_GAP_STORE_URL=$CHUMP_GAP_STORE_URL"
 detect_host
+if [ "$RECONCILE_ORGANS_ONLY" = 1 ]; then
+  run "mkdir -p '$ORGAN_DIR' '$LOG_DIR' '$STATE_DIR'"
+  install_organs
+  echo
+  ok "organs reconciled (role=$ROLE, reconcile-organs-only — clone/creds/binary/substrate/eyes untouched)"
+  exit 0
+fi
 if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
 toolchain_preflight
 ensure_home || { no "HOME phase failed (repo clone/fetch) — fix and re-run"; exit 1; }
