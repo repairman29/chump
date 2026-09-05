@@ -26349,10 +26349,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a scheduled background task in crates/chump-preflight/src/artifact_gates.rs using tokio::time::interval that runs at a configurable interval (defaulting to 15 minutes) to trigger SonnetAgent execution and logs each run attempt with tracing::info!.
+    
+    Target file(s):
+    - crates/chump-preflight/src/artifact_gates.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A scheduler entry (e.g., using `tokio::time::interval` or existing cron framework) triggers the agent every configurable interval (default 15 min)"
-    - Scheduler start‑up is wired into the main EFFECTIVE binary
-    - Log entry confirms each scheduled run
+    - "crates/chump-preflight/src/artifact_gates.rs contains a configurable scheduler function start_scheduled_sonnet_agent that accepts a std::time::Duration defaulting to 15 minutes."
+    - "The scheduler loop emits a tracing::info! log entry containing \"Executing scheduled SonnetAgent run\" before triggering each agent cycle."
+    - Cargo test in crates/chump-preflight/src/artifact_gates.rs includes a unit test verifying that the scheduler interval fires and executes the agent callback on timer ticks.
   depends_on: [EFFECTIVE-1035]
   notes: |
     [chump harvest check 'sonnet']
