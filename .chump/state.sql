@@ -19742,9 +19742,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Refactor the `run` function in `crates/chump-preflight/src/preflight.rs` to eliminate all Clippy warnings (replace `unwrap`/`expect` with proper error propagation, address naming and unused-result warnings, and add any necessary `#[allow(...)]` annotations) and apply `rustfmt` so the file conforms to the project's formatting standards.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt --all` reports no formatting issues"
-    - "`cargo clippy --all-targets -- -D warnings` passes without warnings"
+    - Executing `cargo fmt --all` reports no formatting changes in `crates/chump-preflight/src/preflight.rs`.
+    - "Executing `cargo clippy --all-targets -- -D warnings` exits with status 0 and produces no warnings that reference `crates/chump-preflight/src/preflight.rs::run`."
+    - The `run` function compiles without any `unwrap` or `expect` calls and returns a `Result` that propagates errors using `?`.
+    - All existing unit and integration tests in the repository pass (`cargo test` returns success) after the modifications.
   depends_on: [CREDIBLE-807]
   notes: |
     [chump harvest check 'bot-merge']
@@ -19769,9 +19778,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add explicit documentation of the new failure‑tolerant auto‑close guarantee. In `scripts/coord/gap-doctor-reconcile.py` insert a top‑level changelog comment and a line comment inside the `check_closure_drift` function stating that the auto‑close stage is now failure‑tolerant for shell/doc PRs. In `src/agent_loop/types.rs` extend the docstring of `message_likely_needs_tools_neuromod` to mention the same guarantee, so generated docs and the changelog both reflect the update.
+    
+    Target file(s):
+    - scripts/coord/gap-doctor-reconcile.py
+    - src/agent_loop/types.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Changelog entry notes that auto‑close stage is now failure‑tolerant for shell/doc PRs
-    - Documentation page on bot‑merge behavior reflects the new guarantee
+    - "scripts/coord/gap-doctor-reconcile.py contains a top‑level comment line exactly \"# Changelog: auto‑close stage is now failure‑tolerant for shell/doc PRs.\""
+    - "scripts/coord/gap-doctor-reconcile.py’s `check_closure_drift` function includes a comment line exactly \"Auto-close stage is now failure‑tolerant for shell/doc PRs.\""
+    - "src/agent_loop/types.rs’s `message_likely_needs_tools_neuromod` docstring contains the phrase \"failure‑tolerant auto‑close\"."
+    - "Running the repository’s documentation generation script produces a bot‑merge behavior page that includes the phrase \"failure‑tolerant auto‑close\"."
   depends_on: [CREDIBLE-808]
   notes: |
     [chump harvest check 'bot-merge']
@@ -19883,10 +19902,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the gauge helper in `scripts/ops/vital-signs.sh` (function `jnum`) to recognize the new lifecycle stage name “wired” and return a valid gauge identifier, and augment `scripts/ci/test-capability-lifecycle.sh` with an integration test that runs the wiring step, invokes the gauge helper, and asserts that the output reports the “wired” state.
+    
+    Target file(s):
+    - scripts/ops/vital-signs.sh
+    - scripts/ci/test-capability-lifecycle.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Wiring step sets the gauge to the wired stage.
-    - Integration test ensures that after wiring the gauge reports the wired state.
-    - Code formatting and linting remain clean.
+    - In `scripts/ops/vital-signs.sh`, calling `jnum wired` exits with status 0 and prints a non‑empty numeric gauge ID.
+    - In `scripts/ci/test-capability-lifecycle.sh`, after the wiring step the script executes `scripts/ops/vital-signs.sh jnum wired` and fails if the stdout does not contain the string “wired”.
+    - Running the repository’s lint command (e.g., `cargo fmt --check` or `shellcheck scripts/ops/vital-signs.sh`) reports zero issues for the modified files.
+    - The CI job `test-capability-lifecycle` completes successfully, confirming the new gauge check passes.
   depends_on: [CREDIBLE-812]
   notes: |
     [chump harvest check 'lifecycle']
@@ -99051,7 +99079,7 @@ gaps:
     - effective priority is the PRIMARY sort band, not a within-priority-band tiebreaker (today _pick_gap.py INFRA-1258 planner rank only breaks ties WITHIN a nominal band — crates/chump-planner/src/graph.rs has open_prerequisites/layers/critical_path_days/unblocks already)
     - "regression test (extend picker_priority_infra3616.rs): a P3 gap that a P0 depends_on is picked before unrelated P1/P2 gaps; no deadlock where a blocked P0 waits behind all P1s while its own P2 prereq sits unworked"
   notes: |
-    Decomposed into 3 slices: INFRA-4440, INFRA-4441, INFRA-4442
+    Decomposed into 3 slices: INFRA-4738, INFRA-4739, INFRA-4740
   opened_date: '2026-08-19'
 
 - id: INFRA-3614
@@ -132113,6 +132141,83 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4738
+  domain: INFRA
+  title: "INFRA: INFRA-4440: Compute effective priority for a gap (INFRA-3612 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A function `effective_priority(gap_id)` returns the minimum band among the gap's own priority and the priorities of all gaps it transitively unblocks.
+    - "Unit tests cover: a single gap with no dependents, a linear chain of three gaps, and a branching graph where a high‑priority gap unblocks multiple lower‑priority gaps."
+    - The function uses the existing `chump-planner.unblocks()` API without altering its signature.
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-4739
+  domain: INFRA
+  title: "INFRA: INFRA-4441: Use effective priority as primary picker sort band (INFRA-3612 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The picker sorts gaps first by `effective_priority` (primary band) before applying any within‑band tie‑breakers.
+    - Existing picker behavior for within‑band ordering remains unchanged.
+    - Integration tests verify that a P3 gap that blocks a P0 is ordered as P0 in the pick list, ahead of unrelated P1/P2 gaps.
+  depends_on: [INFRA-4738]
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-4740
+  domain: INFRA
+  title: "INFRA: INFRA-4442: Regression test for effective priority propagation (INFRA-3612 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The test `picker_priority_infra3616.rs` is extended to create a scenario where a P3 gap blocks a P0 gap, with additional unrelated P1 and P2 gaps present.
+    - The picker selects the P0 gap (via its effective priority) before any unrelated P1/P2 gaps.
+    - "The test asserts that no deadlock occurs: the blocked P0 does not wait behind all P1 gaps while its own P2 prerequisite remains unworked."
+  depends_on: [INFRA-4739]
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
 
 - id: INFRA-476
   domain: INFRA
