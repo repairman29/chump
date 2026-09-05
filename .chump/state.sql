@@ -4916,7 +4916,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 6 slices: CREDIBLE-810, CREDIBLE-811, CREDIBLE-812, CREDIBLE-813, CREDIBLE-814, CREDIBLE-815
+    Decomposed into 6 slices: CREDIBLE-879, CREDIBLE-880, CREDIBLE-881, CREDIBLE-882, CREDIBLE-883, CREDIBLE-884
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -21893,6 +21893,144 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  acceptance_criteria:
+    - "Gauge transitions from \"built\" to \"merged\" after a merge commit is detected."
+    - Integration test confirms transition and fails without the implementation.
+    - No new warnings; cargo fmt, clippy and all existing tests remain green.
+  depends_on: [CREDIBLE-879]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-881
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-812: Add deployed‑stage lifecycle gauge (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Gauge moves to \"deployed\" once deployment artifacts are produced."
+    - Automated test (cargo test or scripts/ci/test‑*.sh) validates the transition and fails without the code.
+    - All formatting, linting and regression tests succeed.
+  depends_on: [CREDIBLE-880]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-882
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-813: Add wired‑stage lifecycle gauge (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge updates to \"wired\" after network wiring steps complete."
+    - "CI script test confirms the gauge reaches \"wired\" and would fail otherwise."
+    - cargo fmt, clippy and the full test suite pass with zero warnings.
+  depends_on: [CREDIBLE-881]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-883
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-814: Add running‑stage lifecycle gauge (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge reflects \"running\" when the capability starts processing traffic."
+    - "A functional test asserts the gauge is \"running\" and fails if the change is missing."
+    - No regressions; formatting, linting and all existing tests succeed.
+  depends_on: [CREDIBLE-882]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-884
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-815: Add final DONE (doing‑its‑job) stage and overall lifecycle validation (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Gauge reaches \"doing‑its‑job\" only after all previous stages are completed."
+    - End‑to‑end test verifies the full sequence built→merged→deployed→wired→running→doing‑its‑job and fails without the implementation.
+    - Full repository passes cargo fmt, clippy (‑D warnings) and all existing tests with no regressions.
+  depends_on: [CREDIBLE-883]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: DOC-031
   domain: DOC
