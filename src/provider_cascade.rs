@@ -2115,6 +2115,17 @@ pub fn build_provider_single_pub() -> Box<dyn Provider + Send + Sync> {
 }
 
 fn build_provider_single() -> Box<dyn Provider + Send + Sync> {
+    // RESILIENT-1034: `FLEET_BACKEND=claude|sonnet|claude-cli` routes
+    // inference through the local `claude` CLI instead of an
+    // OpenAI-compatible HTTP endpoint. This is the escape hatch for hosts
+    // (e.g. cuphead) that don't run the local Ollama daemon a fixed
+    // `OPENAI_API_BASE=http://127.0.0.1:11434` assumes — every fleet worker
+    // already has an authenticated `claude` CLI on PATH, so this backend has
+    // no host-pinned reachability dependency. Checked first so it overrides
+    // both the local-Ollama default and any `OPENAI_API_BASE` override.
+    if crate::claude_cli_provider::claude_cli_backend_requested() {
+        return Box::new(crate::claude_cli_provider::ClaudeCliProvider::new());
+    }
     #[cfg(feature = "mistralrs-infer")]
     {
         if crate::mistralrs_provider::mistralrs_backend_configured() {
