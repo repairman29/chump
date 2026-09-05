@@ -257,6 +257,7 @@ mod stack_detect;
 mod staleness;
 mod standard_missions; // EFFECTIVE-199: L1 foundation queue for 0→1 onboard — see docs/design/ONBOARD_0TO1_DOCTRINE.md
 mod state_db;
+mod subcommand_registry; // INFRA-4667 (INFRA-1687 slice): inventory-backed CLI subcommand self-registration primitive
 mod stream_events;
 mod streaming_provider;
 mod system_prompt;
