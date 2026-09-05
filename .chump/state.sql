@@ -15866,9 +15866,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Extend the `require_catalog` function in `scripts/arsenal/harvest.sh` to add a `--generate-catalog` option that scans the latest drift‑flag dataset, extracts all distinct noise patterns, and writes them to a new markdown file `docs/noise_patterns.md` as a table with columns Pattern, Example, and Count.
+    
+    Target file(s):
+    - scripts/arsenal/harvest.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - List of all noise patterns (e.g., ANTHROPIC_API_KEY default spellings, CARGO_MANIFEST_DIR unknown, CHUMP_AMBIENT_LOG path variants) documented in a markdown file
-    - Each pattern includes example raw values and the count of occurrences from the latest dataset
+    - "scripts/arsenal/harvest.sh: the `require_catalog` function creates or overwrites `docs/noise_patterns.md` with a markdown table whose header line is exactly \"`| Pattern | Example | Count |`\"."
+    - "Running `./scripts/arsenal/harvest.sh --generate-catalog` on a dataset containing three occurrences of the flag `CHUMP_AMBIENT_LOG` results in a row \"`| CHUMP_AMBIENT_LOG | <example_value> | 3 |`\" in `docs/noise_patterns.md`."
+    - The generated `docs/noise_patterns.md` includes a row for `ANTHROPIC_API_KEY` with at least one non‑empty example raw value extracted from the dataset.
+    - No other repository files are modified by the script execution.
   notes: |
     [chump harvest check 'almanac']
     === primitives_index match for 'almanac' ===
@@ -33797,6 +33806,57 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
+- id: EFFECTIVE-1208
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1098: Design merged skeleton emission strategy (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Design document outlines how the architect will emit a single merged skeleton containing traits, todo!() holes, and failing tests.
+    - Design is reviewed and approved by the team.
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1209
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1099: Implement trait aggregation logic (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Code aggregates all required traits into a single skeleton structure.
+    - Running `cargo test` shows the aggregation compiles without errors.
+  depends_on: [EFFECTIVE-1208]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: EFFECTIVE-121
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire EFFECTIVE-112.yaml into role curator-opus-target"
@@ -33807,6 +33867,215 @@ gaps:
     - "1. Edit the role-doc for curator-opus-target to reference EFFECTIVE-112.yaml (shipped in EFFECTIVE-112) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'EFFECTIVE-112.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1210
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1100: Generate todo!() placeholders in the skeleton (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Each required implementation point is replaced with a `todo!()` macro.
+    - The generated skeleton fails to compile only because of the `todo!()` placeholders.
+  depends_on: [EFFECTIVE-1209]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1211
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1101: Create failing tests for each placeholder (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For every `todo!()` hole a corresponding test is generated that fails until the hole is filled.
+    - "`cargo test` reports one failing test per placeholder."
+  depends_on: [EFFECTIVE-1210]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1212
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1102: Scaffold a single stable PR that emits the merged skeleton (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Running the scaffold command creates a PR containing the merged skeleton with traits, placeholders, and failing tests.
+    - The PR passes CI lint checks (fmt, clippy) but has failing tests as expected.
+  depends_on: [EFFECTIVE-1211]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1213
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1103: Implement leaf‑gap creation for each todo!() (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After the merged PR is merged, the system creates N separate leaf gaps, each targeting a single `todo!()` and its test.
+    - Each leaf gap is a minimal PR that modifies only the associated placeholder and test.
+  depends_on: [EFFECTIVE-1212]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1214
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1104: Ensure leaf gaps reference the correct test (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Each leaf gap includes a link or metadata pointing to its failing test.
+    - Verification script confirms 1‑to‑1 mapping between leaf gaps and tests.
+  depends_on: [EFFECTIVE-1213]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1215
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1105: Instrument CI to measure CI‑time and collision‑rate (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI pipeline records total run time and number of merge‑race collisions for the new workflow.
+    - Metrics are exported to a JSON artifact for later analysis.
+  depends_on: [EFFECTIVE-1212]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1216
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1106: Add integration test verifying merged skeleton PR behavior (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Integration test simulates the full flow: emit merged skeleton PR, then apply a leaf gap, and asserts CI metrics improve vs baseline."
+    - Test passes when CI‑time is ≤ baseline and collision‑rate is reduced.
+  depends_on: [EFFECTIVE-1214, EFFECTIVE-1215]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1217
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1107: Documentation, cleanup, and final validation (EFFECTIVE-440 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and developer docs describe the new scaffold‑and‑holes workflow.
+    - All `cargo fmt` and `cargo clippy` checks pass with no warnings.
+    - All unit, integration, and CI metric tests pass.
+  depends_on: [EFFECTIVE-1216]
+  notes: |
+    [chump harvest check 'PILOT']
+    === primitives_index match for 'PILOT' ===
+    
+    === cluster keyword match for 'PILOT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'PILOT' ===
+    
+    === repo-description match for 'PILOT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'PILOT' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'PILOT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: EFFECTIVE-122
   domain: EFFECTIVE
@@ -38239,7 +38508,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 10 slices: EFFECTIVE-1098, EFFECTIVE-1099, EFFECTIVE-1100, EFFECTIVE-1101, EFFECTIVE-1102, EFFECTIVE-1103, EFFECTIVE-1104, EFFECTIVE-1105, EFFECTIVE-1106, EFFECTIVE-1107
+    Decomposed into 10 slices: EFFECTIVE-1208, EFFECTIVE-1209, EFFECTIVE-1210, EFFECTIVE-1211, EFFECTIVE-1212, EFFECTIVE-1213, EFFECTIVE-1214, EFFECTIVE-1215, EFFECTIVE-1216, EFFECTIVE-1217
   opened_date: '2026-08-19'
 
 - id: EFFECTIVE-441
