@@ -551,6 +551,16 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [agent_id, unblocked_count]
 
+  - kind: model_ladder_capability_escalation
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-1007, RESILIENT-596 slice)
+    trigger: FLEET_BACKEND=chump-local exits rc=1 with a model-capability-failure
+      signature (tool-call shape unsupported by the current CHUMP_MODEL_ESCALATION_LADDER
+      rung, not an account outage or a real code bug); worker skips cooldown/
+      auto-block so the strike-driven ladder gets a clean shot at the next rung
+    consumers: [fleet-brief, watchdog]
+    fields_required: [agent_id, gap_id, fail_class, model, rc]
+
   - kind: gap_parked_unverified_ship
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)

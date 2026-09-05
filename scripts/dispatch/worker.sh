@@ -401,6 +401,27 @@ classify_sub_failure() {
     echo "none"
 }
 
+# RESILIENT-1007 (RESILIENT-596 slice): classify a chump-local cycle-log
+# failure as a MODEL CAPABILITY failure — the request was fine, but this
+# specific model rung can't handle it (no tool-use support, malformed
+# function-calling config, refuses the tool-call shape). Mirrors the
+# capability-error signatures src/provider_cascade.rs::should_cascade_on_error_string
+# already cascades on WITHIN a single execute_gap call; this classifier
+# catches the case where the capability error is the LAST thing in the
+# log when the whole cycle still exits rc=1 (cascade exhausted or the
+# error surfaced after cascade gave up). Distinct from classify_sub_failure
+# (account-level outage: credit/rate/auth) — a capability failure is a
+# property of THIS model, not the account, so the fix is "try the next
+# rung on CHUMP_MODEL_ESCALATION_LADDER", not "cool down the gap".
+classify_model_capability_failure() {
+    local log="$1"
+    [[ -f "$log" ]] || { echo "none"; return; }
+    if grep -qiE 'unsupportedtooluse|unsupported_tool_use|does not support more than one tool|does not support tool|tools are not supported|model does not support tools|tool_use_failed|tool call validation failed|failed to call a function|function calling config is set without|function_declarations|function_declaration is required' "$log" 2>/dev/null; then
+        echo "tool-capability"; return
+    fi
+    echo "none"
+}
+
 # INFRA-206: per-agent domain affinity. If FLEET_AGENT_DOMAINS is set (comma-
 # separated, e.g. "INFRA,EVAL,DOC"), agent K is assigned domains[(K-1) % N],
 # overriding the fleet-wide FLEET_DOMAIN_FILTER for this worker only.
@@ -1959,6 +1980,38 @@ Operator or sibling worker can rescue this branch via:
             fi
         fi
 
+        # ── RESILIENT-1007 (RESILIENT-596 slice): model-capability rc=1 →
+        # escalate the ladder, don't cool down / auto-block ─────────────────
+        # AC1: chump-local already re-reads `chump gap strike` (via
+        # _effective_003_reflex above) to pick the next CHUMP_MODEL_ESCALATION_LADDER
+        # rung on the NEXT cycle, but that escalation was getting starved:
+        # the generic rc!=0 cooldown/offense-counter below (INFRA-3832) treats
+        # every non-zero rc as "this gap is bad" and auto-blocks it after
+        # CHUMP_AUTO_BLOCK_THRESHOLD (default 3) consecutive failures — often
+        # before the ladder even reaches its top rung. When the cycle-log shows
+        # a genuine model-capability failure (this rung can't handle the
+        # tool-call shape, not an account outage and not a real code bug),
+        # skip cooldown/auto-block entirely so the strike-driven ladder gets a
+        # clean shot at the next rung immediately, same pattern RESILIENT-575
+        # already established for account-level sub outages.
+        _capability_escalation_fail=0
+        if [[ "$_orig_backend" == "chump-local" ]] \
+           && [[ "$rc" -eq 1 ]] \
+           && [[ -n "${CHUMP_MODEL_ESCALATION_LADDER:-}" ]]; then
+            _cap_fail_class="$(classify_model_capability_failure "$cycle_log")"
+            if [[ "$_cap_fail_class" != "none" ]]; then
+                _capability_escalation_fail=1
+                _amb_cap="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                mkdir -p "$(dirname "$_amb_cap")" 2>/dev/null || true
+                # AC3: loud warning + logged event naming the escalation.
+                printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"model_ladder_capability_escalation","agent_id":"%s","gap_id":"%s","fail_class":"%s","model":"%s","rc":%d}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                    "$AGENT_ID" "$GAP_ID" "$_cap_fail_class" "${_cl_model:-unknown}" "$rc" \
+                    >> "$_amb_cap" 2>/dev/null || true
+                log "ALERT RESILIENT-1007: model capability failure (${_cap_fail_class}) on $GAP_ID at model=${_cl_model:-unknown} — escalating to next CHUMP_MODEL_ESCALATION_LADDER rung, skipping cooldown/auto-block"
+            fi
+        fi
+
         # ── INFRA-267: P0 fallback to Anthropic ─────────────────────────────
         # When the chump-local backend (free-tier cascade) fails on a P0 gap,
         # fall through to the Anthropic claude path so high-priority work
@@ -2039,7 +2092,13 @@ Operator or sibling worker can rescue this branch via:
         # here is exactly the misattribution the 2026-09-01 incident was
         # caused by (a P0 gap auto-blocked for 9h while the real problem was
         # an exhausted subscription cap).
-        if [ "$rc" -ne 0 ] && [ "${_backend_outage_fail:-0}" -eq 0 ]; then
+        #
+        # RESILIENT-1007: same reasoning for a model-CAPABILITY failure (see
+        # classify_model_capability_failure above) — the gap isn't bad, this
+        # model rung just can't handle the tool-call shape. Skip cooldown so
+        # the strike-driven CHUMP_MODEL_ESCALATION_LADDER gets a clean shot at
+        # the next rung instead of the gap getting auto-blocked mid-escalation.
+        if [ "$rc" -ne 0 ] && [ "${_backend_outage_fail:-0}" -eq 0 ] && [ "${_capability_escalation_fail:-0}" -eq 0 ]; then
             if [ "${_is_wedge:-0}" -eq 1 ]; then
                 cooldown_s="${FLEET_WEDGE_COOLDOWN_S:-14400}"  # 4h default
                 _cooldown_kind="wedge"
