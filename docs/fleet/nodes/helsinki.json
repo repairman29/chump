@@ -12,10 +12,26 @@
     "gpu_vram_mb": 0,
     "always_on": true
   },
-  "roles_fit": ["build-worker","ci-runner","atc-heartbeat","broker"],
-  "services_running": ["chump-worker","nats:broker","github-actions-runner","discord-gateway","chump-pr-lander"],
+  "roles_fit": [
+    "build-worker",
+    "ci-runner",
+    "atc-heartbeat",
+    "broker"
+  ],
+  "services_running": [
+    "chump-worker",
+    "nats:broker",
+    "github-actions-runner",
+    "discord-gateway",
+    "chump-pr-lander"
+  ],
   "capability": {
     "vram_gb": 0,
-    "supported_task_classes": ["build","ship","coord"]
-  }
+    "supported_task_classes": [
+      "build",
+      "ship",
+      "coord"
+    ]
+  },
+  "role_assigned": "brain"
 }

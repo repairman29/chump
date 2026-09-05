@@ -12,10 +12,22 @@
     "gpu_vram_mb": 0,
     "always_on": false
   },
-  "roles_fit": ["build-worker","ci-runner","atc-interactive"],
-  "services_running": ["chump-worker","nats:broker"],
+  "roles_fit": [
+    "build-worker",
+    "ci-runner",
+    "atc-interactive"
+  ],
+  "services_running": [
+    "chump-worker",
+    "nats:broker"
+  ],
   "capability": {
     "vram_gb": 0,
-    "supported_task_classes": ["build","ship","coord"]
-  }
+    "supported_task_classes": [
+      "build",
+      "ship",
+      "coord"
+    ]
+  },
+  "role_assigned": "operator"
 }
