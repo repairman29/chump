@@ -40,6 +40,7 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/dashboard-summary", get(get_dashboard_summary))
         .route("/api/mission", post(post_mission))
         .route("/api/gap", post(post_gap))
+        .route("/api/gaps", get(get_gaps))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
         .with_state(state)
@@ -240,6 +241,73 @@ async fn handle_ws(mut socket: axum::extract::ws::WebSocket, store: SharedStore)
     }
 }
 
+/// Shared fail-closed bearer-auth check for the bat-phone routes
+/// (`/api/mission`, `/api/gap`, `/api/gaps`). Returns `Some(response)` when
+/// the request must be rejected (503 unconfigured / 401 wrong token), or
+/// `None` when the caller is authorized to proceed.
+fn check_bearer_auth(headers: &axum::http::HeaderMap) -> Option<Response> {
+    let Some(expected) = mission::configured_token() else {
+        return Some(
+            (
+                axum::http::StatusCode::SERVICE_UNAVAILABLE,
+                Json(serde_json::json!({
+                    "error": "bat-phone disabled: CHUMP_BATPHONE_TOKEN not set"
+                })),
+            )
+                .into_response(),
+        );
+    };
+    let presented = headers
+        .get(axum::http::header::AUTHORIZATION)
+        .and_then(|v| v.to_str().ok())
+        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).trim().to_string())
+        .unwrap_or_default();
+    if !mission::constant_time_eq(&presented, &expected) {
+        return Some(
+            (
+                axum::http::StatusCode::UNAUTHORIZED,
+                Json(serde_json::json!({"error": "unauthorized"})),
+            )
+                .into_response(),
+        );
+    }
+    None
+}
+
+/// GET /api/gaps (RESILIENT-1030) — authed read of the open-gap queue state.
+///
+/// Same fail-closed bearer auth as `/api/mission` and `/api/gap`. Lets the
+/// operator see what's pickable over the tailnet API instead of
+/// SSH+sqlite+`chump gap list`.
+async fn get_gaps(State(s): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+    if let Some(rejection) = check_bearer_auth(&headers) {
+        return rejection;
+    }
+
+    let repo_root = s.repo_root.clone();
+    let result = tokio::task::spawn_blocking(move || gap_write::list_open_gaps(&repo_root)).await;
+
+    match result {
+        Ok(Ok(gaps)) => Json(gaps).into_response(),
+        Ok(Err(e)) => {
+            tracing::error!("GET /api/gaps failed: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+        Err(e) => {
+            tracing::error!("GET /api/gaps task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
 /// POST /api/mission — bat-phone external mission intake (EFFECTIVE-513).
 ///
 /// Fail-closed bearer auth via `CHUMP_BATPHONE_TOKEN`. On success it reserves a
@@ -253,26 +321,8 @@ async fn post_mission(
     payload: Result<Json<MissionRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
     // 1. Auth — fail-closed. No token configured => route refuses entirely.
-    let Some(expected) = mission::configured_token() else {
-        return (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "bat-phone disabled: CHUMP_BATPHONE_TOKEN not set"
-            })),
-        )
-            .into_response();
-    };
-    let presented = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).trim().to_string())
-        .unwrap_or_default();
-    if !mission::constant_time_eq(&presented, &expected) {
-        return (
-            axum::http::StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
+    if let Some(rejection) = check_bearer_auth(&headers) {
+        return rejection;
     }
 
     // 2. Body.
@@ -339,26 +389,8 @@ async fn post_gap(
     payload: Result<Json<GapWriteRequest>, axum::extract::rejection::JsonRejection>,
 ) -> Response {
     // 1. Auth — fail-closed, identical to post_mission.
-    let Some(expected) = mission::configured_token() else {
-        return (
-            axum::http::StatusCode::SERVICE_UNAVAILABLE,
-            Json(serde_json::json!({
-                "error": "bat-phone disabled: CHUMP_BATPHONE_TOKEN not set"
-            })),
-        )
-            .into_response();
-    };
-    let presented = headers
-        .get(axum::http::header::AUTHORIZATION)
-        .and_then(|v| v.to_str().ok())
-        .map(|v| v.strip_prefix("Bearer ").unwrap_or(v).trim().to_string())
-        .unwrap_or_default();
-    if !mission::constant_time_eq(&presented, &expected) {
-        return (
-            axum::http::StatusCode::UNAUTHORIZED,
-            Json(serde_json::json!({"error": "unauthorized"})),
-        )
-            .into_response();
+    if let Some(rejection) = check_bearer_auth(&headers) {
+        return rejection;
     }
 
     // 2. Body.
