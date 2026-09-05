@@ -12,10 +12,24 @@
     "gpu_vram_mb": 4096,
     "always_on": true
   },
-  "roles_fit": ["gpu-embed","gpu-inference-small","build-worker","ci-runner","atc-heartbeat","broker"],
-  "services_running": ["ollama:embed/inference","nats:broker"],
+  "roles_fit": [
+    "gpu-embed",
+    "gpu-inference-small",
+    "build-worker",
+    "ci-runner",
+    "atc-heartbeat",
+    "broker"
+  ],
+  "services_running": [
+    "ollama:embed/inference",
+    "nats:broker"
+  ],
   "capability": {
     "vram_gb": 4,
-    "supported_task_classes": ["embed","small-inference"]
-  }
+    "supported_task_classes": [
+      "embed",
+      "small-inference"
+    ]
+  },
+  "role_assigned": "gpu-embed"
 }

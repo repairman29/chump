@@ -12307,3 +12307,13 @@ events:
       signal proving the drain is actually running, not just registered.
     consumers: [ambient, Roll Call]
     fields_required: [ts, kind, surfaces_checked, surfaces_breached]
+
+  - kind: node_role_assigned
+    effect_metric: self
+    emitter: scripts/dispatch/node-role-assign.sh (RESILIENT-1031)
+    trigger: the placement kernel (--apply mode) persists a new or changed
+      role_assigned (brain/muscle/gpu-embed/operator) for a node in
+      docs/fleet/nodes/*.json — the "roles_fit != role_assigned" policy
+      decision from docs/design/NODE_FABRIC.md component #2.
+    consumers: [ambient, organ-reconcile (role-scoped), placement engine (future)]
+    fields_required: [ts, kind, node_id, role_assigned, previous_role]
