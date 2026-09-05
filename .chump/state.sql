@@ -135956,7 +135956,7 @@ gaps:
 - id: INFRA-4788
   domain: INFRA
   title: "INFRA: Add sync_pull call to ensure_seed phase (INFRA-3633 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -135992,6 +135992,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-05T21:55:23Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4789
   domain: INFRA
@@ -137355,6 +137356,99 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4828
+  domain: INFRA
+  title: "INFRA: Add strict schema validation to broadcast.sh (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - broadcast.sh exits with non‑zero status for malformed events
+    - Error message includes the expected JSON schema and points to the offending field
+    - Misuse of positional arguments (e.g., missing --to-recipient) triggers a clear error
+    - Unit test verifies rejection of an event missing required fields
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4829
+  domain: INFRA
+  title: "INFRA: Implement --strict flag and 7‑day opt‑in transition (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "--strict flag enables the new strict validation logic"
+    - Without the flag, legacy permissive behavior remains unchanged
+    - After a 7‑day window, the default mode flips to strict validation
+    - CI verifies both flag states and the automatic switch after the window
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4830
+  domain: INFRA
+  title: "INFRA: Publish curator session role and skills to KV store (INFRA-1862 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - On session start, a JSON payload {role, skills[]} is written to a known KV key
+    - "Payload schema is validated against {role:string, skills:array<string>}"
+    - Existing sessions that do not publish still operate without error
+    - Integration test confirms KV entry is created and readable
+  notes: |
+    [chump harvest check 'extend']
+    === primitives_index match for 'extend' ===
+    
+    === cluster keyword match for 'extend' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'extend' ===
+    
+    === repo-description match for 'extend' ===
+    
+    === HARVEST_ROADMAP.md mention of 'extend' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'extend' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-487
   domain: INFRA
