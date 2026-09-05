@@ -232,6 +232,67 @@ mkdir -p "$FLEET_LOG_DIR"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
 
+# ── RESILIENT-1013: batphone gap API picker ─────────────────────────────────
+# Distributed workers, central queue. When CHUMP_GAP_API_URL is set, a node
+# with just a local checkout + creds joins the fleet without needing a local
+# gap store (.chump/state.db): it pulls the next pickable gap from the shared
+# gap API (GET /api/gaps/next) and claims it there (POST /api/gap/claim/:id)
+# instead of running the local `chump gap list` + `_pick_and_claim_gap.py`
+# atomic picker. The repo checkout + worktree creation stay entirely local
+# ("build where you compute"); only the work queue is remote.
+#
+# On success: prints the claimed gap id to stdout and sets
+# REMOTE_GAP_JSON (single-gap JSON object) as a side effect via the
+# REMOTE_GAP_JSON_FILE the caller passes in. Prints nothing on failure/empty.
+remote_pick_and_claim_gap() {
+    local api="$CHUMP_GAP_API_URL"
+    local out_file="$1"
+    local auth_hdr=()
+    if [[ -n "${CHUMP_GAP_API_TOKEN:-}" ]]; then
+        auth_hdr=(-H "Authorization: Bearer ${CHUMP_GAP_API_TOKEN}")
+    fi
+
+    local qs="priority=${FLEET_PRIORITY_FILTER}&effort=${FLEET_EFFORT_FILTER}"
+    if [[ -n "${FLEET_DOMAIN_FILTER:-}" ]]; then
+        qs="${qs}&domain=${FLEET_DOMAIN_FILTER}"
+    fi
+
+    local next_resp
+    next_resp="$(curl -fsS --max-time 15 "${auth_hdr[@]}" \
+        "${api%/}/api/gaps/next?${qs}" 2>/dev/null || true)"
+    if [[ -z "$next_resp" ]]; then
+        return 1
+    fi
+
+    local gap_id
+    gap_id="$(printf '%s' "$next_resp" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); g=d.get('gap'); print(g.get('id','') if g else '')" \
+        2>/dev/null || true)"
+    if [[ -z "$gap_id" ]]; then
+        return 1
+    fi
+
+    local claim_resp
+    claim_resp="$(curl -fsS --max-time 15 -X POST "${auth_hdr[@]}" \
+        -H "X-CSRF-Token: worker-${AGENT_ID}" -H "X-Session-ID: ${CHUMP_SESSION_ID}" \
+        "${api%/}/api/gap/claim/${gap_id}" 2>/dev/null || true)"
+    local claim_status
+    claim_status="$(printf '%s' "$claim_resp" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" \
+        2>/dev/null || true)"
+    if [[ "$claim_status" != "claimed" ]]; then
+        log "RESILIENT-1013: remote claim of $gap_id failed (status=${claim_status:-unknown}); will retry next cycle"
+        return 1
+    fi
+
+    printf '%s' "$next_resp" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print(json.dumps({'gaps':[d['gap']]}))" \
+        > "$out_file" 2>/dev/null || printf '{"gaps":[]}' > "$out_file"
+
+    printf '%s' "$gap_id"
+    return 0
+}
+
 # ── INFRA-3832: reap a hung cycle's WHOLE process tree ─────────────────────────
 # The first-output watchdog and stall detector used to `kill $_claude_pid`, but
 # $_claude_pid is the wrapper subshell `( cd …; timeout … claude … ) &`. Killing
@@ -625,14 +686,23 @@ while :; do
     fi
 
     # ── Pick a gap ────────────────────────────────────────────────────────
-    # We use `chump gap list --json` directly (musher.py has its own cooldown
-    # heuristics; for fleet workers we want the simplest "highest-priority
-    # unclaimed open gap matching filters" semantics so behavior is debuggable).
-    gap_json="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
+    if [[ -n "${CHUMP_GAP_API_URL:-}" ]]; then
+        # RESILIENT-1013: batphone mode — no local gap store required. Pull +
+        # claim against the shared gap API so any owned box with a checkout
+        # + creds + CHUMP_GAP_API_URL can join the fleet as a worker.
+        remote_gap_json_file="$(mktemp -t fleet-gaps-remote.XXXXXX)"
+        pick="$(remote_pick_and_claim_gap "$remote_gap_json_file" || true)"
+        gap_json="$(cat "$remote_gap_json_file" 2>/dev/null || echo '{"gaps":[]}')"
+        rm -f "$remote_gap_json_file"
+    else
+        # We use `chump gap list --json` directly (musher.py has its own cooldown
+        # heuristics; for fleet workers we want the simplest "highest-priority
+        # unclaimed open gap matching filters" semantics so behavior is debuggable).
+        gap_json="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
 
-    # Active leases (so we never try to claim something a sibling has).
-    active_gaps="$(
-        python3 - "$REPO_ROOT/.chump-locks" <<'PY' 2>/dev/null || true
+        # Active leases (so we never try to claim something a sibling has).
+        active_gaps="$(
+            python3 - "$REPO_ROOT/.chump-locks" <<'PY' 2>/dev/null || true
 import glob, json, sys, os
 base = sys.argv[1]
 for f in glob.glob(os.path.join(base, '*.json')):
@@ -644,44 +714,45 @@ for f in glob.glob(os.path.join(base, '*.json')):
     if g:
         print(g)
 PY
-    )"
+        )"
 
-    # RESILIENT-332 (anti-spin, Layer B): compute the set of gaps that already
-    # have an open PR / in-progress branch on origin, so the picker never
-    # re-offers a completed-but-unmerged gap (the RESILIENT-327/#3795 case that
-    # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
-    # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
-    # a gap while a worker is mid-flight (pre-push); the branch covers it after
-    # the PR is pushed but before it merges (when the lease has expired). One
-    # cheap `git ls-remote` per cycle; best-effort (empty on failure/offline so
-    # Layers A+C still hold). The github_cache webhook DB is not authoritative
-    # here (observed sparse/stale — #3795 absent), so origin refs are used.
-    in_progress_gaps="$(
-        git -C "$REPO_ROOT" ls-remote --heads origin 'refs/heads/chump/*' 2>/dev/null \
-        | grep -oE 'refs/heads/chump/.+-fleet-[0-9]' 2>/dev/null \
-        | sed -E 's#refs/heads/chump/(.+)-fleet-[0-9]$#\1#' \
-        | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
-    )"
+        # RESILIENT-332 (anti-spin, Layer B): compute the set of gaps that already
+        # have an open PR / in-progress branch on origin, so the picker never
+        # re-offers a completed-but-unmerged gap (the RESILIENT-327/#3795 case that
+        # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
+        # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
+        # a gap while a worker is mid-flight (pre-push); the branch covers it after
+        # the PR is pushed but before it merges (when the lease has expired). One
+        # cheap `git ls-remote` per cycle; best-effort (empty on failure/offline so
+        # Layers A+C still hold). The github_cache webhook DB is not authoritative
+        # here (observed sparse/stale — #3795 absent), so origin refs are used.
+        in_progress_gaps="$(
+            git -C "$REPO_ROOT" ls-remote --heads origin 'refs/heads/chump/*' 2>/dev/null \
+            | grep -oE 'refs/heads/chump/.+-fleet-[0-9]' 2>/dev/null \
+            | sed -E 's#refs/heads/chump/(.+)-fleet-[0-9]$#\1#' \
+            | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
+        )"
 
-    # INFRA-415: atomic gap picker+claimer. This picker filters candidates
-    # AND claims the gap atomically before returning, preventing concurrent
-    # workers from picking the same gap. Uses the same session-ID resolution
-    # as chump claim so the lease is scoped to this worker's session.
-    gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
-    printf '%s' "$gap_json" > "$gap_json_file"
-    pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
-            FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
-            FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
-            FLEET_MODEL="$FLEET_MODEL" \
-            EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
-            ACTIVE_GAPS="$active_gaps" \
-            IN_PROGRESS_GAPS="$in_progress_gaps" \
-            GAP_JSON_FILE="$gap_json_file" \
-            WORKER_INDEX="$AGENT_ID" \
-            WORKER_ID="$AGENT_ID" \
-            COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
-            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
-    rm -f "$gap_json_file"
+        # INFRA-415: atomic gap picker+claimer. This picker filters candidates
+        # AND claims the gap atomically before returning, preventing concurrent
+        # workers from picking the same gap. Uses the same session-ID resolution
+        # as chump claim so the lease is scoped to this worker's session.
+        gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
+        printf '%s' "$gap_json" > "$gap_json_file"
+        pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
+                FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
+                FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
+                FLEET_MODEL="$FLEET_MODEL" \
+                EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
+                ACTIVE_GAPS="$active_gaps" \
+                IN_PROGRESS_GAPS="$in_progress_gaps" \
+                GAP_JSON_FILE="$gap_json_file" \
+                WORKER_INDEX="$AGENT_ID" \
+                WORKER_ID="$AGENT_ID" \
+                COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
+                python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
+        rm -f "$gap_json_file"
+    fi
 
     if [ -z "$pick" ]; then
         # INFRA-315: increment starvation counter; emit ambient ALERT once

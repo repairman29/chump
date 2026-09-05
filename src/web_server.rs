@@ -7412,6 +7412,131 @@ fn truncate_utf8(s: &str, max: usize) -> String {
     s[..end].to_string()
 }
 
+/// GET /api/gaps/next — RESILIENT-1013: batphone picker endpoint. Returns the
+/// single highest-priority claimable gap so a remote worker (no local
+/// state.db) can join the fleet with just `CHUMP_GAP_API_URL` set. Mirrors
+/// the filter + sort semantics of `handle_gap_queue` but does the
+/// claimable-filtering + top-1 selection server-side so the worker doesn't
+/// need to fetch the full open-gap list to pick one.
+///
+/// Query params (all optional, comma-separated where noted):
+///   domain    — exact match against gap.domain
+///   priority  — CSV of acceptable priorities (e.g. "P0,P1")
+///   effort    — CSV of acceptable efforts (e.g. "xs,s,m")
+async fn handle_gap_next(
+    Query(params): Query<std::collections::HashMap<String, String>>,
+    headers: HeaderMap,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let domain_filter = params.get("domain").cloned();
+    let priority_filter: Option<Vec<String>> = params
+        .get("priority")
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect());
+    let effort_filter: Option<Vec<String>> = params
+        .get("effort")
+        .map(|s| s.split(',').map(|t| t.trim().to_string()).collect());
+
+    let repo_root = match std::env::var("CHUMP_REPO") {
+        Ok(r) => PathBuf::from(r),
+        Err(_) => repo_path::runtime_base(),
+    };
+
+    let gap_store_inst = match crate::gap_store::GapStore::open(&repo_root) {
+        Ok(s) => s,
+        Err(e) => {
+            tracing::warn!("gap-next: failed to open gap store: {}", e);
+            return Ok(Json(
+                serde_json::json!({ "gap": null, "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let open_gaps = match gap_store_inst.list(Some("open")) {
+        Ok(g) => g,
+        Err(e) => {
+            tracing::warn!("gap-next: failed to list open gaps: {}", e);
+            return Ok(Json(
+                serde_json::json!({ "gap": null, "error": e.to_string() }),
+            ));
+        }
+    };
+
+    let active_leases: std::collections::HashMap<String, String> =
+        gap_store_inst.active_leases().unwrap_or_default();
+
+    fn priority_ord(p: &str) -> u8 {
+        match p {
+            "P0" => 0,
+            "P1" => 1,
+            "P2" => 2,
+            "P3" => 3,
+            _ => 9,
+        }
+    }
+    fn effort_ord(e: &str) -> u8 {
+        match e {
+            "xs" => 0,
+            "s" => 1,
+            "m" => 2,
+            "l" => 3,
+            _ => 9,
+        }
+    }
+
+    let mut candidates: Vec<gap_store::GapRow> = open_gaps
+        .into_iter()
+        .filter(|g| !active_leases.contains_key(&g.id))
+        .filter(|g| {
+            domain_filter
+                .as_ref()
+                .map(|d| &g.domain == d)
+                .unwrap_or(true)
+        })
+        .filter(|g| {
+            priority_filter
+                .as_ref()
+                .map(|ps| ps.iter().any(|p| p == &g.priority))
+                .unwrap_or(true)
+        })
+        .filter(|g| {
+            effort_filter
+                .as_ref()
+                .map(|es| es.iter().any(|e| e == &g.effort))
+                .unwrap_or(true)
+        })
+        .collect();
+
+    candidates.sort_by(|a, b| {
+        priority_ord(&a.priority)
+            .cmp(&priority_ord(&b.priority))
+            .then(effort_ord(&a.effort).cmp(&effort_ord(&b.effort)))
+            .then(b.created_at.cmp(&a.created_at))
+    });
+
+    let next = candidates.into_iter().next().map(|gap| {
+        serde_json::json!({
+            "id": gap.id,
+            "title": truncate_utf8(&gap.title, 200),
+            "domain": gap.domain,
+            "priority": gap.priority,
+            "effort": gap.effort,
+            "status": gap.status,
+            "acceptance_criteria_count": gap_store::parse_json_ac_list(&gap.acceptance_criteria).len(),
+        })
+    });
+
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "gap_next_request".to_string(),
+        fields: vec![("found".to_string(), next.is_some().to_string())],
+        ..Default::default()
+    });
+
+    Ok(Json(serde_json::json!({ "gap": next })))
+}
+
 /// POST /api/gap/claim/:id — Claim a gap and create a worktree for it.
 /// PRODUCT-176: JSON body for POST /api/gap. `domain` + `title` are required;
 /// everything else mirrors the `chump gap reserve` flags it replaces.
@@ -9589,6 +9714,7 @@ fn build_api_router() -> Router {
         // handler as /api/gap-queue, exposes id/title/status/priority/effort/
         // domain/pillar and accepts ?status=&priority=&domain= query params.
         .route("/api/gaps", get(handle_gap_queue))
+        .route("/api/gaps/next", get(handle_gap_next))
         .route("/api/gaps/search", get(handle_gaps_search))
         // PRODUCT-176: the gap write surface — creation and field mutation were
         // CLI-only (`chump gap reserve` / `chump gap set`), which made the web
