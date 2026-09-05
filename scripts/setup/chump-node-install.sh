@@ -71,6 +71,27 @@ no(){ printf '  \033[31m✗\033[0m %s\n' "$*"; }
 info(){ printf '\033[36m[%s]\033[0m %s\n' "$1" "$2"; }
 run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 
+# ---------- install budget + per-phase timeouts (RESILIENT-1015) ----------
+# The 2026-09-05 mugman repro (2-core aarch64) verified chump-node-install.sh
+# hanging past BINARY even with the binary pre-placed + fetch disabled — a
+# downstream phase (SUBSTRATE postgres provisioning, EYES almanac clone+build)
+# ran synchronously with no ceiling and stalled the one-shot install
+# indefinitely. INSTALL_START_S anchors an overall wall-clock budget;
+# run_timeout wraps any single blocking subprocess with a per-phase ceiling
+# so no one step can consume the whole budget by itself.
+INSTALL_START_S="$SECONDS"
+INSTALL_BUDGET_S="${CHUMP_INSTALL_BUDGET_S:-280}"
+install_budget_remaining_s() { echo $(( INSTALL_BUDGET_S - (SECONDS - INSTALL_START_S) )); }
+install_budget_exceeded() { [ "$(install_budget_remaining_s)" -le 0 ]; }
+# run_timeout <seconds> <cmd...> — runs cmd bounded by `timeout` when present
+# (Termux/older hosts may lack coreutils timeout; degrade to unbounded rather
+# than fail the whole phase over a missing tool).
+run_timeout() {
+  local secs="$1"; shift
+  if command -v timeout >/dev/null 2>&1; then timeout "$secs" "$@"
+  else "$@"; fi
+}
+
 # ---------- 1. DETECT ----------
 detect_host() {
   ARCH="$(uname -m)"; OS="$(uname -s)"
@@ -205,17 +226,18 @@ ensure_home() {
     if [ "$DRY" = 1 ]; then
       echo "  DRY: git -C '$NODE_DIR/repo' fetch origin main --quiet"
       echo "  DRY: git -C '$NODE_DIR/repo' reset --hard origin/main --quiet"
-    elif git -C "$NODE_DIR/repo" fetch origin main --quiet && git -C "$NODE_DIR/repo" reset --hard origin/main --quiet; then
+    elif run_timeout "${CHUMP_GIT_TIMEOUT_S:-120}" git -C "$NODE_DIR/repo" fetch origin main --quiet \
+      && run_timeout "${CHUMP_GIT_TIMEOUT_S:-120}" git -C "$NODE_DIR/repo" reset --hard origin/main --quiet; then
       ok "repo present ($NODE_DIR/repo), synced to origin/main"
     else
-      no "repo fetch/reset FAILED ($NODE_DIR/repo)"; return 1
+      no "repo fetch/reset FAILED or timed out ($NODE_DIR/repo)"; return 1
     fi
   else
     if [ "$DRY" = 1 ]; then
       echo "  DRY: git clone --quiet '$REPO_URL' '$NODE_DIR/repo'  # authenticated via GH_TOKEN from $CREDS if present"
     else
       [ -z "$gh_token" ] && info HOME "no GH_TOKEN in $CREDS; attempting unauthenticated clone (public repos only)"
-      if git clone --quiet "$clone_url" "$NODE_DIR/repo"; then
+      if run_timeout "${CHUMP_GIT_TIMEOUT_S:-120}" git clone --quiet "$clone_url" "$NODE_DIR/repo"; then
         ok "repo cloned: $NODE_DIR/repo"
       else
         no "repo clone FAILED: $NODE_DIR/repo"; return 1
@@ -682,11 +704,15 @@ build_binary_from_repo() {
     return 0
   fi
 
-  info BINARY "no binary found — building from $repo (log: $build_log)"
+  # RESILIENT-1015: a cold source build on a 2-core box is the slowest legit
+  # phase in the whole installer — bound it so a wedged/thrashing compile
+  # can't hang the one-shot install forever. CHUMP_BINARY_BUILD_TIMEOUT_S
+  # default (900s) is generous for a 2-core cold build but finite.
+  info BINARY "no binary found — building from $repo (log: $build_log, budget ${CHUMP_BINARY_BUILD_TIMEOUT_S:-900}s)"
   case "$HOST_KIND" in
     termux)
-      if ! ( cd "$repo" && bash scripts/setup/build-android.sh ) >"$build_log" 2>&1; then
-        no "android cross-build failed — see $build_log"
+      if ! run_timeout "${CHUMP_BINARY_BUILD_TIMEOUT_S:-900}" bash -c "cd '$repo' && bash scripts/setup/build-android.sh" >"$build_log" 2>&1; then
+        no "android cross-build failed or timed out — see $build_log"
         return 1
       fi
       local built="$repo/target-android/aarch64-linux-android/release/chump"
@@ -699,8 +725,8 @@ build_binary_from_repo() {
       ;;
     *)
       if ! CHUMP_REPO_ROOT="$repo" CHUMP_RUNNER_BIN="$staged" \
-           bash "$repo/scripts/setup/refresh-runner-binary.sh" >"$build_log" 2>&1; then
-        no "cargo build failed — see $build_log"
+           run_timeout "${CHUMP_BINARY_BUILD_TIMEOUT_S:-900}" bash "$repo/scripts/setup/refresh-runner-binary.sh" >"$build_log" 2>&1; then
+        no "cargo build failed or timed out — see $build_log"
         return 1
       fi
       if [ ! -x "$staged" ]; then
@@ -752,7 +778,7 @@ ensure_seed() {
     return 0
   fi
   local out
-  if out="$("$bin" gap sync --pull --state-db "$STATE_DB" --gaps-dir "$gaps_dir" --json 2>&1)"; then
+  if out="$(run_timeout "${CHUMP_SEED_TIMEOUT_S:-60}" "$bin" gap sync --pull --state-db "$STATE_DB" --gaps-dir "$gaps_dir" --json 2>&1)"; then
     ok "seed: canonical store synced from docs/gaps ($out)"
   else
     # AC2: substrate-unreachable (missing state.db dir, locked db, etc.) is a
@@ -807,7 +833,7 @@ reconcile_role_organs() {
     return 0
   fi
   info ORGANS "reconciling manifest organ set (role=$ROLE, role-filter=[${rf:-all}])..."
-  if CHUMP_ORGAN_RECONCILE_ROLE="$rf" bash "$reconcile" --apply \
+  if CHUMP_ORGAN_RECONCILE_ROLE="$rf" run_timeout "${CHUMP_ORGAN_RECONCILE_TIMEOUT_S:-90}" bash "$reconcile" --apply \
        >"$LOG_DIR/organ-reconcile-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
     ok "manifest organ set reconciled (role=$ROLE)"
   else
@@ -849,12 +875,40 @@ PH"
   reconcile_role_organs
 }
 
+# ---------- background-phase helper (RESILIENT-1015) ----------
+# Launches a potentially slow, non-blocking phase (SUBSTRATE, EYES) in the
+# background under a hard timeout, so it can never stall the one-shot
+# install (verified repro: mugman, 2-core aarch64, hung past BINARY with the
+# binary pre-placed — the stall was a downstream synchronous phase, not
+# BINARY itself). A "<name>.pending" marker exists while the background job
+# runs and is removed when it exits (success or failure); self_test reads
+# the marker to distinguish "still provisioning" from "actually failed"
+# instead of blocking on it.
+run_phase_async() {
+  local name="$1" timeout_s="$2" script="$3" log="$4"
+  local pending="$STATE_DIR/.${name}.pending"
+  run "mkdir -p '$STATE_DIR'"
+  : > "$pending" 2>/dev/null || true
+  (
+    run_timeout "$timeout_s" bash "$script" >"$log" 2>&1
+    rc=$?
+    echo "$rc" > "$STATE_DIR/.${name}.exit" 2>/dev/null || true
+    rm -f "$pending" 2>/dev/null || true
+  ) &
+  disown "$!" 2>/dev/null || true
+  ok "$name launched in background (pid $!, budget ${timeout_s}s) — log: $log"
+}
+
 # ---------- 5b. SUBSTRATE (INFRA-3631, via INFRA-3657) ----------
 # Calls the checked-in substrate provisioner so a bare-box install ends with
 # a live, self-hosted Postgres+PostgREST gap store instead of the provisioner
 # sitting on disk unwired (the exact "designed but never called" gap this
-# ships closes). Non-fatal: a substrate failure must not block BINARY/ORGANS
-# from having already installed a usable node — self_test surfaces it.
+# ships closes). RESILIENT-1015: this used to `bash "$script"` in the
+# foreground — postgres provisioning on a 2-core box is exactly the kind of
+# multi-minute synchronous step that stalled the mugman repro. Now launched
+# async + time-bounded: a substrate failure/slowness must not block
+# BINARY/ORGANS from having already installed a usable node — self_test
+# surfaces the real state via the pending marker or postgrest liveness.
 ensure_substrate() {
   local script="$NODE_DIR/repo/scripts/setup/install-gap-substrate.sh"
   [ -f "$script" ] || script="$(dirname "$0")/install-gap-substrate.sh"
@@ -862,18 +916,19 @@ ensure_substrate() {
     info SUBSTRATE "install-gap-substrate.sh not found — skipping"
     return 0
   fi
-  if [ "$DRY" = 1 ]; then echo "  DRY: bash '$script'"; return 0; fi
-  info SUBSTRATE "provisioning gap store (postgres+postgrest)..."
-  if bash "$script" >"$LOG_DIR/substrate-install-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
-    ok "substrate provisioned + self-tested (gap-store round-trip verified)"
-  else
-    no "substrate provisioning FAILED — see $LOG_DIR/substrate-install-*.log; node still usable, re-run to retry"
-  fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: (background, budget ${CHUMP_SUBSTRATE_TIMEOUT_S:-600}s) bash '$script'"; return 0; fi
+  info SUBSTRATE "provisioning gap store (postgres+postgrest) in background — install will not wait on it"
+  run_phase_async substrate "${CHUMP_SUBSTRATE_TIMEOUT_S:-600}" "$script" \
+    "$LOG_DIR/substrate-install-$(date -u +%Y%m%dT%H%M%SZ).log"
 }
 
 # ---------- 5c. EYES (almanac liveness/refresh organ, INFRA-3657) ----------
 # Brings up the almanac fusion-search "eyes" so a fresh node isn't blind —
 # closes the "ZERO almanac/eyes phase" gap in this ship's description.
+# RESILIENT-1015: install-almanac-organ.sh clones + cargo-builds a *separate*
+# repo (almanac) on first run when no checkout exists — another multi-minute
+# synchronous step on a 2-core box. Same async + time-bounded treatment as
+# SUBSTRATE above.
 ensure_eyes() {
   local script="$NODE_DIR/repo/scripts/setup/install-almanac-organ.sh"
   [ -f "$script" ] || script="$(dirname "$0")/install-almanac-organ.sh"
@@ -881,13 +936,10 @@ ensure_eyes() {
     info EYES "install-almanac-organ.sh not found — skipping"
     return 0
   fi
-  if [ "$DRY" = 1 ]; then echo "  DRY: bash '$script'"; return 0; fi
-  info EYES "installing almanac liveness/refresh organ..."
-  if bash "$script" >"$LOG_DIR/eyes-install-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
-    ok "eyes organ installed + supervised"
-  else
-    no "eyes organ install had issues — see $LOG_DIR/eyes-install-*.log; node still usable, re-run to retry"
-  fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: (background, budget ${CHUMP_EYES_TIMEOUT_S:-600}s) bash '$script'"; return 0; fi
+  info EYES "installing almanac liveness/refresh organ in background — install will not wait on it"
+  run_phase_async eyes "${CHUMP_EYES_TIMEOUT_S:-600}" "$script" \
+    "$LOG_DIR/eyes-install-$(date -u +%Y%m%dT%H%M%SZ).log"
 }
 
 # ---------- 6. SUPERVISE (survive reboot) ----------
@@ -992,17 +1044,26 @@ self_test() {
   # not optional add-ons — a node without a gap store or almanac eyes is not
   # "factory installed" per this gap's AC. Best-effort: --check reports the
   # phase's own verdict rather than re-implementing its self-test.
+  # RESILIENT-1015: SUBSTRATE/EYES now run async (see run_phase_async) so a
+  # slow postgres provision or almanac clone+build can't stall the install.
+  # A ".<name>.pending" marker means the background job is still running —
+  # that is "not ready yet", not "failed", so it's reported as info and does
+  # NOT flip fail=1 (the install genuinely can't be blocked on it finishing).
   local substrate_script="$NODE_DIR/repo/scripts/setup/install-gap-substrate.sh"
   [ -f "$substrate_script" ] || substrate_script="$(dirname "$0")/install-gap-substrate.sh"
   if [ -x "$substrate_script" ]; then
-    if command -v pgrep >/dev/null 2>&1 && pgrep -f postgrest >/dev/null 2>&1; then
+    if [ -f "$STATE_DIR/.substrate.pending" ]; then
+      info SUBSTRATE "still provisioning in background (non-fatal) — re-run --self-test-only shortly"
+    elif command -v pgrep >/dev/null 2>&1 && pgrep -f postgrest >/dev/null 2>&1; then
       ok "substrate: postgrest running"
     else no "substrate: postgrest not running (re-run: bash $substrate_script)"; fail=1; fi
   fi
   local eyes_script="$NODE_DIR/repo/scripts/setup/install-almanac-organ.sh"
   [ -f "$eyes_script" ] || eyes_script="$(dirname "$0")/install-almanac-organ.sh"
   if [ -x "$eyes_script" ]; then
-    if bash "$eyes_script" --check >/dev/null 2>&1; then ok "eyes: almanac organ supervised"
+    if [ -f "$STATE_DIR/.eyes.pending" ]; then
+      info EYES "still installing in background (non-fatal) — re-run --self-test-only shortly"
+    elif bash "$eyes_script" --check >/dev/null 2>&1; then ok "eyes: almanac organ supervised"
     else no "eyes: almanac organ incomplete (re-run: bash $eyes_script)"; fail=1; fi
   fi
   echo
@@ -1030,8 +1091,18 @@ install_organs
 ensure_substrate
 ensure_eyes
 install_supervise
-# RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor)
-[ "$SELF_TEST_ONLY" = 1 ] || bash "$(dirname "$0")/install-node-housekeeping.sh" || info ORGANS "housekeeping install skipped"
+# RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor).
+# RESILIENT-1015: SUBSTRATE/EYES are already async (see run_phase_async), so
+# they no longer eat this budget — this check guards the one remaining
+# optional-but-synchronous step against a slow/hung housekeeping install
+# blowing past the overall install budget on a constrained box.
+if [ "$SELF_TEST_ONLY" = 1 ]; then :
+elif install_budget_exceeded; then
+  info ORGANS "install budget (${INSTALL_BUDGET_S}s) exhausted — skipping housekeeping install this run, re-run to retry"
+else
+  run_timeout "$(install_budget_remaining_s)" bash "$(dirname "$0")/install-node-housekeeping.sh" \
+    || info ORGANS "housekeeping install skipped or timed out"
+fi
 echo
 self_test
 fi
