@@ -56,6 +56,7 @@ mod ci_lesson;
 mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
+mod cmd_registry;
 mod codebase_digest_tool;
 mod comprehend_tool;
 mod config_validation;
