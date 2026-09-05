@@ -8,6 +8,7 @@
 //! INFRA-2405: contract-scan — detect cross-PR state-file/IPC schema mismatch (anti-Bug-1).
 //! RESILIENT-059: durable-execution — SQLite-journaled activity wrapper + resume CLI.
 //! INFRA-2265: bootstrap — net-new product bootstrap entrypoint (empty dir → first commit + gap).
+//! RESILIENT-376: node — SEE + health for every declared docs/fleet/nodes/*.json profile.
 
 pub mod add_env_var;
 pub mod add_path_filter;
@@ -28,6 +29,7 @@ pub mod durable_resume;
 pub mod emit_event;
 pub mod install_daemon;
 pub mod inventory;
+pub mod node;
 pub mod reachability;
 pub mod roadmap_from_vision;
 pub mod sibling_status;

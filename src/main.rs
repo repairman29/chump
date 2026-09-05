@@ -2503,6 +2503,15 @@ async fn main() -> Result<()> {
         std::process::exit(commands::inventory::run(&sub_args));
     }
 
+    // `chump node <list|status>` (RESILIENT-376) — SEE + health for every
+    // declared docs/fleet/nodes/*.json profile, incl. rescued/ad-hoc boxes
+    // like the Pixel that node-describe.sh (RESILIENT-291) never got run
+    // on. Health is derived from the profile file's mtime (fresh/stale/dead).
+    if args.get(1).map(String::as_str) == Some("node") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::node::run(&sub_args));
+    }
+
     // `chump contract-scan [--in-flight] [--against <pr-number>]` (INFRA-2405) —
     // detect cross-PR state-file/IPC schema mismatches. Triggered by INFRA-2404:
     // the main-preflight-watchdog (INFRA-2397) wrote {state, updated_at, last_tick_id}
