@@ -70,6 +70,21 @@ export CHUMP_FLEET_DRY_RUN="$DRY_RUN"
 AGENT_ID="${AGENT_ID:-?}"
 REPO_ROOT="${REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}"
 
+# RESILIENT-1009 (RESILIENT-596 slice): the floor model + escalation ladder
+# are single-sourced from this repo-committed manifest, sourced LAST so it
+# wins over whatever a wrapper (cj-worker-run.sh, pixel-worker.sh, ...)
+# already sourced from machine-local ~/.chump/providers.env or a launcher
+# override. providers.env's remaining job is secret VALUES only (API keys,
+# OAuth tokens) — never the ladder shape itself. See
+# scripts/setup/model-escalation-ladder.env for the full rationale.
+CHUMP_MODEL_LADDER_MANIFEST="${CHUMP_MODEL_LADDER_MANIFEST:-$REPO_ROOT/scripts/setup/model-escalation-ladder.env}"
+if [[ -f "$CHUMP_MODEL_LADDER_MANIFEST" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$CHUMP_MODEL_LADDER_MANIFEST"
+    set +a
+fi
+
 # INFRA-461: derive a unique per-worker session ID so leases written by this
 # worker (or any chump/coord subprocess it invokes) DO NOT stomp the
 # operator's interactive session via the .chump-locks/.wt-session-id

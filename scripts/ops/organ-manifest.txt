@@ -357,3 +357,17 @@ enabled     chump-cascade-unblock-detector.timer  role=muscle requires=bin:gh
 # the detection + ambient ALERT sweep itself stays alive and self-heals like
 # every other organ here.
 enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
+
+# --- Model routing config (RESILIENT-1009, a RESILIENT-596 slice) -----------
+# The default floor model, cost-tiered escalation ladder, and free-tier
+# provider list (with API-key env-var NAMES, never values) are single-sourced
+# at scripts/setup/model-escalation-ladder.env, NOT declared as directives in
+# this file — this manifest's parser (scripts/ops/lib/organ-manifest-lib.sh)
+# only understands the `enabled` / `paging_off` organ states above, so model
+# config lives in its own tracked file rather than growing a second grammar
+# here. scripts/dispatch/worker.sh sources that manifest directly (last, so
+# it wins over machine-local ~/.chump/providers.env or a launcher override —
+# RESILIENT-1009 AC2). Reproducible installer templates
+# (scripts/setup/provision-chumpd-host.sh's chumpd.env) reference the same
+# manifest rather than hand-copying the ladder values, so there is exactly
+# ONE place to edit to change the fleet's floor model or ladder.

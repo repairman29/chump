@@ -476,14 +476,16 @@ CHUMPD_FLEET_BACKEND=claude
 # OPENAI_MODEL=deepseek/deepseek-v4-flash
 # OPENAI_API_KEY=TODO_openrouter_key
 # OPENROUTER_API_KEY=TODO_openrouter_key
-# EFFECTIVE-445: DeepSeek V4 primary, funded via OpenRouter. Free front-slots
-# first (spend $0), then paid DeepSeek as the on-429 failover. The escalation
-# ladder is BARE model IDs only (worker.sh borrows the @base:KEY suffix from the
-# FIRST free-tier entry, which MUST be OpenRouter for the DeepSeek rungs to route).
-# CHUMP_FREE_TIER_PROVIDERS=nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY,deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY
-# CHUMP_MODEL_ESCALATION_LADDER=deepseek/deepseek-v4-flash,deepseek/deepseek-v4-pro
-# CHUMP_COMPLETION_MAX_TOKENS=8192  # DeepSeek V4 are reasoning models; need headroom
-# CHUMP_DECOMPOSE_STRIKE_THRESHOLD=2
+# RESILIENT-1009 (RESILIENT-596 slice): the floor model, escalation ladder,
+# and free-tier provider list are single-sourced from the repo-committed
+# scripts/setup/model-escalation-ladder.env manifest, NOT hand-copied here.
+# scripts/dispatch/worker.sh sources that manifest directly (after this file)
+# so it always wins — do not set CHUMP_MODEL_ESCALATION_LADDER /
+# CHUMP_FREE_TIER_PROVIDERS / CHUMP_FLOOR_MODEL in this file, edits here would
+# be silently overridden and would drift from the fleet's intended ladder.
+# Only the referenced API-key VALUES belong here:
+# OPENROUTER_API_KEY=TODO_openrouter_key
+# GROQ_API_KEY=TODO_groq_key
 ENVEOF
       # Substitute the real checkout path (heredoc is quoted, so do it here).
       sed -i.bak "s|__CHUMP_REPO__|$CHUMPD_PROVISION_DIR|g" "$CHUMPD_ENV" && rm -f "$CHUMPD_ENV.bak"
