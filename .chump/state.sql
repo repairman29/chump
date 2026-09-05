@@ -14857,11 +14857,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new function in `scripts/dev/mission-scoreboard.sh` that parses the pipeline log to compute the gate false‑positive rate (gate FP rate) and extend the existing scoreboard JSON generation to include a `"gate_fp_rate"` field alongside the existing metrics; then update `scripts/ci/test-handoff-reactor.sh` to invoke the scoreboard script and assert that the returned JSON contains the new field with a numeric value.
+    
+    Target file(s):
+    - scripts/dev/mission-scoreboard.sh
+    - scripts/ci/test-handoff-reactor.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The pipeline calculates the false‑positive rate of gate checks (gate FP rate).
-    - The scoreboard endpoint aggregates green‑first‑try%, time‑to‑land, admin‑merge count, and gate FP rate and renders a JSON payload.
-    - An integration test confirms that the scoreboard JSON contains all four metrics with correct values after running the previous three slices.
-    - cargo fmt + clippy --all-targets -D warnings passes with no new warnings.
+    - "scripts/dev/mission-scoreboard.sh: the function `generate_scoreboard_json` (or its equivalent) outputs a JSON object that includes a top‑level key `\"gate_fp_rate\"` whose value is a floating‑point number between 0 and 1."
+    - "scripts/ci/test-handoff-reactor.sh: after executing the scoreboard command, the test script parses the JSON and verifies that the keys `\"green_first_try_pct\"`, `\"time_to_land\"`, `\"admin_merge_count\"`, and `\"gate_fp_rate\"` are all present and that each value matches the expected numeric format."
+    - Running `cargo fmt + clippy --all-targets -D warnings` in the repository completes without emitting any new warnings or formatting errors.
   depends_on: [CREDIBLE-623, CREDIBLE-624, CREDIBLE-625]
   notes: |
     [chump harvest check 'scoreboard']
