@@ -156,6 +156,30 @@ declare -A ORGAN_ROLE
 declare -A ORGAN_REQUIRES
 organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES || exit 1
 
+# RESILIENT-746: optional per-role scoping. chump-node-install.sh's ORGANS
+# phase (--role brain|muscle|all) sets this so a freshly-installed node only
+# reconciles the organs that belong to its declared role instead of every
+# `enabled` line in the manifest (the "install ORGANS but never wire the role
+# split into the reconcile" hole from the helsinki teardown). Comma-separated
+# list of role= values (as declared in organ-manifest.txt); empty/unset means
+# "all roles" — the pre-existing, back-compat behavior for the primary node's
+# own timer-driven reconcile, which is not role-scoped.
+ROLE_FILTER="${CHUMP_ORGAN_RECONCILE_ROLE:-}"
+if [[ -n "$ROLE_FILTER" ]]; then
+  FILTERED_ENABLED=()
+  IFS=',' read -ra _role_filter_toks <<< "$ROLE_FILTER"
+  for unit in "${ENABLED[@]}"; do
+    role="${ORGAN_ROLE[$unit]:-brain}"
+    for tok in "${_role_filter_toks[@]}"; do
+      if [[ "$tok" == "$role" ]]; then
+        FILTERED_ENABLED+=("$unit")
+        break
+      fi
+    done
+  done
+  ENABLED=("${FILTERED_ENABLED[@]}")
+fi
+
 MODE="${1:---apply}"
 
 # ── --check mode: verify live state matches the manifest, change nothing ─────

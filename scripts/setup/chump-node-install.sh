@@ -773,6 +773,47 @@ muscle_organs() { echo "worker|$ORGAN_DIR/worker.sh"; }
 # background bash procs like almanac-vision-keeper that aren't systemd
 # units, so it must land on every owned node, not be a hand-op per role).
 common_organs() { echo "process-organ-heal|$ORGAN_DIR/process-organ-heal.sh"; }
+# RESILIENT-746: maps --role to the organ-manifest.txt role= tags that node
+# should carry. brain = coordination/registry/reporting (everything the
+# manifest doesn't tag muscle); muscle = the worker/ship-code organs only
+# (per docs/process/COTG_NODE_INSTALL.md's role split); all = every tagged
+# role (empty filter = organ-reconcile.sh applies the whole manifest).
+organ_role_filter() {
+  case "$ROLE" in
+    brain) echo "brain,data,janitor,trust";;
+    muscle) echo "muscle";;
+    all) echo "";;
+  esac
+}
+# RESILIENT-746 / RESILIENT-318: the ORGANS phase previously stopped at the
+# two hand-coded organs above (node-heartbeat, process-organ-heal) and NEVER
+# installed the role's real organ set from scripts/ops/organ-manifest.txt —
+# the exact half-built hole from the helsinki teardown (docs said "install
+# the role's organ set... from a manifest", the code never called the
+# manifest-driven reconciler). This resolves + runs organ-reconcile.sh
+# --apply, scoped to this node's role, so a fresh install converges to the
+# SAME manifest-declared organ set the primary node's own reconcile timer
+# enforces — reproducible, not hand-`cp`.
+reconcile_role_organs() {
+  local reconcile="$NODE_DIR/repo/scripts/ops/organ-reconcile.sh"
+  [ -f "$reconcile" ] || reconcile="$(dirname "$0")/../ops/organ-reconcile.sh"
+  if [ ! -f "$reconcile" ]; then
+    info ORGANS "organ-reconcile.sh not found — skipping manifest-driven organ set"
+    return 0
+  fi
+  local rf; rf="$(organ_role_filter)"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: CHUMP_ORGAN_RECONCILE_ROLE='$rf' bash '$reconcile' --apply"
+    return 0
+  fi
+  info ORGANS "reconciling manifest organ set (role=$ROLE, role-filter=[${rf:-all}])..."
+  if CHUMP_ORGAN_RECONCILE_ROLE="$rf" bash "$reconcile" --apply \
+       >"$LOG_DIR/organ-reconcile-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
+    ok "manifest organ set reconciled (role=$ROLE)"
+  else
+    no "manifest organ set reconcile had issues — see $LOG_DIR/organ-reconcile-*.log; non-fatal (e.g. non-root), re-run to retry"
+  fi
+}
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
@@ -805,6 +846,7 @@ PH"
     [ -z "$name" ] && continue
     svc_install "$name" "$exec"; svc_up "$name"; ok "organ installed+up: $name"
   done
+  reconcile_role_organs
 }
 
 # ---------- 5b. SUBSTRATE (INFRA-3631, via INFRA-3657) ----------
@@ -926,6 +968,26 @@ self_test() {
   else no "no heartbeat yet (organ just started; re-run --self-test-only in ~70s)"; fi
   # aggregate organ-down check (subshell above can't set fail; re-check here)
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue; [ "$(svc_status "$name")" = up ] || exit 1; done || fail=1
+  # RESILIENT-746: the role's MANIFEST-declared organ set (organ-manifest.txt,
+  # role-scoped via organ_role_filter) must also be UP — the ORGANS phase is
+  # only "installed" once the fleet-wide organ-reconcile source of truth
+  # agrees, not just the two hand-coded organs above. --check is read-only
+  # (no root needed) and reports DRIFT for any role-matched `enabled` unit
+  # that is not active.
+  local recon_script="$NODE_DIR/repo/scripts/ops/organ-reconcile.sh"
+  [ -f "$recon_script" ] || recon_script="$(dirname "$0")/../ops/organ-reconcile.sh"
+  if [ -f "$recon_script" ]; then
+    local recon_rf; recon_rf="$(organ_role_filter)"
+    local recon_out
+    if recon_out="$(CHUMP_ORGAN_RECONCILE_ROLE="$recon_rf" bash "$recon_script" --check 2>&1)"; then
+      ok "organs: role-matched organ-manifest units up to date (role=$ROLE, role-filter=[${recon_rf:-all}])"
+    else
+      no "organs: role-matched organ-manifest units DRIFT (role=$ROLE) — $recon_out"
+      fail=1
+    fi
+  else
+    info ORGANS "organ-reconcile.sh not found — skipping manifest organ-set self-test"
+  fi
   # INFRA-3657 AC3: SUBSTRATE + EYES are part of the FACTORY INSTALLED bar,
   # not optional add-ons — a node without a gap store or almanac eyes is not
   # "factory installed" per this gap's AC. Best-effort: --check reports the
