@@ -113,6 +113,40 @@ emit() {
 }
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
 
+# --- RESILIENT-1035: role-organ reconcile (the last hop) --------------------
+# WHY: the pre-existing chain (git reset -> artifact-pull-or-build -> install
+# binary) keeps `chump` current, but a merge can also change what ORGANS a
+# role should run (e.g. RESILIENT-1016's worker.sh self-clean reconcile) —
+# and nothing here ever re-ran chump-node-install.sh to pick that up. VERIFIED
+# on mugman: HEAD lacked a merged organ fix an hour after merge, self-reap
+# never activated, because this script only ever deployed the BINARY and (on
+# helsinki only) the ATC roster's systemd units — never the role's organ set
+# (worker.sh etc.) that chump-node-install.sh --role <role> materializes.
+# `--reconcile-organs-only` (added alongside this fix) skips the slow
+# clone/creds/binary/substrate/eyes phases and just re-writes + restarts the
+# role-scoped organs from the mirror this script just fast-forwarded — so
+# "merged" reaches "running" for organs, not just for the chump binary.
+#
+# CHUMP_NODE_ROLE selects which organ set to converge (default: muscle, the
+# class of node — mugman, cuphead — this gap was filed against). Best-effort:
+# a failure here must never fail the binary refresh that already succeeded.
+NODE_ROLE="${CHUMP_NODE_ROLE:-muscle}"
+_reconcile_role_organs() {
+    local installer="$REPO_ROOT/scripts/setup/chump-node-install.sh"
+    if [[ ! -f "$installer" ]]; then
+        log "WARN: $installer not found; skipping role-organ reconcile"
+        return 0
+    fi
+    if CHUMP_NODE_REPO="$REPO_ROOT" CHUMP_STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}" \
+         bash "$installer" --role "$NODE_ROLE" --reconcile-organs-only >>"$LOG" 2>&1; then
+        log "OK: role-organ reconcile complete (role=$NODE_ROLE)"
+        emit node_organs_reconciled "\"role\":\"$NODE_ROLE\""
+    else
+        log "WARN: chump-node-install.sh --reconcile-organs-only exited non-zero (non-fatal, role=$NODE_ROLE)"
+        emit node_organs_reconcile_failed "\"role\":\"$NODE_ROLE\""
+    fi
+}
+
 # --- atomic install helper (INFRA-3677) --------------------------------------
 # Install the binary at $1 to $TARGET_BIN via tempfile + rename. No codesign on
 # Linux. Returns non-zero on failure. Shared by the artifact-pull path and the
@@ -297,6 +331,7 @@ if [[ "$INSTALLED_SHA" == "$MAIN_SHA"* || "$MAIN_SHA" == "$INSTALLED_SHA"* ]] \
    && [[ "$INSTALLED_SHA" != "none" && "$INSTALLED_SHA" != "unknown" ]]; then
     log "SKIP: binary already current ($INSTALLED_SHA)"
     emit node_binary_refresh_skipped "\"reason\":\"already_current\",\"sha\":\"$INSTALLED_SHA\""
+    _reconcile_role_organs
     exit 0
 fi
 
@@ -328,6 +363,7 @@ fi
 # through to the local build below (identical to pre-INFRA-3677 behavior).
 FULL_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
 if _try_artifact_pull "$FULL_SHA" "$MAIN_SHA"; then
+    _reconcile_role_organs
     ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
     exit 0
 fi
@@ -370,6 +406,7 @@ fi
 NEW_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
 log "OK: $TARGET_BIN now at sha $NEW_SHA (green-main = $MAIN_SHA)"
 emit node_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$NEW_SHA\",\"main_sha\":\"$MAIN_SHA\""
+_reconcile_role_organs
 
 # Prune old logs (keep last 24)
 ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
