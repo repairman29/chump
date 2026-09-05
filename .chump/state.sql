@@ -19557,9 +19557,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    In scripts/ci/test-pr-watch-auto-resolve.sh, update the else-branch of the auto-close stage so command failures are guarded with `|| true` or equivalent error capture, ensuring failure logs are written without causing the script to exit with a non-zero status.
+    
+    Target file(s):
+    - scripts/ci/test-pr-watch-auto-resolve.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Else‑branch errors are captured with `|| true` or similar guard
-    - The branch logs the error but never exits with non‑zero status
+    - The else-branch in scripts/ci/test-pr-watch-auto-resolve.sh uses `|| true` on failure-prone cleanup commands to prevent script termination.
+    - Executing bash scripts/ci/test-pr-watch-auto-resolve.sh exits with code 0 even when the auto-close else-branch encounters an error.
+    - An error message is logged to standard output or standard error when the else-branch failure path is triggered.
   notes: |
     [chump harvest check 'bot-merge']
     === primitives_index match for 'bot-merge' ===
@@ -19609,9 +19617,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add structured `tracing::warn!` logging to caught error handling in the else-branch and advisory processing logic within `crates/chump-gap-store/src/lib.rs`, attaching contextual fields such as gap details and error context to match existing crate logging standards.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When an error is caught, a log entry with level WARN and context is emitted
-    - Log format matches existing CI logging conventions
+    - "In `crates/chump-gap-store/src/lib.rs`, caught errors in else-branches and advisory paths emit `tracing::warn!` log messages with structured field context."
+    - Running `cargo test -p chump-gap-store` completes successfully without errors.
+    - Log outputs emitted during error and advisory evaluation contain log level `WARN` alongside structured context keys.
   depends_on: [CREDIBLE-802, CREDIBLE-803]
   notes: |
     [chump harvest check 'bot-merge']
@@ -159466,7 +159482,7 @@ gaps:
 - id: RESILIENT-746
   domain: RESILIENT
   title: "RESILIENT: Document existing ship-pipeline health checks (RESILIENT-274) and entry points (RESILIENT-279 slice)"
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -159487,6 +159503,7 @@ gaps:
     === cross-pollination briefs mentioning 'OWNERSHIP' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+  closed_pr: 4465
 
 - id: RESILIENT-747
   domain: RESILIENT
