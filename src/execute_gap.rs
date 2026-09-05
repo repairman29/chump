@@ -347,9 +347,18 @@ struct FreeTierProviderSpec {
 /// stay ONLY as a last cheap escalation BEHIND DeepSeek. This default is the
 /// fresh-checkout fallback; each node's providers.env sets the same order.
 fn parse_free_tier_providers() -> Vec<FreeTierProviderSpec> {
+    // RESILIENT-590: the DeepSeek rungs are both billed through the SAME
+    // OpenRouter account balance — when that account is at $0 both flash and
+    // pro 402 back-to-back, so a purely-DeepSeek pair before the free tiers
+    // means "deepseek exhausted" collapses straight to rc=75 with nothing
+    // left to try. Cerebras sits right behind the DeepSeek rungs (a
+    // DIFFERENT provider/billing surface — free-tier, live per auth-status.sh)
+    // so a $0 OpenRouter balance degrades to a working free floor instead of
+    // failing the whole ladder.
     const DEFAULTS: &str = concat!(
         "deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
         "deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "qwen-3-235b-a22b-instruct-2507@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
         "nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
         "openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY"
     );
@@ -2148,7 +2157,7 @@ mod tests {
         // under sustained worker load and stall the floor.
         std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let specs = parse_free_tier_providers();
-        assert_eq!(specs.len(), 4, "default rotation must have 4 providers");
+        assert_eq!(specs.len(), 5, "default rotation must have 5 providers");
         assert_eq!(
             specs[0].model, "deepseek/deepseek-v4-flash",
             "slot 1 must be deepseek-v4-flash (the DeepSeek floor)"
@@ -2157,9 +2166,18 @@ mod tests {
             specs[1].model, "deepseek/deepseek-v4-pro",
             "slot 2 must be deepseek-v4-pro"
         );
+        // RESILIENT-590: Cerebras is a DIFFERENT billing surface than the
+        // OpenRouter-backed DeepSeek rungs, so it must sit immediately behind
+        // them — a $0 OpenRouter balance (both DeepSeek rungs 402) must not
+        // collapse straight past it to rc=75.
+        assert_eq!(
+            specs[2].base_url, "https://api.cerebras.ai/v1",
+            "slot 3 must be Cerebras — the live free provider deepseek-402 falls back to"
+        );
+        assert_eq!(specs[2].api_key_env, "CEREBRAS_API_KEY");
         // Free tiers only AFTER DeepSeek — never ahead of it.
         assert!(
-            specs[2].model.contains(":free"),
+            specs[3].model.contains(":free"),
             "free tiers must sit behind the DeepSeek rungs"
         );
     }

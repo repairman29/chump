@@ -480,7 +480,10 @@ CHUMPD_FLEET_BACKEND=claude
 # first (spend $0), then paid DeepSeek as the on-429 failover. The escalation
 # ladder is BARE model IDs only (worker.sh borrows the @base:KEY suffix from the
 # FIRST free-tier entry, which MUST be OpenRouter for the DeepSeek rungs to route).
-# CHUMP_FREE_TIER_PROVIDERS=nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY,deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY
+# RESILIENT-590: Cerebras sits right behind the DeepSeek rungs (a DIFFERENT
+# billing surface than OpenRouter) so a $0 OpenRouter balance — both DeepSeek
+# rungs 402 — degrades to a live free provider instead of failing rc=75.
+# CHUMP_FREE_TIER_PROVIDERS=nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY,deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,qwen-3-235b-a22b-instruct-2507@https://api.cerebras.ai/v1:CEREBRAS_API_KEY
 # CHUMP_MODEL_ESCALATION_LADDER=deepseek/deepseek-v4-flash,deepseek/deepseek-v4-pro
 # CHUMP_COMPLETION_MAX_TOKENS=8192  # DeepSeek V4 are reasoning models; need headroom
 # CHUMP_DECOMPOSE_STRIKE_THRESHOLD=2
