@@ -867,6 +867,27 @@ while true; do
 done
 PH"
   run "chmod +x '$ORGAN_DIR/process-organ-heal.sh'"
+  # RESILIENT-1016 (b): muscle_organs() has always declared a "worker" organ,
+  # but nothing ever materialized $ORGAN_DIR/worker.sh — svc_install wired a
+  # systemd unit whose ExecStart pointed at a script that never existed, so
+  # the CORE muscle organ installed (unit present, "organ installed+up"
+  # logged) but could never actually go active: ExecStart failed instantly,
+  # Restart=always spun it into a failed loop forever (VERIFIED on mugman:
+  # 64 active units but worker DOWN + failures). This writes the real
+  # wrapper — same shape as node-heartbeat.sh/process-organ-heal.sh above —
+  # that execs the tracked scripts/dispatch/worker.sh (which already loops
+  # internally), so a fresh --role muscle install self-starts the worker
+  # instead of silently staying loaded-not-active.
+  if [ "$ROLE" = muscle ] || [ "$ROLE" = all ]; then
+    run "cat > '$ORGAN_DIR/worker.sh' <<'WK'
+#!/usr/bin/env bash
+export AGENT_ID=\"\${CHUMP_WORKER_AGENT_ID:-\$(hostname -s 2>/dev/null || echo node1)-worker}\"
+export REPO_ROOT=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
+export FLEET_LOG_DIR=\"\${FLEET_LOG_DIR:-$LOG_DIR}\"
+exec bash \"\$REPO_ROOT/scripts/dispatch/worker.sh\"
+WK"
+    run "chmod +x '$ORGAN_DIR/worker.sh'"
+  fi
   local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
   echo "$list" | while IFS='|' read -r name exec; do
     [ -z "$name" ] && continue

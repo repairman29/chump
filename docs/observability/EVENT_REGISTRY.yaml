@@ -6672,6 +6672,20 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role]
 
+  - kind: organ_reconcile_drift_removed
+    effect_metric: organ_unit_drift_auto_healed
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1016)
+    trigger: a role-scoped reconcile (CHUMP_ORGAN_RECONCILE_ROLE set) found a
+      chump-*.service unit still active or enabled that is NOT in the
+      role-filtered manifest's expected set — present-but-out-of-role (left
+      behind by a prior role install/switch) or dropped from the manifest
+      entirely. The reconcile disables --now + reset-failed's it instead of
+      leaving it to churn/fail forever, making a role install or role switch
+      self-cleaning (VERIFIED on mugman: 28 leftover out-of-role brain units
+      stayed failed until hand-reaped, then 28->1).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit]
+
   - kind: organ_watchdog_backoff_skip
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (RESILIENT-347)
