@@ -78465,7 +78465,7 @@ gaps:
   acceptance_criteria:
     - All ~47 bogus/typo action versions across ci-advisory, ci-nightly, audit-weekly and experimental workflows are corrected to valid published versions; actionlint passes on those files.
   notes: |
-    Decomposed into 8 slices: INFRA-4384, INFRA-4385, INFRA-4386, INFRA-4387, INFRA-4388, INFRA-4389, INFRA-4390, INFRA-4391
+    Decomposed into 8 slices: INFRA-4700, INFRA-4701, INFRA-4702, INFRA-4703, INFRA-4704, INFRA-4705, INFRA-4706, INFRA-4707
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -78785,7 +78785,7 @@ gaps:
   acceptance_criteria:
     - Running Claude Code sessions poll URGENT-INBOX mid-session and act on fix_trunk signals within a bounded interval; a test signal is picked up without a session restart.
   notes: |
-    Decomposed into 9 slices: INFRA-4392, INFRA-4393, INFRA-4394, INFRA-4395, INFRA-4396, INFRA-4397, INFRA-4398, INFRA-4399, INFRA-4400
+    Decomposed into 9 slices: INFRA-4708, INFRA-4709, INFRA-4710, INFRA-4711, INFRA-4712, INFRA-4713, INFRA-4714, INFRA-4715, INFRA-4716
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -130574,6 +130574,307 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  acceptance_criteria:
+    - All remaining bogus/typo action versions in audit-weekly workflow files are replaced with valid published versions
+    - Running actionlint on the updated audit-weekly files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4706
+  domain: INFRA
+  title: "INFRA: INFRA-4390: Fix bogus action versions in experimental/* workflows (set 1) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All identified bogus/typo action versions in the first subset of experimental workflow files are replaced with valid published versions
+    - Running actionlint on the updated experimental workflow files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4707
+  domain: INFRA
+  title: "INFRA: INFRA-4391: Fix bogus action versions in experimental/* workflows (set 2) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All remaining bogus/typo action versions in experimental workflow files are replaced with valid published versions
+    - Running actionlint on the updated experimental workflow files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4708
+  domain: INFRA
+  title: "INFRA: Add URGENT-INBOX polling stub to session framework (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A stub method `pollUrgentInbox()` exists in the session manager codebase.
+    - Method returns a promise/future that resolves with an empty list when no messages are present.
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4709
+  domain: INFRA
+  title: "INFRA: Implement fix_trunk signal parser (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Parser correctly identifies a `fix_trunk` signal payload from URGENT-INBOX messages.
+    - Parser returns a structured object with at least `type='fix_trunk'` and `payload` fields.
+  depends_on: [INFRA-4708]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4710
+  domain: INFRA
+  title: "INFRA: Integrate polling loop into active Claude session (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Active Claude sessions invoke `pollUrgentInbox()` at runtime without requiring a restart.
+    - When a `fix_trunk` signal is detected, the session calls the existing `handleFixTrunk()` handler.
+  depends_on: [INFRA-4708, INFRA-4709]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4711
+  domain: INFRA
+  title: "INFRA: Configure bounded polling interval (e.g., 5 seconds) (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Polling interval is configurable via an environment variable or config file.
+    - Default interval is set to 5 seconds and does not exceed 10 seconds under load.
+  depends_on: [INFRA-4710]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4712
+  domain: INFRA
+  title: "INFRA: Create test harness to emit fix_trunk test signal (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A CLI or script can publish a `fix_trunk` message to the URGENT-INBOX queue.
+    - The harness logs the message ID and timestamp for verification.
+  depends_on: [INFRA-4708]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4713
+  domain: INFRA
+  title: "INFRA: Write unit test to verify signal picked up mid‑session (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test starts a Claude session, triggers the test harness to send a `fix_trunk` signal, and asserts that `handleFixTrunk()` is called within one polling interval.
+    - Test passes without restarting the session.
+  depends_on: [INFRA-4710, INFRA-4712]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4714
+  domain: INFRA
+  title: "INFRA: Add logging for poll events and signal handling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Each poll logs start time, duration, and number of messages retrieved.
+    - When a `fix_trunk` signal is processed, a log entry with level INFO includes the signal ID and handling result.
+  depends_on: [INFRA-4710]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4715
+  domain: INFRA
+  title: "INFRA: Add metrics collection for poll latency (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Metrics service receives a gauge `urgent_inbox_poll_latency_ms` for each poll.
+    - Metrics are emitted at least once per poll and are visible in the monitoring dashboard.
+  depends_on: [INFRA-4711]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4716
+  domain: INFRA
+  title: "INFRA: Perform end‑to‑end smoke test and update documentation (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A full smoke test runs a Claude session, sends a `fix_trunk` test signal, and confirms the session continues without restart.
+    - Documentation includes a new section describing URGENT‑INBOX polling behavior, configuration options, and troubleshooting steps.
+  depends_on: [INFRA-4713, INFRA-4714, INFRA-4715]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: INFRA-476
   domain: INFRA
