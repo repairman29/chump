@@ -130428,6 +130428,153 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-4700
+  domain: INFRA
+  title: "INFRA: INFRA-4384: Fix bogus action versions in ci-advisory workflow (set 1) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All identified bogus/typo action versions in the first subset of ci-advisory workflow files are replaced with valid published versions
+    - Running actionlint on the updated ci-advisory files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4701
+  domain: INFRA
+  title: "INFRA: INFRA-4385: Fix bogus action versions in ci-advisory workflow (set 2) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All remaining bogus/typo action versions in ci-advisory workflow files are replaced with valid published versions
+    - Running actionlint on the updated ci-advisory files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4702
+  domain: INFRA
+  title: "INFRA: INFRA-4386: Fix bogus action versions in ci-nightly workflow (set 1) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All identified bogus/typo action versions in the first subset of ci-nightly workflow files are replaced with valid published versions
+    - Running actionlint on the updated ci-nightly files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4703
+  domain: INFRA
+  title: "INFRA: INFRA-4387: Fix bogus action versions in ci-nightly workflow (set 2) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All remaining bogus/typo action versions in ci-nightly workflow files are replaced with valid published versions
+    - Running actionlint on the updated ci-nightly files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4704
+  domain: INFRA
+  title: "INFRA: INFRA-4388: Fix bogus action versions in audit-weekly workflow (set 1) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - All identified bogus/typo action versions in the first subset of audit-weekly workflow files are replaced with valid published versions
+    - Running actionlint on the updated audit-weekly files reports no errors
+  notes: |
+    [chump harvest check 'sweep']
+    === primitives_index match for 'sweep' ===
+    
+    === cluster keyword match for 'sweep' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'sweep' ===
+    
+    === repo-description match for 'sweep' ===
+    
+    === HARVEST_ROADMAP.md mention of 'sweep' (deep-scan findings) ===
+      65:| The other 6 | **Archive on GitHub** — pure debt; recommend `gh repo archive` on a hygiene sweep |
+    
+    === cross-pollination briefs mentioning 'sweep' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-4705
+  domain: INFRA
+  title: "INFRA: INFRA-4389: Fix bogus action versions in audit-weekly workflow (set 2) (INFRA-2321 slice)"
+  status: open
+  priority: P2
+  effort: xs
+
 - id: INFRA-476
   domain: INFRA
   title: docs-delta pre-commit guard's Net-new-docs trailer parse path is unreachable — pre-commit fires BEFORE git writes COMMIT_EDITMSG (same blind spot INFRA-200 fixed for raw-yaml guard); operators must bypass with CHUMP_DOCS_DELTA_CHECK=0, defeating the audit trail
