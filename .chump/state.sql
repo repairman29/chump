@@ -4933,7 +4933,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: CREDIBLE-822, CREDIBLE-823
+    Decomposed into 2 slices: CREDIBLE-891, CREDIBLE-892
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -22255,6 +22255,58 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-891
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement summarized_pct >95% enforcement in CREDIBLE code path (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Code compiles without warnings after adding the enforcement logic.
+    - The summarized_pct value is validated to be >95% at the appropriate point in the workflow.
+    - If summarized_pct <= 95%, the system logs an error or aborts the operation as defined.
+    - No existing tests fail after the change.
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
+
+- id: CREDIBLE-892
+  domain: CREDIBLE
+  title: "CREDIBLE: Add test verifying summarized_pct >95% behavior (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new test (cargo test or scripts/ci/test-*.sh) asserts that summarized_pct >95% is required.
+    - The test fails on the pre‑change codebase and passes after the enforcement is implemented.
+    - Running cargo fmt, clippy --all-targets -D warnings, and the full test suite succeeds with no new warnings.
+  depends_on: [CREDIBLE-891]
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
 
 - id: DOC-031
   domain: DOC
