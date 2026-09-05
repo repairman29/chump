@@ -37,6 +37,31 @@
 #
 #     Returns 0 always (an empty/no-op ledger yields brier:null, not a
 #     failure) — callers decide what "nothing to settle" means for them.
+#
+#   brier_score <predicted_json_array> <outcomes_json_array>
+#     The scorer underneath calibration_settle, exposed standalone so ANY
+#     prediction type (not just a JSONL ledger keyed by id/price) can get a
+#     Brier score — hand it two same-length JSON arrays and get a number
+#     back. Lower is better; 0.0 is a perfect forecaster, 0.25 is what a
+#     coin-flipping (p=0.5 always) forecaster scores against a 50/50 outcome
+#     mix, 1.0 is maximally wrong (confident and always incorrect).
+#     predicted_json_array  JSON array of probabilities in [0.0, 1.0]
+#                            (e.g. '[0.9, 0.2, 0.55]')
+#     outcomes_json_array   JSON array of binary outcomes, same length,
+#                            0 or 1 (e.g. '[1, 0, 1]')
+#     stdout: the mean squared error between predicted and outcome, rounded
+#     to 4 decimal places, or the literal string "null" if either array is
+#     empty or the lengths don't match (no partial/misaligned scoring).
+brier_score() {
+  local predicted_json="$1" outcomes_json="$2"
+  jq -cn --argjson p "$predicted_json" --argjson o "$outcomes_json" '
+    if ($p|length) == 0 or ($p|length) != ($o|length) then null
+    else
+      ([range(0; $p|length) | ($p[.] - $o[.]) * ($p[.] - $o[.])]) as $sq
+      | ((($sq|add)/($sq|length))*10000|round)/10000
+    end'
+}
+
 calibration_settle() {
   local ledger="$1" outcomes_json="$2" calib_out="$3" id_key="$4" \
         price_key="$5" pred_kind="$6" summary_kind="$7"
@@ -48,8 +73,8 @@ calibration_settle() {
     return 0
   fi
 
-  local res
-  res="$(jq -n --slurpfile L "$ledger" --argjson O "$outcomes_json" --arg ts "$ts" \
+  local joined
+  joined="$(jq -cn --slurpfile L "$ledger" --argjson O "$outcomes_json" --arg ts "$ts" \
     --arg idk "$id_key" --arg pk "$price_key" --arg pkind "$pred_kind" '
     ($L | reduce .[] as $r ({}; .[($r[$idk]|tostring)] = $r)) as $latest
     | [ $latest[] | (.[$idk]|tostring) as $kk
@@ -58,13 +83,17 @@ calibration_settle() {
           + {($idk): .[$idk]}
           + {predicted:.[$pk], outcome:$O[$kk]} ]
       as $rows
-    | ($rows | map((.predicted-.outcome)*(.predicted-.outcome))) as $sq
     | { rows: $rows,
         predictions: ($latest|length),
         resolved: ($rows|length),
         matched:   ([ $rows[] | select(.outcome==1) ] | length),
-        unmatched: ([ $rows[] | select(.outcome==0) ] | length),
-        brier: (if ($sq|length)>0 then (((($sq|add)/($sq|length))*10000)|round)/10000 else null end) }')"
+        unmatched: ([ $rows[] | select(.outcome==0) ] | length) }')"
+
+  local predicted_arr outcomes_arr brier res
+  predicted_arr="$(echo "$joined" | jq -c '[.rows[].predicted]')"
+  outcomes_arr="$(echo "$joined" | jq -c '[.rows[].outcome]')"
+  brier="$(brier_score "$predicted_arr" "$outcomes_arr")"
+  res="$(echo "$joined" | jq -c --argjson brier "$brier" '. + {brier: $brier}')"
 
   local tmp_cal
   tmp_cal="$(mktemp "${TMPDIR:-/tmp}/calib.XXXXXX" 2>/dev/null)" || tmp_cal="$calib_out.tmp.$$"
