@@ -54,6 +54,7 @@ mod chump_init;
 mod chump_log;
 mod ci_lesson;
 mod ci_summary;
+mod claude_cli_provider;
 mod cli_tool;
 mod cluster_mesh;
 mod codebase_digest_tool;
