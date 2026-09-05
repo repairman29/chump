@@ -14542,10 +14542,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the harness CLI to accept a new `cheap` tier by adding the option to the argument parser in `run-binary-ablation.py` and propagate this flag into `run_task_cell` in `run-cloud-multiturn.py`, where the function now creates a dedicated output directory named `cheap` and writes the end‑to‑end JSON result file into that directory for each processed gap.
+    
+    Target file(s):
+    - scripts/ab-harness/run-binary-ablation.py
+    - scripts/ab-harness/run-cloud-multiturn.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The harness executes all stages for every defined gap using the `cheap` tier.
-    - A JSON result file analogous to the free‑tier run is generated.
-    - Results are stored in a separate directory labeled `cheap`.
+    - "In `scripts/ab-harness/run-binary-ablation.py`, the `parse_args` function includes `--tier` with the added choice `\"cheap\"` alongside existing tiers."
+    - "In `scripts/ab-harness/run-cloud-multiturn.py`, the `run_task_cell` function detects the `\"cheap\"` tier flag and creates a sub‑directory `cheap` under the results path before writing any output."
+    - Executing the harness with `--tier cheap` produces a `result.json` file inside the `cheap` results directory for every defined gap.
+    - The harness exits with status code 0 and logs a message indicating that all stages completed for the `cheap` tier, confirming end‑to‑end execution.
   depends_on: [CREDIBLE-607, CREDIBLE-608, CREDIBLE-609, CREDIBLE-610, CREDIBLE-611, CREDIBLE-612, CREDIBLE-613, CREDIBLE-614]
   notes: |
     [chump harvest check 'inference']
@@ -128436,7 +128445,7 @@ gaps:
 - id: INFRA-4653
   domain: INFRA
   title: "INFRA: INFRA-4336: Configure sccache to use BuildBuddy with R2 fallback (INFRA-2249 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -128468,6 +128477,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+  closed_pr: 4459
 
 - id: INFRA-4654
   domain: INFRA
