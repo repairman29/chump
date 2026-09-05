@@ -30317,10 +30317,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new helper `detect_stale_auto_stash_branch` to `scripts/coord/last-mile-rescuer.sh` that scans the current git repository for branches matching the stale‑worktree‑reaper auto‑stash naming pattern, verifies they are not merged, and returns the branch name; then update `scripts/ci/test-claim-force-recover-wip.sh` to invoke this helper, output the detected branch name on stdout and exit with 0, or output a clear “no stale auto‑stash branch found” message and exit with 1 when none is present.
+    
+    Target file(s):
+    - scripts/coord/last-mile-rescuer.sh
+    - scripts/ci/test-claim-force-recover-wip.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CLI can query git repository and correctly identify the presence of a stale‑worktree‑reaper auto‑stash branch
-    - Detection returns the branch name and confirms it is eligible for recovery
-    - No false positives on a clean repository
+    - Running `scripts/ci/test-claim-force-recover-wip.sh` in a repository that contains a stale‑worktree‑reaper auto‑stash branch (e.g., `auto-stash-2023-09-01`) prints the exact branch name and exits with status 0.
+    - Running `scripts/ci/test-claim-force-recover-wip.sh` in a clean repository (no auto‑stash branches) prints “no stale auto‑stash branch found” and exits with status 1.
+    - The new function `detect_stale_auto_stash_branch` in `scripts/coord/last-mile-rescuer.sh` returns the branch name when such a branch exists and returns an empty string when it does not (verified via sourcing the script in a test harness).
+    - "The detection logic does not report false positives: a repository containing only regular branches (e.g., `main`, `feature/x`) results in an empty string from `detect_stale_auto_stash_branch` and the CLI script behaves as in the clean‑repo case."
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
