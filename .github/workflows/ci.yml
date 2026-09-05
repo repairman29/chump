@@ -736,6 +736,26 @@ jobs:
         if: github.event_name == 'pull_request'
         run: bash scripts/ci/test-public-doc-privacy.sh || true
 
+  # ── Design pass ────────────────────────────────────────────────────────────
+  # EFFECTIVE-358 slice (EFFECTIVE-1159): a design-pass stage for user-facing
+  # tools (web/**, ChumpMenu/**). Today no producer emits design-spec
+  # artifacts (factory L3 design chair — EFFECTIVE-358 — is still open), so
+  # this stage reports which changed files are awaiting a spec and succeeds;
+  # it fails only on a real regression (an empty spec stub). Independently
+  # triggerable via workflow_dispatch — does not depend on any other job.
+  design-pass:
+    name: design-pass
+    if: needs.changes.outputs.web_code == 'true' || github.event_name == 'workflow_dispatch' || github.event_name == 'push' || github.event_name == 'merge_group'
+    needs: changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: Design pass (EFFECTIVE-358 slice)
+        run: bash scripts/ci/test-design-pass.sh
+
   # ── Shard 1: fast checks ──────────────────────────────────────────────────
   # fmt + JS self-tests + every ~30-second bash guard. No `cargo test`, no
   # `cargo clippy --workspace --all-targets`. A handful of guards build
