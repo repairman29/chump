@@ -82,6 +82,11 @@ env:
   AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
   SCCACHE_ERROR_LOG: /tmp/sccache.log
   SCCACHE_LOG: info
+  # INFRA-4653 (INFRA-2249 slice): BuildBuddy remote cache, R2 stays wired
+  # above as the secondary/fallback backend — this is additive, not a
+  # replacement. Empty string when BUILDBUDDY_API_KEY isn't set so a repo
+  # without the secret degrades to R2-only, same pattern as SCCACHE_ENDPOINT.
+  SCCACHE_BUILDBUDDY_URL: ${{ secrets.BUILDBUDDY_API_KEY && format('grpc.buildbuddy.io?api_key={0}', secrets.BUILDBUDDY_API_KEY) || '' }}
 
 jobs:
   # ── Path filter ────────────────────────────────────────────────────────────
@@ -1659,6 +1664,14 @@ jobs:
       - name: Install sccache
         if: steps.r2detect.outputs.configured == 'true'
         uses: mozilla-actions/sccache-action@v0.0.11
+
+      # INFRA-4653 (INFRA-2249 slice): show which backend(s) sccache is
+      # configured with — BuildBuddy (primary) + R2 (secondary/fallback).
+      # Diagnostic only; never fails the job.
+      - name: sccache --show-config (BuildBuddy + R2 URLs)
+        if: steps.r2detect.outputs.configured == 'true'
+        continue-on-error: true
+        run: bash scripts/ci/show-sccache-config.sh
 
       - name: sccache health probe
         # INFRA-2288: probe sccache server startup after install; degrade to no-cache
