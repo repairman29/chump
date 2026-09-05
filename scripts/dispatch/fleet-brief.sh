@@ -238,6 +238,34 @@ if [ -f "$AMBIENT_LOG" ]; then
     manual_rescues=$(awk -v cutoff="$since_iso" '$0 ~ /"kind":"manual_rescue"/' "$AMBIENT_LOG" 2>/dev/null | wc -l | tr -d ' ')
 fi
 
+# ── RESILIENT-1012: ribbon-acceptance gauge ───────────────────────────────
+# Last node_install_verified pass/fail + organ delta PER NODE, so ribbon
+# done-ness (came-up-0-failed-mirroring-roster) lives on this board instead
+# of in the operator's head from an SSH+eyeball session. One line per host
+# that has ever self-reported; last line wins per host (chronological log).
+ribbon_str=""
+ribbon_nodes=0
+ribbon_failing=0
+if [ -f "$AMBIENT_LOG" ]; then
+    declare -A _ribbon_seen
+    while IFS= read -r line; do
+        [[ "$line" == *'"kind":"node_install_verified"'* ]] || continue
+        host="$(printf '%s' "$line" | grep -o '"host":"[^"]*"' | head -1 | cut -d'"' -f4)"
+        [ -z "$host" ] && continue
+        pass="$(printf '%s' "$line" | grep -o '"pass":[a-z]*' | head -1 | cut -d: -f2)"
+        active="$(printf '%s' "$line" | grep -o '"active_organs":[0-9]*' | head -1 | cut -d: -f2)"
+        expected="$(printf '%s' "$line" | grep -o '"expected_organs":[0-9]*' | head -1 | cut -d: -f2)"
+        _ribbon_seen["$host"]="${pass}|${active:-0}|${expected:-0}"
+    done < "$AMBIENT_LOG"
+    for host in "${!_ribbon_seen[@]}"; do
+        IFS='|' read -r pass active expected <<< "${_ribbon_seen[$host]}"
+        ribbon_nodes=$((ribbon_nodes + 1))
+        if [ "$pass" = "true" ]; then mark="OK"; else mark="FAIL"; ribbon_failing=$((ribbon_failing + 1)); fi
+        ribbon_str+=" ${host}=${mark}(${active}/${expected})"
+    done
+    unset _ribbon_seen
+fi
+
 # ── Suggest next action ──────────────────────────────────────────────────
 suggestions=()
 total_pillar=$((p_resilient + p_effective + p_credible + p_zerowaste + p_mission))
@@ -303,6 +331,13 @@ stalls_str=""
 echo "Stalls > 4h: ${#stalls_4h[@]}${stalls_str}"
 echo "Auto-fixed: lint=$auto_lint_fixes flake-rerun=$auto_flake_reruns"
 echo "Manual rescues: $manual_rescues"
+# RESILIENT-1012: ribbon-acceptance gauge — last node_install_verified
+# pass/fail + organ delta per node, so ribbon done-ness lives on the board.
+if [ "$ribbon_nodes" -gt 0 ]; then
+    echo "Ribbon acceptance: ${ribbon_nodes} node(s), ${ribbon_failing} failing —${ribbon_str}"
+else
+    echo "Ribbon acceptance: no node_install_verified signals yet"
+fi
 # RESILIENT-246: always print curator liveness, loudly when stale.
 if [[ "$_curator_stale" -eq 1 ]]; then
     if [[ -t 1 ]]; then
