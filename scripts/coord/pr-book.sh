@@ -26,6 +26,8 @@
 #   PR_BOOK_OUTCOMES_FIXTURE    settle mode: JSON array of {number,state}, skips gh
 set -uo pipefail
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"; M="$(cat "$DIR/pr-book-model.jq")"
+# shellcheck source=lib/calibration.sh
+source "$DIR/lib/calibration.sh"
 LEDGER="${PR_BOOK_LEDGER:-$HOME/.chump/pr-book-ledger.jsonl}"
 CALIB="${PR_BOOK_CALIB:-$HOME/.chump/pr-book-calibration.log}"
 mkdir -p "$(dirname "$LEDGER")" "$(dirname "$CALIB")" 2>/dev/null || true
@@ -74,31 +76,15 @@ if [[ "$MODE" == "settle" ]]; then
             elif $p.state=="CLOSED" then .[($p.number|tostring)]=0
             else . end)' 2>/dev/null)"
   [[ -z "$OMAP" ]] && OMAP='{}'
-  # Join the LATEST prediction per PR to its realized outcome. Emit one per-prediction
-  # {predicted,outcome} row for each resolved PR (vital-signs.sh slurps these to compute
-  # Brier), then a trailing summary row. Integer/float math done in jq, not bash.
-  RES="$(jq -n --slurpfile L "$LEDGER" --argjson O "$OMAP" --arg ts "$TS" '
-    ($L | reduce .[] as $r ({}; .[($r.pr|tostring)] = $r)) as $latest
-    | [ $latest[] | (.pr|tostring) as $k | select($O[$k] != null)
-        | {ts:$ts, kind:"pr_book_prediction", pr:.pr, predicted:.price, outcome:$O[$k]} ]
-      as $rows
-    | ($rows | map((.predicted-.outcome)*(.predicted-.outcome))) as $sq
-    | { rows: $rows,
-        predictions: ($latest|length),
-        resolved: ($rows|length),
-        merged:   ([ $rows[] | select(.outcome==1) ] | length),
-        closed:   ([ $rows[] | select(.outcome==0) ] | length),
-        brier: (if ($sq|length)>0 then (((($sq|add)/($sq|length))*10000)|round)/10000 else null end) }')"
-  # Rewrite the calibration log atomically: per-prediction rows + trailing summary.
-  TMP_CAL="$(mktemp "${TMPDIR:-/tmp}/prbook-cal.XXXXXX" 2>/dev/null)" || TMP_CAL="$CALIB.tmp.$$"
-  echo "$RES" | jq -c '.rows[]' > "$TMP_CAL"
-  echo "$RES" | jq -c --arg ts "$TS" \
-    '{ts:$ts, kind:"pr_book_calibration", brier:.brier, n:.resolved, merged:.merged, closed:.closed}' >> "$TMP_CAL"
-  mv -f "$TMP_CAL" "$CALIB"
+  # Join the LATEST prediction per PR to its realized outcome, score via the
+  # generic calibration component (RESILIENT-974), and rewrite the calibration
+  # log — same shape as before this refactor: one {predicted,outcome} row per
+  # resolved PR plus a trailing {kind:pr_book_calibration,brier} summary row.
+  RES="$(calibration_settle "$LEDGER" "$OMAP" "$CALIB" pr price pr_book_prediction pr_book_calibration)"
   BRIER="$(echo "$RES" | jq -r '.brier // "n/a"')"
   RESOLVED="$(echo "$RES" | jq -r '.resolved')"
   PREDS="$(echo "$RES" | jq -r '.predictions')"
-  MERGED="$(echo "$RES" | jq -r '.merged')"; CLOSED="$(echo "$RES" | jq -r '.closed')"
+  MERGED="$(echo "$RES" | jq -r '.matched')"; CLOSED="$(echo "$RES" | jq -r '.unmatched')"
   echo "== PR BOOK settle  $TS =="
   printf "  resolved %s of %s predictions (%s merged / %s closed)\n" \
     "$RESOLVED" "$PREDS" "$MERGED" "$CLOSED"
