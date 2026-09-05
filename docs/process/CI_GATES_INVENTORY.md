@@ -81,6 +81,7 @@ Documented for completeness; do **not** file follow-ups.
 | `ftue-clean-machine-2026.yml` | Requires a fresh VM |
 | `no-anthropic-smoke.yml` | Validates chump-first contract under no-network |
 | `sccache health probe` | Probes R2 remote-cache connectivity in CI runner environment; local dev has different network + credentials — meaningless to run locally (INFRA-2288) |
+| `sccache --show-config (BuildBuddy + R2 URLs)` | Diagnostic print of CI-only env vars (`SCCACHE_BUILDBUDDY_URL`, `SCCACHE_ENDPOINT`) and the running sccache server's stats; local dev has neither the secrets nor a CI-started server (INFRA-4653) |
 | `actionlint — workflow syntax gate` (META-199) | Uses `rhysd/actionlint` GitHub Action; requires the actionlint binary not in standard preflight env |
 | `coverage-nightly.yml` (META-200) | Nightly cron only; llvm-cov instrument pass is too slow for per-PR preflight |
 | commit-msg docs-delta trailer check | INFRA-1969/INFRA-3379 — `test-docs-delta-commit-msg.sh` validates the commit-msg git hook itself; runs as a `commit-msg` hook, not a preflight gate — mirroring would duplicate hook logic rather than test something preflight doesn't already cover |

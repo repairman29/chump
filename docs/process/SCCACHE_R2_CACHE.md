@@ -16,6 +16,26 @@ artifact instead of recompiling.
 hits. Compounds with INFRA-2094 (cargo-nextest, 60% test speedup) and
 INFRA-2095 (merge queue, batch CI cycles).
 
+## BuildBuddy remote cache (INFRA-4653, INFRA-2249 slice)
+
+`SCCACHE_BUILDBUDDY_URL` is wired in `.github/workflows/ci.yml`'s top-level
+env block, resolved from the `BUILDBUDDY_API_KEY` GH Actions secret:
+
+```yaml
+SCCACHE_BUILDBUDDY_URL: ${{ secrets.BUILDBUDDY_API_KEY && format('grpc.buildbuddy.io?api_key={0}', secrets.BUILDBUDDY_API_KEY) || '' }}
+```
+
+This is **additive**, not a replacement — the R2 vars above (`SCCACHE_ENDPOINT`
+et al.) stay wired as the secondary/fallback cache. When `BUILDBUDDY_API_KEY`
+isn't set, `SCCACHE_BUILDBUDDY_URL` resolves to an empty string and the
+runner falls back to R2-only, same degrade pattern as the R2 vars themselves.
+
+Operator setup: add `BUILDBUDDY_API_KEY` as a GH Actions secret (sign up at
+https://app.buildbuddy.io, free tier). The `sccache --show-config
+(BuildBuddy + R2 URLs)` step in the `cargo-test` job
+(`scripts/ci/show-sccache-config.sh`) prints which backend(s) are
+configured for a given run — diagnostic only, never fails the job.
+
 ## Status
 
 | Component | Status |
