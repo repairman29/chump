@@ -1,0 +1,19 @@
+[package]
+name = "chump-subcommand-registry"
+version = "0.1.0"
+edition = "2021"
+description = "Subcommand self-registration via inventory (INFRA-1687 slice)"
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-subcommand-registry"
+license = "AGPL-3.0-only"
+
+[lib]
+name = "chump_subcommand_registry"
+path = "src/lib.rs"
+
+[dependencies]
+inventory = "0.3"
+anyhow = "1.0"
+
+[lints]
+workspace = true
