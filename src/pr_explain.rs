@@ -70,9 +70,9 @@ pub fn build_report(
     // than an independent failure) when it's CANCELLED and at least one
     // OTHER check in the same rollup has a real FAILURE — mirrors the
     // ci.yml INFRA-1002 shard-classification rule.
-    let any_real_failure = rollup.iter().any(|entry| {
-        entry.get("conclusion").and_then(|v| v.as_str()) == Some("FAILURE")
-    });
+    let any_real_failure = rollup
+        .iter()
+        .any(|entry| entry.get("conclusion").and_then(|v| v.as_str()) == Some("FAILURE"));
     let mut cancelled_jobs: Vec<String> = Vec::new();
     if any_real_failure {
         for entry in &rollup {
@@ -470,7 +470,8 @@ mod tests {
     fn cancelled_job_with_no_sibling_failure_is_not_reported_as_cascade_cancel() {
         // All-cancelled with no real failure looks like a supersedure
         // (newer run on same SHA), not a cascade-cancel — don't mislabel it.
-        let rollup = vec![json!({"name": "cargo-test", "conclusion": "CANCELLED", "status": "COMPLETED"})];
+        let rollup =
+            vec![json!({"name": "cargo-test", "conclusion": "CANCELLED", "status": "COMPLETED"})];
         let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
         assert!(r.cancelled_jobs.is_empty());
     }
