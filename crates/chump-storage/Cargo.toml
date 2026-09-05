@@ -1,0 +1,24 @@
+[package]
+name = "chump-storage"
+version = "0.1.0"
+edition = "2021"
+description = "Unified Get/Set/Delete storage abstraction over SQLite, NATS-KV, and git claim-branch metadata (RESILIENT-103 / EFFECTIVE-178 slice)"
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+
+[dependencies]
+anyhow = "1.0"
+async-trait = "0.1"
+rusqlite = { version = "0.32", features = ["bundled"] }
+async-nats = { version = "0.50", optional = true }
+
+[features]
+default = []
+nats = ["dep:async-nats"]
+
+[dev-dependencies]
+tokio = { version = "1", features = ["full"] }
+tempfile = "3"
+
+[lints]
+workspace = true
