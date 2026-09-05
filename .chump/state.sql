@@ -18875,10 +18875,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add an assert_target_exists shell function to scripts/ci/test-claim-open-pr-abort.sh to guard negative assertion runs. The function checks whether the required target file exists before proceeding with assertion logic, printing a descriptive error message to stderr and aborting with a non-zero exit code if the target is missing.
+    
+    Target file(s):
+    - scripts/ci/test-claim-open-pr-abort.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A shell function `assert_target_exists()` is introduced and used in all negative‑assertion scripts
-    - If the target file or symbol is missing, the script aborts with a clear error instead of passing vacuously
-    - Existing negative‑assertion CI gates (including INFRA‑825) are updated to use the guard
+    - scripts/ci/test-claim-open-pr-abort.sh defines an assert_target_exists shell function that verifies file existence.
+    - Calling assert_target_exists with a non-existent path prints an error to stderr and exits with status 1.
+    - Executing scripts/ci/test-claim-open-pr-abort.sh against valid target files completes the negative-assertion suite successfully.
   depends_on: [CREDIBLE-780]
   notes: |
     [chump harvest check 'gates']
@@ -18903,10 +18910,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update negative-assertion CI scripts scripts/ci/test-book-sync-guard.sh and scripts/ci/test-closed-pr-guard.sh to invoke assert_target_exists() before executing grep -q negative pattern checks, ensuring tests fail explicitly with a descriptive message if the target file or directory does not exist.
+    
+    Target file(s):
+    - scripts/ci/test-book-sync-guard.sh
+    - scripts/ci/test-closed-pr-guard.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All scripts that contain `grep -q … && fail` now invoke `assert_target_exists()` first
-    - Running the scripts on a clean checkout where the target is absent results in a failure with a descriptive message
-    - CI pipeline remains green after the change
+    - scripts/ci/test-book-sync-guard.sh calls assert_target_exists before evaluating grep -q negative assertions.
+    - scripts/ci/test-closed-pr-guard.sh calls assert_target_exists before evaluating grep -q negative assertions.
+    - Executing scripts/ci/test-book-sync-guard.sh or scripts/ci/test-closed-pr-guard.sh when the target file is missing exits non-zero with a target existence error message.
   depends_on: [CREDIBLE-782]
   notes: |
     [chump harvest check 'gates']
@@ -18959,10 +18974,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add unit tests in `src/dispatch.rs` within `mod tests` to validate the dispatch helper and existence guard functions. The tests must explicitly cover scenarios where the source file exists, where the source file does not exist (asserting that the fallback path is executed), and where the existence guard detects missing target paths.
+    
+    Target file(s):
+    - src/dispatch.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test suite includes cases where the new source file exists, where it does not (fallback path used), and where the guard detects missing targets
-    - All tests pass locally and in CI
-    - Coverage for the new module is at least 80%
+    - "`src/dispatch.rs` contains new unit test cases inside `mod tests` exercising dispatch helper logic when target files exist, when target files are missing (triggering fallback), and when the existence guard detects invalid targets."
+    - Running `cargo test --lib dispatch` completes with 0 failures.
+    - All added unit tests in `src/dispatch.rs` assert observable return values or side effects for existing, missing, and fallback file paths.
   depends_on: [CREDIBLE-780, CREDIBLE-782]
   notes: |
     [chump harvest check 'gates']
@@ -18987,12 +19009,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a "Writing CI gates" section to CONTRIBUTING.md documenting standard CI gate patterns, detailing the usage of resolve_source() for location-based checks, assert_target_exists() for negative assertions, and encouraging behavior-based checks via binary execution.
+    
+    Target file(s):
+    - CONTRIBUTING.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "README or CONTRIBUTING guide contains a section \"Writing CI gates\" describing:"
-    - "  * Use of `resolve_source()` for location‑based checks"
-    - "  * Use of `assert_target_exists()` for negative assertions"
-    - "  * Preference for behaviour‑based checks via binary execution"
-    - Documentation is reviewed and merged
+    - "CONTRIBUTING.md contains a section titled \"Writing CI gates\"."
+    - CONTRIBUTING.md explicitly describes using `resolve_source()` for location-based checks and `assert_target_exists()` for negative assertions.
+    - CONTRIBUTING.md documents the preference for behavior-based checks via binary execution over static analysis.
   depends_on: [CREDIBLE-780, CREDIBLE-782, CREDIBLE-784]
   notes: |
     [chump harvest check 'gates']
@@ -21076,9 +21103,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update src/provider_cascade.rs and crates/chump-orchestrator/src/routing.rs to integrate the derived routing policy into the cascade configuration and fallback selection logic (`select` and `should_cascade_on_error_string`), ensuring provider routing decisions evaluate derived policy rules during execution.
+    
+    Target file(s):
+    - src/provider_cascade.rs
+    - crates/chump-orchestrator/src/routing.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Policy from slice 9 is committed to the cascade config repository
-    - Configuration passes validation tests
+    - src/provider_cascade.rs `should_cascade_on_error_string` evaluates derived routing policy rules when determining cascade triggers.
+    - crates/chump-orchestrator/src/routing.rs `select` applies the derived policy to provider fallback ordering.
+    - Running `cargo test --lib` succeeds with all provider cascade and routing validation tests passing.
   depends_on: [CREDIBLE-854]
   notes: |
     [chump harvest check 'inference']
@@ -63775,7 +63811,7 @@ gaps:
     - Migration shipped in 3-4 PRs (not one mega-PR), each ≤800 LOC of CSS moved
   depends_on: [INFRA-1591]
   notes: |
-    Decomposed into 6 slices: INFRA-4357, INFRA-4358, INFRA-4359, INFRA-4360, INFRA-4361, INFRA-4362
+    Decomposed into 4 slices: INFRA-4663, INFRA-4664, INFRA-4665, INFRA-4666
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -129107,6 +129143,119 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4663
+  domain: INFRA
+  title: "INFRA: Migrate leaf component CSS (cost-meter, pr-card, workflow-timeline) to Shadow DOM (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for chump-cost-meter, chump-pr-card, and chump-workflow-timeline removed from web/v2/index.html
+    - CSS embedded into shadow DOM styles in web/v2/cost-meter.js, web/v2/pr-card.js, and web/v2/workflow-timeline.js
+    - PRODUCT-/INFRA- ticket comments preserved as JSDoc comments above ChumpCostMeter, ChumpPrCard, and ChumpWorkflowTimeline classes
+    - Computed styles at 375/768/1440px match baseline for all three components
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4664
+  domain: INFRA
+  title: "INFRA: Migrate cockpit, status footer, and approval tray CSS to component shadow DOMs (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for chump-status-footer, chump-tool-approval-tray, chump-first-run-wizard, and cockpit view moved from web/v2/index.html into web/v2/cockpit.js and dedicated component classes
+    - PRODUCT-/INFRA- ticket comments preserved as JSDoc comments above ChumpViewCockpit and associated component class definitions
+    - Cockpit view visual snapshot and computed styles remain unchanged at 375/768/1440px viewports
+  depends_on: [INFRA-4663]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4665
+  domain: INFRA
+  title: "INFRA: Migrate per-view container CSS (task-list, gap-list, agents-list) to view components (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Per-view CSS rules (.task-list, .gap-list, .agents-list) moved out of web/v2/index.html into their respective view custom element shadow DOMs
+    - PRODUCT-/INFRA- ticket comments preserved as JSDoc above corresponding custom element class definitions
+    - No computed style regressions for view-level elements at 375/768/1440px
+  depends_on: [INFRA-4663]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4666
+  domain: INFRA
+  title: "INFRA: Migrate shell utility components and enforce <=300 LOC style block in index.html (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for ChumpMenu, config-dials, repo-switcher, doctor-banner, auth-toast, and ambient-viewer moved into their respective JS module shadow DOMs
+    - web/v2/index.html <style> block is ≤300 LOC
+    - "index.html <style> block contains strictly tokens (:root + theme overrides), reset, layout primitives, mobile queries, and cross-cutting toast/banner/pill styles"
+    - Visual snapshot tests pass with zero pixel delta across 375/768/1440px
+  depends_on: [INFRA-4664, INFRA-4665]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: INFRA-476
   domain: INFRA
