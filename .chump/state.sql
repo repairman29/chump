@@ -18596,10 +18596,19 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `EXTRACTED_PRIMITIVES` constant and the associated parsing routine in `scripts/arsenal/build.py` so that the webhook receiver extracts only the PR title from the incoming payload, logs that title, and then iterates over any IDs found in the title to invoke `gap ship <ID>` via a subprocess call. Adjust the test harness in `scripts/ci/run-stories.sh` to start the receiver and verify the new log output.
+    
+    Target file(s):
+    - scripts/arsenal/build.py
+    - scripts/ci/run-stories.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Receiver process restarts without errors
-    - Logs show extraction from PR title only and use of `gap ship` for each ID
-    - No regression in existing webhook handling
+    - "In `scripts/arsenal/build.py`, the function that processes the webhook payload logs a line containing “Extracted PR title:” and no other PR fields."
+    - In `scripts/arsenal/build.py`, after extraction, the code calls `subprocess.run(['gap','ship', <ID>])` for each ID parsed from the title, and the call succeeds without raising an exception.
+    - "Executing `scripts/ci/run-stories.sh` restarts the receiver process without errors and the combined log output includes both “Extracted PR title:” and “gap ship” entries for each ID."
+    - Existing unit tests in `crates/chump-handoff/src/contracts.rs` continue to pass, confirming no regression in other webhook handling paths.
   depends_on: [CREDIBLE-768, CREDIBLE-771, CREDIBLE-772]
   notes: |
     [chump harvest check 'merging']
