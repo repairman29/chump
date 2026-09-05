@@ -65,5 +65,14 @@ path = "src/bin/chump-gap-enricher.rs"
 name = "chump-check-gaps-integrity"
 path = "src/bin/chump-check-gaps-integrity.rs"
 
+# INFRA-4775: applies the checked-in shared gap-store migrations
+# (supabase/migrations/000{1,2}_*.sql) via one idempotent `init-schema`
+# subcommand. Only buildable with the postgres-backend feature enabled,
+# since it links the `postgres` crate directly.
+[[bin]]
+name = "chump-gap-store"
+path = "src/bin/chump-gap-store.rs"
+required-features = ["postgres-backend"]
+
 [lints]
 workspace = true

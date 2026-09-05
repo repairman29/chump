@@ -250,33 +250,79 @@ SQL
   log "roles ensured: $PG_ANON (nologin), $PG_AUTHENTICATOR (login)"
 }
 
-# ---------- 3. SCHEMA (checked-in migrations, idempotent) ----------
-apply_schema() {
+# ---------- 3. SCHEMA (checked-in migrations, idempotent, applied via init_schema — INFRA-4775) ----------
+# Builds (once) and invokes the chump-gap-store binary's `init-schema`
+# subcommand, which wraps `apply_shared_gap_store_migrations` (Rust,
+# crates/chump-gap-store/src/backend/postgres.rs) — the same checked-in
+# supabase/migrations/0001+0002 files, applied idempotently, but through
+# one Rust entrypoint instead of this script piping SQL through psql by
+# hand. Falls back to the old psql-pipe path if cargo/build is unavailable
+# (e.g. a stripped-down provisioning box with no Rust toolchain).
+ensure_gap_store_binary() {
   for f in "${MIGRATIONS[@]}"; do
     [[ -f "$f" ]] || die "migration file missing: $f"
   done
+  if [[ "$DRY" == 1 ]]; then
+    log "DRY: would build chump-gap-store (postgres-backend feature)"
+    return 0
+  fi
+  if ! command -v cargo >/dev/null 2>&1; then
+    log "cargo not found — falling back to direct psql migration apply"
+    GAP_STORE_BIN=""
+    return 0
+  fi
+  log "building chump-gap-store (postgres-backend feature) — first run may take a minute"
+  if (cd "$REPO_ROOT" && cargo build --release --quiet -p chump-gap-store --features postgres-backend --bin chump-gap-store); then
+    GAP_STORE_BIN="$REPO_ROOT/target/release/chump-gap-store"
+  else
+    log "chump-gap-store build failed — falling back to direct psql migration apply"
+    GAP_STORE_BIN=""
+  fi
+}
+
+apply_schema() {
+  ensure_gap_store_binary
   if [[ "$DRY" == 1 ]]; then
     log "DRY: would apply ${MIGRATIONS[*]} to $DB_NAME"
     return 0
   fi
 
-  # Coarse idempotency: the migration files themselves aren't safe to
-  # re-run (CREATE POLICY has no IF NOT EXISTS in Postgres), so gate the
-  # whole apply on whether the schema is already there.
-  local have_schema
-  have_schema="$(psql_admin -d "$DB_NAME" -c "SELECT to_regclass('public.shared_gaps')")"
-  if [[ -n "$have_schema" && "$have_schema" != "" ]]; then
-    log "schema already present (shared_gaps exists) — skipping migration apply (no-op)"
+  if [[ -n "${GAP_STORE_BIN:-}" ]]; then
+    # CREATE TABLE needs admin/owner privileges the anon-facing
+    # chump_authenticator role doesn't have (Postgres 15+ revoked the
+    # default PUBLIC CREATE grant on schema public) — connect as the same
+    # admin identity psql_admin() uses: local peer auth via the `postgres`
+    # OS user on Linux, or the invoking user on macOS/brew installs.
+    local db_url out
+    if [[ "$OS" == "Linux" ]] && id postgres >/dev/null 2>&1; then
+      db_url="host=/var/run/postgresql user=postgres dbname=$DB_NAME"
+      out="$(_sudo -u postgres "$GAP_STORE_BIN" init-schema --db-url "$db_url" --migrations-dir "$REPO_ROOT/supabase/migrations" 2>&1)" \
+        || die "chump-gap-store init-schema failed: $out"
+    else
+      db_url="host=$DB_HOST port=$DB_PORT user=$(whoami) dbname=$DB_NAME"
+      out="$("$GAP_STORE_BIN" init-schema --db-url "$db_url" --migrations-dir "$REPO_ROOT/supabase/migrations" 2>&1)" \
+        || die "chump-gap-store init-schema failed: $out"
+    fi
+    log "chump-gap-store init-schema: $out"
   else
-    for f in "${MIGRATIONS[@]}"; do
-      log "applying $(basename "$f")"
-      # Pipe via stdin rather than `-f <path>`: when psql_admin runs as
-      # `sudo -u postgres`, the postgres OS user has no read access into an
-      # arbitrary caller's worktree/home directory, so `-f` fails with
-      # "Permission denied" even though the invoking user can read the file.
-      psql_admin -d "$DB_NAME" < "$f"
-    done
-    log "schema applied (teams, shared_gaps, shared_claims, worker_capabilities, ...)"
+    # Coarse idempotency: the migration files themselves aren't safe to
+    # re-run (CREATE POLICY has no IF NOT EXISTS in Postgres), so gate the
+    # whole apply on whether the schema is already there.
+    local have_schema
+    have_schema="$(psql_admin -d "$DB_NAME" -c "SELECT to_regclass('public.shared_gaps')")"
+    if [[ -n "$have_schema" && "$have_schema" != "" ]]; then
+      log "schema already present (shared_gaps exists) — skipping migration apply (no-op)"
+    else
+      for f in "${MIGRATIONS[@]}"; do
+        log "applying $(basename "$f")"
+        # Pipe via stdin rather than `-f <path>`: when psql_admin runs as
+        # `sudo -u postgres`, the postgres OS user has no read access into an
+        # arbitrary caller's worktree/home directory, so `-f` fails with
+        # "Permission denied" even though the invoking user can read the file.
+        psql_admin -d "$DB_NAME" < "$f"
+      done
+      log "schema applied (teams, shared_gaps, shared_claims, worker_capabilities, ...)"
+    fi
   fi
 
   # Self-hosted has no Supabase Auth issuing JWTs — auth.uid()-gated RLS

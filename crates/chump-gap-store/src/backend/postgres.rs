@@ -14,6 +14,7 @@ use super::GapBackend;
 use crate::GapRow;
 use anyhow::{Context, Result};
 use postgres::{Client, NoTls};
+use std::path::Path;
 use std::sync::Mutex;
 
 pub struct PostgresBackend {
@@ -204,6 +205,44 @@ fn row_to_gap(row: &postgres::Row) -> GapRow {
     }
 }
 
+/// Applies the checked-in fleet gap-store migrations
+/// (`supabase/migrations/0001_team_foundation.sql` +
+/// `0002_shared_gaps.sql`) to `client` — INFRA-4775, the Rust
+/// counterpart of what `scripts/setup/install-gap-substrate.sh` used to
+/// pipe through `psql` by hand.
+///
+/// Distinct from [`PostgresBackend::init_schema`] above: that method owns
+/// the single-node `gaps` table used by the opt-in `postgres-backend`
+/// `GapBackend` impl. This function owns the multi-tenant, cross-machine
+/// `shared_gaps` / `shared_claims` / `worker_capabilities` shape applied by
+/// the checked-in SQL migrations for the self-hosted fleet substrate.
+///
+/// Idempotent: if `shared_gaps` already exists, this is a no-op and
+/// returns `Ok(true)` ("already up to date"). Otherwise it applies both
+/// migration files in order and returns `Ok(false)` ("freshly applied").
+pub fn apply_shared_gap_store_migrations(
+    client: &mut Client,
+    migrations_dir: &Path,
+) -> Result<bool> {
+    let have_schema = client
+        .query_opt("SELECT to_regclass('public.shared_gaps')", &[])
+        .context("checking for existing shared_gaps table")?
+        .and_then(|row| row.get::<_, Option<String>>(0));
+    if have_schema.is_some() {
+        return Ok(true);
+    }
+
+    for name in ["0001_team_foundation.sql", "0002_shared_gaps.sql"] {
+        let path = migrations_dir.join(name);
+        let sql = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading migration {}", path.display()))?;
+        client
+            .batch_execute(&sql)
+            .with_context(|| format!("applying migration {}", path.display()))?;
+    }
+    Ok(false)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -228,5 +267,38 @@ mod tests {
         backend.delete_gap("INFRA-9999").ok();
         backend.delete_gap("INFRA-9998").ok();
         exercise_backend_contract(&backend).expect("contract");
+    }
+
+    /// INFRA-4775: same opt-in gate as above — requires `CHUMP_TEST_POSTGRES_URL`
+    /// pointed at a DB that doesn't already have the fleet gap-store schema
+    /// applied (a scratch DB, not the `gaps`-table one `postgres_backend_satisfies_contract`
+    /// uses). Verifies apply-then-reapply is idempotent and that
+    /// `shared_gaps`/`shared_claims`/`worker_capabilities` land.
+    #[test]
+    fn apply_shared_gap_store_migrations_is_idempotent() {
+        let Ok(url) = std::env::var("CHUMP_TEST_POSTGRES_URL") else {
+            eprintln!(
+                "skipping apply_shared_gap_store_migrations_is_idempotent: CHUMP_TEST_POSTGRES_URL not set"
+            );
+            return;
+        };
+        let mut client = Client::connect(&url, NoTls).expect("connect");
+        let migrations_dir =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../supabase/migrations");
+
+        let first =
+            apply_shared_gap_store_migrations(&mut client, &migrations_dir).expect("first apply");
+        let second =
+            apply_shared_gap_store_migrations(&mut client, &migrations_dir).expect("second apply");
+        assert!(second, "re-apply should report schema already up-to-date");
+        let _ = first; // true iff a prior test run already applied it — either is fine here
+
+        for table in ["shared_gaps", "shared_claims", "worker_capabilities"] {
+            let present: Option<String> = client
+                .query_one(&format!("SELECT to_regclass('public.{table}')::text"), &[])
+                .expect("query")
+                .get(0);
+            assert!(present.is_some(), "expected table {table} to exist");
+        }
     }
 }
