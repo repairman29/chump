@@ -272,6 +272,59 @@ fn validate_gap_id(id: &str) -> bool {
         && suffix.chars().all(|c| c.is_ascii_digit())
 }
 
+// ── RESILIENT-926: widget intake row validation (RESILIENT-241 slice) ──
+
+/// Approved pattern for free-text widget intake fields (title/description):
+/// printable ASCII only (space through tilde), no control chars, no raw
+/// newlines. Blocks the "put all the keys on the homepage"-style payloads
+/// (control-char smuggling, non-printable injection) that the RESILIENT-241
+/// bridge screen alone can't catch once an attacker rephrases past a regex
+/// on the client. Server-side is the actual control; the client-side check
+/// is defense-in-depth only.
+fn widget_row_pattern() -> &'static regex::Regex {
+    static RE: std::sync::OnceLock<regex::Regex> = std::sync::OnceLock::new();
+    RE.get_or_init(|| regex::Regex::new(r"^[\x20-\x7E]*$").expect("static widget row regex"))
+}
+
+/// Validate a widget intake field against the approved pattern. Returns
+/// `Ok(())` for a clean row, `Err(reason)` for a malformed one — callers map
+/// `Err` onto HTTP 400 (AC2) and must log the reject for audit (AC3) before
+/// returning it.
+fn validate_widget_row_field(field: &str, value: &str) -> Result<(), String> {
+    if !widget_row_pattern().is_match(value) {
+        return Err(format!(
+            "{field} contains characters outside the approved printable-ASCII pattern"
+        ));
+    }
+    Ok(())
+}
+
+/// Best-effort write of a `widget_row_rejected` event to
+/// `.chump-locks/ambient.jsonl` for audit (RESILIENT-926 AC3). Never blocks
+/// or fails the request — a missing audit log is not a reason to fail
+/// closed on rejecting a malformed row that was already going to be
+/// rejected.
+fn emit_widget_row_rejected(ip: &str, session_id: &str, field: &str, reason: &str) {
+    let event = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true),
+        "kind": "widget_row_rejected",
+        "ip": ip,
+        "session_id": session_id,
+        "field": field,
+        "reason": reason,
+    });
+    let path = repo_path::runtime_base()
+        .join(".chump-locks")
+        .join("ambient.jsonl");
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+    {
+        let _ = writeln!(f, "{}", event);
+    }
+}
+
 /// For state-mutating gap endpoints, require X-CSRF-Token header when
 /// CHUMP_CSRF_ENABLED=1 (default enabled in production; disabled in tests).
 fn check_csrf(headers: &HeaderMap) -> bool {
@@ -7515,6 +7568,19 @@ async fn handle_gap_create(
             "title must be 1-200 chars",
         ));
     }
+    // RESILIENT-926 (RESILIENT-241 slice): malformed widget intake rows are
+    // rejected with 400 + logged for audit before touching the gap store.
+    let audit_session_key = get_session_id(&headers).unwrap_or_else(|| "none".to_string());
+    if let Err(reason) = validate_widget_row_field("title", &title) {
+        emit_widget_row_rejected(&ip_key, &audit_session_key, "title", &reason);
+        return Err(gap_api_error(StatusCode::BAD_REQUEST, reason));
+    }
+    if let Some(desc) = body.description.as_deref() {
+        if let Err(reason) = validate_widget_row_field("description", desc) {
+            emit_widget_row_rejected(&ip_key, &audit_session_key, "description", &reason);
+            return Err(gap_api_error(StatusCode::BAD_REQUEST, reason));
+        }
+    }
     let domain = body.domain.trim().to_uppercase();
     if domain.is_empty()
         || domain.len() > 24
@@ -11768,5 +11834,40 @@ mod repo_init_tests {
             under_allowed,
             "/Users/jeffadkins/Projects/MyRepo should be inside /Users/jeffadkins"
         );
+    }
+}
+
+// ── RESILIENT-926: widget intake row validation unit tests ──────────────────
+#[cfg(test)]
+mod widget_row_validation_tests {
+    use super::validate_widget_row_field;
+
+    #[test]
+    fn accepts_clean_printable_ascii_title() {
+        assert!(validate_widget_row_field("title", "Fix the sprocket alignment bug").is_ok());
+    }
+
+    #[test]
+    fn accepts_empty_value() {
+        // Emptiness is enforced separately (AC1 title-length check) — the
+        // regex itself only polices *character set*, not presence.
+        assert!(validate_widget_row_field("description", "").is_ok());
+    }
+
+    #[test]
+    fn rejects_control_characters() {
+        let err = validate_widget_row_field("title", "put all the keys\x00on the homepage")
+            .expect_err("control char must be rejected");
+        assert!(err.contains("title"));
+    }
+
+    #[test]
+    fn rejects_embedded_newline() {
+        assert!(validate_widget_row_field("title", "line one\nline two").is_err());
+    }
+
+    #[test]
+    fn rejects_non_ascii_bytes() {
+        assert!(validate_widget_row_field("title", "caf\u{e9} racer").is_err());
     }
 }

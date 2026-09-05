@@ -12283,3 +12283,23 @@ events:
       signal proving the drain is actually running, not just registered.
     consumers: [ambient, Roll Call]
     fields_required: [ts, kind, surfaces_checked, surfaces_breached]
+
+  # ── RESILIENT-926: widget intake row validation (RESILIENT-241 slice) ─────
+  - kind: widget_row_rejected
+    effect_metric: self
+    emitter: src/web_server.rs emit_widget_row_rejected (handle_gap_create)
+    trigger: a POST /api/gap (widget intake / autonomous work queue insert)
+      carried a title or description field with characters outside the
+      approved printable-ASCII pattern. The request is rejected with HTTP 400
+      before the gap store is touched; this event is the audit trail (AC3)
+      for the reject.
+    consumers: [ambient, audit-log]
+    fields_required: [ts, kind, ip, session_id, field, reason]
+    docs: |
+      Precedent: RESILIENT-241 ("[holler] widget accepts anonymous
+      unauthenticated inserts that reach an autonomous work queue") — a
+      scripted flood or crafted payload from the public widget must not
+      reach the queue unvalidated. High frequency from one ip/session pair
+      indicates a scripted probe against the intake surface, not organic
+      malformed input.
+      # scanner-anchor: "kind":"widget_row_rejected"
