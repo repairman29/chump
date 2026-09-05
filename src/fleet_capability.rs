@@ -121,6 +121,59 @@ pub fn should_claim(cap: &AgentCapability, req: &TaskRequirement) -> bool {
     fit_score(cap, req) >= CLAIM_THRESHOLD
 }
 
+/// A node's hardware-derived fit list plus the POLICY layer that can veto or
+/// pin a role regardless of fit (RESILIENT-1032, Node Fabric component #2).
+///
+/// `roles_fit` (populated by `scripts/dispatch/node-describe.sh`) answers
+/// "can this node's hardware run this role" — necessary but not sufficient.
+/// `roles_veto` and `pinned_role` answer "should it": closetjunky (CJ) FITS
+/// `build-worker` on paper (4 cores, 46G free) but its 7GB of RAM OOMs during
+/// a real build, so policy vetoes `build-worker` and pins CJ to `gpu-embed`
+/// only. `fit != assignment`.
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
+pub struct NodeProfile {
+    pub node_id: String,
+    #[serde(default)]
+    pub roles_fit: Vec<String>,
+    #[serde(default)]
+    pub roles_veto: Vec<String>,
+    #[serde(default)]
+    pub pinned_role: Option<String>,
+}
+
+/// Returns true if `role` may be assigned to `node`. A role must both fit
+/// (`roles_fit`) and clear the policy layer: if `pinned_role` is set, only
+/// that exact role is assignable regardless of what else fits; otherwise any
+/// fitting role not present in `roles_veto` is assignable.
+pub fn role_assignable(node: &NodeProfile, role: &str) -> bool {
+    if !node.roles_fit.iter().any(|r| r.eq_ignore_ascii_case(role)) {
+        return false;
+    }
+    if let Some(pinned) = &node.pinned_role {
+        return pinned.eq_ignore_ascii_case(role);
+    }
+    !node.roles_veto.iter().any(|v| v.eq_ignore_ascii_case(role))
+}
+
+/// The subset of `roles_fit` that actually clears policy — what the
+/// placement engine may assign to this node right now.
+pub fn assigned_roles(node: &NodeProfile) -> Vec<String> {
+    node.roles_fit
+        .iter()
+        .filter(|r| role_assignable(node, r))
+        .cloned()
+        .collect()
+}
+
+/// Load a node's fit + policy profile from a `docs/fleet/nodes/<id>.json`
+/// registry file. Unknown fields (hardware, services_running, capability)
+/// are ignored — this reads only the placement-policy slice of the schema.
+pub fn load_node_profile(path: &Path) -> Result<NodeProfile> {
+    let text = std::fs::read_to_string(path)
+        .with_context(|| format!("reading node profile {}", path.display()))?;
+    serde_json::from_str(&text).with_context(|| format!("parsing node profile {}", path.display()))
+}
+
 /// Default location for a session's capability publication.
 /// `<repo-root>/.chump-locks/capabilities/<session_id>.json`.
 pub fn capability_path(repo_root: &Path, session_id: &str) -> PathBuf {
@@ -299,5 +352,81 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let all = read_all_local(tmp.path()).unwrap();
         assert!(all.is_empty());
+    }
+
+    #[test]
+    fn fit_without_policy_is_unrestricted() {
+        let node = NodeProfile {
+            node_id: "n1".into(),
+            roles_fit: vec!["build-worker".into(), "ci-runner".into()],
+            roles_veto: vec![],
+            pinned_role: None,
+        };
+        assert!(role_assignable(&node, "build-worker"));
+        assert!(role_assignable(&node, "ci-runner"));
+        assert!(!role_assignable(&node, "gpu-embed")); // not in roles_fit
+    }
+
+    #[test]
+    fn veto_blocks_a_role_that_fits() {
+        // RESILIENT-1032: roles_fit lists build-worker, but policy vetoes it.
+        let node = NodeProfile {
+            node_id: "closetjunky".into(),
+            roles_fit: vec!["gpu-embed".into(), "build-worker".into()],
+            roles_veto: vec!["build-worker".into()],
+            pinned_role: None,
+        };
+        assert!(
+            !role_assignable(&node, "build-worker"),
+            "hardware fit must not override policy veto"
+        );
+        assert!(role_assignable(&node, "gpu-embed"));
+        assert_eq!(assigned_roles(&node), vec!["gpu-embed".to_string()]);
+    }
+
+    #[test]
+    fn pinned_role_overrides_fit_even_without_explicit_veto() {
+        let node = NodeProfile {
+            node_id: "closetjunky".into(),
+            roles_fit: vec![
+                "gpu-embed".into(),
+                "build-worker".into(),
+                "ci-runner".into(),
+            ],
+            roles_veto: vec![],
+            pinned_role: Some("gpu-embed".into()),
+        };
+        assert!(role_assignable(&node, "gpu-embed"));
+        assert!(!role_assignable(&node, "build-worker"));
+        assert!(!role_assignable(&node, "ci-runner"));
+        assert_eq!(assigned_roles(&node), vec!["gpu-embed".to_string()]);
+    }
+
+    #[test]
+    fn pinned_role_not_in_roles_fit_is_never_assignable() {
+        // Pin can only narrow what fits, never grant a role hardware can't do.
+        let node = NodeProfile {
+            node_id: "n1".into(),
+            roles_fit: vec!["build-worker".into()],
+            roles_veto: vec![],
+            pinned_role: Some("gpu-embed".into()),
+        };
+        assert!(!role_assignable(&node, "gpu-embed"));
+        assert!(!role_assignable(&node, "build-worker"));
+        assert!(assigned_roles(&node).is_empty());
+    }
+
+    #[test]
+    fn closetjunky_registry_pins_gpu_embed_never_muscle() {
+        // Loads the real node-registry fixture and proves CJ (4-core, 7GB
+        // RAM) is barred from build-worker despite roles_fit listing it.
+        let path = Path::new(env!("CARGO_MANIFEST_DIR")).join("docs/fleet/nodes/closetjunky.json");
+        let node = load_node_profile(&path).expect("closetjunky.json must parse");
+        assert!(node.roles_fit.iter().any(|r| r == "build-worker"));
+        assert!(
+            !role_assignable(&node, "build-worker"),
+            "CJ must never be assigned build-worker (7GB RAM OOMs on build)"
+        );
+        assert!(role_assignable(&node, "gpu-embed"));
     }
 }

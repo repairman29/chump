@@ -13,6 +13,8 @@
     "always_on": true
   },
   "roles_fit": ["gpu-embed","gpu-inference-small","build-worker","ci-runner","atc-heartbeat","broker"],
+  "roles_veto": ["build-worker","ci-runner"],
+  "pinned_role": "gpu-embed",
   "services_running": ["ollama:embed/inference","nats:broker"],
   "capability": {
     "vram_gb": 4,
