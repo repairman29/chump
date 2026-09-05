@@ -133,6 +133,26 @@ clear_backoff() {  # unit
   rm -f "$BACKOFF_DIR/${1}.json" 2>/dev/null || true
 }
 
+# RESILIENT-1016 (a): drift-REMOVAL discovery. Lists every chump-managed unit
+# FILE present on the host (installed, whether active or not) so the caller
+# can diff it against the role-filtered manifest's expected set. Only
+# meaningful for a role-scoped reconcile (ROLE_FILTER set) — the unfiltered
+# reconcile already manages the WHOLE manifest, so there is no "out of role"
+# unit to reap there.
+discover_live_chump_units() {
+  "$SYSTEMCTL_BIN" list-unit-files --type=service --no-legend 'chump-*.service' 2>/dev/null | awk '{print $1}'
+}
+
+# A unit is a drift-removal candidate if systemd still considers it active OR
+# enabled — a unit that's merely present-on-disk-but-inactive-and-disabled
+# isn't drift, it's just a dormant unit file left by history.
+organ_is_live() {
+  local unit="$1"
+  "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null && return 0
+  "$SYSTEMCTL_BIN" is-enabled --quiet "$unit" 2>/dev/null && return 0
+  return 1
+}
+
 # Repo-declared drop-in body that neuters an auto-pager's ExecStart.
 dropin_body() {
   local unit="$1"
@@ -206,6 +226,22 @@ if [[ "$MODE" == "--check" ]]; then
       echo "DRIFT: $unit is not active"; fail=1
     fi
   done
+  # RESILIENT-1016 (a): role-scoped drift check — flag any chump unit that is
+  # still active/enabled but NOT in the role-filtered manifest (present but
+  # out-of-role, or dropped from the manifest entirely). Unfiltered (whole
+  # manifest) reconciles have nothing "out of role" to flag.
+  if [[ -n "$ROLE_FILTER" ]]; then
+    declare -A _EXPECTED_UNIT
+    for unit in "${ENABLED[@]}"; do _EXPECTED_UNIT["$unit"]=1; done
+    for unit in "${PAGING_OFF[@]}"; do _EXPECTED_UNIT["$unit"]=1; done
+    while IFS= read -r unit; do
+      [[ -z "$unit" ]] && continue
+      [[ -n "${_EXPECTED_UNIT[$unit]:-}" ]] && continue
+      if organ_is_live "$unit"; then
+        echo "DRIFT: $unit is active/enabled but out-of-role (not in role-filtered manifest)"; fail=1
+      fi
+    done < <(discover_live_chump_units)
+  fi
   [[ "$fail" == 0 ]] && echo "ok: live systemd state matches organ-manifest.txt"
   exit "$fail"
 fi
@@ -326,6 +362,36 @@ for unit in "${ENABLED[@]}"; do
     emit organ_reconcile_backoff "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"verify_failed\""
   fi
 done
+
+# 3) Drift-REMOVAL pass (RESILIENT-1016 part a). Role-scoped reconcile only:
+#    the loop above only ENABLES in-role manifest units, it never
+#    disables/reaps units that are present-but-out-of-role (left behind by a
+#    prior role install/switch) or no longer in the manifest at all — so
+#    stray units persist and fail forever (VERIFIED on mugman: 28 leftover
+#    out-of-role brain units stayed failed until hand-reaped, then 28->1).
+#    This makes a role install (or role switch) self-cleaning: any chump
+#    unit still active/enabled that is NOT in the role-filtered expected set
+#    gets disabled --now + reset-failed. Unfiltered (whole-manifest)
+#    reconciles skip this — there's nothing "out of role" to reap there.
+if [[ -n "$ROLE_FILTER" ]]; then
+  declare -A EXPECTED_UNIT
+  for unit in "${ENABLED[@]}"; do EXPECTED_UNIT["$unit"]=1; done
+  for unit in "${PAGING_OFF[@]}"; do EXPECTED_UNIT["$unit"]=1; done
+  while IFS= read -r unit; do
+    [[ -z "$unit" ]] && continue
+    [[ -n "${EXPECTED_UNIT[$unit]:-}" ]] && continue
+    organ_is_live "$unit" || continue
+    echo "DRIFT-REMOVE: $unit is active/enabled but out-of-role (not in role-filtered manifest) — disabling + reaping"
+    "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
+    "$SYSTEMCTL_BIN" reset-failed "$unit" 2>/dev/null || true
+    CHANGED+=("removed:$unit")
+    # scanner-anchor: "kind":"organ_reconcile_drift_removed" (RESILIENT-1016;
+    # fires when a role-scoped reconcile disables+reaps a stray chump unit
+    # that is present-but-out-of-role or no longer in the manifest at all —
+    # the self-cleaning pass that replaces the 28-unit hand-reap on mugman)
+    emit organ_reconcile_drift_removed "\"unit\":\"$unit\""
+  done < <(discover_live_chump_units)
+fi
 
 # ── report ───────────────────────────────────────────────────────────────────
 if [[ "${#CHANGED[@]}" -gt 0 ]]; then
