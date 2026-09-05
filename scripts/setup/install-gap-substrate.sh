@@ -55,8 +55,9 @@ CREDS="$STATE_DIR/providers.env"
 DB_NAME="${CHUMP_SUBSTRATE_DB_NAME:-chump_fleet}"
 DB_PORT="${CHUMP_SUBSTRATE_DB_PORT:-5432}"
 DB_HOST="${CHUMP_SUBSTRATE_DB_HOST:-localhost}"
-PG_AUTHENTICATOR="chump_authenticator"
-PG_ANON="chump_anon"
+PG_AUTHENTICATOR="authenticator"
+PG_ANON="anon"
+ROLE_PW_MARKER="$STATE_DIR/.substrate_role_pw.sha256"
 FLEET_TEAM_ID="00000000-0000-0000-0000-000000000000"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 MIGRATIONS=(
@@ -165,9 +166,6 @@ svc_status() {  # prints "up" or "down"
 
 # ---------- 1. POSTGRES ----------
 ensure_postgres() {
-  if command -v psql >/dev/null 2>&1 && (pg_isready -h "$DB_HOST" -p "$DB_PORT" >/dev/null 2>&1 || true); then
-    :  # keep going; pg_isready non-zero just means "not up yet", handled below
-  fi
   if ! command -v psql >/dev/null 2>&1; then
     log "postgres client not found — installing"
     if [[ "$OS" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
@@ -178,6 +176,16 @@ ensure_postgres() {
       run "_sudo systemctl enable --now postgresql"
     else
       die "no supported package manager found — install Postgres manually, then re-run"
+    fi
+  elif [[ "$DRY" != 1 ]] && ! pg_isready -h "$DB_HOST" -p "$DB_PORT" >/dev/null 2>&1; then
+    # Client is installed but the service isn't accepting connections yet —
+    # AC1: check the service is running and start it if not, rather than
+    # just dying (which the old client-missing-only branch would do).
+    log "postgres client present but not accepting connections on $DB_HOST:$DB_PORT — starting service"
+    if [[ "$OS" == "Darwin" ]] && command -v brew >/dev/null 2>&1; then
+      run "brew services start postgresql@16 || brew services start postgresql"
+    elif [[ "$OS" == "Linux" ]] && command -v systemctl >/dev/null 2>&1; then
+      run "_sudo systemctl enable --now postgresql"
     fi
   fi
   if [[ "$DRY" != 1 ]]; then
@@ -200,23 +208,35 @@ psql_admin() {
   fi
 }
 
-# ---------- 2. DB + ROLES (password from providers.env, generated once, never hardcoded) ----------
+# ---------- 2. DB + ROLES (passwords from providers.env, generated once, never hardcoded) ----------
+# AC3: authenticator/anon passwords live in providers.env under
+# AUTHENTICATOR_PASSWORD / ANON_PASSWORD — generated + persisted on first run
+# (mirrors the CHUMP_SUBSTRATE_DB_PASSWORD pattern below), reused thereafter.
 ensure_db_and_roles() {
   touch "$CREDS"; chmod 600 "$CREDS"
-  local pw
-  pw="$(grep -E '^CHUMP_SUBSTRATE_DB_PASSWORD=' "$CREDS" 2>/dev/null | tail -1 | cut -d= -f2-)"
-  if [[ -z "$pw" ]]; then
-    pw="$(openssl rand -hex 24)"
-    run "printf 'CHUMP_SUBSTRATE_DB_PASSWORD=%s\n' '$pw' >> '$CREDS'"
-    chmod 600 "$CREDS"
-    log "generated + persisted CHUMP_SUBSTRATE_DB_PASSWORD (not printed)"
-  else
-    log "reusing existing CHUMP_SUBSTRATE_DB_PASSWORD from $CREDS"
-  fi
-  SUBSTRATE_PW="$pw"
+
+  read_or_generate_secret() {  # <key>
+    local key="$1" val
+    val="$(grep -E "^${key}=" "$CREDS" 2>/dev/null | tail -1 | cut -d= -f2-)"
+    if [[ -z "$val" ]]; then
+      val="$(openssl rand -hex 24)"
+      run "printf '%s=%s\n' '$key' '$val' >> '$CREDS'"
+      chmod 600 "$CREDS"
+      log "generated + persisted $key in $CREDS (not printed)"
+    else
+      log "reusing existing $key from $CREDS"
+    fi
+    printf '%s' "$val"
+  }
+
+  AUTHENTICATOR_PW="$(read_or_generate_secret AUTHENTICATOR_PASSWORD)"
+  ANON_PW="$(read_or_generate_secret ANON_PASSWORD)"
+  # postgrest.conf's db-uri authenticates as $PG_AUTHENTICATOR — it must always
+  # carry that role's actual current password, no-op branch included.
+  SUBSTRATE_PW="$AUTHENTICATOR_PW"
 
   if [[ "$DRY" == 1 ]]; then
-    log "DRY: would ensure db=$DB_NAME + roles chump_anon/chump_authenticator"
+    log "DRY: would ensure db=$DB_NAME + roles $PG_ANON/$PG_AUTHENTICATOR"
     return 0
   fi
 
@@ -229,24 +249,43 @@ ensure_db_and_roles() {
     log "database $DB_NAME already exists (no-op)"
   fi
 
-  # Roles: chump_anon is a NOLOGIN grant-target (PostgREST's anon-role pattern);
-  # chump_authenticator is the login role in postgrest.conf's db-uri. Escaping the
-  # password: openssl-hex output is alnum-only, safe to interpolate into SQL literal.
+  # AC4: if both roles already exist AND the providers.env passwords are
+  # unchanged since the last run (tracked via a persisted hash — Postgres
+  # doesn't let us read a role's plaintext password back to compare
+  # directly), skip the ALTER ROLE round-trip entirely and exit 0.
+  local pw_hash roles_exist marker_hash
+  pw_hash="$(printf '%s:%s' "$AUTHENTICATOR_PW" "$ANON_PW" | sha256sum | cut -d' ' -f1)"
+  roles_exist="$(psql_admin -d "$DB_NAME" -c "SELECT count(*) FROM pg_roles WHERE rolname IN ('$PG_ANON','$PG_AUTHENTICATOR')")"
+  marker_hash="$(cat "$ROLE_PW_MARKER" 2>/dev/null || true)"
+  if [[ "$roles_exist" == "2" && "$marker_hash" == "$pw_hash" ]]; then
+    log "roles $PG_ANON/$PG_AUTHENTICATOR already exist with unchanged passwords — no-op"
+    return 0
+  fi
+
+  # Roles: anon is a NOLOGIN grant-target (PostgREST's anon-role pattern),
+  # given a password anyway so AC3's "password from providers.env" holds for
+  # both roles even though anon's is unused for login; authenticator is the
+  # login role in postgrest.conf's db-uri. Escaping the password:
+  # openssl-hex output is alnum-only, safe to interpolate into SQL literal.
   psql_admin -d "$DB_NAME" <<SQL
 DO \$\$
 BEGIN
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$PG_ANON') THEN
-    CREATE ROLE $PG_ANON NOLOGIN;
+    CREATE ROLE $PG_ANON NOLOGIN PASSWORD '$ANON_PW';
+  ELSE
+    ALTER ROLE $PG_ANON PASSWORD '$ANON_PW';
   END IF;
   IF NOT EXISTS (SELECT FROM pg_roles WHERE rolname = '$PG_AUTHENTICATOR') THEN
-    CREATE ROLE $PG_AUTHENTICATOR NOINHERIT LOGIN PASSWORD '$SUBSTRATE_PW';
+    CREATE ROLE $PG_AUTHENTICATOR NOINHERIT LOGIN PASSWORD '$AUTHENTICATOR_PW';
   ELSE
-    ALTER ROLE $PG_AUTHENTICATOR PASSWORD '$SUBSTRATE_PW';
+    ALTER ROLE $PG_AUTHENTICATOR PASSWORD '$AUTHENTICATOR_PW';
   END IF;
 END
 \$\$;
 GRANT $PG_ANON TO $PG_AUTHENTICATOR;
 SQL
+  run "printf '%s' '$pw_hash' > '$ROLE_PW_MARKER'"
+  chmod 600 "$ROLE_PW_MARKER" 2>/dev/null || true
   log "roles ensured: $PG_ANON (nologin), $PG_AUTHENTICATOR (login)"
 }
 
