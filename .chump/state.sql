@@ -18756,10 +18756,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the `classify_probe_error` function in `scripts/dispatch/run-fleet.sh` to detect hard‑coded path `grep` patterns, decide whether each pattern is behaviour‑oriented or location‑oriented, and append a `"type"` field with the value `"behaviour"` or `"location"` together with a `"rationale"` string to each entry before writing the final JSON output for slice 0.
+    
+    Target file(s):
+    - scripts/dispatch/run-fleet.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Each entry from slice 0 is labelled \"behaviour\" or \"location\""
-    - Classification rationale is documented per entry
-    - Output is appended to the JSON file from slice 0
+    - "In `scripts/dispatch/run-fleet.sh`, `classify_probe_error` adds a `\"type\"` key with value `\"behaviour\"` or `\"location\"` for every hard‑coded path grep entry it processes."
+    - "In the same function, a `\"rationale\"` key is added describing why the entry was classified as behaviour‑oriented or location‑oriented."
+    - "The JSON file produced from slice 0 (e.g., `slice0.json`) contains both the new `\"type\"` and `\"rationale\"` fields for each original entry, and the file is still valid JSON."
+    - Executing the script on the current repository completes without error and the size of the output JSON file increases by at least the number of new fields added.
   depends_on: [CREDIBLE-777]
   notes: |
     [chump harvest check 'gates']
@@ -128986,7 +128994,7 @@ gaps:
 - id: INFRA-4660
   domain: INFRA
   title: "INFRA: Reorder almanac organ install before FTUE hook in bootstrap manifest and node installer (INFRA-3637 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -129020,6 +129028,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-05T06:44:59Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4661
   domain: INFRA
