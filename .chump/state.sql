@@ -136293,6 +136293,13 @@ gaps:
     
     === cross-pollination briefs mentioning 'INFRA-1823' ===
 
+- id: INFRA-4800
+  domain: INFRA
+  title: "INFRA: INFRA-4517: Implement deterministic comparator in `chump-coord::deliberate` (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+
 - id: INFRA-487
   domain: INFRA
   title: "one-time backfill: commit ~480 orphaned docs/gaps/<ID>.yaml mirrors to git — most never made it to origin/main because pre-INFRA-484 reserves wrote untracked files. Workers now have INFRA-483 main-repo fallback so this isn't blocking, but the gap registry should be consistent. Plan: separate chore-PR with the bulk YAML commit, no logic changes."
