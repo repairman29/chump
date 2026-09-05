@@ -25658,9 +25658,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify the `fn run` implementation in `crates/chump-preflight/src/preflight.rs` to invoke `cargo fmt -- --check` and `cargo clippy -- -D warnings`, capture their exit statuses, and propagate a failure if either command reports changes required or any warnings, thereby enforcing formatting and clippy‑warning‑free code as part of the preflight step.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo fmt completes with no changes required
-    - cargo clippy runs with -D warnings and reports zero warnings
+    - In `crates/chump-preflight/src/preflight.rs`, `fn run` executes `cargo fmt -- --check` and returns an error if the command exits with a non‑zero status.
+    - In `crates/chump-preflight/src/preflight.rs`, `fn run` executes `cargo clippy -- -D warnings` and returns an error if the command exits with a non‑zero status.
+    - Running the preflight binary (`cargo run --bin chump-preflight` or the script that calls it) exits with code 0 when the repository is already formatted and has no clippy warnings.
+    - The script `scripts/coord/definition-of-ready-gate.sh`’s `run_preflight` function reports success only when the preflight binary exits with code 0, confirming that both formatting and clippy checks passed.
   depends_on: [DOCS-005]
   notes: |
     [chump harvest check 'roadmap']
@@ -36016,6 +36025,235 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
+- id: EFFECTIVE-1251
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1155: Wire enumeration into blast‑radius preview command (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The blast‑radius preview CLI prints a section \"Exercised gates/tests:\" followed by the list returned by `enumerate_exercised_gates`."
+    - Running the preview with a diff that exercises known gates displays those identifiers in the output.
+    - When a diff exercises no gates, the preview still runs and does not crash.
+  depends_on: [EFFECTIVE-1250]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1252
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1156: Unit tests for the enumeration function (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A unit test `test_enumerate_exercised_gates_basic` supplies a representative diff and asserts the exact list of expected gate/test identifiers.
+    - The test fails when the function is a stub and passes after the implementation from EFFECTIVE-1154.
+    - The test runs via `cargo test` and does not introduce new warnings.
+  depends_on: [EFFECTIVE-1250]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1253
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1157: Integration test for blast‑radius preview with enumeration (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A CI script `test-blast-radius-preview.sh` runs the preview command on a sample diff and asserts that the output contains the expected gate/test identifiers.
+    - The script exits with a non‑zero status if the expected identifiers are missing.
+    - The script is added to the CI pipeline and causes a failure when the preview output is incorrect.
+  depends_on: [EFFECTIVE-1251, EFFECTIVE-1252]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1254
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1158: Run formatting, clippy, and ensure no regressions (EFFECTIVE-319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` runs without changes."
+    - "`cargo clippy --all-targets -D warnings` passes with zero warnings."
+    - All existing tests and the new tests from EFFECTIVE-1156 and EFFECTIVE-1157 pass.
+    - No new lint warnings are introduced by the changes.
+  depends_on: [EFFECTIVE-1250, EFFECTIVE-1251, EFFECTIVE-1252, EFFECTIVE-1253]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
 - id: EFFECTIVE-126
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire INFRA-2741.yaml into role curator-opus-target"
@@ -38452,7 +38690,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 5 slices: EFFECTIVE-1154, EFFECTIVE-1155, EFFECTIVE-1156, EFFECTIVE-1157, EFFECTIVE-1158
+    Decomposed into 5 slices: EFFECTIVE-1250, EFFECTIVE-1251, EFFECTIVE-1252, EFFECTIVE-1253, EFFECTIVE-1254
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
