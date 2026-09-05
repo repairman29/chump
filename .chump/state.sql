@@ -12501,9 +12501,20 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the provider manifest schema by adding slot‑tag fields (opus, sonnet, haiku) to the CapabilityManifest struct, update the database initialization in db_pool.rs::init_schema to create the corresponding columns, and modify routes/health.rs::build_slots_response to expose the new tag values in the health‑check slots payload.
+    
+    Target file(s):
+    - crates/chump-coord/src/capability.rs
+    - crates/chump-db-pool/src/db_pool.rs
+    - src/routes/health.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A schema definition (e.g., TOML or YAML) that includes fields for opus, sonnet, and haiku tags
-    - Schema approved by the team (recorded in a comment on the issue)
+    - In crates/chump-coord/src/capability.rs the struct CapabilityManifest contains three new public fields named opus_tag, sonnet_tag, and haiku_tag of type Option<String>.
+    - In crates/chump-db-pool/src/db_pool.rs the function init_schema executes SQL that creates or alters the provider_manifest table to include columns opus_tag, sonnet_tag, and haiku_tag with a TEXT (or VARCHAR) type.
+    - In src/routes/health.rs the function build_slots_response includes the opus_tag, sonnet_tag, and haiku_tag values in each slot object of the returned JSON payload.
+    - Running `cargo test --test provider_cascade` passes a test that inserts a CapabilityManifest with all three tags, reads it back via the DB pool, and verifies the tags are persisted and returned by build_slots_response.
   notes: |
     [chump harvest check 'committed']
     === primitives_index match for 'committed' ===
@@ -12676,9 +12687,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Edit `scripts/ci/test-subagent-epilogue-ref.sh` to invoke the newly added unit‑test and integration‑test binaries, printing identifiable log messages and routing any non‑zero exit code through the existing `fail` helper so that the CI job aborts on test failure.
+    
+    Target file(s):
+    - scripts/ci/test-subagent-epilogue-ref.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - scripts/ci/test-*.sh includes commands to run the new unit and integration tests
-    - CI pipeline passes with the new tests on a clean checkout
+    - "The file `scripts/ci/test-subagent-epilogue-ref.sh` contains a line `echo \"Running new unit tests\"` followed by `./new_unit_tests.sh || fail \"new unit tests failed\"` after the existing steps."
+    - "The same file contains a line `echo \"Running new integration tests\"` followed by `./new_integration_tests.sh || fail \"new integration tests failed\"` after the unit‑test invocation."
+    - Executing the CI pipeline on a clean checkout prints both “Running new unit tests” and “Running new integration tests” in the log and exits with status 0 when the two new test binaries return 0.
+    - If either `./new_unit_tests.sh` or `./new_integration_tests.sh` exits with a non‑zero code, the CI pipeline exits with a non‑zero status and the log contains the corresponding failure message (“new unit tests failed” or “new integration tests failed”).
   depends_on: [CREDIBLE-549, CREDIBLE-550]
   notes: |
     [chump harvest check 'committed']
@@ -15133,10 +15153,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a `--report-vote-steps` flag to the main entry point in `ci-audit-loop.sh` that scans the three coordinator loop scripts (`ci-audit-loop.sh`, `deliberator-loop.sh`, `handoff-loop.sh`) for any invocation of `_nudge_curators_to_vote` (or similar voting logic) and prints a concise report; include a TODO comment marking the mandatory‑voting requirement.
+    
+    Target file(s):
+    - scripts/coord/ci-audit-loop.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Search ci-audit-loop.sh, handoff-loop.sh, deliberator-loop.sh for calls to _nudge_curators_to_vote or any voting logic.
-    - Produce a report listing which scripts currently invoke a vote step and which do not.
-    - Identify any comments or TODOs indicating the mandatory‑voting mandate.
+    - "Running `scripts/coord/ci-audit-loop.sh --report-vote-steps` prints a line containing `ci-audit-loop.sh: vote step present`."
+    - "Running the same command prints a line containing `deliberator-loop.sh: vote step missing`."
+    - "The `ci-audit-loop.sh` source contains a comment `# TODO: enforce mandatory voting` immediately before the new reporting logic."
+    - The `--report-vote-steps` execution exits with status code 0.
 
 - id: CREDIBLE-636
   domain: CREDIBLE
@@ -95161,7 +95189,7 @@ gaps:
   acceptance_criteria:
     - "1. src/preflight.rs gains a cli_observability_misc gate covering the 41 remaining unmirrored scripts enumerated in docs/process/AUDIT_JOB_DECOMPOSITION.md cluster cli-observability-misc\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_CLI_MISC=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-cli-misc.sh smoke asserts the gate runs all 41 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored\n5. Last of the 5 META-086 sub-gaps to ship self-closes META-086 per its AC 4"
   notes: |
-    Decomposed into 3 slices: INFRA-4405, INFRA-4406, INFRA-4407
+    Decomposed into 5 slices: INFRA-4717, INFRA-4718, INFRA-4719, INFRA-4720, INFRA-4721
   opened_date: '2026-07-26'
 
 - id: INFRA-3374
@@ -96338,7 +96366,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 7 slices: INFRA-4408, INFRA-4409, INFRA-4410, INFRA-4411, INFRA-4412, INFRA-4413, INFRA-4414
+    Decomposed into 7 slices: INFRA-4722, INFRA-4723, INFRA-4724, INFRA-4725, INFRA-4726, INFRA-4727, INFRA-4728
   opened_date: '2026-08-19'
 
 - id: INFRA-3458
@@ -130875,6 +130903,320 @@ gaps:
     
     === cross-pollination briefs mentioning 'polling' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4717
+  domain: INFRA
+  title: "INFRA: Add cli_observability_misc gate identifier to src/preflight.rs (INFRA-3373 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - src/preflight.rs defines a new gate enum/value named cli_observability_misc
+    - The gate is registered in the preflight gate registry
+    - The gate metadata lists the 41 scripts as enumerated in docs/process/AUDIT_JOB_DECOMPOSITION.md
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4718
+  domain: INFRA
+  title: "INFRA: Implement gate execution, skip flag, and audit‑trail emission (INFRA-3373 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When 'chump preflight' runs, the cli_observability_misc gate executes all 41 scripts by default
+    - Setting CHUMP_PREFLIGHT_SKIP_CLI_MISC=1 causes the gate to be skipped
+    - A distinct audit‑trail event 'preflight_cli_misc_skipped' is emitted when the gate is skipped
+    - Successful execution logs a success entry for each of the 41 scripts
+  depends_on: [INFRA-4717]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4719
+  domain: INFRA
+  title: "INFRA: Add smoke‑test script scripts/ci/test-preflight-cli-misc.sh (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script runs 'chump preflight' and asserts that all 41 scripts are executed (e.g., by checking exit code or output markers)
+    - When CHUMP_PREFLIGHT_SKIP_CLI_MISC=1 is set, the script asserts that the gate is skipped and that the 'preflight_cli_misc_skipped' audit event appears
+    - The test exits with status 0 on success and non‑zero on failure
+  depends_on: [INFRA-4718]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4720
+  domain: INFRA
+  title: "INFRA: Update CI_PREFLIGHT_PARITY.md to mark cli‑observability‑misc cluster as mirrored (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/process/CI_PREFLIGHT_PARITY.md includes an entry indicating the cli-observability-misc cluster is now mirrored
+    - The documentation change is reviewed and merged
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4721
+  domain: INFRA
+  title: "INFRA: Close META‑086 sub‑gap automatically per AC4 (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When the cli_observability_misc gate is shipped, META-086 transitions to Done automatically
+    - Verification that META-086's AC4 (self‑close) condition is satisfied
+  depends_on: [INFRA-4718]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4722
+  domain: INFRA
+  title: "INFRA: INFRA-4408: Guard missing ANTHROPIC_API_KEY in bot-merge code-reviewer (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Code path that reads ANTHROPIC_API_KEY checks for presence and returns a descriptive error instead of panicking
+    - No new compiler warnings introduced
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4723
+  domain: INFRA
+  title: "INFRA: INFRA-4409: Make ANTHROPIC_API_KEY optional in OAuth‑only environments (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Configuration loader treats ANTHROPIC_API_KEY as optional when ONLY_OAUTH env variable is set
+    - Existing config validation tests still pass
+  depends_on: [INFRA-4722]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4724
+  domain: INFRA
+  title: "INFRA: INFRA-4410: Skip anthropic‑dependent steps when key is absent (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Auto‑merge flow proceeds without invoking anthropic services if the key is missing
+    - Log message clearly indicates that anthropic steps were skipped
+  depends_on: [INFRA-4722, INFRA-4723]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4725
+  domain: INFRA
+  title: "INFRA: INFRA-4411: Unit test for missing ANTHROPIC_API_KEY handling (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - cargo test includes a test that runs bot‑merge in an OAuth‑only env without ANTHROPIC_API_KEY and expects the graceful error
+    - Test fails before the change and passes after the change
+  depends_on: [INFRA-4722, INFRA-4723, INFRA-4724]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4726
+  domain: INFRA
+  title: "INFRA: INFRA-4412: Integration test script for OAuth‑only env without key (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test‑merge‑no‑anthropic.sh simulates the environment and exits with status 0 when the fix is present
+    - CI run shows the script failing before the fix and succeeding after
+  depends_on: [INFRA-4725]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4727
+  domain: INFRA
+  title: "INFRA: INFRA-4413: Run cargo fmt + clippy and fix warnings (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt runs without changes needed
+    - cargo clippy --all-targets -D warnings passes with zero warnings
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4728
+  domain: INFRA
+  title: "INFRA: INFRA-4414: Update CI pipeline to include new test and enforce pass (INFRA-3457 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI configuration runs the new integration script and treats its exit code as a required pass
+    - Pipeline fails if the script exits non‑zero
+  depends_on: [INFRA-4726, INFRA-4727]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-476
   domain: INFRA
