@@ -13734,9 +13734,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `fn check_postconditions` in `src/tool_middleware.rs` to query the `/v1/models` endpoint for each configured slot, verify that the slot's configured MODEL appears in the returned list and is not flagged as deprecated, and emit a warning log that includes the slot identifier when the model is missing or deprecated.
+    
+    Target file(s):
+    - src/tool_middleware.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - For each slot the job calls /v1/models and confirms the configured MODEL is present and not deprecated
-    - If the model is missing or deprecated, the job records a warning with the slot identifier
+    - In `src/tool_middleware.rs`, `fn check_postconditions` performs an HTTP GET request to `/v1/models` and parses the JSON response.
+    - If a slot's configured model is absent from the `/v1/models` response, `fn check_postconditions` logs a warning containing the exact slot identifier.
+    - "If a slot's configured model is present but marked `\"deprecated\": true` in the `/v1/models` response, `fn check_postconditions` logs a warning containing the slot identifier and the word “deprecated”."
+    - Executing the refresh job via the binary’s entry point (`src/main.rs` → `fn main`) produces no warnings for slots with valid, non‑deprecated models and produces the expected warnings for slots with missing or deprecated models.
   depends_on: [CREDIBLE-587]
   notes: |
     [chump harvest check 'provider']
