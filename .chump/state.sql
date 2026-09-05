@@ -17591,9 +17591,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `execute` function in `src/spawn_worker_tool.rs` so that the call to the ac‑coverage advisory is wrapped in a Rust `Result` handling block (try‑catch style); on a non‑zero exit status the failure is logged (e.g., via `eprintln!`) and the function continues, returning `Ok(())` instead of propagating an error code.
+    
+    Target file(s):
+    - src/spawn_worker_tool.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The ac‑coverage advisory is executed inside a set +e / try‑catch block.
-    - If the advisory fails, the failure is logged and the script continues without propagating a non‑zero rc.
+    - In `src/spawn_worker_tool.rs`, the `execute` function logs the message “ac‑coverage advisory failed” to stderr when the advisory exits with a non‑zero status.
+    - When the advisory command is forced to fail (e.g., by mocking it to exit 1), the `execute` function still returns `Ok(())` and the overall tool exits with status code 0.
+    - The surrounding logic of `spawn_worker` (in `crates/chumpd/src/main.rs`) continues to receive a successful result from `execute` and its own exit code behavior is unchanged.
   depends_on: [CREDIBLE-733]
   notes: |
     [chump harvest check 'bot-merge']
@@ -74892,7 +74900,7 @@ gaps:
   acceptance_criteria:
     - "Failure: src/main.rs is 14,450 LOC with 231 `mod` declarations (verified via wc -l + grep -c '^mod '). Every code change triggers full-binary recompile. INFRA-825 staleness gate then blocks destructive ops until rebuild."
   notes: |
-    Decomposed into 10 slices: INFRA-4598, INFRA-4599, INFRA-4600, INFRA-4601, INFRA-4602, INFRA-4603, INFRA-4604, INFRA-4605, INFRA-4606, INFRA-4607
+    Decomposed into 10 slices: INFRA-4868, INFRA-4869, INFRA-4870, INFRA-4871, INFRA-4872, INFRA-4873, INFRA-4874, INFRA-4875, INFRA-4876, INFRA-4877
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -137781,7 +137789,7 @@ gaps:
 - id: INFRA-4832
   domain: INFRA
   title: "INFRA: Tier 1 NATS‑backed delivery for high‑priority events (INFRA-1862 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -137808,6 +137816,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-05T23:36:27Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1076B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4833
   domain: INFRA
@@ -138877,6 +138886,64 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
+- id: INFRA-4868
+  domain: INFRA
+  title: "INFRA: Establish baseline compile time and file size metrics (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Recorded compile time for a clean build of the repository
+    - Verified src/main.rs line count is 14,450 via `wc -l`
+    - Verified number of `mod` declarations is 231 via `grep -c '^mod '`
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4869
+  domain: INFRA
+  title: "INFRA: Identify the 20 largest modules by LOC (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Generated a sorted list of module files with line counts
+    - List contains the top 20 modules accounting for >50% of total LOC
+  depends_on: [INFRA-4868]
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
 - id: INFRA-487
   domain: INFRA
   title: "one-time backfill: commit ~480 orphaned docs/gaps/<ID>.yaml mirrors to git — most never made it to origin/main because pre-INFRA-484 reserves wrote untracked files. Workers now have INFRA-483 main-repo fallback so this isn't blocking, but the gap registry should be consistent. Plan: separate chore-PR with the bulk YAML commit, no logic changes."
@@ -138887,6 +138954,236 @@ gaps:
     obsolete-vague-AC: superseded by INFRA-498 — the 480 orphaned YAMLs were mass-deleted; no backfill needed (closed 2026-05-11 P1-vague triage sprint)
   opened_date: '2026-05-06'
   outcome_id: MISSION-010
+
+- id: INFRA-4870
+  domain: INFRA
+  title: "INFRA: Create a new Cargo workspace sub‑crate for core functionality (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - New directory `core_lib` with its own `Cargo.toml` added to the workspace
+    - "`core_lib` builds successfully with `cargo build`"
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4871
+  domain: INFRA
+  title: "INFRA: Move selected large modules into the new sub‑crate (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Modules from the top‑20 list are relocated to `core_lib/src/`
+    - All moved modules compile within the sub‑crate without errors
+  depends_on: [INFRA-4870, INFRA-4869]
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4872
+  domain: INFRA
+  title: "INFRA: Update workspace `Cargo.toml` to include the new sub‑crate (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`[workspace] members`` section lists `core_lib`"
+    - "`cargo build` at the root builds both the main binary and the sub‑crate"
+  depends_on: [INFRA-4870]
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4873
+  domain: INFRA
+  title: "INFRA: Refactor `src/main.rs` to use the new crate instead of internal modules (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`src/main.rs` no longer contains `mod` statements for moved modules"
+    - "Binary compiles and runs using `core_lib` via `use core_lib::...`"
+  depends_on: [INFRA-4871, INFRA-4872]
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4874
+  domain: INFRA
+  title: "INFRA: Enable incremental compilation flags for the workspace (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`CARGO_INCREMENTAL=1` is set in the CI and local dev environment"
+    - Compilation logs show incremental steps (no full rebuild on small changes)
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4875
+  domain: INFRA
+  title: "INFRA: Add CI lint to enforce max LOC per source file (e.g., 500 lines) (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI job runs a script that fails if any `.rs` file exceeds 500 lines
+    - Pipeline passes when all files are under the limit
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4876
+  domain: INFRA
+  title: "INFRA: Update documentation to reflect new project structure (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes section describing the `core_lib` crate and how to add new modules
+    - Contribution guide mentions the LOC limit enforced by CI
+  depends_on: [INFRA-4873, INFRA-4875]
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-4877
+  domain: INFRA
+  title: "INFRA: Validate that code changes no longer trigger full binary recompiles (INFRA-1965 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Modify a small function in a moved module and run `cargo build`
+    - Build output shows only the sub‑crate recompiling, not the entire binary
+    - Compile time improvement of at least 30% compared to baseline
+  depends_on: [INFRA-4873, INFRA-4874, INFRA-4875]
+  notes: |
+    [chump harvest check 'CRITICAL']
+    === primitives_index match for 'CRITICAL' ===
+    
+    === cluster keyword match for 'CRITICAL' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'CRITICAL' ===
+    
+    === repo-description match for 'CRITICAL' ===
+    
+    === HARVEST_ROADMAP.md mention of 'CRITICAL' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'CRITICAL' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: INFRA-514
   domain: INFRA
