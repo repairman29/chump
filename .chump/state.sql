@@ -7234,9 +7234,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the `make_gh_stub` function in `scripts/ci/test-ci-qa-score.sh` to accept an optional `--simulate-failure=<code>` argument, apply a simple rule (exit code < 128 ⇒ TRANSIENT, exit code ≥ 128 ⇒ PERMANENT), and print the resulting classification string (“TRANSIENT” or “PERMANENT”) to stdout before exiting with status 0, thereby providing the required CI test stub for CREDIBLE‑377.
+    
+    Target file(s):
+    - scripts/ci/test-ci-qa-score.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The CI test script can simulate a failure and classify it as TRANSIENT or PERMANENT based on a simple rule
-    - The classification result is printed to stdout and matches the taxonomy defined in slice 7
+    - Running `scripts/ci/test-ci-qa-score.sh --simulate-failure=42` prints exactly `TRANSIENT` to stdout.
+    - Running `scripts/ci/test-ci-qa-score.sh --simulate-failure=200` prints exactly `PERMANENT` to stdout.
+    - The script exits with status 0 for both simulated failure runs, confirming the CI test does not abort.
+    - The printed classification strings match the variant names of the `Classification` enum defined in `src/pr_rescue.rs`.
   depends_on: [CREDIBLE-371, CREDIBLE-376]
 
 - id: CREDIBLE-378
@@ -11630,10 +11639,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update scripts/ci/test-pr-fmt-shepherd.sh to execute cargo fmt --check and cargo clippy --all-targets -- -D warnings as part of the CI check suite, ensuring formatting deviations and compiler lints trigger an immediate build failure.
+    
+    Target file(s):
+    - scripts/ci/test-pr-fmt-shepherd.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CI runs cargo fmt and clippy with -D warnings on all targets.
-    - CI passes with zero formatting or clippy warnings.
-    - Existing test suite runs unchanged and all tests succeed.
+    - scripts/ci/test-pr-fmt-shepherd.sh explicitly invokes cargo fmt --check and cargo clippy --all-targets -- -D warnings.
+    - Running bash scripts/ci/test-pr-fmt-shepherd.sh returns exit status 0 when all targets pass formatting and clippy checks.
+    - The script returns a non-zero exit code if cargo fmt or cargo clippy detects warnings or unformatted code.
   depends_on: [CREDIBLE-511]
   notes: |
     [chump harvest check 'audit']
@@ -11790,9 +11806,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    In crates/chump-handoff/src/contracts.rs, add retry logic to the ship-count git fetch execution path so that transient errors (such as network timeouts) are retried up to 2 times (3 total attempts). On each failed attempt, log a warning with the failure details; if all retries fail, log the final error reason and return None.
+    
+    Target file(s):
+    - crates/chump-handoff/src/contracts.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - On a transient failure (e.g., network timeout), the ship‑count query is automatically retried up to 2 times
-    - If all retries fail, the query returns nil and logs the failure reason
+    - In crates/chump-handoff/src/contracts.rs, ship-count git fetch queries automatically retry up to 2 times upon encountering transient failures.
+    - If all retry attempts fail, the query logs the failure reason and returns None.
+    - Running `cargo test -p chump-handoff` passes, including unit tests covering retry logic and failure handling in crates/chump-handoff/src/contracts.rs.
   depends_on: [CREDIBLE-521]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -11817,9 +11841,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update the fleet-brief formatting in `crates/chump-coord/src/events.rs` so that when the ship count retrieval fails or returns `None`, the brief outputs `Ships: unavailable (<reason>)` containing the underlying error string instead of defaulting to `Ships: 0`. Update corresponding assertions in `scripts/ci/test-deliberator-tick-emits.sh` to validate the explicit unavailable state string.
+    
+    Target file(s):
+    - crates/chump-coord/src/events.rs
+    - scripts/ci/test-deliberator-tick-emits.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "When ship‑count is nil, fleet‑brief output shows \"Ships: unavailable (<reason>)\" instead of \"Ships: 0\""
-    - "The reason string includes the underlying error (e.g., \"git fetch timeout\")"
+    - "When ship-count is unavailable or fails with an error in `crates/chump-coord/src/events.rs`, the fleet-brief output contains `Ships: unavailable (<reason>)` with the underlying failure reason."
+    - "Fleet-brief output in `crates/chump-coord/src/events.rs` does not output `Ships: 0` when ship count lookup fails or times out."
+    - "Running `scripts/ci/test-deliberator-tick-emits.sh` verifies that `Ships: unavailable` is emitted on ship-count retrieval failures."
   depends_on: [CREDIBLE-521]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -29806,10 +29839,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Extend the ChumpFleetWireHealth component in web/cockpit/fleet-wire-panel.js to compute the SLA p50 (median) from the existing SLA data set, render it as a numeric value with a “p50” label in the pane, and expose the computed value to scripts/ci/test-merge-sla-scorecard.sh so the CI test can verify the displayed metric.
+    
+    Target file(s):
+    - web/cockpit/fleet-wire-panel.js
+    - scripts/ci/test-merge-sla-scorecard.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - SLA p50 metric is displayed with a numeric value and ‘p50’ label.
-    - Value is calculated from SLA data and verified by a test.
-    - Metric respects pane layout.
+    - In web/cockpit/fleet-wire-panel.js, the ChumpFleetWireHealth.render (or equivalent UI method) creates a new element containing the numeric p50 value followed by the literal text “p50”.
+    - The p50 value is derived by applying a median calculation to the SLA data array within web/cockpit/fleet-wire-panel.js and stored in a variable named `slaP50`.
+    - "? When scripts/ci/test-merge-sla-scorecard.sh is executed, it reads the `slaP50` export from the UI module and asserts that the printed line “SLA p50 : <value>” matches the value rendered in the cockpit pane, exiting with status 0 on success."
+    - The addition of the p50 element does not increase the total height of the fleet‑wire panel beyond 5 px, verified by a DOM query in a headless test that checks the panel’s bounding rectangle.
   notes: |
     [chump harvest check 'phase']
     === primitives_index match for 'phase' ===
@@ -29834,10 +29876,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add the SLA p90 percentile metric display to the operator cockpit pane in web/cockpit/operator-page-panel.js inside ChumpOperatorPagePanel by rendering a metric block labelled "SLA p90", and update ChumpViewCockpit in web/v2/cockpit.js to compute and pass the p90 value alongside existing SLA metrics.
+    
+    Target file(s):
+    - web/cockpit/operator-page-panel.js
+    - web/v2/cockpit.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - SLA p90 metric appears with correct label and numeric value.
-    - Unit test confirms p90 calculation against sample data.
-    - Styling is consistent with other SLA metrics.
+    - "web/cockpit/operator-page-panel.js renders an element with text label \"SLA p90\" and its numeric value."
+    - web/v2/cockpit.js calculates the p90 percentile metric from sample response time data and passes it to the pane state.
+    - The newly added SLA p90 metric element in web/cockpit/operator-page-panel.js reuses existing CSS classes from adjacent SLA metric elements.
   notes: |
     [chump harvest check 'phase']
     === primitives_index match for 'phase' ===
@@ -29862,10 +29912,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a board-vitals incident count metric to the operator page cockpit panel in web/cockpit/operator-page-panel.js and hook up state updates in web/v2/cockpit.js. The panel will display an element labeled "Board Vitals Incidents" and automatically re-render the count whenever incident events are dispatched or state changes.
+    
+    Target file(s):
+    - web/cockpit/operator-page-panel.js
+    - web/v2/cockpit.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Board‑vitals incidents count is shown with appropriate label.
-    - Metric updates in real‑time as incidents change.
-    - Test validates that the count matches mock incident data.
+    - "web/cockpit/operator-page-panel.js contains a DOM element with label \"Board Vitals Incidents\" displaying the active incident count."
+    - web/v2/cockpit.js updates the board-vitals incident metric state in response to incident update events.
+    - Test suite validates that passing mock incident data to the cockpit panel updates the displayed incident count to match the mock data length.
   notes: |
     [chump harvest check 'phase']
     === primitives_index match for 'phase' ===
@@ -67419,7 +67477,7 @@ gaps:
   acceptance_criteria:
     - chump fanout and chump rollup are moved out of src/main.rs into self-registering modules via the inventory pattern; main.rs no longer holds their command bodies; both run with identical output before/after; editing one no longer forces recompile of the other.
   notes: |
-    Decomposed into 4 slices: INFRA-4363, INFRA-4364, INFRA-4365, INFRA-4366
+    Decomposed into 4 slices: INFRA-4679, INFRA-4680, INFRA-4681, INFRA-4682
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -68479,7 +68537,7 @@ gaps:
     - "CI test scripts/ci/test-chump-startup-fast.sh: assert chump --version completes <100ms warm-cache, <2000ms cold-cache; assert under simulated load (parallel invocations) p99 <5s"
     - cargo fmt/clippy clean; no new runtime deps
   notes: |
-    Decomposed into 8 slices: INFRA-4367, INFRA-4368, INFRA-4369, INFRA-4370, INFRA-4371, INFRA-4372, INFRA-4373, INFRA-4374
+    Decomposed into 8 slices: INFRA-4683, INFRA-4684, INFRA-4685, INFRA-4686, INFRA-4687, INFRA-4688, INFRA-4689, INFRA-4690
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -129671,6 +129729,360 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4679
+  domain: INFRA
+  title: "INFRA: Add inventory registration infrastructure for self-registering modules (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Inventory crate is added to Cargo.toml and compiled without warnings
+    - A macro or function is provided to register command modules at compile time
+    - A simple test module registers a dummy command and verifies it appears in the inventory
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4680
+  domain: INFRA
+  title: "INFRA: Refactor chump fanout into a self‑registering module (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - chump_fanout.rs is created under src/commands with the original fanout logic unchanged
+    - The module uses the inventory macro to register itself as a command
+    - Running the binary produces identical fanout output compared to the original main.rs implementation
+  depends_on: [INFRA-4679]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4681
+  domain: INFRA
+  title: "INFRA: Refactor chump rollup into a self‑registering module (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - chump_rollup.rs is created under src/commands with the original rollup logic unchanged
+    - The module uses the inventory macro to register itself as a command
+    - Running the binary produces identical rollup output compared to the original main.rs implementation
+  depends_on: [INFRA-4679]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4682
+  domain: INFRA
+  title: "INFRA: Update main.rs to load commands via inventory and remove inline command bodies (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - main.rs no longer contains the fanout or rollup command bodies
+    - main.rs iterates over the inventory to discover and execute registered commands
+    - All existing tests and integration runs pass with identical output before and after the change
+    - Changing only chump_fanout.rs or chump_rollup.rs does not trigger recompilation of the other module
+  depends_on: [INFRA-4680, INFRA-4681]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4683
+  domain: INFRA
+  title: "INFRA: Short-circuit --version and --help before subsystem initialization (INFRA-1809 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Parse and execute `chump --version`, `chump --help`, and subcommand `--help` flags before Tokio runtime initialization, memory_db connection, or LLM provider setup
+    - "`chump --version` and `chump --help` return in <100ms when invoked standalone"
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4684
+  domain: INFRA
+  title: "INFRA: Add startup wallclock timeout guard in main.rs entry point (INFRA-1809 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Add watchdog timeout mechanism at `main()` entry controlled by `CHUMP_STARTUP_TIMEOUT_MS` (default 5000ms)
+    - On startup timeout, dump runtime diagnostic info to stderr and exit with code 4
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4685
+  domain: INFRA
+  title: "INFRA: Emit ambient.jsonl telemetry on startup timeout (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Write a `kind=chump_startup_timeout` event to `ambient.jsonl` upon startup watchdog timeout
+    - Event payload includes `cmd`, `args`, `elapsed_ms`, and `suspected_subsystem`
+  depends_on: [INFRA-4684]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4686
+  domain: INFRA
+  title: "INFRA: Bisect startup hang cause under load and document findings (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Reproduce and bisect startup hang under synthetic high load (process/IO load)
+    - Identify whether hang stems from Tokio runtime init, Anthropic SDK init, or memory_db pool acquisition and document root cause in commit body
+  depends_on: [INFRA-4683, INFRA-4684]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4687
+  domain: INFRA
+  title: "INFRA: Lazy-initialize LLM SDK providers past argument parsing (INFRA-1809 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Defer Anthropic SDK and other LLM provider initializations until an LLM command is executed
+    - Non-LLM CLI commands execute without triggering network or background worker initialization for LLM providers
+  depends_on: [INFRA-4686]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4688
+  domain: INFRA
+  title: "INFRA: Configure connection timeout and diagnostics for memory_db r2d2 pool (INFRA-1809 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "Set `r2d2::Builder::connection_timeout` for `memory_db` connection pool"
+    - Produce diagnostic stderr output when DB connection pool acquisition times out instead of hanging indefinitely
+  depends_on: [INFRA-4686]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4689
+  domain: INFRA
+  title: "INFRA: Add CI test script scripts/ci/test-chump-startup-fast.sh (INFRA-1809 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Create `scripts/ci/test-chump-startup-fast.sh` asserting `chump --version` completes <100ms (warm cache) and <2000ms (cold cache)
+    - Script includes synthetic test running 200 concurrent `chump --version` invocations and asserts p99 latency <5s
+  depends_on: [INFRA-4683, INFRA-4684, INFRA-4687, INFRA-4688]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4690
+  domain: INFRA
+  title: "INFRA: Verify code formatting, clippy, and zero runtime dependency addition (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Run `cargo fmt --check` and `cargo clippy` cleanly across modified crates
+    - Ensure no new external runtime dependencies were added to `Cargo.toml` files
+  depends_on: [INFRA-4683, INFRA-4684, INFRA-4685, INFRA-4687, INFRA-4688, INFRA-4689]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-476
   domain: INFRA
