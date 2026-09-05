@@ -2577,3 +2577,8 @@ CHUMP_URGENT_INBOX
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ORGAN_RECONCILE_ROLE
+CHUMP_COMPLETION_MAX_TOKENS
+# detected in: (standard input)
+CHUMP_FLOOR_MODEL
+# detected in: (standard input)
+CHUMP_MODEL_LADDER_MANIFEST

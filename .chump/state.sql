@@ -4933,7 +4933,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: CREDIBLE-822, CREDIBLE-823
+    Decomposed into 2 slices: CREDIBLE-891, CREDIBLE-892
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -13459,10 +13459,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a post‑generation validation step in `scripts/ab-harness/run-binary-ablation.py` (inside the main execution flow after the slice‑7 report is written) that loads the filtered report, asserts that the five documented real examples (BEAST_MODE_API, BEAST_MODE_API_URL, BASE_URL, BEAST_MODE_CLOUD_MODEL, CHUMPBAR_SSH_TIMEOUT) are present in the `real` section, checks that each example’s count matches the expected source values (e.g., BEAST_MODE_API = 270), and fails if any non‑whitelisted entry appears in that section; on success it logs “Validation passed”.
+    
+    Target file(s):
+    - scripts/ab-harness/run-binary-ablation.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The filtered report from slice 7 still contains the documented real examples (BEAST_MODE_API, BEAST_MODE_API_URL, BASE_URL, BEAST_MODE_CLOUD_MODEL, CHUMPBAR_SSH_TIMEOUT)
-    - Counts for each real example match the source data (e.g., BEAST_MODE_API shows 270 reads)
-    - No noise examples appear in the `real` section of the report
+    - Running `python scripts/ab-harness/run-binary-ablation.py --slice 7` creates a report file that, when inspected, contains the key `BEAST_MODE_API` in the `real` section.
+    - The `real` entry for `BEAST_MODE_API` in the generated slice‑7 report has a count field equal to 270.
+    - No keys other than BEAST_MODE_API, BEAST_MODE_API_URL, BASE_URL, BEAST_MODE_CLOUD_MODEL, and CHUMPBAR_SSH_TIMEOUT appear in the `real` section of the slice‑7 report.
+    - The script exits with exit code 0 and prints the exact line “Validation passed” to stdout after the report is generated.
   depends_on: [CREDIBLE-576]
   notes: |
     [chump harvest check 'almanac']
@@ -22255,6 +22263,58 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-891
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement summarized_pct >95% enforcement in CREDIBLE code path (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Code compiles without warnings after adding the enforcement logic.
+    - The summarized_pct value is validated to be >95% at the appropriate point in the workflow.
+    - If summarized_pct <= 95%, the system logs an error or aborts the operation as defined.
+    - No existing tests fail after the change.
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
+
+- id: CREDIBLE-892
+  domain: CREDIBLE
+  title: "CREDIBLE: Add test verifying summarized_pct >95% behavior (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new test (cargo test or scripts/ci/test-*.sh) asserts that summarized_pct >95% is required.
+    - The test fails on the pre‑change codebase and passes after the enforcement is implemented.
+    - Running cargo fmt, clippy --all-targets -D warnings, and the full test suite succeeds with no new warnings.
+  depends_on: [CREDIBLE-891]
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
 
 - id: DOC-031
   domain: DOC
@@ -99094,7 +99154,7 @@ gaps:
     - a retired/closed redundant PR is NOT revived by the reopener (pr-shepherd); reopener only revives a PR whose work is still needed AND branch is rebaseable
     - "receipt 2026-08-19: only 3 open PRs existed, ALL 3 CONFLICTING + already-shipped — #3919/#3924 were pure gap-YAML-sync zombies, #3910 was real code the fleet could not content-rebase. Auto-rebaser only fast-forwards clean branches; batched merge-train only pulls CLEAN; reopener revived closes → permanent limbo. Retired by hand (close+delete-branch)."
   notes: |
-    Decomposed into 9 slices: INFRA-4443, INFRA-4444, INFRA-4445, INFRA-4446, INFRA-4447, INFRA-4448, INFRA-4449, INFRA-4450, INFRA-4451
+    Decomposed into 9 slices: INFRA-4741, INFRA-4742, INFRA-4743, INFRA-4744, INFRA-4745, INFRA-4746, INFRA-4747, INFRA-4748, INFRA-4749
   opened_date: '2026-08-19'
 
 - id: INFRA-3618
@@ -132218,6 +132278,347 @@ gaps:
     
     === cross-pollination briefs mentioning 'Picker' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-4741
+  domain: INFRA
+  title: "INFRA: INFRA-4443: Detect and classify PR state (CLEAN vs DIRTY) and track lifecycle ticks (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - System can query any open PR and correctly label it as CLEAN or DIRTY based on merge conflicts
+    - Each PR has a tick counter that increments on each processing cycle
+    - Tick counter resets when PR state changes
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4742
+  domain: INFRA
+  title: "INFRA: INFRA-4444: Auto‑merge CLEAN PRs (armed/merged) after N ticks (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a PR is classified as CLEAN and its tick count reaches the configured threshold, the PR is automatically merged
+    - Merged PR is removed from the open‑PR list and its branch is deleted
+    - If merge fails, the PR remains CLEAN and an alert is raised
+  depends_on: [INFRA-4741]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4743
+  domain: INFRA
+  title: "INFRA: INFRA-4445: Content‑rebase and auto‑merge DIRTY PRs when possible (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - DIRTY PRs are automatically rebased onto the latest main branch when rebase succeeds without conflicts
+    - After a successful rebase, the PR is re‑classified as CLEAN and merged by the CLEAN auto‑merge flow
+    - If rebase fails, the PR remains DIRTY and is not merged
+  depends_on: [INFRA-4741]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4744
+  domain: INFRA
+  title: "INFRA: INFRA-4446: Auto‑retire redundant DIRTY PRs that are already on main (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - DIRTY PRs whose changes are detected to be already present in the main branch are automatically closed and the branch deleted
+    - "Retired PRs are marked with a \"retired‑redundant\" label"
+    - Retired PRs are never revived by the reopener component
+  depends_on: [INFRA-4741]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4745
+  domain: INFRA
+  title: "INFRA: INFRA-4447: Block creation of gap‑YAML‑sync PRs that only modify docs/gaps/<ID>.yaml (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - PR creation hook rejects any PR whose diff contains only files under docs/gaps/*.yaml
+    - Rejected PR returns a clear error message explaining that YAML sync is handled via state.db
+    - No new gap‑YAML‑sync PRs appear in the open‑PR list after the change
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4746
+  domain: INFRA
+  title: "INFRA: INFRA-4448: Update pr‑shepherd reopener to ignore retired PRs and revive only needed, rebaseable PRs (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Reopener skips any PR labeled \"retired‑redundant\" or closed manually"
+    - Reopener only revives PRs that are still needed (not redundant) and whose head branch is rebaseable
+    - Revived PRs are moved to CLEAN state if they become rebaseable
+  depends_on: [INFRA-4744, INFRA-4745]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4747
+  domain: INFRA
+  title: "INFRA: INFRA-4449: Restrict auto‑rebaser to fast‑forward only clean branches (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Auto‑rebaser checks branch status and performs a fast‑forward only when the branch is CLEAN
+    - If a branch is DIRTY, auto‑rebaser logs a warning and leaves the branch unchanged
+    - No DIRTY branch is fast‑forwarded by the auto‑rebaser
+  depends_on: [INFRA-4743]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4748
+  domain: INFRA
+  title: "INFRA: INFRA-4450: Ensure batched merge‑train only pulls CLEAN PRs (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Merge‑train scheduler filters out any PR not classified as CLEAN
+    - If a DIRTY PR attempts to enter the merge‑train, it is rejected with a log entry
+    - All PRs processed by the merge‑train are merged without conflict
+  depends_on: [INFRA-4742]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-4749
+  domain: INFRA
+  title: "INFRA: INFRA-4451: Monitoring & alerting for PR terminal state compliance (INFRA-3614 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Dashboard shows count of open PRs by state (CLEAN, DIRTY, RETIRED)
+    - Alert triggers if any PR remains DIRTY for more than N ticks without progress
+    - Report confirms that every open PR reaches a terminal state (merged or retired) within the configured window
+    - Metrics are updated in real‑time and are queryable via API
+  depends_on: [INFRA-4741, INFRA-4742, INFRA-4743, INFRA-4744, INFRA-4745, INFRA-4746, INFRA-4747, INFRA-4748]
+  notes: |
+    [chump harvest check 'Merge']
+    === primitives_index match for 'Merge' ===
+    
+    === cluster keyword match for 'Merge' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Merge' ===
+    
+    === repo-description match for 'Merge' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Merge' (deep-scan findings) ===
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      240:That's the value proposition for the catalog as ongoing infrastructure — not "Jeff has cool repos to show off," but "Chump's planning loop now has eyes on Jeff's prior work." Worth wiring `python3 scripts/arsenal/build.py` into a weekly cron (or a `chump fleet doctor --harvest-check` subcommand) so the next INFRA-1719-shaped discovery failure gets caught at planning time, not at PR-merge time.
+    
+    === cross-pollination briefs mentioning 'Merge' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
 - id: INFRA-476
   domain: INFRA
