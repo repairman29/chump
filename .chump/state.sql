@@ -27523,9 +27523,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `crates/chump-verify/src/pr_ac_coverage.rs`, update `check_live_outcome` to inspect zero-edit detection results from slice 0 and schedule an edit-nudge retry event before the execution loop terminates, bypassing any `model_calls_count` limit checks when zero edits are detected.
+    
+    Target file(s):
+    - crates/chump-verify/src/pr_ac_coverage.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When detection from slice 0 is true, the controller fires an edit‑nudge retry regardless of the current model_calls_count.
-    - The retry is scheduled before the loop terminates.
+    - In `crates/chump-verify/src/pr_ac_coverage.rs`, `check_live_outcome` checks the zero-edit detection result from slice 0 and triggers an edit-nudge retry before loop termination.
+    - The edit-nudge retry is scheduled regardless of the current `model_calls_count`.
+    - Running `cargo test -p chump-verify` succeeds and confirms the edit-nudge injection behavior.
   depends_on: [EFFECTIVE-1068]
   notes: |
     [chump harvest check 'execute-gap']
@@ -125871,7 +125879,7 @@ gaps:
 - id: INFRA-4608
   domain: INFRA
   title: "INFRA: Create a Bash concurrency‑primitive library (lock/unlock functions) (INFRA-1966 slice)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -125896,6 +125904,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+  closed_pr: 4456
 
 - id: INFRA-4609
   domain: INFRA
