@@ -6662,6 +6662,17 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role]
 
+  - kind: node_install_verified
+    effect_metric: ribbon_acceptance_rate
+    emitter: scripts/setup/chump-node-install.sh self_test() (RESILIENT-1012)
+    trigger: every self_test() run (interactive or --self-test-only) — a fresh
+      node SELF-REPORTS came-up-0-failed-mirroring-roster (pass/fail plus
+      active-vs-role-manifest-expected organ count) instead of the only proof
+      being a human SSHing into the box and eyeballing `systemctl`. Depends on
+      RESILIENT-746's role-scoped organ-reconcile --check/--counts.
+    consumers: [fleet-brief, dashboard-summary, ops-audit]
+    fields_required: [ts, kind, host, role, pass, active_organs, expected_organs]
+
   - kind: organ_watchdog_backoff_skip
     effect_metric: self
     emitter: scripts/ops/organ-watchdog.sh (RESILIENT-347)

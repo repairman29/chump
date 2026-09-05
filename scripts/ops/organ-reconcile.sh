@@ -182,6 +182,30 @@ fi
 
 MODE="${1:---apply}"
 
+# ── --counts mode (RESILIENT-1012): expected-vs-active organ counts, machine
+# readable, so chump-node-install.sh's self_test() can emit a trustworthy
+# node_install_verified signal instead of the only proof being a human SSHing
+# in and eyeballing `systemctl`. "expected" = ENABLED units (already scoped by
+# CHUMP_ORGAN_RECONCILE_ROLE above) that are applicable to this node per their
+# `requires=` spec — the same population --check would attempt to converge.
+# Units currently cooling down in backoff still count as expected (they are
+# still part of the desired roster, just temporarily not retried).
+if [[ "$MODE" == "--counts" ]]; then
+  expected=0
+  active=0
+  for unit in "${ENABLED[@]}"; do
+    requires="${ORGAN_REQUIRES[$unit]:-}"
+    reason=""
+    organ_is_applicable "$unit" "$requires" reason || continue
+    expected=$((expected + 1))
+    if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
+      active=$((active + 1))
+    fi
+  done
+  echo "{\"active\":$active,\"expected\":$expected}"
+  exit 0
+fi
+
 # ── --check mode: verify live state matches the manifest, change nothing ─────
 if [[ "$MODE" == "--check" ]]; then
   fail=0

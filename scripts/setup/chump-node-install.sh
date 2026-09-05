@@ -71,6 +71,27 @@ no(){ printf '  \033[31m✗\033[0m %s\n' "$*"; }
 info(){ printf '\033[36m[%s]\033[0m %s\n' "$1" "$2"; }
 run(){ [ "$DRY" = 1 ] && { echo "  DRY: $*"; return 0; }; eval "$*"; }
 
+# ---------- ambient emit (RESILIENT-1012) ----------
+# Node-local checkout's own ambient stream (mirrors organ-reconcile.sh's
+# NODE_AMBIENT convention) — this is where a fresh node's self-test result
+# ends up so fleet-brief can read it without a human SSHing in.
+AMBIENT_LOG="${NODE_AMBIENT:-$NODE_DIR/repo/.chump-locks/ambient.jsonl}"
+LIB_AMBIENT="$NODE_DIR/repo/scripts/coord/lib/ambient-write.sh"
+[ -f "$LIB_AMBIENT" ] && . "$LIB_AMBIENT"
+emit_ambient() {  # kind, extra-json (no leading/trailing comma)
+  local kind="$1" extra="${2:-}"
+  local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  local line
+  if [ -n "$extra" ]; then line="{\"ts\":\"$ts\",\"kind\":\"$kind\",$extra}"
+  else line="{\"ts\":\"$ts\",\"kind\":\"$kind\"}"; fi
+  if command -v _ambient_write >/dev/null 2>&1; then
+    [ -d "$(dirname "$AMBIENT_LOG")" ] && _ambient_write "$AMBIENT_LOG" "$line" || true
+  else
+    [ -d "$(dirname "$AMBIENT_LOG")" ] && printf '%s\n' "$line" >> "$AMBIENT_LOG" 2>/dev/null || true
+  fi
+  return 0  # best-effort telemetry; must never sink self_test
+}
+
 # ---------- install budget + per-phase timeouts (RESILIENT-1015) ----------
 # The 2026-09-05 mugman repro (2-core aarch64) verified chump-node-install.sh
 # hanging past BINARY even with the binary pre-placed + fetch disabled — a
@@ -1028,6 +1049,10 @@ self_test() {
   # that is not active.
   local recon_script="$NODE_DIR/repo/scripts/ops/organ-reconcile.sh"
   [ -f "$recon_script" ] || recon_script="$(dirname "$0")/../ops/organ-reconcile.sh"
+  # RESILIENT-1012: active-vs-manifest-expected organ counts, computed
+  # regardless of pass/fail below, so the node_install_verified signal always
+  # carries the numbers a fleet-brief gauge needs (not just a bare pass/fail).
+  local active_organs=0 expected_organs=0
   if [ -f "$recon_script" ]; then
     local recon_rf; recon_rf="$(organ_role_filter)"
     local recon_out
@@ -1037,6 +1062,12 @@ self_test() {
       no "organs: role-matched organ-manifest units DRIFT (role=$ROLE) — $recon_out"
       fail=1
     fi
+    local counts_out
+    counts_out="$(CHUMP_ORGAN_RECONCILE_ROLE="$recon_rf" bash "$recon_script" --counts 2>/dev/null)"
+    active_organs="$(printf '%s' "$counts_out" | grep -o '"active":[0-9]*' | head -1 | cut -d: -f2)"
+    expected_organs="$(printf '%s' "$counts_out" | grep -o '"expected":[0-9]*' | head -1 | cut -d: -f2)"
+    [ -n "$active_organs" ] || active_organs=0
+    [ -n "$expected_organs" ] || expected_organs=0
   else
     info ORGANS "organ-reconcile.sh not found — skipping manifest organ-set self-test"
   fi
@@ -1066,6 +1097,16 @@ self_test() {
     elif bash "$eyes_script" --check >/dev/null 2>&1; then ok "eyes: almanac organ supervised"
     else no "eyes: almanac organ incomplete (re-run: bash $eyes_script)"; fail=1; fi
   fi
+  # RESILIENT-1012: RUNG-UP the ribbon verify — a fresh node SELF-REPORTS
+  # came-up-0-failed-mirroring-roster via this ambient signal instead of the
+  # only proof being a human SSHing in and eyeballing `systemctl`.
+  local verify_pass; [ "$fail" = 0 ] && verify_pass=true || verify_pass=false
+  local node_host; node_host="$(hostname 2>/dev/null || echo unknown)"
+  # scanner-anchor: "kind":"node_install_verified" (RESILIENT-1012; fires on
+  # every self_test() run — the pass/fail + organ-count ribbon-acceptance
+  # signal fleet-brief reads instead of a human eyeballing systemctl)
+  emit_ambient node_install_verified \
+    "\"host\":\"$node_host\",\"role\":\"$ROLE\",\"pass\":$verify_pass,\"active_organs\":$active_organs,\"expected_organs\":$expected_organs"
   echo
   if [ "$fail" = 0 ]; then printf '\033[42m INSTALLED ✓ \033[0m role=%s host=%s\n' "$ROLE" "$HOST_KIND"; return 0
   else printf '\033[41m NOT FULLY INSTALLED \033[0m — fix the ✗ above\n'; return 1; fi

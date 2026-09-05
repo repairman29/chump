@@ -31,6 +31,11 @@ pub struct DashboardSummary {
     pub ci_qa_score: Option<CiQaScore>,
     pub active_leases: Vec<ActiveLease>,
     pub window_hours: u32,
+    /// RESILIENT-1012: last `node_install_verified` ambient event per node
+    /// (host) — the ribbon-acceptance gauge, one entry per node that has
+    /// ever self-reported. Board-visible "did the last node self-test pass"
+    /// instead of needing an operator to SSH in and eyeball `systemctl`.
+    pub ribbon_acceptance: Vec<NodeInstallVerified>,
 }
 
 /// Payload surfaced from the most-recent `kind=ci_qa_score` ambient event.
@@ -50,6 +55,18 @@ pub struct ActiveLease {
     pub gap: String,
     pub session: String,
     pub expires_at: String,
+}
+
+/// One node's most recent `kind=node_install_verified` self-report
+/// (RESILIENT-1012).
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq)]
+pub struct NodeInstallVerified {
+    pub host: String,
+    pub role: String,
+    pub pass: bool,
+    pub active_organs: u64,
+    pub expected_organs: u64,
+    pub ts: String,
 }
 
 // ── path helpers ──────────────────────────────────────────────────────────────
@@ -375,6 +392,71 @@ fn compute_ci_qa_score_live(data_root: &Path) -> Option<CiQaScore> {
     None
 }
 
+// ── ribbon_acceptance (RESILIENT-1012) ────────────────────────────────────────
+
+/// Read the most recent `kind=node_install_verified` event PER HOST from
+/// `ambient.jsonl` (no time window — a node that hasn't self-tested since
+/// last boot should still show its last-known verdict rather than silently
+/// disappearing from the board). Returns entries sorted by host name.
+pub fn read_ribbon_acceptance(repo_root: &Path) -> Vec<NodeInstallVerified> {
+    let ambient_path = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let content = match std::fs::read_to_string(&ambient_path) {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let mut latest: std::collections::BTreeMap<String, NodeInstallVerified> =
+        std::collections::BTreeMap::new();
+
+    for line in content.lines() {
+        let v: serde_json::Value = match serde_json::from_str(line) {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("node_install_verified") {
+            continue;
+        }
+        let entry = match extract_node_install_verified(&v) {
+            Some(e) => e,
+            None => continue,
+        };
+        // Lines are appended in chronological order, so the last one seen
+        // per host is the most recent — plain overwrite is correct.
+        latest.insert(entry.host.clone(), entry);
+    }
+
+    latest.into_values().collect()
+}
+
+fn extract_node_install_verified(v: &serde_json::Value) -> Option<NodeInstallVerified> {
+    let host = v.get("host").and_then(|h| h.as_str())?.to_owned();
+    let role = v
+        .get("role")
+        .and_then(|r| r.as_str())
+        .unwrap_or("unknown")
+        .to_owned();
+    let pass = v.get("pass").and_then(|p| p.as_bool())?;
+    let active_organs = v.get("active_organs").and_then(|a| a.as_u64()).unwrap_or(0);
+    let expected_organs = v
+        .get("expected_organs")
+        .and_then(|e| e.as_u64())
+        .unwrap_or(0);
+    let ts = v
+        .get("ts")
+        .and_then(|t| t.as_str())
+        .unwrap_or("")
+        .to_owned();
+
+    Some(NodeInstallVerified {
+        host,
+        role,
+        pass,
+        active_organs,
+        expected_organs,
+        ts,
+    })
+}
+
 // ── active_leases ─────────────────────────────────────────────────────────────
 
 /// Return the top-10 active (unexpired) claim leases, most-time-remaining
@@ -499,11 +581,67 @@ pub fn build_summary(repo_root: &Path) -> DashboardSummary {
     let ci_qa_score =
         read_ci_qa_score(repo_root, WINDOW_HOURS).or_else(|| compute_ci_qa_score_live(repo_root));
     let active_leases = read_active_leases(repo_root);
+    let ribbon_acceptance = read_ribbon_acceptance(repo_root);
 
     DashboardSummary {
         today_ships,
         ci_qa_score,
         active_leases,
         window_hours: WINDOW_HOURS,
+        ribbon_acceptance,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn write_ambient(dir: &Path, lines: &[String]) {
+        let locks = dir.join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        std::fs::write(locks.join("ambient.jsonl"), lines.join("\n") + "\n").unwrap();
+    }
+
+    /// RESILIENT-1012: no ambient.jsonl at all → empty gauge, not a panic.
+    #[test]
+    fn ribbon_acceptance_empty_without_ambient_file() {
+        let dir = std::env::temp_dir().join("chump-test-ribbon-empty");
+        std::fs::create_dir_all(&dir).unwrap();
+        assert!(read_ribbon_acceptance(&dir).is_empty());
+    }
+
+    /// RESILIENT-1012 core AC: the gauge must surface the MOST RECENT
+    /// node_install_verified event per host — an older FAIL from the same
+    /// host followed by a newer PASS must resolve to PASS (the ribbon's
+    /// current, not historical, state), and two distinct hosts must both
+    /// appear rather than one clobbering the other.
+    #[test]
+    fn ribbon_acceptance_keeps_latest_per_host_and_all_hosts() {
+        let dir = std::env::temp_dir().join("chump-test-ribbon-latest");
+        write_ambient(
+            &dir,
+            &[
+                r#"{"ts":"2026-09-05T10:00:00Z","kind":"node_install_verified","host":"mugman","role":"muscle","pass":false,"active_organs":2,"expected_organs":5}"#.to_string(),
+                r#"{"ts":"2026-09-05T10:05:00Z","kind":"node_install_verified","host":"mugman","role":"muscle","pass":true,"active_organs":5,"expected_organs":5}"#.to_string(),
+                r#"{"ts":"2026-09-05T10:05:00Z","kind":"node_install_verified","host":"helsinki","role":"brain","pass":true,"active_organs":8,"expected_organs":8}"#.to_string(),
+                r#"{"ts":"2026-09-05T10:06:00Z","kind":"organ_reconcile_noop"}"#.to_string(),
+            ],
+        );
+
+        let result = read_ribbon_acceptance(&dir);
+        assert_eq!(
+            result.len(),
+            2,
+            "expected one entry per host, got {result:?}"
+        );
+
+        let mugman = result.iter().find(|e| e.host == "mugman").unwrap();
+        assert!(mugman.pass, "mugman's LATEST event is pass=true");
+        assert_eq!(mugman.active_organs, 5);
+        assert_eq!(mugman.expected_organs, 5);
+
+        let helsinki = result.iter().find(|e| e.host == "helsinki").unwrap();
+        assert!(helsinki.pass);
+        assert_eq!(helsinki.role, "brain");
     }
 }
