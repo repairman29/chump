@@ -91,6 +91,29 @@ else
     fail "no 'SKIP: reviewer gateway unavailable' line in output. Output:\n$OUTPUT"
 fi
 
+# (2) INFRA-5005: same assertion under the DEFAULT config (Tier-1 cascade
+# enabled, CHUMP_TWO_TIER_REVIEW unset). Test (1) above bypasses Tier-1 via
+# CHUMP_TWO_TIER_REVIEW=0, which left the default two-tier path — the one
+# every real bot-merge invocation actually runs — unlocked against a
+# regression where a failing Tier-1 pre-check masks the Tier-2 SKIP.
+set +e
+OUTPUT2=$(PATH="$TMPDIR:$PATH" CHUMP_LLM_BIN="$TMPDIR/chump" \
+    bash "$REPO_ROOT/scripts/coord/code-reviewer-agent.sh" 999 2>&1)
+RC2=$?
+set -e
+
+if [[ $RC2 -eq 3 ]]; then
+    ok "gateway-unavailable auth-miss exits 3 (SKIP) under default Tier-1+Tier-2 config"
+else
+    fail "expected exit 3 (SKIP) on gateway-unavailable (default config), got exit $RC2. Output:\n$OUTPUT2"
+fi
+
+if echo "$OUTPUT2" | grep -q "^SKIP: reviewer gateway unavailable"; then
+    ok "SKIP: line surfaced for bot-merge log visibility (default config)"
+else
+    fail "no 'SKIP: reviewer gateway unavailable' line in default-config output. Output:\n$OUTPUT2"
+fi
+
 echo
 echo "=== Result ==="
 echo "  $PASS passed, $FAIL failed"
