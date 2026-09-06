@@ -10,9 +10,18 @@
 //! Real position/velocity inputs (lease graph, PR graph, gap-dependency graph)
 //! are future work (META-081 integration slice) — this module only needs to
 //! prove the detection + emission plumbing works end-to-end.
+//!
+//! EFFECTIVE-1336 (EFFECTIVE-510 slice): a predicted collision is a predicted
+//! *breakage* — two agents on course to edit overlapping ground before either
+//! ships. Logging it to ambient is not enough to act on between check-ins, so
+//! [`top_escalation_action`] / [`escalate_and_file_incident`] wire the
+//! highest-confidence prediction to a dispatch/escalate action that
+//! auto-files a P0 incident gap via `chump gap reserve`, mirroring the
+//! shell-out pattern in `crates/chump-fleet-server/src/mission.rs`.
 
 use std::fs;
 use std::io::Write as IoWrite;
+use std::process::Command;
 
 use anyhow::{Context, Result};
 use serde::{Deserialize, Serialize};
@@ -154,6 +163,145 @@ pub fn emit_collision_prediction_events(predictions: &[CollisionPrediction]) -> 
     Ok(())
 }
 
+/// Confidence above which the top predicted collision is escalated to a
+/// dispatch/escalate action rather than left as an ambient-only signal.
+pub const ESCALATION_CONFIDENCE_THRESHOLD: f64 = 0.85;
+
+/// A dispatch/escalate action derived from the single highest-confidence
+/// predicted collision, once it clears [`ESCALATION_CONFIDENCE_THRESHOLD`].
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct EscalationAction {
+    pub agent_a: String,
+    pub agent_b: String,
+    pub confidence: f64,
+    pub title: String,
+}
+
+/// Pick the highest-confidence predicted collision and, if it clears
+/// [`ESCALATION_CONFIDENCE_THRESHOLD`], build the dispatch/escalate action
+/// for it. Returns `None` when there is nothing worth escalating.
+pub fn top_escalation_action(predictions: &[CollisionPrediction]) -> Option<EscalationAction> {
+    let top = predictions.iter().max_by(|a, b| {
+        a.confidence
+            .partial_cmp(&b.confidence)
+            .unwrap_or(std::cmp::Ordering::Equal)
+    })?;
+    if top.confidence < ESCALATION_CONFIDENCE_THRESHOLD {
+        return None;
+    }
+    Some(EscalationAction {
+        agent_a: top.agent_a.clone(),
+        agent_b: top.agent_b.clone(),
+        confidence: top.confidence,
+        title: format!(
+            "Predicted collision breakage: {} x {} (confidence {:.2})",
+            top.agent_a, top.agent_b, top.confidence
+        ),
+    })
+}
+
+/// Resolve the `chump` binary: `CHUMP_BIN` env (test/CI hook) else bare
+/// `chump` on `PATH`, mirroring `chump-fleet-server::mission::resolve_chump_bin`.
+fn resolve_chump_bin() -> String {
+    std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string())
+}
+
+/// Pull a `DOMAIN-NNN`-shaped gap id out of `chump gap reserve` stdout.
+fn parse_gap_id(stdout: &str) -> Option<String> {
+    stdout.lines().rev().find_map(|line| {
+        line.split_whitespace().find_map(|w| {
+            let w = w.trim();
+            let (prefix, suffix) = w.split_once('-')?;
+            (!prefix.is_empty()
+                && prefix.chars().all(|c| c.is_ascii_uppercase())
+                && !suffix.is_empty()
+                && suffix.chars().all(|c| c.is_ascii_digit()))
+            .then(|| w.to_string())
+        })
+    })
+}
+
+/// Take the dispatch/escalate action for a predicted breakage: file a P0
+/// incident gap via `chump gap reserve` and emit a `collision_escalation`
+/// ambient event recording what was done. Returns the reserved gap id, or
+/// `Ok(None)` when `chump gap reserve` ran but its output didn't parse (the
+/// escalation event is still emitted either way, so the miss is observable).
+pub fn escalate_and_file_incident(action: &EscalationAction) -> Result<Option<String>> {
+    let chump_bin = resolve_chump_bin();
+    let notes = format!(
+        "Auto-filed by collision_prediction (EFFECTIVE-1336 / EFFECTIVE-510 slice): \
+         predicted breakage between {} and {} at confidence {:.2}. \
+         Dispatch/escalate action taken automatically — no human in the loop.",
+        action.agent_a, action.agent_b, action.confidence
+    );
+    let output = Command::new(&chump_bin)
+        .args([
+            "gap",
+            "reserve",
+            "--domain",
+            "INFRA",
+            "--priority",
+            "P0",
+            "--title",
+            &action.title,
+            "--notes",
+            &notes,
+        ])
+        .output()
+        .with_context(|| {
+            format!("spawning `{chump_bin} gap reserve` for predicted-breakage escalation")
+        })?;
+
+    let gap_id = output
+        .status
+        .success()
+        .then(|| parse_gap_id(&String::from_utf8_lossy(&output.stdout)))
+        .flatten();
+
+    emit_escalation_event(action, gap_id.as_deref())?;
+    Ok(gap_id)
+}
+
+/// Emit a `collision_escalation` event to ambient.jsonl recording the
+/// dispatch/escalate action taken (and the P0 gap id it filed, if any).
+fn emit_escalation_event(action: &EscalationAction, gap_id: Option<&str>) -> Result<()> {
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string());
+
+    let mut file = fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+        .with_context(|| format!("opening ambient log at {ambient_path}"))?;
+
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let entry = serde_json::json!({
+        "ts": ts,
+        "kind": "collision_escalation",
+        "agent_a": action.agent_a,
+        "agent_b": action.agent_b,
+        "confidence": action.confidence,
+        "action": "dispatch_escalate",
+        "gap_id": gap_id,
+    });
+    writeln!(file, "{}", entry)
+        .with_context(|| format!("writing ambient log at {ambient_path}"))?;
+    Ok(())
+}
+
+/// Wire predictions end-to-end: emit the per-pair ambient signal (existing
+/// behavior), then escalate the top prediction if it clears
+/// [`ESCALATION_CONFIDENCE_THRESHOLD`]. This is the entry point future
+/// callers (real lease/PR-graph inputs, META-081) should use instead of
+/// calling `emit_collision_prediction_events` alone.
+pub fn handle_predictions(predictions: &[CollisionPrediction]) -> Result<Option<String>> {
+    emit_collision_prediction_events(predictions)?;
+    match top_escalation_action(predictions) {
+        Some(action) => escalate_and_file_incident(&action),
+        None => Ok(None),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -271,6 +419,149 @@ mod tests {
         emit_collision_prediction_events(&[]).unwrap();
 
         assert!(!ambient_path.exists());
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+    }
+
+    /// Write an executable stub `chump` that prints `gap reserve`-shaped
+    /// stdout so escalation tests never spawn the real binary.
+    fn write_stub_chump(dir: &TempDir, gap_id: &str) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let path = dir.path().join("stub-chump.sh");
+        fs::write(
+            &path,
+            format!("#!/bin/sh\necho 'reserving...'\necho '{gap_id}'\n"),
+        )
+        .unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o755)).unwrap();
+        path
+    }
+
+    #[test]
+    fn top_escalation_action_picks_highest_confidence_above_threshold() {
+        let predictions = vec![
+            CollisionPrediction {
+                agent_a: "agent-a".to_string(),
+                agent_b: "agent-b".to_string(),
+                predicted_ts_offset_s: 1.0,
+                confidence: 0.6,
+            },
+            CollisionPrediction {
+                agent_a: "agent-c".to_string(),
+                agent_b: "agent-d".to_string(),
+                predicted_ts_offset_s: 2.0,
+                confidence: 0.95,
+            },
+        ];
+
+        let action = top_escalation_action(&predictions).expect("should escalate");
+        assert_eq!(action.agent_a, "agent-c");
+        assert_eq!(action.agent_b, "agent-d");
+        assert!(action.title.contains("agent-c"));
+    }
+
+    #[test]
+    fn top_escalation_action_none_below_threshold() {
+        let predictions = vec![CollisionPrediction {
+            agent_a: "agent-a".to_string(),
+            agent_b: "agent-b".to_string(),
+            predicted_ts_offset_s: 1.0,
+            confidence: 0.5,
+        }];
+
+        assert!(top_escalation_action(&predictions).is_none());
+    }
+
+    #[test]
+    fn top_escalation_action_none_when_empty() {
+        assert!(top_escalation_action(&[]).is_none());
+    }
+
+    #[test]
+    fn parse_gap_id_finds_domain_number_token() {
+        assert_eq!(
+            parse_gap_id("reserving...\nINFRA-4242\n"),
+            Some("INFRA-4242".to_string())
+        );
+        assert_eq!(parse_gap_id("no id here\n"), None);
+    }
+
+    #[test]
+    fn escalate_and_file_incident_files_p0_and_emits_ambient_event() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let ambient_path = dir.path().join("ambient.jsonl");
+        let stub = write_stub_chump(&dir, "INFRA-9001");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+        std::env::set_var("CHUMP_BIN", &stub);
+
+        let action = EscalationAction {
+            agent_a: "agent-a".to_string(),
+            agent_b: "agent-b".to_string(),
+            confidence: 0.9,
+            title: "Predicted collision breakage: agent-a x agent-b".to_string(),
+        };
+
+        let gap_id = escalate_and_file_incident(&action).unwrap();
+        assert_eq!(gap_id.as_deref(), Some("INFRA-9001"));
+
+        let contents = fs::read_to_string(&ambient_path).unwrap();
+        assert!(contents.contains("\"kind\":\"collision_escalation\""));
+        assert!(contents.contains("\"action\":\"dispatch_escalate\""));
+        assert!(contents.contains("\"gap_id\":\"INFRA-9001\""));
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_BIN");
+    }
+
+    #[test]
+    fn handle_predictions_auto_files_p0_for_predicted_breakage() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let ambient_path = dir.path().join("ambient.jsonl");
+        let stub = write_stub_chump(&dir, "INFRA-9002");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+        std::env::set_var("CHUMP_BIN", &stub);
+
+        let predictions = vec![CollisionPrediction {
+            agent_a: "agent-a".to_string(),
+            agent_b: "agent-b".to_string(),
+            predicted_ts_offset_s: 3.0,
+            confidence: 0.9,
+        }];
+
+        let gap_id = handle_predictions(&predictions).unwrap();
+        assert_eq!(gap_id.as_deref(), Some("INFRA-9002"));
+
+        let contents = fs::read_to_string(&ambient_path).unwrap();
+        assert!(contents.contains("\"kind\":\"collision_prediction\""));
+        assert!(contents.contains("\"kind\":\"collision_escalation\""));
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        std::env::remove_var("CHUMP_BIN");
+    }
+
+    #[test]
+    fn handle_predictions_no_escalation_below_threshold() {
+        let _guard = ENV_LOCK.lock().unwrap();
+        let dir = TempDir::new().unwrap();
+        let ambient_path = dir.path().join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", &ambient_path);
+        std::env::remove_var("CHUMP_BIN");
+
+        let predictions = vec![CollisionPrediction {
+            agent_a: "agent-a".to_string(),
+            agent_b: "agent-b".to_string(),
+            predicted_ts_offset_s: 3.0,
+            confidence: 0.6,
+        }];
+
+        let gap_id = handle_predictions(&predictions).unwrap();
+        assert_eq!(gap_id, None);
+
+        let contents = fs::read_to_string(&ambient_path).unwrap();
+        assert!(contents.contains("\"kind\":\"collision_prediction\""));
+        assert!(!contents.contains("\"kind\":\"collision_escalation\""));
 
         std::env::remove_var("CHUMP_AMBIENT_LOG");
     }
