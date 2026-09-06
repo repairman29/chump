@@ -5573,6 +5573,24 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
 
+  # ── INFRA-5126: pre-push phase + total hard timeout ───────────────────────
+  - kind: prepush_timeout
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-push _pp_run_timed / _pp_check_total_budget (INFRA-5126)
+    trigger: a fast pre-push guard (fmt_check, fmt_gate, clippy, merge_tree_preview)
+      exceeded its 30s per-phase budget, OR cumulative wall-clock since hook
+      start exceeded the 90s total budget before the next guard started
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, phase, timeout_s, elapsed_s, reason, branch, gap_id]
+    docs: |
+      reason is either "phase_timeout" (a single guard exceeded
+      CHUMP_PREPUSH_PHASE_TIMEOUT_S, default 30s) or "total_budget_exceeded"
+      (cumulative elapsed since hook start exceeded
+      CHUMP_PREPUSH_TOTAL_TIMEOUT_S, default 90s). Deliberately separate
+      from the cargo-test gate's own INFRA-1744 prepush_test_timeout, which
+      uses a much larger budget (default 600s) because a full test run
+      legitimately takes minutes.
+
   # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
   - kind: prepush_head_drift
     emitter: scripts/git-hooks/pre-push (INFRA-1372)

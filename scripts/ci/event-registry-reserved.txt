@@ -235,6 +235,7 @@ preflight_registry_bypassed # reason: INFRA-1731 #2377 emitted from src/prefligh
 preflight_subcmdhelp_bypassed # reason: INFRA-1789 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_SUBCMDHELP=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 preflight_registry_bypassed pattern)
 prepush_head_drift  # reason: emitted by scripts/git-hooks/pre-push (INFRA-1372); git-hooks/ dir is outside PROD_PATHS grep scan
 prepush_test_timeout  # reason: INFRA-1744 emitted from scripts/git-hooks/pre-push timeout branch; printf-formatted from bash, not via emit_event helper
+prepush_timeout  # reason: INFRA-5126 emitted from scripts/git-hooks/pre-push _pp_run_timed / _pp_check_total_budget; git-hooks/ dir is outside PROD_PATHS grep scan
 pwa_brief_loaded  # reason: emitted from web/v2/daily-brief.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-078
 pwa_gap_list_filtered  # reason: emitted from web/v2/gap-list.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-102
 pwa_impact_viewed  # reason: emitted from web/v2/impact.js via sendBeacon (JS, not in PROD_PATHS)
