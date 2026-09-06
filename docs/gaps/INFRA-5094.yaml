@@ -1,0 +1,29 @@
+- id: INFRA-5094
+  domain: INFRA
+  title: "INFRA: INFRA-4791: Scaffold chump harvest CLI subcommand with action parsing (INFRA-1823 slice)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A new executable `chump harvest` is added to the project entry points"
+    - "`chump harvest --help` displays usage with subcommands: scan, check, brief, deep-scan"
+    - "The CLI returns exit code 0 for `--help` and unknown subcommand returns exit code 2"
+  notes: |
+    [chump harvest check 'INFRA-1823']
+    === primitives_index match for 'INFRA-1823' ===
+
+    === cluster keyword match for 'INFRA-1823' ===
+
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1823' ===
+
+    === repo-description match for 'INFRA-1823' ===
+
+    === HARVEST_ROADMAP.md mention of 'INFRA-1823' (deep-scan findings) ===
+      206:Wave 2 sampled 5 of 24 Smugglers services and concluded the cluster was "all dormant, low harvest signal." Wave 3 sampled 14 more and found **6 of them REAL with extractable primitives**. The pre-filter dropped real signal. INFRA-1823's "Coverage push: deep-scan remaining 45 of 76 fleet repos" was exactly the right gap to file; this Wave 3 work executes that AC.
+      222:## Wave 4 — INFRA-1823 AC7 close-out (2026-08-13)
+
+    === cross-pollination briefs mentioning 'INFRA-1823' ===
+
+    [2026-09-06T21:40:00Z] Close — all 3 AC already satisfied by prior merged work. src/harvester_cli.rs (shipped under INFRA-1823) wires `chump harvest` with scan/check/brief/deep-scan/list-clusters subcommands; src/main.rs:2369 dispatches it as a first-class `chump` entry point; `help`/`--help`/`-h` print full usage and exit 0; any unknown subcommand exits 2. Verified this session on a from-source build: `chump harvest --help` → exit 0, `chump harvest bogus` → exit 2. No code change needed.
+  closed_date: '2026-09-06'
+  outcome_id: ''
