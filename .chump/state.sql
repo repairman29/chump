@@ -15177,10 +15177,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new test function `test_bookkeeping_only_pr_flag_persistence` inside the `mod tests` block of `crates/chump-verify/src/pr_ac_coverage.rs`. The test will synthesize a PR that modifies only documentation files, invoke the false‑done‑sweep logic, assert that the resulting gap is flagged as bookkeeping‑only, then edit the gap text to reference the same files and assert the flag remains set.
+    
+    Target file(s):
+    - crates/chump-verify/src/pr_ac_coverage.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test creates a PR that touches only documentation files, runs false‑done‑sweep, and asserts the gap is flagged as bookkeeping‑only
-    - Test then modifies the gap text to name the same files and verifies the flag remains set
-    - Test fails before the fix (CREDIBLE‑175) and passes after the implementation
+    - The file `crates/chump-verify/src/pr_ac_coverage.rs` contains a compiled‑by‑Rust test function named `test_bookkeeping_only_pr_flag_persistence` inside its `mod tests` section.
+    - "Executing `cargo test --test pr_ac_coverage::test_bookkeeping_only_pr_flag_persistence` completes without panic and reports the test as passed."
+    - Within the test, after creating a synthetic PR that touches only documentation files and running the false‑done‑sweep, the code asserts that `gap.is_bookkeeping_only()` is true.
+    - After the test mutates the gap text to name the same documentation files, it asserts again that `gap.is_bookkeeping_only()` remains true.
   depends_on: [CREDIBLE-627]
   notes: |
     [chump harvest check 'closed']
