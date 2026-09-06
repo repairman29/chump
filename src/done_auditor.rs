@@ -162,6 +162,7 @@ mod tests {
             rules_hit: vec![],
             is_proof: false,
             proof_detail: None,
+            is_boilerplate: false,
         }
     }
 

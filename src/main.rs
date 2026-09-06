@@ -21065,17 +21065,16 @@ fn external_repo_target_from_skills(skills: &str) -> Option<String> {
 /// refuses a gap whose AC are TODO placeholders). The gap *title* carries the
 /// "what"; these encode the ship "done-bar" so the gap is immediately pickable.
 /// For gap-specific AC, run `chump gap decompose` (LLM).
-fn default_acceptance_criteria(title: &str, domain: &str) -> Vec<String> {
-    // Strip a leading "DOMAIN:" / pillar tag from the title to get the "what".
-    let what = title
-        .split_once(':')
-        .map(|(_, rest)| rest.trim())
-        .filter(|s| !s.is_empty())
-        .unwrap_or_else(|| title.trim());
+///
+/// CREDIBLE-953 (CREDIBLE-279 slice): this used to lead with "The change
+/// described by \"<what>\" is implemented in the relevant <domain> code
+/// path(s)." — a restatement of the title that no diff can meaningfully
+/// cover or fail (`pr_ac_coverage::is_boilerplate_bullet` now recognizes and
+/// excludes that exact template from any PR that still carries it, but new
+/// gaps should never generate it in the first place). Dropped; the two
+/// remaining bullets are both mechanically checkable against a real diff.
+fn default_acceptance_criteria(_title: &str, _domain: &str) -> Vec<String> {
     vec![
-        format!(
-            "The change described by \"{what}\" is implemented in the relevant {domain} code path(s)."
-        ),
         "At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.".to_string(),
         "cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.".to_string(),
     ]
@@ -21091,27 +21090,26 @@ mod tests {
 
     // EFFECTIVE-294: a reserved gap with no explicit AC gets concrete, claimable
     // AC (zero TODO placeholders) so `chump claim` accepts it.
+    // CREDIBLE-953 (CREDIBLE-279 slice): no bullet is a restatement of the
+    // title ("... is implemented in the relevant ... code path(s)") — that
+    // boilerplate can't be covered or failed by any diff. Every bullet must
+    // be mechanically checkable and free of the boilerplate template.
     #[test]
-    fn default_acceptance_criteria_are_concrete_no_todo() {
+    fn default_acceptance_criteria_are_concrete_no_todo_no_boilerplate() {
         let acs = crate::default_acceptance_criteria("EFFECTIVE: add a foo widget", "EFFECTIVE");
-        assert!(acs.len() >= 3, "at least 3 AC items: {acs:?}");
+        assert!(!acs.is_empty(), "at least one AC item: {acs:?}");
         assert!(
             acs.iter().all(|a| !a.contains("TODO")),
             "no TODO placeholders: {acs:?}"
         );
         assert!(
-            acs[0].contains("add a foo widget") && !acs[0].contains("EFFECTIVE: add"),
-            "first AC names the de-prefixed work: {}",
-            acs[0]
+            acs.iter()
+                .all(|a| !chump_verify::pr_ac_coverage::is_boilerplate_bullet(a)),
+            "no boilerplate title-restatement bullets: {acs:?}"
         );
-        // a title without a ':' is used verbatim as the "what"
+        // domain/title-agnostic — no title parsing to fall over on
         let acs2 = crate::default_acceptance_criteria("no prefix here", "INFRA");
-        assert!(
-            acs2[0].contains("no prefix here"),
-            "verbatim what: {}",
-            acs2[0]
-        );
-        assert!(acs2[0].contains("INFRA"), "names the domain: {}", acs2[0]);
+        assert_eq!(acs, acs2, "AC template does not vary by title/domain");
     }
 
     /// Full agent turn against a mock HTTP server: no real model. Asserts reply content.

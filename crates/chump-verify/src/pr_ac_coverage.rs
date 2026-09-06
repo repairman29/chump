@@ -42,6 +42,12 @@ pub struct BulletResult {
     /// Human-readable detail of the live-outcome check for a proof bullet
     /// (what was probed and what it found). `None` for non-proof bullets.
     pub proof_detail: Option<String>,
+    /// CREDIBLE-953 (CREDIBLE-279 slice): true when this bullet matches the
+    /// `chump gap reserve` boilerplate template ("... is implemented in the
+    /// relevant ... code path(s)"). Boilerplate bullets are excluded from
+    /// the coverage denominator entirely (not counted, not scored) since no
+    /// diff can meaningfully cover or fail them.
+    pub is_boilerplate: bool,
 }
 
 #[derive(Debug, Clone)]
@@ -62,14 +68,20 @@ impl AcCoverageResult {
     /// `Disabled` / `NoGapRef` result can't be judged, so it returns the neutral
     /// prior (0.5).
     pub fn confidence(&self) -> f64 {
-        if self.bullets.is_empty() {
+        // CREDIBLE-953: boilerplate bullets are excluded from the denominator —
+        // they cannot be covered or failed by any diff, so counting them (even
+        // as automatically "covered") would inflate confidence on gaps that
+        // have zero real, verifiable criteria.
+        let scored: Vec<&BulletResult> =
+            self.bullets.iter().filter(|b| !b.is_boilerplate).collect();
+        if scored.is_empty() {
             return match self.status {
                 CoverageStatus::Pass => 1.0,
                 _ => 0.5,
             };
         }
-        let covered = self.bullets.iter().filter(|b| b.covered).count();
-        crate::confidence::confidence_from_coverage(covered as f64 / self.bullets.len() as f64)
+        let covered = scored.iter().filter(|b| b.covered).count();
+        crate::confidence::confidence_from_coverage(covered as f64 / scored.len() as f64)
     }
 }
 
@@ -429,6 +441,19 @@ fn is_proof_bullet(bullet: &str) -> bool {
         || lower.contains("proof-by")
         || lower.contains("proof by")
         || lower.contains("proof:")
+}
+
+/// CREDIBLE-953 (CREDIBLE-279 slice): the `chump gap reserve` default-AC
+/// template (`src/main.rs::default_acceptance_criteria`) emits "The change
+/// described by \"<what>\" is implemented in the relevant <domain> code
+/// path(s)." for every gap reserved without explicit AC. No diff can cover
+/// or fail this sentence — it restates the gap title, not a checkable
+/// behavior — so CREDIBLE-279 identified it as the reason AC-coverage
+/// scoring missed 79 bookkeeping-only closes. Detected structurally (not by
+/// exact string match) so paraphrases of the same template are still caught.
+pub fn is_boilerplate_bullet(bullet: &str) -> bool {
+    let lower = bullet.to_ascii_lowercase();
+    lower.contains("is implemented in the relevant") && lower.contains("code path")
 }
 
 fn systemctl_bin() -> String {
@@ -984,6 +1009,28 @@ fn score_against_bullets(
                 rules_hit: vec![],
                 is_proof: is_proof_bullet(text),
                 proof_detail: None,
+                is_boilerplate: is_boilerplate_bullet(text),
+            });
+            continue;
+        }
+
+        // CREDIBLE-953: a boilerplate AC ("The change described by ... is
+        // implemented in the relevant ... code path(s).") is excluded from
+        // scoring entirely — it is neither covered nor missed, it simply
+        // does not count. `covered: true` here is bookkeeping only; the
+        // real exclusion is `is_boilerplate`, which `confidence()` and the
+        // `any_miss` gate below both filter on.
+        if is_boilerplate_bullet(text) {
+            bullets.push(BulletResult {
+                index: i,
+                text: text.clone(),
+                covered: true,
+                waived: false,
+                waive_reason: None,
+                rules_hit: vec![],
+                is_proof: false,
+                proof_detail: None,
+                is_boilerplate: true,
             });
             continue;
         }
@@ -1033,6 +1080,7 @@ fn score_against_bullets(
             waive_reason: None,
             rules_hit,
             is_proof,
+            is_boilerplate: false,
             proof_detail,
         });
     }
@@ -2023,6 +2071,7 @@ mod tests {
             rules_hit: vec![],
             is_proof: true,
             proof_detail: Some("unverifiable".to_string()),
+            is_boilerplate: false,
         };
         let verdict_says_met = true;
         if !b.is_proof {
@@ -2193,6 +2242,7 @@ mod tests {
                     rules_hit: vec![],
                     is_proof: false,
                     proof_detail: None,
+                    is_boilerplate: false,
                 })
                 .collect(),
         };
@@ -2217,6 +2267,72 @@ mod tests {
             ..no_ac_pass
         };
         assert_eq!(disabled.confidence(), 0.5);
+    }
+
+    #[test]
+    fn credible953_is_boilerplate_bullet_detects_the_reserve_template() {
+        assert!(is_boilerplate_bullet(
+            "The change described by \"add a foo widget\" is implemented in the relevant EFFECTIVE code path(s)."
+        ));
+        // Different title/domain, same template shape — still caught.
+        assert!(is_boilerplate_bullet(
+            "The change described by \"fix the bar\" is implemented in the relevant INFRA code path(s)."
+        ));
+        // Real, verifiable AC bullets are not caught.
+        assert!(!is_boilerplate_bullet(
+            "At least one test proves the new behavior and fails without the change."
+        ));
+        assert!(!is_boilerplate_bullet(
+            "cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests."
+        ));
+    }
+
+    #[test]
+    fn credible953_boilerplate_bullets_excluded_from_confidence_denominator() {
+        // A gap with ONE real bullet (uncovered) plus the boilerplate template
+        // (auto-"covered", but must not count) should score identically to a
+        // gap with only that one real, uncovered bullet — i.e. confidence must
+        // NOT be inflated by the boilerplate bullet's automatic true.
+        let real_bullet_uncovered = BulletResult {
+            index: 0,
+            text: "the widget renders a Quit item".to_string(),
+            covered: false,
+            waived: false,
+            waive_reason: None,
+            rules_hit: vec![],
+            is_proof: false,
+            proof_detail: None,
+            is_boilerplate: false,
+        };
+        let boilerplate_bullet = BulletResult {
+            index: 1,
+            text: "The change described by \"add a foo widget\" is implemented in the relevant EFFECTIVE code path(s).".to_string(),
+            covered: true,
+            waived: false,
+            waive_reason: None,
+            rules_hit: vec![],
+            is_proof: false,
+            proof_detail: None,
+            is_boilerplate: true,
+        };
+        let only_real = AcCoverageResult {
+            pr_number: 1,
+            gap_id: Some("X-1".to_string()),
+            status: CoverageStatus::Miss,
+            bullets: vec![real_bullet_uncovered.clone()],
+        };
+        let real_plus_boilerplate = AcCoverageResult {
+            pr_number: 1,
+            gap_id: Some("X-1".to_string()),
+            status: CoverageStatus::Miss,
+            bullets: vec![real_bullet_uncovered, boilerplate_bullet],
+        };
+        assert_eq!(
+            only_real.confidence(),
+            real_plus_boilerplate.confidence(),
+            "an auto-covered boilerplate bullet must not raise confidence \
+             above what the real bullets alone would score"
+        );
     }
 }
 
