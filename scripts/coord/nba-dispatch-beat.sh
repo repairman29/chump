@@ -32,6 +32,15 @@
 #                        config, merges nothing.
 #   wait_ci              benign no-op — CI is running; the right move is to do
 #                        nothing and let it settle. Recorded, no side effect.
+#   predicted_breakage   EFFECTIVE-510 slice: the producer flagged a HIGH-
+#                        CONFIDENCE predicted breakage (e.g. collision_prediction
+#                        / regression signal). The safe REVERSIBLE action is not
+#                        to touch anything — it's to ESCALATE: auto-file a P0
+#                        incident gap (dispatch/escalate) so a human/worker
+#                        triages before the breakage lands. Idempotent — the
+#                        existing cooldown/dedup guards prevent re-filing the
+#                        same standing bet; a second predicted_breakage bet for
+#                        a DIFFERENT target still files its own P0.
 #
 # ── NEVER AUTO-DONE (always defer to the human) ──
 #   merge_pr, resolve_conflict, rebase_pr, rerun_stale, close_deep_red,
@@ -70,6 +79,8 @@
 #   CHUMP_NBA_MAX_AGE_SEC        refuse to act on a producer file older than N s (default 3600)
 #   CHUMP_NBA_DISPATCH_DRY_RUN   1 = dry-run (no mutation, no emit, no state write)
 #   CHUMP_AMBIENT_LOG            ambient jsonl (default REPO/.chump-locks/ambient.jsonl)
+#   CHUMP_BIN                    chump binary used to auto-file predicted_breakage
+#                                P0 incidents (default "chump" on PATH)
 #   Test hooks: CHUMP_NBA_SYSTEMCTL_BIN (stub systemctl), CHUMP_NBA_FLEET_PAUSE_FILE
 set -uo pipefail
 
@@ -92,6 +103,7 @@ COOLDOWN_SEC="${CHUMP_NBA_COOLDOWN_SEC:-1800}"
 HEAL_RELAPSE_SEC="${CHUMP_NBA_HEAL_RELAPSE_SEC:-3600}"
 MAX_AGE_SEC="${CHUMP_NBA_MAX_AGE_SEC:-3600}"
 NODE="$(hostname -s 2>/dev/null || hostname 2>/dev/null || echo unknown)"
+CHUMP_BIN="${CHUMP_BIN:-chump}"
 
 DRY_RUN=0
 [[ "${1:-}" == "--dry-run" || "${CHUMP_NBA_DISPATCH_DRY_RUN:-0}" == "1" ]] && DRY_RUN=1
@@ -330,6 +342,43 @@ case "$ACTION" in
     # benign no-op: CI is running; the correct move is to do nothing and let it
     # settle. Recorded for the heartbeat, zero side effect.
     dispatched "no-op — CI is running on $TARGET; nothing to do but let it settle"
+    ;;
+
+  predicted_breakage)
+    # EFFECTIVE-510 slice: the safe reversible action for a predicted breakage
+    # is to ESCALATE, not to touch anything. Auto-file a P0 incident gap so a
+    # human/worker triages before the breakage lands. This is dispatch/escalate,
+    # not a code fix — filing a gap creates no config, merges nothing, and is
+    # trivially reversible (close the gap).
+    if [[ -z "$TARGET" ]]; then defer "predicted_breakage with empty target"; exit 0; fi
+    if ! command -v "$CHUMP_BIN" >/dev/null 2>&1; then
+      defer "no chump binary on this node ($NODE) — cannot auto-file P0 incident for predicted breakage on $TARGET"
+      exit 0
+    fi
+    TITLE="INFRA-NEW-PREDICTED-BREAKAGE: ${TARGET}"
+    DESC="nba-dispatch-beat auto-escalation (EFFECTIVE-510 slice): the next-best-action producer predicted a breakage.
+Target: ${TARGET}
+Why: ${WHY}
+Expected value: ${EV}  P(success of the underlying bet): ${P}
+Detected at: ${TS}  node: ${NODE}
+
+Triage: confirm the predicted breakage, then either head it off before it lands or close this gap as a false positive."
+    if [[ "$DRY_RUN" == "1" ]]; then
+      log "(dry-run) would: $CHUMP_BIN gap reserve --domain INFRA --priority P0 --title \"$TITLE\" --no-outcome-required"
+      dispatched "(dry-run) would auto-file P0 incident for predicted breakage on $TARGET"
+      exit 0
+    fi
+    RESERVE_OUT="$("$CHUMP_BIN" gap reserve --domain INFRA --priority P0 --title "$TITLE" \
+      --description "$DESC" --effort xs --no-outcome-required 2>&1)"
+    GAP_ID="$(printf '%s\n' "$RESERVE_OUT" | tail -1 | tr -d '[:space:]')"
+    if [[ "$GAP_ID" =~ ^[A-Z]+-[0-9]+$ ]]; then
+      dispatched "auto-filed P0 incident $GAP_ID for predicted breakage on $TARGET (escalated, not touched)"
+    else
+      record_needs_human "$ACTION" "$TARGET" "$EV" "$P" "$WHY" "$NEED" \
+        "auto-file of P0 incident for predicted breakage on $TARGET FAILED — needs a human. reserve output: $RESERVE_OUT"
+      emit nba_deferred_to_human action="$ACTION" target="$TARGET" reason="reserve_failed" node="$NODE"
+      write_state "$SIG" "$HEALS"
+    fi
     ;;
 
   *)

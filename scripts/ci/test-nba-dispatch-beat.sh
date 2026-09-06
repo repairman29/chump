@@ -78,6 +78,26 @@ FAILED_UNITS_FILE="$TMP/failed_units.txt"
 CALL_LOG="$TMP/calls.log"
 touch "$FAILED_UNITS_FILE"
 
+# stub chump: records `gap reserve` invocations to $RESERVE_LOG and prints a
+# fake gap ID, mirroring the mock pattern in test-bounced-pr-detector.sh.
+# CHUMP_FAIL_RESERVE=1 makes it fail (no gap ID) to exercise the failure path.
+CHUMP_STUB="$TMP/chump-stub"
+cat > "$CHUMP_STUB" <<'CMOCK'
+#!/usr/bin/env bash
+if [[ "$1" == "gap" && "$2" == "reserve" ]]; then
+    echo "$@" >> "$RESERVE_LOG"
+    if [[ "${CHUMP_FAIL_RESERVE:-0}" == "1" ]]; then
+        echo "reserve failed: similarity block" >&2
+        exit 1
+    fi
+    echo "INFRA-$(date +%s)"
+    exit 0
+fi
+exit 0
+CMOCK
+chmod +x "$CHUMP_STUB"
+RESERVE_LOG="$TMP/reserve.log"
+
 run_beat() {  # extra env assignments are read via caller-exported vars
     # CHUMP_AMBIENT_SCHEMA_CHECK=0: nba_dispatched / nba_deferred_to_human /
     # nba_dispatch_skipped are not yet registered in docs/ambient-schema.json's
@@ -100,6 +120,9 @@ run_beat() {  # extra env assignments are read via caller-exported vars
     CHUMP_NBA_HEAL_RELAPSE_SEC="${RELAPSE_SEC:-3600}" \
     CHUMP_NBA_MAX_AGE_SEC="${MAX_AGE_SEC:-3600}" \
     CHUMP_NBA_FLEET_PAUSE_FILE="${PAUSE_FILE:-$TMP/no-such-pause-file}" \
+    CHUMP_BIN="$CHUMP_STUB" \
+    RESERVE_LOG="$RESERVE_LOG" \
+    CHUMP_FAIL_RESERVE="${CHUMP_FAIL_RESERVE:-0}" \
     bash "$BEAT" 2>&1
 }
 
@@ -215,5 +238,35 @@ grep -q '"kind":"nba_dispatched"' "$AMBIENT" \
     && fail "stale producer board must NEVER be acted on; ambient: $(cat "$AMBIENT")"
 pass "5: stale-input guard — a producer board older than CHUMP_NBA_MAX_AGE_SEC is refused, never acted on"
 MAX_AGE_SEC=""
+
+# ── 6. predicted_breakage (EFFECTIVE-510 slice): auto-files a P0 incident,
+#       never touches anything ────────────────────────────────────────────
+NBA_FILE="$TMP/nba-6.json"; STATE_FILE="$TMP/state-6.json"
+write_nba "predicted_breakage" "worker-farm-3"
+: > "$AMBIENT"; : > "$RESERVE_LOG"
+out="$(run_beat)"
+echo "$out" | grep -q "DISPATCHED" || fail "predicted_breakage should dispatch (escalate); got: $out"
+grep -q '"kind":"nba_dispatched"' "$AMBIENT" \
+    || fail "expected nba_dispatched for predicted_breakage; got: $(cat "$AMBIENT")"
+grep -q "reserve.*--priority P0" "$RESERVE_LOG" \
+    || fail "expected a P0 gap reserve call for predicted_breakage; reserve.log: $(cat "$RESERVE_LOG")"
+grep -q "worker-farm-3" "$RESERVE_LOG" \
+    || fail "expected the reserved P0 title to reference the predicted-breakage target; reserve.log: $(cat "$RESERVE_LOG")"
+grep -qE "reset-failed|^start " "$CALL_LOG" \
+    && fail "predicted_breakage must never touch systemd units — it only escalates; calls: $(cat "$CALL_LOG")"
+pass "6a: predicted_breakage — auto-files a P0 incident (dispatch/escalate), never mutates any organ"
+
+# ── 6b. predicted_breakage: a failed gap-reserve call defers to the human ────
+NBA_FILE="$TMP/nba-6b.json"; STATE_FILE="$TMP/state-6b.json"
+write_nba "predicted_breakage" "worker-farm-9"
+: > "$AMBIENT"; : > "$RESERVE_LOG"
+CHUMP_FAIL_RESERVE=1
+out="$(run_beat)"
+CHUMP_FAIL_RESERVE=0
+grep -q '"kind":"nba_deferred_to_human"' "$AMBIENT" \
+    || fail "expected nba_deferred_to_human when P0 reserve fails; got: $(cat "$AMBIENT")"
+grep -q '"kind":"nba_dispatched"' "$AMBIENT" \
+    && fail "a failed P0 reserve must not also be reported as dispatched; ambient: $(cat "$AMBIENT")"
+pass "6b: predicted_breakage — a failed gap-reserve call defers to the human instead of silently swallowing it"
 
 echo "ALL PASS"
