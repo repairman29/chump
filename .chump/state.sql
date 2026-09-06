@@ -4563,7 +4563,7 @@ gaps:
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-787, CREDIBLE-788, CREDIBLE-789, CREDIBLE-790
+    Decomposed into 4 slices: CREDIBLE-945, CREDIBLE-946, CREDIBLE-947, CREDIBLE-948
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -9506,10 +9506,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update the `classify_probe_error` function in `scripts/dispatch/run-fleet.sh` to inspect both the HTTP status code and the JSON error payload returned by the Anthropic API, mapping them to four distinct failure classes: `auth` (401 invalid‑API‑key), `credit` (credit‑balance‑too‑low errors), `rate-limit` (429 rate‑limit responses), and `network` (curl non‑zero exit or no HTTP response). The function will now emit one of these class strings instead of a generic error.
+    
+    Target file(s):
+    - scripts/dispatch/run-fleet.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - INFRA-621 probe parses error body and HTTP status code from Anthropic API responses.
-    - Distinguishes 'credit balance too low' / credit exhaustion errors from 401 invalid API keys, 429 rate limits, and network errors.
-    - Unit or integration tests verify classification logic for each error payload variant.
+    - "In `scripts/dispatch/run-fleet.sh`, invoking `classify_probe_error` with a simulated 401 response containing `{\"type\":\"invalid_request_error\",\"message\":\"Invalid API key\"}` returns the string `auth`."
+    - "In `scripts/dispatch/run-fleet.sh`, invoking `classify_probe_error` with a simulated 429 response containing `{\"type\":\"rate_limit_error\",\"message\":\"Rate limit exceeded\"}` returns the string `rate-limit`."
+    - "In `scripts/dispatch/run-fleet.sh`, invoking `classify_probe_error` with a simulated 400 response containing `{\"type\":\"insufficient_credits\",\"message\":\"Credit balance too low\"}` returns the string `credit`."
+    - In `scripts/dispatch/run-fleet.sh`, when the underlying `curl` command exits with a non‑zero status (network failure), `classify_probe_error` returns the string `network`.
   notes: |
     [chump harvest check 'run-fleet']
     === primitives_index match for 'run-fleet' ===
@@ -23772,6 +23780,8 @@ gaps:
     
     === cross-pollination briefs mentioning 'merging' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+    [2026-09-06T09:07:07Z] EFFECTIVE-441: escalated required_model -> opus after 3 consecutive unverified_ship attempts
+  required_model: opus
 
 - id: CREDIBLE-930
   domain: CREDIBLE
@@ -24180,6 +24190,59 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-945
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CI grep‑target sweep (probe c) (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A script scans all files under scripts/ci for grep commands and extracts the target path or symbol.
+    - For each extracted target, the script checks that the file or symbol exists in the repository at HEAD.
+    - The script outputs a JSON report containing the total number of missing targets and a list of each missing target with its source file and line number.
+    - The script exits with status 0 regardless of findings (no CI failure).
+    - The script can be executed locally and via CI without additional dependencies.
+
+- id: CREDIBLE-946
+  domain: CREDIBLE
+  title: "CREDIBLE: Add scheduled execution of the CI grep‑target sweep (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The sweep script from slice 0 is registered as a launchd/plist job (or equivalent cron) to run daily on the CI runner host.
+    - Execution logs are written to a known location and rotated weekly.
+    - A successful run produces the same JSON report as a manual run.
+    - If the scheduled job fails to start, an alert is written to the system log.
+  depends_on: [CREDIBLE-945]
+
+- id: CREDIBLE-947
+  domain: CREDIBLE
+  title: "CREDIBLE: Create non‑blocking report of suspected dead instruments (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The JSON report from the sweep is transformed into a human‑readable markdown file stored as an artifact of the CI run.
+    - "The report is posted to the #rot‑detector channel (or equivalent) without marking the CI job as failed."
+    - "Each entry includes: source file, line number, missing target, and a suggested triage action."
+    - False‑positive entries are clearly marked as “requires verification”.
+  depends_on: [CREDIBLE-945, CREDIBLE-946]
+
+- id: CREDIBLE-948
+  domain: CREDIBLE
+  title: "CREDIBLE: Extend sweep to additional probes (a, b, d) (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Probe a: Detect every launchd/plist job declared in scripts/launchd or ~/Library/LaunchAgents that has zero running processes and add them to the report."
+    - "Probe b: Parse all toml/config files for entries with enabled=true and verify the corresponding daemon process is running; missing daemons are reported."
+    - "Probe d: List all apt/brew‑installed tools and flag any that are not referenced by any script, environment variable, or configuration file."
+    - All new findings are merged into the same JSON and markdown reports generated by slices 0‑3.
+    - The extended sweep runs within the same scheduled job and still exits with status 0.
+  depends_on: [CREDIBLE-945]
 
 - id: DOC-031
   domain: DOC
@@ -144742,7 +144805,7 @@ gaps:
 - id: INFRA-4961
   domain: INFRA
   title: "INFRA: Extend lease format and parsing for region-level locks (INFRA-1689 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -144772,6 +144835,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-06T09:12:51Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4962
   domain: INFRA
@@ -144918,7 +144982,7 @@ gaps:
 - id: INFRA-4966
   domain: INFRA
   title: "INFRA: Add inventory self‑registration infrastructure (INFRA-1748 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -144949,6 +145013,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-06T09:13:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4967
   domain: INFRA
