@@ -4750,7 +4750,7 @@ gaps:
     - chump gap decompose PRESERVES author-provided acceptance_criteria as the fixed done-definition (the WHAT) and only generates the implementation sub-steps (the HOW); never overwrites authored AC
     - "CI smoke test proves: (a) reserve P1 without AC is refused, (b) with it the AC is stored verbatim, (c) decompose leaves authored AC unchanged"
   notes: |
-    Decomposed into 3 slices: CREDIBLE-798, CREDIBLE-799, CREDIBLE-800
+    Decomposed into 3 slices: CREDIBLE-956, CREDIBLE-957, CREDIBLE-958
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
@@ -12062,9 +12062,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Edit `scripts/ci/test-ci-health-gate.sh` to invoke the new `CREDIBLE-129` regression test binary during the health‑gate phase, capture its exit code, and call the existing `fail` function (defined at line 22) if the test returns a non‑zero status, otherwise log a success message.
+    
+    Target file(s):
+    - scripts/ci/test-ci-health-gate.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CI pipeline executes CREDIBLE-444 integration test on every push
-    - Pipeline fails if the test does not pass
+    - Running `scripts/ci/test-ci-health-gate.sh` on a push prints the line `Running CREDIBLE-129 regression test` before executing the test binary.
+    - If the `CREDIBLE-129` test exits with a non‑zero code, the script calls the `fail` function (line 22) and the script exits with status 1.
+    - When the `CREDIBLE-129` test exits with code 0, the script logs `CREDIBLE-129 regression test passed` and continues without invoking `fail`.
+    - The CI pipeline reports a failure for any push where the `CREDIBLE-129` test fails, confirming the new test is part of the mandatory CI gate.
   depends_on: [CREDIBLE-526]
   notes: |
     [chump harvest check 'fleet-brief']
@@ -24461,6 +24470,107 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-956
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement acceptance‑criteria enforcement for P0/P1 with --no‑ac‑required bypass (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Reserve command refuses to create a P0 or P1 gap when no --acceptance-criteria argument is supplied.
+    - When --acceptance-criteria is supplied, the value is stored verbatim on the gap record.
+    - The new flag --no-ac-required allows creation of P0/P1 gaps without AC and records an audit‑trailer entry indicating the bypass.
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-957
+  domain: CREDIBLE
+  title: "CREDIBLE: Remove tautological placeholder auto‑fill for unauthored gaps (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Unauthored gaps are created with an EMPTY acceptance_criteria field rather than a placeholder string.
+    - The system no longer auto‑populates a fake‑pass placeholder for missing AC.
+    - Audit‑ac tool flags gaps with empty acceptance_criteria as missing and reports them.
+  depends_on: [CREDIBLE-956]
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-958
+  domain: CREDIBLE
+  title: "CREDIBLE: Preserve authored acceptance criteria during gap decomposition (CREDIBLE-284 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Decompose operation leaves the original acceptance_criteria unchanged on the parent gap.
+    - Only implementation sub‑steps (the HOW) are generated; they never overwrite the stored AC.
+    - "CI smoke test confirms: (a) reserve P1 without AC is refused, (b) with AC the stored value matches the input verbatim, (c) after decomposition the AC remains identical."
+  depends_on: [CREDIBLE-957]
+  notes: |
+    [chump harvest check 'reserve']
+    === primitives_index match for 'reserve' ===
+    
+    === cluster keyword match for 'reserve' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'reserve' ===
+    
+    === repo-description match for 'reserve' ===
+    
+    === HARVEST_ROADMAP.md mention of 'reserve' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'reserve' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
