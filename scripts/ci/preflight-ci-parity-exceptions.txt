@@ -403,3 +403,6 @@ test-rescue-class-cites-procedure.sh   # reason: META-249 — reads the live PR 
 
 # ── INFRA-3836: aarch64 fleet-binary vendored-openssl regression guard ─
 test-fleet-binary-aarch64-openssl-vendored.sh   # reason: INFRA-3836 — static grep/awk check that Cargo.toml still pins vendored openssl for the aarch64-linux cross target and build-fleet-binaries.yml still installs gcc-aarch64-linux-gnu (guards the 2026-08-24 deploy-freeze regression). Mirrorable (no network/build dependency); allowlisted here pending a preflight.rs mirror follow-up rather than blocking this PR on it.
+
+# ── RESILIENT-1038: fleet-binary glibc floor regression guard ─
+test-fleet-binary-glibc-floor.sh   # reason: RESILIENT-1038 — static grep check that build-fleet-binaries.yml pins an explicit ubuntu-NN.NN runner instead of the rolling ubuntu-latest alias (whose climbing glibc floor broke node-refresh-chump.sh's artifact-pull on older-glibc fleet nodes). Mirrorable (no network/build dependency); allowlisted here pending a preflight.rs mirror follow-up rather than blocking this PR on it.
