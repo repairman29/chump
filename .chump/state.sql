@@ -21409,9 +21409,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Update routing policy evaluation in crates/chump-orchestrator/src/routing.rs and resolve_for_gap in crates/chump-orchestrator/src/dispatch.rs to select model tier X when gap effort level is less than or equal to s for target language Y, adhering to slice 7 and 8 routing data rules.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/routing.rs
+    - crates/chump-orchestrator/src/dispatch.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Policy rules are expressed in the format required by EFFECTIVE‑409
-    - Rules are based on data from slices 7 and 8
+    - Routing logic in crates/chump-orchestrator/src/routing.rs selects tier X when gap effort level is less than or equal to s for target language Y.
+    - Function resolve_for_gap in crates/chump-orchestrator/src/dispatch.rs returns the expected tier selection based on language and effort inputs.
+    - Executing `cargo test -p chump-orchestrator` passes with unit tests covering language and effort tier policy routing.
   depends_on: [CREDIBLE-852, CREDIBLE-853]
   notes: |
     [chump harvest check 'inference']
@@ -23393,9 +23402,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend scripts/ci/test-pre-push-test-gate.sh to add a CI trigger and status verification helper function that polls for pipeline completion within a configurable timeout period and records whether the status reaches green.
+    
+    Target file(s):
+    - scripts/ci/test-pre-push-test-gate.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The PR automatically triggers the project's CI pipeline.
-    - The harness records whether the CI status ends as 'green' within a configurable timeout.
+    - Executing `scripts/ci/test-pre-push-test-gate.sh` invokes `run_hook` and asserts that the CI pipeline trigger and status check complete successfully.
+    - The script records and outputs 'green' status when the CI pipeline finishes cleanly within `CI_TIMEOUT_SECONDS`.
+    - The script outputs a failure error and exits non-zero if the CI status check times out or fails to achieve a green state.
   depends_on: [CREDIBLE-919]
   notes: |
     [chump harvest check 'inference']
@@ -23422,9 +23439,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Update check_merge_gate in src/fleet_tool.rs to perform automated PR merging using the project merge strategy when CI status is green, logging the merge outcome and target commit information.
+    
+    Target file(s):
+    - src/fleet_tool.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If CI is green, the harness merges the PR using the project's merge strategy.
-    - Merge result is logged and the target branch contains the new commit.
+    - check_merge_gate in src/fleet_tool.rs logs the merge execution result and returns success when CI checks pass.
+    - check_merge_gate skips merging and logs the gate failure reason when CI checks are not green.
+    - cargo test passes for the merge gate test suite in src/fleet_tool.rs.
   depends_on: [CREDIBLE-920]
   notes: |
     [chump harvest check 'inference']
@@ -69926,7 +69951,7 @@ gaps:
     - Migration shipped in 3-4 PRs (not one mega-PR), each ≤800 LOC of CSS moved
   depends_on: [INFRA-1591]
   notes: |
-    Decomposed into 4 slices: INFRA-4663, INFRA-4664, INFRA-4665, INFRA-4666
+    Decomposed into 4 slices: INFRA-4946, INFRA-4947, INFRA-4948, INFRA-4949
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -144138,6 +144163,118 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-4946
+  domain: INFRA
+  title: "INFRA: Migrate core card and timeline component CSS into shadow DOMs (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for <chump-cost-meter>, <chump-pr-card>, <chump-workflow-timeline>, <chump-status-footer>, and <chump-tool-approval-tray> is removed from web/v2/index.html and encapsulated in web/v2/cost-meter.js, web/v2/pr-card.js, web/v2/workflow-timeline.js, and web/v2/cockpit.js
+    - Any PRODUCT-/INFRA- ticket comments from index.html CSS are preserved as JSDoc above ChumpCostMeter, ChumpPrCard, ChumpWorkflowTimeline, and ChumpViewCockpit class definitions
+    - Visual snapshot tests pass with zero pixel delta at 375px, 768px, and 1440px viewports
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4947
+  domain: INFRA
+  title: "INFRA: Migrate wizard, overlay, and utility component CSS into shadow DOMs (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for <chump-first-run-wizard>, ChumpMenu, config-dials, repo-switcher, doctor-banner, auth-toast, and ambient-viewer is moved from web/v2/index.html into their respective JS files
+    - PRODUCT-/INFRA- ticket comments are preserved as JSDoc above corresponding component classes
+    - DevTools Computed Styles show no regression for migrated elements at 375px, 768px, and 1440px
+  depends_on: [INFRA-4946]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4948
+  domain: INFRA
+  title: "INFRA: Migrate per-view CSS rules into view component custom elements (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Per-view CSS rules (.task-list, .gap-list, .agents-list) are moved from web/v2/index.html into corresponding custom elements in web/v2/app.js
+    - PRODUCT-/INFRA- ticket comments are preserved as JSDoc above view custom element class definitions
+    - Visual snapshot tests pass across all view routes without baseline updates
+  depends_on: [INFRA-4947]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-4949
+  domain: INFRA
+  title: "INFRA: Enforce ≤300 LOC index.html style block and verify cross-cutting tokens (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - web/v2/index.html <style> block is reduced to ≤300 LOC
+    - "web/v2/index.html <style> contains ONLY :root tokens, theme overrides, reset rules, body/header/footer/nav shell layout grid, and cross-cutting toasts/banners"
+    - Every chump-* element visual style resides in its component JS file (shadow DOM <style> or constructed stylesheet)
+    - Visual snapshot suite passes with zero pixel-delta and zero computed style regression across 375px, 768px, and 1440px viewports
+  depends_on: [INFRA-4948]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: INFRA-514
   domain: INFRA
