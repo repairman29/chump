@@ -2399,6 +2399,34 @@ events:
     effect_metric: self
     emitter: scripts/ops/ci-qa-score.sh (INFRA-1872)
     trigger: CHUMP_CI_QA_SCORE=0 silences the daily score
+
+  - kind: audit_orphan_landed
+    effect_metric: self
+    emitter: "TBD — planned emitter slice of INFRA-1861 (detects a new
+      register-without-emit entry landing in
+      scripts/ci/event-registry-reserved.txt on main). Reserved here so
+      the listener consumer below has a stable contract to build against;
+      allowlisted as register-without-emit in
+      scripts/ci/event-registry-reserved.txt until the emitter slice lands."
+    trigger: a new orphan-allowlist entry appears on main
+    consumers: [scripts/coord/audit-orphan-auto-pruner-listener.sh]
+    fields_required: [ts, kind, entry, file]
+
+  - kind: audit_orphan_recorded
+    effect_metric: self
+    emitter: scripts/coord/audit-orphan-auto-pruner-listener.sh (INFRA-5121 / parent INFRA-1861 slice)
+    trigger: audit_orphan_landed event consumed — orphan appended to .chump-locks/audit-orphan-pruner-log.jsonl
+    consumers: [audit-log]
+    fields_required: [ts, kind, entry, file]
+
+  - kind: audit_orphan_rescue_triggered
+    effect_metric: self
+    emitter: scripts/coord/audit-orphan-auto-pruner-listener.sh (INFRA-5121 / parent INFRA-1861 slice)
+    trigger: after recording an orphan, the listener launches
+      scripts/coord/pr-failure-auto-rescue.sh so a batch-allowlist PR opens
+      within the daemon's normal cadence (INFRA-1861 AC target 5 min)
+    consumers: [audit-log]
+    fields_required: [ts, kind, entry]
     consumers: [audit-log]
 
   - kind: flake_rerun

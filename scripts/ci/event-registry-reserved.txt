@@ -886,3 +886,6 @@ halt_predicate_timeout  # reason: CREDIBLE-622 — same as halt_predicate_succes
 
 # ── CREDIBLE-108: halt-class-emit wrapper observability doc ────────────────
 halt_class_emit  # reason: CREDIBLE-108 — emitted by scripts/lib/halt-class-emit.sh::halt_class_emit as a literal "kind":"halt_class_emit", but scripts/lib/ is outside the coverage scanner's PROD_PATHS (same structural gap as halt_predicate_* above). A scanner-anchor comment is present at the top of the file. Registered in EVENT_REGISTRY.yaml + documented in docs/process/HALT_CLASS_EMIT_OBSERVABILITY.md; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan.
+
+# ── INFRA-5121: audit-allowlist auto-pruner listener (INFRA-1861 slice) ────
+audit_orphan_landed  # reason: INFRA-5121 — planned event, no production emitter yet. Fires when a new register-without-emit entry lands in this very allowlist on main; the emitter is a separate future INFRA-1861 slice. Registered in EVENT_REGISTRY.yaml with the listener (scripts/coord/audit-orphan-auto-pruner-listener.sh) as documented consumer; reserved here so the coverage gate's register-without-emit check doesn't flag it as an orphan before the emitter slice lands.
