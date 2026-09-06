@@ -67,7 +67,10 @@ source "$_NODE_REFRESH_DIR/../coord/lib/github.sh" 2>/dev/null || true
 # RESILIENT-1041: halt-class signal on the two silent-degradation paths this
 # script can take when gh is present but not authenticated (unauthed gh in a
 # systemd --user timer env, with no interactive login and no GH_TOKEN export —
-# see RESILIENT-1040, still unshipped). Both _find_green_main_sha and
+# fixed below by the RESILIENT-1043 (tracking RESILIENT-1040's root-cause fix,
+# shipped in #4484) GH_TOKEN-from-providers.env export, so this halt-class
+# signal now only fires when providers.env itself is missing/empty). Both
+# _find_green_main_sha and
 # _try_artifact_pull/_find_build_artifact_sha look like a plain "no data
 # found" to this script, which previously only recorded a soft ambient emit —
 # nothing paged, so red-main-reaches-a-live-node and a 30-min cold build on a
