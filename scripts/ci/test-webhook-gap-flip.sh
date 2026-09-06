@@ -98,6 +98,13 @@ pr_closes = {"number": 9996, "merged": True,
              "head": {"ref": "chump/some-slug-claim"}}
 print("closes_trailer_flip_count=%d" % mod._auto_flip_gaps_done(pr_closes, {"action": "closed", "pull_request": pr_closes}))
 
+# merged PR with an explicit Fixes: trailer -> flips (CREDIBLE-929)
+pr_fixes = {"number": 9995, "merged": True,
+            "title": "fix: unrelated title",
+            "body": "Some prose mentioning MISSION-9007 in passing.\n\nFixes: MISSION-9006",
+            "head": {"ref": "chump/some-other-slug-claim"}}
+print("fixes_trailer_flip_count=%d" % mod._auto_flip_gaps_done(pr_fixes, {"action": "closed", "pull_request": pr_fixes}))
+
 # closed-UNMERGED PR — must NOT flip
 pr2 = {"number": 9998, "merged": False,
        "title": "fix(MISSION-9002): x", "body": "Gap: MISSION-9002",
@@ -117,6 +124,12 @@ grep -q 'gap ship MISSION-9004 --closed-pr 9996' "$CHUMP_STUB_CALLS" \
 grep -q 'MISSION-9005' "$CHUMP_STUB_CALLS" \
   && fail "prose mention alongside a Closes: trailer wrongly flipped MISSION-9005" \
   || ok "prose mention beside a Closes: trailer did NOT flip"
+grep -q 'gap ship MISSION-9006 --closed-pr 9995' "$CHUMP_STUB_CALLS" \
+  && ok "explicit Fixes: trailer flipped MISSION-9006 -> done via gap ship" \
+  || fail "Fixes: trailer flip call wrong/missing. calls: [$(tr '\n' '|' <"$CHUMP_STUB_CALLS")]"
+grep -q 'MISSION-9007' "$CHUMP_STUB_CALLS" \
+  && fail "prose mention alongside a Fixes: trailer wrongly flipped MISSION-9007" \
+  || ok "prose mention beside a Fixes: trailer did NOT flip"
 grep -q 'MISSION-9002' "$CHUMP_STUB_CALLS" \
   && fail "closed-UNMERGED PR wrongly flipped MISSION-9002" \
   || ok "closed-unmerged PR did NOT flip (no regression)"

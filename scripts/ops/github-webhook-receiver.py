@@ -227,17 +227,20 @@ def _extract_gap_ids_for_closure(pr: dict) -> list[str]:
     Two signals only, both opt-in by construction:
       1. PR TITLE — gap IDs named in the title are the PR's stated intent
          (the convention every ship already follows: "GAP-ID: short title").
-      2. Explicit `Closes: ID[, ID2, ...]` trailer, one per line, anywhere in
-         the body — an explicit author assertion, not an incidental mention.
+      2. Explicit `Closes:` or `Fixes:` trailer, one per line, anywhere in
+         the body — an explicit author assertion, not an incidental mention
+         (CREDIBLE-929: GitHub itself treats `Fixes:` as a closure keyword
+         alongside `Closes:`, so both are honored here).
 
-    Body text OUTSIDE a `Closes:` trailer is never scanned. Cross-references
-    remain free-form prose (nothing to change about how authors write ACs or
-    handoff docs) — they just no longer double as a closure signal.
+    Body text OUTSIDE a `Closes:`/`Fixes:` trailer is never scanned.
+    Cross-references remain free-form prose (nothing to change about how
+    authors write ACs or handoff docs) — they just no longer double as a
+    closure signal.
     """
     import re
 
     pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
-    closes_pattern = re.compile(r"(?im)^closes:\s*(.+)$")
+    closes_pattern = re.compile(r"(?im)^(?:closes|fixes):\s*(.+)$")
 
     seen: set[str] = set()
     ordered: list[str] = []
