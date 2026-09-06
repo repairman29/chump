@@ -229,4 +229,40 @@ grep -q '"kind":"halt_class_emit".*"name":"node-refresh-cold-build".*"status":"f
     || fail "cold-build fallback did NOT emit a halt-class signal (RESILIENT-1041): $(cat "$AMBIENT")"
 ok "cold-build-revert emits a halt-class signal (RESILIENT-1041)"
 
+# ── Test 5 (RESILIENT-1041 fix a): explicit gh-auth precondition ────────────
+# Test 4 proves the two DOWNSTREAM fallbacks (green-lookup, cold-build) still
+# fire when gh is unauthenticated. This test proves the NEW up-front
+# diagnosis: node-refresh-chump.sh checks `gh auth status` before doing
+# anything else and emits a distinctly-named halt-class signal
+# (node-refresh-gh-auth) that names the root cause directly, instead of
+# leaving the operator to infer "unauthenticated gh" from two generic-looking
+# fallback events. Fails without the fix: pre-change node-refresh-chump.sh had
+# no _check_gh_auth_precondition, so this event would never appear.
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+case "$1" in
+  auth) exit 1 ;;
+  *) echo "gh: To use GitHub CLI in this environment, run 'gh auth login' or set GH_TOKEN." >&2; exit 1 ;;
+esac
+EOF
+chmod +x "$TMP/bin/gh"
+rm -f "$TMP/cargo-calls.log"
+: > "$AMBIENT"
+git -C "$MIRROR" checkout -q -B main "$GREEN_SHA"
+
+env CHUMP_NODE_BIN="$TMP/installed-chump5" \
+CHUMP_NODE_REPO="$MIRROR" \
+CHUMP_NODE_TARGET="$TARGET" \
+NODE_AMBIENT="$AMBIENT" \
+CHUMP_NODE_REFRESH_LOGDIR="$TMP/logs5" \
+HOME="$FAKEHOME" \
+PATH="$TMP/bin:/usr/bin:/bin" \
+    bash "$SCRIPT" > "$TMP/out5.log" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] || fail "gh-auth-precondition run exited $rc: $(cat "$TMP/out5.log")"
+
+grep -q '"kind":"halt_class_emit".*"name":"node-refresh-gh-auth".*"status":"failure"' "$AMBIENT" \
+    || fail "gh-auth precondition did NOT emit its own halt-class signal (RESILIENT-1041 fix a): $(cat "$AMBIENT")"
+ok "unauthenticated gh emits an explicit node-refresh-gh-auth halt-class signal up front"
+
 exit 0

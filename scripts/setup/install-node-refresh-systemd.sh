@@ -82,6 +82,14 @@ mkdir -p "$UNIT_DIR"
     echo "TimeoutStartSec=2700"
     [[ -n "${CHUMP_NODE_REPO:-}" ]] && echo "Environment=CHUMP_NODE_REPO=${CHUMP_NODE_REPO}"
     [[ -n "${CHUMP_NODE_BIN:-}" ]]  && echo "Environment=CHUMP_NODE_BIN=${CHUMP_NODE_BIN}"
+    # RESILIENT-1041 (fix a): a systemd --user timer starts with NO login
+    # session and therefore no `gh auth login` state — the node-refresh script
+    # can only see a real GH_TOKEN if this unit exports one. Bake in whatever
+    # GH_TOKEN the *installing* environment has (operator's shell / bootstrap
+    # secret), so the timer's `gh` calls are authenticated from the first run
+    # instead of silently degrading to the raw-HEAD-fallback / cold-build
+    # halt-class paths every single cycle.
+    [[ -n "${GH_TOKEN:-}" ]] && echo "Environment=GH_TOKEN=${GH_TOKEN}"
     echo "ExecStart=/usr/bin/env bash ${SCRIPT_SRC}"
     echo "Nice=10"
 } > "$UNIT_DIR/chump-node-refresh.service"

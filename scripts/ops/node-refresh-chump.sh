@@ -398,6 +398,29 @@ if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
 fi
 cd "$REPO_ROOT" || { log "FATAL: cannot cd $REPO_ROOT"; emit node_binary_refresh_failed "\"reason\":\"cwd_failed\""; exit 1; }
 
+# --- RESILIENT-1041 (fix a): gh-auth precondition ---------------------------
+# A gh binary that's present but unauthenticated (no GH_TOKEN, no `gh auth
+# login` — the exact state a headless systemd --user timer starts in unless
+# the unit exports GH_TOKEN) is indistinguishable, deep inside
+# _find_green_main_sha / _find_build_artifact_sha, from "main genuinely never
+# went green" — both just come back empty and get diagnosed by their generic
+# halt-class names below. Checking auth ONCE up front names the actual root
+# cause instead of making the operator infer it from two unrelated-looking
+# downstream fallbacks. Best-effort only: it does not change control flow —
+# RESILIENT-327's raw-HEAD fallback and the artifact-pull miss path already
+# cover "gh answered nothing" regardless of why, so this only sharpens the
+# diagnosis, never blocks the refresh.
+_check_gh_auth_precondition() {
+    command -v gh >/dev/null 2>&1 || return 0
+    if ! gh auth status >/dev/null 2>&1; then
+        log "WARN: gh present but not authenticated (gh auth status failed) — green-lookup and artifact-pull will both fall back"
+        _node_refresh_halt_class "node-refresh-gh-auth" \
+            "gh is on PATH but 'gh auth status' failed (no GH_TOKEN / no gh auth login in this timer env) — green-lookup and artifact-pull will both degrade to their fallback paths" \
+            "{\"node_repo\":\"$REPO_ROOT\"}"
+    fi
+}
+_check_gh_auth_precondition
+
 # --- fetch + advance the mirror to the last-GREEN main, not raw HEAD --------
 # These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to the
 # green pointer is the correct "make current" operation. If a node ever grows
