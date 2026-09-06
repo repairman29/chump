@@ -337,20 +337,25 @@ acquire_creds() {
     fi
   fi
 
-  info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
   local oauth_token=""
   if command -v claude >/dev/null 2>&1; then
-    oauth_token="$(claude setup-token 2>/dev/null)" || {
-      no "claude setup-token failed"
-      return 1
-    }
+    info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
+    oauth_token="$(claude setup-token 2>/dev/null)" || true
+    [ -z "$oauth_token" ] && no "claude setup-token failed or returned empty — falling back to manual entry"
   else
-    no "claude CLI not found — install Claude Code CLI first, then re-run"
-    return 1
+    no "claude CLI not found — falling back to manual entry"
   fi
 
   if [ -z "$oauth_token" ]; then
-    no "claude setup-token returned empty token"
+    printf 'Paste your CLAUDE_CODE_OAUTH_TOKEN (will not echo): '
+    stty -echo 2>/dev/null
+    read -r oauth_token
+    stty echo 2>/dev/null
+    printf '\n'
+  fi
+
+  if [ -z "$oauth_token" ]; then
+    no "empty CLAUDE_CODE_OAUTH_TOKEN — aborting"
     return 1
   fi
 
