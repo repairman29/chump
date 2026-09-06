@@ -2,6 +2,10 @@
 
 > Canonical policy for how the Chump fleet handles stale PRs.
 > Gap: INFRA-2295. Last updated: 2026-05-30.
+>
+> For the joint alive/dead boundary shared by the reopener and the reaper
+> (gap-open AND branch-mergeable/rebaseable), see
+> [`PR_LIFECYCLE_POLICY.md`](./PR_LIFECYCLE_POLICY.md) (INFRA-5032).
 
 ## The problem
 
