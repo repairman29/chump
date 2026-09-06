@@ -886,6 +886,12 @@ jobs:
       - name: cargo fmt
         run: cargo fmt --all -- --check
 
+      - name: max-loc lint (INFRA-4875, INFRA-1965 slice)
+        # Fails if any .rs file exceeds 500 lines and isn't on the allowlist.
+        # Pre-existing over-limit files are grandfathered in
+        # scripts/ci/max-loc-allowlist.txt; new files must stay under.
+        run: bash scripts/ci/max-loc-lint.sh
+
       - name: doc-freshness audit (DOC-041, warn-only)
         # WARN-ONLY by default — surfaces stale last_audited stamps without
         # blocking. Promote to --strict once the long-tail cleanup is done.
