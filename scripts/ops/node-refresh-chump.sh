@@ -64,6 +64,16 @@ set -uo pipefail
 _NODE_REFRESH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../coord/lib/github.sh
 source "$_NODE_REFRESH_DIR/../coord/lib/github.sh" 2>/dev/null || true
+# RESILIENT-1041: halt-class signal on the two silent-degradation paths this
+# script can take when gh is present but not authenticated (unauthed gh in a
+# systemd --user timer env, with no interactive login and no GH_TOKEN export —
+# see RESILIENT-1040, still unshipped). Both _find_green_main_sha and
+# _try_artifact_pull/_find_build_artifact_sha look like a plain "no data
+# found" to this script, which previously only recorded a soft ambient emit —
+# nothing paged, so red-main-reaches-a-live-node and a 30-min cold build on a
+# 2-core node both went unalarmed.
+# shellcheck source=../lib/halt-class-emit.sh
+source "$_NODE_REFRESH_DIR/../lib/halt-class-emit.sh" 2>/dev/null || true
 
 # --- resolve the mirror checkout to build from -------------------------------
 REPO_ROOT="${CHUMP_NODE_REPO:-}"
@@ -112,6 +122,25 @@ emit() {
     printf '[%s] %s\n' "$ts" "$kind" >> "$LOG"
 }
 log() { printf '[%s] %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*" | tee -a "$LOG"; }
+
+# RESILIENT-1041: emit a halt-class signal via THIS script's own emit() (and
+# therefore its own $NODE_AMBIENT), rather than scripts/lib/halt-class-emit.sh
+# directly — that library resolves its ambient path from `git
+# rev-parse --show-toplevel`, which on a node whose $NODE_AMBIENT override
+# points somewhere other than the mirror checkout's own .chump-locks (or in
+# tests, a throwaway mirror with no matching ambient dir) would silently write
+# to a DIFFERENT file than every other event this script emits. Reuses the
+# library's failure_class taxonomy when available so the event shape matches
+# halt_class_emit's schema (name/status/reason/failure_class/detail) exactly.
+_node_refresh_halt_class() {
+    local name="$1" reason="$2" detail="${3:-{}}"
+    local failure_class="permanent"
+    if command -v halt_class_categorize >/dev/null 2>&1; then
+        failure_class="$(halt_class_categorize "$reason")"
+    fi
+    local esc_reason; esc_reason="$(printf '%s' "$reason" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+    emit halt_class_emit "\"name\":\"$name\",\"status\":\"failure\",\"reason\":\"$esc_reason\",\"failure_class\":\"$failure_class\",\"detail\":$detail"
+}
 
 # --- RESILIENT-1035: role-organ reconcile (the last hop) --------------------
 # WHY: the pre-existing chain (git reset -> artifact-pull-or-build -> install
@@ -366,6 +395,16 @@ else
     MAIN_SHA="$RAW_HEAD_SHA"
     log "WARN: no green-main sha found (gh unavailable or no successful $CI_WORKFLOW run); falling back to raw origin/main HEAD = $MAIN_SHA"
     emit node_refresh_green_lookup_failed "\"fallback_sha\":\"$MAIN_SHA\""
+    # RESILIENT-1041: this is the raw-HEAD-fallback halt-class condition — a
+    # gh that's present but can't answer (unauthed, unreachable, or no
+    # workflow runs at all) is indistinguishable here from "main is red and
+    # never went green"; either way this node is about to build/run
+    # unverified HEAD instead of the pinned green sha (RESILIENT-327's whole
+    # point). A soft ambient emit alone was silently swallowed — nothing
+    # paged the operator.
+    _node_refresh_halt_class "node-refresh-green-lookup" \
+        "gh unavailable/unauthenticated or no successful $CI_WORKFLOW run found; falling back to raw origin/main HEAD instead of the pinned green-main sha" \
+        "{\"fallback_sha\":\"$MAIN_SHA\",\"node_repo\":\"$REPO_ROOT\"}"
 fi
 
 INSTALLED_SHA="none"
@@ -430,6 +469,16 @@ if _try_artifact_pull "$ARTIFACT_SHA" "$ARTIFACT_SHA_SHORT"; then
     exit 0
 fi
 log "artifact-pull unavailable or missed for $MAIN_SHA (artifact sha $ARTIFACT_SHA_SHORT) — building locally"
+# RESILIENT-1041: cold-build-revert halt-class condition — this node is about
+# to pay a ~30-min local `cargo build --release` on constrained (often
+# 2-core) fleet hardware instead of the seconds-long artifact pull. On an
+# unauthed-gh timer this is the routine outcome (every green-lookup AND
+# artifact-lookup call silently comes back empty), so it happens every
+# refresh cycle rather than as an occasional fallback — worth a halt-class
+# signal, not just the log line above.
+_node_refresh_halt_class "node-refresh-cold-build" \
+    "prebuilt artifact unavailable for $MAIN_SHA; falling back to a local cargo build --release (~30min on constrained fleet hardware)" \
+    "{\"main_sha\":\"$MAIN_SHA\",\"artifact_sha\":\"$ARTIFACT_SHA_SHORT\",\"node_repo\":\"$REPO_ROOT\"}"
 
 # --- resolve cargo -----------------------------------------------------------
 CARGO=""
