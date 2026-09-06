@@ -12193,14 +12193,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the sweep logic in `scripts/ci/test-curator-liveness.sh` by adding three new probe handlers: (a) scan `scripts/launchd` and `~/Library/LaunchAgents` for launchd/plist jobs with zero running processes, (b) parse toml/config files for entries with `enabled=true` whose daemon binary is missing, and (c) list apt/brew‑installed tools that are not referenced by any script or environment variable; each handler must emit its own JSON section with type, identifier, and missing component metadata and append a corresponding markdown section to the combined report.
+    
+    Target file(s):
+    - scripts/ci/test-curator-liveness.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "The sweep script now also checks:"
-    - (a) launchd/plist jobs declared in scripts/launchd or ~/Library/LaunchAgents that have zero running processes;
-    - (b) toml/config entries with enabled=true whose daemon binary is absent;
-    - (c) apt/brew‑installed tools that are not referenced by any script or environment variable.
-    - Each probe type produces its own section in the JSON output with appropriate metadata (type, identifier, missing component).
-    - The combined markdown report includes separate sections for each probe type.
-    - Running the extended sweep on a repository containing known stale launchd jobs or unused brew tools reports those items correctly.
+    - "Running `scripts/ci/test-curator-liveness.sh` on a repository that contains a launchd plist with no running process creates a JSON object under the top‑level `launchd` key whose `type` is `\"launchd\"`, `identifier` matches the plist filename, and `missing_component` is `null`."
+    - "The same execution produces a markdown section titled **\"Launchd Stale Jobs\"** that lists the detected plist filename."
+    - "When a toml/config entry with `enabled=true` references a daemon binary that does not exist on disk, the script adds a JSON entry under the top‑level `config_daemon` key with correct `type`, `identifier` (the config entry name), and `missing_component` set to the absent binary path, and a markdown section **\"Config Daemons Missing Binaries\"** lists that entry."
+    - "If an apt or brew package is installed in the environment but no file in the repository references its executable (via script source or `$PATH` usage), the script includes a JSON entry under the top‑level `package` key with `type` `\"package\"`, `identifier` equal to the package name, and `missing_component` set to `\"unused\"`, and a markdown section **\"Unused Packages\"** enumerates the package name."
   depends_on: [CREDIBLE-531]
 
 - id: CREDIBLE-535
@@ -12209,9 +12213,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Insert a comment immediately before the `fn build_free_tier_prompt` definition in `src/execute_gap.rs` that records the exact module, file path, and function name where the Tote Board pane UI is implemented, enabling downstream developers to locate the gauge integration point without further code search.
+    
+    Target file(s):
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Identify the Rust module and file where the Tote Board pane UI is defined
-    - Document the exact location (file path and function) suitable for adding a new gauge component
+    - src/ui/tote_board.rs exists in the repository.
+    - src/ui/tote_board.rs defines a function named `render_tote_board` (e.g., `fn render_tote_board` or `pub fn render_tote_board`).
+    - "src/execute_gap.rs contains the comment line `// Tote Board pane UI located at src/ui/tote_board.rs::render_tote_board` placed directly above the `fn build_free_tier_prompt` signature."
+    - "Running `grep -n \"render_tote_board\" -R src/ui/tote_board.rs` returns at least one matching line."
   notes: |
     [chump harvest check 'Index']
     === primitives_index match for 'Index' ===
@@ -85332,7 +85345,7 @@ gaps:
   acceptance_criteria:
     - Running Claude Code sessions poll URGENT-INBOX mid-session and act on fix_trunk signals within a bounded interval; a test signal is picked up without a session restart.
   notes: |
-    Decomposed into 9 slices: INFRA-4708, INFRA-4709, INFRA-4710, INFRA-4711, INFRA-4712, INFRA-4713, INFRA-4714, INFRA-4715, INFRA-4716
+    Decomposed into 9 slices: INFRA-4987, INFRA-4988, INFRA-4989, INFRA-4990, INFRA-4991, INFRA-4992, INFRA-4993, INFRA-4994, INFRA-4995
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -145996,6 +146009,241 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-4987
+  domain: INFRA
+  title: "INFRA: Add URGENT-INBOX polling hook to Claude session start (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Polling hook is registered when a Claude session is created
+    - Hook logs a message indicating it is active
+    - No runtime errors are introduced during session start
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4988
+  domain: INFRA
+  title: "INFRA: Implement fix_trunk signal detection within poll (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Poll reads messages from URGENT-INBOX
+    - "When a message with type \"fix_trunk\" is found, a flag `fixTrunkDetected` is set to true"
+    - Detection logic is covered by a unit test that injects a mock fix_trunk message
+  depends_on: [INFRA-4987]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4989
+  domain: INFRA
+  title: "INFRA: Introduce bounded interval for signal handling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A configurable time window (default 30 seconds) is applied after detection
+    - If the fix_trunk flag is not cleared within the window, a handler is invoked
+    - Handler execution is logged with timestamp
+  depends_on: [INFRA-4988]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4990
+  domain: INFRA
+  title: "INFRA: Write unit test for poll picking up test fix_trunk signal (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test injects a mock fix_trunk message into a fake URGENT-INBOX
+    - Poll returns true for `fixTrunkDetected` within the bounded interval
+    - Test passes in under 5 seconds
+  depends_on: [INFRA-4988]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4991
+  domain: INFRA
+  title: "INFRA: Integrate poll into existing session loop (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Polling hook is called on each iteration of the session's main loop
+    - Existing session functionality (code execution, output streaming) remains unchanged
+    - Performance impact is measured and stays below 5% CPU overhead
+  depends_on: [INFRA-4989]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4992
+  domain: INFRA
+  title: "INFRA: Add configuration for polling interval and timeout (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Config file supports `urgentInbox.pollIntervalMs` and `urgentInbox.fixTrunkTimeoutMs`
+    - Default values are 5000 ms and 30000 ms respectively
+    - Changing the values at runtime updates the polling behavior without restart
+  depends_on: [INFRA-4987]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4993
+  domain: INFRA
+  title: "INFRA: Create integration test for mid-session signal handling without restart (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test starts a real Claude session, injects a fix_trunk signal after 10 seconds
+    - Session processes the signal within the bounded interval and invokes the fix_trunk handler
+    - Session continues running after handling; no restart occurs
+    - Test asserts that the handler was called exactly once
+  depends_on: [INFRA-4991, INFRA-4992]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4994
+  domain: INFRA
+  title: "INFRA: Deploy changes to staging environment and verify (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All code changes are merged to the staging branch and deployed
+    - Staging instance runs a live Claude session and successfully picks up a test fix_trunk signal
+    - Monitoring shows no new errors and CPU usage remains within expected range
+    - Rollback procedure is documented and tested
+  depends_on: [INFRA-4993]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-4995
+  domain: INFRA
+  title: "INFRA: Update documentation for URGENT-INBOX polling behavior (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and internal wiki include a section describing the new polling mechanism, configuration options, and expected behavior
+    - Documentation contains an example of sending a fix_trunk signal and the resulting session actions
+    - Docs are reviewed and approved by the infra team
+  depends_on: [INFRA-4994]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: INFRA-514
   domain: INFRA
