@@ -47,7 +47,7 @@ registry, and the placement loop that runs continuously.
 | # | Component | What it adds | Status |
 |---|-----------|--------------|--------|
 | 1 | **Node self-describe** (`scripts/dispatch/node-describe.sh`) | introspect GPU/VRAM/cores/disk/always-on → declare capability + `services_running` + `roles_fit`. Populates `docs/fleet/nodes/*.json`. | ✅ this PR |
-| 2 | **Node registry + roles + service-deps** | intended `role_assigned` (policy) vs `roles_fit` (capability); records what services each node runs so nothing gets killed blind (the guardrail). | roadmap (INFRA-3582 territory) |
+| 2 | **Node registry + roles + service-deps** (`scripts/dispatch/node-role-assign.sh`) | placement kernel: reads each node's declared capability + `roles_fit` and ASSIGNS + persists the policy `role_assigned` (brain/muscle/gpu-embed/operator) into `docs/fleet/nodes/*.json`; `--check` mode surfaces drift for organ-reconcile/the governor. | ✅ RESILIENT-1031 |
 | 3 | **`chump node up`** | one command: introspect → declare → assign role → install *only that role's* daemons → self-test → join. The dev-facing bring-up product; extends `provision-chumpd-host.sh`. | roadmap |
 | 4 | **Per-node ATC** | `fleet_self_rescue_conductor` + heartbeat, **role-aware**, on every node — each node keeps its own role's daemons healthy. | roadmap (extends existing) |
 | 5 | **Placement engine** | read registry + live load + cost → decide/rebalance what lives where (embeddings→GPU, builds→high-disk, *never build on CJ*). `fit_score` is the kernel; this is the loop around it. | roadmap — the new brain |
@@ -65,7 +65,7 @@ registry, and the placement loop that runs continuously.
 
 ## Sequence
 
-`describe (✅) → registry+role_assigned (#2) → chump node up (#3) → per-node ATC (#4) → placement engine (#5)`
+`describe (✅) → registry+role_assigned (✅ #2) → chump node up (#3) → per-node ATC (#4) → placement engine (#5)`
 
 Each is a shippable slice; the placement engine (#5) is the payoff — the fleet
 "always making choices about what lives where," with `fit_score` as its scoring
