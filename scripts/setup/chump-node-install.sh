@@ -272,17 +272,22 @@ OPTIONAL_CRED_KEYS="DISCORD_TOKEN CHUMP_TEAM_URL CHUMP_TEAM_API_KEY"
 # used. Leaves an existing file untouched (idempotent, no clobber).
 materialize_creds() {
   [ -f "$CREDS" ] && return 0
-  if [ -n "$CREDS_FILE" ]; then
+  # INFRA-5083: $CHUMP_BOOTSTRAP_CREDS takes precedence over --creds-file when
+  # both are supplied — the env var is the zero-touch dispatch path (set by
+  # the caller for this exact run) while --creds-file is more often a static
+  # default baked into a launcher script, so the more-specific/most-recent
+  # source should win.
+  if [ -n "${CHUMP_BOOTSTRAP_CREDS:-}" ]; then
+    if [ "$DRY" = 1 ]; then echo "  DRY: write \$CHUMP_BOOTSTRAP_CREDS -> '$CREDS' (mode 600)"; return 0; fi
+    mkdir -p "$STATE_DIR"
+    ( umask 077; printf '%s\n' "$CHUMP_BOOTSTRAP_CREDS" > "$CREDS" )
+    ok "materialized creds from \$CHUMP_BOOTSTRAP_CREDS (env var; values not logged)"
+  elif [ -n "$CREDS_FILE" ]; then
     [ -f "$CREDS_FILE" ] || { no "--creds-file not found: $CREDS_FILE"; return 1; }
     if [ "$DRY" = 1 ]; then echo "  DRY: install '$CREDS_FILE' -> '$CREDS' (mode 600)"; return 0; fi
     mkdir -p "$STATE_DIR"
     install -m 600 "$CREDS_FILE" "$CREDS"
     ok "materialized creds from --creds-file (path only; values not logged)"
-  elif [ -n "${CHUMP_BOOTSTRAP_CREDS:-}" ]; then
-    if [ "$DRY" = 1 ]; then echo "  DRY: write \$CHUMP_BOOTSTRAP_CREDS -> '$CREDS' (mode 600)"; return 0; fi
-    mkdir -p "$STATE_DIR"
-    ( umask 077; printf '%s\n' "$CHUMP_BOOTSTRAP_CREDS" > "$CREDS" )
-    ok "materialized creds from \$CHUMP_BOOTSTRAP_CREDS (env var; values not logged)"
   fi
 }
 
