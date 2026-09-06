@@ -6195,6 +6195,28 @@ events:
       Backfill evidence later with: chump gap set <ID> --evidence "COMMAND: ..."
       # scanner-anchor: gap_reserved_no_evidence
 
+  # anchor: gap_reserved_no_ac
+  - kind: gap_reserved_no_ac
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (CREDIBLE-956, CREDIBLE-284 slice)
+    trigger: >
+      chump gap reserve was called for a P0/P1 gap without providing
+      --acceptance-criteria, and the operator bypassed the gate via
+      --no-ac-required.
+      The reserve proceeds but the gap has no explicit AC attached (the
+      default obs-AC templates may still apply unless --skip-obs-acs was
+      also passed).
+    consumers: [fleet-brief, audit-log, kpi-report]
+    fields_required: [ts, kind, priority, domain, title, bypass_reason]
+    docs: |
+      Emitted when the P0/P1 acceptance-criteria gate (CREDIBLE-956) is
+      bypassed via --no-ac-required. priority and domain identify the gap
+      class that should have explicit AC. bypass_reason is always
+      "--no-ac-required flag". Review these events in ambient.jsonl to
+      track AC discipline: high frequency indicates systemic bypass.
+      Backfill AC later with: chump gap set <ID> acceptance_criteria "text"
+      # scanner-anchor: gap_reserved_no_ac
+
   - kind: gap_dup_archived
     effect_metric: self
     emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)

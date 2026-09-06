@@ -10313,11 +10313,14 @@ async fn main() -> Result<()> {
                 let why = args.iter().any(|a| a == "--why");
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
+                // CREDIBLE-956 (CREDIBLE-284 slice): --no-ac-required bypasses the
+                // P0/P1 acceptance-criteria gate below.
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
 
                 // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
                 // unless --skip-obs-acs is set or --acceptance-criteria is provided.
                 let acceptance_criteria_json = match custom_acceptance_criteria {
-                    Some(raw) => {
+                    Some(ref raw) => {
                         let parts: Vec<&str> = raw.split('|').collect();
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                     }
@@ -11005,6 +11008,51 @@ async fn main() -> Result<()> {
                     }
                 }
                 // ── end CREDIBLE-107 evidence gate ──────────────────────────────────────
+
+                // ── CREDIBLE-956 (CREDIBLE-284 slice): AC gate for P0/P1 ────────────────
+                // Reserve refuses to create a P0/P1 gap with no explicit
+                // --acceptance-criteria unless --no-ac-required is passed (audited).
+                {
+                    let needs_ac = priority == "P0" || priority == "P1";
+                    let ac_supplied = custom_acceptance_criteria
+                        .as_deref()
+                        .map(|s| !s.trim().is_empty())
+                        .unwrap_or(false);
+
+                    if needs_ac && !ac_supplied {
+                        if !no_ac_required {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap: P0/P1 gaps require --acceptance-criteria (per CREDIBLE-284)."
+                            );
+                            eprintln!("Bypass: --no-ac-required (adds audit trailer).");
+                            std::process::exit(1);
+                        }
+
+                        // Bypass path — emit audit event so the pattern is visible.
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let safe_domain = domain.replace(['"', '\\'], "");
+                        let safe_title = title.replace(['"', '\\'], "");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = writeln!(
+                                f,
+                                r#"{{"ts":"{ts}","kind":"gap_reserved_no_ac","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"--no-ac-required flag"}}"#
+                            );
+                        }
+                        if !quiet {
+                            eprintln!(
+                                "[reserve] WARN: gap_reserved_no_ac emitted (bypass=--no-ac-required flag)"
+                            );
+                        }
+                    }
+                }
+                // ── end CREDIBLE-956 AC gate ─────────────────────────────────────────────
 
                 // ── MISSION-045: outcome gate for P0/P1 (anti-bloat keystone) ──
                 // Every P0/P1 gap must trace to a real outcome (a row in the
