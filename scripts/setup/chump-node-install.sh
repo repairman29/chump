@@ -267,22 +267,23 @@ REQUIRED_CRED_KEYS="CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN"
 # operator does wire one in — no separate manual step or editor.
 OPTIONAL_CRED_KEYS="DISCORD_TOKEN CHUMP_TEAM_URL CHUMP_TEAM_API_KEY"
 
-# Zero-touch acquire (INFRA-3629): materialize $CREDS from --creds-file or
-# $CHUMP_BOOTSTRAP_CREDS. Never echoes secret VALUES — only which source was
+# Zero-touch acquire (INFRA-3629): materialize $CREDS from $CHUMP_BOOTSTRAP_CREDS
+# or --creds-file. $CHUMP_BOOTSTRAP_CREDS takes precedence when both are
+# supplied (INFRA-5083). Never echoes secret VALUES — only which source was
 # used. Leaves an existing file untouched (idempotent, no clobber).
 materialize_creds() {
   [ -f "$CREDS" ] && return 0
-  if [ -n "$CREDS_FILE" ]; then
+  if [ -n "${CHUMP_BOOTSTRAP_CREDS:-}" ]; then
+    if [ "$DRY" = 1 ]; then echo "  DRY: write \$CHUMP_BOOTSTRAP_CREDS -> '$CREDS' (mode 600)"; return 0; fi
+    mkdir -p "$STATE_DIR"
+    ( umask 077; printf '%s\n' "$CHUMP_BOOTSTRAP_CREDS" > "$CREDS" )
+    ok "materialized creds from \$CHUMP_BOOTSTRAP_CREDS (env var; values not logged)"
+  elif [ -n "$CREDS_FILE" ]; then
     [ -f "$CREDS_FILE" ] || { no "--creds-file not found: $CREDS_FILE"; return 1; }
     if [ "$DRY" = 1 ]; then echo "  DRY: install '$CREDS_FILE' -> '$CREDS' (mode 600)"; return 0; fi
     mkdir -p "$STATE_DIR"
     install -m 600 "$CREDS_FILE" "$CREDS"
     ok "materialized creds from --creds-file (path only; values not logged)"
-  elif [ -n "${CHUMP_BOOTSTRAP_CREDS:-}" ]; then
-    if [ "$DRY" = 1 ]; then echo "  DRY: write \$CHUMP_BOOTSTRAP_CREDS -> '$CREDS' (mode 600)"; return 0; fi
-    mkdir -p "$STATE_DIR"
-    ( umask 077; printf '%s\n' "$CHUMP_BOOTSTRAP_CREDS" > "$CREDS" )
-    ok "materialized creds from \$CHUMP_BOOTSTRAP_CREDS (env var; values not logged)"
   fi
 }
 
