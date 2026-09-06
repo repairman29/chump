@@ -145058,6 +145058,41 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-4970
+  domain: INFRA
+  title: "INFRA: Add startup wallclock budget and timeout handling in main.rs (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Environment variable CHUMP_STARTUP_TIMEOUT_MS is read with default 5000ms
+    - If startup exceeds the timeout, program dumps tokio runtime status, memory_db connection state, and active subsystems to stderr
+    - Program exits with code 4 on timeout
+    - Timeout enforcement occurs before any heavy subsystem initialization
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4971
+  domain: INFRA
+  title: "INFRA: Short‑circuit --version and --help before any subsystem init (INFRA-1809 slice)"
+  status: open
+  priority: P2
+  effort: s
+
 - id: INFRA-514
   domain: INFRA
   title: INFRA-492 session-track wiring regressed — my own INFRA-502 worker.sh refactor accidentally dropped the chump session-track --start/--end calls that INFRA-492 added. INFRA-477 cost ledger has 0 session_end events as a result. Re-add the calls without breaking INFRA-502's chump-gap-show inline-briefing change.
