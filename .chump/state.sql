@@ -10698,10 +10698,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Implement `compute_need(entry: &RegistryEntry) -> bool` in `crates/chump-coord/src/help_request.rs` to determine if a registry entry is still-wired or orphaned. The function inspects the entry's active dependents, returning `true` when active dependents exist and `false` when the entry is orphaned, and includes unit tests verifying both states.
+    
+    Target file(s):
+    - crates/chump-coord/src/help_request.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A function `fn compute_need(entry: &RegistryEntry) -> bool` is added"
-    - The function returns `true` when the entry is still‑wired (has active dependents) and `false` when orphaned
-    - Unit test covers both wired and orphaned fixtures
+    - "Function `pub fn compute_need(entry: &RegistryEntry) -> bool` is defined in `crates/chump-coord/src/help_request.rs`."
+    - "`compute_need` returns `true` when `entry` has active dependents and `false` when active dependents are empty."
+    - Unit tests in `crates/chump-coord/src/help_request.rs` validate `compute_need` against both still-wired and orphaned `RegistryEntry` fixtures.
+    - "`cargo test -p chump-coord` runs and passes successfully."
   depends_on: [CREDIBLE-483]
   notes: |
     [chump harvest check 'Index']
