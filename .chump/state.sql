@@ -4916,7 +4916,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 6 slices: CREDIBLE-879, CREDIBLE-880, CREDIBLE-881, CREDIBLE-882, CREDIBLE-883, CREDIBLE-884
+    Decomposed into 6 slices: CREDIBLE-968, CREDIBLE-969, CREDIBLE-970, CREDIBLE-971, CREDIBLE-972, CREDIBLE-973
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -10398,10 +10398,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend `scripts/ci/test-gap-ship-integration.sh` to execute the auto‑close stage on a minimal shell/doc PR fixture, capture any `bot_merge_uncaught_error` signal emitted by the ship process, and assert that the count is zero (exiting with status 0 on success, non‑zero on failure).  Simultaneously adjust `crates/chump-preflight/src/preflight.rs::discover_test_scripts` to recognise the new test script so it is automatically run in CI pipelines.
+    
+    Target file(s):
+    - scripts/ci/test-gap-ship-integration.sh
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test runs the auto‑close stage on a representative shell/doc PR fixture
-    - The test asserts that the `bot_merge_uncaught_error` signal is not emitted
-    - The test fails on the current codebase (pre‑change) and passes after the changes
+    - Running `./scripts/ci/test-gap-ship-integration.sh` against the current (pre‑change) codebase exits with a non‑zero status, indicating the test fails before the fix.
+    - Running the same script after the changes exits with status 0, confirming the test passes.
+    - "The script’s stdout contains the line `bot_merge_uncaught_error: 0` (or equivalent) confirming that no such signal was emitted during the auto‑close stage."
+    - Invoking the preflight binary (`cargo run --bin preflight -- --list-tests`) lists `test-gap-ship-integration.sh` among the discovered test scripts.
   depends_on: [CREDIBLE-477, CREDIBLE-478]
   notes: |
     [chump harvest check 'bot-merge']
@@ -24862,6 +24871,179 @@ gaps:
     === cross-pollination briefs mentioning 'bot-merge' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-968
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-879: Add built‑stage lifecycle flag (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new flag `built` is set to true when a capability is successfully compiled.
+    - The flag is persisted in the capability metadata structure.
+    - Unit test verifies that `built` is false before compilation and true after.
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-969
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-880: Add merged‑stage lifecycle flag (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A `merged` flag is introduced and set to true after a pull‑request merge completes.
+    - The flag updates the same metadata used for `built`.
+    - Integration test confirms `merged` remains false until merge, then becomes true.
+  depends_on: [CREDIBLE-968]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-970
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-881: Add deployed‑stage lifecycle flag (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A `deployed` flag is added and toggled when deployment scripts finish without error.
+    - Deployment step writes the flag to capability metadata.
+    - End‑to‑end test runs a mock deployment and asserts `deployed` transitions from false to true.
+  depends_on: [CREDIBLE-969]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-971
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-882: Add wired‑stage lifecycle flag (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A `wired` flag is introduced and set when networking/IPC wiring succeeds.
+    - The flag is stored alongside previous flags.
+    - Test script `scripts/ci/test-wired.sh` validates that `wired` is false before wiring and true after.
+  depends_on: [CREDIBLE-970]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-972
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-883: Add running‑stage lifecycle flag (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A `running` flag is added and becomes true when the capability process reports a healthy heartbeat.
+    - Heartbeat logic updates the flag in real time.
+    - Automated test starts the capability, waits for heartbeat, and asserts `running` is true.
+  depends_on: [CREDIBLE-971]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-973
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-884: Compute DONE state only after all stages (built→merged→deployed→wired→running) are true (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A `done` computed property returns true only when all previous flags are true.
+    - Existing CI pipeline (`cargo test` or `scripts/ci/test-*.sh`) includes a test that fails without the new DONE logic and passes with it.
+    - Running `cargo fmt`, `cargo clippy --all-targets -D warnings`, and the full test suite shows no new warnings or regressions.
+  depends_on: [CREDIBLE-972]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: DOC-031
   domain: DOC
