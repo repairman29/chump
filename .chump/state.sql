@@ -30145,10 +30145,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new unit test named `test_zero_edit_nudge_behavior` inside the existing `mod tests` block of `desktop/src-tauri/src/lib.rs`. The test will configure a mock `LlmClient` to emit more than two read‑only tool calls followed by an `EndTurn` prose reply, then assert that at least one edit‑nudge is injected before termination and that the retry‑cap logic limits the total nudges to no more than two.
+    
+    Target file(s):
+    - desktop/src-tauri/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Mock LlmClient returns >2 read‑only tool calls followed by an EndTurn prose reply.
-    - Test asserts that at least one edit‑nudge is injected before termination.
-    - Test also verifies that the retry cap prevents more than 2 nudges.
+    - The file `desktop/src-tauri/src/lib.rs` contains a compiled test function `test_zero_edit_nudge_behavior` that runs without panics.
+    - The test verifies that the mock `LlmClient` receives at least one call to the edit‑nudge injection point (e.g., `inject_edit_nudge`) before the final `EndTurn` response.
+    - The test asserts that the count of edit‑nudge injections does not exceed 2, confirming the retry‑cap behavior.
+    - Executing `cargo test` (or `cargo test test_zero_edit_nudge_behavior`) reports the new test as passed.
   depends_on: [EFFECTIVE-1072]
   notes: |
     [chump harvest check 'execute-gap']
@@ -37864,6 +37872,66 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: EFFECTIVE-1298
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1196: Fetch and store OpenRouter model metadata (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A scheduled job calls https://openrouter.ai/api/v1/models using the existing API key (slot 11)"
+    - "The response contains exactly 400 models with fields: context_length, pricing, per_request_limits, expiration_date, knowledge_cutoff, architecture, reasoning, supported_parameters"
+    - The fetched data is persisted to the internal model index without rebuilding the index structure
+    - Job runs successfully on the configured schedule and logs success or failure
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1299
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1197: Filter models for tool capability (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Slot selection logic excludes any model whose supported_parameters array does not contain the string \"tools\""
+    - "Unit test verifies that a model without \"tools\" is never considered for a task that requires tool calls"
+    - Measured count of tool‑capable models matches the live count (14 as of 2026‑08‑07)
+  depends_on: [EFFECTIVE-1298]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
 - id: EFFECTIVE-130
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire test-chump-upgrade-detection.sh into role curator-opus-ci-audit"
@@ -37874,6 +37942,311 @@ gaps:
     - "1. Edit the role-doc for curator-opus-ci-audit to reference test-chump-upgrade-detection.sh (shipped in RESILIENT-093) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'test-chump-upgrade-detection.sh' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1300
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1198: Verify rate‑limit and context limits, report drift (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For each configured slot the job probes the /v1/models endpoint and reads rate‑limit headers (RPM, RPD, CONTEXT_K)
+    - The observed limits are compared against the limits declared in the slot configuration
+    - Any discrepancy is recorded as a finding in the system (no automatic .env mutation)
+    - Findings include slot identifier, declared limits, observed limits, and timestamp
+  depends_on: [EFFECTIVE-1298]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1301
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1199: Detect expired or unreachable models (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The job checks each model's expiration_date; models past this date are flagged as deprecated
+    - A connectivity check is performed (simple GET /v1/models for the model) and failures (dead key, moved base URL) are flagged
+    - All flags are emitted as warnings in the same findings report used by EFFECTIVE‑1198
+  depends_on: [EFFECTIVE-1298]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1302
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1200: Compute measured fitness score per model (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Provider_quality.rs data (success/failure counts, latency, tool_call_success) is joined with the indexed metadata
+    - A composite fitness score is calculated that penalizes models with high failure rates or low tool‑call success
+    - Models that advertise tools but have low tool_call_success rank below models with higher observed success
+    - Score calculation is deterministic and unit‑tested
+  depends_on: [EFFECTIVE-1298]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1303
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1201: Capability‑class routing integration (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "CascadeStrategy::TaskAware is enabled and receives a per‑task‑class ranking list derived from the fitness scores"
+    - Each of the taxonomy classes (work, cursor_improve, doc_hygiene, battle_qa, research, opportunity, discovery) has its own ordered slot list
+    - When the strategy is off, routing falls back to the existing Priority order
+    - Integration tests confirm that a request for a specific task class uses the correct ranked list
+  depends_on: [EFFECTIVE-1298, EFFECTIVE-1299, EFFECTIVE-1302]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1304
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1202: Big‑context routing logic (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Tasks that declare a required context window greater than 262,144 are automatically considered for free tool‑capable models with context_length ≥ 1,000,000 (e.g., nvidia/nemotron-3-ultra-550b:free)"
+    - The routing decision respects the per‑task‑class ranking but inserts high‑context models ahead of lower‑context ones when needed
+    - Unit test verifies that a task with a 300k context requirement is routed to a model meeting that requirement
+  depends_on: [EFFECTIVE-1298]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1305
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1203: Generate ranked, dated artifact (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A JSON (or CSV) file is written containing: timestamp, per‑task‑class ordered list of model slots, and each model's fitness score"
+    - The file is stored in a location that survives session termination and is readable by both the fleet and humans
+    - The artifact is refreshed on every scheduled run of the tender job
+    - Manual inspection of the file shows correct ordering and a recent timestamp
+  depends_on: [EFFECTIVE-1303, EFFECTIVE-1304]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1306
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1204: Schedule tender job via launchd (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A launchd plist is added per SCHEDULING_LAYERS.md that triggers the tender job at the configured interval
+    - The job runs even after user logout or system sleep/wake cycles
+    - Logs indicate successful execution and artifact generation on schedule
+    - Failure to start the job is reported to the system logger
+  depends_on: [EFFECTIVE-1305]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1307
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1205: Feed tender rankings into provider_bandit Thompson Sampling (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Provider_bandit reads the per‑task‑class ranking produced by the tender and uses it as the initial weight distribution for Thompson Sampling
+    - When the bandit updates its weights, it respects the underlying fitness scores as priors
+    - Integration test shows that after a few samples the bandit prefers higher‑fitness slots
+  depends_on: [EFFECTIVE-1303]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1308
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1206: Add automated tests for tender pipeline (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Tests cover: metadata fetch, tool‑capability filter, limit‑drift detection, expiration check, fitness score calculation, per‑task‑class ranking, big‑context routing, artifact generation"
+    - All tests run in CI and pass on the main branch
+    - Test suite achieves ≥ 80% coverage of the new tender code
+  depends_on: [EFFECTIVE-1298, EFFECTIVE-1299, EFFECTIVE-1300, EFFECTIVE-1301, EFFECTIVE-1302, EFFECTIVE-1303, EFFECTIVE-1304, EFFECTIVE-1305]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1309
+  domain: EFFECTIVE
+  title: "EFFECTIVE: EFFECTIVE-1207: Update documentation for the inference tender (EFFECTIVE-409 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README/architecture docs include a section describing the scheduled tender, its data sources, and the ranking artifact
+    - Operational runbooks explain how to verify the launchd job, interpret the artifact, and troubleshoot limit‑drift findings
+    - Documentation is reviewed and approved by the team lead
+  depends_on: [EFFECTIVE-1298, EFFECTIVE-1303, EFFECTIVE-1305, EFFECTIVE-1306, EFFECTIVE-1307]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: EFFECTIVE-131
   domain: EFFECTIVE
@@ -41785,7 +42158,7 @@ gaps:
     - "BIG-CONTEXT ROUTING IS FREE MONEY LEFT ON THE TABLE: free tool-capable models exist at 1,000,000 context (nvidia/nemotron-3-ultra-550b:free) and several at 262,144. Nothing today routes 'this task needs a huge window' to them — the cascade orders by priority and rate limit only"
     - "OUTPUT IS A RANKED, DATED ARTIFACT the fleet and a human can both read, refreshed on a schedule (launchd per SCHEDULING_LAYERS.md — it must survive session close). Not a one-shot script someone remembers to run: see ZERO-WASTE-036, this fleet's most repeated failure is the built-and-never-scheduled instrument"
   notes: |
-    Decomposed into 12 slices: EFFECTIVE-1196, EFFECTIVE-1197, EFFECTIVE-1198, EFFECTIVE-1199, EFFECTIVE-1200, EFFECTIVE-1201, EFFECTIVE-1202, EFFECTIVE-1203, EFFECTIVE-1204, EFFECTIVE-1205, EFFECTIVE-1206, EFFECTIVE-1207
+    Decomposed into 12 slices: EFFECTIVE-1298, EFFECTIVE-1299, EFFECTIVE-1300, EFFECTIVE-1301, EFFECTIVE-1302, EFFECTIVE-1303, EFFECTIVE-1304, EFFECTIVE-1305, EFFECTIVE-1306, EFFECTIVE-1307, EFFECTIVE-1308, EFFECTIVE-1309
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
