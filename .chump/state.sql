@@ -4418,7 +4418,7 @@ gaps:
     - "REPAIR PATH IS ALSO BROKEN AND NOW URGENT — see INFRA-3580, escalated to P1: the three gaps reopened tonight sit as status=open with a stale closed_pr, which is precisely the stale_post_merge_gap shape. Wiring a consumer for that event (as CREDIBLE-275 asks) BEFORE fixing INFRA-3580 could re-close the work we just recovered"
     - "INTERIM LEVER, documented in the code itself: there is deliberately no env escape hatch — stopping the local receiver process is the intended off switch"
   notes: |
-    Decomposed into 11 slices: CREDIBLE-766, CREDIBLE-767, CREDIBLE-768, CREDIBLE-769, CREDIBLE-770, CREDIBLE-771, CREDIBLE-772, CREDIBLE-773, CREDIBLE-774, CREDIBLE-775, CREDIBLE-776
+    Decomposed into 6 slices: CREDIBLE-929, CREDIBLE-930, CREDIBLE-931, CREDIBLE-932, CREDIBLE-933, CREDIBLE-934
   opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
@@ -23593,6 +23593,160 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: CREDIBLE-929
+  domain: CREDIBLE
+  title: "CREDIBLE: Restrict gap ID extraction in webhook receiver to PR title and Closes/Fixes trailers (CREDIBLE-268 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "_extract_gap_ids in scripts/ops/github-webhook-receiver.py parses gap IDs ONLY from PR title or explicit Closes:/Fixes: trailers in body"
+    - Mentioning gap IDs in PR body prose or description no longer flags them for auto-closure
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-930
+  domain: CREDIBLE
+  title: "CREDIBLE: Route webhook receiver gap closures through gap ship command path (CREDIBLE-268 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - _auto_flip_gaps_done in scripts/ops/github-webhook-receiver.py invokes gap ship path rather than direct gap set --status done
+    - Auto-flipped gaps have closed_date correctly populated and trigger PROOF-OF-MERGE guard validation
+  depends_on: [CREDIBLE-929]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-931
+  domain: CREDIBLE
+  title: "CREDIBLE: Add test coverage for webhook receiver gap ID extraction and auto-flip invocation (CREDIBLE-268 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Unit tests verify cross-referenced gap IDs in body text are ignored while PR titles and trailers are correctly extracted
+    - Tests verify gap ship execution path is called upon PR merge event
+  depends_on: [CREDIBLE-929, CREDIBLE-930]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-932
+  domain: CREDIBLE
+  title: "CREDIBLE: Extend test-gap-closure-consistency.sh with file overlap gate check (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-gap-closure-consistency.sh includes a check comparing modified files in closed_pr against named gap files/ACs
+    - CI check fails if a gap was marked done by a PR that modified zero overlapping files
+  depends_on: [CREDIBLE-929]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-933
+  domain: CREDIBLE
+  title: "CREDIBLE: Audit state.db for collaterally closed gaps missing closed_date (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script identifies all gaps in state.db where closed_pr is populated but closed_date is empty
+    - Output lists candidate falsely-closed gaps corresponding to historical gap_flipped_done_on_merge events
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-934
+  domain: CREDIBLE
+  title: "CREDIBLE: Repair state.db stale closed_pr references and restore collateral gaps (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Stale closed_pr fields are cleared on reopened gaps sitting in status=open
+    - Collaterally closed gaps identified in audit are restored to state=open without stale closed_pr triggers
+  depends_on: [CREDIBLE-933]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
 
 - id: DOC-031
   domain: DOC
