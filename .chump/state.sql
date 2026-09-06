@@ -18941,10 +18941,19 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Modify `crates/chump-gap-store/src/lib.rs::fn ship` to validate that any gap transitioned to the `Done` state has a non‑empty `closed_date`; if the field is empty the function returns an error and logs a telemetry event. Extend `src/telemetry_energy.rs::trait EnergyMonitor` with a new counter method `record_gap_done_without_date` and invoke it from `ship` when the validation fails, so the production dashboard can observe the metric.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/lib.rs
+    - src/telemetry_energy.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Monitoring dashboard shows no gaps reopened with a stale `closed_pr`
-    - All gaps marked `done` during the window have a non‑empty `closed_date`
-    - No new `gap_flipped_done_on_merge` anomalies are reported
+    - "crates/chump-gap-store/src/lib.rs::fn ship returns an Err when a gap is marked Done and its `closed_date` field is empty."
+    - "src/telemetry_energy.rs::EnergyMonitor includes a `record_gap_done_without_date` counter that increments each time the above error path is taken."
+    - The `ship` implementation calls `record_gap_done_without_date` exactly once for each invalid Done transition.
+    - Running `scripts/coord/gap-doctor.py cmd_safe_sweep` over a 24 h production window produces zero “gap_flipped_done_on_merge” anomalies in its output.
   depends_on: [CREDIBLE-775]
   notes: |
     [chump harvest check 'merging']
@@ -18968,10 +18977,17 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new Bash function `scan_hardcoded_src_paths` to `scripts/ci/test-no-raw-gh-in-hot-paths.sh` that walks every file under the `scripts/ci/` directory, runs a literal‑string grep for `src/`, records each match (file path, line number, matched text) together with the exact grep command used, and writes the collected records as a JSON array to `hardcoded_src_paths.json` at the repository root; invoke this function near the end of the script so the scan runs automatically when the CI script is executed.
+    
+    Target file(s):
+    - scripts/ci/test-no-raw-gh-in-hot-paths.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All files under scripts/ci/ are scanned
-    - A list of grep commands containing a literal 'src/' path is produced
-    - The list is stored in a machine‑readable JSON file
+    - After executing `scripts/ci/test-no-raw-gh-in-hot-paths.sh`, a file named `hardcoded_src_paths.json` exists in the repository root.
+    - The `hardcoded_src_paths.json` file contains a valid JSON array where each element includes the keys `file`, `line`, `match`, and `grep_command` for every literal `src/` occurrence found in any file under `scripts/ci/`.
+    - Running `jq . hardcoded_src_paths.json` returns successfully parsed JSON, confirming the output is machine‑readable.
   notes: |
     [chump harvest check 'gates']
     === primitives_index match for 'gates' ===
