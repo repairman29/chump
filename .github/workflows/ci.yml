@@ -667,6 +667,13 @@ jobs:
       - name: aarch64 fleet-binary vendored-openssl gate (INFRA-3836)
         run: bash scripts/ci/test-fleet-binary-aarch64-openssl-vendored.sh
 
+      # RESILIENT-1038: guard against re-pinning build-fleet-binaries.yml to
+      # the rolling `ubuntu-latest` alias, whose climbing glibc floor made
+      # node-refresh-chump.sh's artifact-pull always fail its version-check
+      # on older-glibc fleet nodes and fall back to a ~30min local cargo build.
+      - name: fleet-binary glibc floor gate (RESILIENT-1038)
+        run: bash scripts/ci/test-fleet-binary-glibc-floor.sh
+
       # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
       # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
       # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.
