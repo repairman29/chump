@@ -27810,9 +27810,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In `src/web_server.rs`, add and register a Prometheus gauge metric named `mttr_seconds` to track Mean Time To Resolution. Update the gauge value in the incident resolution flow by calculating the duration in seconds between the incident's open and resolution timestamps.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Metric `mttr_seconds` is calculated from incident open to resolution timestamps.
-    - Gauge updates correctly after each resolved incident.
+    - "`src/web_server.rs` registers the `mttr_seconds` gauge metric in the metrics registry."
+    - The incident resolution handler in `src/web_server.rs` calculates the difference in seconds between resolution and open timestamps and sets `mttr_seconds`.
+    - Executing `cargo test` confirms the `mttr_seconds` gauge value is updated upon resolving an incident.
   depends_on: [EFFECTIVE-1002]
   notes: |
     [chump harvest check 'phase']
@@ -36261,6 +36269,47 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: EFFECTIVE-1255
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add publish‑target registry schema and configuration (EFFECTIVE-364 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A registry file (e.g., YAML/JSON) exists in the repo under `config/publish_targets`
+    - The registry defines at least three target types (e.g., docs‑site, changelog, substack) with required fields
+    - A utility function `get_publish_targets(artifact_type)` returns an array of matching targets or an empty array
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: EFFECTIVE-1256
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement publication resolver triggered on ship event (EFFECTIVE-364 slice)"
+  status: open
+  priority: P2
+  effort: s
 
 - id: EFFECTIVE-126
   domain: EFFECTIVE
