@@ -290,6 +290,7 @@ mod verify; // CREDIBLE-155: unified policy engine — chump verify subcommand
 mod verify_claim_branch; // INFRA-1649 (re-do of INFRA-1598): verify-claim-branch primitive
 mod version;
 mod vision_intake; // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
+mod wait; // EFFECTIVE-1351: chump wait <condition> / chump pr wait <N> --until merged
 mod wasm_calc_tool;
 mod wasm_runner;
 mod wasm_text_tool;
@@ -5317,6 +5318,66 @@ async fn main() -> Result<()> {
             print!("{}", report.render_text());
         }
         return Ok(());
+    }
+
+    // `chump pr wait <PR#> --until merged [--timeout <secs>]` (EFFECTIVE-1351)
+    // — blocks until the given PR merges, polling every 5s via `gh pr view`.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("wait")
+    {
+        let pr_number: Option<u64> = args.get(3).and_then(|s| s.parse().ok());
+        let pr_number = match pr_number {
+            Some(n) => n,
+            None => {
+                eprintln!("Usage: chump pr wait <PR#> --until merged [--timeout <secs>]");
+                std::process::exit(2);
+            }
+        };
+        let until = args
+            .iter()
+            .position(|a| a == "--until")
+            .and_then(|i| args.get(i + 1))
+            .cloned()
+            .unwrap_or_else(|| "merged".to_string());
+        let timeout_secs = args
+            .iter()
+            .position(|a| a == "--timeout")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(wait::DEFAULT_TIMEOUT_SECS);
+        match wait::run_pr_wait(pr_number, &until, timeout_secs) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
+    }
+
+    // `chump wait <condition> [--timeout <secs>]` (EFFECTIVE-1351) — blocks
+    // until the named condition source (e.g. `fleet:healthy`) reports true,
+    // polling every 5s.
+    if args.get(1).map(String::as_str) == Some("wait") {
+        let condition = match args.get(2) {
+            Some(c) => c.clone(),
+            None => {
+                eprintln!("Usage: chump wait <condition> [--timeout <secs>]");
+                std::process::exit(2);
+            }
+        };
+        let timeout_secs = args
+            .iter()
+            .position(|a| a == "--timeout")
+            .and_then(|i| args.get(i + 1))
+            .and_then(|s| s.parse::<u64>().ok())
+            .unwrap_or(wait::DEFAULT_TIMEOUT_SECS);
+        match wait::run_wait(&condition, timeout_secs) {
+            Ok(()) => return Ok(()),
+            Err(e) => {
+                eprintln!("{e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump pr explain-block <PR#> [--json]` (INFRA-1416) — reads the
