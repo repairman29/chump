@@ -191,53 +191,22 @@ def _notify_operator_escalation(kind: str, message: str) -> None:
 
 
 def _extract_gap_ids(pr: dict) -> list[str]:
-    """Extract gap IDs from PR title + body.
+    """Extract gap IDs a PR explicitly claims — PR title or explicit
+    Closes:/Fixes: trailers in the body only (CREDIBLE-929).
 
-    Looks for patterns like 'INFRA-1234' or 'CREDIBLE-001' anywhere in the
-    PR title or body. Returns a deduped list preserving first-seen order.
+    CREDIBLE-929: this used to scan the full title+body free-text, which
+    over-matched any gap merely CITED in a PR body (a "why this matters"
+    link, an AC cross-reference, a doc analyzing a past incident) and
+    treated it the same as a gap the PR actually ships/closes. Restricted
+    to the same two opt-in signals used by _extract_gap_ids_for_closure
+    (CREDIBLE-268): PR title, and explicit Closes:/Fixes: trailer lines.
 
-    Used by _auto_release_sibling_leases (lease release is non-destructive —
-    freeing a lease that cites a gap in passing is harmless). NOT used by
-    _auto_flip_gaps_done, which needs a tighter signal — see
-    _extract_gap_ids_for_closure below (CREDIBLE-268).
+    Used by _auto_release_sibling_leases and _auto_flip_gaps_done.
     """
     import re
 
     pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
-    seen: set[str] = set()
-    ordered: list[str] = []
-    for field in ("title", "body"):
-        text = pr.get(field) or ""
-        for match in pattern.findall(text):
-            if match not in seen:
-                seen.add(match)
-                ordered.append(match)
-    return ordered
-
-
-def _extract_gap_ids_for_closure(pr: dict) -> list[str]:
-    """CREDIBLE-268 FIX 1: extract gap IDs that a merged PR is entitled to
-    CLOSE — deliberately narrower than _extract_gap_ids.
-
-    The full title+body scan over-matched: any gap merely CITED in a PR body
-    (a "why this matters" link, an AC cross-reference, a doc analyzing a past
-    incident) got flipped to done alongside the gap the PR actually shipped.
-    30 flips across 8 PRs on 2026-08-09, ~22 of them collateral.
-
-    Two signals only, both opt-in by construction:
-      1. PR TITLE — gap IDs named in the title are the PR's stated intent
-         (the convention every ship already follows: "GAP-ID: short title").
-      2. Explicit `Closes: ID[, ID2, ...]` trailer, one per line, anywhere in
-         the body — an explicit author assertion, not an incidental mention.
-
-    Body text OUTSIDE a `Closes:` trailer is never scanned. Cross-references
-    remain free-form prose (nothing to change about how authors write ACs or
-    handoff docs) — they just no longer double as a closure signal.
-    """
-    import re
-
-    pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
-    closes_pattern = re.compile(r"(?im)^closes:\s*(.+)$")
+    trailer_pattern = re.compile(r"(?im)^(?:closes|fixes):\s*(.+)$")
 
     seen: set[str] = set()
     ordered: list[str] = []
@@ -249,13 +218,25 @@ def _extract_gap_ids_for_closure(pr: dict) -> list[str]:
             ordered.append(match)
 
     body = pr.get("body") or ""
-    for trailer_line in closes_pattern.findall(body):
+    for trailer_line in trailer_pattern.findall(body):
         for match in pattern.findall(trailer_line):
             if match not in seen:
                 seen.add(match)
                 ordered.append(match)
 
     return ordered
+
+
+def _extract_gap_ids_for_closure(pr: dict) -> list[str]:
+    """CREDIBLE-268 FIX 1: extract gap IDs that a merged PR is entitled to
+    CLOSE.
+
+    CREDIBLE-929: as of that gap, this is identical to _extract_gap_ids —
+    both are restricted to PR title + Closes:/Fixes: trailers only. Kept as
+    a separate name so call sites document *why* they scan (closure intent
+    vs. lease-release intent) even though the extraction logic is shared.
+    """
+    return _extract_gap_ids(pr)
 
 
 def _auto_release_sibling_leases(pr: dict, payload: dict) -> int:
