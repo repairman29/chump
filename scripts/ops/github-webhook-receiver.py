@@ -227,17 +227,19 @@ def _extract_gap_ids_for_closure(pr: dict) -> list[str]:
     Two signals only, both opt-in by construction:
       1. PR TITLE — gap IDs named in the title are the PR's stated intent
          (the convention every ship already follows: "GAP-ID: short title").
-      2. Explicit `Closes: ID[, ID2, ...]` trailer, one per line, anywhere in
-         the body — an explicit author assertion, not an incidental mention.
+      2. Explicit `Closes: ID[, ID2, ...]` or `Fixes: ID[, ID2, ...]` trailer,
+         one per line, anywhere in the body — an explicit author assertion,
+         not an incidental mention.
 
-    Body text OUTSIDE a `Closes:` trailer is never scanned. Cross-references
-    remain free-form prose (nothing to change about how authors write ACs or
-    handoff docs) — they just no longer double as a closure signal.
+    Body text OUTSIDE a `Closes:`/`Fixes:` trailer is never scanned.
+    Cross-references remain free-form prose (nothing to change about how
+    authors write ACs or handoff docs) — they just no longer double as a
+    closure signal (CREDIBLE-929).
     """
     import re
 
     pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
-    closes_pattern = re.compile(r"(?im)^closes:\s*(.+)$")
+    closes_pattern = re.compile(r"(?im)^(?:closes|fixes):\s*(.+)$")
 
     seen: set[str] = set()
     ordered: list[str] = []
@@ -329,9 +331,9 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
     ghost-gap waste pattern).
 
     CREDIBLE-268 FIX 1: gap-id extraction uses _extract_gap_ids_for_closure
-    (title + explicit `Closes:` trailer only), NOT the broad title+body scan
-    used by _auto_release_sibling_leases — a PR merely CITING a gap must not
-    be able to close it.
+    (title + explicit `Closes:`/`Fixes:` trailer only, CREDIBLE-929), NOT the
+    broad title+body scan used by _auto_release_sibling_leases — a PR merely
+    CITING a gap must not be able to close it.
 
     CREDIBLE-268 FIX 2: routes through `chump gap ship`, not `chump gap set
     --status done`. `gap set` bypassed the INFRA-1392 PROOF-OF-MERGE guard
