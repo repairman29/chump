@@ -179,4 +179,54 @@ rc=$?
     || fail "CHUMP_NODE_SKIP_ARTIFACT_PULL=1 did not force the local build"
 ok "CHUMP_NODE_SKIP_ARTIFACT_PULL=1 forces the local build (operator escape hatch)"
 
+# ── Test 4 (RESILIENT-1041): gh present but UNAUTHENTICATED ─────────────────
+# Every test above stubs a WORKING gh via CHUMP_NODE_REFRESH_TEST_GREEN_SHA,
+# which bypasses the real _find_green_main_sha gh lookup entirely — none of
+# them exercise what happens when gh is on PATH (command -v gh succeeds, so
+# the script never takes the "gh unavailable" branch) but every `gh api` call
+# fails because the timer environment has no GH_TOKEN / no `gh auth login`
+# (RESILIENT-1040, not yet shipped). This is the adversarial case from the
+# gap: the green-lookup silently comes back empty, the node falls back to RAW
+# origin/main HEAD (which may be red), the artifact-pull lookup also comes up
+# empty, and the node pays a full local cargo build. Both fallbacks must now
+# emit a halt-class signal, not just a soft ambient note.
+cat > "$TMP/bin/gh" <<'EOF'
+#!/usr/bin/env bash
+# Simulates a real unauthenticated `gh` in a non-interactive timer: every
+# `api` call fails (rc=1, empty stdout) regardless of the query.
+echo "gh: To use GitHub CLI in this environment, run 'gh auth login' or set GH_TOKEN." >&2
+exit 1
+EOF
+chmod +x "$TMP/bin/gh"
+rm -f "$TMP/cargo-calls.log"
+: > "$AMBIENT"
+git -C "$MIRROR" checkout -q -B main "$GREEN_SHA"
+
+env CHUMP_NODE_BIN="$TMP/installed-chump4" \
+CHUMP_NODE_REPO="$MIRROR" \
+CHUMP_NODE_TARGET="$TARGET" \
+NODE_AMBIENT="$AMBIENT" \
+CHUMP_NODE_REFRESH_LOGDIR="$TMP/logs4" \
+HOME="$FAKEHOME" \
+PATH="$TMP/bin:/usr/bin:/bin" \
+    bash "$SCRIPT" > "$TMP/out4.log" 2>&1
+rc=$?
+[ "$rc" -eq 0 ] || fail "unauthed-gh run exited $rc: $(cat "$TMP/out4.log")"
+
+grep -q '"kind":"node_refresh_green_lookup_failed"' "$AMBIENT" \
+    || fail "unauthed gh did not fall back to raw origin/main HEAD: $(cat "$AMBIENT")"
+ok "unauthed gh (present, all api calls fail) falls back to raw origin/main HEAD"
+
+[ -f "$TMP/cargo-calls.log" ] \
+    || fail "unauthed gh did not fall through to a local cargo build (artifact lookup should also fail)"
+ok "unauthed gh also misses the artifact-pull lookup and cold-builds locally"
+
+grep -q '"kind":"halt_class_emit".*"name":"node-refresh-green-lookup".*"status":"failure"' "$AMBIENT" \
+    || fail "raw-HEAD-fallback did NOT emit a halt-class signal (RESILIENT-1041): $(cat "$AMBIENT")"
+ok "raw-HEAD-fallback emits a halt-class signal (RESILIENT-1041)"
+
+grep -q '"kind":"halt_class_emit".*"name":"node-refresh-cold-build".*"status":"failure"' "$AMBIENT" \
+    || fail "cold-build fallback did NOT emit a halt-class signal (RESILIENT-1041): $(cat "$AMBIENT")"
+ok "cold-build-revert emits a halt-class signal (RESILIENT-1041)"
+
 exit 0
