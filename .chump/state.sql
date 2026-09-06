@@ -12630,9 +12630,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `main` function in src/main.rs and the `chump_system_prompt` function in src/system_prompt.rs so that they no longer read slot tags from environment variables via `std::env::var`. Instead, they load the required tags from the provider manifest using the existing `ProviderManifest::load_tag` helper, and fall back to a sensible default (e.g., `"default-slot"`) when the manifest does not contain the requested tag.
+    
+    Target file(s):
+    - src/main.rs
+    - src/system_prompt.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All code paths that previously read tags from .env now load them from the manifest
-    - If the manifest is missing a tag, the code falls back to a sensible default
+    - "In src/main.rs, the `main` function calls `ProviderManifest::load_tag(\"slot\")` and uses the returned value; if the call returns `None`, the code uses the literal default `\"default-slot\"` instead of reading `env::var(\"SLOT_TAG\")`."
+    - "In src/system_prompt.rs, the `chump_system_prompt` function obtains its slot tag via `ProviderManifest::load_tag(\"slot\")` with a fallback to `\"default-slot\"` and no longer invokes `std::env::var` for that tag."
+    - "A unit test that loads a manifest missing the `slot` tag verifies that both `main` (via a helper) and `chump_system_prompt` receive `\"default-slot\"` as the slot tag, confirming the fallback behavior."
   depends_on: [CREDIBLE-546]
   notes: |
     [chump harvest check 'committed']
@@ -101729,7 +101738,7 @@ gaps:
   acceptance_criteria:
     - "1. src/preflight.rs gains a cli_observability_misc gate covering the 41 remaining unmirrored scripts enumerated in docs/process/AUDIT_JOB_DECOMPOSITION.md cluster cli-observability-misc\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_CLI_MISC=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-cli-misc.sh smoke asserts the gate runs all 41 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored\n5. Last of the 5 META-086 sub-gaps to ship self-closes META-086 per its AC 4"
   notes: |
-    Decomposed into 5 slices: INFRA-4717, INFRA-4718, INFRA-4719, INFRA-4720, INFRA-4721
+    Decomposed into 5 slices: INFRA-5000, INFRA-5001, INFRA-5002, INFRA-5003, INFRA-5004
   opened_date: '2026-07-26'
 
 - id: INFRA-3374
@@ -146369,6 +146378,137 @@ gaps:
     
     === cross-pollination briefs mentioning 'ZERO-WASTE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5000
+  domain: INFRA
+  title: "INFRA: INFRA-4717: Add cli_observability_misc gate in src/preflight.rs (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs contains a new gate named `cli_observability_misc` guarded by a feature flag.
+    - The gate enumerates all 41 scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md for the cli-observability-misc cluster.
+    - Code compiles without warnings and the gate is reachable from the preflight entry point.
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5001
+  domain: INFRA
+  title: "INFRA: INFRA-4718: Implement default execution, skip logic, and audit‑trail event (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The gate runs all 41 scripts by default when `chump preflight` is invoked.
+    - Setting `CHUMP_PREFLIGHT_SKIP_CLI_MISC=1` skips the gate entirely.
+    - When skipped, an audit‑trail event with type `preflight_cli_misc_skipped` is emitted.
+    - Unit tests verify both execution paths (run vs skip).
+  depends_on: [INFRA-5000]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5002
+  domain: INFRA
+  title: "INFRA: INFRA-4719: Add smoke test script scripts/ci/test-preflight-cli-misc.sh (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script invokes `chump preflight` and asserts that the cli_observability_misc gate runs all 41 scripts (e.g., by checking exit codes or log output).
+    - When `CHUMP_PREFLIGHT_SKIP_CLI_MISC=1` is set, the script verifies the gate is skipped and the audit‑trail skip event is recorded.
+    - The script exits with status 0 on success and non‑zero on failure, making it suitable for CI.
+    - The script is added to the repository and passes CI lint checks.
+  depends_on: [INFRA-5001]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5003
+  domain: INFRA
+  title: "INFRA: INFRA-4720: Update CI_PREFLIGHT_PARITY.md to mark cluster mirrored (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/process/CI_PREFLIGHT_PARITY.md includes a new entry marking the `cli-observability-misc` cluster as mirrored.
+    - The documentation references the new gate name and points to the test script location.
+    - Documentation passes the repository markdown linting rules.
+  depends_on: [INFRA-5002]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5004
+  domain: INFRA
+  title: "INFRA: INFRA-4721: Self‑close META-086 after completing all sub‑gaps (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - META-086 issue is automatically transitioned to Closed state.
+    - Release notes include a note that the cli‑observability‑misc preflight cluster is now mirrored.
+    - No open blockers remain for META-086.
+  depends_on: [INFRA-5003]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-514
   domain: INFRA
