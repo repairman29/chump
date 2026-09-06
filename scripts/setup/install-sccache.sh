@@ -180,6 +180,41 @@ else
     log "cranelift component not installed — omitting codegen-backend section"
 fi
 
+# ── availability-gate BuildBuddy remote cache, R2 fallback (INFRA-4923, INFRA-2249 slice) ──
+# INFRA-3660 keeps the DEFAULT local-machine cache disk-only (no cloud path
+# unconditionally written). This block only fires when the operator has
+# opted a given machine into the shared remote cache by exporting
+# BUILDBUDDY_API_KEY (mirrors the CI wiring in .github/workflows/ci.yml —
+# INFRA-4653). R2 vars are written alongside as the fallback backend when
+# BuildBuddy is unreachable, using the same env-var names sccache expects
+# (SCCACHE_ENDPOINT / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY — see
+# docs/process/SCCACHE_R2_CACHE.md "Local-dev sccache" section). Absent any
+# of these exports, this whole block is empty and behavior is unchanged
+# (local disk cache only).
+BUILDBUDDY_BLOCK=""
+if [[ -n "${BUILDBUDDY_API_KEY:-}" ]]; then
+    log "BUILDBUDDY_API_KEY set — enabling BuildBuddy remote cache (R2 stays wired as fallback)"
+    R2_FALLBACK_LINES=""
+    if [[ -n "${R2_ACCOUNT_ID:-}" && -n "${AWS_ACCESS_KEY_ID:-}" && -n "${AWS_SECRET_ACCESS_KEY:-}" ]]; then
+        R2_FALLBACK_LINES="
+SCCACHE_BUCKET = \"${SCCACHE_BUCKET:-chump-sccache}\"
+SCCACHE_REGION = \"auto\"
+SCCACHE_ENDPOINT = \"https://${R2_ACCOUNT_ID}.r2.cloudflarestorage.com\"
+AWS_ACCESS_KEY_ID = \"${AWS_ACCESS_KEY_ID}\"
+AWS_SECRET_ACCESS_KEY = \"${AWS_SECRET_ACCESS_KEY}\""
+    else
+        log "R2_ACCOUNT_ID / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY not fully set — BuildBuddy enabled without an R2 fallback"
+    fi
+    BUILDBUDDY_BLOCK="
+# INFRA-4923 / INFRA-2249 slice: BuildBuddy remote cache — opted in on this
+# machine because BUILDBUDDY_API_KEY was exported at install time. sccache
+# tries BuildBuddy first, falling back to the R2 vars below (if set) when
+# BuildBuddy is unreachable — same additive pattern as CI (INFRA-4653).
+SCCACHE_BUILDBUDDY_URL = \"grpc.buildbuddy.io?api_key=${BUILDBUDDY_API_KEY}\"${R2_FALLBACK_LINES}"
+else
+    log "BUILDBUDDY_API_KEY not set — omitting BuildBuddy/R2 section (local disk cache only, per INFRA-3660)"
+fi
+
 log "writing .cargo/config.toml"
 mkdir -p .cargo
 {
@@ -217,6 +252,7 @@ SCCACHE_CACHE_SIZE = "$SCCACHE_CACHE_SIZE_RESOLVED"
 # and re-run this script if you want a different location.
 SCCACHE_DIR = "$SCCACHE_DIR_RESOLVED"
 EOF
+[[ -n "$BUILDBUDDY_BLOCK" ]] && printf '%s\n' "$BUILDBUDDY_BLOCK"
 } > .cargo/config.toml
 
 # ── 3. verify (best-effort) ──────────────────────────────────────────────

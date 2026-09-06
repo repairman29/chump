@@ -205,6 +205,27 @@ export RUSTC_WRAPPER=sccache
 But this is optional — local sccache local cache is already fast enough
 for dev.
 
+### BuildBuddy opt-in for local machines (INFRA-4923, INFRA-2249 slice)
+
+`scripts/setup/install-sccache.sh` mirrors the CI wiring above for any
+machine that exports `BUILDBUDDY_API_KEY` before (re-)running it:
+
+```bash
+export BUILDBUDDY_API_KEY=<your-buildbuddy-api-key>
+# Optional — adds the R2 vars above as a fallback backend:
+export R2_ACCOUNT_ID=<your-r2-account-id>
+export AWS_ACCESS_KEY_ID=<r2-access-key-id>
+export AWS_SECRET_ACCESS_KEY=<r2-secret-access-key>
+bash scripts/setup/install-sccache.sh
+```
+
+This writes `SCCACHE_BUILDBUDDY_URL` (and the R2 fallback vars, if set)
+into `.cargo/config.toml`'s `[env]` block. sccache tries BuildBuddy first
+and falls back to R2 when unreachable — same additive, degrade-safe
+pattern as `.github/workflows/ci.yml` (INFRA-4653). Without
+`BUILDBUDDY_API_KEY` exported, the script's output is unchanged: local
+disk cache only, per the INFRA-3660 default.
+
 ## Bypass / emergency disable
 
 If sccache misbehaves in CI:
