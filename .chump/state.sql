@@ -30295,10 +30295,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In src/provider_cascade.rs and crates/chump-coord/src/main.rs, extend model validation logic to check model expiration dates against current time and compare indexed models against active endpoints from /v1/models. Flag models with past expiration_date as retired and models missing from /v1/models as unreachable, appending warning items to the findings report.
+    
+    Target file(s):
+    - src/provider_cascade.rs
+    - crates/chump-coord/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Models with expiration_date in the past are flagged as retired in the index
-    - Models absent from the live /v1/models endpoint are flagged as unreachable
-    - A warning entry is added to the findings report for each flagged model
+    - In src/provider_cascade.rs, models with expiration_date prior to current time are assigned retired status in the model index.
+    - In src/provider_cascade.rs, models present in the index but missing from the live /v1/models response are assigned unreachable status.
+    - Executing main in crates/chump-coord/src/main.rs emits a warning finding entry into the report output for each model flagged as retired or unreachable.
   depends_on: [EFFECTIVE-1074]
   notes: |
     [chump harvest check 'inference']
@@ -30366,10 +30374,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    In src/improve.rs and docs/design/ADAPTIVE_ROUTING.md, implement per-task-class slot ranking using CascadeStrategy::TaskAware and provider_bandit scoring across all 7 task classes (work, cursor_improve, doc_hygiene, battle_qa, research, opportunity, discovery). The ranking logic evaluates candidate slots using fitness_score, tool capability flags, and declared execution limits, while supporting an optional Thompson Sampling bandit score adjustment that defaults to disabled unless explicitly toggled.
+    
+    Target file(s):
+    - docs/design/ADAPTIVE_ROUTING.md
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - For each task class (work, cursor_improve, doc_hygiene, battle_qa, research, opportunity, discovery) a ranked list of slots is produced
-    - Ranking algorithm consumes fitness_score, tool capability flag, and declared limits
-    - The Thompson Sampling bandit is enabled but defaults to off unless explicitly toggled
+    - "In src/improve.rs, slot ranking under CascadeStrategy::TaskAware evaluates slots for work, cursor_improve, doc_hygiene, battle_qa, research, opportunity, and discovery task classes using fitness_score, tool capability flags, and declared limits."
+    - The Thompson Sampling bandit score modifier in src/improve.rs defaults to false/disabled unless explicitly enabled via configuration flag.
+    - cargo test passes for all task-aware routing and bandit ranking unit tests in src/improve.rs.
   depends_on: [EFFECTIVE-1079, EFFECTIVE-1076]
   notes: |
     [chump harvest check 'inference']
