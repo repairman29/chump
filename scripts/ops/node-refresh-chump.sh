@@ -65,6 +65,30 @@ _NODE_REFRESH_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=../coord/lib/github.sh
 source "$_NODE_REFRESH_DIR/../coord/lib/github.sh" 2>/dev/null || true
 
+# --- RESILIENT-1040: ensure gh is authenticated in THIS context -------------
+# ROOT CAUSE of the 5-gap self-sustain saga (1036-1039): this script is
+# launched by a systemd --user timer with no interactive login shell and no
+# inherited `gh auth login` session. Without GH_TOKEN in the environment, gh
+# is installed but NOT authed here — every gh call below (_find_green_main_sha,
+# _try_artifact_pull, _find_build_artifact_sha) silently returns empty, which
+# looks exactly like "gh unavailable" and falls through to a cold local cargo
+# build EVERY cycle. RESILIENT-1037's nearest-ancestor sha logic was correct
+# all along; it never got a chance to run because gh had no credentials.
+# Fix: export GH_TOKEN from ~/.chump/providers.env (the fleet's canonical
+# secret store, RESILIENT-173) before any gh call, same pattern already used
+# by chump-node-install.sh for authenticated clones. A node that already has
+# GH_TOKEN/GITHUB_TOKEN in its environment (e.g. operator export, systemd
+# Environment=) is left alone — providers.env is a fallback, not an override.
+CHUMP_PROVIDERS_ENV="${CHUMP_PROVIDERS_ENV:-$HOME/.chump/providers.env}"
+if [[ -z "${GH_TOKEN:-}" && -z "${GITHUB_TOKEN:-}" && -f "$CHUMP_PROVIDERS_ENV" ]]; then
+    _creds_gh_token="$(grep -E '^(export )?GH_TOKEN=' "$CHUMP_PROVIDERS_ENV" 2>/dev/null \
+        | tail -1 | sed -E 's/^(export )?GH_TOKEN=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')"
+    if [[ -n "$_creds_gh_token" ]]; then
+        export GH_TOKEN="$_creds_gh_token"
+    fi
+    unset _creds_gh_token
+fi
+
 # --- resolve the mirror checkout to build from -------------------------------
 REPO_ROOT="${CHUMP_NODE_REPO:-}"
 if [[ -z "$REPO_ROOT" ]]; then
