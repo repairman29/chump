@@ -258,6 +258,54 @@ _try_artifact_pull() {
     return 0
 }
 
+# --- RESILIENT-1037: nearest-ancestor artifact discovery ---------------------
+# build-fleet-binaries.yml only triggers on push-to-main when the diff touches
+# `paths:` that can change the binary (src/**, crates/**, build.rs, Cargo.*).
+# The green-main pointer (found below by _find_green_main_sha, keyed off
+# ci.yml which runs on EVERY push) has no such filter — a doc-only /
+# state.sql-only commit (the recurring "chore(backlog): coherence sync" ships
+# this repo produces constantly) advances green-main to a SHA that never had a
+# build-fleet-binaries run at all. An exact-sha artifact lookup against that
+# pointer always misses ("no green-main sha found"-adjacent symptom: the pull
+# path degrades to a local cargo build every cycle even though CI already
+# built an identical binary for the last source-changing ancestor commit),
+# which is unsafe on a 2-core node (VERIFIED live on mugman: 4 cargo procs).
+#
+# Fix: instead of asking "is there a build for THIS exact sha", ask "what is
+# the newest sha, reachable as an ancestor of (or equal to) this ref, that DID
+# get a successful build-fleet-binaries run" — since no buildable path changed
+# between that ancestor and the ref (or build-fleet-binaries would have fired
+# on every intervening commit too), the binary content is identical and safe
+# to pull + install under the ref's tree.
+#
+# Prints the found sha, or empty when gh is unavailable / no candidate run is
+# an ancestor of $1 within the lookback window (caller falls back to the old
+# exact-sha behavior, so this is additive-only — never worse than before).
+CHUMP_NODE_ARTIFACT_LOOKBACK="${CHUMP_NODE_ARTIFACT_LOOKBACK:-30}"
+_find_build_artifact_sha() {
+    local ref_sha="$1"
+    [[ "${CHUMP_NODE_SKIP_ARTIFACT_PULL:-0}" == "1" ]] && { echo ""; return; }
+    command -v gh >/dev/null 2>&1 || { echo ""; return; }
+    [[ -z "$ref_sha" || "$ref_sha" == "unknown" ]] && { echo ""; return; }
+
+    local _gh_cmd="gh"; command -v chump_gh >/dev/null 2>&1 && _gh_cmd="chump_gh"
+    local shas
+    shas="$(CHUMP_GH_CALL_CRITICALITY=background "$_gh_cmd" api \
+        "repos/{owner}/{repo}/actions/workflows/${CHUMP_NODE_ARTIFACT_WORKFLOW}/runs?branch=main&status=success&per_page=${CHUMP_NODE_ARTIFACT_LOOKBACK}" \
+        --jq '.workflow_runs[].head_sha' 2>/dev/null)"
+    [[ -z "$shas" ]] && { echo ""; return; }
+
+    local candidate
+    while IFS= read -r candidate; do
+        [[ -z "$candidate" ]] && continue
+        if git merge-base --is-ancestor "$candidate" "$ref_sha" 2>/dev/null; then
+            echo "$candidate"
+            return
+        fi
+    done <<< "$shas"
+    echo ""
+}
+
 # --- RESILIENT-327: last-GREEN main pointer, not raw HEAD --------------------
 # Returns the full sha of the most-recent SUCCESS run of the required-gate
 # workflow on branch main. Falls back to raw origin/main HEAD (old behavior,
@@ -362,12 +410,26 @@ fi
 # On success we're done — no cargo invoked at all. On any miss/failure we fall
 # through to the local build below (identical to pre-INFRA-3677 behavior).
 FULL_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
-if _try_artifact_pull "$FULL_SHA" "$MAIN_SHA"; then
+
+# RESILIENT-1037: prefer the nearest ancestor sha that actually has a
+# build-fleet-binaries run (see _find_build_artifact_sha above) — an exact
+# match against FULL_SHA alone misses whenever the green pointer landed on a
+# doc-only commit that never triggered a build. Falls back to FULL_SHA itself
+# (old exact-match behavior) when no ancestor candidate is found.
+ARTIFACT_SHA="$(_find_build_artifact_sha "$FULL_SHA")"
+if [[ -n "$ARTIFACT_SHA" && "$ARTIFACT_SHA" != "$FULL_SHA" ]]; then
+    log "artifact-pull: $MAIN_SHA has no direct build; using nearest built ancestor $(git rev-parse --short=12 "$ARTIFACT_SHA" 2>/dev/null || echo "${ARTIFACT_SHA:0:12}")"
+elif [[ -z "$ARTIFACT_SHA" ]]; then
+    ARTIFACT_SHA="$FULL_SHA"
+fi
+ARTIFACT_SHA_SHORT="$(git rev-parse --short=12 "$ARTIFACT_SHA" 2>/dev/null || echo "${ARTIFACT_SHA:0:12}")"
+
+if _try_artifact_pull "$ARTIFACT_SHA" "$ARTIFACT_SHA_SHORT"; then
     _reconcile_role_organs
     ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
     exit 0
 fi
-log "artifact-pull unavailable or missed for $MAIN_SHA — building locally"
+log "artifact-pull unavailable or missed for $MAIN_SHA (artifact sha $ARTIFACT_SHA_SHORT) — building locally"
 
 # --- resolve cargo -----------------------------------------------------------
 CARGO=""
