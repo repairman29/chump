@@ -1,13 +1,23 @@
 ---
 doc_tag: log
 owner_gap: CREDIBLE-845
-last_audited: 2026-09-05
+also_satisfies: CREDIBLE-914
+last_audited: 2026-09-06
 ---
 
 # Representative gaps for model-tier grading (CREDIBLE-230 slice)
 
 **Parent:** CREDIBLE-230 ("inference test kit" — measure whether best models can
 make chump write/edit/ship/merge unaided, not just free-tier models).
+
+**Also satisfies CREDIBLE-914** ("Define representative gap set across Rust
+and TypeScript (CREDIBLE-230 slice)") — CREDIBLE-914 is a re-filed slice of
+the same CREDIBLE-230 parent with identical acceptance criteria (>=5 distinct
+gaps, classified xs/s/m, across Rust and TypeScript). Rather than duplicate
+the list below under a second doc, CREDIBLE-914 is closed against this file:
+the R1-R3 / T1-T3 table already provides 6 distinct gaps (3 Rust, 3
+TypeScript) each with an explicit effort rating and a clear description of
+the required change, satisfying both gaps' AC verbatim.
 
 **Purpose of this doc:** CREDIBLE-230 calls for "a fixed set of representative
 gaps (xs/s/m effort, across at least Rust and TS) run end-to-end — claim ->
