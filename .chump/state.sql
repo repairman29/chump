@@ -13995,9 +13995,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add validation inside the `plan` function (crates/chump-ship/src/lib.rs:188) that checks each slot for the required fields (`id`, `type`, `endpoint`). Introduce a new boolean flag `CREDIBLE_STRICT_SLOTS` read in `ProviderCascade::from_env` (src/provider_cascade.rs:608). When the flag is true the loader aborts startup with a clear error listing the missing fields and slot identifier; when false it logs a fatal warning (using the existing logging macro) and continues.
+    
+    Target file(s):
+    - crates/chump-ship/src/lib.rs
+    - src/provider_cascade.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - If a slot is incomplete, the loader either aborts startup with an error or logs a fatal warning (configurable flag)
-    - Error/warning message includes the missing fields and slot identifier
+    - Running `cargo run --bin loader` with an environment variable `CREDIBLE_STRICT_SLOTS=1` and a slot definition missing the `endpoint` field causes the process to exit with a non‑zero status and prints an error message that includes the slot’s `id` and the missing field name.
+    - Running the same loader with `CREDIBLE_STRICT_SLOTS=0` and the same incomplete slot definition allows the program to continue startup and emits a log entry at the fatal‑warning level that lists the slot’s `id` and the missing field.
+    - Providing a fully populated slot (all required fields present) results in successful startup with no error or fatal‑warning log, regardless of the `CREDIBLE_STRICT_SLOTS` flag value.
+    - "The `ProviderCascade::from_env` function (src/provider_cascade.rs:608) correctly reads the `CREDIBLE_STRICT_SLOTS` environment variable and sets the internal configuration flag used by `plan`."
   depends_on: [CREDIBLE-592]
   notes: |
     [chump harvest check 'provider']
@@ -40689,6 +40699,151 @@ gaps:
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
 
+- id: EFFECTIVE-1320
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add data model fields for intake: who, struggling-moment, done-signal (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Struct(s) in the EFFECTIVE codebase include new optional fields: `who: String`, `struggling_moment: String`, `done_signal: bool`."
+    - Compilation succeeds with the new fields present.
+    - cargo fmt and clippy run without warnings on modified files.
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1321
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement capture of \"who\" in the intake flow (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a user initiates a JTBD intake, the system records the user's identifier into the `who` field.
+    - Unit test verifies that the `who` field is populated with the expected identifier.
+    - No existing tests break.
+  depends_on: [EFFECTIVE-1320]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1322
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement capture of \"struggling-moment\" in the intake flow (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The intake UI/API captures a free‑text description of the user's struggling moment and stores it in `struggling_moment`.
+    - Unit test confirms that a provided struggling‑moment string is persisted correctly.
+    - Existing functionality remains unaffected.
+  depends_on: [EFFECTIVE-1320]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1323
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement capture of \"done-signal\" in the intake flow (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When the user signals completion, the boolean `done_signal` is set to true in the intake record.
+    - Unit test asserts that `done_signal` toggles from false to true upon completion event.
+    - All prior tests continue to pass.
+  depends_on: [EFFECTIVE-1320]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1324
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add end‑to‑end test verifying full intake captures who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new integration test runs the full JTBD intake flow, providing values for who, struggling‑moment, and done‑signal.
+    - The test asserts that all three fields are persisted correctly in the final record.
+    - The test fails when the new capture logic is removed, proving its necessity.
+    - cargo fmt, clippy, and all existing tests pass without regression.
+  depends_on: [EFFECTIVE-1321, EFFECTIVE-1322, EFFECTIVE-1323]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
 - id: EFFECTIVE-133
   domain: EFFECTIVE
   title: "EFFECTIVE P0: chump onboard panics 'Cannot start a runtime from within a runtime' (onboard.rs:287) at provider cascade — blocks the BEAST scout milestone"
@@ -45023,7 +45178,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 3 slices: EFFECTIVE-1108, EFFECTIVE-1109, EFFECTIVE-1110
+    Decomposed into 5 slices: EFFECTIVE-1320, EFFECTIVE-1321, EFFECTIVE-1322, EFFECTIVE-1323, EFFECTIVE-1324
   opened_date: '2026-08-22'
 
 - id: EFFECTIVE-445
