@@ -12,9 +12,49 @@
 // Vanilla Web Component, no build, no CDN — matches the rest of web/v2/.
 // Air-gap safe by construction.
 
+const CSS = `
+  .cost-meter {
+    display: inline-grid;
+    grid-template-columns: repeat(4, minmax(0, auto));
+    gap: 0 12px;
+    align-items: baseline;
+    padding-bottom: 9px;
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+  }
+  .cost-meter.loading { opacity: 0.5; }
+  .cost-meter.warn .cost-meter-value { color: var(--accent-warn, #cc8800); }
+  .cost-meter.red .cost-meter-value { color: var(--accent-error, #cc3344); }
+  .cost-meter-row { display: flex; gap: 4px; align-items: baseline; }
+  .cost-meter-label {
+    color: var(--text-tertiary, var(--text-secondary));
+    text-transform: uppercase;
+    font-size: 9px;
+    letter-spacing: 0.04em;
+  }
+  .cost-meter-value { color: var(--text-primary); font-weight: 500; }
+  .cost-meter-warn {
+    grid-column: 1 / -1;
+    font-size: 10px;
+    color: var(--accent-warn, #cc8800);
+    padding-top: 2px;
+  }
+`;
+
+/**
+ * INFRA-1012: <chump-cost-meter> sits between model picker and heartbeat
+ * in the header. 4 row figures + optional budget warning banner.
+ */
 class ChumpCostMeter extends HTMLElement {
   #timer = null;
   #lastPayload = null;
+  #shadow;
+
+  constructor() {
+    super();
+    this.#shadow = this.attachShadow({ mode: 'open' });
+  }
 
   connectedCallback() {
     this.#render('loading…');
@@ -43,7 +83,7 @@ class ChumpCostMeter extends HTMLElement {
 
   #render(label, data) {
     if (label) {
-      this.innerHTML = `<div class="cost-meter loading">${label}</div>`;
+      this.#shadow.innerHTML = `<style>${CSS}</style><div class="cost-meter loading">${label}</div>`;
       return;
     }
     const fmt$ = (v) => '$' + (v ?? 0).toFixed(3);
@@ -58,7 +98,8 @@ class ChumpCostMeter extends HTMLElement {
                     : warn ? 'warn'
                     : 'ok';
 
-    this.innerHTML = `
+    this.#shadow.innerHTML = `
+      <style>${CSS}</style>
       <div class="cost-meter ${warnLevel}">
         <div class="cost-meter-row">
           <span class="cost-meter-label">session</span>

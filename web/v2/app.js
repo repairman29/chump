@@ -615,14 +615,133 @@ customElements.define('chump-nav', ChumpNav);
 // A11y: list is role='log' aria-live='polite'; each row is role='listitem'
 // with aria-keyshortcuts on APPROVE/DENY (a/d). The tray itself is hidden
 // (display:none) when list is empty so it doesn't take vertical space.
+const TOOL_APPROVAL_TRAY_CSS = `
+  :host { display: block; }
+  .tat-shell[hidden] { display: none; }
+  .tat-shell {
+    background: var(--bg-elevated);
+    border-bottom: 1px solid var(--border);
+    border-left: 3px solid var(--warn, #ff9f0a);
+    padding: 10px 14px;
+    max-height: 40vh;
+    overflow-y: auto;
+    position: relative;
+    z-index: 9;
+  }
+  .tat-header {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 8px;
+    font-size: 12px;
+    color: var(--text-secondary);
+  }
+  .tat-count {
+    display: inline-flex; align-items: center; justify-content: center;
+    min-width: 22px; height: 22px; padding: 0 8px;
+    background: var(--warn, #ff9f0a); color: #000;
+    border-radius: 11px;
+    font-size: 11px; font-weight: 700;
+  }
+  .tat-title { flex: 1; text-transform: uppercase; letter-spacing: 0.04em; }
+  .tat-batch { display: flex; gap: 6px; }
+  .tat-batch-btn {
+    background: transparent; border: 1px solid var(--border); color: var(--text-secondary);
+    padding: 4px 10px; border-radius: var(--radius-sm); cursor: pointer; font-size: 11px;
+  }
+  .tat-batch-btn:hover { color: var(--text); border-color: var(--text-secondary); }
+  .tat-list {
+    list-style: none; padding: 0; margin: 0;
+    display: flex; flex-direction: column; gap: 6px;
+  }
+  .tat-row {
+    background: var(--bg-surface, var(--bg));
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    display: flex; flex-direction: column; gap: 4px;
+    transition: opacity 0.15s, background 0.15s;
+  }
+  .tat-row:focus {
+    outline: 2px solid var(--accent); outline-offset: 1px;
+  }
+  .tat-row-main {
+    display: flex; align-items: baseline; gap: 8px;
+    font-variant-numeric: tabular-nums;
+  }
+  .tat-tool { font-weight: 600; color: var(--text-primary, var(--text)); }
+  .tat-risk {
+    font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em;
+    padding: 1px 6px; border-radius: 3px;
+  }
+  .tat-risk-low    { background: rgba(48,209,88,0.18); color: var(--success); }
+  .tat-risk-medium { background: rgba(255,159,10,0.18); color: var(--warn); }
+  .tat-risk-high   { background: rgba(255,69,58,0.22); color: var(--error); }
+  .tat-risk-unknown { background: var(--bg-elevated); color: var(--text-secondary); }
+  .tat-countdown {
+    margin-left: auto; font-size: 11px; color: var(--text-secondary);
+  }
+  .tat-reason {
+    font-size: 12px; color: var(--text-secondary); line-height: 1.4;
+  }
+  .tat-args {
+    font-size: 11px; color: var(--text-secondary);
+    overflow-x: auto; white-space: nowrap;
+  }
+  .tat-args code {
+    font-family: "SF Mono", ui-monospace, monospace;
+  }
+  .tat-actions { display: flex; gap: 6px; }
+  .tat-btn {
+    padding: 5px 12px; border-radius: var(--radius-sm);
+    border: 1px solid transparent; cursor: pointer; font-size: 12px; font-weight: 500;
+  }
+  .tat-approve {
+    background: var(--success, #30d158); color: #000;
+  }
+  .tat-approve:hover { filter: brightness(1.1); }
+  .tat-deny {
+    background: transparent; border-color: var(--border); color: var(--text-secondary);
+  }
+  .tat-deny:hover { color: var(--error); border-color: var(--error); }
+  .tat-row-pending { opacity: 0.5; pointer-events: none; }
+  .tat-row-expired {
+    opacity: 0.45;
+    border-color: var(--text-secondary);
+    background: var(--bg-elevated);
+  }
+  .tat-row-error {
+    border-color: var(--error);
+  }
+  .tat-error-banner {
+    font-size: 11px; color: var(--error);
+    padding: 4px 0;
+  }
+  /* Mobile: stack tat-row-main fields */
+  @media (max-width: 640px) {
+    .tat-shell { max-height: 50vh; }
+    .tat-row-main {
+      flex-direction: column; align-items: flex-start; gap: 2px;
+    }
+    .tat-countdown { margin-left: 0; }
+    .tat-actions { flex-direction: row; }
+    .tat-btn { flex: 1; min-height: 36px; }
+  }
+`;
+
 class ChumpToolApprovalTray extends HTMLElement {
   #pending = new Map(); // request_id → {payload, received_at, status}
   #channel = null;
   #tickTimer = null;
   #focusedRow = null;
+  #shadow;
+
+  constructor() {
+    super();
+    this.#shadow = this.attachShadow({ mode: 'open' });
+  }
 
   connectedCallback() {
-    this.innerHTML = `
+    this.#shadow.innerHTML = `
+      <style>${TOOL_APPROVAL_TRAY_CSS}</style>
       <div class="tat-shell" role="log" aria-live="polite" aria-label="Pending tool approvals" hidden>
         <div class="tat-header">
           <span class="tat-count" id="tat-count">0</span>
@@ -636,9 +755,9 @@ class ChumpToolApprovalTray extends HTMLElement {
       </div>
     `;
     document.addEventListener('chump:tool_approval', (e) => this.#onIncoming(e.detail));
-    this.querySelector('.tat-approve-all')?.addEventListener('click', () => this.#decideAll(true));
-    this.querySelector('.tat-deny-all')?.addEventListener('click', () => this.#decideAll(false));
-    this.querySelector('#tat-list')?.addEventListener('click', (e) => this.#onListClick(e));
+    this.#shadow.querySelector('.tat-approve-all')?.addEventListener('click', () => this.#decideAll(true));
+    this.#shadow.querySelector('.tat-deny-all')?.addEventListener('click', () => this.#decideAll(false));
+    this.#shadow.querySelector('#tat-list')?.addEventListener('click', (e) => this.#onListClick(e));
 
     // Multi-tab dedup channel — peer tab approves/denies, we drop the row.
     if (typeof BroadcastChannel !== 'undefined') {
@@ -675,9 +794,9 @@ class ChumpToolApprovalTray extends HTMLElement {
   }
 
   #render() {
-    const shell = this.querySelector('.tat-shell');
-    const list = this.querySelector('#tat-list');
-    const count = this.querySelector('#tat-count');
+    const shell = this.#shadow.querySelector('.tat-shell');
+    const list = this.#shadow.querySelector('#tat-list');
+    const count = this.#shadow.querySelector('#tat-count');
     if (!shell || !list || !count) return;
     const rows = Array.from(this.#pending.values()).sort((a, b) => a.received_at - b.received_at);
     count.textContent = String(rows.length);
@@ -734,7 +853,7 @@ class ChumpToolApprovalTray extends HTMLElement {
     const row = this.#pending.get(requestId);
     if (!row) return;
     // Optimistic UI: dim immediately so the operator sees feedback.
-    const li = this.querySelector(`.tat-row[data-request-id="${requestId}"]`);
+    const li = this.#shadow.querySelector(`.tat-row[data-request-id="${requestId}"]`);
     if (li) li.classList.add('tat-row-pending');
 
     fetch('/api/approve', {
@@ -767,12 +886,12 @@ class ChumpToolApprovalTray extends HTMLElement {
       const expiresAt = Number(row.payload.expires_at_secs ?? 0);
       const remaining = expiresAt - now;
       // Update the countdown text in-place (no full re-render — keeps focus).
-      const span = this.querySelector(`[data-countdown="${reqId}"]`);
+      const span = this.#shadow.querySelector(`[data-countdown="${reqId}"]`);
       if (span) span.textContent = ChumpToolApprovalTray.#fmtCountdown(remaining);
       if (remaining <= 0 && row.status === 'open') {
         // Auto-deny expired requests.
         row.status = 'expired';
-        const li = this.querySelector(`.tat-row[data-request-id="${reqId}"]`);
+        const li = this.#shadow.querySelector(`.tat-row[data-request-id="${reqId}"]`);
         if (li) li.classList.add('tat-row-expired');
         fetch('/api/approve', {
           method: 'POST',
@@ -1266,28 +1385,126 @@ class ChumpFirstRunWizard extends HTMLElement {
 customElements.define('chump-first-run-wizard', ChumpFirstRunWizard);
 
 // ── <chump-status-footer> (PRODUCT-107) ─────────────────────────────────────
-// Persistent operator HUD — always visible across every cadence. Six slots:
-//   model | cost | air-gap | pillars (E/C/R/Z) | fleet | GH budget
-//
-// Each slot polls independently (its own interval) so a slow one doesn't
-// stall the others. Click any slot → drill to the canonical detail view
-// via the same chump:navigate event the rest of the app uses.
-//
-// Data sources per docs/design/OPERATOR_CONSOLE_V2.md §footer:
-//   - model   : /api/stack-status .llm_last_completion (+ cascade slot suffix)
-//   - cost    : /api/telemetry/cost (INFRA-1012)
-//   - air-gap : /api/stack-status .air_gap_mode
-//   - pillars : placeholder "—" until INFRA-1203 ships an endpoint
-//   - fleet   : /api/fleet-status
-//   - GH budget : /api/stack-status .github_rate_limit (or .gh_rate_limit)
-//
-// Telemetry: kind=footer_slot_drilled {slot, cadence_target} on every click.
+const STATUS_FOOTER_CSS = `
+  :host { display: block; }
+  .sf-shell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    padding-bottom: calc(6px + var(--safe-bottom));
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    z-index: 8;
+    flex-shrink: 0;
+  }
+  .sf-slot {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    min-height: 28px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .sf-slot:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary, var(--text));
+  }
+  .sf-slot:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .sf-dot {
+    font-size: 14px; line-height: 1;
+  }
+  .sf-label {
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .sf-value {
+    color: var(--text-primary, var(--text));
+    font-weight: 500;
+  }
+  .sf-value.sf-stale {
+    opacity: 0.5;
+  }
+  .sf-value.sf-warn {
+    color: var(--warn, #ff9f0a);
+  }
+  .sf-value.sf-red {
+    color: var(--error, #ff453a);
+    font-weight: 600;
+  }
+  .sf-pillars { padding: 4px 10px; }
+  .sf-pillar-grades {
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: var(--text-primary, var(--text));
+  }
+  /* Mobile (≤640px): wrap to 2 rows, tap targets ≥36px */
+  @media (max-width: 640px) {
+    .sf-shell {
+      flex-wrap: wrap;
+      justify-content: space-around;
+      gap: 4px;
+      padding: 6px 8px;
+    }
+    .sf-slot {
+      flex: 1 1 auto;
+      min-width: 90px;
+      min-height: 36px;
+      justify-content: center;
+    }
+    .sf-pillars { flex-basis: 100%; }
+  }
+`;
+
+/**
+ * PRODUCT-107: <chump-status-footer> — persistent operator HUD, always
+ * visible across every cadence. Six slots:
+ *   model | cost | air-gap | pillars (E/C/R/Z) | fleet | GH budget
+ *
+ * Each slot polls independently (its own interval) so a slow one doesn't
+ * stall the others. Click any slot → drill to the canonical detail view
+ * via the same chump:navigate event the rest of the app uses.
+ *
+ * Data sources per docs/design/OPERATOR_CONSOLE_V2.md §footer:
+ *   - model   : /api/stack-status .llm_last_completion (+ cascade slot suffix)
+ *   - cost    : /api/telemetry/cost (INFRA-1012)
+ *   - air-gap : /api/stack-status .air_gap_mode
+ *   - pillars : placeholder "—" until INFRA-1203 ships an endpoint
+ *   - fleet   : /api/fleet-status
+ *   - GH budget : /api/stack-status .github_rate_limit (or .gh_rate_limit)
+ *
+ * Telemetry: kind=footer_slot_drilled {slot, cadence_target} on every click.
+ */
 class ChumpStatusFooter extends HTMLElement {
   #pollers = [];
   #lastValues = {};
+  #shadow;
+
+  constructor() {
+    super();
+    this.#shadow = this.attachShadow({ mode: 'open' });
+  }
 
   connectedCallback() {
-    this.innerHTML = `
+    this.#shadow.innerHTML = `
+      <style>${STATUS_FOOTER_CSS}</style>
       <div class="sf-shell" role="contentinfo" aria-label="Operator status">
         <button type="button" class="sf-slot sf-model" data-slot="model" data-target="config:models"
                 title="Model — click to view providers" aria-label="Active model (click to view providers)">
@@ -1320,7 +1537,7 @@ class ChumpStatusFooter extends HTMLElement {
         </button>
       </div>
     `;
-    this.addEventListener('click', (e) => this.#onSlotClick(e));
+    this.#shadow.addEventListener('click', (e) => this.#onSlotClick(e));
 
     this.#startPoller(60_000, () => this.#pollStackStatus());
     this.#startPoller(30_000, () => this.#pollCost());
@@ -1346,15 +1563,15 @@ class ChumpStatusFooter extends HTMLElement {
       if (!d) return this.#markStale('model');
       const last = d.llm_last_completion || null;
       const modelLabel = last?.label || d.primary_backend || 'cold';
-      const modelDot = this.querySelector('#sf-model-dot');
-      const modelVal = this.querySelector('#sf-model-value');
+      const modelDot = this.#shadow.querySelector('#sf-model-dot');
+      const modelVal = this.#shadow.querySelector('#sf-model-value');
       if (modelDot) { modelDot.textContent = last ? '●' : '○'; modelDot.style.color = last ? 'var(--accent)' : 'var(--text-secondary)'; }
       if (modelVal) { modelVal.textContent = ChumpStatusFooter.#truncate(modelLabel, 18); modelVal.classList.remove('sf-stale'); }
       this.#lastValues.model = modelLabel;
 
       const airgap = d.air_gap_mode === true;
-      const agDot = this.querySelector('#sf-airgap-dot');
-      const agVal = this.querySelector('#sf-airgap-value');
+      const agDot = this.#shadow.querySelector('#sf-airgap-dot');
+      const agVal = this.#shadow.querySelector('#sf-airgap-value');
       if (agDot) { agDot.textContent = airgap ? '●' : '○'; agDot.style.color = airgap ? 'var(--success)' : 'var(--text-secondary)'; }
       if (agVal) { agVal.textContent = airgap ? 'air-gap' : 'network'; agVal.classList.remove('sf-stale'); }
       this.#lastValues.airgap = airgap;
@@ -1362,7 +1579,7 @@ class ChumpStatusFooter extends HTMLElement {
       const rl = d.github_rate_limit || d.gh_rate_limit;
       if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
         const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
-        const ghVal = this.querySelector('#sf-gh-value');
+        const ghVal = this.#shadow.querySelector('#sf-gh-value');
         if (ghVal) {
           ghVal.textContent = `${pct}%`;
           ghVal.classList.toggle('sf-warn', pct < 50);
@@ -1378,7 +1595,7 @@ class ChumpStatusFooter extends HTMLElement {
     fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).then((d) => {
       if (!d) return this.#markStale('cost');
       const dollars = Number(d.session_cost_usd ?? d.total_cost_usd ?? d.cost_today ?? 0);
-      const v = this.querySelector('#sf-cost-value');
+      const v = this.#shadow.querySelector('#sf-cost-value');
       if (v) {
         v.textContent = dollars.toFixed(2);
         v.classList.remove('sf-stale');
@@ -1402,8 +1619,8 @@ class ChumpStatusFooter extends HTMLElement {
         const s = String(a.status || a.state || '').toLowerCase();
         return s === 'active' || s === 'working' || s === 'healthy' || s === '';
       }).length;
-      const dot = this.querySelector('#sf-fleet-dot');
-      const val = this.querySelector('#sf-fleet-value');
+      const dot = this.#shadow.querySelector('#sf-fleet-dot');
+      const val = this.#shadow.querySelector('#sf-fleet-value');
       if (val) { val.textContent = total === 0 ? '—' : `${healthy}/${total}`; val.classList.remove('sf-stale'); }
       if (dot) {
         if (total === 0)            { dot.textContent = '○'; dot.style.color = 'var(--text-secondary)'; }
@@ -1416,7 +1633,7 @@ class ChumpStatusFooter extends HTMLElement {
   }
 
   #markStale(slot) {
-    const v = this.querySelector(`#sf-${slot}-value`);
+    const v = this.#shadow.querySelector(`#sf-${slot}-value`);
     if (v && this.#lastValues[slot] !== undefined) v.classList.add('sf-stale');
   }
 

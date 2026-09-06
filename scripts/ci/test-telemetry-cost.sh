@@ -70,13 +70,16 @@ else
 fi
 
 # ── 6. cost-meter.js is wired into index.html ────────────────────────────────
+# INFRA-4946: the component's CSS (previously the only "chump-cost-meter"
+# string in index.html) moved into cost-meter.js's own shadow DOM, so the
+# real signal that the script is loaded is the <script> tag itself.
 echo
 echo "[6. cost-meter component wired into PWA index.html]"
 INDEX="${REPO_ROOT}/web/v2/index.html"
-if [[ -f "$INDEX" ]] && grep -q "chump-cost-meter" "$INDEX"; then
-    ok "<chump-cost-meter> element present in index.html"
+if [[ -f "$INDEX" ]] && grep -q 'src="cost-meter.js"' "$INDEX"; then
+    ok "cost-meter.js <script> present in index.html"
 else
-    fail "cost-meter not visible in PWA: <chump-cost-meter> missing from index.html"
+    fail "cost-meter not loaded in PWA: cost-meter.js <script> missing from index.html"
 fi
 
 # ── 7. chrono_approx_secs helper parses ISO 8601 ─────────────────────────────

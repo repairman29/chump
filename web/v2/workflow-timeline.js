@@ -26,6 +26,87 @@ const PHASES = [
 // INFRA-1013: max consecutive retries per phase before button is disabled.
 const MAX_RETRIES = 3;
 
+const CSS = `
+  :host { display: block; font-size: 12px; }
+  .wf-timeline {
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: var(--radius-sm, 6px);
+    padding: 8px 12px;
+    background: var(--surface, transparent);
+    max-width: 520px;
+  }
+  .wf-header {
+    font-size: 11px;
+    color: var(--text-tertiary, var(--text-secondary));
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border, #2a2a2e);
+    margin-bottom: 6px;
+  }
+  .wf-phases { list-style: none; padding: 0; margin: 0; }
+  .wf-phase {
+    display: grid;
+    grid-template-columns: 18px 80px 70px 1fr;
+    gap: 8px;
+    align-items: baseline;
+    padding: 3px 0;
+    font-variant-numeric: tabular-nums;
+  }
+  .wf-phase-icon { text-align: center; font-weight: 600; }
+  .wf-phase-name { font-weight: 500; }
+  .wf-phase-dur {
+    color: var(--text-tertiary, var(--text-secondary));
+    font-size: 11px;
+  }
+  .wf-msg {
+    color: var(--text-secondary);
+    font-size: 11px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .wf-phase-ok      .wf-phase-icon { color: #4ec170; }
+  .wf-phase-fail    .wf-phase-icon { color: #d65468; }
+  .wf-phase-pending .wf-phase-icon { color: #aab5cc; }
+  .wf-phase-idle    .wf-phase-icon { color: var(--text-tertiary, #777); }
+  .wf-done {
+    margin-top: 8px; padding-top: 6px;
+    border-top: 1px solid var(--border, #2a2a2e);
+    font-size: 11px; color: #4ec170;
+  }
+  .wf-timeline.error { color: var(--accent-error, #d65468); }
+  /* INFRA-1013: retry/log controls on failed phase cards */
+  .wf-fail-actions {
+    display: flex; gap: 6px; align-items: center; margin-top: 4px;
+  }
+  .wf-retry {
+    font-size: 10px; padding: 2px 8px; border-radius: 3px; cursor: pointer;
+    background: #d65468; color: #fff; border: none;
+  }
+  .wf-retry:disabled {
+    background: #555; color: #999; cursor: not-allowed;
+  }
+  .wf-log-link {
+    font-size: 10px; color: var(--text-secondary, #aab5cc);
+  }
+  .wf-stdout {
+    margin-top: 4px; font-size: 10px;
+  }
+  .wf-stdout pre {
+    background: var(--bg-tertiary, #1a1a1e); padding: 4px 6px; border-radius: 3px;
+    white-space: pre-wrap; word-break: break-all; max-height: 80px; overflow: auto;
+  }
+`;
+
+/**
+ * INFRA-1009: <chump-workflow-timeline gap-id="X"> live phase tracker.
+ * Embeddable — no layout opinion; host UI places it where it makes
+ * sense (workflow_done event embedder, agents view session row,
+ * sidebar). Four phase rows + optional done banner.
+ *
+ * INFRA-1013: adds retry/log controls on failed phase cards.
+ */
 class ChumpWorkflowTimeline extends HTMLElement {
   static get observedAttributes() { return ['gap-id']; }
   #es = null;
@@ -33,6 +114,12 @@ class ChumpWorkflowTimeline extends HTMLElement {
   #tickTimer = null;
   #doneInfo = null;
   #retryCounts = new Map(); // phase_id → retry count
+  #shadow;
+
+  constructor() {
+    super();
+    this.#shadow = this.attachShadow({ mode: 'open' });
+  }
 
   connectedCallback() {
     this.#render();
@@ -162,7 +249,8 @@ class ChumpWorkflowTimeline extends HTMLElement {
     const doneBanner = this.#doneInfo
       ? `<div class="wf-done">workflow complete${this.#doneInfo.pr ? ` — <a href="${this.#doneInfo.url || '#'}" target="_blank">PR #${this.#doneInfo.pr}</a>` : ''}</div>`
       : '';
-    this.innerHTML = `
+    this.#shadow.innerHTML = `
+      <style>${CSS}</style>
       <div class="wf-timeline">
         <div class="wf-header"><span>Workflow ${this.#esc(gap)}</span></div>
         <ol class="wf-phases">${rowsHtml}</ol>
@@ -176,7 +264,7 @@ class ChumpWorkflowTimeline extends HTMLElement {
 
   #renderRows() {
     // Hot-path: only re-render the phase rows, not the whole tree (saves a flash).
-    const ol = this.querySelector('.wf-phases');
+    const ol = this.#shadow.querySelector('.wf-phases');
     if (!ol) { this.#render(); return; }
     ol.innerHTML = PHASES.map((p) => this.#rowFor(p)).join('');
   }
@@ -196,7 +284,7 @@ class ChumpWorkflowTimeline extends HTMLElement {
       const exhausted = retryCount >= MAX_RETRIES;
       const retryBtn = exhausted
         ? `<button class="wf-retry" disabled title="Manual intervention recommended after ${MAX_RETRIES} retries">Retry (exhausted)</button>`
-        : `<button class="wf-retry" data-phase="${this.#esc(p.id)}" onclick="this.closest('chump-workflow-timeline').retryPhase('${this.#esc(p.id)}')">Retry phase</button>`;
+        : `<button class="wf-retry" data-phase="${this.#esc(p.id)}" onclick="this.getRootNode().host.retryPhase('${this.#esc(p.id)}')">Retry phase</button>`;
       const stdoutSection = state?.stdout_tail
         ? `<details class="wf-stdout"><summary>Last output</summary><pre>${this.#esc(state.stdout_tail)}</pre></details>`
         : '';
@@ -224,7 +312,7 @@ class ChumpWorkflowTimeline extends HTMLElement {
   }
 
   #showError(msg) {
-    this.innerHTML = `<div class="wf-timeline error">timeline unavailable: ${this.#esc(msg)}</div>`;
+    this.#shadow.innerHTML = `<style>${CSS}</style><div class="wf-timeline error">timeline unavailable: ${this.#esc(msg)}</div>`;
   }
 
   #esc(s) {

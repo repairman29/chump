@@ -141,16 +141,20 @@ async function bootApprovalDropdown() {
   const tray = document.querySelector('chump-tool-approval-tray');
   if (!tray) return; // not on a view that mounts the tray (e.g. minimal index)
 
+  // INFRA-4946: tray content lives in a shadow root now — reach through
+  // tray.shadowRoot rather than the (now-empty) light DOM.
+  const root = tray.shadowRoot || tray;
+
   let policies = await listPolicies();
 
   // Decorate any rows already present.
   const decorateAll = () => {
-    tray.querySelectorAll('.tat-row').forEach((r) => decorateRow(r, policies));
+    root.querySelectorAll('.tat-row').forEach((r) => decorateRow(r, policies));
   };
   decorateAll();
 
   // Watch for new rows added by the tray's #render().
-  const list = tray.querySelector('#tat-list') || tray;
+  const list = root.querySelector('#tat-list') || root;
   const observer = new MutationObserver(() => decorateAll());
   observer.observe(list, { childList: true, subtree: true });
 
@@ -158,7 +162,7 @@ async function bootApprovalDropdown() {
   setInterval(async () => {
     policies = await listPolicies();
     // Drop stale dropdowns + redraw against new state.
-    tray.querySelectorAll('.tat-policy-dropdown').forEach((d) => d.remove());
+    root.querySelectorAll('.tat-policy-dropdown').forEach((d) => d.remove());
     decorateAll();
   }, 30_000);
 }

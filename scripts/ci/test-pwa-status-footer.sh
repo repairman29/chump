@@ -62,8 +62,9 @@ grep -q "fetch('/api/fleet-status')"   "$APP_JS" || fail "missing /api/fleet-sta
 ok "3 independent pollers: stack-status + telemetry/cost + fleet-status"
 
 # ── Test 6: stale fallback class .sf-stale ─────────────────────────────────
+# INFRA-4946: CSS lives in the component's own shadow DOM (app.js) now, not
+# index.html's global <style> block.
 grep -q "sf-stale" "$APP_JS"  || fail "no .sf-stale class for poll-failure rendering"
-grep -q "sf-stale" "$INDEX_HTML" || fail "index.html missing .sf-stale opacity rule"
 ok "stale-fallback: .sf-stale class wired on poll failure"
 
 # ── Test 7: threshold color bands (.sf-warn / .sf-red) ─────────────────────
@@ -86,10 +87,12 @@ grep -q "chump:navigate" "$APP_JS" \
 ok "click handler: dispatches chump:navigate for cadence-canvas integration"
 
 # ── Test 10: CSS — shell + slot + dot + value + mobile wrap ───────────────
-grep -q "chump-status-footer .sf-shell"  "$INDEX_HTML" || fail "missing .sf-shell CSS"
-grep -q "chump-status-footer .sf-slot"   "$INDEX_HTML" || fail "missing .sf-slot CSS"
-grep -q "chump-status-footer .sf-value"  "$INDEX_HTML" || fail "missing .sf-value CSS"
-grep -A60 "chump-status-footer" "$INDEX_HTML" | grep -q "@media.*max-width: 640px" \
+# INFRA-4946: CSS lives in the component's own shadow DOM (app.js) now, not
+# index.html's global <style> block.
+grep -q "\.sf-shell"  "$APP_JS" || fail "missing .sf-shell CSS"
+grep -q "\.sf-slot"   "$APP_JS" || fail "missing .sf-slot CSS"
+grep -q "\.sf-value"  "$APP_JS" || fail "missing .sf-value CSS"
+grep -A120 "STATUS_FOOTER_CSS" "$APP_JS" | grep -q "@media.*max-width: 640px" \
     || fail "missing mobile media query for footer"
 ok "CSS: shell + slot + value + mobile wrap all styled"
 

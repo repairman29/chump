@@ -101,14 +101,16 @@ grep -B5 "tool_approval_tray_action" "$APP_JS" | grep -q "sendBeacon" \
 ok "telemetry: kind=tool_approval_tray_action via sendBeacon"
 
 # ── Test 11: CSS — shell + risk classes + mobile collapse ──────────────────
-grep -q "chump-tool-approval-tray .tat-shell" "$INDEX_HTML" \
-    || fail "index.html missing .tat-shell CSS"
+# INFRA-4946: CSS lives in the component's own shadow DOM (app.js) now, not
+# index.html's global <style> block.
+grep -q "\.tat-shell" "$APP_JS" \
+    || fail "app.js missing .tat-shell CSS"
 for risk in low medium high unknown; do
-    grep -q "tat-risk-$risk" "$INDEX_HTML" \
-        || fail "index.html missing .tat-risk-$risk color class"
+    grep -q "tat-risk-$risk" "$APP_JS" \
+        || fail "app.js missing .tat-risk-$risk color class"
 done
-grep -A50 "chump-tool-approval-tray" "$INDEX_HTML" | grep -q "@media.*max-width: 640px" \
-    || fail "index.html missing mobile media query for tray"
+grep -A120 "TOOL_APPROVAL_TRAY_CSS" "$APP_JS" | grep -q "@media.*max-width: 640px" \
+    || fail "app.js missing mobile media query for tray"
 ok "CSS: shell + 4 risk-level colors + mobile collapse all present"
 
 # ── Test 12: hidden when empty (tat-shell[hidden] suppresses display) ──────
