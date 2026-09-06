@@ -29745,10 +29745,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `_find_detections` function in `scripts/coord/wedge-state-machine.sh` to inspect the generated diff; if the diff contains no `str_replace` edits (i.e., is empty), the function should log the exact message “empty diff detected”, set the response code variable `rc=1` and the reason variable `reason="empty-diff"`, and then return immediately, preventing further processing.
+    
+    Target file(s):
+    - scripts/coord/wedge-state-machine.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "When DeepSeek processes a gap, an empty diff is logged with message \"empty diff detected\""
-    - "The response code is rc=1 with reason \"empty-diff\" for empty diffs"
-    - Unit test verifies detection on a synthetic gap that produces no str_replace edits
+    - In `scripts/coord/wedge-state-machine.sh`, invoking `_find_detections` on a synthetic gap that produces no `str_replace` edits writes the line `empty diff detected` to the script’s log output.
+    - "After detecting an empty diff, the script sets `rc=1` and `reason=\"empty-diff\"` before exiting the `_find_detections` function."
+    - A unit test in `crates/chump-verify/src/pr_ac_coverage.rs` that runs `_find_detections` on a gap with an empty diff asserts that the log contains “empty diff detected” and that the returned `rc` equals 1 with reason “empty-diff”.
   notes: |
     [chump harvest check 'floor']
     === primitives_index match for 'floor' ===
@@ -65393,7 +65400,7 @@ gaps:
     - "Eliminates the 60-second Selenium timeout that wastes 4+ min per failed run + every PR's CI bucket; root cause behind 8+ PR-blocking failures observed today (#2138, #2127, #2120, #2119, #2069 etc.)"
   depends_on: [INFRA-1425]
   notes: |
-    Decomposed into 10 slices: INFRA-4633, INFRA-4634, INFRA-4635, INFRA-4636, INFRA-4637, INFRA-4638, INFRA-4639, INFRA-4640, INFRA-4641, INFRA-4642
+    Decomposed into 10 slices: INFRA-4888, INFRA-4889, INFRA-4890, INFRA-4891, INFRA-4892, INFRA-4893, INFRA-4894, INFRA-4895, INFRA-4896, INFRA-4897
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -82013,6 +82020,20 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new internal crate at `crates/coord-mesh` with a minimal `Cargo.toml` that declares the crate name and a git‑based dependency on `mesh-bridge`, implement a public `MeshBridge` struct with a `new()` constructor in `crates/coord-mesh/src/lib.rs`, and modify `src/dispatch.rs` (specifically the `create_dispatch_worktree` function) to import and instantiate this `MeshBridge` so the dependency is activated in the build.
+    
+    Target file(s):
+    - crates/coord-mesh/Cargo.toml
+    - crates/coord-mesh/src/lib.rs
+    - src/dispatch.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "crates/coord-mesh/Cargo.toml contains a `[package]` section with `name = \"coord-mesh\"` and a `[dependencies]` entry `mesh-bridge = { git = \"https://github.com/infra/mesh-bridge.git\" }`."
+    - crates/coord-mesh/src/lib.rs defines `pub struct MeshBridge;` and implements `impl MeshBridge { pub fn new() -> Self { Self } }`.
+    - "src/dispatch.rs’s `create_dispatch_worktree` function includes `use coord_mesh::MeshBridge;` and creates a variable `let _bridge = MeshBridge::new();` without compilation errors."
+    - Executing `cargo test` at the repository root completes successfully, confirming that the new crate builds and the `mesh-bridge` git dependency is resolved.
   notes: |
     Depends on: INFRA-1815 (Side B scaffold — already shipped, PR in flight).
     The internal sibling repo work (step 1) does not touch the public Chump git tree.
@@ -141026,6 +141047,275 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
+- id: INFRA-4888
+  domain: INFRA
+  title: "INFRA: Investigate why the CSS selector 'chump-chat' never appears in CI (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Determine whether the selector is stale (renamed) or the app fails to mount in the xvfb headless environment
+    - Produce a short report summarizing findings and the identified root cause
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4889
+  domain: INFRA
+  title: "INFRA: Confirm if the selector was renamed to 'chat-room' in the codebase (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Search the repository for occurrences of 'chump-chat' and 'chat-room'
+    - Document the current selector name used by the chat component
+  depends_on: [INFRA-4888]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4890
+  domain: INFRA
+  title: "INFRA: Update e2e‑tauri test file to use the correct selector (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Replace 'chump-chat' with the verified selector in the test source
+    - Run the test locally and verify it passes without timing out
+  depends_on: [INFRA-4889]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4891
+  domain: INFRA
+  title: "INFRA: Add regression check that the selector matches a defined Web Component in web/v2/ (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Implement a test that asserts the selector corresponds to a registered custom element in web/v2/
+    - Fail the build if the selector does not map to an existing component
+  depends_on: [INFRA-4890]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4892
+  domain: INFRA
+  title: "INFRA: Add explicit wait‑for‑ready step in test setup for CI (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Introduce a wait that confirms the Tauri app is fully mounted before Selenium actions start
+    - CI runs no longer hit the 60‑second timeout due to app‑init lag
+  depends_on: [INFRA-4888]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4893
+  domain: INFRA
+  title: "INFRA: Move tauri‑cowork‑e2e test to nightly CI only (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Update CI configuration to schedule the test in the nightly pipeline
+    - Ensure PR pipelines no longer run this test
+  depends_on: [INFRA-4892]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4894
+  domain: INFRA
+  title: "INFRA: Create smoke test script test‑chump‑chat‑selector.sh (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script greps web/v2/ for the custom element definition
+    - Script exits with status 0 when the element exists, non‑zero otherwise
+  depends_on: [INFRA-4890]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4895
+  domain: INFRA
+  title: "INFRA: Add assertion in smoke script that e2e selector points to an existing element (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Script parses the e2e test file, extracts the selector, and verifies the element exists in the source
+    - Fail the script if the selector is stale
+  depends_on: [INFRA-4894]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4896
+  domain: INFRA
+  title: "INFRA: Reduce Selenium timeout configuration for the chat selector test (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Adjust Selenium wait time to a reasonable value (e.g., 15 s) after confirming the app mounts reliably
+    - CI runs complete at least 4 minutes faster on failure
+  depends_on: [INFRA-4888]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4897
+  domain: INFRA
+  title: "INFRA: Document root cause and update CI documentation (INFRA-1433 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Add a section to the infra CI docs describing the selector issue, the fix, and the new smoke test
+    - Include steps to reproduce and verify the selector in future changes
+  depends_on: [INFRA-4888, INFRA-4896]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
 - id: INFRA-514
   domain: INFRA
   title: INFRA-492 session-track wiring regressed — my own INFRA-502 worker.sh refactor accidentally dropped the chump session-track --start/--end calls that INFRA-492 added. INFRA-477 cost ledger has 0 session_end events as a result. Re-add the calls without breaking INFRA-502's chump-gap-show inline-briefing change.
@@ -142314,11 +142604,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the `_bm_shadow_plan` function in `scripts/coord/bot-merge.sh` to examine the set of files changed in the PR; when the diff consists solely of shell scripts or documentation files (e.g., *.sh, *.md, *.rst), automatically add the `--skip-tests` flag to the merge command and emit a dedicated success event via the `ambient_emit` crate, adding a new event variant for this case.
+    
+    Target file(s):
+    - scripts/coord/bot-merge.sh
+    - .claude/worktrees/infra-3643-fleet-1-20260822-081649/crates/ambient-cli/src/ambient_emit.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - In `scripts/coord/bot-merge.sh`, the `_bm_shadow_plan` function must set a `SKIP_TESTS=1` flag and append `--skip-tests` to the cargo merge command when `git diff --name-only` returns only paths matching `*.sh`, `*.md`, or `*.rst`.
+    - "After the auto‑skip path is taken, `scripts/coord/bot-merge.sh` must invoke `ambient_emit::emit_event(\"bot_merge_skip_tests_applied\", pr_number)` (or the equivalent Rust FFI call) exactly once per successful auto‑skip."
+    - Executing `./scripts/coord/bot-merge.sh --dry-run` on a PR that changes only `README.md` must produce a log line containing `Auto-applied --skip-tests` and exit with status code 0.
+    - "In `crates/ambient-cli/src/ambient_emit.rs`, a new enum variant `BotMergeSkipTestsApplied { pr_number: u64 }` must be added, serialized to JSON, and included in the emitted event stream used by observability tooling."
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
