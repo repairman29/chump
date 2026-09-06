@@ -42168,7 +42168,7 @@ gaps:
 - id: EFFECTIVE-1344
   domain: EFFECTIVE
   title: "EFFECTIVE: Create unified lease store abstraction (state.db + NATS‑KV + git claim‑branch) (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -42198,6 +42198,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-06T20:24:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1087B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-1345
   domain: EFFECTIVE
@@ -42499,7 +42500,7 @@ gaps:
 - id: EFFECTIVE-1353
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement `chump loop <cmd> --interval N [--max‑iters M]` (scheduler primitive) (EFFECTIVE-178 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -42530,6 +42531,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-06T20:31:10Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1087B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-1354
   domain: EFFECTIVE
