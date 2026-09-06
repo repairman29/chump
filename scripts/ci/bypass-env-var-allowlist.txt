@@ -59,6 +59,7 @@ CHUMP_PREFLIGHT_SKIP_PRHYGIENE     # Bypass-Justification: pr-hygiene gate skip;
 CHUMP_PREFLIGHT_SKIP_PATHFILTER    # Bypass-Justification: path-filter-coverage gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_INSTALLMAP    # Bypass-Justification: install-manifest gate skip; grandfathered  gap: INFRA-2422
 CHUMP_PREFLIGHT_SKIP_DOCSDELTA     # Bypass-Justification: docs-delta-trailer gate skip; grandfathered  gap: INFRA-2422
+CHUMP_PREFLIGHT_SKIP_CLI_MISC      # Bypass-Justification: cli_observability_misc gate skip (INFRA-5000); mirrors the other per-gate preflight skip vars above  gap: INFRA-2422
 
 # CHUMP_SCCACHE_HIT_RATE_CHECK — cold-cache bypass for sccache hit-rate gate
 # (CREDIBLE-085). Brand-new branch or runner legitimately hits ~0% — operator
