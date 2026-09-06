@@ -461,6 +461,27 @@ impl GapStore {
                 ON routing_outcomes(task_class, backend, model, provider_pfx);
             CREATE INDEX IF NOT EXISTS routing_outcomes_recent
                 ON routing_outcomes(recorded_at);
+
+            -- EFFECTIVE-1291 (slice of EFFECTIVE-392): cheap idea drop.
+            -- An agent records an idea in one call — a sentence plus a
+            -- citation, nothing else required. No domain/priority/effort/
+            -- outcome/acceptance-criteria at drop time; that shaping happens
+            -- later when a cadence job digests the queue (EFFECTIVE-386
+            -- AC-writer) and either files a real gap or attaches the idea
+            -- to an existing one. Living in state.db (not a file nobody
+            -- opens) is the point: it's durable and visible to any curator
+            -- already reading this database.
+            CREATE TABLE IF NOT EXISTS dropped_ideas (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                sentence    TEXT NOT NULL,
+                citation    TEXT NOT NULL DEFAULT '',
+                created_at  INTEGER NOT NULL DEFAULT 0,
+                status      TEXT NOT NULL DEFAULT 'new'
+            );
+            CREATE INDEX IF NOT EXISTS dropped_ideas_citation
+                ON dropped_ideas(citation);
+            CREATE INDEX IF NOT EXISTS dropped_ideas_status
+                ON dropped_ideas(status);
         ",
         )?;
         // INFRA-1770: cost_usd per dispatch attempt, so the (eventual)
@@ -6802,6 +6823,54 @@ mod tests {
         let store = GapStore::open(&repo_root).unwrap();
         let row = store.get("LEGACY-001").unwrap().expect("row exists");
         assert_eq!(row.closed_date, "2026-04-27", "backfill must be idempotent");
+    }
+
+    /// EFFECTIVE-1291: dropped_ideas table exists post-migrate with the
+    /// sentence/citation/timestamp/status shape, supports lookup by citation
+    /// and status via its indexes, and re-opening the store (re-running
+    /// migrate()) doesn't error or duplicate the schema.
+    #[test]
+    fn test_migrate_creates_dropped_ideas_table() {
+        let dir = TempDir::new().unwrap();
+        let repo_root = dir.path().to_path_buf();
+        let store = GapStore::open(&repo_root).unwrap();
+        store
+            .conn
+            .execute(
+                "INSERT INTO dropped_ideas(sentence, citation, created_at, status)
+                 VALUES('use X for Y', 'session-abc', ?1, 'new')",
+                params![1_777_180_000_i64],
+            )
+            .unwrap();
+
+        let by_citation: String = store
+            .conn
+            .query_row(
+                "SELECT sentence FROM dropped_ideas WHERE citation = 'session-abc'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(by_citation, "use X for Y");
+
+        let by_status: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM dropped_ideas WHERE status = 'new'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(by_status, 1);
+
+        // Re-running migrate() (via reopen) must not error or drop the row.
+        drop(store);
+        let store = GapStore::open(&repo_root).unwrap();
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM dropped_ideas", [], |r| r.get(0))
+            .unwrap();
+        assert_eq!(count, 1, "migration must be idempotent and non-destructive");
     }
 
     /// INFRA-112: empty/whitespace gap ids must be rejected at the SQL layer
