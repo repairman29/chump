@@ -40,3 +40,58 @@ All 25 scripts in the C3 cluster are now wired into `chump preflight`
 (`crates/chump-preflight/src/preflight.rs`, INFRA-4050). See
 `docs/gaps/INFRA-3385.yaml` for the historical cluster-2/5 framing of this
 same script set under the original META-086 survey numbering.
+
+## cli-observability-misc: CLI/observability/cost/telemetry grab-bag (41 total)
+
+Lowest-priority, highest-count cluster from the same META-070/META-086
+survey (source: INFRA-3373, cluster 5/5). One-off smoke tests with the
+lowest per-script cascade risk.
+
+| Script | Mirrored in preflight.rs |
+|---|---|
+| `scripts/ci/test-acp-real-clients.sh` | yes |
+| `scripts/ci/test-api-chat-cost-kill.sh` | yes |
+| `scripts/ci/test-api-cost-leaderboard.sh` | yes |
+| `scripts/ci/test-cascade-rebase-observability.sh` | yes |
+| `scripts/ci/test-chump-fleet-cli.sh` | yes |
+| `scripts/ci/test-chump-skill-cli.sh` | yes |
+| `scripts/ci/test-cli-aliases.sh` | yes |
+| `scripts/ci/test-cli-arg-validation.sh` | yes |
+| `scripts/ci/test-cli-exit-codes.sh` | yes |
+| `scripts/ci/test-cli-fleet-coord.sh` | yes |
+| `scripts/ci/test-cli-help.sh` | yes |
+| `scripts/ci/test-cli-integration.sh` | yes |
+| `scripts/ci/test-cli-output-format.sh` | yes |
+| `scripts/ci/test-cli-product-surface.sh` | yes |
+| `scripts/ci/test-cog-043-action-telemetry.sh` | yes |
+| `scripts/ci/test-cost-enforcement.sh` | yes |
+| `scripts/ci/test-cost-per-model.sh` | yes |
+| `scripts/ci/test-cost-watch.sh` | yes |
+| `scripts/ci/test-coupling-cost.sh` | yes |
+| `scripts/ci/test-cursor-cli-integration.sh` | yes |
+| `scripts/ci/test-doc-only-clippy-skip.sh` | yes |
+| `scripts/ci/test-event-registry-guard.sh` | yes |
+| `scripts/ci/test-fleet-metrics-snapshot.sh` | yes |
+| `scripts/ci/test-gap-closed-pr-cli.sh` | yes |
+| `scripts/ci/test-gate-telemetry.sh` | yes |
+| `scripts/ci/test-gen-cost-summary.sh` | yes |
+| `scripts/ci/test-github-api-telemetry.sh` | yes |
+| `scripts/ci/test-github-api-telemetry-shim.sh` | yes |
+| `scripts/ci/test-harvester-cli.sh` | yes |
+| `scripts/ci/test-infra-1062-clippy-timeout-silent-exit.sh` | yes |
+| `scripts/ci/test-observability-coverage.sh` | yes |
+| `scripts/ci/test-observability-loop.sh` | yes |
+| `scripts/ci/test-pr-cost-telemetry.sh` | yes |
+| `scripts/ci/test-pr-fix-clippy.sh` | yes |
+| `scripts/ci/test-pr-stuck-cluster-observability.sh` | yes |
+| `scripts/ci/test-pr-unstick-observability.sh` | yes |
+| `scripts/ci/test-pwa-cost-ceiling.sh` | yes |
+| `scripts/ci/test-pwa-version-compat.sh` | yes |
+| `scripts/ci/test-pwa-workflow-observability.sh` | yes |
+| `scripts/ci/test-telemetry-cost.sh` | yes |
+| `scripts/ci/test-worker-preship-clippy.sh` | yes |
+
+All 41 scripts in the cli-observability-misc cluster are wired into
+`chump preflight`'s `cli_observability_misc` gate
+(`crates/chump-preflight/src/preflight.rs`, INFRA-5000), skippable via
+`CHUMP_PREFLIGHT_SKIP_CLI_MISC=1`.
