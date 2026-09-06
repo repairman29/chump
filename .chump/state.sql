@@ -6796,11 +6796,20 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add a `compute_summarized_pct` function to `scripts/dev/almanac-census.py` that returns the ratio of summarized items to total items from the site data, expose the value through a new CLI option `--summarize-pct` which prints `almanac_coverage_summarized_pct: <value>`; modify `scripts/ops/almanac-summarize-watchdog.sh` to invoke the script with that flag and emit a Prometheus‑compatible line `almanac_coverage_summarized_pct <value>`; and create a unit test `test_compute_summarized_pct` in `scripts/dev/almanac_census_test.py` that feeds a deterministic sample dataset and asserts the expected percentage.
+    
+    Target file(s):
+    - scripts/dev/almanac-census.py
+    - scripts/ops/almanac-summarize-watchdog.sh
+    - scripts/dev/almanac_census_test.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A metric named `almanac_coverage_summarized_pct` is exposed (e.g., via Prometheus endpoint or internal registry).
-    - The metric value is correctly computed from raw coverage data (e.g., ratio of summarized to total items).
-    - A unit test verifies the metric computation with sample data; the test fails when the metric implementation is missing.
-    - "`cargo check`, `cargo fmt`, and `cargo clippy --all-targets -D warnings` pass successfully."
+    - "? Running `scripts/dev/almanac-census.py --summarize-pct` exits with status 0 and prints a line matching `almanac_coverage_summarized_pct : \\d+(\\.\\d+)?`."
+    - The function `compute_summarized_pct` in `scripts/dev/almanac-census.py` returns `0.75` when given the sample dataset defined in the unit test.
+    - The unit test `test_compute_summarized_pct` in `scripts/dev/almanac_census_test.py` passes (`cargo test` or `pytest` succeeds) confirming the correct ratio.
+    - Executing `scripts/ops/almanac-summarize-watchdog.sh` outputs a Prometheus metric line `almanac_coverage_summarized_pct <value>` to stdout.
   notes: |
     [chump harvest check 'Almanac']
     === primitives_index match for 'Almanac' ===
@@ -68712,7 +68721,7 @@ gaps:
     - "After landing: shell scripts archived under scripts/coord/legacy/ for 30 days, then removed; no Rust-First-Bypass needed on the Rust crate"
     - "Cross-link: today's INFRA-1538 (gate query bug) shipped because the shell version had no test suite — its bypass rationale skipped the regression-test maintenance bullet. The Rust port closes that hole."
   notes: |
-    Decomposed into 15 slices: INFRA-4320, INFRA-4321, INFRA-4322, INFRA-4323, INFRA-4324, INFRA-4325, INFRA-4326, INFRA-4327, INFRA-4328, INFRA-4329, INFRA-4330, INFRA-4331, INFRA-4332, INFRA-4333, INFRA-4334
+    Decomposed into 15 slices: INFRA-4907, INFRA-4908, INFRA-4909, INFRA-4910, INFRA-4911, INFRA-4912, INFRA-4913, INFRA-4914, INFRA-4915, INFRA-4916, INFRA-4917, INFRA-4918, INFRA-4919, INFRA-4920, INFRA-4921
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -141946,6 +141955,426 @@ gaps:
     - Configuration examples show how to set both budgets.
     - Release notes mention the extension of INFRA-1972 to enforce token and dollar budgets.
   depends_on: [INFRA-4904, INFRA-4905]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4907
+  domain: INFRA
+  title: "INFRA: Initialize chump-runner-orchestrator crate (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Cargo crate `crates/chump-runner-orchestrator` is created and added to the workspace
+    - Cargo.toml contains correct package name and edition
+    - "`cargo build` succeeds without errors"
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4908
+  domain: INFRA
+  title: "INFRA: Define MigrationPipeline state machine (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Stage enum with all six migration stages is defined
+    - Transition function implements correct stage progression and gate checks
+    - Compilation succeeds and unit test verifies a sample transition
+  depends_on: [INFRA-4907]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4909
+  domain: INFRA
+  title: "INFRA: Implement gate predicates using chump_gh and fix INFRA-1538 (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Predicate function queries the check‑runs REST API via the existing `chump_gh` crate
+    - Predicate uses workflow .name (not job name) to match the bug fix requirement
+    - Unit test with a synthetic GH response returns the expected boolean
+  depends_on: [INFRA-4907]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4910
+  domain: INFRA
+  title: "INFRA: Persist MigrationPipeline state to .chump-locks/runner-migration.state (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - State struct implements Serialize/Deserialize with serde
+    - State is written to a single‑line file under `.chump-locks/runner-migration.state`
+    - Existing single‑line format can be read back without loss
+    - Integration test confirms write‑then‑read yields identical state
+  depends_on: [INFRA-4907, INFRA-4908, INFRA-4909]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4911
+  domain: INFRA
+  title: "INFRA: Implement AutoscalerLoop struct and poll loop (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - AutoscalerLoop struct contains configurable poll interval and scaling thresholds
+    - Loop method polls a synthetic queue‑depth source and returns a ScaleDecision (up, down, none)
+    - "`cargo test` includes a basic loop execution test"
+  depends_on: [INFRA-4907]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4912
+  domain: INFRA
+  title: "INFRA: Implement autoscale gate predicates using chump_gh (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Predicate queries GH check‑runs for autoscale eligibility
+    - Logic respects queue depth and other configured thresholds
+    - Unit test with synthetic GH fixture validates true/false outcomes
+  depends_on: [INFRA-4907, INFRA-4911]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4913
+  domain: INFRA
+  title: "INFRA: Expose Rust API for migration subcommands (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`migrate_status`, `migrate_tick`, and `migrate_loop` functions are public and callable from `src/main.rs`"
+    - Each function returns a Result with appropriate success messages
+    - Functions correctly interact with the state machine and persistence layer
+  depends_on: [INFRA-4907, INFRA-4908, INFRA-4909, INFRA-4910]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4914
+  domain: INFRA
+  title: "INFRA: Expose Rust API for autoscale subcommands (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`autoscale_status` and `autoscale_tick` functions are public and callable from `src/main.rs`"
+    - Functions invoke AutoscalerLoop and emit scaling decisions
+    - Functions return a Result with clear success/failure information
+  depends_on: [INFRA-4907, INFRA-4911, INFRA-4912]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4915
+  domain: INFRA
+  title: "INFRA: Add `chump runners` subcommand to CLI (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`chump runners migrate-status`, `migrate-tick`, `migrate-loop`, `autoscale-status`, `autoscale-tick` are recognized by the CLI"
+    - CLI dispatches to the corresponding Rust API functions
+    - Exit code 0 on success and non‑zero on error
+  depends_on: [INFRA-4913, INFRA-4914]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4916
+  domain: INFRA
+  title: "INFRA: Create shell shim wrappers (INFRA-1579 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`scripts/coord/chump-runner-migration-pipeline.sh` and `chump-runner-autoscale.sh` each contain three lines that exec `chump runners <subcmd>`"
+    - Scripts are executable and preserve existing launchd/cron behavior
+    - Running the old script path produces identical output to the new Rust subcommand
+  depends_on: [INFRA-4915]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4917
+  domain: INFRA
+  title: "INFRA: Emit events via emit_kind crate (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Migration steps emit `runner_migration_step` events using the existing emit_kind API
+    - Autoscale decisions emit `runner_scaled` events
+    - Events appear in the fleet logs and match expected payload schemas
+  depends_on: [INFRA-4913, INFRA-4914]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4918
+  domain: INFRA
+  title: "INFRA: Write smoke tests for migration pipeline (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Tests in `tests/runner_orchestrator_test.rs` cover all six migration stages
+    - Synthetic GitHub API fixtures simulate check‑run responses
+    - All tests pass (`cargo test`) and verify correct state transitions
+  depends_on: [INFRA-4913, INFRA-4910]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4919
+  domain: INFRA
+  title: "INFRA: Write autoscale decision tests (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Tests exercise scale‑up, scale‑down, and no‑op decisions based on synthetic queue‑depth fixtures
+    - AutoscalerLoop and its predicates are exercised end‑to‑end
+    - All tests pass (`cargo test`)
+  depends_on: [INFRA-4911, INFRA-4912]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4920
+  domain: INFRA
+  title: "INFRA: Benchmark per‑tick performance (INFRA-1579 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Micro‑benchmark measures decision latency for migration tick and autoscale tick
+    - Measured time is <100 ms on typical hardware
+    - Benchmark results are recorded in the PR description
+  depends_on: [INFRA-4913, INFRA-4911]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-4921
+  domain: INFRA
+  title: "INFRA: Archive legacy shell scripts and cleanup (INFRA-1579 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Original runner‑migration and autoscale shell scripts are moved to `scripts/coord/legacy/`
+    - Retention policy of 30 days is documented
+    - No remaining references to the legacy scripts exist in the codebase or CI configuration
+  depends_on: [INFRA-4916]
   notes: |
     [chump harvest check 'RESILIENT']
     === primitives_index match for 'RESILIENT' ===
