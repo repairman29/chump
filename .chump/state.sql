@@ -33225,9 +33225,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Filter model lists to retain only tool-capable models by checking that `supported_parameters` includes the string `"tools"`. Update `ChumpViewModels` in `web/v2/inference-profile.js` and `fetch_local_models_sync` in `src/provider_cascade.rs` to filter model collections down to items where `supported_parameters` contains `"tools"`.
+    
+    Target file(s):
+    - web/v2/inference-profile.js
+    - src/provider_cascade.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Filtered list contains only models where supported_parameters includes the string \"tools\""
-    - Count of filtered models matches the measured value (14) on 2026‑08‑07
+    - "In `web/v2/inference-profile.js`, `ChumpViewModels` filters model objects so only those with `\"tools\"` in `supported_parameters` are included."
+    - "In `src/provider_cascade.rs`, `fetch_local_models_sync` filters out any model whose `supported_parameters` does not contain the string `\"tools\"`."
+    - The model list filter returns a count of exactly 14 tool-capable models when evaluated against the measured model snapshot from 2026-08-07.
   depends_on: [EFFECTIVE-1075]
   notes: |
     [chump harvest check 'inference']
