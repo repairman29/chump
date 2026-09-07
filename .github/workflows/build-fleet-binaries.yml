@@ -118,13 +118,20 @@ jobs:
           set -euo pipefail
           # RESILIENT-1046: build BOTH fleet-node binaries in one cargo
           # invocation so they share the warm target dir + rust-cache and land
-          # in the same per-SHA artifact. `chump` is the worker binary; the
-          # `chump-fleet-server` audit/dashboard organ (crate
-          # crates/chump-fleet-server) is the "see everything out" API half of
-          # the operating covenant — it must be PULLABLE prebuilt so a 2-core
-          # Oracle node never cargo-builds it locally (that starves the live
-          # fleet). Unique bin names → `--bin` resolves each across the workspace.
-          cargo build --release --bin chump --bin chump-fleet-server --target ${{ matrix.target }}
+          # in the same per-SHA artifact. `chump` is the worker binary (root
+          # package `chump`); the `chump-fleet-server` audit/dashboard organ
+          # lives in a SEPARATE crate (package `chump-fleet-server`) — the "see
+          # everything out" API half of the operating covenant — and must be
+          # PULLABLE prebuilt so a 2-core Oracle node never cargo-builds it
+          # locally (that starves the live fleet).
+          #
+          # `--bin NAME` alone only resolves bins in the default-run package set,
+          # so `--bin chump-fleet-server` failed with "no bin target named
+          # chump-fleet-server in default-run packages" (the eae3bb4b3 breakage).
+          # Select each package explicitly with `-p` so both bins resolve.
+          cargo build --release --target ${{ matrix.target }} \
+            -p chump --bin chump \
+            -p chump-fleet-server --bin chump-fleet-server
           BIN="target/${{ matrix.target }}/release/chump"
           FS_BIN="target/${{ matrix.target }}/release/chump-fleet-server"
           test -x "$BIN" || { echo "::error::$BIN missing after build"; exit 1; }
