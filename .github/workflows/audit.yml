@@ -655,6 +655,10 @@ jobs:
         if: matrix.shard == 2
         run: bash scripts/ci/test-gap-closure-consistency-fixture.sh
 
+      - name: gap-closure file-overlap check (CREDIBLE-1004)
+        if: matrix.shard == 2
+        run: bash scripts/ci/test-gap-closure-file-overlap.sh
+
       # ── shard-3: bash/script gates — coordinator, worker, bot-merge, PWA, precommit ──
       - name: precommit strict replay — mirror local guards to CI (INFRA-767)
         if: matrix.shard == 3
