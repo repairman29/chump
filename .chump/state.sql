@@ -1997,6 +1997,18 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
+- id: CREDIBLE-1019
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CI gate grep‑target sweep (candidate (c)) (CREDIBLE-274 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A script scans all files under scripts/ci for grep commands and extracts the target path argument.
+    - The script checks that each extracted target exists in the repository tree.
+    - The script outputs a count of missing targets and lists each missing target with the file and line number.
+    - Unit test with a fixture containing a grep to a non‑existent file returns a count of 1 and includes the correct file/line reference.
+
 - id: CREDIBLE-102
   domain: CREDIBLE
   title: "CREDIBLE: verify-merge bar must WAIT for CI to reach a terminal state before judging (pending is not failure) + advisory-check allowlist — fixes universal false-HELD(ci) on still-running checks, proven by BEAST-MODE PR #3"
@@ -2010,6 +2022,44 @@ gaps:
     - "Four new Rust unit tests pass: (a) pending→pending→SUCCESS=PASS, (b) pending→FAILURE=HELD(ci), (c) timeout with pending=HELD(ci_pending), (d) advisory check pending with required checks SUCCESS=PASS; all existing verify-merge CI tests remain green"
   closed_pr: 3086
   outcome_id: MISSION-010
+
+- id: CREDIBLE-1020
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect launchd/plist jobs with zero running processes (candidate (a)) (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script enumerates all .plist files in scripts/launchd and ~/Library/LaunchAgents.
+    - For each plist, the script extracts the job label and checks the system process list for a matching PID.
+    - Jobs whose label has no running process are reported with their plist path.
+    - Unit test with a dummy plist file and no matching process produces a report entry for that plist.
+
+- id: CREDIBLE-1021
+  domain: CREDIBLE
+  title: "CREDIBLE: Detect enabled config daemons that are absent (candidate (b)) (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A script parses all *.toml and *.config files for entries where enabled = true.
+    - For each enabled entry, the script determines the expected daemon name and checks if a process with that name is running.
+    - Missing daemons are reported with the source config file and daemon name.
+    - Unit test with a config enabling a fake daemon that is not running yields a report entry for that daemon.
+
+- id: CREDIBLE-1022
+  domain: CREDIBLE
+  title: "CREDIBLE: Schedule daily sweep and generate non‑blocking report (CREDIBLE-274 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The three sweep scripts are invoked by a daily launchd job.
+    - Their outputs are merged into a single JSON report stored at $PROJECT_ROOT/rot‑detector/report.json.
+    - The report contains a timestamp, total count of findings, and an array of finding objects (type, source, details).
+    - The report generation never fails CI builds; it logs warnings only.
+    - Running the sweep against a snapshot of the repo dated 2026‑08‑08 reproduces the known dead instrument (operator‑recall) and the stale‑binary assertion.
+  depends_on: [CREDIBLE-1019, CREDIBLE-1020, CREDIBLE-1021]
 
 - id: CREDIBLE-103
   domain: CREDIBLE
@@ -5111,7 +5161,7 @@ gaps:
     - REPORT AS FINDINGS, NOT FAILURES. These are not CI failures and must not block PRs; they are a queue of suspected-dead instruments for a human or a triage agent to confirm. False positives are expected — a gate can legitimately assert something absent
     - "VERIFY BY REPLAY: run the sweep against the tree as of 2026-08-08 and assert it independently finds operator-recall dead and the vacuous stale-binary assertion. A rot-detector that cannot rediscover known rot is itself rot"
   notes: |
-    Decomposed into 4 slices: CREDIBLE-945, CREDIBLE-946, CREDIBLE-947, CREDIBLE-948
+    Decomposed into 4 slices: CREDIBLE-1019, CREDIBLE-1020, CREDIBLE-1021, CREDIBLE-1022
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
