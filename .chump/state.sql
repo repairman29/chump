@@ -1476,6 +1476,177 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
+- id: CREDIBLE-1001
+  domain: CREDIBLE
+  title: "CREDIBLE: Add automated verification of current gap extraction mechanism (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Unit test for scripts/ops/github-webhook-receiver.py::_extract_gap_ids validates that the regex \\b([A-Z][A-Z-]+-\\d+)\\b is applied to both PR title and body"
+    - Test feeds a mock PR with IDs in title and body and asserts that both are returned
+    - Test runs in CI and passes
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-1002
+  domain: CREDIBLE
+  title: "CREDIBLE: Restrict gap ID extraction to PR title only (or require explicit Closes trailer) (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Update the `_auto_flip_gaps_done` function in `scripts/ops/github-webhook-receiver.py` so that it extracts gap IDs solely from the PR title and, optionally, from a line starting with `Closes:` in the PR body; remove any logic that scans the entire PR body for IDs.
+    
+    Target file(s):
+    - scripts/ops/github-webhook-receiver.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
+  acceptance_criteria:
+    - "In `scripts/ops/github-webhook-receiver.py`, `_auto_flip_gaps_done` returns an empty ID list when the PR title contains no IDs and the body contains an ID only without a `Closes:` trailer."
+    - In `scripts/ops/github-webhook-receiver.py`, `_auto_flip_gaps_done` includes IDs found in the PR title in its returned list.
+    - "In `scripts/ops/github-webhook-receiver.py`, `_auto_flip_gaps_done` includes IDs found in a `Closes:` line within the PR body in its returned list, even if the title has none."
+    - "Running `scripts/ci/test-webhook-gap-flip.sh` exits with status 0 and reports the expected extracted IDs for both the title‑only and `Closes:`‑only scenarios."
+  depends_on: [CREDIBLE-1001]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-1003
+  domain: CREDIBLE
+  title: "CREDIBLE: Replace `gap set --status done` with `gap ship` in auto‑flip logic (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "scripts/ops/github-webhook-receiver.py::_auto_flip_gaps_done now invokes `chump gap ship <ID> --closed-pr <N>`"
+    - Proof‑of‑merge guard fires and closed_date is populated for every flipped gap
+    - Integration test simulates a merged PR and verifies that gaps end with status=done and closed_date set
+    - Collateral flips count drops to one per PR
+  depends_on: [CREDIBLE-1002]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-1004
+  domain: CREDIBLE
+  title: "CREDIBLE: Extend test‑gap‑closure‑consistency script with file‑overlap check (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-gap-closure-consistency.sh adds a forward‑mode check that a gap closed by a PR touched at least one file referenced in its ACs
+    - Reverse‑mode check unchanged
+    - New unit tests cover a scenario where a PR closes a gap without touching any referenced files and cause the script to fail
+    - CI pipeline fails when the overlap check is violated
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-1005
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement consumer for stale_post_merge_gap event to auto‑reclose reopened gaps (CREDIBLE-268 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A new consumer listens for `stale_post_merge_gap` events
+    - Consumer identifies gaps with status=open and a stale closed_pr reference and re‑closes them via `gap ship`
+    - End‑to‑end test simulates the event and verifies that the gap status changes to done and closed_date is set
+    - No duplicate closures or race conditions observed
+  depends_on: [CREDIBLE-1003, CREDIBLE-1004]
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: CREDIBLE-1006
+  domain: CREDIBLE
+  title: "CREDIBLE: Document interim lever and add env escape hatch to stop local receiver process (CREDIBLE-268 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and code comments describe the intended off‑switch for the receiver
+    - New environment variable `CREDIBLE_RECEIVER_DISABLE` causes the receiver process to exit gracefully on start
+    - "Manual test: start receiver with the variable set and confirm it terminates immediately"
+    - Documentation updated and reviewed
+  notes: |
+    [chump harvest check 'merging']
+    === primitives_index match for 'merging' ===
+    
+    === cluster keyword match for 'merging' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'merging' ===
+    
+    === repo-description match for 'merging' ===
+    
+    === HARVEST_ROADMAP.md mention of 'merging' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'merging' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
 - id: CREDIBLE-101
   domain: CREDIBLE
   title: "CREDIBLE: mission-ranking quality grader — nobody measures whether the ACTIVE mission advances in the right order"
@@ -4460,7 +4631,7 @@ gaps:
     - "REPAIR PATH IS ALSO BROKEN AND NOW URGENT — see INFRA-3580, escalated to P1: the three gaps reopened tonight sit as status=open with a stale closed_pr, which is precisely the stale_post_merge_gap shape. Wiring a consumer for that event (as CREDIBLE-275 asks) BEFORE fixing INFRA-3580 could re-close the work we just recovered"
     - "INTERIM LEVER, documented in the code itself: there is deliberately no env escape hatch — stopping the local receiver process is the intended off switch"
   notes: |
-    Decomposed into 6 slices: CREDIBLE-929, CREDIBLE-930, CREDIBLE-931, CREDIBLE-932, CREDIBLE-933, CREDIBLE-934
+    Decomposed into 6 slices: CREDIBLE-1001, CREDIBLE-1002, CREDIBLE-1003, CREDIBLE-1004, CREDIBLE-1005, CREDIBLE-1006
   opened_date: '2026-08-19'
   outcome_id: MISSION-010
   evidence: |
@@ -89706,7 +89877,7 @@ gaps:
     - "Smoke test scripts/ci/test-local-merge-queue.sh: synth 3 pending merges, run local-merge-queue, assert all 3 merge into local main in order, no GitHub calls made"
     - Emit kind=local_merge_queued / kind=local_merge_landed / kind=local_merge_blocked ambient events
   notes: |
-    Decomposed into 8 slices: INFRA-4930, INFRA-4931, INFRA-4932, INFRA-4933, INFRA-4934, INFRA-4935, INFRA-4936, INFRA-4937
+    Decomposed into 8 slices: INFRA-5244, INFRA-5245, INFRA-5246, INFRA-5247, INFRA-5248, INFRA-5249, INFRA-5250, INFRA-5251
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -160234,6 +160405,230 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5244
+  domain: INFRA
+  title: "INFRA: Implement core offline behavior in scripts/coord/local-merge-queue.sh (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When CHOMP_GITHUB_MODE=offline, the script reads pending merge requests from stdin and merges them into the local main branch using git commands
+    - The script exits with status 0 on success and non‑zero on failure
+    - No calls to the GitHub CLI (gh) are made
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5245
+  domain: INFRA
+  title: "INFRA: Add NATS KV CAS serialization for the merge queue (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The script acquires a NATS KV compare‑and‑set lock before processing each merge request
+    - Multiple workers on different mesh nodes can safely compete for the lock without race conditions
+    - Successful lock acquisition is logged
+  depends_on: [INFRA-5244]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5246
+  domain: INFRA
+  title: "INFRA: Implement file‑lock fallback when NATS is unavailable (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If the NATS connection cannot be established, the script falls back to a file lock at .chump-locks/local-merge-queue.lock
+    - The file lock provides the same mutual‑exclusion guarantees as the NATS lock
+    - Lock acquisition and release are logged
+  depends_on: [INFRA-5245]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5247
+  domain: INFRA
+  title: "INFRA: Persist pending merges via PersistentMission<MergeRequest> (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each pending merge request is stored as a PersistentMission<MergeRequest> in the INFRA‑2247 file‑backed mission store before processing
+    - Missions survive a node restart and are re‑queued on script start
+    - Mission state transitions (queued → processing → completed/failed) are recorded
+  depends_on: [INFRA-5244, INFRA-5245, INFRA-5246]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5248
+  domain: INFRA
+  title: "INFRA: Update bot‑merge.sh to route offline merges to local‑merge‑queue.sh (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When CHOMP_GITHUB_MODE=offline, bot‑merge.sh invokes scripts/coord/local‑merge‑queue.sh instead of gh pr merge --auto
+    - The original online path remains unchanged when CHOMP_GITHUB_MODE is not offline
+    - A log entry indicates which path was taken
+  depends_on: [INFRA-5244]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5249
+  domain: INFRA
+  title: "INFRA: Emit ambient events for local merge queue actions (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a merge is queued, an event kind=local_merge_queued is published
+    - When a merge successfully lands, an event kind=local_merge_landed is published
+    - When a merge cannot be processed (e.g., lock contention), an event kind=local_merge_blocked is published
+    - All events include the merge request ID and timestamp
+  depends_on: [INFRA-5244]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5250
+  domain: INFRA
+  title: "INFRA: Create smoke test scripts/ci/test‑local‑merge‑queue.sh (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The test synthesizes three pending merge requests, runs local‑merge‑queue.sh, and asserts that all three merges appear in local main in the correct order
+    - The test verifies that no GitHub CLI calls are made (e.g., by mocking gh and asserting zero invocations)
+    - The test passes when the mission store persists across a simulated restart
+  depends_on: [INFRA-5244, INFRA-5245, INFRA-5246, INFRA-5247, INFRA-5248, INFRA-5249]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5251
+  domain: INFRA
+  title: "INFRA: Update OFFLINE_FIRST.md documentation for Phase 3 (INFRA-2252 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - The documentation references the new local‑merge‑queue.sh script and explains the offline workflow
+    - It includes a link to the smoke test script and describes the fallback behavior when NATS is unavailable
+    - All cross‑references (e.g., INFRA‑1321, INFRA‑2246) are correct
+  depends_on: [INFRA-5250]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-538
   domain: INFRA
