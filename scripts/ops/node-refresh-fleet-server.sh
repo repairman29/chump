@@ -120,6 +120,29 @@ _resolve_rust_target() {
     esac
 }
 
+# --- restart the long-running fleet-server unit (system OR --user) -----------
+# The canonical organ on owned iron is a SYSTEM unit (User=<fleet user>), so a
+# restart needs sudo; on a node that instead runs it as a --user unit we restart
+# in the user manager. Try system-via-sudo first, fall back to --user, so ONE
+# refresh script serves both shapes without a rival organ.
+_restart_fleet_unit() {
+    if sudo -n systemctl cat "$FLEET_UNIT" >/dev/null 2>&1; then
+        # shellcheck disable=SC2024  # $LOG is user-owned; log as the user, not root (intended)
+        if sudo -n systemctl restart "$FLEET_UNIT" >>"$LOG" 2>&1; then
+            log "OK: restarted system unit $FLEET_UNIT (sudo)"; return 0
+        fi
+        log "WARN: sudo systemctl restart $FLEET_UNIT failed"
+    fi
+    if systemctl --user cat "$FLEET_UNIT" >/dev/null 2>&1; then
+        if systemctl --user restart "$FLEET_UNIT" >>"$LOG" 2>&1; then
+            log "OK: restarted --user unit $FLEET_UNIT"; return 0
+        fi
+        log "WARN: systemctl --user restart $FLEET_UNIT failed"
+    fi
+    log "WARN: could not restart $FLEET_UNIT (no matching system/user unit or no sudo) — binary updated but service NOT bounced"
+    return 1
+}
+
 # --- install a candidate binary: verify runs, atomic swap, restart on change --
 # $1 = path to candidate chump-fleet-server binary, $2 = provenance label.
 # Returns 0 on installed-or-already-current, 1 on unusable candidate.
@@ -145,11 +168,7 @@ _install_candidate() {
     mv -f "$TARGET_BIN.new" "$TARGET_BIN" || { log "FATAL: mv into place failed"; return 1; }
     log "OK: installed chump-fleet-server → $TARGET_BIN ($ver, via $prov)"
     # Restart the long-running service so the new binary is actually serving.
-    if systemctl --user restart "$FLEET_UNIT" >>"$LOG" 2>&1; then
-        log "OK: restarted $FLEET_UNIT"
-    else
-        log "WARN: systemctl --user restart $FLEET_UNIT failed (unit installed?)"
-    fi
+    _restart_fleet_unit
     emit fleet_server_refreshed "\"prev_sha256\":\"${INSTALLED_SHA256:-none}\",\"new_sha256\":\"$cand_sha256\",\"source\":\"$prov\",\"unit\":\"$FLEET_UNIT\""
     return 0
 }
