@@ -108,6 +108,7 @@ install-post-push-integrity-launchd.sh
 install-wizard-daemon-launchd.sh
 install-fleet-recorder-launchd.sh
 install-fleet-server.sh
+install-fleet-server-node.sh
 install-chump-integrator-launchd.sh
 install-post-integration-prune-launchd.sh
 install-auto-merge-rearm-daemon.sh
