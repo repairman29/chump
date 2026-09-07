@@ -1,0 +1,90 @@
+name: FTUE cold-install (bare node -> working node)
+
+# RESILIENT-1050 — the STANDING recurring proof for Node Fabric #3 (`chump node up`).
+#
+# Runs scripts/ci/ftue-cold-install.sh on every change to the node bring-up path.
+# The harness boots a CLEAN Ubuntu 22.04 systemd container (a fresh, no-chump
+# userland matching the real Oracle nodes), runs the REAL cold bring-up
+# (chump-node-install.sh --role muscle + the refresh timer + the /healthz organ)
+# end-to-end from zero, ASSERTS zero-touch convergence (worker unit active,
+# fleet-server /healthz, refresh timer installed, binary PULLed not cold-built,
+# ZERO out-of-role/cruft units — the 28-unit class the mugman incidents fixed),
+# then tears the container down.
+#
+# WHY GATED, not on every PR: the container fidelity layer is only relevant when
+# the bring-up scripts change, so `paths` scopes it to those files — it never
+# bloats a docs- or Rust-only PR (INFRA-682 path-filter discipline).
+#
+# WHY ADVISORY (continue-on-error): systemd-in-docker depends on the runner's
+# cgroup/privilege posture. The harness NEUTRAL-SKIPS to the host-agnostic
+# `--selfcheck` gate when a systemd container cannot be provisioned, and only a
+# genuine NON-CONVERGENCE is a failure — but to keep an environment quirk on the
+# runner from polluting statusCheckRollup and blocking auto-merge (the trap
+# documented in CLAUDE_GOTCHAS.md § Auto-merge rollup-FAILURE), the job is
+# advisory. It is a continuous, visible, single-shot proof — not a
+# branch-protection-required check. The real-disposable-box variant
+# (docs/process/COTG_NODE_INSTALL.md) is the periodic bare-metal fidelity run.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'scripts/setup/chump-node-install.sh'
+      - 'scripts/setup/install-node-refresh-systemd.sh'
+      - 'scripts/setup/install-fleet-server-node.sh'
+      - 'scripts/setup/install-node-housekeeping.sh'
+      - 'scripts/ops/organ-reconcile.sh'
+      - 'scripts/ops/organ-manifest.txt'
+      - 'scripts/ops/node-refresh-chump.sh'
+      - 'scripts/ops/node-refresh-fleet-server.sh'
+      - 'scripts/dispatch/worker.sh'
+      - 'scripts/ci/ftue-cold-install.sh'
+      - 'crates/chump-fleet-server/**'
+      - '.github/workflows/ftue-cold-install.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'scripts/setup/chump-node-install.sh'
+      - 'scripts/setup/install-node-refresh-systemd.sh'
+      - 'scripts/setup/install-fleet-server-node.sh'
+      - 'scripts/setup/install-node-housekeeping.sh'
+      - 'scripts/ops/organ-reconcile.sh'
+      - 'scripts/ops/organ-manifest.txt'
+      - 'scripts/ops/node-refresh-chump.sh'
+      - 'scripts/ops/node-refresh-fleet-server.sh'
+      - 'scripts/dispatch/worker.sh'
+      - 'scripts/ci/ftue-cold-install.sh'
+      - 'crates/chump-fleet-server/**'
+      - '.github/workflows/ftue-cold-install.yml'
+  schedule:
+    # Weekly continuous proof even without a bring-up change (Mon 05:33 UTC).
+    - cron: '33 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ftue-cold-install-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  cold-install:
+    # ubuntu-22.04 — matches CI's pinned floor + the real Oracle nodes' userland.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 20
+    # Advisory: keeps a runner-environment quirk (systemd-in-docker provisioning)
+    # from blocking auto-merge, while a genuine non-convergence still shows RED in
+    # the logs + job annotation. See the header comment.
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: cold-install FTUE (clean container -> working node -> teardown)
+        env:
+          # The install path PULLs a prebuilt binary; a token lets the fetch
+          # path authenticate if the harness ever exercises a real artifact pull.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -uo pipefail
+          bash scripts/ci/ftue-cold-install.sh --engine docker
