@@ -1547,6 +1547,18 @@ initial dispatch isn't silently dropped, and make `'chat'` vs. `'cockpit'`
 agree as the single source of truth for the default view) — not in the
 e2e test's selector.
 
+**INFRA-5211 re-verification (2026-09-07):** re-checked both AC items against
+current `main` and both are already answered by the analysis above —
+`customElements.define('chump-chat', ChumpChat)` (`web/v2/chat.js:417`) still
+matches `By.css('chump-chat')` (`e2e-tauri/run.mjs:116`) verbatim, and
+`tauri-cowork-e2e` is still `if: false` (PR-blocking disabled) per
+`RESILIENT-016` (`.github/workflows/ci.yml:291-296`). The wait itself was
+raised to `120_000` ms for the element-located step and `60_000` ms for the
+shadow-root step in `e2e-tauri/run.mjs` (no longer a flat 60 s), consistent
+with the timing-race diagnosis — not a missing/renamed selector. No new
+repro was needed beyond what's captured above; see also INFRA-4636 (closed
+not-a-bug for the sibling "update the selector" slice).
+
 **Ongoing enforcement:** `scripts/ci/test-rollup-not-blocked-by-flaky-job.sh` parses
 `ci.yml` and asserts every non-required job has either `continue-on-error: true` or
 a PR-trigger exclusion. Run it after any ci.yml change.
