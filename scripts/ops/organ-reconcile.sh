@@ -139,18 +139,49 @@ clear_backoff() {  # unit
 # meaningful for a role-scoped reconcile (ROLE_FILTER set) — the unfiltered
 # reconcile already manages the WHOLE manifest, so there is no "out of role"
 # unit to reap there.
+#
+# RESILIENT-1016 follow-up (timer-aware): enumerate BOTH .service and .timer
+# units. The original discovery listed only .service files, so the paired
+# .timer of an out-of-role unit was never a reap candidate — disabling the
+# service alone left the timer enabled, and it re-triggered the service every
+# cycle. VERIFIED on mugman (2026-09-07): 28 out-of-role Mac-path launchd
+# ports "reaped" via the .service alone climbed straight back to 28 because
+# their .timer units stayed enabled and kept re-firing the CHDIR-failing
+# services.
 discover_live_chump_units() {
-  "$SYSTEMCTL_BIN" list-unit-files --type=service --no-legend 'chump-*.service' 2>/dev/null | awk '{print $1}'
+  {
+    "$SYSTEMCTL_BIN" list-unit-files --type=service --no-legend 'chump-*.service' 2>/dev/null
+    "$SYSTEMCTL_BIN" list-unit-files --type=timer   --no-legend 'chump-*.timer'   2>/dev/null
+  } | awk '{print $1}'
 }
 
 # A unit is a drift-removal candidate if systemd still considers it active OR
 # enabled — a unit that's merely present-on-disk-but-inactive-and-disabled
-# isn't drift, it's just a dormant unit file left by history.
+# isn't drift, it's just a dormant unit file left by history. A unit stuck in
+# the `failed` state also counts as live: it pollutes `systemctl --failed`
+# forever and must be cleared, even if it is now neither active nor enabled
+# (a oneshot that crashed, or a service whose timer was disabled but whose last
+# run left it failed).
 organ_is_live() {
   local unit="$1"
   "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null && return 0
   "$SYSTEMCTL_BIN" is-enabled --quiet "$unit" 2>/dev/null && return 0
+  [[ "$("$SYSTEMCTL_BIN" is-failed "$unit" 2>/dev/null)" == "failed" ]] && return 0
   return 1
+}
+
+# RESILIENT-1016 follow-up: reap a chump unit AND its paired timer/service
+# sibling — disable+stop+reset-failed both halves — so a reap actually sticks
+# (the paired .timer can no longer re-trigger a just-disabled .service, and a
+# lingering `failed` state is cleared so the unit leaves `systemctl --failed`).
+reap_unit_and_sibling() {
+  local unit="$1" base s
+  base="${unit%.service}"; base="${base%.timer}"
+  for s in "${base}.timer" "${base}.service"; do
+    "$SYSTEMCTL_BIN" disable --now "$s" 2>/dev/null || true
+    "$SYSTEMCTL_BIN" stop "$s" 2>/dev/null || true
+    "$SYSTEMCTL_BIN" reset-failed "$s" 2>/dev/null || true
+  done
 }
 
 # Repo-declared drop-in body that neuters an auto-pager's ExecStart.
@@ -237,6 +268,11 @@ if [[ "$MODE" == "--check" ]]; then
     while IFS= read -r unit; do
       [[ -z "$unit" ]] && continue
       [[ -n "${_EXPECTED_UNIT[$unit]:-}" ]] && continue
+      # Sibling protection (mirrors --apply): an in-role .timer implies its
+      # paired .service is in-role too, and vice versa — don't flag it as drift.
+      _base="${unit%.service}"; _base="${_base%.timer}"
+      [[ -n "${_EXPECTED_UNIT[${_base}.timer]:-}" ]] && continue
+      [[ -n "${_EXPECTED_UNIT[${_base}.service]:-}" ]] && continue
       if organ_is_live "$unit"; then
         echo "DRIFT: $unit is active/enabled but out-of-role (not in role-filtered manifest)"; fail=1
       fi
@@ -377,13 +413,23 @@ if [[ -n "$ROLE_FILTER" ]]; then
   declare -A EXPECTED_UNIT
   for unit in "${ENABLED[@]}"; do EXPECTED_UNIT["$unit"]=1; done
   for unit in "${PAGING_OFF[@]}"; do EXPECTED_UNIT["$unit"]=1; done
+  declare -A REAPED_BASE
   while IFS= read -r unit; do
     [[ -z "$unit" ]] && continue
     [[ -n "${EXPECTED_UNIT[$unit]:-}" ]] && continue
+    # Sibling protection: never reap a unit whose paired .service OR .timer is
+    # itself in the role-filtered expected set. The manifest declares most
+    # organs by their .timer (e.g. `chump-farmer.timer`), so the paired
+    # .service (`chump-farmer.service`) that the timer drives is in-role too and
+    # must not be reaped just because it isn't literally in the manifest.
+    base="${unit%.service}"; base="${base%.timer}"
+    [[ -n "${EXPECTED_UNIT[${base}.timer]:-}" ]] && continue
+    [[ -n "${EXPECTED_UNIT[${base}.service]:-}" ]] && continue
+    [[ -n "${REAPED_BASE[$base]:-}" ]] && continue   # already reaped via its sibling
     organ_is_live "$unit" || continue
-    echo "DRIFT-REMOVE: $unit is active/enabled but out-of-role (not in role-filtered manifest) — disabling + reaping"
-    "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
-    "$SYSTEMCTL_BIN" reset-failed "$unit" 2>/dev/null || true
+    echo "DRIFT-REMOVE: $unit is active/enabled/failed but out-of-role (not in role-filtered manifest) — disabling + reaping (with paired timer/service)"
+    reap_unit_and_sibling "$unit"
+    REAPED_BASE["$base"]=1
     CHANGED+=("removed:$unit")
     # scanner-anchor: "kind":"organ_reconcile_drift_removed" (RESILIENT-1016;
     # fires when a role-scoped reconcile disables+reaps a stray chump unit
