@@ -33,6 +33,14 @@
 #                        (unmet requires=) skip; dead organs in an
 #                        organ-reconcile.sh backoff cooldown are distinguished
 #                        from dead-and-unowned ones in the failure detail.
+#   15. self-healer-heartbeat — RESILIENT-1053 (originally scoped as RESILIENT-1052; re-filed to avoid a duplicate-PR collision with #4515): the self-healers watch every
+#                        OTHER organ but nothing watched THEM (chump-organ-
+#                        reconcile.timer is deliberately excluded from
+#                        organ-manifest.txt). FAILs + pages
+#                        (kind=self_healer_heartbeat_stale) if
+#                        organ_watchdog_tick or organ_reconcile_applied/noop
+#                        goes stale past its cadence, or has never ticked at
+#                        all while the other has.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -1074,6 +1082,124 @@ check_auth_probe() {
     fi
 }
 
+# ── Check 15 (RESILIENT-1053, originally scoped as RESILIENT-1052 — see below): self-healer heartbeat — is anyone paging when
+#    the self-healers themselves go dark? ──────────────────────────────────
+#
+# organ-watchdog.sh and organ-reconcile.sh heal every OTHER organ, but
+# nothing in this file checked THEM: organ-roll-call-live (check 14) reads
+# organ-manifest.txt, and chump-organ-reconcile.timer is *intentionally*
+# excluded from that manifest (see the NOTE in organ-manifest.txt — its
+# liveness was left to install-helsinki-atc.sh, which only runs on deploy or
+# boot, not continuously). If either healer's timer silently stops ticking
+# between deploys, every organ it protects rots unattended and nothing
+# pages — the exact meta-failure this check closes.
+#
+# Both healers emit an unconditional per-run ambient event on every
+# successful cycle:
+#   organ-watchdog.sh   -> kind=organ_watchdog_tick        (every ~5 min)
+#   organ-reconcile.sh  -> kind=organ_reconcile_applied OR
+#                          kind=organ_reconcile_noop        (every ~3 min)
+# Treat the newest of those as a heartbeat: if either has never ticked while
+# the OTHER has (proof ambient logging works on this node), or either has
+# gone stale past its cadence + buffer, FAIL and emit a paging ambient event
+# (kind=self_healer_heartbeat_stale) so the silence itself becomes visible.
+# If NEITHER has ever ticked, this isn't the primary node (or a fresh
+# checkout with no ambient history) — skip rather than false-alarm.
+#
+# Thresholds (override via env)
+#   SELF_HEALER_WATCHDOG_STALE_S   default 1200 (20min) — watchdog cadence is 5min
+#   SELF_HEALER_RECONCILE_STALE_S  default 1200 (20min) — reconcile cadence is 3min
+check_self_healer_heartbeat() {
+    local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    if [[ ! -f "$amb" ]]; then
+        register_check "self-healer-heartbeat" "skip" "no ambient.jsonl present — nothing to check" ""
+        return
+    fi
+    if ! command -v python3 &>/dev/null; then
+        register_check "self-healer-heartbeat" "skip" "python3 unavailable — skipping self-healer heartbeat scan" ""
+        return
+    fi
+
+    local watchdog_max_s="${SELF_HEALER_WATCHDOG_STALE_S:-1200}"
+    local reconcile_max_s="${SELF_HEALER_RECONCILE_STALE_S:-1200}"
+
+    local result
+    result="$(python3 -c '
+import sys, json, datetime
+def epoch(ts):
+    try: return int(datetime.datetime.strptime(ts.replace("Z","+0000"),"%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception: return 0
+last_watchdog = 0
+last_reconcile = 0
+for line in open(sys.argv[1], "r", errors="replace"):
+    try: d = json.loads(line)
+    except Exception: continue
+    k = d.get("kind")
+    e = epoch(d.get("ts", ""))
+    if k == "organ_watchdog_tick":
+        last_watchdog = max(last_watchdog, e)
+    elif k in ("organ_reconcile_applied", "organ_reconcile_noop"):
+        last_reconcile = max(last_reconcile, e)
+print(last_watchdog)
+print(last_reconcile)
+' "$amb" 2>/dev/null)"
+
+    local last_watchdog last_reconcile
+    last_watchdog="$(printf '%s' "$result" | sed -n 1p)"; last_watchdog="${last_watchdog:-0}"
+    last_reconcile="$(printf '%s' "$result" | sed -n 2p)"; last_reconcile="${last_reconcile:-0}"
+
+    if [[ "$last_watchdog" -eq 0 && "$last_reconcile" -eq 0 ]]; then
+        register_check "self-healer-heartbeat" "skip" \
+            "no organ_watchdog_tick or organ_reconcile_applied/noop events in ambient.jsonl — self-healers have never ticked on this node (fresh checkout or not the primary node)" ""
+        return
+    fi
+
+    local now_ts
+    now_ts="$(date -u +%s)"
+    local fails=()
+
+    if [[ "$last_watchdog" -eq 0 ]]; then
+        fails+=("chump-organ-watchdog.timer has NEVER ticked (no organ_watchdog_tick event) while organ-reconcile has — the watchdog is dead and unowned")
+    else
+        local watchdog_age=$(( now_ts - last_watchdog ))
+        if (( watchdog_age >= watchdog_max_s )); then
+            fails+=("chump-organ-watchdog.timer silent for ${watchdog_age}s (threshold ${watchdog_max_s}s) — stopped ticking")
+        fi
+    fi
+
+    if [[ "$last_reconcile" -eq 0 ]]; then
+        fails+=("chump-organ-reconcile.timer has NEVER ticked (no organ_reconcile_applied/noop event) while organ-watchdog has — the reconcile is dead and unowned")
+    else
+        local reconcile_age=$(( now_ts - last_reconcile ))
+        if (( reconcile_age >= reconcile_max_s )); then
+            fails+=("chump-organ-reconcile.timer silent for ${reconcile_age}s (threshold ${reconcile_max_s}s) — stopped ticking")
+        fi
+    fi
+
+    if [[ "${#fails[@]}" -gt 0 ]]; then
+        local detail
+        detail="$(printf '%s; ' "${fails[@]}")"
+        detail="${detail%; }"
+        # Write directly rather than routing through ambient-emit.sh: its
+        # INFRA-101 schema gate only recognizes a small legacy "event" enum
+        # and rejects brand-new kinds outright (silently, via the caller's
+        # `|| true`) unless CHUMP_AMBIENT_SCHEMA_CHECK=0 is threaded through —
+        # exactly the kind of silent paging failure this check exists to
+        # eliminate, so it must not depend on that path.
+        local detail_json
+        detail_json="$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"self_healer_heartbeat_stale","detail":"%s","source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$detail_json" >> "$amb" 2>/dev/null || true
+        register_check "self-healer-heartbeat" "fail" "$detail" \
+            "systemctl status chump-organ-watchdog.timer chump-organ-reconcile.timer; sudo systemctl restart chump-organ-watchdog.timer chump-organ-reconcile.timer; sudo bash scripts/setup/install-helsinki-atc.sh"
+        return
+    fi
+
+    register_check "self-healer-heartbeat" "pass" \
+        "organ-watchdog ticked $(( now_ts - last_watchdog ))s ago, organ-reconcile ticked $(( now_ts - last_reconcile ))s ago (thresholds ${watchdog_max_s}s/${reconcile_max_s}s)" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1097,6 +1223,7 @@ check_organ_roll_call_live
 check_required_status_checks
 check_ops_defect_selfdiag
 check_auth_probe
+check_self_healer_heartbeat
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then
