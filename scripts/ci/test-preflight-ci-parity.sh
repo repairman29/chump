@@ -455,6 +455,28 @@ if os.environ.get("CHUMP_PARITY_REPORT") == "1":
         print("  DELTA detail: (none — full parity)")
     print()
 
+# INFRA-5205 (INFRA-3792 slice, INFRA-2084 AC3): machine-parseable JSON
+# rendering of the same AC1 inventory. Emitted on its own marked line so a
+# caller can `grep` it out of the human-readable report without re-running
+# the classification engine. Never affects exit code.
+if os.environ.get("CHUMP_PARITY_JSON") == "1":
+    import json as _json
+    total_gates = len(gates)
+    coverage_pct = round((mirrored_count / total_gates) * 100, 1) if total_gates else 0.0
+    payload = {
+        "ci_gates": total_gates,
+        "mirrored_in_preflight": mirrored_count,
+        "tier_d": tier_d_count,
+        "allowlisted": allowlisted_count,
+        "delta_unmirrored": [
+            {"workflow": wf_name, "job": job, "step": step_name, "ci_path": ci_path}
+            for (wf_name, job, step_name, ci_path, _run_cmd) in unmirrored
+        ],
+        "delta_unmirrored_count": len(unmirrored),
+        "coverage_pct": coverage_pct,
+    }
+    print("CHUMP_PARITY_JSON_LINE:" + _json.dumps(payload))
+
 # INFRA-5119 (INFRA-1861 slice): generated inventory dump — one row per CI
 # gate mapping it to its local mirror (preflight command, Tier-D reason, or
 # allowlist reason), OR flagging it MISSING when it has none. This is the
