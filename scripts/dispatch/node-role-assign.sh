@@ -87,8 +87,18 @@ emit() {  # kind, extra-json (no leading/trailing comma)
 [[ -d "$NODES_DIR" ]] || { echo "node-role-assign.sh: no such dir: $NODES_DIR" >&2; exit 2; }
 
 # assign_role <node_json_file> -> prints one of brain|muscle|gpu-embed|operator
+#
+# POLICY VETO (NODE_FABRIC.md #2 finding, "roles_fit != role_assigned"): an
+# optional `role_pin` field in the node JSON is an operator/topology decision
+# that OVERRIDES the capability-derived role. This is what lets a one-brain
+# topology hold when several always_on boxes all *fit* brain (cuphead + mugman
+# both fit atc-heartbeat/broker; only cuphead is the brain, mugman is muscle
+# overflow). Capability says what a box CAN do; the pin says what it's FOR.
 assign_role() {
   local file="$1"
+  local pin
+  pin="$(jq -r '.role_pin // empty' "$file")"
+  if [[ -n "$pin" ]]; then echo "$pin"; return; fi
   local always_on has_gpu_embed has_brain_fit has_build_worker
   always_on="$(jq -r '.hardware.always_on // false' "$file")"
   has_gpu_embed="$(jq -r '(.roles_fit // []) | index("gpu-embed") != null' "$file")"
