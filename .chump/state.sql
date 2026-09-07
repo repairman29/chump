@@ -2806,6 +2806,58 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
+- id: CREDIBLE-1045
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-891: Enforce summarized_pct > 95% in relevant code path (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The code that calculates or validates `summarized_pct` now guarantees a value greater than 95% for all relevant execution paths.
+    - The project builds successfully with `cargo build` after the change.
+    - No existing unit or integration tests regress (all previously passing tests still pass).
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
+
+- id: CREDIBLE-1046
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-892: Add test verifying summarized_pct > 95% enforcement and run lint checks (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new test (using `cargo test` or a CI script) asserts that `summarized_pct` is >95% and fails when the enforcement is removed.
+    - Running the test suite shows the new test failing on the baseline code and passing after applying CREDIBLE-891.
+    - "`cargo fmt` and `cargo clippy --all-targets -D warnings` run without any formatting or lint warnings."
+    - All tests, including the new one, pass after the change.
+  depends_on: [CREDIBLE-1045]
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
+
 - id: CREDIBLE-105
   domain: CREDIBLE
   title: "CREDIBLE: durable-fix doctrine + no-band-aids rule"
@@ -6239,7 +6291,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: CREDIBLE-891, CREDIBLE-892
+    Decomposed into 2 slices: CREDIBLE-1045, CREDIBLE-1046
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -14718,10 +14770,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new YAML file `schemas/drift_schema.yaml` that defines the required classification schema with top‑level `noise` and `real` categories, each containing `flag_name`, `example_values`, and `reason`.  Extend the `load_ci_lessons` function in `src/reflection_db.rs` to read this file at runtime and merge its contents into the lessons map so downstream steps can import the schema.
+    
+    Target file(s):
+    - schemas/drift_schema.yaml
+    - src/reflection_db.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "A YAML/JSON schema defines two top‑level categories: `noise` and `real`"
-    - Schema includes fields for `flag_name`, `example_values`, and `reason`
-    - Schema is version‑controlled and can be imported by later processing steps
+    - schemas/drift_schema.yaml exists and contains top‑level keys `noise` and `real`, each with the fields `flag_name`, `example_values`, and `reason`.
+    - "src/reflection_db.rs::load_ci_lessons includes code that opens `schemas/drift_schema.yaml`, parses it, and inserts the parsed structure under a `drift_schema` entry in the returned lessons map."
+    - Executing `scripts/ci/test-gap-doctor-safe-sweep.sh` completes with exit code 0, indicating the new schema can be written/read without errors.
   notes: |
     [chump harvest check 'almanac']
     === primitives_index match for 'almanac' ===
