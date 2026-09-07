@@ -4181,9 +4181,18 @@ gaps:
   status: open
   priority: P3
   effort: s
+  description: |
+    In `crates/chump-coord/src/rpc.rs` and `crates/chump-coord/src/presence.rs`, update the RPC claim handler inside `register_worker_rpc_handlers_with_presence` to write a JSON-serialized worker presence record into the NATS-KV presence bucket containing `worker_id`, `backend`, `machine`, `skills`, `started_at`, and `current_gap` upon gap claim.
+    
+    Target file(s):
+    - crates/chump-coord/src/rpc.rs
+    - crates/chump-coord/src/presence.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Worker presence record is written to the NATS-KV bucket on claim
-    - Record contains the required fields (worker_id, backend, machine, skills, started_at, current_gap)
+    - "`register_worker_rpc_handlers_with_presence` in `crates/chump-coord/src/rpc.rs` serializes and writes a presence record to the NATS-KV bucket when a claim request is processed."
+    - "The written NATS-KV presence record payload contains all required fields: `worker_id`, `backend`, `machine`, `skills`, `started_at`, and `current_gap`."
+    - "`cargo test -p chump-coord` succeeds without errors."
   opened_date: '2026-08-19'
 
 - id: CREDIBLE-255
