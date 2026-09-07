@@ -16,3 +16,4 @@
 //!     leaf that depends only on the two data crates above.
 pub mod kpi_report;
 pub mod live_pct;
+pub mod prune_ledger;
