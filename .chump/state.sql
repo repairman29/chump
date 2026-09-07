@@ -27001,10 +27001,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a `built` boolean field to the capability metadata structure in `scripts/coord/broadcast.sh`. Initialise it to `false` when the metadata JSON is first written, set it to `true` immediately after the compilation step succeeds, and write the updated JSON back to the metadata file. The edit is limited to the `_maybe_add_parent_corr_id` function (or the surrounding compile block) and includes a small inline test harness.
+    
+    Target file(s):
+    - scripts/coord/broadcast.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new flag `built` is set to true when a capability is successfully compiled.
-    - The flag is persisted in the capability metadata structure.
-    - Unit test verifies that `built` is false before compilation and true after.
+    - "In `scripts/coord/broadcast.sh`, the JSON metadata file created by `_maybe_add_parent_corr_id` contains `\"built\": false` before any compilation is attempted."
+    - "After running `./scripts/coord/broadcast.sh --compile test-cap`, the same metadata file contains `\"built\": true`."
+    - The script exits with status 0 and prints the line `built=true` to stdout after a successful compilation.
+    - The unit‑test function `test_built_flag` in `scripts/coord/broadcast.sh` reads the metadata file before and after invoking `--compile` and asserts the transition from `false` to `true`.
   notes: |
     [chump harvest check 'lifecycle']
     === primitives_index match for 'lifecycle' ===
@@ -74340,7 +74348,7 @@ gaps:
     - "Smoke test scripts/ci/test-github-liaison-phase3.sh: mock NATS + mock gh; 5 concurrent workers send pr.create mutations; assert all 5 requests serialized through the liaison, rate limit enforced, responses correlated by request_id"
     - "Events: github_mutation_queued, github_mutation_sent, github_mutation_failed, github_liaison_fallback registered in EVENT_REGISTRY.yaml before code ships"
   notes: |
-    Decomposed into 22 slices: INFRA-5140, INFRA-5141, INFRA-5142, INFRA-5143, INFRA-5144, INFRA-5145, INFRA-5146, INFRA-5147, INFRA-5148, INFRA-5149, INFRA-5150, INFRA-5151, INFRA-5152, INFRA-5153, INFRA-5154, INFRA-5155, INFRA-5156, INFRA-5157, INFRA-5158, INFRA-5159, INFRA-5160, INFRA-5161
+    Decomposed into 23 slices: INFRA-5463, INFRA-5464, INFRA-5465, INFRA-5466, INFRA-5467, INFRA-5468, INFRA-5469, INFRA-5470, INFRA-5471, INFRA-5472, INFRA-5473, INFRA-5474, INFRA-5475, INFRA-5476, INFRA-5477, INFRA-5478, INFRA-5479, INFRA-5480, INFRA-5481, INFRA-5482, INFRA-5483, INFRA-5484, INFRA-5485
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -85532,7 +85540,7 @@ gaps:
     - "Telemetry: emit kind=claim_collision_avoided when role-scoped claim would have collided under old file-lease semantics; metric becomes the migration-success signal"
     - "Smoke: scripts/ci/test-role-scoped-claims.sh exercises 5 scenarios — same-role same-scope (block), same-role different-scope (allow), different-role same-file (allow + warn), broad-scope without flag (reject), append-only file in paths (exempt)"
   notes: |
-    Decomposed into 8 slices: INFRA-5162, INFRA-5163, INFRA-5164, INFRA-5165, INFRA-5166, INFRA-5167, INFRA-5168, INFRA-5169
+    Decomposed into 8 slices: INFRA-5486, INFRA-5487, INFRA-5488, INFRA-5489, INFRA-5490, INFRA-5491, INFRA-5492, INFRA-5493
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -170618,6 +170626,923 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5463
+  domain: INFRA
+  title: "INFRA: Define NATS mutation request/response schema (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Create a Rust struct for mutation request containing request_id, action, params, criticality
+    - Create a Rust struct for mutation response containing request_id, result, gh_response_code
+    - Document subject pattern chump.github.mutations.<action> in README
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5464
+  domain: INFRA
+  title: "INFRA: Implement liaison daemon skeleton with NATS subscription (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Daemon starts and subscribes to chump.github.mutations.* using request/reply
+    - Daemon logs successful subscription and can receive a dummy request
+  depends_on: [INFRA-5463]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5465
+  domain: INFRA
+  title: "INFRA: Load and protect GH_TOKEN in liaison process (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - GH_TOKEN is read from environment variable at startup
+    - Token is stored in a private module and never logged
+    - Process aborts with clear error if token is missing
+  depends_on: [INFRA-5464]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5466
+  domain: INFRA
+  title: "INFRA: Add shared token‑bucket rate limiter (CHUMP_GH_MAX_CALLS_PER_MIN) (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Rate limiter enforces a maximum number of GitHub API calls per minute across all workers
+    - Limiter can be queried for remaining tokens
+    - When limit is exceeded, limiter returns a 429_queued response with retry_after_ms
+  depends_on: [INFRA-5465]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5467
+  domain: INFRA
+  title: "INFRA: Implement criticality handling and GraphQL remaining check (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Liaison inspects request.criticality field
+    - If GraphQL remaining < 10% and criticality == background, request is queued with 429_queued
+    - Critical requests bypass the background queue check
+  depends_on: [INFRA-5466]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5468
+  domain: INFRA
+  title: "INFRA: Handle pr.create mutation (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Liaison receives a pr.create request and calls GitHub GraphQL to create a PR
+    - Successful call returns result with new PR URL and HTTP 201
+    - Errors are propagated in the response.result field
+  depends_on: [INFRA-5465]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5469
+  domain: INFRA
+  title: "INFRA: Handle pr.merge mutation (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Liaison receives a pr.merge request and merges the target PR via GitHub API
+    - Response includes merge commit SHA and HTTP 200 on success
+    - Failure (e.g., merge conflict) is reflected in result and gh_response_code
+  depends_on: [INFRA-5468]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5470
+  domain: INFRA
+  title: "INFRA: Handle pr.comment mutation (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Liaison receives a pr.comment request and posts a comment on the specified PR
+    - Response includes comment ID and HTTP 201 on success
+  depends_on: [INFRA-5468]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5471
+  domain: INFRA
+  title: "INFRA: Handle pr.label mutation (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Liaison receives a pr.label request and adds the given label(s) to the PR
+    - Response includes list of applied labels and HTTP 200 on success
+  depends_on: [INFRA-5468]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5472
+  domain: INFRA
+  title: "INFRA: Handle pr.update-branch mutation (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Liaison receives a pr.update-branch request and triggers branch update via GitHub API
+    - Response includes status and HTTP 202 on success
+  depends_on: [INFRA-5468]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5473
+  domain: INFRA
+  title: "INFRA: Route incoming mutation requests to appropriate handler (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Dispatcher matches request.action to one of the implemented handlers (pr.create, pr.merge, etc.)
+    - Unrecognized actions return a 400 error with clear message
+  depends_on: [INFRA-5468, INFRA-5469, INFRA-5470, INFRA-5471, INFRA-5472]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5474
+  domain: INFRA
+  title: "INFRA: Format and send mutation response back over NATS (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Response struct is serialized to JSON and sent as NATS reply
+    - Response always contains request_id matching the incoming request
+    - Result and gh_response_code fields are populated correctly
+  depends_on: [INFRA-5473]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5475
+  domain: INFRA
+  title: "INFRA: Enforce rate‑limit response (429_queued) with retry hint (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When token bucket is empty, liaison replies with result='429_queued' and retry_after_ms field
+    - Workers receiving this response can retry after the indicated delay
+  depends_on: [INFRA-5466, INFRA-5473]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5476
+  domain: INFRA
+  title: "INFRA: Create NATS request/reply wrapper library for workers (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Library provides async function send_github_mutation(action, params, criticality) -> response
+    - Wrapper handles serialization, correlation via request_id, and parses liaison response
+    - Wrapper falls back to direct GitHub call when NATS is unavailable (see offline fallback slice)
+  depends_on: [INFRA-5463, INFRA-5473]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5477
+  domain: INFRA
+  title: "INFRA: Refactor existing worker code to use the NATS wrapper (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All direct calls to GitHub in worker code are replaced with send_github_mutation
+    - Compilation succeeds and unit tests pass
+    - No worker code retains a hard‑coded GH_TOKEN
+  depends_on: [INFRA-5476]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5478
+  domain: INFRA
+  title: "INFRA: Audit and migrate scripts/coord/ and src/web_server.rs (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Search for any remaining direct GitHub API usage
+    - Replace each occurrence with the NATS wrapper
+    - Run static analysis to confirm GH_TOKEN is not referenced
+  depends_on: [INFRA-5477]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5479
+  domain: INFRA
+  title: "INFRA: Implement offline fallback when NATS is unreachable (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker detects NATS connection error and automatically performs direct GitHub call using existing Phase‑1 logic
+    - Fallback emits event kind=github_liaison_fallback to ambient.jsonl
+    - Fallback path is covered by unit test
+  depends_on: [INFRA-5476]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5480
+  domain: INFRA
+  title: "INFRA: Register mutation events in EVENT_REGISTRY.yaml (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Add entries for github_mutation_queued, github_mutation_sent, github_mutation_failed, github_liaison_fallback
+    - Each entry includes description and payload schema
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5481
+  domain: INFRA
+  title: "INFRA: Emit registered events from liaison at each lifecycle stage (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - liaison publishes github_mutation_queued before queuing due to rate limit
+    - liaison publishes github_mutation_sent after successful API call
+    - liaison publishes github_mutation_failed on error
+    - liaison publishes github_liaison_fallback when workers fallback
+  depends_on: [INFRA-5473, INFRA-5479]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5482
+  domain: INFRA
+  title: "INFRA: Write smoke test script test-github-liaison-phase3.sh (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script starts mock NATS server and mock GitHub endpoint
+    - Spawns 5 concurrent worker processes that send pr.create mutations via wrapper
+    - Asserts all 5 requests are processed through liaison, rate limit is respected, and responses contain matching request_id
+    - Exits with non‑zero code on any assertion failure
+  depends_on: [INFRA-5476, INFRA-5478, INFRA-5479]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5483
+  domain: INFRA
+  title: "INFRA: Integrate smoke test into CI pipeline (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI config runs test-github-liaison-phase3.sh on every push to main
+    - Pipeline fails if script exits with non‑zero status
+  depends_on: [INFRA-5481]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5484
+  domain: INFRA
+  title: "INFRA: Update documentation for Phase 3 mutation routing (INFRA-1319 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README includes section describing NATS subject format, request/response schema, and worker usage
+    - Document rate‑limit behavior and criticality handling
+    - Link to smoke test script
+  depends_on: [INFRA-5476]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5485
+  domain: INFRA
+  title: "INFRA: Final code review and merge preparation (INFRA-1319 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - All new code passes linting, unit tests, and CI smoke test
+    - No direct GitHub calls remain in worker codebase
+    - All events are registered and emitted correctly
+    - Documentation is up‑to‑date
+  depends_on: [INFRA-5474, INFRA-5475, INFRA-5480, INFRA-5482, INFRA-5483, INFRA-5484]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5486
+  domain: INFRA
+  title: "INFRA: Add --role and --scope flags to chump claim command (INFRA-1863 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The chump command accepts a new mandatory flag `--role <role>` and an optional flag `--scope <module-or-concern>`
+    - When invoked without `--role`, the command exits with error code 1 and prints a usage message
+    - "`--paths` remains optional and advisory; if omitted, the command proceeds without path validation"
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5487
+  domain: INFRA
+  title: "INFRA: Validate role against AGENT_ROLES.yaml registry (INFRA-1863 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - The script loads `docs/process/AGENT_ROLES.yaml` and verifies that the value passed to `--role` exists in the `roles` list
+    - "If the role is not registered, the command exits with error code 1 and prints \"Invalid role\""
+    - Unit test confirms that a known role passes and an unknown role fails
+  depends_on: [INFRA-5486]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5488
+  domain: INFRA
+  title: "INFRA: Implement append‑only file exemption logic (INFRA-1863 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Files `scripts/ci/event-registry-reserved.txt`, `scripts/ci/env-vars-internal.txt`, and `docs/observability/EVENT_REGISTRY.yaml` are ignored when supplied in the `--paths` CSV
+    - When an exempt file is present in `--paths`, the claim proceeds without warning or block
+    - Test verifies that a claim containing only exempt files succeeds
+  depends_on: [INFRA-5486]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5489
+  domain: INFRA
+  title: "INFRA: Add broad‑scope guard with --broad and --reason flags (INFRA-1863 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - If `--paths` contains entries from more than one top‑level directory, the command requires both `--broad` and `--reason '<text>'` flags
+    - Without these flags, the command exits with error code 1 and prints a descriptive message
+    - When flags are present, the claim is accepted and the paths are auto‑narrowed to the deepest common parent directory
+  depends_on: [INFRA-5486]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5490
+  domain: INFRA
+  title: "INFRA: Wire conflict‑resolver into bot‑merge.sh for auto‑resolution (INFRA-1863 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - On every push that results in a merge conflict, `bot-merge.sh` invokes the existing conflict‑resolver (INFRA‑1488) automatically
+    - The resolver emits an audit event `kind=conflict_auto_resolved` on successful auto‑resolution or `kind=conflict_escalated` otherwise
+    - Integration test simulates a conflicting push and verifies the correct audit event is logged
+  depends_on: [INFRA-5486]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5491
+  domain: INFRA
+  title: "INFRA: Support migration: keep path‑based claims and opt‑in role‑based claims (INFRA-1863 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Existing path‑based claims continue to function unchanged
+    - When `--role` is supplied, the claim is treated as role‑scoped and path validation follows the new advisory rules
+    - After a two‑week clean window and ≥100 successful auto‑resolutions, the system defaults to advisory mode for new claims
+    - Migration flag can be toggled via a config file and is reflected in command help output
+  depends_on: [INFRA-5486, INFRA-5487, INFRA-5488, INFRA-5489, INFRA-5490]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5492
+  domain: INFRA
+  title: "INFRA: Emit telemetry for role‑scoped claim collisions and migration success (INFRA-1863 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a role‑scoped claim would have collided under the old file‑lease semantics, the system emits `kind=claim_collision_avoided`
+    - A metric `migration_success_total` increments after each successful auto‑resolution post‑migration window
+    - Telemetry events are sent to the existing observability pipeline and can be queried via the dashboard
+  depends_on: [INFRA-5491]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: INFRA-5493
+  domain: INFRA
+  title: "INFRA: Create smoke‑test script `test-role-scoped-claims.sh` covering five scenarios (INFRA-1863 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The script exercises: (1) same‑role same‑scope claim blocks on overlap, (2) same‑role different‑scope claim allows, (3) different‑role same‑file claim allows with warning, (4) broad‑scope claim without `--broad` flag rejects, (5) append‑only file in paths is exempt"
+    - Each scenario asserts expected exit code and output message
+    - The script runs in CI and passes on a clean checkout
+  depends_on: [INFRA-5491, INFRA-5492]
+  notes: |
+    [chump harvest check 'replace']
+    === primitives_index match for 'replace' ===
+    
+    === cluster keyword match for 'replace' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'replace' ===
+    
+    === repo-description match for 'replace' ===
+    
+    === HARVEST_ROADMAP.md mention of 'replace' (deep-scan findings) ===
+      17:| **3** | `echeo::Matchmaker::calculate_ship_velocity_score()` (cosine sim + language/type boosts, returns 0–1.0) | INFRA-1764 (skill-aware routing via `routing_outcomes`) | **Vendor** the algorithm (~50 LOC of Rust) | Replaces heuristic pillar-balance scoring with a single deterministic number; identical math to what INFRA-1764 needs |
+      175:| **3** | `mock-services` (smugglers-rpg) | 4 production-grade containerized mock servers (Anthropic, OpenAI, Stripe, Supabase) — not the "testing utilities" stub the description implied | **HIGH** — directly injectable into Chump CI; replaces ad-hoc fixtures for LLM-call tests |
+    
+    === cross-pollination briefs mentioning 'replace' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
 - id: INFRA-604
   domain: INFRA
