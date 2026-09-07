@@ -57,6 +57,7 @@ mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
 mod codebase_digest_tool;
+mod command_registry;
 mod comprehend_tool;
 mod config_validation;
 mod consciousness_traits;
@@ -18992,6 +18993,19 @@ async fn main() -> Result<()> {
                 eprintln!("chump orchestrate: {e:#}");
                 std::process::exit(1);
             }
+        }
+    }
+
+    // Self-registering command modules (INFRA-5280 / INFRA-1748 slice). Any
+    // module that calls `register_command_module!` is dispatched here without
+    // main.rs needing its own `if args.get(1) == Some("...")` block — the
+    // registry is discovered at runtime via the `inventory` crate. Placed
+    // last (just before the `gen` free-text fallback) so it never shadows an
+    // existing hardcoded subcommand above.
+    if let Some(name) = args.get(1) {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        if let Some(code) = command_registry::dispatch(name, &sub_args) {
+            std::process::exit(code);
         }
     }
 
