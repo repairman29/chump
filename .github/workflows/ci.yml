@@ -715,6 +715,14 @@ jobs:
       - name: Plist no-tmp-paths gate (INFRA-2419)
         run: bash scripts/ci/test-plist-no-tmp-paths.sh
 
+      # CREDIBLE-1020 (CREDIBLE-274 slice): detect-dead-launchd-jobs.sh
+      # smoke — verifies a plist whose Label has zero matching running
+      # processes is reported, and one whose Label matches a live
+      # process is not. Falls back to pgrep -f (no real launchctl
+      # needed), safe in Linux CI.
+      - name: Detect dead launchd jobs smoke (CREDIBLE-1020)
+        run: bash scripts/ci/test-detect-dead-launchd-jobs.sh
+
       # EFFECTIVE-483: type-checks + unit-tests the PUBLISHER_PLATFORMS typed
       # config (web/v2/lib/publisher/platforms.ts) codifying PUBLISHER.md's
       # per-platform action boundaries (draft/approve_queue/drive/fill_and_stop).

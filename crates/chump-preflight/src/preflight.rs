@@ -1859,6 +1859,16 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // CREDIBLE-1020 (CREDIBLE-274 slice): detect-dead-launchd-jobs.sh
+        // smoke. Verifies a plist whose Label has zero matching running
+        // processes is reported, and a live-process match is excluded.
+        // Falls back to pgrep -f when launchctl is absent (Linux/CI-safe).
+        steps.push(step(
+            "detect-dead-launchd-jobs",
+            &["bash", "scripts/ci/test-detect-dead-launchd-jobs.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
         // install-bot-merge-watchdog.sh shipped 0644 and silently never ran
         // via chump-fleet-bootstrap.sh for days. Pure stat check, <1s.
