@@ -12335,3 +12335,13 @@ events:
       decision from docs/design/NODE_FABRIC.md component #2.
     consumers: [ambient, organ-reconcile (role-scoped), placement engine (future)]
     fields_required: [ts, kind, node_id, role_assigned, previous_role]
+
+  - kind: sweep_target_rejected
+    effect_metric: self
+    emitter: src/portfolio_sweep_gate.rs (EFFECTIVE-1408, `chump audit portfolio-sweep-gate`)
+    trigger: a portfolio-sweep candidate repo is not in the owned-repo
+      allowlist (CHUMP_GITHUB_REPOS env or chump_authorized_repos DB table) —
+      the posse outward NO-GO (2026-08-04, binding). Logged before any
+      network request or scan runs against that repo, per EFFECTIVE-374.
+    consumers: [ambient, audit-log]
+    fields_required: [ts, kind, repo, reason]

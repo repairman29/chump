@@ -213,6 +213,7 @@ mod recipe;
 mod reflect_delta;
 mod reflection;
 mod reflection_db;
+mod portfolio_sweep_gate; // EFFECTIVE-1408: allowlist + leverage-tier gate for portfolio sweeps
 mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
@@ -2849,10 +2850,96 @@ async fn main() -> Result<()> {
             println!(
                 "  librarian-sweep   dead-code + redundant-script triage for an ingest target repo"
             );
+            println!(
+                "  portfolio-sweep-gate   allowlist + leverage-tier gate for portfolio sweeps (EFFECTIVE-1408)"
+            );
             println!("  query             query the per-action audit log (INFRA-1842, CP-010)");
             println!("  retention         delete audit_log rows older than a cutoff (INFRA-1842)");
             println!();
             println!("Run 'chump audit <subcommand> --help' for options.");
+            return Ok(());
+        }
+        // `chump audit portfolio-sweep-gate <candidates.json> [--json]` (EFFECTIVE-1408,
+        // EFFECTIVE-374 slice) — strictly validate a sweep candidate list against the
+        // owned-repo allowlist BEFORE any network request or scan runs, and order
+        // survivors by opportunity-library leverage tier (4-star+ first).
+        if sub == "portfolio-sweep-gate" {
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            if rest.is_empty() || rest.iter().any(|a| *a == "--help" || *a == "help") {
+                println!("Usage: chump audit portfolio-sweep-gate <candidates.json> [--json]");
+                println!();
+                println!(
+                    "<candidates.json> is a JSON array of {{\"repo\": \"owner/name\", \"star_tier\": N}}."
+                );
+                println!(
+                    "Repos outside the owned-repo allowlist (CHUMP_GITHUB_REPOS env or"
+                );
+                println!(
+                    "chump_authorized_repos DB table) are strictly rejected — a NO-GO is logged"
+                );
+                println!(
+                    "to ambient.jsonl (kind=sweep_target_rejected) for each — before any of the"
+                );
+                println!(
+                    "survivors are returned. Survivors are ordered 4-star+ leverage tier first."
+                );
+                std::process::exit(if rest.is_empty() { 2 } else { 0 });
+            }
+            let want_json = rest.contains(&"--json");
+            let candidates_path = std::path::PathBuf::from(rest[0]);
+            let raw = match std::fs::read_to_string(&candidates_path) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "chump audit portfolio-sweep-gate: cannot read {}: {}",
+                        candidates_path.display(),
+                        e
+                    );
+                    std::process::exit(1);
+                }
+            };
+            #[derive(serde::Deserialize)]
+            struct RawCandidate {
+                repo: String,
+                #[serde(default)]
+                star_tier: u8,
+            }
+            let raw_candidates: Vec<RawCandidate> = match serde_json::from_str(&raw) {
+                Ok(v) => v,
+                Err(e) => {
+                    eprintln!("chump audit portfolio-sweep-gate: invalid JSON: {}", e);
+                    std::process::exit(1);
+                }
+            };
+            let candidates: Vec<portfolio_sweep_gate::SweepCandidate> = raw_candidates
+                .into_iter()
+                .map(|c| portfolio_sweep_gate::SweepCandidate {
+                    repo: c.repo,
+                    star_tier: c.star_tier,
+                })
+                .collect();
+            let repo_root = repo_path::repo_root();
+            let result = portfolio_sweep_gate::gate_and_prioritize(candidates);
+            portfolio_sweep_gate::log_rejections(&repo_root, &result.rejected);
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::json!({
+                        "allowed": result.allowed.iter().map(|c| serde_json::json!({
+                            "repo": c.repo,
+                            "star_tier": c.star_tier,
+                        })).collect::<Vec<_>>(),
+                        "rejected": result.rejected.iter().map(|r| serde_json::json!({
+                            "repo": r.repo,
+                            "reason": r.reason,
+                        })).collect::<Vec<_>>(),
+                    })
+                );
+            } else {
+                for c in &result.allowed {
+                    println!("{}\t{}", c.star_tier, c.repo);
+                }
+            }
             return Ok(());
         }
         // `chump audit query [filters] [--json]` (INFRA-1842, CP-010) — queryable
