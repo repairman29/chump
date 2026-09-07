@@ -2138,7 +2138,7 @@ gaps:
 - id: CREDIBLE-1025
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-951: Refactor done_auditor to audit by closed_at order or resume cursor (CREDIBLE-279 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -2165,6 +2165,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-07T10:12:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=timeout, rc=124, cycle_log=281192B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-1026
   domain: CREDIBLE
