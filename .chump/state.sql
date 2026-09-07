@@ -19448,10 +19448,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend the `test-merge-driver-state-sql.sh` script by inserting a new test case in its main execution flow that checks out a fixture pull‑request containing gap ID CREDIBLE-769, runs the `gap ship` command, and then verifies (a) the script logs “gap ship triggered for CREDIBLE-769”, (b) the SQLite database `gap_state.db` now holds a non‑null `closed_date` for that gap, and (c) a “proof‑of‑merge” entry is written to the log file.
+    
+    Target file(s):
+    - scripts/ci/test-merge-driver-state-sql.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Test merges a fixture PR containing a known gap ID
-    - After merge the gap status is `done` and `closed_date` is populated in the database
-    - Proof‑of‑merge event is recorded in logs
+    - Running `scripts/ci/test-merge-driver-state-sql.sh` exits with status 0 after processing the fixture PR.
+    - The script’s log output contains the line `gap ship triggered for CREDIBLE-769`.
+    - The SQLite file `gap_state.db` contains a row where `gap_id = 'CREDIBLE-769'` and `closed_date` is not NULL.
+    - "The log file includes a line matching `proof‑of‑merge: CREDIBLE-769` after the merge simulation."
   depends_on: [CREDIBLE-768]
   notes: |
     [chump harvest check 'merging']
@@ -99893,7 +99901,7 @@ gaps:
 - id: INFRA-2804
   domain: INFRA
   title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-07"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -99901,6 +99909,8 @@ gaps:
     - docs/observability/EVENT_REGISTRY.yaml documents gap_reserve_calls as the cost-tracking field and how waste-tally/fleet-brief report it to the operator
     - docs/observability/EVENT_REGISTRY.yaml classifies each failure outcome as transient (safe to retry, e.g. gap_id_extract_failed) or permanent (do not blindly retry, e.g. gap_reserve_failed)
     - docs/observability/EVENT_REGISTRY.yaml points at scripts/ci/test-pr-stuck-cluster-observability.sh as the runnable smoke test command verifying this observability
+  notes: |
+    [2026-09-07T06:45:29Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
