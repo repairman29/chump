@@ -47542,9 +47542,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `main` function in `scripts/dispatch/_pick_gap.py` to detect when a selected gap is a leaf (no sub‑gaps), automatically insert a `todo!();` macro at the appropriate location in the target Rust source file, and record a mapping of the inserted placeholder (file path, line number) to its intended test identifier in a new `gap_manifest.json` file.
+    
+    Target file(s):
+    - scripts/dispatch/_pick_gap.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Each logical hole in the skeleton is replaced with a `todo!()` macro.
-    - Mapping between each `todo!()` and its intended test is recorded in a manifest file.
+    - Running `python scripts/dispatch/_pick_gap.py …` on a leaf gap creates a new line containing exactly `todo!();` in the target Rust source file at the location where the gap was identified.
+    - After the script runs, a `gap_manifest.json` file exists at the repository root and includes a JSON entry with keys `file`, `line`, and `test_id` that correspond to the inserted `todo!();` placeholder.
+    - The only file modified on disk by the script is the target Rust source file; `scripts/dispatch/_pick_gap.py` is the only code file changed.
+    - The script exits with status code 0 and prints a confirmation message containing the path and line number of the inserted `todo!();`.
   depends_on: [EFFECTIVE-1448]
   notes: |
     [chump harvest check 'PILOT']
