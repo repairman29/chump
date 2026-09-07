@@ -65,5 +65,14 @@ path = "src/bin/chump-gap-enricher.rs"
 name = "chump-check-gaps-integrity"
 path = "src/bin/chump-check-gaps-integrity.rs"
 
+# INFRA-3631 / INFRA-5402: applies the shared_gaps/shared_claims/
+# worker_capabilities schema to a Postgres substrate via Rust init_schema
+# instead of piping supabase/migrations/*.sql through psql. Only buildable
+# with the postgres-backend feature (pulls in the optional `postgres` dep).
+[[bin]]
+name = "chump-gap-substrate-init"
+path = "src/bin/chump-gap-substrate-init.rs"
+required-features = ["postgres-backend"]
+
 [lints]
 workspace = true

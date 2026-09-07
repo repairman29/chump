@@ -32,6 +32,108 @@ impl PostgresBackend {
         backend.init_schema()?;
         Ok(backend)
     }
+
+    /// Applies the shared-fleet queue schema (INFRA-3631 slice, INFRA-5402)
+    /// — `shared_gaps`, `shared_claims`, `worker_capabilities` — the same
+    /// tables/types/constraints checked into
+    /// `supabase/migrations/0001_team_foundation.sql` +
+    /// `0002_shared_gaps.sql`, minus the RLS policies (self-hosted Postgres
+    /// has no Supabase Auth to satisfy `auth.uid()`; the substrate installer
+    /// disables RLS on these tables separately).
+    ///
+    /// Every statement is `CREATE ... IF NOT EXISTS` (or otherwise
+    /// idempotent — `COMMENT ON TABLE` just resets to the same value), so
+    /// re-running against an already-initialized DB is a clean no-op.
+    pub fn init_shared_schema(&self) -> Result<()> {
+        let mut client = self.client.lock().expect("postgres backend mutex poisoned");
+        client
+            .batch_execute(
+                "
+            CREATE EXTENSION IF NOT EXISTS \"pgcrypto\";
+
+            CREATE TABLE IF NOT EXISTS teams (
+                id              UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                name            TEXT NOT NULL,
+                slug            TEXT UNIQUE NOT NULL,
+                created_at      TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                tier            TEXT NOT NULL DEFAULT 'free'
+                    CHECK (tier IN ('free', 'team', 'enterprise')),
+                self_hosted_url TEXT,
+                deleted_at      TIMESTAMPTZ
+            );
+
+            CREATE TABLE IF NOT EXISTS shared_gaps (
+                id                  TEXT PRIMARY KEY,
+                team_id             UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                title               TEXT NOT NULL,
+                domain              TEXT NOT NULL,
+                priority            TEXT NOT NULL
+                    CHECK (priority IN ('P0', 'P1', 'P2', 'P3')),
+                effort              TEXT NOT NULL
+                    CHECK (effort IN ('xs', 's', 'm', 'l')),
+                status              TEXT NOT NULL DEFAULT 'open'
+                    CHECK (status IN ('open', 'claimed', 'shipped', 'superseded', 'blocked')),
+                description         TEXT,
+                acceptance_criteria TEXT,
+                notes               TEXT,
+                skills_required     JSONB DEFAULT '[]'::jsonb,
+                preferred_machine   TEXT,
+                depends_on          JSONB DEFAULT '[]'::jsonb,
+                created_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                created_by_user_id  UUID NOT NULL,
+                updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                shipped_at          TIMESTAMPTZ,
+                closed_pr           INT
+            );
+            CREATE INDEX IF NOT EXISTS shared_gaps_team_status_idx ON shared_gaps (team_id, status);
+            CREATE INDEX IF NOT EXISTS shared_gaps_priority_idx ON shared_gaps (team_id, priority)
+                WHERE status = 'open';
+            COMMENT ON TABLE shared_gaps IS
+                'Team-shared work queue. Each row is a gap any team operator can claim.';
+
+            CREATE TABLE IF NOT EXISTS shared_claims (
+                id               UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                gap_id           TEXT NOT NULL REFERENCES shared_gaps(id) ON DELETE CASCADE,
+                team_id          UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                operator_user_id UUID NOT NULL,
+                worker_machine   TEXT NOT NULL,
+                session_id       TEXT NOT NULL,
+                claimed_at       TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                expires_at       TIMESTAMPTZ NOT NULL,
+                released_at      TIMESTAMPTZ,
+                release_reason   TEXT
+                    CHECK (release_reason IN ('shipped', 'aborted', 'expired', 'evicted'))
+            );
+            -- THE CAS GUARANTEE: at most one active claim per gap (partial
+            -- unique index — enforces uniqueness only while released_at IS NULL).
+            CREATE UNIQUE INDEX IF NOT EXISTS shared_claims_active_unique
+                ON shared_claims (gap_id)
+                WHERE released_at IS NULL;
+            CREATE INDEX IF NOT EXISTS shared_claims_team_active_idx
+                ON shared_claims (team_id, claimed_at DESC)
+                WHERE released_at IS NULL;
+            COMMENT ON TABLE shared_claims IS
+                'Lease records for shared_gaps. Partial unique index enforces atomic claim.';
+
+            CREATE TABLE IF NOT EXISTS worker_capabilities (
+                team_id            UUID NOT NULL REFERENCES teams(id) ON DELETE CASCADE,
+                user_id            UUID NOT NULL,
+                machine            TEXT NOT NULL,
+                skills             JSONB NOT NULL DEFAULT '[]'::jsonb,
+                backend            TEXT NOT NULL DEFAULT 'claude'
+                    CHECK (backend IN ('claude', 'opencode', 'codex', 'manual')),
+                max_concurrent_gaps INT NOT NULL DEFAULT 2,
+                last_heartbeat_at  TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                PRIMARY KEY (team_id, user_id, machine)
+            );
+            CREATE INDEX IF NOT EXISTS worker_capabilities_team_idx ON worker_capabilities (team_id);
+            COMMENT ON TABLE worker_capabilities IS
+                'Per-machine capability registry. Push-routing matches gaps to capable workers.';
+            ",
+            )
+            .context("init_shared_schema: create shared_gaps/shared_claims/worker_capabilities")?;
+        Ok(())
+    }
 }
 
 impl GapBackend for PostgresBackend {
