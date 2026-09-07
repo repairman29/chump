@@ -2666,3 +2666,10 @@ CHUMP_PREFLIGHT_SKIP_CLI_MISC
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_SUBSTRATE_PG_CONN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SHARED_TARGET_HOT_OVERRIDE
+# detected in: (standard input)
+CHUMP_SHARED_TARGET_IDLE_MIN
