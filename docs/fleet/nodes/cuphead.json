@@ -1,29 +1,23 @@
 {
-  "node_id": "chumpd-eu",
-  "tailnet_ip": "100.101.188.30",
+  "node_id": "cuphead",
+  "tailnet_ip": "100.113.181.18",
   "os": "Linux",
   "hardware": {
-    "cpu_cores": 4,
-    "ram_gb": 7,
-    "disk_free_gb": 56,
-    "disk_total_gb": 150,
+    "cpu_cores": 2,
+    "ram_gb": 11,
+    "disk_free_gb": 3,
+    "disk_total_gb": 45,
     "gpu_present": false,
     "gpu_name": "none",
     "gpu_vram_mb": 0,
     "always_on": true
   },
   "roles_fit": [
-    "build-worker",
-    "ci-runner",
     "atc-heartbeat",
     "broker"
   ],
   "services_running": [
-    "chump-worker",
-    "nats:broker",
-    "github-actions-runner",
-    "discord-gateway",
-    "chump-pr-lander"
+    "chump-worker"
   ],
   "capability": {
     "vram_gb": 0,
@@ -33,5 +27,7 @@
       "coord"
     ]
   },
+  "role_pin": "brain",
+  "role_pin_reason": "always-on coordination node (topology decision 2026-09-07)",
   "role_assigned": "brain"
 }

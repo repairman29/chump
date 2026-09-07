@@ -1028,6 +1028,18 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, from_size, to_size, reason]
 
+  - kind: node_capacity_plan
+    effect_metric: self
+    emitter: scripts/ops/node-capacity-plan.sh (RESILIENT-291 PLACE half)
+    trigger: >
+      Per-node capacity planner run (standalone or invoked by node-orchestrator.sh
+      every N ticks). Computes a placement budget from the declared capability
+      manifest + live signals: capacity-derived worker_budget, orchestration/embed
+      host roles, GPU disposition, and rebalance posture (oversubscribed vs
+      capacity_sink). node-orchestrator.sh's effective_max() consumes worker_budget.
+    consumers: [node-orchestrator, fleet-brief, audit-log]
+    fields_required: [ts, kind, node, cores, worker_budget, workers_up, capacity_sink, oversubscribed, gpu, root_pct]
+
   # ── FLEET-054: waste-spike auto-pause ─────────────────────────────────────
   - kind: waste_spike_detected
     effect_metric: self
