@@ -56,7 +56,7 @@ jobs:
           shared-key: ci-nightly-tauri
 
       - name: Tauri cowork E2E suite
-        run: bash scripts/ci/run-tauri-cowork-e2e.sh
+        run: bash scripts/ci/run-tauri-e2e.sh
 
   # ── Shard B: Battle sim ───────────────────────────────────────────────────
   e2e-battle-sim:
