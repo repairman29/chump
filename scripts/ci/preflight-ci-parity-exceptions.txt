@@ -406,3 +406,6 @@ test-fleet-binary-aarch64-openssl-vendored.sh   # reason: INFRA-3836 — static 
 
 # ── RESILIENT-1038: fleet-binary glibc floor regression guard ─
 test-fleet-binary-glibc-floor.sh   # reason: RESILIENT-1038 — static grep check that build-fleet-binaries.yml pins an explicit ubuntu-NN.NN runner instead of the rolling ubuntu-latest alias (whose climbing glibc floor broke node-refresh-chump.sh's artifact-pull on older-glibc fleet nodes). Mirrorable (no network/build dependency); allowlisted here pending a preflight.rs mirror follow-up rather than blocking this PR on it.
+
+# ── RESILIENT-1052: anti-Memento fleet-health sentinel gate ──────────────────
+test-fleet-health-sentinel.sh   # reason: RESILIENT-1052 — Tier-D daemon-side fleet-health sentinel gate; exercises scripts/ops/fleet-health-sentinel.sh detect/act/page against a stubbed systemctl (CHUMP_SYSTEMCTL) + fixture heartbeats/page-sink, same shape as test-rot-reaper.sh / test-back-pressure-hysteresis.sh above; no preflight-shaped local code path.
