@@ -165448,7 +165448,7 @@ gaps:
 - id: INFRA-5354
   domain: INFRA
   title: "INFRA: INFRA-5037: Implement effective priority propagation in picker (INFRA-3612 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -165469,6 +165469,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'Picker' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+    [2026-09-07T16:11:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1075B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-5355
   domain: INFRA
