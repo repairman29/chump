@@ -101,18 +101,29 @@ check_any() {
     fi
 }
 
-# Run command; pass if exit 0 and output is valid JSON.
+# Run command; pass if exit 0 and STDOUT is valid JSON.
+#
+# INFRA-3687 contract: `--json` commands emit machine-readable JSON on
+# stdout ONLY. Advisory/staleness warnings (e.g. "gap list may be STALE:
+# checkout is N commit(s) behind origin/main") go to STDERR by design, so
+# scripts can parse stdout cleanly. This helper MUST validate stdout in
+# isolation — merging stderr with 2>&1 (as the other check_* helpers do)
+# would falsely fail whenever the CI checkout is behind origin/main, which
+# is the steady state on a busy trunk (deterministic trunk-red).
 check_json() {
     local desc="$1"; shift
-    local output rc=0
-    output=$("$CHUMP" "$@" 2>&1) || rc=$?
+    local output err rc=0
+    err="$(mktemp)"
+    # Capture stdout only; route stderr to a temp file for diagnostics.
+    output=$("$CHUMP" "$@" 2>"$err") || rc=$?
     if [[ $rc -ne 0 ]]; then
-        fail "$desc → exit $rc (expected 0)"
+        fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
     elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         ok "$desc"
     else
-        fail "$desc → exit 0 but output is not valid JSON; got: ${output:0:120}"
+        fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
     fi
+    rm -f "$err"
 }
 
 # ─────────────────────────────────────────────────────────────────────────────
