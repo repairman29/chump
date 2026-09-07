@@ -750,6 +750,22 @@ async fn resolve_publication(event: PublicationEvent, repo_root: PathBuf) -> Res
     Ok(())
 }
 
+/// EFFECTIVE-364 slice (EFFECTIVE-1380): registry mapping an artifact_type to the
+/// ordered list of publish destinations it fans out to when the owning gap ships.
+/// Order matters — the EFFECTIVE-478 publication resolver reserves one publish-
+/// target gap per entry, in the returned order. Types with no publish surface
+/// (e.g. `code`, the default for most infra gaps) return an empty list so the
+/// resolver can no-op cleanly instead of special-casing "nothing to publish".
+pub fn publish_targets_for(artifact_type: &str) -> Vec<&'static str> {
+    match artifact_type {
+        "doc" => vec!["docs-site", "CHANGELOG"],
+        "release-note" => vec!["CHANGELOG", "release-notes", "substack"],
+        "design" => vec!["screenshots", "docs-site"],
+        "copy" => vec!["substack"],
+        _ => vec![],
+    }
+}
+
 impl GapStore {
     /// Total row count across all statuses. Used to detect an empty-on-clone DB.
     pub fn gap_count(&self) -> Result<i64> {
@@ -6297,6 +6313,27 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = GapStore::open(dir.path()).unwrap();
         (store, dir)
+    }
+
+    // ── EFFECTIVE-1380: publish-target registry tests ──────────────────
+
+    #[test]
+    fn publish_targets_for_returns_ordered_multi_target_lists() {
+        assert_eq!(publish_targets_for("doc"), vec!["docs-site", "CHANGELOG"]);
+        assert_eq!(
+            publish_targets_for("release-note"),
+            vec!["CHANGELOG", "release-notes", "substack"]
+        );
+        assert_eq!(
+            publish_targets_for("design"),
+            vec!["screenshots", "docs-site"]
+        );
+    }
+
+    #[test]
+    fn publish_targets_for_returns_empty_for_no_publish_type() {
+        assert!(publish_targets_for("code").is_empty());
+        assert!(publish_targets_for("unregistered-type").is_empty());
     }
 
     // ── INFRA-100: cross-source picker tests ──────────────────────────
