@@ -488,6 +488,32 @@ fn parse_claim_json(path: &Path) -> Option<ActiveLease> {
     })
 }
 
+// ── vital signs (EFFECTIVE-1462) ────────────────────────────────────────────
+
+/// Read `~/.chump/vital-signs.json`, written by `scripts/ops/vital-signs.sh`.
+///
+/// Returns the raw JSON document (`{generated_at, p_full_trek, signs, ...}`)
+/// unmodified — the cockpit-pane consumer needs each sign's `status` field
+/// (green/amber/red/unknown) for color-coding, which a typed struct would
+/// have to keep in lockstep with the shell script's `mksign` schema. Passing
+/// the document through avoids that duplication. Returns `None` when the
+/// file is absent, unreadable, or not valid JSON (a dead/never-run collector
+/// — the caller renders an honest "no data" state rather than fabricating
+/// zeros).
+pub fn read_vital_signs() -> Option<serde_json::Value> {
+    let path = vital_signs_path();
+    let content = std::fs::read_to_string(&path).ok()?;
+    serde_json::from_str(&content).ok()
+}
+
+fn vital_signs_path() -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_VITALS_OUT") {
+        return PathBuf::from(p);
+    }
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+    PathBuf::from(home).join(".chump").join("vital-signs.json")
+}
+
 // ── entrypoint called from routes ─────────────────────────────────────────────
 
 /// Build the full `DashboardSummary` for a given repo root.

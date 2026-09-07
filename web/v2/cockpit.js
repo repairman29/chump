@@ -469,6 +469,14 @@ class ChumpViewCockpit extends HTMLElement {
             </div>
             <div id="slot-daemon-set"></div>
           </div>
+          <!-- EFFECTIVE-1462: vital-signs board -->
+          <div>
+            <div class="zone-header">
+              <span>Vital signs</span>
+              <span class="question">Is the fleet healthy?</span>
+            </div>
+            <div id="slot-vital-signs"></div>
+          </div>
           <!-- EFFECTIVE-027: wedge-watch live-tail panel -->
           <div class="wedge-watch-zone">
             <div class="zone-header">
@@ -501,6 +509,7 @@ class ChumpViewCockpit extends HTMLElement {
     this.#mount('slot-inbox', 'chump-inbox');
     this.#mount('slot-fleet', 'chump-fleet-sidebar');
     this.#mount('slot-daemon-set', 'chump-daemon-set-panel'); // EFFECTIVE-026
+    this.#mount('slot-vital-signs', 'chump-vital-signs-board'); // EFFECTIVE-1462
     this.#mount('slot-wedge-watch', 'chump-wedge-watch');    // EFFECTIVE-027
     this.#mount('slot-ambient', 'chump-ambient-viewer');
     this.#mount('slot-quick', 'chump-quick-actions');

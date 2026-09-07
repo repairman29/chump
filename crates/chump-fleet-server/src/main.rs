@@ -9,6 +9,7 @@
 //! - `GET /api/sessions/active`
 //! - `GET /api/trace/pr/:n`
 //! - `GET /api/dashboard-summary` (INFRA-1883)
+//! - `GET /api/vital-signs` (EFFECTIVE-1462) — pass-through of `~/.chump/vital-signs.json`.
 //! - `GET /api/gaps` (RESILIENT-1030, authed) — open-gap queue state.
 //! - `POST /api/gap` (authed) — reserve/set/ship gap mutation.
 //! - `POST /api/mission` (authed) — external mission intake.

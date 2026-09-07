@@ -38,6 +38,7 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/sessions/active", get(get_active_sessions))
         .route("/api/trace/pr/{n}", get(get_trace_pr))
         .route("/api/dashboard-summary", get(get_dashboard_summary))
+        .route("/api/vital-signs", get(get_vital_signs))
         .route("/api/mission", post(post_mission))
         .route("/api/gap", post(post_gap))
         .route("/api/gaps", get(get_gaps))
@@ -177,6 +178,29 @@ async fn get_dashboard_summary(State(s): State<AppState>) -> Response {
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "internal error building dashboard summary"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/vital-signs (EFFECTIVE-1462)
+///
+/// Passes through `~/.chump/vital-signs.json` (written by
+/// `scripts/ops/vital-signs.sh`) so the PWA cockpit pane can render the 8
+/// vital signs with their pre-computed status color. Returns `{"signs": []}`
+/// when the file doesn't exist yet (collector never ran on this host) rather
+/// than an error — an empty board is a valid, honest state.
+async fn get_vital_signs(State(_s): State<AppState>) -> Response {
+    let result = tokio::task::spawn_blocking(dashboard::read_vital_signs).await;
+    match result {
+        Ok(Some(doc)) => Json(doc).into_response(),
+        Ok(None) => Json(serde_json::json!({"signs": []})).into_response(),
+        Err(e) => {
+            tracing::error!("GET /api/vital-signs task error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error reading vital signs"})),
             )
                 .into_response()
         }
