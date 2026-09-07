@@ -6716,6 +6716,19 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit]
 
+  - kind: organ_watchdog_reaped_missing_exec
+    effect_metric: organ_unit_drift_auto_healed
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-1016 follow-up)
+    trigger: a chump-*.service unit is ActiveState=failed and its ExecStart
+      references only absolute .sh script paths that no longer exist on disk (a
+      retired organ whose script was removed/renamed, e.g. merge-mix-board after
+      INFRA-3844, or a foreign-home-path port that never resolves on this node).
+      The watchdog disabled + reset-failed the unit (and its paired .timer)
+      instead of blindly restarting it into perpetual failure — closing the
+      self-healer-perpetuates-failure loop (VERIFIED on closetjunky 2026-09-07).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit]
+
   - kind: organ_binary_healed
     effect_metric: organ_self_heal_rate
     emitter: scripts/ops/organ-watchdog.sh (INFRA-3651, opt-in via

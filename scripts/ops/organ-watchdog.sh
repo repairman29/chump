@@ -166,6 +166,31 @@ organ_watchdog_in_backoff() {  # unit
     return 1
 }
 
+# RESILIENT-1016 follow-up: does `unit`'s ExecStart point ONLY at script
+# file(s) that no longer exist on disk? A launchd->systemd port whose backing
+# script was removed or renamed (a retired organ, e.g. merge-mix-board after
+# INFRA-3844, or a foreign-home-path port that never resolves on this node)
+# sits `failed` forever, and the blind reset-failed+restart below just
+# resurrects it every 5-minute cycle — the self-healer perpetuating a failure
+# it can never heal. Returns 0 (obsolete, reap it) ONLY when the ExecStart
+# references at least one absolute *.sh path AND none of those paths exist, so
+# units that exec a binary, or a script that really is present, are never
+# falsely reaped.
+organ_exec_target_missing() {  # unit -> 0 if all referenced .sh ExecStart targets are missing
+    local unit="$1" execline paths p found_sh=0
+    execline="$("$SYSTEMCTL_BIN" show "$unit" -p ExecStart 2>/dev/null)"
+    [[ -z "$execline" ]] && return 1
+    paths="$(printf '%s\n' "$execline" | grep -oE "/[^ \"']+\.sh" 2>/dev/null || true)"
+    [[ -z "$paths" ]] && return 1
+    while IFS= read -r p; do
+        [[ -z "$p" ]] && continue
+        found_sh=1
+        [[ -f "$p" ]] && return 1    # a referenced script exists -> not obsolete
+    done <<< "$paths"
+    [[ "$found_sh" == 1 ]] && return 0
+    return 1
+}
+
 # RESILIENT-413: convert a systemd time span (as printed inside
 # TimersMonotonic={ OnUnitActiveUSec=<span> ; ... }) to whole seconds. systemd
 # renders these as compound single-unit tokens: "30s", "30min", "15min", "1h",
@@ -294,6 +319,25 @@ if [[ -n "$FAILED_SERVICES" ]]; then
             # curated decision instead of blindly resurrecting the unit every
             # cycle, which is the churn RESILIENT-347 exists to end)
             emit organ_watchdog_backoff_skip "\"unit\":\"$unit\""
+            continue
+        fi
+        if organ_exec_target_missing "$unit"; then
+            echo "[organ-watchdog] REAP (ExecStart script missing on disk — obsolete/removed organ, NOT resurrecting): $unit"
+            if [[ "$DRY_RUN" == "1" ]]; then
+                echo "[organ-watchdog]   (dry-run) would disable + reset-failed $unit (and its .timer)"
+                continue
+            fi
+            "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
+            "$SYSTEMCTL_BIN" disable --now "${unit%.service}.timer" 2>/dev/null || true
+            "$SYSTEMCTL_BIN" reset-failed "$unit" 2>/dev/null || true
+            "$SYSTEMCTL_BIN" reset-failed "${unit%.service}.timer" 2>/dev/null || true
+            # scanner-anchor: "kind":"organ_watchdog_reaped_missing_exec" (RESILIENT-1016
+            # follow-up; the watchdog reaped an obsolete port whose backing script no
+            # longer exists on disk instead of blindly restarting it into perpetual
+            # failure — closes the self-healer-perpetuates-failure loop VERIFIED on CJ
+            # 2026-09-07 where merge-mix-board, script removed by INFRA-3844, was
+            # restarted every 5 min and never left `systemctl --failed`)
+            emit organ_watchdog_reaped_missing_exec "\"unit\":\"$unit\""
             continue
         fi
         echo "[organ-watchdog] FAILED: $unit"
