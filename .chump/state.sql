@@ -2321,7 +2321,7 @@ gaps:
 - id: CREDIBLE-1030
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-956: Add --acceptance-criteria flag and enforce requirement for P0/P1 (CREDIBLE-284 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -2359,6 +2359,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-07T10:50:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=timeout, rc=124, cycle_log=1545719B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-1031
   domain: CREDIBLE
@@ -13682,9 +13683,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add two unit tests inside the existing `#[cfg(test)] mod tests` block of `src/provider_bandit.rs`: a `test_provider_manifest_parsing_success` that loads a hard‑coded valid provider manifest, parses it with the library’s manifest‑parsing function, and asserts that the expected tag values are returned; and a `test_provider_manifest_parsing_invalid` that loads a manifest with deliberately incorrect tag values and asserts that the parsing function returns an error (or that the tags do not match), thereby providing both the success and failure verification required by the gap.
+    
+    Target file(s):
+    - src/provider_bandit.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - cargo test includes a test that loads the manifest and asserts the correct tag values are returned
-    - Test fails when the manifest is altered to contain incorrect values
+    - "src/provider_bandit.rs contains a `#[test] fn test_provider_manifest_parsing_success()` that parses a valid manifest string and asserts `provider.tags()[\\\"role\\\"] == \\\"frontend\\\"`."
+    - "src/provider_bandit.rs contains a `#[test] fn test_provider_manifest_parsing_invalid()` that attempts to parse a manifest string with an incorrect `role` value and asserts that the parsing call returns `Err`."
+    - Running `cargo test` prints a line containing `test_provider_manifest_parsing_success ... ok`.
+    - Running `cargo test` prints a line containing `test_provider_manifest_parsing_invalid ... ok`.
   depends_on: [CREDIBLE-547]
   notes: |
     [chump harvest check 'committed']
@@ -108821,7 +108831,7 @@ gaps:
   acceptance_criteria:
     - "1. src/preflight.rs gains a cli_observability_misc gate covering the 41 remaining unmirrored scripts enumerated in docs/process/AUDIT_JOB_DECOMPOSITION.md cluster cli-observability-misc\n2. Gate runs by default under 'chump preflight', skippable via CHUMP_PREFLIGHT_SKIP_CLI_MISC=1, emits its own audit-trail event on skip\n3. scripts/ci/test-preflight-cli-misc.sh smoke asserts the gate runs all 41 scripts by default and is independently skippable\n4. docs/process/CI_PREFLIGHT_PARITY.md updated to mark this cluster mirrored\n5. Last of the 5 META-086 sub-gaps to ship self-closes META-086 per its AC 4"
   notes: |
-    Decomposed into 5 slices: INFRA-5000, INFRA-5001, INFRA-5002, INFRA-5003, INFRA-5004
+    Decomposed into 5 slices: INFRA-5317, INFRA-5318, INFRA-5319, INFRA-5320, INFRA-5321
   opened_date: '2026-07-26'
 
 - id: INFRA-3374
@@ -163587,6 +163597,137 @@ gaps:
     
     === cross-pollination briefs mentioning 'polling' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5317
+  domain: INFRA
+  title: "INFRA: INFRA-5000: Add cli_observability_misc gate to src/preflight.rs (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - src/preflight.rs contains a new gate named `cli_observability_misc`
+    - The gate enumerates all 41 scripts listed in docs/process/AUDIT_JOB_DECOMPOSITION.md under the cli-observability-misc cluster
+    - Gate code compiles without warnings and passes existing preflight unit tests
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5318
+  domain: INFRA
+  title: "INFRA: INFRA-5001: Implement default execution and skip logic for the new gate (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The gate runs automatically when `chump preflight` is invoked
+    - Setting the environment variable `CHUMP_PREFLIGHT_SKIP_CLI_MISC=1` skips the gate
+    - When skipped, an audit‑trail event with type `preflight_skip` and category `cli_observability_misc` is emitted
+    - Skipping does not affect the execution of other preflight gates
+  depends_on: [INFRA-5317]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5319
+  domain: INFRA
+  title: "INFRA: INFRA-5002: Add smoke test script for the cli‑observability‑misc gate (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new script `scripts/ci/test-preflight-cli-misc.sh` is added
+    - The script runs `chump preflight` and asserts that all 41 scripts are executed when the skip env var is unset
+    - The script sets `CHUMP_PREFLIGHT_SKIP_CLI_MISC=1` and asserts that the gate is skipped and the audit‑trail skip event is recorded
+    - The script exits with status 0 on success and non‑zero on failure
+  depends_on: [INFRA-5318]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5320
+  domain: INFRA
+  title: "INFRA: INFRA-5003: Update CI preflight parity documentation (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/process/CI_PREFLIGHT_PARITY.md is edited to list the `cli-observability-misc` cluster as mirrored
+    - The documentation includes a reference to the new gate name `cli_observability_misc` and the associated test script
+    - Changes are reviewed and merged without breaking existing CI documentation links
+  depends_on: [INFRA-5319]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5321
+  domain: INFRA
+  title: "INFRA: INFRA-5004: Close META-086 sub‑gap after successful mirroring (INFRA-3373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - META-086 is automatically transitioned to a closed state by the CI pipeline after the parity doc update
+    - The closure comment cites AC 4 of META-086 confirming the last cluster has been mirrored
+    - No open blockers remain for META-086 in the issue tracker
+  depends_on: [INFRA-5320]
+  notes: |
+    [chump harvest check 'META-070']
+    === primitives_index match for 'META-070' ===
+    
+    === cluster keyword match for 'META-070' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'META-070' ===
+    
+    === repo-description match for 'META-070' ===
+    
+    === HARVEST_ROADMAP.md mention of 'META-070' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'META-070' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-538
   domain: INFRA
