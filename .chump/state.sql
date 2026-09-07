@@ -47767,6 +47767,92 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: EFFECTIVE-1457
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Design and extend intake data model with who, struggling_moment, and done_signal fields (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "New fields `who: String`, `struggling_moment: String`, and `done_signal: String` are added to the relevant EFFECTIVE intake struct(s)."
+    - All existing struct constructors and builders compile without errors.
+    - Documentation/comments are updated to describe the new fields.
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1458
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement capture of `who` in the EFFECTIVE intake flow (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`who` is correctly extracted from the input source and populated in the intake struct."
+    - No compile warnings; `cargo fmt` and `cargo clippy` pass for the modified files.
+    - Existing unit tests continue to pass.
+  depends_on: [EFFECTIVE-1457]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1459
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement capture of `struggling_moment` in the EFFECTIVE intake flow (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`struggling_moment` is correctly extracted from the input source and populated in the intake struct."
+    - No compile warnings; `cargo fmt` and `cargo clippy` pass for the modified files.
+    - Existing unit tests continue to pass.
+  depends_on: [EFFECTIVE-1457]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
 - id: EFFECTIVE-146
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire test-bootstrap-smoke.sh into role curator-opus-ci-audit"
@@ -47786,6 +47872,65 @@ gaps:
     - Running `bash scripts/ci/test-quartermaster-audit-loop.sh` completes with exit code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1460
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement capture of `done_signal` in the EFFECTIVE intake flow (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`done_signal` is correctly extracted from the input source and populated in the intake struct."
+    - No compile warnings; `cargo fmt` and `cargo clippy` pass for the modified files.
+    - Existing unit tests continue to pass.
+  depends_on: [EFFECTIVE-1457]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: EFFECTIVE-1461
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add tests verifying the new intake fields and ensure failure without changes (EFFECTIVE-443 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - At least one `cargo test` (or script under `scripts/ci/test-*.sh`) asserts that `who`, `struggling_moment`, and `done_signal` are captured as expected.
+    - The test fails when the new fields are omitted, proving the behavior is new.
+    - All tests, including existing ones, pass after the change.
+    - "`cargo fmt` + `cargo clippy --all-targets -D warnings` succeed with no regressions."
+  depends_on: [EFFECTIVE-1458, EFFECTIVE-1459, EFFECTIVE-1460]
+  notes: |
+    [chump harvest check 'capture']
+    === primitives_index match for 'capture' ===
+    
+    === cluster keyword match for 'capture' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'capture' ===
+    
+    === repo-description match for 'capture' ===
+    
+    === HARVEST_ROADMAP.md mention of 'capture' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'capture' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: EFFECTIVE-147
   domain: EFFECTIVE
@@ -51935,7 +52080,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 5 slices: EFFECTIVE-1320, EFFECTIVE-1321, EFFECTIVE-1322, EFFECTIVE-1323, EFFECTIVE-1324
+    Decomposed into 5 slices: EFFECTIVE-1457, EFFECTIVE-1458, EFFECTIVE-1459, EFFECTIVE-1460, EFFECTIVE-1461
   opened_date: '2026-08-22'
 
 - id: EFFECTIVE-445
@@ -128963,11 +129108,19 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add support for the `--with-roadmap <repo>` flag to the `chump bootstrap` command by extending the CLI parser in `src/main.rs` to capture the flag and repository argument, and wiring this flag in `src/execute_gap.rs::gap_touches_wiring` to invoke `load_vision_input`, `generate_roadmap`, `ensure_docs_dir`, and `write_roadmap_md` sequentially, propagating any errors and returning the appropriate exit code.
+    
+    Target file(s):
+    - src/main.rs
+    - src/execute_gap.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Running `chump bootstrap --with-roadmap <repo>` no longer prints the TODO message.
-    - The command calls `load_vision_input`, `generate_roadmap`, `ensure_docs_dir`, and `write_roadmap_md` in sequence.
-    - Process exits with code 0 when the roadmap is successfully written.
-    - If any step fails, the command exits with a non‑zero code and prints the propagated error.
+    - src/main.rs parses the `--with-roadmap` flag and forwards the repository string to the execution layer without printing the previous TODO placeholder.
+    - "src/execute_gap.rs::gap_touches_wiring contains a new branch that, when the flag is present, calls `load_vision_input`, then `generate_roadmap`, then `ensure_docs_dir`, then `write_roadmap_md` in that order."
+    - Executing `chump bootstrap --with-roadmap example-repo` exits with code 0 and produces no TODO message when all four functions succeed.
+    - If any of the four functions returns an error, the command exits with a non‑zero code and prints the propagated error message.
   depends_on: [INFRA-4197]
   notes: |
     [chump harvest check 'command']
