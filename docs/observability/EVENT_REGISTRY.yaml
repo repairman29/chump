@@ -7535,6 +7535,18 @@ events:
     consumers: [fleet-brief, ops-audit, operator-attention]
     fields_required: [ts, kind, pr, branch, gap]
 
+  - kind: pr_reopen_refused
+    effect_metric: self
+    emitter: scripts/coord/pr-rescue-false-close.sh (INFRA-5349, INFRA-3604 slice)
+    trigger: >
+      Rescue script was about to reopen a manually-closed PR but found the
+      target branch not mergeable and/or not rebaseable (GitHub REST
+      'mergeable'/'rebaseable' false) — refused to reopen and logged why.
+      Prevents a stale DIRTY/CONFLICTING PR from being revived back into
+      the merge queue.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, pr, branch, gap, reason]
+
   # ── INFRA-1541: pre-merge AC coverage gate ────────────────────────────────
   - kind: ac_coverage_miss
     effect_metric: self
