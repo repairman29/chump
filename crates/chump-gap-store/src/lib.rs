@@ -10,6 +10,7 @@
 //!   Existing DB rows are NOT overwritten; only new gaps are inserted.
 
 pub mod backend;
+pub mod lifecycle_gauge;
 pub mod maintenance;
 pub mod sync;
 
