@@ -1282,12 +1282,110 @@ customElements.define('chump-first-run-wizard', ChumpFirstRunWizard);
 //   - GH budget : /api/stack-status .github_rate_limit (or .gh_rate_limit)
 //
 // Telemetry: kind=footer_slot_drilled {slot, cadence_target} on every click.
+//
+// PRODUCT-107: 6 slots: model / cost / air-gap / pillars / fleet / GH budget.
+// Desktop: one row. Mobile: wraps to 2 rows.
+const FOOTER_CSS = `
+  :host { display: block; }
+  .sf-shell {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    padding-bottom: calc(6px + var(--safe-bottom));
+    background: var(--bg-surface);
+    border-top: 1px solid var(--border);
+    font-size: 11px;
+    color: var(--text-secondary);
+    font-variant-numeric: tabular-nums;
+    position: relative;
+    z-index: 8;
+    flex-shrink: 0;
+  }
+  .sf-slot {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 4px 8px;
+    border: none;
+    background: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    border-radius: var(--radius-sm);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
+    min-height: 28px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .sf-slot:hover {
+    background: var(--bg-elevated);
+    color: var(--text-primary, var(--text));
+  }
+  .sf-slot:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
+  }
+  .sf-dot {
+    font-size: 14px; line-height: 1;
+  }
+  .sf-label {
+    font-size: 9px;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text-secondary);
+  }
+  .sf-value {
+    color: var(--text-primary, var(--text));
+    font-weight: 500;
+  }
+  .sf-value.sf-stale {
+    opacity: 0.5;
+  }
+  .sf-value.sf-warn {
+    color: var(--warn, #ff9f0a);
+  }
+  .sf-value.sf-red {
+    color: var(--error, #ff453a);
+    font-weight: 600;
+  }
+  .sf-pillars { padding: 4px 10px; }
+  .sf-pillar-grades {
+    font-family: "SF Mono", ui-monospace, monospace;
+    font-size: 11px;
+    letter-spacing: 0.02em;
+    color: var(--text-primary, var(--text));
+  }
+  /* Mobile (≤640px): wrap to 2 rows, tap targets ≥36px */
+  @media (max-width: 640px) {
+    .sf-shell {
+      flex-wrap: wrap;
+      justify-content: space-around;
+      gap: 4px;
+      padding: 6px 8px;
+    }
+    .sf-slot {
+      flex: 1 1 auto;
+      min-width: 90px;
+      min-height: 36px;
+      justify-content: center;
+    }
+    .sf-pillars { flex-basis: 100%; }
+  }
+`;
+
 class ChumpStatusFooter extends HTMLElement {
+  #shadow;
   #pollers = [];
   #lastValues = {};
 
+  constructor() {
+    super();
+    this.#shadow = this.attachShadow({ mode: 'open' });
+  }
+
   connectedCallback() {
-    this.innerHTML = `
+    this.#shadow.innerHTML = `
+      <style>${FOOTER_CSS}</style>
       <div class="sf-shell" role="contentinfo" aria-label="Operator status">
         <button type="button" class="sf-slot sf-model" data-slot="model" data-target="config:models"
                 title="Model — click to view providers" aria-label="Active model (click to view providers)">
@@ -1320,7 +1418,7 @@ class ChumpStatusFooter extends HTMLElement {
         </button>
       </div>
     `;
-    this.addEventListener('click', (e) => this.#onSlotClick(e));
+    this.#shadow.addEventListener('click', (e) => this.#onSlotClick(e));
 
     this.#startPoller(60_000, () => this.#pollStackStatus());
     this.#startPoller(30_000, () => this.#pollCost());
@@ -1346,15 +1444,15 @@ class ChumpStatusFooter extends HTMLElement {
       if (!d) return this.#markStale('model');
       const last = d.llm_last_completion || null;
       const modelLabel = last?.label || d.primary_backend || 'cold';
-      const modelDot = this.querySelector('#sf-model-dot');
-      const modelVal = this.querySelector('#sf-model-value');
+      const modelDot = this.#shadow.querySelector('#sf-model-dot');
+      const modelVal = this.#shadow.querySelector('#sf-model-value');
       if (modelDot) { modelDot.textContent = last ? '●' : '○'; modelDot.style.color = last ? 'var(--accent)' : 'var(--text-secondary)'; }
       if (modelVal) { modelVal.textContent = ChumpStatusFooter.#truncate(modelLabel, 18); modelVal.classList.remove('sf-stale'); }
       this.#lastValues.model = modelLabel;
 
       const airgap = d.air_gap_mode === true;
-      const agDot = this.querySelector('#sf-airgap-dot');
-      const agVal = this.querySelector('#sf-airgap-value');
+      const agDot = this.#shadow.querySelector('#sf-airgap-dot');
+      const agVal = this.#shadow.querySelector('#sf-airgap-value');
       if (agDot) { agDot.textContent = airgap ? '●' : '○'; agDot.style.color = airgap ? 'var(--success)' : 'var(--text-secondary)'; }
       if (agVal) { agVal.textContent = airgap ? 'air-gap' : 'network'; agVal.classList.remove('sf-stale'); }
       this.#lastValues.airgap = airgap;
@@ -1362,7 +1460,7 @@ class ChumpStatusFooter extends HTMLElement {
       const rl = d.github_rate_limit || d.gh_rate_limit;
       if (rl && typeof rl.graphql_remaining === 'number' && typeof rl.graphql_limit === 'number') {
         const pct = Math.round((rl.graphql_remaining / Math.max(1, rl.graphql_limit)) * 100);
-        const ghVal = this.querySelector('#sf-gh-value');
+        const ghVal = this.#shadow.querySelector('#sf-gh-value');
         if (ghVal) {
           ghVal.textContent = `${pct}%`;
           ghVal.classList.toggle('sf-warn', pct < 50);
@@ -1378,7 +1476,7 @@ class ChumpStatusFooter extends HTMLElement {
     fetch('/api/telemetry/cost').then((r) => r.ok ? r.json() : null).then((d) => {
       if (!d) return this.#markStale('cost');
       const dollars = Number(d.session_cost_usd ?? d.total_cost_usd ?? d.cost_today ?? 0);
-      const v = this.querySelector('#sf-cost-value');
+      const v = this.#shadow.querySelector('#sf-cost-value');
       if (v) {
         v.textContent = dollars.toFixed(2);
         v.classList.remove('sf-stale');
@@ -1402,8 +1500,8 @@ class ChumpStatusFooter extends HTMLElement {
         const s = String(a.status || a.state || '').toLowerCase();
         return s === 'active' || s === 'working' || s === 'healthy' || s === '';
       }).length;
-      const dot = this.querySelector('#sf-fleet-dot');
-      const val = this.querySelector('#sf-fleet-value');
+      const dot = this.#shadow.querySelector('#sf-fleet-dot');
+      const val = this.#shadow.querySelector('#sf-fleet-value');
       if (val) { val.textContent = total === 0 ? '—' : `${healthy}/${total}`; val.classList.remove('sf-stale'); }
       if (dot) {
         if (total === 0)            { dot.textContent = '○'; dot.style.color = 'var(--text-secondary)'; }
@@ -1416,7 +1514,7 @@ class ChumpStatusFooter extends HTMLElement {
   }
 
   #markStale(slot) {
-    const v = this.querySelector(`#sf-${slot}-value`);
+    const v = this.#shadow.querySelector(`#sf-${slot}-value`);
     if (v && this.#lastValues[slot] !== undefined) v.classList.add('sf-stale');
   }
 
