@@ -2327,6 +2327,62 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
     Ok(out)
 }
 
+// ─── live_pct (CREDIBLE-1047 / CREDIBLE-356 slice) ─────────────────────────
+//
+// Crit-weighted "how much of this class is actually running" signal, built
+// from the two axes already in the schema: a finding's `severity` (the Crit
+// weight) and its artifact's `activation_state` (the stage). Kept as a pure
+// function — no DB/ambient coupling — so it composes into `class_stats` (or
+// any future consumer) without dragging in the wider Debt Index machinery.
+
+/// Stage an artifact's `activation_state` must reach to count as "running".
+const LIVE_PCT_STAGE_RUNNING: i64 = 2;
+
+/// Crit weight for a finding's `severity` — high=3, med=2, low=1, info=0.
+fn live_pct_severity_weight(severity: &str) -> f64 {
+    match severity {
+        "high" => 3.0,
+        "med" => 2.0,
+        "low" => 1.0,
+        _ => 0.0, // "info" and any unrecognized severity
+    }
+}
+
+/// Stage number for an artifact's `activation_state` —
+/// referenced=2 (running), dormant=1, orphan/unknown=0.
+fn live_pct_activation_stage(activation_state: &str) -> i64 {
+    match activation_state {
+        "referenced" => 2,
+        "dormant" => 1,
+        _ => 0, // "orphan" | "unknown"
+    }
+}
+
+/// Crit-weighted fraction of `findings` whose artifact stage is
+/// `>= LIVE_PCT_STAGE_RUNNING`. Each `(severity, activation_state)` pair
+/// contributes its severity weight to the denominator, and that same
+/// weight to the numerator only if its stage has reached running. Returns
+/// `0.0` (never `NaN`) for an empty input or when every finding weighs 0.
+pub fn compute_live_pct<'a, I>(findings: I) -> f64
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut total_weight = 0.0_f64;
+    let mut live_weight = 0.0_f64;
+    for (severity, activation_state) in findings {
+        let w = live_pct_severity_weight(severity);
+        total_weight += w;
+        if live_pct_activation_stage(activation_state) >= LIVE_PCT_STAGE_RUNNING {
+            live_weight += w;
+        }
+    }
+    if total_weight == 0.0 {
+        0.0
+    } else {
+        live_weight / total_weight
+    }
+}
+
 /// Aggregate counts for rebuild summary.
 pub fn meta_counts(conn: &Connection) -> Result<(i64, i64, i64)> {
     let prs: i64 = conn
@@ -2755,5 +2811,46 @@ mod tests {
             extract_gap_id("CREDIBLE-002 something"),
             Some("CREDIBLE-002".to_string())
         );
+    }
+
+    // ─── compute_live_pct (CREDIBLE-1047 / CREDIBLE-356 slice) ─────────────
+
+    #[test]
+    fn live_pct_empty_input_is_zero() {
+        assert_eq!(compute_live_pct(std::iter::empty()), 0.0);
+    }
+
+    #[test]
+    fn live_pct_all_running_is_one() {
+        let findings = vec![("high", "referenced"), ("low", "referenced")];
+        assert_eq!(compute_live_pct(findings), 1.0);
+    }
+
+    #[test]
+    fn live_pct_none_running_is_zero() {
+        let findings = vec![("high", "orphan"), ("med", "dormant")];
+        assert_eq!(compute_live_pct(findings), 0.0);
+    }
+
+    #[test]
+    fn live_pct_crit_weighting_dominates() {
+        // high (weight 3) running, low (weight 1) not: 3.0 / 4.0 = 0.75
+        let findings = vec![("high", "referenced"), ("low", "orphan")];
+        assert!((compute_live_pct(findings) - 0.75).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn live_pct_info_severity_contributes_no_weight() {
+        // "info" findings weigh 0 either way, so the fraction is driven
+        // entirely by the weighted (non-info) findings.
+        let findings = vec![("info", "orphan"), ("med", "referenced")];
+        assert_eq!(compute_live_pct(findings), 1.0);
+    }
+
+    #[test]
+    fn live_pct_dormant_is_not_running() {
+        // "dormant" is stage 1, below LIVE_PCT_STAGE_RUNNING (2) — does not count as live.
+        let findings = vec![("high", "dormant")];
+        assert_eq!(compute_live_pct(findings), 0.0);
     }
 }
