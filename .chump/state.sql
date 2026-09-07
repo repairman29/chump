@@ -18235,10 +18235,20 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a new #[cfg(test)] module to each of the three files that defines concrete unit‑test functions: one in src/main.rs exercising the `CrownGauge` UI component’s rendering logic, one in src/hooks.rs verifying the initialization and values of the new debt‑index fields, and one in src/pr_rescue.rs checking that the candidate‑generation algorithm returns the expected candidate set. Each test uses `assert_eq!` (or similar) to validate behavior and is compiled only for testing.
+    
+    Target file(s):
+    - src/main.rs
+    - src/hooks.rs
+    - src/pr_rescue.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Tests cover the new debt index fields, the `CrownGauge` component, and the candidate‑generation logic.
-    - All new tests pass locally and are included in the CI test suite.
-    - Running `cargo test` fails if any of these tests are missing or broken.
+    - src/main.rs contains a test function `test_crown_gauge_displays_correct_value` that asserts the gauge renders the expected value for a given input.
+    - src/hooks.rs contains a test function `test_debt_index_fields_initialization` that verifies all new debt index fields are correctly populated after construction.
+    - src/pr_rescue.rs contains a test function `test_candidate_generation_produces_expected_candidates` that checks the candidate‑generation logic returns the exact expected candidate list for a deterministic input.
+    - Running `cargo test` in the repository exits with status 0 and reports the three new test functions as passed.
   depends_on: [CREDIBLE-746]
   notes: |
     [chump harvest check 'Index']
@@ -86195,7 +86205,7 @@ gaps:
     - "Sibling: META-070 + META-071 partially shipped this; this gap is the COMPLETION + parity-audit gate. Audit the 6+ already-shipped META-070 sub-gaps for coverage gaps"
     - "Smoke test: synth a fresh CI gate that always fails; assert chump preflight catches it; assert preflight-ci-parity-audit reports 0 delta"
   notes: |
-    Decomposed into 6 slices: INFRA-3792, INFRA-3793, INFRA-3794, INFRA-3795, INFRA-3796, INFRA-3797
+    Decomposed into 6 slices: INFRA-5205, INFRA-5206, INFRA-5207, INFRA-5208, INFRA-5209, INFRA-5210
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -158334,6 +158344,177 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5205
+  domain: INFRA
+  title: "INFRA: INFRA-3792: Implement inventory script preflight-vs-ci-parity-audit.sh (INFRA-2084 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script runs without error on a clean checkout
+    - "Outputs three sections: (a) CI gates from .github/workflows/ci.yml, (b) gates from chump preflight, (c) DELTA (CI gates not in preflight)"
+    - Output format is machine‑parseable (e.g., JSON or newline‑separated lists)
+    - Baseline run on current repository reports a DELTA of approximately 30%
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5206
+  domain: INFRA
+  title: "INFRA: INFRA-3793: Add missing CI gates to chump preflight or create allowlist entries (INFRA-2084 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For every gate listed in DELTA, either a corresponding preflight implementation is added or an entry is added to preflight-vs-ci-parity-allowlist.txt with a clear reason
+    - Running the inventory script after changes reports an empty DELTA
+    - Allowlist entries are documented with a one‑sentence justification
+  depends_on: [INFRA-5205]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5207
+  domain: INFRA
+  title: "INFRA: INFRA-3794: Implement allowlist parsing and documentation (INFRA-2084 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - preflight-vs-ci-parity-allowlist.txt is read by the parity scripts
+    - "Each line consists of <gate-name>#<reason> and is ignored by parity checks"
+    - Documentation (README or comment block) explains format and when to use the allowlist
+  depends_on: [INFRA-5205]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5208
+  domain: INFRA
+  title: "INFRA: INFRA-3795: Implement gate assertion script test-preflight-ci-parity.sh (INFRA-2084 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script exits with non‑zero status if any CI gate is not reachable from chump preflight and not present in the allowlist
+    - Script exits zero when parity is achieved
+    - Script is integrated into the fast‑checks shard of CI and runs in <30 seconds
+    - Error messages identify the uncovered gate(s)
+  depends_on: [INFRA-5206, INFRA-5207]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5209
+  domain: INFRA
+  title: "INFRA: INFRA-3796: Optimize chump preflight runtime to <60 s warm, <120 s cold (INFRA-2084 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Warm run (cached dependencies) completes in ≤60 seconds
+    - Cold run (no cache) completes in ≤120 seconds
+    - "Performance gains are achieved by parallelizing independent gate checks with tokio::spawn"
+    - No functional regressions; all existing preflight tests still pass
+  depends_on: [INFRA-5208]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5210
+  domain: INFRA
+  title: "INFRA: INFRA-3797: Add smoke test for synthetic failing CI gate (INFRA-2084 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new CI gate that always fails is added to .github/workflows/ci.yml
+    - Running chump preflight locally detects the failing gate and exits non‑zero
+    - Running the parity audit after the synthetic gate reports zero DELTA (gate is either covered or allowlisted)
+    - Smoke test is part of the CI pipeline and fails the build if either condition is not met
+  depends_on: [INFRA-5208, INFRA-5209]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-538
   domain: INFRA
