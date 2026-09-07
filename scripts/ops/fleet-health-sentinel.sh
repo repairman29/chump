@@ -325,11 +325,11 @@ do_fleet_pass() {
         else
             # remote: read the node's heartbeat epoch over ssh (bounded)
             # shellcheck disable=SC2086
-            hb_epoch="$(timeout 20 ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 $opts "$target" \
+            hb_epoch="$(timeout 20 ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 $opts "$target" \
                 'grep -oE "\"epoch\":[0-9]+" ~/.chump/fleet-health-sentinel.heartbeat 2>/dev/null | head -1 | grep -oE "[0-9]+"' 2>/dev/null)"
             if [[ -z "$hb_epoch" ]]; then
                 # distinguish unreachable from present-but-no-heartbeat
-                if timeout 15 ssh -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 $opts "$target" true >/dev/null 2>&1; then
+                if timeout 15 ssh -n -o StrictHostKeyChecking=no -o BatchMode=yes -o ConnectTimeout=10 $opts "$target" true >/dev/null 2>&1; then
                     reachable=1; hb_epoch=0
                 else
                     reachable=0
