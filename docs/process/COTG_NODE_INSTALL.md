@@ -87,10 +87,16 @@ provisioned (no daemon, cgroup/privilege limits, or a non-Linux host) — an env
 cannot host the test is not a regression in the thing under test; a container that DOES come
 up but fails to converge is a HARD failure.
 
-**CI wiring:** `.github/workflows/ftue-cold-install.yml` runs `--engine docker` on
-`ubuntu-22.04`, path-gated to the bring-up files (never bloats a docs/Rust-only PR), weekly on
-a schedule, advisory (so a runner-side systemd-in-docker quirk can't block auto-merge — the
-selfcheck fallback is the hard, always-runnable gate).
+**CI wiring:** `.github/workflows/ftue-cold-install.yml` (path-gated to the bring-up files, so
+it never bloats a docs/Rust-only PR; weekly on a schedule) runs TWO steps on `ubuntu-22.04`:
+- **gate** — `--selfcheck` (host-agnostic contract + real `/healthz`), the step that decides
+  the job. Deterministic, doesn't depend on systemd-in-docker, so it is the hard, always-green
+  gate.
+- **advisory fidelity** — `--engine docker` (clean Ubuntu 22.04 systemd container, real
+  end-to-end bring-up), `continue-on-error` so it is visible + continuous but never blocks the
+  merge. systemd-in-docker IS functional on the `ubuntu-22.04` runner (verified 2026-09-07);
+  full container convergence is being hardened under **RESILIENT-1051**, after which this step
+  can be promoted to gating.
 
 ### Real-disposable-box variant (periodic bare-metal fidelity)
 The container layer is the continuous single-shot proof; a genuinely fresh cloud box is the

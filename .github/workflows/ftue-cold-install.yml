@@ -15,15 +15,21 @@ name: FTUE cold-install (bare node -> working node)
 # the bring-up scripts change, so `paths` scopes it to those files — it never
 # bloats a docs- or Rust-only PR (INFRA-682 path-filter discipline).
 #
-# WHY ADVISORY (continue-on-error): systemd-in-docker depends on the runner's
-# cgroup/privilege posture. The harness NEUTRAL-SKIPS to the host-agnostic
-# `--selfcheck` gate when a systemd container cannot be provisioned, and only a
-# genuine NON-CONVERGENCE is a failure — but to keep an environment quirk on the
-# runner from polluting statusCheckRollup and blocking auto-merge (the trap
-# documented in CLAUDE_GOTCHAS.md § Auto-merge rollup-FAILURE), the job is
-# advisory. It is a continuous, visible, single-shot proof — not a
-# branch-protection-required check. The real-disposable-box variant
-# (docs/process/COTG_NODE_INSTALL.md) is the periodic bare-metal fidelity run.
+# TWO STEPS, one job:
+#   1. GATE  — `--selfcheck` (host-agnostic: static bring-up contract + a REAL
+#      chump-fleet-server /healthz up→curl→teardown). Deterministic and verified;
+#      this is the check that decides the job's conclusion. It does NOT depend on
+#      systemd-in-docker, so it is green on any runner posture.
+#   2. FIDELITY (advisory) — `--engine docker` boots a clean Ubuntu 22.04 systemd
+#      container and runs the REAL end-to-end bring-up. This is `continue-on-error`
+#      at the STEP level so its result is VISIBLE + continuous but never blocks the
+#      merge: the container-convergence layer still needs hardening (RESILIENT-1051)
+#      and an unverified/partially-converging container run must not false-red every
+#      install-path PR (the "a test that can't land is worthless" rule + the
+#      CLAUDE_GOTCHAS.md § Auto-merge rollup-FAILURE trap). Its logs drive the
+#      hardening; once it converges green in CI it can be promoted to gating.
+# The real-disposable-box variant (docs/process/COTG_NODE_INSTALL.md) is the
+# periodic bare-metal fidelity run.
 
 on:
   push:
@@ -72,18 +78,24 @@ jobs:
   cold-install:
     # ubuntu-22.04 — matches CI's pinned floor + the real Oracle nodes' userland.
     runs-on: ubuntu-22.04
-    timeout-minutes: 20
-    # Advisory: keeps a runner-environment quirk (systemd-in-docker provisioning)
-    # from blocking auto-merge, while a genuine non-convergence still shows RED in
-    # the logs + job annotation. See the header comment.
-    continue-on-error: true
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
 
-      - name: cold-install FTUE (clean container -> working node -> teardown)
+      # ── GATE: host-agnostic contract + real /healthz (decides the job) ──────
+      - name: cold-install FTUE — contract + live /healthz (gate)
+        run: |
+          set -uo pipefail
+          bash scripts/ci/ftue-cold-install.sh --selfcheck
+
+      # ── FIDELITY (advisory): clean Ubuntu 22.04 systemd container bring-up ──
+      # Visible + continuous, never blocks the merge (see header). RESILIENT-1051
+      # hardens this to full convergence, after which it can be promoted to gating.
+      - name: cold-install FTUE — clean container bring-up (advisory fidelity)
+        continue-on-error: true
         env:
           # The install path PULLs a prebuilt binary; a token lets the fetch
-          # path authenticate if the harness ever exercises a real artifact pull.
+          # path authenticate if the harness exercises a real artifact pull.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           set -uo pipefail
