@@ -33,7 +33,7 @@
 #                        (unmet requires=) skip; dead organs in an
 #                        organ-reconcile.sh backoff cooldown are distinguished
 #                        from dead-and-unowned ones in the failure detail.
-#   15. self-healer-heartbeat — RESILIENT-1052: the self-healers watch every
+#   15. self-healer-heartbeat — RESILIENT-1053 (originally scoped as RESILIENT-1052; re-filed to avoid a duplicate-PR collision with #4515): the self-healers watch every
 #                        OTHER organ but nothing watched THEM (chump-organ-
 #                        reconcile.timer is deliberately excluded from
 #                        organ-manifest.txt). FAILs + pages
@@ -1082,7 +1082,7 @@ check_auth_probe() {
     fi
 }
 
-# ── Check 15 (RESILIENT-1052): self-healer heartbeat — is anyone paging when
+# ── Check 15 (RESILIENT-1053, originally scoped as RESILIENT-1052 — see below): self-healer heartbeat — is anyone paging when
 #    the self-healers themselves go dark? ──────────────────────────────────
 #
 # organ-watchdog.sh and organ-reconcile.sh heal every OTHER organ, but

@@ -8644,7 +8644,7 @@ events:
 
   - kind: self_healer_heartbeat_stale
     effect_metric: resilient
-    emitter: scripts/coord/fleet-doctor-strict.sh (RESILIENT-1052)
+    emitter: scripts/coord/fleet-doctor-strict.sh (RESILIENT-1053)
     trigger: >
       Emitted when check_self_healer_heartbeat finds that either self-healer
       (organ-watchdog.sh's kind=organ_watchdog_tick or organ-reconcile.sh's

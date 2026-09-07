@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# test-resilient-1052-self-healer-heartbeat.sh — RESILIENT-1052
+# test-resilient-1053-self-healer-heartbeat.sh — RESILIENT-1053 (originally scoped as RESILIENT-1052, re-filed to avoid a duplicate-PR collision with #4515)
 #
 # Verifies fleet-doctor-strict.sh's check_self_healer_heartbeat:
 #   1. No ambient.jsonl at all → skip.
@@ -12,7 +12,7 @@
 #   5. Both healers ticked once, long ago (past threshold) → fail, detail
 #      names both as stale.
 #
-# Proves the RESILIENT-1052 behavior: the self-healers (organ-watchdog /
+# Proves the RESILIENT-1053 (originally scoped as RESILIENT-1052, re-filed to avoid a duplicate-PR collision with #4515) behavior: the self-healers (organ-watchdog /
 # organ-reconcile) going dark is a paged, observable condition instead of a
 # meta-failure nobody notices — chump-organ-reconcile.timer is deliberately
 # excluded from organ-manifest.txt (see the NOTE in that file), so the
@@ -118,4 +118,4 @@ else
 fi
 
 echo
-echo "All test-resilient-1052-self-healer-heartbeat.sh checks passed."
+echo "All test-resilient-1053-self-healer-heartbeat.sh checks passed."
