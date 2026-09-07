@@ -2428,6 +2428,179 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
+- id: CREDIBLE-1033
+  domain: CREDIBLE
+  title: "CREDIBLE: Define CapabilityLifecycleStage enum and stage progression model (CREDIBLE-299 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Define CapabilityLifecycleStage enum with Built, Merged, Deployed, Wired, Running, and DoingItsJob variants.
+    - Implement is_done(&self) -> bool method returning true strictly when in DoingItsJob stage.
+    - Unit tests pass verifying enum representation, ordering, and is_done behavior.
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-1034
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement CapabilityLifecycleGauge state tracker (CREDIBLE-299 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Implement CapabilityLifecycleGauge struct tracking capability ID and current lifecycle stage.
+    - Provide safe transition helper methods enforcing forward lifecycle progression.
+    - Unit tests verify valid transitions and handling of out-of-order stage updates.
+  depends_on: [CREDIBLE-1033]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-1035
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit telemetry metrics for capability lifecycle transitions (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Integrate lifecycle stage updates with system metrics exporter.
+    - Verify gauge metric outputs numeric stage value (1 to 6) or stage label.
+    - Tests verify metric updates occur on each stage change.
+  depends_on: [CREDIBLE-1034]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-1036
+  domain: CREDIBLE
+  title: "CREDIBLE: Integrate lifecycle gauge tracking into Capability runtime manager (CREDIBLE-299 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Update Capability runtime manager to update gauge during Built through Running stages.
+    - Ensure capability status reporting reflects current stage and retains in-progress state at stage 5 (Running).
+    - Integration test verifies runtime stage updates up through Running.
+  depends_on: [CREDIBLE-1034]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-1037
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement stage 6 doing-its-job verification and DONE status gating (CREDIBLE-299 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Implement health/activity check that transitions capability stage from Running to DoingItsJob.
+    - Capability status reporter marks capability as DONE strictly when stage reaches DoingItsJob.
+    - Test proves capability remains NOT DONE at Running stage and becomes DONE once DoingItsJob is verified.
+  depends_on: [CREDIBLE-1036]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
+- id: CREDIBLE-1038
+  domain: CREDIBLE
+  title: "CREDIBLE: Add end-to-end integration test for full capability lifecycle gauge (CREDIBLE-299 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Add integration test covering full progression through all 6 lifecycle stages.
+    - Test verifies failure/blocking behavior if stage 6 is not reached.
+    - cargo fmt, clippy --all-targets -D warnings, and cargo test pass without errors or regressions.
+  depends_on: [CREDIBLE-1035, CREDIBLE-1037]
+  notes: |
+    [chump harvest check 'lifecycle']
+    === primitives_index match for 'lifecycle' ===
+    
+    === cluster keyword match for 'lifecycle' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'lifecycle' ===
+    
+    === repo-description match for 'lifecycle' ===
+    
+    === HARVEST_ROADMAP.md mention of 'lifecycle' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'lifecycle' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+
 - id: CREDIBLE-104
   domain: CREDIBLE
   title: "CREDIBLE: verify-merge bar real-repo hardening — install deps before testing + prove ADDED tests via base-overlay of changed test files + Gate-3 no-regression as delta (no NEW failures), so messy 0→1 repos like BEAST-MODE verify correctly without watering down the proof"
@@ -5858,7 +6031,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 6 slices: CREDIBLE-968, CREDIBLE-969, CREDIBLE-970, CREDIBLE-971, CREDIBLE-972, CREDIBLE-973
+    Decomposed into 6 slices: CREDIBLE-1033, CREDIBLE-1034, CREDIBLE-1035, CREDIBLE-1036, CREDIBLE-1037, CREDIBLE-1038
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -14101,9 +14274,16 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a dedicated "Freshness SLA" section to README.md documenting default freshness SLA values, explaining how SLA tracking works, and detailing how to configure or adjust SLA threshold parameters.
+    
+    Target file(s):
+    - README.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - README includes a section describing the freshness SLA, default values, and how to adjust them
-    - Documentation links to the new configuration parameters
+    - README.md contains a section documenting the Freshness SLA and its default values.
+    - README.md details the specific configuration parameters and instructions required to adjust Freshness SLA thresholds.
   depends_on: [CREDIBLE-557]
   notes: |
     [chump harvest check 'Deploy']
