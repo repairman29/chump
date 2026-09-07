@@ -37,12 +37,38 @@ DISK_PLACE_PCT="${CHUMP_ORCH_DISK_PLACE_PCT:-90}" # root%>= this triggers placem
 HOUSEKEEPING="${CHUMP_ORCH_HOUSEKEEPING:-chump-rot-reaper.service chump-worktree-reaper.service chump-disk-monitor.service}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
 BACKPRESSURE_MAX_AGE_S="${CHUMP_ORCH_BACKPRESSURE_MAX_AGE_S:-900}"  # stale signal (>15min) is ignored, not trusted
+# RESILIENT-291 (PLACE half): the capacity planner + its output. effective_max()
+# consumes worker_budget from this plan so the worker CEILING is capacity-derived
+# (cores/mem/GPU/load/disk + orchestration+embed overhead) rather than a blind
+# cores-1 or an autonomy-only cap. Falls back cleanly when the plan is absent.
+CAPACITY_PLANNER="${CHUMP_ORCH_CAPACITY_PLANNER:-$REPO/scripts/ops/node-capacity-plan.sh}"
+CAPACITY_PLAN="${CHUMP_ORCH_CAPACITY_PLAN:-$STATE_DIR/node-capacity-plan.json}"
+PLAN_REFRESH_EVERY="${CHUMP_ORCH_PLAN_REFRESH_EVERY:-5}"  # re-run the planner every N ticks
 mkdir -p "$STATE_DIR"
 log(){ printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
-# effective_max — the enforced cap, single source of truth for both enforce_cap() and scale().
+# plan_worker_budget — read worker_budget from the capacity plan JSON, or "" if
+# unreadable/absent. Grep-based (no jq dependency), tolerant of formatting.
+plan_worker_budget() {
+  [ -f "$CAPACITY_PLAN" ] || { echo ""; return; }
+  grep -o '"worker_budget"[[:space:]]*:[[:space:]]*[0-9]\+' "$CAPACITY_PLAN" 2>/dev/null \
+    | head -1 | grep -o '[0-9]\+$'
+}
+
+# refresh_plan — re-run the capacity planner so the plan tracks live signals. Best
+# effort: a planner failure never breaks the orchestration loop (falls back to env/cores-1).
+refresh_plan() {
+  [ -x "$CAPACITY_PLANNER" ] || [ -f "$CAPACITY_PLANNER" ] || return 0
+  CHUMP_REPO_ROOT="$REPO" CHUMP_STATE_DIR="$STATE_DIR" bash "$CAPACITY_PLANNER" >/dev/null 2>&1 || true
+}
+
+# effective_max — the enforced cap, single source of truth for both enforce_cap()
+# and scale(). Precedence: capacity-plan worker_budget > CHUMP_ORCH_WORKER_MAX env
+# > cores-1. The plan is the PLACE-half brain; this loop is the enforcement around it.
 effective_max() {
-  local max=$WORKER_MAX; [ "$max" = 0 ] && max=$((CORES-1)); [ "$max" -lt 1 ] && max=1
+  local max; max="$(plan_worker_budget)"
+  if [ -z "$max" ]; then max=$WORKER_MAX; [ "$max" = 0 ] && max=$((CORES-1)); fi
+  [ "$max" -lt 1 ] 2>/dev/null && max=1
   echo "$max"
 }
 
@@ -205,8 +231,14 @@ place() {
 # Sourceable for tests (RESILIENT-328): only run the daemon loop when executed directly.
 if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
   log "node-orchestrator up (interval ${INTERVAL}s, autoplace=$AUTOPLACE)"
+  _tick=0
   while true; do
     sense
+    # PLACE half (RESILIENT-291): refresh the capacity plan on a cadence so
+    # effective_max()'s worker_budget tracks live signals; enforce_cap/scale
+    # below then hold the worker count to the capacity-derived ceiling.
+    [ "$(( _tick % PLAN_REFRESH_EVERY ))" -eq 0 ] && refresh_plan
+    _tick=$(( _tick + 1 ))
     heal
     enforce_cap
     enforce_cargo_jobs

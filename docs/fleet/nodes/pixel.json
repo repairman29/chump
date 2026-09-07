@@ -1,0 +1,34 @@
+{
+  "node_id": "pixel",
+  "tailnet_ip": "unknown",
+  "os": "Linux",
+  "hardware": {
+    "cpu_cores": 8,
+    "ram_gb": 11,
+    "disk_free_gb": 60,
+    "disk_total_gb": 109,
+    "gpu_present": false,
+    "gpu_name": "none",
+    "gpu_vram_mb": 0,
+    "always_on": false
+  },
+  "roles_fit": [
+    "build-worker",
+    "ci-runner",
+    "atc-interactive"
+  ],
+  "services_running": [
+    "discord-gateway"
+  ],
+  "capability": {
+    "vram_gb": 0,
+    "supported_task_classes": [
+      "build",
+      "ship",
+      "coord"
+    ]
+  },
+  "role_pin": "muscle",
+  "role_pin_reason": "build-worker: 8-core aarch64 — the fleet build box; builds belong here or CJ, NEVER the 2-core Oracle nodes (topology decision 2026-09-07)",
+  "role_assigned": "muscle"
+}

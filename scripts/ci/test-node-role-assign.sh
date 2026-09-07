@@ -86,6 +86,24 @@ node_id_still_there="$(jq -r '.node_id' "$NODES_DIR/gpu.json")"
 [[ "$node_id_still_there" == "gpu-node" ]] || fail "apply clobbered unrelated fields"
 pass "apply preserves existing fields (non-destructive merge)"
 
+# ── 2b. role_pin POLICY VETO overrides the capability-derived role ──────────
+# (RESILIENT-291: two always_on brain-fit boxes, only one is the brain; the
+# other is pinned to muscle. Capability says what it CAN do; the pin says what
+# it's FOR.) A node whose roles_fit would compute "brain" but is pinned "muscle"
+# must persist "muscle".
+cat > "$NODES_DIR/pinned.json" <<'EOF'
+{
+  "node_id": "pinned-node",
+  "role_pin": "muscle",
+  "hardware": {"always_on": true},
+  "roles_fit": ["build-worker","ci-runner","atc-heartbeat","broker"]
+}
+EOF
+"$ASSIGNER" --apply --dir "$NODES_DIR" --host pinned-node >/tmp/node-role-pin.out 2>&1 \
+  || fail "assigner --apply (pinned) exited non-zero: $(cat /tmp/node-role-pin.out)"
+check_role "$NODES_DIR/pinned.json" "muscle"
+pass "role_pin vetoes the computed role (would be brain, pinned muscle)"
+
 # ── 3. --check reports no drift after --apply (idempotent) ─────────────────
 "$ASSIGNER" --check --dir "$NODES_DIR" >/tmp/node-role-check.out 2>&1
 rc=$?
