@@ -8642,6 +8642,22 @@ events:
     consumers: [ops-audit]
     fields_required: [ts, kind, source, label, script_path]
 
+  - kind: self_healer_heartbeat_stale
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh (RESILIENT-1052)
+    trigger: >
+      Emitted when check_self_healer_heartbeat finds that either self-healer
+      (organ-watchdog.sh's kind=organ_watchdog_tick or organ-reconcile.sh's
+      kind=organ_reconcile_applied/organ_reconcile_noop) has gone stale past
+      its cadence + buffer (default 20min for both), or has never ticked at
+      all while the OTHER healer has. Closes the meta-failure where the
+      healers watch every other organ but chump-organ-reconcile.timer is
+      deliberately excluded from organ-manifest.txt (its liveness was left
+      to install-helsinki-atc.sh, deploy/boot-only) so nothing continuously
+      pages when a healer's own timer silently stops ticking.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, detail]
+
   - kind: wedge_detected
     effect_metric: resilient
     emitter: scripts/coord/wizard-daemon.sh step3 (META-107)
