@@ -132,10 +132,17 @@ export CHUMP_BUILD_SHA='"$TARGET_SHA"'
 cargo build --release --bin chump
 BIN=target/release/chump
 test -x "$BIN"
-"$BIN" --version
+# Contract check MUST run here, INSIDE the glibc container — the binary is
+# aarch64-glibc and cannot execute on the Termux (bionic) side. Assert its
+# --version embeds the sha we built, then emit a marker the Termux side parses.
+VER="$("$BIN" --version)"
+echo "PROOT_CHUMP_VERSION=$VER"
+if [ "${VER#*'"$SHORT_SHA"'}" = "$VER" ]; then
+  echo "PROOT_VERSION_MISMATCH: $VER lacks '"$SHORT_SHA"'"; exit 3
+fi
 ' 2>&1 | tee "$BUILD_LOG"
 rc="${PIPESTATUS[0]}"
-[[ "$rc" == "0" ]] || die "cargo build inside $PROOT_CONTAINER failed (see $BUILD_LOG)"
+[[ "$rc" == "0" ]] || die "cargo build + in-proot version check inside $PROOT_CONTAINER failed (see $BUILD_LOG)"
 
 # --- copy the built binary out of the proot rootfs to Termux fs --------------
 # Stream it out THROUGH the container (robust regardless of the $PREFIX-derived
@@ -148,12 +155,13 @@ if [[ ! -s "$STAGED_BIN" ]]; then
 fi
 chmod +x "$STAGED_BIN"
 
-# --- verify the binary embeds the sha we intended (contract check) -----------
-VER="$("$STAGED_BIN" --version 2>/dev/null || echo unrunnable)"
-case "$VER" in
-    *"$SHORT_SHA"*) log "version check ok: $VER" ;;
-    *) die "built --version '$VER' does not embed $SHORT_SHA (build.rs / CHUMP_BUILD_SHA mismatch)" ;;
-esac
+# --- version (contract check already asserted IN-PROOT above) ----------------
+# The aarch64-glibc binary cannot run on the Termux (bionic) side, so the
+# --version SHA check ran inside the container; here we just surface it from the
+# build log for the result line + logging.
+VER="$(grep -m1 '^PROOT_CHUMP_VERSION=' "$BUILD_LOG" 2>/dev/null | sed 's/^PROOT_CHUMP_VERSION=//')"
+[[ -n "$VER" ]] || die "in-proot version marker missing (build did not reach the version check — see $BUILD_LOG)"
+log "in-proot version check ok: $VER"
 
 # sha256 sidecar (column 1 = hash; node-refresh reads awk '{print $1}')
 sha256sum "$STAGED_BIN" | awk '{print $1}' > "$STAGED_BIN.sha256"
