@@ -137,6 +137,7 @@ mod genai_conv;
 mod git_safety; // RESILIENT-256: destructive-git guard + object-store WIP snapshot
 mod git_tools;
 mod github_rate_limit;
+mod gonogo; // INFRA-3481/INFRA-5340: honest go/no-go verdict parsing, cloned from pr_ac_coverage::parse_judge_verdicts
 mod harvester_cli; // INFRA-1823: chump harvest <scan|check|brief|deep-scan|list-clusters> — fleet cartographer CLI
 mod health;
 mod health_server;
