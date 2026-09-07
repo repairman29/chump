@@ -139,7 +139,7 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
 // in docs/process/AUDIT_JOB_DECOMPOSITION.md's cli-observability-misc
 // section. Grab-bag of one-off ci.yml audit-job scripts with lowest
 // per-script cascade risk but highest count — mirrored here as the
-// `cli-observability-misc` gate, guarded by CHUMP_PREFLIGHT_SKIP_CLI_MISC=1.
+// `cli-observability-misc` gate.
 const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
     ("acp-real-clients", "scripts/ci/test-acp-real-clients.sh"),
     (
