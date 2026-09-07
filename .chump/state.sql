@@ -2867,6 +2867,102 @@ gaps:
     
     === cross-pollination briefs mentioning 'Almanac' ===
 
+- id: CREDIBLE-1047
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement live_pct computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - live_pct is calculated as the Crit-weighted fraction of stages with status >= running
+    - The function returns a value in the range [0,1] and handles empty inputs gracefully
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1048
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement debt computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - debt is computed as the sum of (Crit × (stages - short)) for high‑Crit dormant stages
+    - The calculation matches the specification for edge cases (zero stages, zero Crit, etc.)
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1049
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement prune_ledger computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - prune_ledger identifies low‑Crit dormant stages for pruning
+    - The function returns a deterministic list of ledger entries to prune
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
 - id: CREDIBLE-105
   domain: CREDIBLE
   title: "CREDIBLE: durable-fix doctrine + no-band-aids rule"
@@ -2883,6 +2979,238 @@ gaps:
     - "includes the meta-clause: do not report a mechanism/loop/fix as active until you have verified it is active"
   closed_pr: 3092
   outcome_id: CREDIBLE-000
+
+- id: CREDIBLE-1050
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit live_pct as ambient kind (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - live_pct value is emitted to the ambient kind output stream
+    - Emission occurs after the live_pct computation without panics
+  depends_on: [CREDIBLE-1047]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1051
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit debt as ambient kind (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - debt value is emitted to the ambient kind output stream
+    - Emission occurs after the debt computation without panics
+  depends_on: [CREDIBLE-1048]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1052
+  domain: CREDIBLE
+  title: "CREDIBLE: Emit prune_ledger as ambient kind (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - prune_ledger entries are emitted to the ambient kind output stream
+    - Emission occurs after the prune_ledger computation without panics
+  depends_on: [CREDIBLE-1049]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1053
+  domain: CREDIBLE
+  title: "CREDIBLE: Add registry columns for live_pct, debt, and prune_ledger (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Registry schema includes new columns for live_pct, debt, and prune_ledger
+    - Columns are correctly typed and documented
+  depends_on: [CREDIBLE-1050, CREDIBLE-1051, CREDIBLE-1052]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1054
+  domain: CREDIBLE
+  title: "CREDIBLE: Write unit test for live_pct computation (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test verifies live_pct calculation against known input scenarios
+    - Test fails before the implementation and passes after
+  depends_on: [CREDIBLE-1047, CREDIBLE-1050]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1055
+  domain: CREDIBLE
+  title: "CREDIBLE: Write integration test for full Debt Index behavior (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Integration test runs the relevant CREDIBLE code path and asserts correct live_pct, debt, and prune_ledger outputs
+    - Test fails without the new code and passes with it
+  depends_on: [CREDIBLE-1050, CREDIBLE-1051, CREDIBLE-1052, CREDIBLE-1053]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: CREDIBLE-1056
+  domain: CREDIBLE
+  title: "CREDIBLE: Run cargo fmt, clippy, and ensure no warnings or regressions (CREDIBLE-356 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - cargo fmt completes with no changes needed
+    - cargo clippy --all-targets -D warnings passes without warnings
+    - All existing tests and the new tests pass
+  depends_on: [CREDIBLE-1047, CREDIBLE-1048, CREDIBLE-1049, CREDIBLE-1050, CREDIBLE-1051, CREDIBLE-1052, CREDIBLE-1053, CREDIBLE-1054, CREDIBLE-1055]
+  notes: |
+    [chump harvest check 'Index']
+    === primitives_index match for 'Index' ===
+    
+    === cluster keyword match for 'Index' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Index' ===
+    
+    === repo-description match for 'Index' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+    
+    === HARVEST_ROADMAP.md mention of 'Index' (deep-scan findings) ===
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'Index' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
 - id: CREDIBLE-106
   domain: CREDIBLE
@@ -8280,7 +8608,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 10 slices: CREDIBLE-991, CREDIBLE-992, CREDIBLE-993, CREDIBLE-994, CREDIBLE-995, CREDIBLE-996, CREDIBLE-997, CREDIBLE-998, CREDIBLE-999, CREDIBLE-1000
+    Decomposed into 10 slices: CREDIBLE-1047, CREDIBLE-1048, CREDIBLE-1049, CREDIBLE-1050, CREDIBLE-1051, CREDIBLE-1052, CREDIBLE-1053, CREDIBLE-1054, CREDIBLE-1055, CREDIBLE-1056
   outcome_id: CREDIBLE-000
 
 - id: CREDIBLE-357
@@ -21863,10 +22191,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add test‑only detection logic to the `discover_test_scripts` function in `crates/chump-preflight/src/preflight.rs`, making it evaluate the supplied list of changed files against test/fixture/snapshot glob patterns, set the verdict to `TEST‑ONLY` when every file matches those patterns, otherwise set the verdict to `NOT TEST‑ONLY`, and populate the citations list with the exact paths of the matching test files.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - When every changed file matches test/fixture/snapshot patterns, verdict is TEST‑ONLY
-    - Verdict is NOT TEST‑ONLY if any changed file is a source file, even if gap asks only for tests
-    - Citations list all changed test files
+    - "In `crates/chump-preflight/src/preflight.rs`, the `discover_test_scripts` function returns a `Verdict::TestOnly` when the input changed‑files vector contains only paths that match the glob patterns `test/**/*.rs`, `fixtures/**/*.rs`, or `snapshots/**/*.snap`."
+    - "In the same function, if any input path fails to match the above patterns, the returned verdict is `Verdict::NotTestOnly`."
+    - The `discover_test_scripts` function fills the `citations` field of its result with the relative paths of all changed files that matched the test/fixture/snapshot patterns.
+    - Executing `scripts/ci/test-half-impl-detector.sh` on a commit that changes only `tests/unit/example_test.rs` prints `VERDICT=TEST-ONLY` and lists `tests/unit/example_test.rs` in the citations section of its output.
   depends_on: [CREDIBLE-816]
   notes: |
     [chump harvest check 'mechanical']
