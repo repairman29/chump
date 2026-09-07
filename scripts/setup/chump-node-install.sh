@@ -815,7 +815,15 @@ muscle_organs() { echo "worker|$ORGAN_DIR/worker.sh"; }
 # muscle — currently just the process-organ heal loop (revives raw
 # background bash procs like almanac-vision-keeper that aren't systemd
 # units, so it must land on every owned node, not be a hand-op per role).
-common_organs() { echo "process-organ-heal|$ORGAN_DIR/process-organ-heal.sh"; }
+common_organs() {
+  echo "process-organ-heal|$ORGAN_DIR/process-organ-heal.sh"
+  # RESILIENT-1052: the anti-Memento fleet-health sentinel — scan+heal failed
+  # chump units and re-enable inactive healers, and heartbeat so a dead
+  # sentinel is itself visible. Common to every role: the exact hole it closes
+  # (cuphead+mugman running with zero drift protection and no alarm) was a
+  # per-node one, so it must land on every owned node, not be a hand-op.
+  echo "fleet-health-sentinel|$ORGAN_DIR/fleet-health-sentinel.sh"
+}
 # RESILIENT-746: maps --role to the organ-manifest.txt role= tags that node
 # should carry. brain = coordination/registry/reporting (everything the
 # manifest doesn't tag muscle); muscle = the worker/ship-code organs only
@@ -884,6 +892,24 @@ while true; do
 done
 PH"
   run "chmod +x '$ORGAN_DIR/process-organ-heal.sh'"
+  # RESILIENT-1052: the fleet-health sentinel organ — a while-true wrapper
+  # around the tracked scripts/ops/fleet-health-sentinel.sh (one --local pass
+  # per invocation, testable in isolation), same shape as the two organs above
+  # so it installs identically across supervisors. Each pass scans+heals this
+  # node's failed chump units, re-enables any inactive required healer (durable
+  # activation — healers converge back to active every cycle), and writes the
+  # heartbeat the --fleet grader watches.
+  run "cat > '$ORGAN_DIR/fleet-health-sentinel.sh' <<'FHS'
+#!/usr/bin/env bash
+STATE=\"\${CHUMP_STATE_DIR:-\$HOME/.chump}\"
+REPO=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
+while true; do
+  CHUMP_STATE_DIR=\"\$STATE\" \\
+    bash \"\$REPO/scripts/ops/fleet-health-sentinel.sh\" --local >> \"$LOG_DIR/fleet-health-sentinel.log\" 2>&1 || true
+  sleep \"\${CHUMP_SENTINEL_CADENCE_MIN:-5}m\" 2>/dev/null || sleep 300
+done
+FHS"
+  run "chmod +x '$ORGAN_DIR/fleet-health-sentinel.sh'"
   # RESILIENT-1016 (b): muscle_organs() has always declared a "worker" organ,
   # but nothing ever materialized $ORGAN_DIR/worker.sh — svc_install wired a
   # systemd unit whose ExecStart pointed at a script that never existed, so

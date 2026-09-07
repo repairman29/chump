@@ -171,3 +171,4 @@ install-oauth-refresh-systemd.sh
 # a universal fresh-bootstrap requirement (a node without almanac still
 # functions, gap-reserve dedupe just degrades gracefully).
 install-almanac.sh
+install-fleet-health-sentinel.sh  # RESILIENT-1052 — anti-Memento fleet-health sentinel --user timer (per-node organ; also lands via chump-node-install common_organs)
