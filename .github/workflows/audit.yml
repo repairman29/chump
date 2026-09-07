@@ -46,8 +46,22 @@ on:
 # Here the concurrency group is scoped to audit.yml alone and keyed per-PR, so only
 # a newer audit run for the SAME PR cancels an older one — never cross-PR, never
 # collateral from another workflow.
+#
+# INFRA-1852-parity (2026-09-07): the INFRA-2516 form keyed PUSH events on
+# `github.ref` (= refs/heads/main for every main push), so all main pushes shared
+# ONE group under cancel-in-progress: true — each coherence-sync auto-commit
+# cancelled the prior main commit's still-running audit. That was invisible to
+# PR branch protection (it only cares about HEAD), but ci.yml's `verified`
+# aggregate runs PER main commit and polls for THAT commit's audit lane; a
+# cancelled audit never reports success, so `verified` timed out at 600s and
+# fail-closed → deterministic trunk-red under rapid main pushes (~7.5h freeze
+# 2026-09-07). Fix mirrors ci.yml's own INFRA-1852 concurrency split: PUSH
+# events key on github.run_id (unique per run → never collides → a main push
+# is never the one cancelled, every commit's audit completes and reports),
+# while PR / merge_group keep per-PR/ref keying so PR fixups still cancel their
+# own superseded runs (preserves the INFRA-2516 runner-pool pileup protection).
 concurrency:
-  group: audit-${{ github.event.pull_request.number || github.ref }}
+  group: audit-${{ github.event_name == 'push' && github.run_id || (github.event.pull_request.number || github.ref) }}
   cancel-in-progress: true
 
 env:
