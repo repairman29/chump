@@ -17714,9 +17714,17 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add regression unit tests to `mod tests` in `crates/chump-orchestrator/src/reflect.rs` that pass real slice 0 drift examples (such as `BEAST_MODE_API` mismatches) through the drift evaluation pipeline and verify they remain explicitly flagged without being collapsed into noise filters.
+    
+    Target file(s):
+    - crates/chump-orchestrator/src/reflect.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All real examples from slice 0 (e.g., BEAST_MODE_API mismatches) appear in the new drift report
-    - No real example is mistakenly collapsed as noise
+    - "`cargo test -p chump-orchestrator --lib tests` passes with the new drift validation unit tests."
+    - The test in `crates/chump-orchestrator/src/reflect.rs` asserts that `BEAST_MODE_API` mismatches are present in the output report.
+    - The test in `crates/chump-orchestrator/src/reflect.rs` confirms zero slice 0 real drift examples are categorized as noise or suppressed.
   depends_on: [CREDIBLE-680, CREDIBLE-682]
   notes: |
     [chump harvest check 'almanac']
