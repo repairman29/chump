@@ -23,24 +23,14 @@ if [[ ! -x "$LINT" ]]; then
     exit 2
 fi
 
-# Test 1: clean fixture should exit 0
-if CHUMP_CSS_TOKEN_INDEX="$FIXTURE_DIR/css-token-clean.html" \
-   bash "$LINT" --all --index "$FIXTURE_DIR/css-token-clean.html" \
-   2>/dev/null; then
-    _ok "clean fixture exits 0"
-else
-    _fail "clean fixture should exit 0 (exited non-zero)"
-fi
-
-# Test 2: violation fixture should exit 1 (raw hex outside :root)
-if CHUMP_CSS_TOKEN_INDEX="$FIXTURE_DIR/css-token-clean.html" \
-   bash "$LINT" --all --index "$FIXTURE_DIR/css-token-clean.html" \
-   2>/dev/null <<< ""; then
-    # Actually run against violation file
-    :
-fi
-
-# Point linter at just the violation file using a temp dir trick
+# Tests run against an isolated temp web/ tree containing only fixtures —
+# never the live repo's web/ tree. RESILIENT-1044: Test 1 used to run
+# `--all` against the real repo (only --index was fixture-scoped), so any
+# unrelated CSS-token drift in production files broke this "clean fixture"
+# assertion. That already caused one prior main-red incident (#4305,
+# 2026-08-30) baselined as a workaround; it recurred because the smoke
+# test was still coupled to live repo state. Isolating the tree removes
+# the coupling permanently.
 TMPDIR_FIXTURE=$(mktemp -d)
 trap 'rm -rf "$TMPDIR_FIXTURE"' EXIT
 
@@ -49,6 +39,22 @@ mkdir -p "$TMPDIR_FIXTURE/web/v2"
 cp "$FIXTURE_DIR/css-token-violation.html" "$TMPDIR_FIXTURE/web/v2/test.html"
 cp "$FIXTURE_DIR/css-token-clean.html" "$TMPDIR_FIXTURE/web/v2/index.html"
 
+# Test 1: clean fixture (alone in the isolated tree) should exit 0
+if (
+    cd "$TMPDIR_FIXTURE" && rm -f web/v2/test.html
+    CHUMP_CSS_TOKEN_INDEX="$TMPDIR_FIXTURE/web/v2/index.html" \
+    CHUMP_CSS_BASELINE="/dev/null" \
+    bash "$LINT" --all 2>/dev/null
+); then
+    _ok "clean fixture exits 0"
+else
+    _fail "clean fixture should exit 0 (exited non-zero)"
+fi
+
+# Restore the violation fixture for Test 2 below.
+cp "$FIXTURE_DIR/css-token-violation.html" "$TMPDIR_FIXTURE/web/v2/test.html"
+
+# Test 2: violation fixture should exit 1 (raw hex outside :root)
 # Override REPO_ROOT and run
 if ! (
     cd "$TMPDIR_FIXTURE" && git init -q && git add . 2>/dev/null
