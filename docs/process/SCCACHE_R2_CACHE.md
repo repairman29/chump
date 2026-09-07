@@ -36,6 +36,22 @@ https://app.buildbuddy.io, free tier). The `sccache --show-config
 (`scripts/ci/show-sccache-config.sh`) prints which backend(s) are
 configured for a given run — diagnostic only, never fails the job.
 
+**Why this lives in `.github/workflows/ci.yml`'s env block, not
+`.cargo/config.toml` (INFRA-5237 re-check, 2026-09-07):** `.cargo/config.toml`
+is gitignored and per-machine (`scripts/setup/install-sccache.sh` generates
+it fresh on every host) — nothing written there ships in a PR or reaches CI
+runners, which start from a clean checkout. CI wires `RUSTC_WRAPPER` and
+`SCCACHE_BUILDBUDDY_URL`/`SCCACHE_ENDPOINT` as job-level env vars instead
+(see `ci.yml` lines ~74-89), which is the only path that actually reaches
+the runner. Separately, `install-sccache.sh`'s local-machine generator is a
+deliberate **LOCAL-disk-only, no-cloud-path** design (INFRA-3660: an R2
+credential leak on a shared fleet host was the original motivation) — adding
+`SCCACHE_BUILDBUDDY_URL`/R2 credentials to the generated local
+`.cargo/config.toml` would reverse that decision for every dev machine.
+BuildBuddy-with-R2-fallback is already fully wired for the environment that
+matters (CI) via the mechanism above; there is no separate `.cargo/config.toml`
+slice left to do.
+
 ## Status
 
 | Component | Status |
