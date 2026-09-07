@@ -13232,9 +13232,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Insert an import statement for the `CrownGauge` widget at the top of `web/v2/daemon-set-panel.js` and modify the `render()` method of the `ChumpDaemonSetPanel` class to include a `<CrownGauge />` placeholder element within the panel’s JSX/HTML markup, ensuring the component is instantiated and rendered as part of the pane UI.
+    
+    Target file(s):
+    - web/v2/daemon-set-panel.js
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A new `CrownGauge` widget is added to the identified UI file
-    - The widget compiles without errors and renders a placeholder gauge in the pane during manual run
+    - "In `web/v2/daemon-set-panel.js` an import line `import CrownGauge from \"./crown-gauge.js\";` is present and the file type‑checks without errors."
+    - The `render()` method of `ChumpDaemonSetPanel` returns markup that contains a `<CrownGauge />` element.
+    - Executing the project build command (e.g., `npm run build` or `cargo build`) completes without compilation errors referencing `CrownGauge`.
+    - When the application is run and the daemon‑set panel is opened, the DOM contains an element with class `crown-gauge-placeholder` rendered by the `CrownGauge` widget.
   depends_on: [CREDIBLE-535]
   notes: |
     [chump harvest check 'Index']
@@ -92434,7 +92443,7 @@ gaps:
   acceptance_criteria:
     - Running Claude Code sessions poll URGENT-INBOX mid-session and act on fix_trunk signals within a bounded interval; a test signal is picked up without a session restart.
   notes: |
-    Decomposed into 9 slices: INFRA-4987, INFRA-4988, INFRA-4989, INFRA-4990, INFRA-4991, INFRA-4992, INFRA-4993, INFRA-4994, INFRA-4995
+    Decomposed into 9 slices: INFRA-5308, INFRA-5309, INFRA-5310, INFRA-5311, INFRA-5312, INFRA-5313, INFRA-5314, INFRA-5315, INFRA-5316
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -163354,6 +163363,230 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5308
+  domain: INFRA
+  title: "INFRA: INFRA-4987: Add polling mechanism skeleton to session runtime (INFRA-2342 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A startable and stoppable polling loop is added to the session runtime codebase
+    - The loop runs at a default interval and can be configured
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5309
+  domain: INFRA
+  title: "INFRA: INFRA-4988: Implement URGENT-INBOX client integration (INFRA-2342 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Session code can instantiate a URGENT-INBOX client
+    - Client can successfully fetch messages from the URGENT-INBOX endpoint
+  depends_on: [INFRA-5308]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5310
+  domain: INFRA
+  title: "INFRA: INFRA-4989: Define fix_trunk signal schema and parsing logic (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A JSON schema for fix_trunk signals is documented
+    - Parsing function extracts signal type and payload without errors
+  depends_on: [INFRA-5309]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5311
+  domain: INFRA
+  title: "INFRA: INFRA-4990: Add handling logic for fix_trunk signals within a session (INFRA-2342 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - When a parsed fix_trunk signal is received, the session updates its internal state accordingly
+    - No unhandled exceptions are thrown during signal processing
+  depends_on: [INFRA-5310]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5312
+  domain: INFRA
+  title: "INFRA: INFRA-4991: Configure bounded interval for polling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Polling interval can be set via configuration and respects a maximum bound (e.g., ≤ 5 seconds)
+    - Changing the interval does not require a session restart
+  depends_on: [INFRA-5308]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5313
+  domain: INFRA
+  title: "INFRA: INFRA-4992: Write unit tests for polling and fix_trunk signal handling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit tests simulate receipt of a fix_trunk signal and verify the handling logic is executed
+    - Tests confirm the polling loop can be started and stopped in isolation
+  depends_on: [INFRA-5311, INFRA-5312]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5314
+  domain: INFRA
+  title: "INFRA: INFRA-4993: Integrate polling into Claude Code session lifecycle (INFRA-2342 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Polling automatically starts when a Claude Code session begins and stops on session termination
+    - Integration does not interfere with existing session functionality
+  depends_on: [INFRA-5309, INFRA-5311]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5315
+  domain: INFRA
+  title: "INFRA: INFRA-4994: Add monitoring and logging for poll activity and signal processing (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Each poll iteration logs start and end timestamps
+    - Processing of a fix_trunk signal logs the signal ID and outcome
+  depends_on: [INFRA-5311]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5316
+  domain: INFRA
+  title: "INFRA: INFRA-4995: End-to-end integration test with test fix_trunk signal (INFRA-2342 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A test signal placed in URGENT-INBOX is picked up by a running session within the bounded interval
+    - The session handles the signal correctly without requiring a restart
+  depends_on: [INFRA-5313, INFRA-5314, INFRA-5315]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
 
 - id: INFRA-538
   domain: INFRA
