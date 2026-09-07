@@ -14528,11 +14528,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update `scripts/coord/bot-merge.sh` at the `stage_start` function (line 1104) to emit a new gauge metric for the “merged” stage after a successful merge, and extend `crates/chump-gap-store/src/lib.rs` `ship` function (line 2390) to record the lifecycle state transition from “built” to “merged” atomically in the state store.
+    
+    Target file(s):
+    - scripts/coord/bot-merge.sh
+    - crates/chump-gap-store/src/lib.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Gauge updates a capability from \"built\" to \"merged\" after merge succeeds"
-    - Transition is recorded atomically in the lifecycle state store
-    - "Unit test confirms that a \"built\" capability becomes \"merged\" after merge step"
-    - Existing tests continue to pass
+    - In `scripts/coord/bot-merge.sh`, after a merge succeeds the script increments a gauge named `stage_merged_total` exactly once per successful merge.
+    - In `crates/chump-gap-store/src/lib.rs`, the `ship` function writes a single atomic entry that changes a capability’s lifecycle state from `built` to `merged` without intermediate states.
+    - "A unit test exercising `src/improve.rs::guarded_stage_and_commit` verifies that a capability initially in the `built` state is persisted as `merged` after the merge step, and the test passes alongside the existing test suite."
   depends_on: [CREDIBLE-563]
   notes: |
     [chump harvest check 'lifecycle']
@@ -112462,7 +112469,7 @@ gaps:
     - effective priority is the PRIMARY sort band, not a within-priority-band tiebreaker (today _pick_gap.py INFRA-1258 planner rank only breaks ties WITHIN a nominal band — crates/chump-planner/src/graph.rs has open_prerequisites/layers/critical_path_days/unblocks already)
     - "regression test (extend picker_priority_infra3616.rs): a P3 gap that a P0 depends_on is picked before unrelated P1/P2 gaps; no deadlock where a blocked P0 waits behind all P1s while its own P2 prereq sits unworked"
   notes: |
-    Decomposed into 3 slices: INFRA-5037, INFRA-5038, INFRA-5039
+    Decomposed into 3 slices: INFRA-5354, INFRA-5355, INFRA-5356
   opened_date: '2026-08-19'
 
 - id: INFRA-3614
@@ -165089,6 +165096,83 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5354
+  domain: INFRA
+  title: "INFRA: INFRA-5037: Implement effective priority propagation in picker (INFRA-3612 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Picker computes `effective_priority(gap)` as the minimum band among the gap's own priority and the priorities of all gaps it transitively unblocks (via chump‑planner `unblocks()`)
+    - A blocker inherits the highest (worst) priority of any transitive dependent, e.g., a P3 gap that blocks a P0 is treated as having effective priority P0
+    - Unit tests verify `effective_priority` returns the correct band for simple and multi‑level dependency graphs
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-5355
+  domain: INFRA
+  title: "INFRA: INFRA-5038: Update picker sorting to use effective priority as primary sort key (INFRA-3612 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Picker sorts gaps primarily by the computed `effective_priority` band
+    - Within the same effective priority band, existing tie‑breaker logic (e.g., critical_path_days, layers) remains unchanged
+    - A P3 blocker of a P0 is ordered as if it were P0, causing it to be selected before unrelated P1/P2 gaps
+  depends_on: [INFRA-5354]
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+
+- id: INFRA-5356
+  domain: INFRA
+  title: "INFRA: INFRA-5039: Add regression test for effective priority propagation (INFRA-3612 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test case (picker_priority_infra3616.rs) creates a P3 gap that `depends_on` a P0 gap, plus unrelated P1 and P2 gaps
+    - Running the picker selects the P0 gap before any P1/P2 gaps, confirming effective priority is the primary sort band
+    - The test also verifies no deadlock occurs where a blocked P0 waits behind all P1s while its own P2 prerequisite remains unworked
+  depends_on: [INFRA-5354, INFRA-5355]
+  notes: |
+    [chump harvest check 'Picker']
+    === primitives_index match for 'Picker' ===
+    
+    === cluster keyword match for 'Picker' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'Picker' ===
+    
+    === repo-description match for 'Picker' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Picker' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Picker' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
 
 - id: INFRA-538
   domain: INFRA
