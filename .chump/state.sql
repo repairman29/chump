@@ -24218,9 +24218,17 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    In `crates/chump-atomic-claim/src/atomic_claim.rs`, update `run_claim` to execute a pull request creation step after committing changes. The new step opens a pull request from the working commit branch to the main branch and populates the PR title and description metadata with the original claim details and model identifier.
+    
+    Target file(s):
+    - crates/chump-atomic-claim/src/atomic_claim.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A pull request is opened from the commit branch to the main branch.
-    - PR metadata (title, description) includes the original claim and model identifier.
+    - "`run_claim` in `crates/chump-atomic-claim/src/atomic_claim.rs` triggers a PR creation from the active commit branch to the main branch."
+    - The generated PR title and description metadata in `crates/chump-atomic-claim/src/atomic_claim.rs` include both the claim text/ID and the model identifier.
+    - "`cargo test -p chump-atomic-claim` compiles and passes all unit tests."
   depends_on: [CREDIBLE-918]
   notes: |
     [chump harvest check 'inference']
@@ -24321,9 +24329,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update `run_one` in `scripts/eval/run-multi-model-study.sh` to support a free-tier baseline model profile that loads representative gap IDs from `docs/eval/CREDIBLE-845-representative-gaps.md`, executes them through all harness stages, and records per-stage success and failure statuses in the target results JSON file.
+    
+    Target file(s):
+    - scripts/eval/run-multi-model-study.sh
+    - docs/eval/CREDIBLE-845-representative-gaps.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All gaps from the representative set are processed through the full pipeline using the free‑tier model.
-    - Per‑stage results (success/failure) are stored in the results JSON.
+    - Executing `scripts/eval/run-multi-model-study.sh` with the free-tier profile executes `run_one` for every gap listed in `docs/eval/CREDIBLE-845-representative-gaps.md`.
+    - The generated results JSON includes per-gap structured objects containing explicit status entries (`success` or `failure`) for each evaluation pipeline stage.
+    - Stage failures in `run_one` record failure data in the output JSON and allow execution to continue for remaining representative gaps.
   depends_on: [CREDIBLE-921]
   notes: |
     [chump harvest check 'inference']
@@ -24350,9 +24367,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Update `scripts/eval/run-multi-model-study.sh` and its `run_one` function to accept mid-tier model identifiers (such as `claude-3-5-sonnet`) and execute the harness across the representative gaps slice documented in `docs/eval/CREDIBLE-845-representative-gaps.md`, ensuring output logs and JSON metrics conform to the standard evaluation schema used by free-tier runs.
+    
+    Target file(s):
+    - scripts/eval/run-multi-model-study.sh
+    - docs/eval/CREDIBLE-845-representative-gaps.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All gaps are processed using the selected mid‑tier model.
-    - Results are captured in the same schema as the free‑tier run.
+    - Executing `scripts/eval/run-multi-model-study.sh --model claude-3-5-sonnet` processes the CREDIBLE-230 gap list specified in `docs/eval/CREDIBLE-845-representative-gaps.md`.
+    - Function `run_one` in `scripts/eval/run-multi-model-study.sh` outputs trial results adhering to the existing free-tier run JSON schema.
+    - Evaluation results are written to output files containing the specified mid-tier model name in the output filename path.
   depends_on: [CREDIBLE-921]
   notes: |
     [chump harvest check 'inference']
@@ -34179,10 +34205,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add explicit numeric priority environment variables (SLOT_12_PRIORITY through SLOT_15_PRIORITY) to .env and .env.example, assigning highest priority to free slots 12-13, medium priority to paid-per-token slot 14, and lowest priority to subscription slot 15. Remove legacy text comments in .env that described hardcoded free-first/paid-fallback logic so slot selection is driven by priority variables.
+    
+    Target file(s):
+    - .env
+    - .env.example
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Slots 12‑15 now have explicit PRIORITY fields in the configuration
-    - Free slots (12‑13) have the highest numeric priority, paid‑per‑token slot (14) a lower priority, and subscription slots the lowest
-    - The comment in .env that described free‑first, paid‑fallback is removed; priority values drive the behavior
+    - .env and .env.example contain SLOT_12_PRIORITY, SLOT_13_PRIORITY, SLOT_14_PRIORITY, and SLOT_15_PRIORITY keys with numeric values where SLOT_12_PRIORITY == SLOT_13_PRIORITY > SLOT_14_PRIORITY > SLOT_15_PRIORITY.
+    - The legacy comment describing hardcoded free-first paid-fallback slot resolution is removed from .env and .env.example.
+    - "Executing `grep -E \"SLOT_1[2-5]_PRIORITY=\" .env` returns non-empty priority settings for all four slots (12, 13, 14, 15)."
   depends_on: [EFFECTIVE-1088]
   notes: |
     [chump harvest check 'inference']
@@ -77016,7 +77050,7 @@ gaps:
     - Migration shipped in 3-4 PRs (not one mega-PR), each ≤800 LOC of CSS moved
   depends_on: [INFRA-1591]
   notes: |
-    Decomposed into 4 slices: INFRA-4946, INFRA-4947, INFRA-4948, INFRA-4949
+    Decomposed into 4 slices: INFRA-5260, INFRA-5261, INFRA-5262, INFRA-5263
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -161296,6 +161330,121 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5260
+  domain: INFRA
+  title: "INFRA: Migrate core widget CSS (cost-meter, pr-card, workflow-timeline, status-footer) into shadow DOMs (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for <chump-cost-meter> is moved from index.html into web/v2/cost-meter.js inside ChumpCostMeter
+    - CSS for <chump-pr-card> is moved from index.html into web/v2/pr-card.js inside ChumpPrCard
+    - CSS for <chump-workflow-timeline> is moved from index.html into web/v2/workflow-timeline.js inside ChumpWorkflowTimeline
+    - CSS for <chump-status-footer> is moved from index.html into web/v2/cockpit.js inside ChumpViewCockpit
+    - PRODUCT-/INFRA- ticket comments are preserved as JSDoc comments above class definitions in each JS file
+    - Visual snapshot tests for core widgets pass with zero pixel-delta
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5261
+  domain: INFRA
+  title: "INFRA: Migrate first-run wizard, tool approval tray, and menu/overlay CSS into component shadow DOMs (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CSS for <chump-first-run-wizard> and <chump-tool-approval-tray> is moved from index.html into their respective JS component files
+    - CSS for ChumpMenu, config-dials, repo-switcher, doctor-banner, and auth-toast is moved into corresponding component JS files
+    - PRODUCT-/INFRA- ticket comments are preserved as JSDoc above class definitions
+    - Visual snapshot tests pass with zero pixel-delta for modified components
+  depends_on: [INFRA-5260]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5262
+  domain: INFRA
+  title: "INFRA: Migrate per-view and list view CSS into custom element shadow DOMs (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Per-view CSS (.task-list, .gap-list, .agents-list) is relocated from index.html into view components in app.js
+    - PRODUCT-/INFRA- ticket comments are preserved as JSDoc above view custom element classes
+    - Computed styles for all list view components match baseline at 375px, 768px, and 1440px viewports
+  depends_on: [INFRA-5261]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5263
+  domain: INFRA
+  title: "INFRA: Prune index.html style block to ≤300 LOC containing shell primitives only (INFRA-1587 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - web/v2/index.html <style> block is ≤300 LOC
+    - "web/v2/index.html <style> contains strictly design tokens (:root and theme overrides), reset, shell layout (body/header/footer/nav), mobile shell media queries, and cross-cutting overlays (#chump-toast-container, #chump-offline-banner, #chump-status-pill)"
+    - All chump-* components retain visual fidelity with zero visual snapshot regression across 375/768/1440px breakpoints
+  depends_on: [INFRA-5262]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: INFRA-538
   domain: INFRA
