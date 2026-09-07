@@ -262,7 +262,7 @@ echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board
 # copy so the SAME manifest wires correctly everywhere — this is what lets
 # organ-watchdog end the shipped-but-dark disease on any node, not just helsinki.
 RUN_USER="${CHUMP_RUN_USER:-$(stat -c %U "$REPO_ROOT" 2>/dev/null || echo root)}"
-RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6)"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
+RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6 || true)"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
 echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME"
 mkdir -p "$SYSTEMD_DEST_DIR"
 CHANGED_UNITS=()
@@ -286,21 +286,38 @@ for unit in "${SYSTEM_UNITS[@]}"; do
     exit 1
   fi
   tmp="$(mktemp)"
-  # RESILIENT-353 / INFRA-3647 host-rewrite. Tracked units are helsinki-shaped
-  # (User=root, HOME=/root, /root/... paths). Rewrite per host so the SAME
-  # manifest wires correctly on an owned node:
-  #   s#/root/#...#g  -> path PREFIXES (/root/Projects, /root/.chump, ...)
-  #   s#=/root$#...#  -> a BARE /root as the WHOLE value of an assignment, the
-  #                      class the prefix rule silently missed. Chiefly
-  #                      `Environment=HOME=/root` (no trailing slash): it
-  #                      survived the prefix sed, so on an owned node HOME
+  # RESILIENT-353 / INFRA-3647 / RESILIENT-1051 host-rewrite. Tracked units are
+  # NOT all helsinki-shaped (User=root, HOME=/root) — several (e.g.
+  # chump-nba-dispatch.service, chump-gap-drain.service) are CJ-native
+  # (User=jeff, /home/jeff/... paths), and a source machine authoring a NEW
+  # unit could bake in any other user's home (e.g. /home/ubuntu, this box).
+  # A rewrite hardcoded to "/root" only fixes the root-shaped half of the
+  # roster and ships every OTHER source path verbatim onto a third node,
+  # producing a WorkingDirectory/HOME that doesn't exist there -> CHDIR/127
+  # on every cycle. Detect the unit's OWN baked-in source user (its `User=`
+  # line; default root when absent, matching the historical helsinki shape)
+  # and rewrite THAT home, not a hardcoded one, so the same manifest wires
+  # correctly regardless of which machine authored the tracked unit:
+  #   s#$SRC_HOME/#...#g  -> path PREFIXES ($SRC_HOME/Projects, $SRC_HOME/.chump, ...)
+  #   s#=$SRC_HOME$#...#  -> a BARE $SRC_HOME as the WHOLE value of an
+  #                      assignment, the class the prefix rule silently missed.
+  #                      Chiefly `Environment=HOME=/root` (no trailing slash):
+  #                      it survived the prefix sed, so on an owned node HOME
   #                      stayed /root even as User= flipped to jeff, and every
   #                      tool read /root/.config/gh, /root/.almanac, cwd=/ and
   #                      failed CLOSED while reporting fake-perfect ("instruments
-  #                      lie" keystone). Also covers a bare WorkingDirectory=/root.
-  sed -e "s#/root/#${RUN_HOME%/}/#g" \
-      -e "s#=/root\$#=${RUN_HOME%/}#" \
-      -e "s#^User=root#User=${RUN_USER}#" "$src" > "$tmp"
+  #                      lie" keystone). Also covers a bare WorkingDirectory=$SRC_HOME.
+  _src_user="$(grep -m1 -E '^User=' "$src" | cut -d= -f2 || true)"
+  [[ -z "$_src_user" ]] && _src_user="root"
+  if [[ "$_src_user" == "root" ]]; then
+    _src_home="/root"
+  else
+    _src_home="$(getent passwd "$_src_user" 2>/dev/null | cut -d: -f6 || true)"
+    [[ -z "$_src_home" ]] && _src_home="/home/$_src_user"
+  fi
+  sed -e "s#${_src_home%/}/#${RUN_HOME%/}/#g" \
+      -e "s#=${_src_home%/}\$#=${RUN_HOME%/}#" \
+      -e "s#^User=${_src_user}\$#User=${RUN_USER}#" "$src" > "$tmp"
   # Host-agnostic runtime context for EVERY generated organ, applied uniformly
   # (one pattern, not per-service): run as the repo-owning user (git/ssh/cargo),
   # with that user's real HOME, ~/.cargo/bin on PATH, and cwd at the repo root,

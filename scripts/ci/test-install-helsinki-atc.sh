@@ -226,4 +226,51 @@ done
 [ "$installed_svcs" -gt 0 ] || fail "no .service units were installed to the stubbed dest dir — roster/install path broke"
 ok "all $installed_svcs generated organs run with HOME off /root + cwd at the repo root (INFRA-3647 keystone)"
 
+# ── Test: host-rewrite generalizes past hardcoded /root (RESILIENT-1051) ───
+# Several tracked units (chump-nba-dispatch.service, chump-gap-drain.service,
+# chump-digest.service) are CJ-native (User=jeff, /home/jeff/... paths), not
+# helsinki-shaped. Before this fix the host-rewrite sed only ever matched
+# "/root" literals, so installing the SAME roster for a THIRD node (e.g.
+# RUN_USER=ubuntu) shipped /home/jeff verbatim into the installed unit's
+# active directives (User=, Environment=HOME=, WorkingDirectory=, ExecStart=)
+# — a WorkingDirectory/HOME that doesn't exist on that node, causing
+# CHDIR/127 failures on every cycle for those organs on every node except
+# jeff's own.
+mkdir -p "$TMP/ubuntu-dest" "$TMP/ubuntu-bins" "$TMP/ubuntu-cargo-bin" "$TMP/ubuntu-locks"
+cat > "$TMP/ubuntu-bins/systemctl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/ubuntu-bins/systemctl"
+cat > "$TMP/ubuntu-cargo-bin/chump-integrator" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/ubuntu-cargo-bin/chump-integrator"
+
+CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
+    CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/ubuntu-dest" \
+    CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/ubuntu-bins/systemctl" \
+    CHUMP_RUN_USER=ubuntu \
+    CARGO_BIN_DIR="$TMP/ubuntu-cargo-bin" \
+    NODE_AMBIENT="$TMP/ubuntu-locks/ambient.jsonl" \
+    bash "$SCRIPT" --auto >"$TMP/ubuntu-out.log" 2>&1
+ubuntu_rc=$?
+[ "$ubuntu_rc" -eq 0 ] || fail "--auto for CHUMP_RUN_USER=ubuntu must exit 0; got $ubuntu_rc: $(cat "$TMP/ubuntu-out.log")"
+
+for jeff_native in chump-nba-dispatch.service chump-gap-drain.service chump-digest.service; do
+    installed="$TMP/ubuntu-dest/$jeff_native"
+    [ -f "$installed" ] || fail "$jeff_native was not installed to the stubbed dest dir"
+    leaked="$(grep -v '^#' "$installed" | grep -E 'home/jeff|^User=jeff' || true)"
+    [ -z "$leaked" ] \
+        || fail "$jeff_native leaked an un-rewritten /home/jeff path for run-user ubuntu (RESILIENT-1051): $leaked"
+    grep -q '^User=ubuntu' "$installed" \
+        || fail "$jeff_native missing User=ubuntu (host-rewrite from a jeff-shaped source): $(grep -n '^User=' "$installed")"
+    grep -q '^Environment=HOME=/home/ubuntu$' "$installed" \
+        || fail "$jeff_native HOME not rewritten to /home/ubuntu: $(grep -n '^Environment=HOME=' "$installed")"
+    grep -q '^WorkingDirectory=/home/ubuntu/Projects/chump$' "$installed" \
+        || fail "$jeff_native WorkingDirectory not rewritten to /home/ubuntu/Projects/chump: $(grep -n '^WorkingDirectory=' "$installed")"
+done
+ok "jeff-shaped source units (nba-dispatch, gap-drain, digest) host-rewrite cleanly for run-user ubuntu — no leaked /home/jeff (RESILIENT-1051)"
+
 echo "ALL PASS"
