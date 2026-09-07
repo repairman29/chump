@@ -1,0 +1,16 @@
+- id: EFFECTIVE-1388
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Implement Draft generation module (EFFECTIVE-365 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Given a release artifact JSON, the module produces a draft object for each platform
+    - Generated drafts populate the correct template placeholders (title, body, links) in Jeff's voice
+  depends_on: [EFFECTIVE-1386, EFFECTIVE-1387]
+  notes: |
+    Closed as already-shipped duplicate: PR #4403 (EFFECTIVE-365 stage 1+2) already implements draftLaunchPost()/draftLaunchPosts() in web/v2/lib/publisher/draft.ts, satisfying both ACs — per-platform draft objects (FRAMINGS map covers show_hn/reddit/linkedin/substack/jeffadkins.dev/upshiftai.dev) with title/body/link placeholders styled in Jeff's voice via style.ts (applyStyle). Sibling gaps EFFECTIVE-1386 (scaffold) and EFFECTIVE-1387 (per-platform templates) are the same duplicate re-filing of work already covered by EFFECTIVE-483/484/365 (PRs #4250, #4382, #4403). Verified via direct code read + git log, no new code needed.
+  closed_date: '2026-09-07'
+  closed_pr: 4403
+  outcome_id: COTG
+
