@@ -96,7 +96,7 @@ export CHUMP_PILLAR_BALANCE_DISABLE=1
 echo
 echo "--- (a) P0 RESILIENT without --evidence ---"
 ERR_OUT=$(
-    "$BIN" gap reserve --domain RESILIENT --priority P0 --effort xs \
+    "$BIN" gap reserve --domain RESILIENT --priority P0 --effort xs --acceptance-criteria "ci fixture AC" \
         --title "test-evidence-gate-a" 2>&1 || true
 )
 if echo "$ERR_OUT" | grep -q "require --evidence"; then
@@ -117,7 +117,7 @@ echo
 echo "--- (b) P1 MISSION with --evidence ---"
 EVIDENCE_TEXT="$(printf 'COMMAND: pgrep -f mesh-worker\nOUTPUT: (empty)\nTHEORY: workers not running\nALT: workers running under different name (REFUTED)')"
 # Capture ID directly from stdout (reserve prints the ID on stdout)
-B_ID=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs \
+B_ID=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "test-evidence-gate-b" \
     --evidence "$EVIDENCE_TEXT" \
     --skip-obs-acs \
@@ -154,7 +154,7 @@ fi
 # (d) P0 INFRA without --evidence → succeeds (gate only RESILIENT/MISSION/CREDIBLE)
 echo
 echo "--- (d) P0 INFRA without --evidence ---"
-"$BIN" gap reserve --domain INFRA --priority P0 --effort xs \
+"$BIN" gap reserve --domain INFRA --priority P0 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "test-evidence-gate-d" \
     --skip-obs-acs \
     --quiet 2>/dev/null
@@ -168,7 +168,7 @@ fi
 # (e) CHUMP_GAP_RESERVE_NO_EVIDENCE=1 bypass → succeeds, emits gap_reserved_no_evidence
 echo
 echo "--- (e) bypass via CHUMP_GAP_RESERVE_NO_EVIDENCE=1 ---"
-CHUMP_GAP_RESERVE_NO_EVIDENCE=1 "$BIN" gap reserve --domain RESILIENT --priority P0 --effort xs \
+CHUMP_GAP_RESERVE_NO_EVIDENCE=1 "$BIN" gap reserve --domain RESILIENT --priority P0 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "test-evidence-gate-e" \
     --skip-obs-acs \
     --quiet 2>/dev/null

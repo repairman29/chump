@@ -97,7 +97,7 @@ echo
 echo "--- (c) dry-run reports counts without mutation ---"
 
 # Reserve a BEAST-titled gap so backfill has something to match.
-BEAST_GAP=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs \
+BEAST_GAP=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "BEAST-MODE execution slice fixture" \
     --acceptance-criteria "backfill test" \
     --skip-obs-acs 2>/dev/null | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)
@@ -221,7 +221,7 @@ fi
 echo
 echo "--- (g) --owner-repo override applies to all matched ---"
 
-OVERRIDE_GAP=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs \
+OVERRIDE_GAP=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "BEAST fixture for override test" \
     --acceptance-criteria "owner-repo override" \
     --skip-obs-acs 2>/dev/null | grep -oE '[A-Z]+-[0-9]+' | head -1 || true)
@@ -248,7 +248,7 @@ fi
 echo
 echo "--- (h) chump gap reserve --external-repo sets skills_required ---"
 
-RESERVE_OUT=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs \
+RESERVE_OUT=$("$BIN" gap reserve --domain MISSION --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "external-repo reserve test" \
     --acceptance-criteria "reserve with external-repo" \
     --skip-obs-acs \

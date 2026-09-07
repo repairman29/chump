@@ -91,8 +91,11 @@ fi
 # INFRA-2984: since EFFECTIVE-294, `gap reserve` auto-fills concrete default
 # AC unless --skip-obs-acs is passed — without it this fixture no longer
 # produces a vague gap and the test below silently stopped testing anything.
+# CREDIBLE-1030: reserve now requires --acceptance-criteria for P0/P1 —
+# pass an explicit-but-stub value ("TBD") so the fixture still reads as
+# vague to audit-priorities (is_vague_ac_entry) while satisfying the gate.
 "$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
-    --title "audit-prio-fixture-vague" --skip-obs-acs --quiet 2>/dev/null
+    --title "audit-prio-fixture-vague" --acceptance-criteria "TBD" --skip-obs-acs --quiet 2>/dev/null
 if ! "$BIN" gap audit-priorities >/dev/null 2>&1; then
     ok "exit 1 on vague pickable gap"
 else

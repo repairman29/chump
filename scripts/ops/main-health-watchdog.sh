@@ -239,7 +239,7 @@ if [[ "$DRY_RUN" == "1" ]]; then
     echo "[main-health-watchdog] DRY_RUN — would file: $TITLE"
     GAP_ID="DRY-RUN"
 else
-    RESERVE_OUT="$("$CHUMP_BIN" gap reserve --domain INFRA --title "$TITLE" --priority P0 --effort xs 2>&1 || true)"
+    RESERVE_OUT="$("$CHUMP_BIN" gap reserve --domain INFRA --title "$TITLE" --priority P0 --effort xs --acceptance-criteria "$AC" 2>&1 || true)"
     GAP_ID="$(printf '%s\n' "$RESERVE_OUT" | tail -1 | tr -d '[:space:]')"
     if [[ -z "$GAP_ID" || ! "$GAP_ID" =~ ^[A-Z]+-[0-9]+$ ]]; then
         echo "[main-health-watchdog] reserve failed; output: $RESERVE_OUT" >&2

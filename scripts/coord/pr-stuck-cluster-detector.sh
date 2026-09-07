@@ -232,7 +232,8 @@ CHRONIC_EOF
 
         if [ "$APPLY" -eq 1 ]; then
             _PSCD_GAP_RESERVE_CALLS=$(( _PSCD_GAP_RESERVE_CALLS + 1 ))
-            chronic_result="$(chump gap reserve --domain INFRA --priority P1 --title "$chronic_title" --description "$chronic_desc" 2>&1)"
+            chronic_ac="Root cause of chronic stuck PR #$pr_num identified|PR merged or gap ($gap_id) closed/re-dispatched|No re-recurrence within 24h of fix"
+            chronic_result="$(chump gap reserve --domain INFRA --priority P1 --title "$chronic_title" --description "$chronic_desc" --acceptance-criteria "$chronic_ac" 2>&1)"
             chronic_exit=$?
             if [ $chronic_exit -eq 0 ]; then
                 chronic_gap_id="$(echo "$chronic_result" | grep -oE 'INFRA-[0-9]+' | head -1)"
@@ -325,7 +326,8 @@ if [ "$APPLY" -eq 1 ]; then
 
     # Use chump gap reserve to file.
     _PSCD_GAP_RESERVE_CALLS=$(( _PSCD_GAP_RESERVE_CALLS + 1 ))
-    result="$(chump gap reserve --domain INFRA --priority P0 --title "$title" --description "$description" 2>&1)"
+    cluster_ac="Root cause of the $stuck_pr_count-PR stuck cluster identified|Stuck PRs merged or re-dispatched|Queue back to HEALTHY on a fresh scan"
+    result="$(chump gap reserve --domain INFRA --priority P0 --title "$title" --description "$description" --acceptance-criteria "$cluster_ac" 2>&1)"
     exit_code=$?
 
     if [ $exit_code -eq 0 ]; then

@@ -96,7 +96,7 @@ DB="$TMP/.chump/state.db"
 
 # (a) Schema migration — repos table + 3 indexes exist after first open.
 # Trigger DB creation by reserving a gap (which opens GapStore).
-SEED_ID=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+SEED_ID=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "repos-migration-test-seed" --quiet 2>/dev/null)
 if [[ -n "$SEED_ID" ]]; then
     ok "seed gap reserved ($SEED_ID) — DB opened and migration ran"

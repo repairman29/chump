@@ -10314,6 +10314,17 @@ async fn main() -> Result<()> {
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
 
+                // ── CREDIBLE-1030: --acceptance-criteria required for P0/P1 ──
+                // Mirrors the MISSION-045 outcome gate below: a P0/P1 gap with
+                // no explicit AC text degrades to the generic obs-AC template,
+                // which is not a substitute for author-stated done-criteria on
+                // high-priority work.
+                if matches!(priority.as_str(), "P0" | "P1") && custom_acceptance_criteria.is_none()
+                {
+                    eprintln!("--acceptance-criteria is required for priority P0/P1");
+                    std::process::exit(1);
+                }
+
                 // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
                 // unless --skip-obs-acs is set or --acceptance-criteria is provided.
                 let acceptance_criteria_json = match custom_acceptance_criteria {

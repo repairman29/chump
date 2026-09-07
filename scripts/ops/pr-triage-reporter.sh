@@ -73,7 +73,8 @@ for pr in $(gh pr list --author "$ME" --state open --limit 40 --json number -q '
         n_broken=$((n_broken+1)); emit pr_triage_verdict "$pr" broken "$fails"
         if [[ $APPLY -eq 1 && ! -f "$COOLDOWN/pr-$pr" ]]; then
             (cd "$REPO_ROOT" && chump gap reserve --domain EFFECTIVE --priority P1 --no-outcome-required \
-              --title "EFFECTIVE: [triage] fix PR #$pr ($gap) — real CI failures ($fails) keeping valuable work off main" 2>/dev/null | grep -oiE 'EFFECTIVE-[0-9]+' | head -1 > "$COOLDOWN/pr-$pr")
+              --title "EFFECTIVE: [triage] fix PR #$pr ($gap) — real CI failures ($fails) keeping valuable work off main" \
+              --acceptance-criteria "PR #$pr's failing checks ($fails) pass|PR merged or the underlying gap ($gap) re-dispatched" 2>/dev/null | grep -oiE 'EFFECTIVE-[0-9]+' | head -1 > "$COOLDOWN/pr-$pr")
             echo "     → filed P1 fix gap $(cat "$COOLDOWN/pr-$pr" 2>/dev/null) (once; cooldown set)"
         fi
         continue

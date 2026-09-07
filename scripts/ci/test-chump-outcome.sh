@@ -177,7 +177,7 @@ echo "--- (d) chump outcome backfill --dry-run (no mutations) ---"
     --title "self-coordinating fleet (BEAST proof)" --priority P0 2>/dev/null || true
 
 # Reserve a BEAST-tagged gap.
-BEAST_GAP=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+BEAST_GAP=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "BEAST MODE fixture for backfill test" \
     --acceptance-criteria "backfill test" 2>/dev/null | grep -oE 'INFRA-[0-9]+' | head -1 || true)
 
@@ -270,11 +270,11 @@ echo
 echo "--- (g) picker prefers outcome-linked gap over unlinked sibling at same priority ---"
 
 # Reserve two P1/xs gaps; link one to TEST-001.
-UNLINKED=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+UNLINKED=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "picker-prefer-unlinked-fixture" \
     --acceptance-criteria "picker test" 2>/dev/null | grep -oE 'INFRA-[0-9]+' | head -1 || true)
 
-LINKED=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+LINKED=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "picker-prefer-linked-fixture" \
     --acceptance-criteria "picker test" 2>/dev/null | grep -oE 'INFRA-[0-9]+' | head -1 || true)
 

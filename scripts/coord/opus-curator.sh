@@ -197,7 +197,7 @@ _curator_file_gap() {
   local out gap_id rc
   local failure_file; failure_file="$(_curator_file_gap_failure_file)"
   rm -f "$failure_file" 2>/dev/null || true
-  out="$(timeout 30 chump gap reserve --domain INFRA --title "$title" --priority P1 --effort "$effort" 2>&1)" && rc=0 || rc=$?
+  out="$(timeout 30 chump gap reserve --domain INFRA --title "$title" --priority P1 --effort "$effort" --acceptance-criteria "$title — closed with a merged PR" 2>&1)" && rc=0 || rc=$?
   gap_id="$(printf '%s' "$out" | grep -oE 'INFRA-[0-9]+' | head -1)"
   if [[ -z "$gap_id" ]]; then
     mkdir -p "$(_curator_lock_dir)" 2>/dev/null || true

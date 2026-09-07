@@ -84,7 +84,7 @@ else
 fi
 
 # 4c. vague-ac: open gap with empty AC → reason=vague-ac, action=add-ac, exit 1.
-"$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+"$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "triage-fixture-vague" --quiet 2>/dev/null
 if ! "$BIN" gap triage >/dev/null 2>&1; then
     ok "exit 1 when vague-ac gap present"

@@ -96,7 +96,7 @@ DB="$TMP/.chump/state.db"
 
 # (a) Migration is idempotent and non-destructive.
 # Reserve a gap first so state.db has an existing row.
-ID1=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+ID1=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "outcome-migration-test-fixture" --quiet 2>/dev/null)
 if [[ -n "$ID1" ]]; then
     ok "reserved fixture gap $ID1 before migration idempotency check"
@@ -106,7 +106,7 @@ fi
 
 # Opening the store a second time re-runs migrate() — idempotent.
 # We verify by reserving another gap; if state.db was corrupted both calls fail.
-ID2=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+ID2=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "outcome-migration-test-fixture-2" --quiet 2>/dev/null)
 if [[ -n "$ID2" ]]; then
     ok "second reserve after re-migrate still works (idempotent)"
@@ -155,7 +155,7 @@ else
 fi
 
 # (c) chump gap reserve --outcome and chump gap set --outcome.
-ID3=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs \
+ID3=$("$BIN" gap reserve --domain INFRA --priority P1 --effort xs --acceptance-criteria "ci fixture AC" \
     --title "outcome-fk-test-gap" --outcome META-067 --quiet 2>/dev/null)
 if [[ -n "$ID3" ]]; then
     ok "gap reserve --outcome succeeded, got $ID3"
