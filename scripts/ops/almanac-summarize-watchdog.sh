@@ -128,13 +128,23 @@ repos = data.get("repos", data if isinstance(data, list) else [])
 floor = float(sys.argv[1])
 below = []
 for r in repos:
-    pct = r.get("pct", r.get("summarized_pct", 100))
+    name = r.get("repo", r.get("name", "unknown"))
+    # CREDIBLE-1045: a repo entry missing both "pct" and "summarized_pct"
+    # used to default to 100 (silently treated as fully compliant). That let
+    # a malformed/partial coverage report hide a real coverage gap instead
+    # of tripping the floor check. Missing/unparseable data must fail the
+    # check, not pass it by default.
+    if "pct" not in r and "summarized_pct" not in r:
+        below.append((f"{name}(missing_pct_field)", 0.0))
+        continue
+    pct = r.get("pct", r.get("summarized_pct"))
     try:
         pct = float(pct)
     except Exception:
+        below.append((f"{name}(invalid_pct_value)", 0.0))
         continue
     if pct < floor:
-        below.append((r.get("repo", r.get("name", "unknown")), pct))
+        below.append((name, pct))
 below.sort(key=lambda x: x[1])
 if below:
     print(len(below), below[0][0], below[0][1])
