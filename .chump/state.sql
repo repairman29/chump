@@ -112573,7 +112573,7 @@ gaps:
     - "Reversible: CHUMP_STORE_SHADOW=0 fully disables with zero residue; rollback documented"
     - "Test: fault-injection — a mutation with the shadow store unreachable still succeeds on canonical + emits shadow_write_failed. VERIFY-LIVE: >=5 real gaps appear in shared_gaps after enabling on CJ. Depth tier + gaps named per green-not-covered"
   notes: |
-    Decomposed into 9 slices: INFRA-5049, INFRA-5050, INFRA-5051, INFRA-5052, INFRA-5053, INFRA-5054, INFRA-5055, INFRA-5056, INFRA-5057
+    Decomposed into 9 slices: INFRA-5366, INFRA-5367, INFRA-5368, INFRA-5369, INFRA-5370, INFRA-5371, INFRA-5372, INFRA-5373, INFRA-5374
   opened_date: '2026-08-21'
   outcome_id: MISSION-010
   evidence: |
@@ -165581,6 +165581,337 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5366
+  domain: INFRA
+  title: "INFRA: Add CHUMP_STORE_SHADOW config flag (default OFF) with enable logging (INFRA-3618 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Environment variable CHUMP_STORE_SHADOW is read at startup and defaults to 0 (off)
+    - "When CHUMP_STORE_SHADOW=1 the system logs \"Shadow store enabled\" to docs/process/CAPABILITY_DECISIONS.md"
+    - Flag can be toggled without code change and does not affect existing functionality
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5367
+  domain: INFRA
+  title: "INFRA: Wire CHUMP_TEAM_URL and CHUMP_TEAM_API_KEY into worker/CLI environment (INFRA-3618 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - CHUMP_TEAM_URL and CHUMP_TEAM_API_KEY are read from the worker/CLI env on CJ
+    - Values are passed to the PostgREST client used for shadow writes
+    - Documentation added to README and PR notes describing required env vars
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5368
+  domain: INFRA
+  title: "INFRA: Implement best‑effort shadow write in all gap mutation handlers (INFRA-3618 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - For each mutation (reserve, set, claim, ship, close) the handler writes the same row to shared_gaps when CHUMP_STORE_SHADOW=1
+    - Any failure (network, schema, timeout) is caught, logged with kind=shadow_write_failed, and does not propagate
+    - Shadow write adds <250 ms latency in benchmarked runs
+    - Canonical state.db behavior is unchanged whether shadow is on or off
+  depends_on: [INFRA-5366, INFRA-5367]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5369
+  domain: INFRA
+  title: "INFRA: Add structured logging for shadow_write_failed events (INFRA-3618 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "When a shadow write fails, a log entry with JSON fields {kind:\"shadow_write_failed\", mutation:<type>, error:<msg>} is emitted"
+    - Log entry is searchable via existing log aggregation tools
+    - No exception is thrown to the caller
+  depends_on: [INFRA-5368]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5370
+  domain: INFRA
+  title: "INFRA: Add unit test to verify reads continue to use state.db (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test fetches a gap after a mutation and asserts the source is state.db (e.g., by mocking shared_gaps and ensuring it is not queried)
+    - Test passes with CHUMP_STORE_SHADOW both enabled and disabled
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5371
+  domain: INFRA
+  title: "INFRA: Fault‑injection test: shadow store unreachable does not block canonical path (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Simulate network failure to shared_gaps during a mutation
+    - Mutation succeeds on state.db and returns success to the client
+    - Log contains a shadow_write_failed entry for the simulated failure
+  depends_on: [INFRA-5368, INFRA-5369]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5372
+  domain: INFRA
+  title: "INFRA: Enhance substrate-parity.sh to report row‑count and drift between state.db and shared_gaps (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script prints total rows in state.db and shared_gaps
+    - Script prints per‑field differences for any mismatched rows
+    - Exit code is 0 on successful comparison, non‑zero on script error
+  depends_on: [INFRA-5368]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5373
+  domain: INFRA
+  title: "INFRA: Update documentation for shadow store capability and env vars (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CAPABILITY_DECISIONS.md includes entry for CHUMP_STORE_SHADOW with toggle semantics
+    - README or docs/process lists CHUMP_TEAM_URL and CHUNK_TEAM_API_KEY with example values
+    - PR description links to the new documentation sections
+  depends_on: [INFRA-5366, INFRA-5367]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: INFRA-5374
+  domain: INFRA
+  title: "INFRA: Live verification: enable shadow store on CJ and confirm >=5 gaps appear in shared_gaps (INFRA-3618 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Set CHUMP_STORE_SHADOW=1 on CJ and restart services
+    - Create at least five real gaps via the normal workflow
+    - Query shared_gaps and verify that all five gaps are present with correct data
+    - No regression observed in canonical operations during the verification window
+  depends_on: [INFRA-5368, INFRA-5371, INFRA-5372, INFRA-5373]
+  notes: |
+    [chump harvest check 'Substrate']
+    === primitives_index match for 'Substrate' ===
+    
+    === cluster keyword match for 'Substrate' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Substrate' ===
+    
+    === repo-description match for 'Substrate' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Substrate' (deep-scan findings) ===
+      4:> **Strategic synthesis:** [`docs/strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md`](../strategy/HARVEST_GROWTH_DIRECTIONS_2026-05-23.md) — 6 growth directions with substrate-readiness scores, filed-gap mapping, and sequencing recommendation.
+      81:| `JARVIS`, `JARVIS-Premium`, `jarvis-rog-ed`, `jarvis-gateway` | **Shelf — architectural conflict.** JARVIS is a competing personal-assistant frontend (skill marketplace, voice channels). Chump is an engine for coding agents. The substrates compete; harvesting between them would create model confusion. Revisit only if Chump pivots toward end-user assistant features |
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+    
+    === cross-pollination briefs mentioning 'Substrate' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: INFRA-538
   domain: INFRA
