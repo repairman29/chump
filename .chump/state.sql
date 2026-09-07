@@ -112873,7 +112873,7 @@ gaps:
     - "DETECTABLE: emits kind=gap_assay_report each cycle (primed N, deduped N, furnaced N, pickable-pool% = ready/open) so Race Control + the board see intake health. Wired as chump-gap-fairy.timer + .service + organ manifest (built+wired+detectable+revivable, Roll-Call)."
     - "PROOF: on the current live backlog it must collapse the 573 near-dup clusters and lift pickable-pool% measurably; test with a seeded dirty-backlog fixture asserts dups closed + vague-AC primed + P0/P1 never furnaced + a furnaced gap requeues cleanly. Depth tier + gaps named per green-not-covered. VERIFY-LIVE: chump-gap-fairy.timer is-active on CJ + one real gap_assay_report in ambient."
   notes: |
-    Decomposed into 11 slices: INFRA-5068, INFRA-5069, INFRA-5070, INFRA-5071, INFRA-5072, INFRA-5073, INFRA-5074, INFRA-5075, INFRA-5076, INFRA-5077, INFRA-5078
+    Decomposed into 11 slices: INFRA-5385, INFRA-5386, INFRA-5387, INFRA-5388, INFRA-5389, INFRA-5390, INFRA-5391, INFRA-5392, INFRA-5393, INFRA-5394, INFRA-5395
   opened_date: '2026-08-21'
   outcome_id: MISSION-010
   evidence: |
@@ -164354,7 +164354,7 @@ gaps:
 - id: INFRA-5317
   domain: INFRA
   title: "INFRA: INFRA-5000: Add cli_observability_misc gate to src/preflight.rs (INFRA-3373 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -164375,6 +164375,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'META-070' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-07T15:59:12Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1071B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-5318
   domain: INFRA
@@ -166486,6 +166487,142 @@ gaps:
     === cross-pollination briefs mentioning 'INFRA-1816' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5385
+  domain: INFRA
+  title: "INFRA: Add feature flags and defaults for Gap Fairy (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Environment variable CHUMP_GAP_FAIRY_ENABLED defaults to OFF and can be toggled to ON
+    - Environment variable CHUMP_FAIRY_FURNACE_CAP defaults to 50 and is read at runtime
+    - Values are documented in docs/process/CAPABILITY_DECISIONS.md
+
+- id: INFRA-5386
+  domain: INFRA
+  title: "INFRA: Implement admission‑gate validation function (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Function returns false and sets gap status to needs‑prep when any of: empty AC, AC marked TODO, size exceeds MAX_GAP_SIZE, missing outcome/evidence, or near‑duplicate of an open gap"
+    - When validation passes, gap status remains ready/pickable
+    - Unit tests cover each failure condition and the success path
+  depends_on: [INFRA-5385]
+
+- id: INFRA-5387
+  domain: INFRA
+  title: "INFRA: Hook admission‑gate into gap creation pipeline (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Newly reserved gaps trigger the admission‑gate before status is set to ready
+    - If gate fails, gap appears in the system with status=needs‑prep
+    - "No regression: existing gaps created before the change keep their original status"
+  depends_on: [INFRA-5386]
+
+- id: INFRA-5388
+  domain: INFRA
+  title: "INFRA: Deduplication (consolidate) routine (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Clusters near‑duplicate gaps using existing similarity logic
+    - Keeps the highest‑priority gap (or oldest if tie) and auto‑closes the others with status=closed, reason=duplicate
+    - Closed duplicates retain their audit trail and are reversible via requeue
+    - Test fixture with 573 duplicate clusters results in exactly 573 closed gaps and the same number of survivors
+  depends_on: [INFRA-5386]
+
+- id: INFRA-5389
+  domain: INFRA
+  title: "INFRA: Prime routine to tighten vague/empty AC and split oversized gaps (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Gaps with empty or TODO AC are automatically populated with a placeholder and marked as primed
+    - Gaps exceeding MAX_GAP_SIZE are split into multiple child gaps each within size limits
+    - Gaps that become fully specified after priming are promoted to status=ready
+    - All transformations are logged and can be rolled back
+  depends_on: [INFRA-5386]
+
+- id: INFRA-5390
+  domain: INFRA
+  title: "INFRA: Furnace routine for unsalvageable gaps (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Gaps that are stale (no activity > 30 days), marked as cruft, or have failed the assay N times are auto‑closed with status=closed, reason=furnaced
+    - Reason includes a short human‑readable explanation
+    - Closed gaps are not deleted and can be requeued
+    - Furnace respects the daily cap (default 50) and dry‑run mode
+  depends_on: [INFRA-5388, INFRA-5389]
+
+- id: INFRA-5391
+  domain: INFRA
+  title: "INFRA: Guardrails for furnace operation (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Furnace never closes gaps with priority P0 or P1
+    - When CHUMP_GAP_FAIRY_ENABLED is OFF, furnace does not run
+    - Dry‑run mode logs actions without changing gap status
+    - Daily furnace cap is enforced; excess candidates are left untouched and logged
+  depends_on: [INFRA-5390, INFRA-5385]
+
+- id: INFRA-5392
+  domain: INFRA
+  title: "INFRA: Emit gap_assay_report metric after each cycle (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "System emits a structured event kind=gap_assay_report containing counts: primed, deduped, furnaced, and pickable‑pool percentage"
+    - Event is consumable by Race Control and appears in the audit log
+    - Metric is emitted even when furnace runs in dry‑run mode
+  depends_on: [INFRA-5388, INFRA-5389, INFRA-5390]
+
+- id: INFRA-5393
+  domain: INFRA
+  title: "INFRA: Create systemd timer and service (chump‑gap‑fairy) (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - chump-gap-fairy.service runs the intake cycle once per hour
+    - chump-gap-fairy.timer enables the service and is active on CJ nodes
+    - Service logs start, end, and any errors to syslog and to the gap audit trail
+    - Service can be started, stopped, and reloaded without manual code changes
+  depends_on: [INFRA-5391, INFRA-5392]
+
+- id: INFRA-5394
+  domain: INFRA
+  title: "INFRA: Implement reversible close (requeue) for auto‑closed gaps (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Closed gaps with reason duplicate or furnaced can be requeued via a CLI command, restoring status=needs-prep and preserving archive metadata
+    - Requeue operation is idempotent and logs the action
+    - Unit test verifies that a furnaced gap requeued becomes pickable after passing admission‑gate
+  depends_on: [INFRA-5390]
+
+- id: INFRA-5395
+  domain: INFRA
+  title: "INFRA: Integration test suite with seeded dirty‑backlog fixture (INFRA-3619 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test loads a fixture containing 573 near‑duplicate clusters, vague AC gaps, oversized gaps, and P0/P1 gaps
+    - "After one cycle, asserts: all duplicates are closed with reason duplicate, all vague/empty AC are primed and promoted, no P0/P1 gaps are furnaced, furnace cap respected, and a requeue of a furnaced gap restores it to needs‑prep"
+    - Test also verifies that a gap_assay_report event is emitted with correct counts
+  depends_on: [INFRA-5393, INFRA-5394]
 
 - id: INFRA-604
   domain: INFRA
