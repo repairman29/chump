@@ -48342,7 +48342,7 @@ gaps:
 - id: EFFECTIVE-1462
   domain: EFFECTIVE
   title: "EFFECTIVE: Add vital‑signs board metrics to cockpit pane (EFFECTIVE-508 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -48366,6 +48366,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-07T21:04:18Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1087B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-1463
   domain: EFFECTIVE
