@@ -2434,10 +2434,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Add a new `CapabilityLifecycleStage` enum to `src/improve.rs` with the six ordered variants (Built, Merged, Deployed, Wired, Running, DoingItsJob), derive standard traits, implement a `pub fn is_done(&self) -> bool` method that returns true only for the `DoingItsJob` variant, and include a `#[cfg(test)]` module containing unit tests that verify the enum’s representation, ordering, and `is_done` behavior.
+    
+    Target file(s):
+    - src/improve.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Define CapabilityLifecycleStage enum with Built, Merged, Deployed, Wired, Running, and DoingItsJob variants.
-    - Implement is_done(&self) -> bool method returning true strictly when in DoingItsJob stage.
-    - Unit tests pass verifying enum representation, ordering, and is_done behavior.
+    - src/improve.rs defines an enum `CapabilityLifecycleStage` with exactly the variants Built, Merged, Deployed, Wired, Running, and DoingItsJob in that order, deriving Debug, Clone, PartialEq, Eq, PartialOrd, and Ord.
+    - "src/improve.rs provides a public method `is_done(&self) -> bool` on `CapabilityLifecycleStage` that returns true only when the instance is `CapabilityLifecycleStage::DoingItsJob`."
+    - "src/improve.rs contains a `#[cfg(test)]` module with a test `test_capability_lifecycle_stage_is_done` that asserts `is_done` is false for Built, Merged, Deployed, Wired, Running and true for DoingItsJob."
+    - Running `cargo test` in the repository completes with all tests passing, confirming the new enum, method, and associated tests work as specified.
   notes: |
     [chump harvest check 'lifecycle']
     === primitives_index match for 'lifecycle' ===
@@ -2520,10 +2528,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Add lifecycle gauge updates inside the `run_provider_cascade_scout` function to set the gauge to the appropriate stage (Built, Running) and extend the capability‑lifecycle CI test to assert that the gauge reports the Running stage before the script exits.
+    
+    Target file(s):
+    - src/onboard.rs
+    - scripts/ci/test-capability-lifecycle.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Update Capability runtime manager to update gauge during Built through Running stages.
-    - Ensure capability status reporting reflects current stage and retains in-progress state at stage 5 (Running).
-    - Integration test verifies runtime stage updates up through Running.
+    - "src/onboard.rs:run_provider_cascade_scout calls `gauge.set_stage(\"Built\")` immediately after the provider cascade reaches the Built state."
+    - "src/onboard.rs:run_provider_cascade_scout calls `gauge.set_stage(\"Running\")` immediately before spawning the worker tool."
+    - "scripts/ci/test-capability-lifecycle.sh exits with status 0 and its stdout contains the line `Gauge stage: Running`, confirming the gauge was updated to the Running stage."
   depends_on: [CREDIBLE-1034]
   notes: |
     [chump harvest check 'lifecycle']
@@ -2601,6 +2617,34 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
 
+- id: CREDIBLE-1039
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-974: Define input models for gap target and PR diff (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A TypeScript interface `GapTarget` captures file, symbol, or capability identifiers
+    - A TypeScript interface `PrDiff` captures list of changed file paths and their statuses
+    - Both interfaces are exported for use by downstream slices
+    - Unit tests verify that JSON fixtures can be parsed into the interfaces without errors
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
 - id: CREDIBLE-104
   domain: CREDIBLE
   title: "CREDIBLE: verify-merge bar real-repo hardening — install deps before testing + prove ADDED tests via base-overlay of changed test files + Gate-3 no-regression as delta (no NEW failures), so messy 0→1 repos like BEAST-MODE verify correctly without watering down the proof"
@@ -2614,6 +2658,153 @@ gaps:
     - "TODO: smoke test command to verify observability"
   closed_pr: 3088
   outcome_id: MISSION-010
+
+- id: CREDIBLE-1040
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-975: Implement almanac edge‑resolution query (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A function `hasResolvedPath(changedFile: string, target: GapTarget): Promise<boolean>` calls the Almanac service and returns true only when a resolved intra‑repo edge exists"
+    - The function returns false on network errors and logs the error without throwing
+    - Unit tests mock Almanac responses for reachable, unreachable, and error cases and assert correct boolean return
+  depends_on: [CREDIBLE-1039]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-1041
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-976: Detect test‑only changes (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A function `isTestOnlyChange(diff: PrDiff): boolean` returns true when every changed file matches a test/fixture/snapshot glob pattern (e.g., `**/__tests__/**`, `**/*.spec.ts`, `**/*.test.ts`, `**/fixtures/**`, `**/*.snap`)"
+    - The function returns false if any changed file falls outside those patterns
+    - Unit tests cover mixed, all‑test, and no‑test diff scenarios
+  depends_on: [CREDIBLE-1039]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-1042
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-977: Verdict determination logic (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "A function `determineVerdict(diff: PrDiff, target: GapTarget): Promise<{verdict: 'REACHES'|'TEST-ONLY'|'UNRELATED', citations: string[], edgeRate: number}>`"
+    - If `isTestOnlyChange` is true, verdict is `TEST-ONLY` and citations list the changed test files
+    - Otherwise, for each changed file the function calls `hasResolvedPath`; if any return true, verdict is `REACHES` with citations of the reachable files
+    - If none are reachable, verdict is `UNRELATED` with an empty citations array
+    - The returned `edgeRate` reflects the repository's current edge‑resolution rate fetched from Almanac
+    - Unit tests mock both helper functions to verify each verdict path and citation content
+  depends_on: [CREDIBLE-1040, CREDIBLE-1041, CREDIBLE-1042]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-1043
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-978: Early CI integration hook (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A CLI entry point `credible-stub-check` reads a gap ID and PR diff (JSON) from stdin or args
+    - The CLI invokes `determineVerdict` and prints a JSON payload containing `verdict`, `citations`, `edgeRate`, and a `reviewSignal` flag set to true for `UNRELATED`
+    - The hook exits with code 0 for all verdicts (no auto‑reject) and logs a clear message when `UNRELATED` is emitted
+    - Integration tests simulate a pre‑push environment and assert that the CLI runs in <30 seconds
+    - Documentation added to the repo's CI config showing how to add the hook to the pre‑push or bot‑merge stage
+  depends_on: [CREDIBLE-1043]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+
+- id: CREDIBLE-1044
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-979: End‑to‑end test reproducing CREDIBLE‑200 shape (CREDIBLE-215 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A test fixture creates a diff that adds only an `assertTrue` unit test file with no source changes
+    - Running the CLI against a gap that targets a source file yields verdict `TEST-ONLY` and includes the new test file in citations
+    - Running the CLI against the same gap without the test change yields verdict `UNRELATED`
+    - The test asserts that the edge‑resolution rate is included in the output and that `reviewSignal` is true for `UNRELATED`
+    - The test is marked as part of the CI suite and passes on the CI runner
+  depends_on: [CREDIBLE-1044]
+  notes: |
+    [chump harvest check 'mechanical']
+    === primitives_index match for 'mechanical' ===
+    
+    === cluster keyword match for 'mechanical' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'mechanical' ===
+    
+    === repo-description match for 'mechanical' ===
+    
+    === HARVEST_ROADMAP.md mention of 'mechanical' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'mechanical' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
 
 - id: CREDIBLE-105
   domain: CREDIBLE
@@ -4520,7 +4711,7 @@ gaps:
     - a test reproduces the CREDIBLE-200 shape — a diff containing only an added assert-true test and no source change, against a gap naming a source target — and proves it is flagged; fails without the change
     - explicitly linked to EFFECTIVE-354 and CREDIBLE-200 so whichever ships first records what it did and did not cover
   notes: |
-    Decomposed into 6 slices: CREDIBLE-974, CREDIBLE-975, CREDIBLE-976, CREDIBLE-977, CREDIBLE-978, CREDIBLE-979
+    Decomposed into 6 slices: CREDIBLE-1039, CREDIBLE-1040, CREDIBLE-1041, CREDIBLE-1042, CREDIBLE-1043, CREDIBLE-1044
   opened_date: '2026-08-19'
   outcome_id: CREDIBLE-000
   evidence: |
