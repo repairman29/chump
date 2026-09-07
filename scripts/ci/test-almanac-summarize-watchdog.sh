@@ -182,4 +182,30 @@ CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_DEAD" \
 [[ -s "$RECALL_CALL_LOG" ]] && fail "--dry-run must not page operator-recall; calls: $(cat "$RECALL_CALL_LOG")"
 pass "--dry-run reports without restarting or paging"
 
+# ── 7. MISSING/INVALID pct: entries lacking pct data fail-closed ───────────
+# CREDIBLE-1045: a repo entry with neither "pct" nor "summarized_pct" used to
+# silently default to 100 (treated as compliant). It must instead be treated
+# as a coverage violation so a malformed report can't hide a real gap.
+echo "--- 7: missing/invalid pct fails closed ---"
+COVERAGE_MISSING="$TMP/coverage-missing.sh"
+cat > "$COVERAGE_MISSING" <<'EOF'
+#!/usr/bin/env bash
+echo '{"repos":[{"repo":"noreport"},{"repo":"dice","pct":99.1}]}'
+EOF
+chmod +x "$COVERAGE_MISSING"
+
+AMB6="$TMP/ambient6.jsonl"
+: > "$AMB6"
+: > "$RECALL_CALL_LOG"
+CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_ALIVE" \
+    CHUMP_ALMANAC_WATCHDOG_COVERAGE_BIN="$COVERAGE_MISSING" \
+    CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" \
+    CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=95 \
+    CHUMP_AMBIENT_LOG="$AMB6" "$WATCHDOG" >/dev/null 2>&1
+grep -q -- "--condition ALMANAC_SUMMARIZE_COVERAGE_DROP" "$RECALL_CALL_LOG" \
+    || fail "expected missing-pct entry to page operator-recall; calls: $(cat "$RECALL_CALL_LOG")"
+grep -q '"worst_repo":"noreport(missing_pct_field)"' "$AMB6" \
+    || fail "expected worst_repo to flag the missing-pct entry; ambient: $(cat "$AMB6")"
+pass "repo entry missing pct field -> treated as coverage violation, not silently 100%"
+
 echo "=== all almanac-summarize-watchdog tests passed ==="
