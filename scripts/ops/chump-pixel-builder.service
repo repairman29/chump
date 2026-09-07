@@ -1,0 +1,22 @@
+[Unit]
+# RESILIENT-1044: owned-iron aarch64 build-offload. Runs scripts/ops/build-on-pixel.sh,
+# which ssh-drives the Pixel to build + publish the fleet's release chump binary
+# to the fleet-binaries GitHub Release. This unit itself does NO local cargo — it
+# only ssh's to the Pixel — so it is SAFE to run on the 2-core brain (cuphead).
+Description=chump owned-iron build-offload (build release binary on the Pixel, publish to fleet-binaries release) — RESILIENT-1044
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# The build runs on the Pixel; this side only orchestrates + verifies. Generous
+# timeout to cover a genuinely cold Pixel build (toolchain + clone + full cargo).
+TimeoutStartSec=3600
+# %h/chump-host is the canonical Linux node mirror (see node-refresh-chump.sh);
+# fall back to the first checkout that exists is handled inside the script.
+Environment=CHUMP_NODE_REPO=%h/chump-host
+ExecStart=/usr/bin/env bash %h/chump-host/scripts/ops/build-on-pixel.sh
+Nice=10
+
+[Install]
+WantedBy=default.target

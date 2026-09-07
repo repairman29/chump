@@ -314,6 +314,86 @@ _try_artifact_pull() {
     return 0
 }
 
+# --- RESILIENT-1044: owned-built release-asset pull --------------------------
+# The SECOND owned/free source, tried before any cold build. The Pixel (owned
+# aarch64 iron, 8 real cores) builds the release `chump` binary in an Ubuntu
+# 22.04 (glibc 2.35) proot and publishes it as a GitHub Release asset named
+# chump-<target>-<full-sha> — see scripts/ops/build-on-pixel.sh +
+# scripts/ops/pixel-build-and-publish.sh. This path fetches that owned-built
+# asset and installs it with the SAME sha256 + version checks as the CI-artifact
+# path, so a node that missed the RENTED GitHub-hosted CI artifact still installs
+# a verified binary from OWNED iron instead of falling through to a ~30-min local
+# `cargo build --release` — which starves the live fleet on the 2-core brain
+# nodes (cuphead/mugman) and is FORBIDDEN. Same "never worse off" contract: any
+# miss/failure just falls through to the next path.
+#
+# scanner-anchor: "kind":"node_binary_release_miss"
+#
+# Env:
+#   CHUMP_NODE_RELEASE_TAG          release tag to pull from    (default: fleet-binaries)
+#   CHUMP_NODE_SKIP_RELEASE_PULL=1  skip this source (force the next path)
+CHUMP_NODE_RELEASE_TAG="${CHUMP_NODE_RELEASE_TAG:-fleet-binaries}"
+
+_try_release_pull() {
+    local full_sha="$1" green_short="$2"
+    [[ "${CHUMP_NODE_SKIP_RELEASE_PULL:-0}" == "1" ]] && { log "release-pull: disabled (CHUMP_NODE_SKIP_RELEASE_PULL=1)"; return 1; }
+    command -v gh >/dev/null 2>&1 || { log "release-pull: gh unavailable → next"; return 1; }
+    local target; target="$(_resolve_rust_target)"
+    [[ -z "$target" ]] && { log "release-pull: unknown arch $(uname -m) → next"; return 1; }
+    [[ -z "$full_sha" || "$full_sha" == "unknown" ]] && { log "release-pull: no full sha → next"; return 1; }
+
+    local _gh_cmd="gh"; command -v chump_gh >/dev/null 2>&1 && _gh_cmd="chump_gh"
+    local asset="chump-${target}-${full_sha}"
+    local dl; dl="$(mktemp -d)"
+    if ! CHUMP_GH_CALL_CRITICALITY=background "$_gh_cmd" release download "$CHUMP_NODE_RELEASE_TAG" \
+            -p "$asset" -p "$asset.sha256" --dir "$dl" --clobber >>"$LOG" 2>&1; then
+        log "release-pull: no owned-built $asset in release $CHUMP_NODE_RELEASE_TAG → next"
+        emit node_binary_release_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"asset_absent\""
+        rm -rf "$dl"; return 1
+    fi
+    local pulled="$dl/$asset"
+    if [[ ! -f "$pulled" ]]; then
+        log "release-pull: release held no $asset binary → next"
+        emit node_binary_release_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"no_binary_in_release\""
+        rm -rf "$dl"; return 1
+    fi
+    chmod +x "$pulled" 2>/dev/null || true
+
+    # Integrity: verify sha256 if the sidecar rode along.
+    if [[ -f "$dl/$asset.sha256" ]] && command -v sha256sum >/dev/null 2>&1; then
+        local want got
+        want="$(awk '{print $1}' "$dl/$asset.sha256" 2>/dev/null)"
+        got="$(sha256sum "$pulled" 2>/dev/null | awk '{print $1}')"
+        if [[ -n "$want" && "$want" != "$got" ]]; then
+            log "release-pull: sha256 mismatch (want $want got $got) → next"
+            emit node_binary_release_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"sha256_mismatch\""
+            rm -rf "$dl"; return 1
+        fi
+    fi
+
+    # Verify it runs on THIS host and its version SHA matches the green pointer.
+    local pulled_ver
+    pulled_ver="$("$pulled" --version 2>/dev/null || echo unrunnable)"
+    if [[ "$pulled_ver" != *"$green_short"* ]]; then
+        log "release-pull: version '$pulled_ver' != green $green_short → next"
+        emit node_binary_release_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"version_mismatch\",\"got\":\"$pulled_ver\""
+        rm -rf "$dl"; return 1
+    fi
+
+    if ! _install_binary "$pulled"; then
+        log "release-pull: install to $TARGET_BIN failed → next"
+        emit node_binary_release_miss "\"sha\":\"$full_sha\",\"target\":\"$target\",\"reason\":\"install_failed\""
+        rm -rf "$dl"; return 1
+    fi
+    rm -rf "$dl"
+
+    local new_sha
+    new_sha="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
+    log "OK: pulled owned-built release asset $asset → $TARGET_BIN (skipped local cargo build)"
+    emit node_binary_refreshed "\"prev_sha\":\"$INSTALLED_SHA\",\"new_sha\":\"$new_sha\",\"main_sha\":\"$green_short\",\"method\":\"release_pull\",\"target\":\"$target\",\"tag\":\"$CHUMP_NODE_RELEASE_TAG\""
+    return 0
+}
+
 # --- RESILIENT-1037: nearest-ancestor artifact discovery ---------------------
 # build-fleet-binaries.yml only triggers on push-to-main when the diff touches
 # `paths:` that can change the binary (src/**, crates/**, build.rs, Cargo.*).
@@ -518,7 +598,25 @@ if _try_artifact_pull "$ARTIFACT_SHA" "$ARTIFACT_SHA_SHORT"; then
     ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
     exit 0
 fi
-log "artifact-pull unavailable or missed for $MAIN_SHA (artifact sha $ARTIFACT_SHA_SHORT) — building locally"
+
+# --- RESILIENT-1044: owned-built release-asset pull (before any cold build) ---
+# The rented GitHub-hosted CI artifact was unavailable for this sha. Before
+# paying a ~30-min local cargo build on the (often 2-core) brain node, try the
+# binary the OWNED Pixel already built + published to the fleet-binaries release.
+# The owned builder publishes for the green-main sha itself, so try the green
+# pointer (FULL_SHA / MAIN_SHA) first, then the nearest built ancestor.
+if _try_release_pull "$FULL_SHA" "$MAIN_SHA"; then
+    _reconcile_role_organs
+    ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
+    exit 0
+fi
+if [[ "$ARTIFACT_SHA" != "$FULL_SHA" ]] && _try_release_pull "$ARTIFACT_SHA" "$ARTIFACT_SHA_SHORT"; then
+    _reconcile_role_organs
+    ls -t "$LOG_DIR"/refresh-*.log 2>/dev/null | tail -n +25 | xargs -r rm -f 2>/dev/null || true
+    exit 0
+fi
+
+log "artifact-pull + release-pull unavailable or missed for $MAIN_SHA (artifact sha $ARTIFACT_SHA_SHORT) — building locally"
 # RESILIENT-1041: cold-build-revert halt-class condition — this node is about
 # to pay a ~30-min local `cargo build --release` on constrained (often
 # 2-core) fleet hardware instead of the seconds-long artifact pull. On an
