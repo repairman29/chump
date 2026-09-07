@@ -194,6 +194,79 @@ grep -q "disable --now chump-orphan-organ.service" "$CALL_LOG" \
     && fail "unfiltered (role=all) --apply must not run the drift-removal pass; calls: $(cat "$CALL_LOG")" \
     || pass "unfiltered (role=all) --apply skips the drift-removal pass entirely (whole manifest already in scope)"
 
+# ── (a2) timer-aware reap + sibling protection (RESILIENT-1016 follow-up) ───
+# The original drift-removal disabled only the .service; the paired .timer kept
+# re-triggering it (VERIFIED on mugman 2026-09-07: 28 out-of-role ports climbed
+# back to 28 because their .timer units stayed enabled). This scenario proves:
+#   * an out-of-role unit present as BOTH .service and .timer has BOTH halves
+#     reaped (disable --now + reset-failed), so it cannot resurrect; and
+#   * an in-role organ the manifest declares by its .timer has its paired
+#     .service left untouched (sibling protection) — the manifest lists most
+#     organs by .timer, so the .service the timer drives is in-role too.
+TTMP="$(mktemp -d "${TMPDIR:-/tmp}/chump-1016-timer-test.XXXXXX")"
+trap 'rm -rf "$RTMP" "$TTMP"' EXIT
+T_SVC="$TTMP/services.txt"; T_TMR="$TTMP/timers.txt"
+T_ACTIVE="$TTMP/active.txt"; T_ENABLED="$TTMP/enabled.txt"; T_CALLS="$TTMP/calls.log"
+# in-role organ declared by TIMER (farmer) + an out-of-role organ (brainbeat),
+# each present as a .service/.timer pair.
+printf 'chump-farmer.service\nchump-brainbeat.service\n' > "$T_SVC"
+printf 'chump-farmer.timer\nchump-brainbeat.timer\n'     > "$T_TMR"
+printf 'chump-farmer.service\nchump-farmer.timer\nchump-brainbeat.service\nchump-brainbeat.timer\n' > "$T_ACTIVE"
+cp "$T_ACTIVE" "$T_ENABLED"
+T_STUB="$TTMP/systemctl-stub"
+cat > "$T_STUB" <<'EOF'
+#!/usr/bin/env bash
+echo "$*" >> "$T_CALLS"
+case "$1" in
+    list-unit-files)
+        case "$*" in
+            *--type=timer*)   cat "$T_TMR" | awk '{print $1"  enabled"}';;
+            *--type=service*) cat "$T_SVC" | awk '{print $1"  enabled"}';;
+            *)                cat "$T_SVC" "$T_TMR" | awk '{print $1"  enabled"}';;
+        esac
+        exit 0 ;;
+    is-active)  unit="${@: -1}"; grep -qxF "$unit" "$T_ACTIVE"  2>/dev/null && exit 0 || exit 3 ;;
+    is-enabled) unit="${@: -1}"; grep -qxF "$unit" "$T_ENABLED" 2>/dev/null && exit 0 || exit 1 ;;
+    is-failed)  echo "active"; exit 0 ;;
+    disable)
+        unit="${@: -1}"
+        grep -vxF "$unit" "$T_ACTIVE"  > "$T_ACTIVE.t"  2>/dev/null; mv "$T_ACTIVE.t"  "$T_ACTIVE"
+        grep -vxF "$unit" "$T_ENABLED" > "$T_ENABLED.t" 2>/dev/null; mv "$T_ENABLED.t" "$T_ENABLED"
+        exit 0 ;;
+    show) echo "ExecStart=/bin/true"; exit 0 ;;
+    *) exit 0 ;;
+esac
+EOF
+chmod +x "$T_STUB"
+T_MANIFEST="$TTMP/organ-manifest.txt"
+printf 'enabled  chump-farmer.timer  role=muscle requires=\n' > "$T_MANIFEST"
+
+: > "$T_CALLS"
+T_SVC="$T_SVC" T_TMR="$T_TMR" T_ACTIVE="$T_ACTIVE" T_ENABLED="$T_ENABLED" T_CALLS="$T_CALLS" \
+CHUMP_ORGAN_RECONCILE_ROLE="muscle" \
+CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN="$T_STUB" \
+CHUMP_ORGAN_RECONCILE_ALLOW_NONROOT=1 \
+CHUMP_ORGAN_RECONCILE_BACKOFF_DIR="$TTMP/backoff" \
+CHUMP_ORGAN_RECONCILE_VERIFY_DELAY_S=0 \
+CHUMP_ORGAN_MANIFEST="$T_MANIFEST" \
+bash "$RECONCILE" --apply >/dev/null 2>&1
+
+grep -q "disable --now chump-brainbeat.timer" "$T_CALLS" \
+    && pass "timer-aware reap disables the out-of-role unit's paired .timer" \
+    || fail "should disable chump-brainbeat.timer; calls: $(cat "$T_CALLS")"
+grep -q "disable --now chump-brainbeat.service" "$T_CALLS" \
+    && pass "timer-aware reap disables the out-of-role unit's .service" \
+    || fail "should disable chump-brainbeat.service; calls: $(cat "$T_CALLS")"
+grep -q "reset-failed chump-brainbeat.timer" "$T_CALLS" \
+    && pass "timer-aware reap reset-failed's the paired .timer (clears systemctl --failed)" \
+    || fail "should reset-failed chump-brainbeat.timer; calls: $(cat "$T_CALLS")"
+grep -q "disable --now chump-farmer.service" "$T_CALLS" \
+    && fail "sibling protection: must NOT reap chump-farmer.service (its .timer is in-role); calls: $(cat "$T_CALLS")" \
+    || pass "sibling protection leaves the in-role timer's paired .service untouched"
+grep -q "disable --now chump-farmer.timer" "$T_CALLS" \
+    && fail "must NOT reap the in-role chump-farmer.timer; calls: $(cat "$T_CALLS")" \
+    || pass "in-role chump-farmer.timer is left running"
+
 # ── (b) chump-node-install.sh materializes $ORGAN_DIR/worker.sh for muscle ──
 # Drives the REAL install_organs() (not a reproduction) against a scratch
 # NODE_DIR — svc_install will fail to write /etc/systemd/system (non-root,

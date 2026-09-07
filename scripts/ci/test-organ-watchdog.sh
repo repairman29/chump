@@ -85,6 +85,42 @@ grep -q "restart chump-sla-scorecard.service" "$CALL_LOG" \
     || fail "expected restart to be called; calls: $(cat "$CALL_LOG")"
 pass "kills a failed organ and watches it self-heal (reset-failed + restart), no human step"
 
+# ── 2b. Obsolete port (ExecStart script missing): REAP, don't resurrect ────
+# RESILIENT-1016 follow-up. A failed chump-*.service whose backing script no
+# longer exists on disk (a retired organ like merge-mix-board after INFRA-3844,
+# or a foreign-home-path port) must be disabled+reset-failed, NOT blindly
+# restarted every cycle into perpetual failure. VERIFIED on CJ 2026-09-07.
+MISSING_EXEC="$TMP/gone/retired-organ.sh"   # deliberately never created on disk
+STUBR="$TMP/systemctl-missing-exec"
+CALL_LOGR="$TMP/calls-missing.log"
+cat > "$STUBR" <<EOF
+#!/usr/bin/env bash
+echo "\$*" >> "$CALL_LOGR"
+if [[ "\$1" == "list-units" ]]; then
+    echo "chump-retired-port.service loaded failed failed Retired ported organ"
+    exit 0
+fi
+if [[ "\$1" == "show" ]]; then
+    # ExecStart references a script that does NOT exist on disk
+    echo "ExecStart={ path=/bin/bash ; argv[]=/bin/bash -lc \"exec bash \\\"$MISSING_EXEC\\\"\" ; ignore_errors=no }"
+    exit 0
+fi
+exit 0
+EOF
+chmod +x "$STUBR"
+AMBR="$TMP/ambient-missing.jsonl"
+: > "$AMBR"
+outr="$(CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUBR" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" CHUMP_AMBIENT_LOG="$AMBR" "$WATCHDOG" 2>&1)"
+rcr=$?
+[[ "$rcr" -eq 0 ]] || fail "watchdog exited $rcr on the missing-exec path; output: $outr"
+grep -q "disable --now chump-retired-port.service" "$CALL_LOGR" \
+    || fail "expected the obsolete port to be disabled (reaped); calls: $(cat "$CALL_LOGR")"
+grep -q "restart chump-retired-port.service" "$CALL_LOGR" \
+    && fail "must NOT restart a unit whose ExecStart script is missing; calls: $(cat "$CALL_LOGR")"
+grep -q '"kind":"organ_watchdog_reaped_missing_exec"' "$AMBR" \
+    || fail "expected organ_watchdog_reaped_missing_exec emitted; ambient: $(cat "$AMBR")"
+pass "obsolete port (ExecStart script missing) is reaped, not resurrected"
+
 # ── 3. Healthy fleet: nothing to heal, tick heartbeat still emitted ────────
 STUB2="$TMP/systemctl-healthy"
 cat > "$STUB2" <<'EOF'
