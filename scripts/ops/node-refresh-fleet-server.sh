@@ -249,9 +249,31 @@ if [[ -x "$LOCAL_BUILD" ]]; then
     fi
 fi
 
-log "FAIL: no pullable artifact and no usable local build for chump-fleet-server — leaving running service untouched"
+# --- FAIL-SAFE tail (RESILIENT-1046 anti-Memento) ----------------------------
+# No new artifact could be pulled and the bootstrap path had nothing to install.
+# This is NOT a systemd failure: a refresh oneshot that exits non-zero here lands
+# in `failed` state, which is exactly the silent-decay signal the anti-Memento
+# work targets — a healthy "nothing new to pull, staying put" would masquerade as
+# a broken organ. So we ALWAYS exit 0 and express health/decay through the
+# ambient stream instead of the unit's exit code:
+#
+#   - a usable binary is already installed  -> genuinely healthy "staying put":
+#     the running server is unaffected; emit a quiet skip, no alarm.
+#   - NO usable binary anywhere (fresh node, nothing to serve) -> a real problem
+#     worth paging on, but the alarm is the LOUD ambient halt-class signal, not a
+#     wedged unit. The timer keeps retrying every cycle; the moment a good
+#     artifact appears it gets pulled.
+if [[ -x "$TARGET_BIN" ]] && "$TARGET_BIN" --version >/dev/null 2>&1; then
+    log "OK: no new artifact to pull; staying on the installed binary ($TARGET_BIN) — healthy, no-op"
+    emit fleet_server_refresh_skipped "\"reason\":\"no_new_artifact_staying_put\",\"target_bin\":\"$TARGET_BIN\""
+    exit 0
+fi
+
+log "WARN: no pullable artifact, no bootstrap build, AND no usable installed binary — server cannot be (re)started until one appears"
 _halt "fleet-server-refresh-no-binary" \
-    "no chump-fleet-server prebuilt artifact was pullable AND no usable target/release build exists; cannot refresh (never cargo-build on a fleet node)" \
+    "no chump-fleet-server prebuilt artifact was pullable, no target/release bootstrap build exists, and no usable binary is installed at $TARGET_BIN; refresh is a safe no-op (never cargo-build on a fleet node) and will retry each cycle" \
     "{\"node_repo\":\"$REPO_ROOT\",\"target_bin\":\"$TARGET_BIN\"}"
-emit fleet_server_refresh_failed "\"reason\":\"no_binary_available\""
-exit 1
+emit fleet_server_refresh_no_binary "\"reason\":\"no_binary_available\",\"target_bin\":\"$TARGET_BIN\""
+# Exit 0 on purpose: fail-safe. The loud halt-class emit above is the alarm, not
+# a `failed` systemd unit that would itself read as silent rot.
+exit 0
