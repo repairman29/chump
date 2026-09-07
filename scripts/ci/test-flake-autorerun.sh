@@ -75,6 +75,14 @@ case "$1" in
         n=$((n+1))
         echo "$n" > "$COUNT_FILE"
 
+        # RESILIENT-1044: replay a byte-for-byte captured real CI failure
+        # (run 30777601663) instead of synthesizing output, so the parser is
+        # exercised against production bytes, not just an idealized fixture.
+        if [[ -n "${FAKE_RAW_LOG_FILE:-}" && "$n" == "1" ]]; then
+            cat "$FAKE_RAW_LOG_FILE"
+            exit 101
+        fi
+
         if [[ "$n" == "1" ]]; then
             names="${FAKE_FAIL_NAMES:-}"
         else
@@ -237,6 +245,37 @@ if [[ "$RC" -eq 0 ]] \
     ok "failures-block catalog flake auto-rerun recovered"
 else
     fail "expected quiet-format recover (rc=$RC, out=$OUT)"
+fi
+# ── Test 9: RESILIENT-1044 real-incident byte fixture → correct attribution ──
+# Replays the byte-for-byte captured cargo-test output from CI run
+# 30777601663 (2026-08-03) where fleet_self_rescue_conductor::tests::
+# dial_zero_halts failed. That failure predates the RESILIENT-306 parser fix
+# (2026-08-13) and is NOT in KNOWN_FLAKES.yaml, so the correct behavior is:
+# parse the real test name out of the captured production bytes and report
+# "not auto-rerunning" attributed to that exact name -- NOT the pre-fix
+# "no parseable failed-test names; not a flake shape" misdiagnosis that let
+# this incident freeze green-main. Locks in the fix against the exact bytes
+# that caused the incident, not just a synthetic approximation.
+echo "--- Test 9: RESILIENT-1044 real-incident bytes → correctly attributed, no rerun ---"
+FIXTURE="$REPO_ROOT/scripts/ci/testdata/resilient-1044-nextest-fail-sample.log"
+if [[ ! -f "$FIXTURE" ]]; then
+    fail "missing fixture: $FIXTURE"
+else
+    cd "$FAKE" || exit 2
+    OUT=$(PATH="$TMP/bin:$PATH" \
+          TMP_STATE="$TMP/state-$$-${RANDOM}" \
+          FAKE_RAW_LOG_FILE="$FIXTURE" \
+          bash "$FAKE/scripts/ci/cargo-test-with-rerun.sh" -- cargo test 2>&1)
+    RC=$?
+    cd - >/dev/null || true
+    if [[ "$RC" -ne 0 ]] \
+       && echo "$OUT" | grep -q "not auto-rerunning" \
+       && echo "$OUT" | grep -q "fleet_self_rescue_conductor::tests::dial_zero_halts" \
+       && ! echo "$OUT" | grep -q "not a flake shape"; then
+        ok "real-incident bytes correctly attributed to dial_zero_halts, no silent skip"
+    else
+        fail "expected correct attribution, no 'not a flake shape' misdiagnosis (rc=$RC, out=$OUT)"
+    fi
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────
