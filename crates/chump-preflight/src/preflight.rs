@@ -134,6 +134,116 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
     ("rust-first", "scripts/git-hooks/pre-commit-rust-first.sh"),
 ];
 
+// INFRA-5000 (META-070/INFRA-3373 slice, cluster cli-observability-misc):
+// the 41 leftover CLI/observability/cost/telemetry smoke scripts enumerated
+// in docs/process/AUDIT_JOB_DECOMPOSITION.md's cli-observability-misc
+// section. Grab-bag of one-off ci.yml audit-job scripts with lowest
+// per-script cascade risk but highest count — mirrored here as the
+// `cli-observability-misc` gate.
+const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
+    ("acp-real-clients", "scripts/ci/test-acp-real-clients.sh"),
+    (
+        "api-chat-cost-kill",
+        "scripts/ci/test-api-chat-cost-kill.sh",
+    ),
+    (
+        "api-cost-leaderboard",
+        "scripts/ci/test-api-cost-leaderboard.sh",
+    ),
+    (
+        "cascade-rebase-observability",
+        "scripts/ci/test-cascade-rebase-observability.sh",
+    ),
+    ("chump-fleet-cli", "scripts/ci/test-chump-fleet-cli.sh"),
+    ("chump-skill-cli", "scripts/ci/test-chump-skill-cli.sh"),
+    ("cli-aliases", "scripts/ci/test-cli-aliases.sh"),
+    (
+        "cli-arg-validation",
+        "scripts/ci/test-cli-arg-validation.sh",
+    ),
+    ("cli-exit-codes", "scripts/ci/test-cli-exit-codes.sh"),
+    ("cli-fleet-coord", "scripts/ci/test-cli-fleet-coord.sh"),
+    ("cli-help", "scripts/ci/test-cli-help.sh"),
+    ("cli-integration", "scripts/ci/test-cli-integration.sh"),
+    ("cli-output-format", "scripts/ci/test-cli-output-format.sh"),
+    (
+        "cli-product-surface",
+        "scripts/ci/test-cli-product-surface.sh",
+    ),
+    (
+        "cog-043-action-telemetry",
+        "scripts/ci/test-cog-043-action-telemetry.sh",
+    ),
+    ("cost-enforcement", "scripts/ci/test-cost-enforcement.sh"),
+    ("cost-per-model", "scripts/ci/test-cost-per-model.sh"),
+    ("cost-watch", "scripts/ci/test-cost-watch.sh"),
+    ("coupling-cost", "scripts/ci/test-coupling-cost.sh"),
+    (
+        "cursor-cli-integration",
+        "scripts/ci/test-cursor-cli-integration.sh",
+    ),
+    (
+        "doc-only-clippy-skip",
+        "scripts/ci/test-doc-only-clippy-skip.sh",
+    ),
+    (
+        "event-registry-guard",
+        "scripts/ci/test-event-registry-guard.sh",
+    ),
+    (
+        "fleet-metrics-snapshot",
+        "scripts/ci/test-fleet-metrics-snapshot.sh",
+    ),
+    ("gap-closed-pr-cli", "scripts/ci/test-gap-closed-pr-cli.sh"),
+    ("gate-telemetry", "scripts/ci/test-gate-telemetry.sh"),
+    ("gen-cost-summary", "scripts/ci/test-gen-cost-summary.sh"),
+    (
+        "github-api-telemetry",
+        "scripts/ci/test-github-api-telemetry.sh",
+    ),
+    (
+        "github-api-telemetry-shim",
+        "scripts/ci/test-github-api-telemetry-shim.sh",
+    ),
+    ("harvester-cli", "scripts/ci/test-harvester-cli.sh"),
+    (
+        "infra-1062-clippy-timeout-silent-exit",
+        "scripts/ci/test-infra-1062-clippy-timeout-silent-exit.sh",
+    ),
+    (
+        "observability-coverage",
+        "scripts/ci/test-observability-coverage.sh",
+    ),
+    (
+        "observability-loop",
+        "scripts/ci/test-observability-loop.sh",
+    ),
+    ("pr-cost-telemetry", "scripts/ci/test-pr-cost-telemetry.sh"),
+    ("pr-fix-clippy", "scripts/ci/test-pr-fix-clippy.sh"),
+    (
+        "pr-stuck-cluster-observability",
+        "scripts/ci/test-pr-stuck-cluster-observability.sh",
+    ),
+    (
+        "pr-unstick-observability",
+        "scripts/ci/test-pr-unstick-observability.sh",
+    ),
+    ("pwa-cost-ceiling", "scripts/ci/test-pwa-cost-ceiling.sh"),
+    (
+        "pwa-version-compat",
+        "scripts/ci/test-pwa-version-compat.sh",
+    ),
+    (
+        "pwa-workflow-observability",
+        "scripts/ci/test-pwa-workflow-observability.sh",
+    ),
+    ("telemetry-cost", "scripts/ci/test-telemetry-cost.sh"),
+    (
+        "worker-preship-clippy",
+        "scripts/ci/test-worker-preship-clippy.sh",
+    ),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Pass,
@@ -2325,6 +2435,13 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-gap-reserve-no-stale-collision.sh"],
             GateKind::Scripts,
         ));
+
+        // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
+        // gate — mirrors the 41 remaining cli-observability-misc cluster
+        // scripts from docs/process/AUDIT_JOB_DECOMPOSITION.md.
+        for (name, script) in CLI_OBSERVABILITY_MISC_SCRIPTS {
+            steps.push(step(name, &["bash", script], GateKind::Scripts));
+        }
     }
 
     // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit
