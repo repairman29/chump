@@ -131,7 +131,10 @@ mod tests {
             candidate("repairman29/mid", 4),
         ]);
         let ordered: Vec<&str> = result.allowed.iter().map(|c| c.repo.as_str()).collect();
-        assert_eq!(ordered, vec!["repairman29/high", "repairman29/mid", "repairman29/low"]);
+        assert_eq!(
+            ordered,
+            vec!["repairman29/high", "repairman29/mid", "repairman29/low"]
+        );
         assert!(result.allowed[0].star_tier >= FOUR_STAR_TIER);
         assert!(result.allowed[1].star_tier >= FOUR_STAR_TIER);
         std::env::remove_var("CHUMP_GITHUB_REPOS");
@@ -139,14 +142,20 @@ mod tests {
 
     #[test]
     fn stable_sort_preserves_order_within_same_tier() {
-        std::env::set_var("CHUMP_GITHUB_REPOS", "repairman29/a,repairman29/b,repairman29/c");
+        std::env::set_var(
+            "CHUMP_GITHUB_REPOS",
+            "repairman29/a,repairman29/b,repairman29/c",
+        );
         let result = gate_and_prioritize(vec![
             candidate("repairman29/a", 4),
             candidate("repairman29/b", 4),
             candidate("repairman29/c", 4),
         ]);
         let ordered: Vec<&str> = result.allowed.iter().map(|c| c.repo.as_str()).collect();
-        assert_eq!(ordered, vec!["repairman29/a", "repairman29/b", "repairman29/c"]);
+        assert_eq!(
+            ordered,
+            vec!["repairman29/a", "repairman29/b", "repairman29/c"]
+        );
         std::env::remove_var("CHUMP_GITHUB_REPOS");
     }
 }

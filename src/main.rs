@@ -201,6 +201,7 @@ mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
+mod portfolio_sweep_gate; // EFFECTIVE-1408: allowlist + leverage-tier gate for portfolio sweeps
 mod provider_bandit;
 mod provider_cascade;
 mod provider_probe;
@@ -213,7 +214,6 @@ mod recipe;
 mod reflect_delta;
 mod reflection;
 mod reflection_db;
-mod portfolio_sweep_gate; // EFFECTIVE-1408: allowlist + leverage-tier gate for portfolio sweeps
 mod repo_allowlist;
 mod repo_allowlist_tool;
 mod repo_path;
@@ -2871,9 +2871,7 @@ async fn main() -> Result<()> {
                 println!(
                     "<candidates.json> is a JSON array of {{\"repo\": \"owner/name\", \"star_tier\": N}}."
                 );
-                println!(
-                    "Repos outside the owned-repo allowlist (CHUMP_GITHUB_REPOS env or"
-                );
+                println!("Repos outside the owned-repo allowlist (CHUMP_GITHUB_REPOS env or");
                 println!(
                     "chump_authorized_repos DB table) are strictly rejected — a NO-GO is logged"
                 );
