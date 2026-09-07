@@ -41,6 +41,11 @@
 
 set -uo pipefail
 
+# PREFIX is Termux's install root. It is set in a login shell but NOT always in a
+# detached nohup/systemd context — resolve a robust default so the proot rootfs
+# path below never silently points at a non-existent dir (which mis-detects the
+# container as "missing" and aborts).
+PREFIX="${PREFIX:-/data/data/com.termux/files/usr}"
 RELEASE_TAG="${RELEASE_TAG:-fleet-binaries}"
 REPO="${REPO:-repairman29/chump}"
 PROOT_CONTAINER="${PROOT_CONTAINER:-ubuntu2204}"
@@ -92,9 +97,15 @@ fi
 # --- ensure the glibc build container + toolchain exist (bootstrap once) -----
 ROOTFS="$PREFIX/var/lib/proot-distro/installed-rootfs/$PROOT_CONTAINER"
 if [[ ! -d "$ROOTFS" ]]; then
-    log "proot container $PROOT_CONTAINER missing — installing Ubuntu 22.04 (glibc 2.35)"
-    yes | proot-distro install ubuntu:22.04 --name "$PROOT_CONTAINER" >/dev/null 2>&1 || true
-    [[ -d "$ROOTFS" ]] || die "failed to provision $PROOT_CONTAINER"
+    # Path miss can also mean PREFIX is wrong — probe via an actual login before
+    # deciding the container is truly absent.
+    if proot-distro login "$PROOT_CONTAINER" -- true >/dev/null 2>&1; then
+        log "proot container $PROOT_CONTAINER present (path differs from \$PREFIX guess) — continuing"
+    else
+        log "proot container $PROOT_CONTAINER missing — installing Ubuntu 22.04 (glibc 2.35)"
+        yes | proot-distro install ubuntu:22.04 --name "$PROOT_CONTAINER" >/dev/null 2>&1 || true
+        proot-distro login "$PROOT_CONTAINER" -- true >/dev/null 2>&1 || die "failed to provision $PROOT_CONTAINER"
+    fi
 fi
 
 log "provisioning toolchain in $PROOT_CONTAINER (idempotent) + building at $SHORT_SHA"
@@ -127,10 +138,14 @@ rc="${PIPESTATUS[0]}"
 [[ "$rc" == "0" ]] || die "cargo build inside $PROOT_CONTAINER failed (see $BUILD_LOG)"
 
 # --- copy the built binary out of the proot rootfs to Termux fs --------------
-BUILT="$ROOTFS/root/build/chump/target/release/chump"
-[[ -x "$BUILT" ]] || die "built binary not found at $BUILT"
+# Stream it out THROUGH the container (robust regardless of the $PREFIX-derived
+# rootfs path); fall back to the direct rootfs path if the stream is empty.
 STAGED_BIN="$STAGE/$ASSET"
-cp -f "$BUILT" "$STAGED_BIN"
+proot-distro login "$PROOT_CONTAINER" -- cat /root/build/chump/target/release/chump > "$STAGED_BIN" 2>/dev/null || true
+if [[ ! -s "$STAGED_BIN" ]]; then
+    cp -f "$ROOTFS/root/build/chump/target/release/chump" "$STAGED_BIN" 2>/dev/null \
+        || die "built binary not found (stream + $ROOTFS path both failed)"
+fi
 chmod +x "$STAGED_BIN"
 
 # --- verify the binary embeds the sha we intended (contract check) -----------
