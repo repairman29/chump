@@ -674,6 +674,13 @@ jobs:
       - name: fleet-binary glibc floor gate (RESILIENT-1038)
         run: bash scripts/ci/test-fleet-binary-glibc-floor.sh
 
+      # RESILIENT-1052: anti-Memento fleet-health sentinel — detect/act/page
+      # logic against a hermetic fake systemctl (failed-unit self-heal,
+      # inactive-healer re-enable, absent-required-healer + unhealable-unit +
+      # stale-heartbeat pages, dry-run-does-not-act). EDGE depth; no live units.
+      - name: Fleet-health sentinel gate (RESILIENT-1052)
+        run: bash scripts/ci/test-fleet-health-sentinel.sh
+
       # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
       # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
       # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.

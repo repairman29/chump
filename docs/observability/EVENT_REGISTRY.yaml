@@ -12388,3 +12388,53 @@ events:
       decision from docs/design/NODE_FABRIC.md component #2.
     consumers: [ambient, organ-reconcile (role-scoped), placement engine (future)]
     fields_required: [ts, kind, node_id, role_assigned, previous_role]
+
+  # ── RESILIENT-1052: anti-Memento fleet-health sentinel ─────────────────────
+  - kind: fleet_health_sentinel_tick
+    effect_metric: self
+    emitter: scripts/ops/fleet-health-sentinel.sh (RESILIENT-1052)
+    trigger: every sentinel pass (--local scan+heal, or --fleet cross-node
+      grade), healthy or not — the sentinel's own liveness proof. A dead
+      sentinel stops ticking, which the --fleet grader (and the local
+      reaper-heartbeat-watchdog stamp) detect as a missing/stale heartbeat.
+    consumers: [ambient, fleet-health-sentinel (--fleet), Roll Call]
+    fields_required: [ts, kind, node, mode]
+
+  - kind: fleet_health_self_healed
+    effect_metric: self
+    emitter: scripts/ops/fleet-health-sentinel.sh (RESILIENT-1052)
+    trigger: the sentinel reset-failed+restarted a failed chump unit, or
+      enable --now'd an inactive healer/timer, and it came back active —
+      observable proof the drift was corrected with no human step.
+    consumers: [ambient, Roll Call, waste-tally]
+    fields_required: [ts, kind, node, unit, action]
+
+  - kind: fleet_health_unit_failed
+    effect_metric: self
+    emitter: scripts/ops/fleet-health-sentinel.sh (RESILIENT-1052)
+    trigger: a failed chump unit did NOT recover after reset-failed+restart —
+      unhealable by the sentinel, so it pages the board (severity=halt) rather
+      than whisper. The exact class that left 33 units failed-and-unnoticed on
+      2026-09-07.
+    consumers: [ambient, notify-operator (page), Roll Call]
+    fields_required: [ts, kind, node, severity, msg]
+
+  - kind: fleet_health_healer_down
+    effect_metric: self
+    emitter: scripts/ops/fleet-health-sentinel.sh (RESILIENT-1052)
+    trigger: a required healer timer is inactive-and-unrecoverable or ABSENT on
+      a node (the cuphead+mugman state on 2026-09-07: zero drift protection
+      running). Pages the board — a healer that can die silently is the
+      amnesia engine.
+    consumers: [ambient, notify-operator (page), Roll Call]
+    fields_required: [ts, kind, node, severity, msg]
+
+  - kind: fleet_health_sentinel_peer_dead
+    effect_metric: self
+    emitter: scripts/ops/fleet-health-sentinel.sh (RESILIENT-1052, --fleet)
+    trigger: the cross-node grader found a node's sentinel heartbeat stale
+      (older than cadence x mult) or the node unreachable — the sentinel itself
+      is dead/wedged. This is the "watch the watcher" closure: if the sentinel
+      dies, something notices. Pages the board (severity=halt).
+    consumers: [ambient, notify-operator (page), Roll Call]
+    fields_required: [ts, kind, node, severity, msg]
