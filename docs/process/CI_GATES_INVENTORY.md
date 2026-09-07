@@ -11,6 +11,25 @@
 > mirrors. 6-8 of those filed as per-gate follow-ups (see § Follow-up gaps).
 > The rest are either low-frequency, low-cost-to-fail, or genuinely require
 > GitHub state.
+>
+> **Generated inventory (INFRA-5119, INFRA-1861 slice, 2026-09-06).** The
+> tables below are hand-maintained and drift as gates ship, get renamed, or
+> get removed (e.g. the Tier C `test-env-vars-internal-coverage.sh` row below
+> no longer corresponds to any `run:` step in `.github/workflows/*.yml` — the
+> gate was removed from CI since it was filed). The authoritative,
+> machine-generated per-gate mapping — every CI gate step scanned across
+> `ci.yml` + sibling workflows, matched against its `chump preflight` mirror,
+> Tier-D reason, or allowlist entry — lives at
+> [`docs/process/CI_GATES_GENERATED_INVENTORY.md`](./CI_GATES_GENERATED_INVENTORY.md).
+> Regenerate it with:
+> ```bash
+> CHUMP_GENERATE_INVENTORY=docs/process/CI_GATES_GENERATED_INVENTORY.md \
+>   bash scripts/ci/test-preflight-ci-parity.sh
+> ```
+> As of the last regeneration: **339 gate steps scanned, 0 MISSING** (all
+> have a mirror, a Tier-D reason, or an allowlist entry) — see that file's
+> "MISSING preflight equivalents" section for the live AC-2 list. When that
+> section is non-empty, file a gap per entry and add it to Tier C below.
 
 ## Reading guide
 
