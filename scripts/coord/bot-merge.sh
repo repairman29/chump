@@ -3523,6 +3523,20 @@ if [[ -z "$EXISTING_PR" ]]; then
         stage_done
     fi
 
+    # CREDIBLE-215: mechanical stub detection — advisory REACHES/TEST-ONLY/
+    # UNRELATED check before pr_create, so a stub-shaped diff (the
+    # EFFECTIVE-354/CREDIBLE-200 pattern: cascade ships a green, empty PR)
+    # is flagged locally instead of costing a full CI round + human read.
+    # Never blocks the ship — UNRELATED is a review signal, not a gate.
+    if [[ -n "${GAP_ID:-}" ]]; then
+        _REACHES_DIFF_FILE="$(mktemp)"
+        git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" > "$_REACHES_DIFF_FILE" 2>/dev/null || true
+        if [[ -s "$_REACHES_DIFF_FILE" ]]; then
+            chump verify-reaches --gap "$GAP_ID" --diff "$_REACHES_DIFF_FILE" 2>/dev/null || true
+        fi
+        rm -f "$_REACHES_DIFF_FILE"
+    fi
+
     stage_start "gh pr create"
     # Build a body from the gap IDs cited in commits since base diverged.
     COMMIT_LOG=$(git log "${REMOTE}/${BASE_BRANCH}..HEAD" --oneline 2>/dev/null | head -20)
