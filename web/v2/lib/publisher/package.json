@@ -5,7 +5,7 @@
   "private": true,
   "scripts": {
     "typecheck": "tsc -p tsconfig.json",
-    "test": "node --import tsx --test platforms.test.ts style.test.ts draft.test.ts queue.test.ts"
+    "test": "node --import tsx --test platforms.test.ts style.test.ts draft.test.ts queue.test.ts drive.test.ts track.test.ts e2e.test.ts"
   },
   "keywords": [],
   "author": "",
