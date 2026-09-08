@@ -75,6 +75,14 @@ KEEP=0
 IMAGE_TAG="chump-ftue-node:22.04"
 CTR_NAME="chump-ftue-$$"
 
+# RESILIENT-1084: per-run, per-uid temp log paths. A fixed shared path like
+# /tmp/ftue-docker-build.log gets left 0644 root-owned by a prior root/sudo
+# run, then Permission-Denied's every later non-root run into a silent
+# neutral-skip. mktemp gives each run a unique, self-owned file.
+DOCKER_BUILD_LOG="$(mktemp -t ftue-docker-build.XXXXXX)"
+FS_BUILD_LOG="$(mktemp -t ftue-fs-build.XXXXXX)"
+FS_LOG="$(mktemp -t ftue-fs.XXXXXX)"
+
 while [ $# -gt 0 ]; do
   case "$1" in
     --engine) ENGINE="$2"; shift 2;;
@@ -336,7 +344,7 @@ run_docker_engine() {
   trap docker_teardown EXIT
 
   c_info DOCKER "building clean Ubuntu 22.04 systemd image ($IMAGE_TAG)"
-  if ! docker build -t "$IMAGE_TAG" - >/tmp/ftue-docker-build.log 2>&1 <<'DOCKERFILE'; then
+  if ! docker build -t "$IMAGE_TAG" - >"$DOCKER_BUILD_LOG" 2>&1 <<'DOCKERFILE'; then
 FROM ubuntu:22.04
 ENV DEBIAN_FRONTEND=noninteractive
 # A faithful node userland: systemd as PID1 + the tools the installer's
@@ -362,7 +370,7 @@ RUN useradd -m -s /bin/bash node \
 STOPSIGNAL SIGRTMIN+3
 CMD ["/sbin/init"]
 DOCKERFILE
-    c_no "image build failed — see /tmp/ftue-docker-build.log"
+    c_no "image build failed — see $DOCKER_BUILD_LOG"
     c_skip "cannot provision the container layer; run --selfcheck for the host-agnostic gate"
     return 0
   fi
@@ -569,7 +577,7 @@ selfcheck_live_healthz() {
     if command -v cargo >/dev/null 2>&1; then
       c_info SELF "no prebuilt chump-fleet-server found — building once (debug)"
       if (cd "$REPO_ROOT" && RUSTC_WRAPPER="" CARGO_TARGET_DIR=/tmp/chump-fleet-server-target \
-            cargo build -p chump-fleet-server >/tmp/ftue-fs-build.log 2>&1); then
+            cargo build -p chump-fleet-server >"$FS_BUILD_LOG" 2>&1); then
         BIN="/tmp/chump-fleet-server-target/debug/chump-fleet-server"
       fi
     fi
@@ -589,7 +597,7 @@ with contextlib.closing(socket.socket()) as s:
   local FIXTURE="$REPO_ROOT/crates/chump-fleet-server/tests/fixtures/events.sql"
   [ -f "$FIXTURE" ] && command -v sqlite3 >/dev/null 2>&1 && sqlite3 "$DB" < "$FIXTURE" 2>/dev/null || true
 
-  CHUMP_FLEET_DB="$DB" CHUMP_FLEET_SERVER_PORT="$PORT" RUST_LOG=warn "$BIN" >/tmp/ftue-fs.log 2>&1 &
+  CHUMP_FLEET_DB="$DB" CHUMP_FLEET_SERVER_PORT="$PORT" RUST_LOG=warn "$BIN" >"$FS_LOG" 2>&1 &
   local PID=$!
   local ready=0 i
   for i in $(seq 1 20); do
@@ -599,7 +607,7 @@ with contextlib.closing(socket.socket()) as s:
   if [ "$ready" = 1 ]; then
     c_ok "LIVE: chump-fleet-server served /healthz -> ok on 127.0.0.1:$PORT"
   else
-    c_no "LIVE: /healthz never returned ok (see /tmp/ftue-fs.log)"; FAILS=$((FAILS+1))
+    c_no "LIVE: /healthz never returned ok (see $FS_LOG)"; FAILS=$((FAILS+1))
   fi
   kill "$PID" 2>/dev/null || true; wait "$PID" 2>/dev/null || true
   rm -rf "$(dirname "$DB")" 2>/dev/null || true
