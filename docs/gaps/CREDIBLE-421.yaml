@@ -1,0 +1,23 @@
+- id: CREDIBLE-421
+  domain: CREDIBLE
+  title: "mission-grade gauge dark: KPI report shows 'No mission-grade snapshots recorded yet' — the honest-measure gauge isn't recording"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    READ LIVE 2026-09-01 via chump kpi report: 'Mission Grade History (last 10): No mission-grade snapshots recorded yet.' The mission-grade gauge — the single honest measure of whether work advanced docs/MISSION.md — records nothing, so there's no trend to steer by. Separately, 182 of 259 (70%) of 30-day ships are UNTAGGED (no pillar prefix), so the KPI ship-rate-by-pillar breakdown is mostly blind. Contrast: the PR-casino/Brier instrument IS healthy (Brier 0.1418, settle-timer active) — the gap is specifically the mission-grade + pillar-attribution gauges. Fix: (a) wire a periodic mission-grade snapshot (scripts/dev/mission-scoreboard.sh output → a recorded series the KPI report reads); (b) enforce/backfill pillar tags so <20% of ships are untagged.
+  acceptance_criteria:
+    1. chump kpi report shows a non-empty Mission Grade History trend (snapshots recording on a cadence)
+    2. untagged 30d ships drop below 20% (tag enforcement or backfill)
+  notes: |
+    Closing: fix already shipped in PR #4563 (commit 62f1adc4a) — install-mission-grade-launchd.sh
+    rewritten to delegate to the cross-platform `chump cron install` (launchd/systemd, INFRA-2057)
+    instead of a hand-rolled macOS-only plist, plus a `mission-grade-cron` entry added to
+    scripts/setup/bootstrap-manifest.yaml so the 30-min `chump mission-grade` cadence installs
+    automatically (AC-1). crates/chump-kpi-report/src/kpi_report.rs's ship-rate-by-pillar
+    classifier now falls back to the gap's `domain` field when the title has no explicit pillar
+    prefix, since most gaps are titled '<DOMAIN>-<NUM>: ...' rather than 'EFFECTIVE: ...' (AC-2).
+    Verified present on main as of this session (`git log` shows 62f1adc4a; `cargo check --workspace`
+    clean). No further code change needed.
+  closed_date: '2026-09-08'
+  closed_pr: 4563
