@@ -731,10 +731,13 @@ struct PublicationEvent {
     artifact_type: String,
 }
 
-/// EFFECTIVE-364 slice (EFFECTIVE-478): resolves a shipped gap into
-/// publication work. This slice's resolver body is a placeholder — it
-/// records the event so a later EFFECTIVE-364 slice can turn it into
-/// reserved publish-target gaps (per docs/strategy/ARTIFACT_ORGANIZATION_2026-08-05.md).
+/// EFFECTIVE-364 slice (EFFECTIVE-834): resolves a shipped gap into
+/// publication work. Records the receipt for audit, then looks up
+/// `publish_targets.json` (via `chump_bench::get_publish_targets`, EFFECTIVE-477)
+/// for the shipped gap's `artifact_type`. When one or more targets are
+/// registered, reserves a low-priority follow-up gap per target so the
+/// "ship -> told" work actually lands in the queue; an unregistered
+/// artifact_type (the common case today) is a no-op past the receipt log.
 async fn resolve_publication(event: PublicationEvent, repo_root: PathBuf) -> Result<()> {
     use std::io::Write as _;
     let line = serde_json::to_string(&event)? + "\n";
@@ -747,6 +750,20 @@ async fn resolve_publication(event: PublicationEvent, repo_root: PathBuf) -> Res
         .append(true)
         .open(&path)?;
     f.write_all(line.as_bytes())?;
+
+    let targets = chump_bench::bench::get_publish_targets(&event.artifact_type);
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    let store = GapStore::open(&repo_root)?;
+    for target in targets {
+        let title = format!(
+            "Publish {} ({}) to {} [{}]",
+            event.source_gap_id, event.artifact_type, target.platform_id, target.target_type
+        );
+        store.reserve("EFFECTIVE", &title, "P3", "xs")?;
+    }
     Ok(())
 }
 
@@ -6620,6 +6637,77 @@ mod tests {
             PreflightResult::Done => {}
             other => panic!("expected Done, got {:?}", other),
         }
+    }
+
+    // EFFECTIVE-834 (EFFECTIVE-364 slice): resolve_publication reads the
+    // shipped gap's artifact_type, looks up publish_targets.json, and only
+    // reserves a follow-up "publish work" gap when a target is registered
+    // for that artifact_type. Exercises the resolver directly (rather than
+    // via ship()'s fire-and-forget background thread) so the assertion is
+    // deterministic.
+    #[tokio::test]
+    #[serial_test::serial(publish_targets_path_env)]
+    async fn effective834_resolver_queues_publish_work_when_targets_exist() {
+        let (store, dir) = test_store();
+        let repo_root = dir.path().to_path_buf();
+
+        let targets_path = dir.path().join("publish_targets.json");
+        std::fs::write(
+            &targets_path,
+            r#"{"doc":[{"target_type":"docs-site","platform_id":"github-pages","requires_approval":true}]}"#,
+        )
+        .unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_PUBLISH_TARGETS_PATH", &targets_path);
+        }
+
+        let event = PublicationEvent {
+            source_gap_id: "EFFECTIVE-999".to_string(),
+            artifact_type: "doc".to_string(),
+        };
+        resolve_publication(event, repo_root).await.unwrap();
+
+        unsafe {
+            std::env::remove_var("CHUMP_PUBLISH_TARGETS_PATH");
+        }
+
+        let open = store.list(Some("open")).unwrap();
+        assert!(
+            open.iter()
+                .any(|g| g.title.contains("EFFECTIVE-999") && g.title.contains("github-pages")),
+            "expected a queued publish-work gap, got: {:?}",
+            open.iter().map(|g| &g.title).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(publish_targets_path_env)]
+    async fn effective834_resolver_noop_when_no_targets_registered() {
+        let (store, dir) = test_store();
+        let repo_root = dir.path().to_path_buf();
+
+        let targets_path = dir.path().join("publish_targets.json");
+        std::fs::write(&targets_path, r#"{}"#).unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_PUBLISH_TARGETS_PATH", &targets_path);
+        }
+
+        let event = PublicationEvent {
+            source_gap_id: "EFFECTIVE-998".to_string(),
+            artifact_type: "code".to_string(),
+        };
+        resolve_publication(event, repo_root).await.unwrap();
+
+        unsafe {
+            std::env::remove_var("CHUMP_PUBLISH_TARGETS_PATH");
+        }
+
+        let open = store.list(Some("open")).unwrap();
+        assert!(
+            !open.iter().any(|g| g.title.contains("EFFECTIVE-998")),
+            "expected no publish-work gap when no targets are registered, got: {:?}",
+            open.iter().map(|g| &g.title).collect::<Vec<_>>()
+        );
     }
 
     #[test]
