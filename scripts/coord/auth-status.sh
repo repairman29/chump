@@ -153,7 +153,14 @@ if [[ -n "$_oauth_tok" && -z "${CHUMP_AUTH_STATUS_FAKE_OAUTH:-}" ]] && command -
     fi
 fi
 
-# ── probe api-key (cheap REST call: distinguishes valid / depleted / invalid) ─
+# ── probe api-key (cheap REST call: distinguishes valid / depleted / invalid /
+#    rate_limited / network_error) ────────────────────────────────────────────
+# CREDIBLE-449 (INFRA-621 probe slice): classify the Anthropic API response
+# body + HTTP status into a specific failure class instead of collapsing
+# everything non-2xx/non-401/403 into "unknown" — a depleted credit balance
+# (400 + "credit balance" in body), an invalid key (401/403), a rate limit
+# (429), and a network-layer failure (curl couldn't even reach the server,
+# code 000) each need a DIFFERENT fix and must not be confused for each other.
 _apikey_state="absent"
 if [[ -n "$_api_key" && -z "${CHUMP_AUTH_STATUS_FAKE_APIKEY:-}" ]]; then
     _tmp="$(mktemp -t authprobe.XXXXXX)"
@@ -166,6 +173,8 @@ if [[ -n "$_api_key" && -z "${CHUMP_AUTH_STATUS_FAKE_APIKEY:-}" ]]; then
         200) _apikey_state="valid" ;;
         400) if grep -qi 'credit balance' <<<"$_body"; then _apikey_state="depleted"; else _apikey_state="valid"; fi ;;
         401|403) _apikey_state="invalid" ;;
+        429) _apikey_state="rate_limited" ;;
+        000) _apikey_state="network_error" ;;
         *) _apikey_state="unknown" ;;
     esac
 fi
@@ -201,6 +210,10 @@ else
     RC=1
     if [[ "$_apikey_state" == "depleted" ]]; then
         MSG="AUTH ✗ BROKEN — api-key OUT OF CREDITS and oauth $_oauth_state. FIX: add credits at console.anthropic.com/settings/billing, OR run 'claude setup-token' and ensure ~/.chump/oauth-token.json holds it (then CHUMP_AUTH_MODE=oauth)."
+    elif [[ "$_apikey_state" == "rate_limited" && "$_oauth_state" != "valid" ]]; then
+        MSG="AUTH ✗ BROKEN — api-key RATE LIMITED (429, transient) and oauth $_oauth_state. FIX: retry shortly (do not rotate credentials for a rate limit), or run 'claude setup-token' for an oauth fallback."
+    elif [[ "$_apikey_state" == "network_error" && "$_oauth_state" != "valid" ]]; then
+        MSG="AUTH ✗ BROKEN — api-key probe hit a NETWORK ERROR (couldn't reach api.anthropic.com) and oauth $_oauth_state. FIX: check network/DNS/proxy; this is not a credential problem — re-probe with 'auth-status.sh --probe' once connectivity is restored."
     elif [[ "$_oauth_state" == "absent" && "$_apikey_state" == "absent" ]]; then
         MSG="AUTH ✗ BROKEN — no credentials found. FIX: run 'claude setup-token' (subscription oauth) → save to ~/.chump/oauth-token.json, OR set ANTHROPIC_API_KEY."
     else
