@@ -413,6 +413,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     let intent_files = [
         "README.md",
         "CLAUDE.md",
+        "MANIFESTO.md",
         "AGENTS.md",
         "ideas/TODO.md",
         "IMPLEMENTATION.md",
@@ -425,6 +426,26 @@ fn run_inner(args: &[String]) -> Result<()> {
             context_parts.push(format!("### {rel}\n{preview}"));
             inputs_read.push(InputRead {
                 path: rel.to_string(),
+                sha256: sha,
+                summary: first_line(&content),
+            });
+        }
+    }
+
+    // EFFECTIVE-416: repos that keep their intent docs under docs/*.md (no
+    // top-level ROADMAP.md, just e.g. docs/ARCHITECTURE.md, docs/VISION.md)
+    // were reported as "no readable intent documents" even though they had
+    // readable ones. Scan the whole docs/ dir for markdown files, skipping
+    // docs/ROADMAP.md since it's already handled above.
+    for rel in list_markdown_files(&clone_dir, "docs") {
+        if rel == "docs/ROADMAP.md" {
+            continue;
+        }
+        if let Some((content, sha)) = read_file_with_sha(&clone_dir, &rel) {
+            let preview = truncate_chars(&content, 3000);
+            context_parts.push(format!("### {rel}\n{preview}"));
+            inputs_read.push(InputRead {
+                path: rel.clone(),
                 sha256: sha,
                 summary: first_line(&content),
             });
@@ -1382,6 +1403,30 @@ fn read_file_with_sha(root: &Path, rel: &str) -> Option<(String, String)> {
     let content = fs::read_to_string(root.join(rel)).ok()?;
     let sha = hex_sha256(content.as_bytes());
     Some((content, sha))
+}
+
+/// List `*.md` files directly under `root/rel_dir` (non-recursive), returning
+/// paths relative to `root` (e.g. `"docs/ARCHITECTURE.md"`), sorted for
+/// deterministic output. Returns an empty vec if the dir doesn't exist.
+fn list_markdown_files(root: &Path, rel_dir: &str) -> Vec<String> {
+    let dir = root.join(rel_dir);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.to_ascii_lowercase().ends_with(".md") {
+                Some(format!("{rel_dir}/{name}"))
+            } else {
+                None
+            }
+        })
+        .collect();
+    out.sort();
+    out
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
@@ -2386,5 +2431,96 @@ mod tests {
             content.contains("CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED"),
             "CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED must be registered in scripts/ci/env-vars-internal.txt"
         );
+    }
+
+    // EFFECTIVE-416: repos whose only readable intent docs are MANIFESTO.md
+    // and/or free-form files under docs/*.md (not the fixed 7-file allowlist)
+    // must still be picked up — not reported as "no readable intent documents".
+    #[test]
+    fn test_list_markdown_files_finds_docs_dir_md_files() {
+        let base =
+            std::env::temp_dir().join(format!("chump_intent_docs_probe_{}", std::process::id()));
+        let docs_dir = base.join("docs");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::write(docs_dir.join("ARCHITECTURE.md"), "# Architecture\n").unwrap();
+        std::fs::write(docs_dir.join("VISION.md"), "# Vision\n").unwrap();
+        std::fs::write(docs_dir.join("ROADMAP.md"), "# Roadmap\n").unwrap();
+        std::fs::write(docs_dir.join("notes.txt"), "not markdown").unwrap();
+
+        let found = list_markdown_files(&base, "docs");
+        assert_eq!(
+            found,
+            vec![
+                "docs/ARCHITECTURE.md".to_string(),
+                "docs/ROADMAP.md".to_string(),
+                "docs/VISION.md".to_string(),
+            ]
+        );
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_list_markdown_files_missing_dir_returns_empty() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_intent_docs_probe_missing_{}",
+            std::process::id()
+        ));
+        assert!(list_markdown_files(&base, "docs").is_empty());
+    }
+
+    #[test]
+    fn test_manifesto_and_docs_glob_produce_readable_intent_context() {
+        // Simulates the olive-shaped repo: only MANIFESTO.md + docs/*.md exist,
+        // none of the pre-EFFECTIVE-416 fixed intent_files are present. Before
+        // the fix this repo shape produced zero context_parts and onboard
+        // bailed with "no readable intent documents found".
+        let base = std::env::temp_dir().join(format!(
+            "chump_intent_docs_probe_manifesto_{}",
+            std::process::id()
+        ));
+        let docs_dir = base.join("docs");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::write(base.join("MANIFESTO.md"), "# Our manifesto\n").unwrap();
+        std::fs::write(docs_dir.join("VISION.md"), "# Vision\n").unwrap();
+
+        let mut context_parts: Vec<String> = Vec::new();
+
+        let intent_files = [
+            "README.md",
+            "CLAUDE.md",
+            "MANIFESTO.md",
+            "AGENTS.md",
+            "ideas/TODO.md",
+            "IMPLEMENTATION.md",
+            "ROADMAP.md",
+            "docs/ROADMAP.md",
+        ];
+        for rel in &intent_files {
+            if let Some((content, _sha)) = read_file_with_sha(&base, rel) {
+                context_parts.push(format!("### {rel}\n{content}"));
+            }
+        }
+        for rel in list_markdown_files(&base, "docs") {
+            if rel == "docs/ROADMAP.md" {
+                continue;
+            }
+            if let Some((content, _sha)) = read_file_with_sha(&base, &rel) {
+                context_parts.push(format!("### {rel}\n{content}"));
+            }
+        }
+
+        assert!(
+            !context_parts.is_empty(),
+            "MANIFESTO.md + docs/*.md must be picked up as readable intent documents"
+        );
+        assert!(context_parts
+            .iter()
+            .any(|p| p.starts_with("### MANIFESTO.md")));
+        assert!(context_parts
+            .iter()
+            .any(|p| p.starts_with("### docs/VISION.md")));
+
+        std::fs::remove_dir_all(&base).ok();
     }
 }
