@@ -2673,3 +2673,9 @@ CHUMP_SUBSTRATE_PG_CONN
 CHUMP_SHARED_TARGET_HOT_OVERRIDE
 # detected in: (standard input)
 CHUMP_SHARED_TARGET_IDLE_MIN
+
+# Tier 2: fleet-health API staleness threshold (RESILIENT-1055) — seconds
+# before a node heartbeat is graded stale by GET /api/fleet/nodes. Defaults to
+# 900 (sentinel cadence 5m x stale-mult 3); override to stay coherent with the
+# sentinel's CHUMP_SENTINEL_CADENCE_MIN / CHUMP_SENTINEL_STALE_MULT.
+CHUMP_SENTINEL_STALE_SECS

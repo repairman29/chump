@@ -12,6 +12,12 @@
 //! - `GET /api/gaps` (RESILIENT-1030, authed) — open-gap queue state.
 //! - `POST /api/gap` (authed) — reserve/set/ship gap mutation.
 //! - `POST /api/mission` (authed) — external mission intake.
+//! - `POST /api/sentinel-heartbeat` (RESILIENT-1055, authed) — per-node
+//!   fleet-health-sentinel heartbeat ingest sink.
+//! - `GET /api/fleet/nodes` (RESILIENT-1055, authed) — cross-node systemd
+//!   organ health, aggregated server-side (which organs failed per node,
+//!   with server-computed staleness) so the operator reads one route instead
+//!   of SSH-crawling every node.
 //! - `WS  /api/live`
 //!
 //! ## Env vars

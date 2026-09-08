@@ -41,6 +41,8 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/mission", post(post_mission))
         .route("/api/gap", post(post_gap))
         .route("/api/gaps", get(get_gaps))
+        .route("/api/sentinel-heartbeat", post(post_sentinel_heartbeat))
+        .route("/api/fleet/nodes", get(get_fleet_nodes))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
         .with_state(state)
@@ -444,6 +446,188 @@ async fn post_gap(
                 .into_response()
         }
     }
+}
+
+// ── fleet-health heartbeats (RESILIENT-1055) ──────────────────────────────────
+
+/// Default staleness threshold (seconds): sentinel cadence 5m × stale-mult 3.
+/// Overridable via `CHUMP_SENTINEL_STALE_SECS` to stay coherent with the
+/// sentinel's own `CHUMP_SENTINEL_CADENCE_MIN` / `CHUMP_SENTINEL_STALE_MULT`.
+const DEFAULT_STALE_SECS: i64 = 900;
+
+fn stale_threshold_secs() -> i64 {
+    std::env::var("CHUMP_SENTINEL_STALE_SECS")
+        .ok()
+        .and_then(|v| v.trim().parse::<i64>().ok())
+        .filter(|n| *n > 0)
+        .unwrap_or(DEFAULT_STALE_SECS)
+}
+
+/// One node's health as reported by its last heartbeat, with server-computed
+/// freshness. `health` is the raw heartbeat body re-parsed, so per-organ detail
+/// (`failed_units`, `healers`) flows through untouched.
+#[derive(Serialize)]
+struct FleetNodeHealth {
+    node: String,
+    epoch: i64,
+    received_ms: i64,
+    age_secs: i64,
+    stale: bool,
+    health: serde_json::Value,
+}
+
+#[derive(Serialize)]
+struct FleetNodesResponse {
+    generated_ms: i64,
+    stale_threshold_secs: i64,
+    node_count: usize,
+    stale_count: usize,
+    /// Total `failed` chump units summed across all reporting nodes — the
+    /// single number that would have caught the 33-failed-organ incident.
+    failed_units_total: i64,
+    nodes: Vec<FleetNodeHealth>,
+}
+
+/// POST /api/sentinel-heartbeat (RESILIENT-1055) — ingest sink for the
+/// per-node fleet-health-sentinel heartbeat.
+///
+/// The sentinel (`scripts/ops/fleet-health-sentinel.sh`) already POSTs its
+/// heartbeat file here every pass; before this route it hit a 404 void. Body is
+/// the heartbeat JSON: it MUST carry a non-empty `node`; `epoch` (seconds) is
+/// used for staleness and falls back to server receive-time when absent. The
+/// full body is stored verbatim (keyed by node, latest wins).
+///
+/// Auth is the EXACT same fail-closed bearer check as the other write routes
+/// (`CHUMP_BATPHONE_TOKEN`), so a node pushing over the tailnet authenticates
+/// identically to `/api/gap`.
+async fn post_sentinel_heartbeat(
+    State(s): State<AppState>,
+    headers: axum::http::HeaderMap,
+    body: String,
+) -> Response {
+    // 1. Auth — fail-closed, identical to post_gap / post_mission.
+    if let Some(rejection) = check_bearer_auth(&headers) {
+        return rejection;
+    }
+
+    // 2. Parse body as JSON object.
+    let value: serde_json::Value = match serde_json::from_str(&body) {
+        Ok(v) => v,
+        Err(e) => {
+            return (
+                axum::http::StatusCode::BAD_REQUEST,
+                Json(serde_json::json!({"error": format!("invalid JSON body: {e}")})),
+            )
+                .into_response();
+        }
+    };
+
+    // 3. node is required (the aggregation key).
+    let node = value
+        .get("node")
+        .and_then(|v| v.as_str())
+        .map(|s| s.trim())
+        .unwrap_or_default();
+    if node.is_empty() {
+        return (
+            axum::http::StatusCode::BAD_REQUEST,
+            Json(serde_json::json!({"error": "heartbeat body must include a non-empty \"node\""})),
+        )
+            .into_response();
+    }
+
+    let received_ms = now_ms();
+    // epoch (seconds) is the node's own stamp; fall back to receive time.
+    let epoch = value
+        .get("epoch")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(received_ms / 1000);
+
+    match s
+        .store
+        .upsert_node_heartbeat(node, epoch, received_ms, &body)
+    {
+        Ok(()) => (
+            axum::http::StatusCode::ACCEPTED,
+            Json(serde_json::json!({"ok": true, "node": node, "epoch": epoch})),
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::error!("POST /api/sentinel-heartbeat store error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/fleet/nodes (RESILIENT-1055) — cross-node organ health, aggregated
+/// server-side from the pushed heartbeats.
+///
+/// Replaces the SSH crawl the sentinel's `--fleet` grade did (the covenant
+/// break): the operator reads one authenticated route instead of `ssh`-ing each
+/// node. Each node reports its `failed` count plus `failed_units` / `healers`
+/// detail; the server stamps `age_secs` + `stale` per node so a dead sentinel
+/// shows as a stale row rather than silence. Same fail-closed bearer auth as
+/// `/api/gaps`.
+async fn get_fleet_nodes(State(s): State<AppState>, headers: axum::http::HeaderMap) -> Response {
+    if let Some(rejection) = check_bearer_auth(&headers) {
+        return rejection;
+    }
+
+    let rows = match s.store.list_node_heartbeats() {
+        Ok(r) => r,
+        Err(e) => {
+            tracing::error!("GET /api/fleet/nodes error: {e}");
+            return (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": e.to_string()})),
+            )
+                .into_response();
+        }
+    };
+
+    let now = now_ms();
+    let now_secs = now / 1000;
+    let threshold = stale_threshold_secs();
+    let mut stale_count = 0usize;
+    let mut failed_units_total = 0i64;
+
+    let nodes: Vec<FleetNodeHealth> = rows
+        .into_iter()
+        .map(|hb| {
+            let age_secs = (now_secs - hb.epoch).max(0);
+            let stale = age_secs > threshold;
+            if stale {
+                stale_count += 1;
+            }
+            // Re-parse the stored body so per-organ detail passes through; on a
+            // malformed row fall back to the raw string rather than dropping it.
+            let health: serde_json::Value = serde_json::from_str(&hb.payload)
+                .unwrap_or_else(|_| serde_json::json!({"raw": hb.payload}));
+            failed_units_total += health.get("failed").and_then(|v| v.as_i64()).unwrap_or(0);
+            FleetNodeHealth {
+                node: hb.node,
+                epoch: hb.epoch,
+                received_ms: hb.received_ms,
+                age_secs,
+                stale,
+                health,
+            }
+        })
+        .collect();
+
+    Json(FleetNodesResponse {
+        generated_ms: now,
+        stale_threshold_secs: threshold,
+        node_count: nodes.len(),
+        stale_count,
+        failed_units_total,
+        nodes,
+    })
+    .into_response()
 }
 
 /// GET /healthz — liveness probe.

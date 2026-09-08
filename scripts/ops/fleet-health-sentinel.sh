@@ -65,7 +65,11 @@
 # ENV:
 #   CHUMP_STATE_DIR              heartbeat dir (default ~/.chump)
 #   CHUMP_AMBIENT_LOG            ambient jsonl (default <repo>/.chump-locks/ambient.jsonl)
-#   CHUMP_FLEET_SERVER_URL       if set, POST heartbeat to $URL/api/sentinel-heartbeat
+#   CHUMP_FLEET_SERVER_URL       POST heartbeat to $URL/api/sentinel-heartbeat
+#                                (default http://127.0.0.1:7070; point at
+#                                cuphead's tailnet addr on a non-server node).
+#                                Authed with CHUMP_BATPHONE_TOKEN (from env or
+#                                ~/.chump/providers.env), same as /api/gap.
 #   CHUMP_SENTINEL_CADENCE_MIN   cadence for --loop / staleness math (default 5)
 #   CHUMP_SENTINEL_STALE_MULT    heartbeat-stale multiplier (default 3 → 15min)
 #   CHUMP_SENTINEL_PAGE_SINK     TEST/audit hook: also append page payloads here
@@ -388,24 +392,70 @@ race_signature_check() {
     fi
 }
 
+# ── per-organ detail (RESILIENT-1055) ────────────────────────────────────────
+# Print the CURRENTLY-failed chump unit NAMES + each healer's present/active
+# state as JSON fragment: "failed_units":[...],"healers":[...]. Queried live at
+# heartbeat time (post-heal), so it is ground truth of what is failed RIGHT NOW
+# — the detail that turns "33 units failed and nobody noticed" into an API read.
+# Portable to bash 3.2 (the Mac board): no arrays, plain string concatenation.
+organ_detail_json() {
+    local units_json="" u first=1
+    while IFS= read -r u; do
+        [[ -z "$u" ]] && continue
+        [[ $first -eq 1 ]] && first=0 || units_json="$units_json,"
+        units_json="$units_json\"$u\""
+    done < <(failed_chump_units)
+
+    local healers_json="" h active first_h=1
+    for h in $REQUIRED_HEALERS; do
+        if unit_exists "$h" && unit_active "$h"; then active=true; else active=false; fi
+        [[ $first_h -eq 1 ]] && first_h=0 || healers_json="$healers_json,"
+        healers_json="$healers_json{\"unit\":\"$h\",\"required\":true,\"active\":$active}"
+    done
+    for h in $WATCHED_HEALERS; do
+        unit_exists "$h" || continue
+        if unit_active "$h"; then active=true; else active=false; fi
+        [[ $first_h -eq 1 ]] && first_h=0 || healers_json="$healers_json,"
+        healers_json="$healers_json{\"unit\":\"$h\",\"required\":false,\"active\":$active}"
+    done
+    printf '"failed_units":[%s],"healers":[%s]' "$units_json" "$healers_json"
+}
+
+# ── push the heartbeat to the fleet-server ingest sink (RESILIENT-1055) ───────
+# Defaults the URL to localhost:7070 (the canonical fleet-server bind) and
+# authenticates with the SAME CHUMP_BATPHONE_TOKEN the fleet-server's other
+# write routes require, sourcing it from providers.env when a systemd --user
+# timer started with no interactive env. Fail-soft: a missing server/token/curl
+# never breaks the pass. Non-server nodes point CHUMP_FLEET_SERVER_URL at
+# cuphead's tailnet address to feed the cross-node aggregator.
+push_heartbeat() {
+    local server_url="${CHUMP_FLEET_SERVER_URL:-http://127.0.0.1:7070}"
+    [[ -z "$server_url" ]] && return 0
+    command -v curl >/dev/null 2>&1 || return 0
+    local tok="${CHUMP_BATPHONE_TOKEN:-}"
+    if [[ -z "$tok" && -f "$HOME/.chump/providers.env" ]]; then
+        tok="$(grep -E '^(export )?CHUMP_BATPHONE_TOKEN=' "$HOME/.chump/providers.env" 2>/dev/null \
+            | tail -1 | sed -E 's/^(export )?CHUMP_BATPHONE_TOKEN=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')"
+    fi
+    curl -fsS -m 5 -X POST "${server_url%/}/api/sentinel-heartbeat" \
+        -H 'content-type: application/json' \
+        ${tok:+-H "Authorization: Bearer $tok"} \
+        --data-binary @"$HEARTBEAT_FILE" >/dev/null 2>&1 || true
+}
+
 write_heartbeat() {
     mkdir -p "$STATE_DIR" 2>/dev/null || true
-    local ep; ep="$(now_epoch)"
-    printf '{"ts":"%s","epoch":%s,"node":"%s","failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s}\n' \
-        "$(ts_iso)" "$ep" "$NODE_ID" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" \
+    local ep detail; ep="$(now_epoch)"; detail="$(organ_detail_json)"
+    printf '{"ts":"%s","epoch":%s,"node":"%s","failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s,%s}\n' \
+        "$(ts_iso)" "$ep" "$NODE_ID" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" "$detail" \
         > "$HEARTBEAT_FILE" 2>/dev/null || true
     echo "$ep" > "$REAPER_HB" 2>/dev/null || true
-    # best-effort push outward so grading can move server-side once fleet-server is up
-    if [[ -n "${CHUMP_FLEET_SERVER_URL:-}" ]] && command -v curl >/dev/null 2>&1; then
-        curl -fsS -m 5 -X POST "${CHUMP_FLEET_SERVER_URL%/}/api/sentinel-heartbeat" \
-            -H 'content-type: application/json' \
-            --data-binary @"$HEARTBEAT_FILE" >/dev/null 2>&1 || true
-    fi
+    push_heartbeat
 }
 
 snapshot_json() {
-    printf '{"node":"%s","epoch":%s,"failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s}\n' \
-        "$NODE_ID" "$(now_epoch)" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE"
+    printf '{"node":"%s","epoch":%s,"failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s,%s}\n' \
+        "$NODE_ID" "$(now_epoch)" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" "$(organ_detail_json)"
 }
 
 do_local_pass() {
