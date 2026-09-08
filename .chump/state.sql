@@ -33145,10 +33145,18 @@ gaps:
   status: open
   priority: P1
   effort: s
+  description: |
+    Extend `scripts/dev/chump-binary-unwedge.sh` by adding a top‑level `unwedge` command that (1) detects a wedged bot‑merge condition using the existing `probe_resources` logic, (2) terminates the offending process with `kill -9`, (3) invokes the claim‑recover flow by calling the appropriate slice‑3 script, (4) calls the existing `reap_zombies` helper to clean up, and (5) logs each step and returns a non‑zero exit code on any error.
+    
+    Target file(s):
+    - scripts/dev/chump-binary-unwedge.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The command detects a wedged bot‑merge condition, terminates the offending process, and then invokes the claim‑recover flow (slice 3).
-    - After execution the fleet reports a healthy state for the previously wedged bot‑merge.
-    - All steps are logged; on failure the command returns a non‑zero exit code and leaves the system in a safe state.
+    - In `scripts/dev/chump-binary-unwedge.sh`, a new function `detect_wedged_merge` returns true when a bot‑merge PID file `/tmp/bot_merge.pid` exists and the PID is still running.
+    - The `unwedge` command logs “Detected wedged bot‑merge PID <pid>”, issues `kill -9 <pid>`, and the log contains the exact line “Killed wedged bot‑merge PID <pid>”.
+    - After killing, the script invokes the claim‑recover flow by executing `scripts/dispatch/run-fleet.sh --recover-claim` and the log contains “Started claim‑recover flow”.
+    - The script calls `reap_zombies` (from line 126) after the recover step, logs “Reaped zombies”, and exits with status 0 on success; any failure in detection, killing, or recovery causes a non‑zero exit code and logs an error message.
   depends_on: [EFFECTIVE-1009]
   notes: |
     [chump harvest check 'EFFECTIVE']
