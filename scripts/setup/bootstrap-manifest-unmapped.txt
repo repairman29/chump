@@ -47,7 +47,6 @@ install-gap-doctor-cron-launchd.sh                         # 2026-05-24 seed: tr
 install-gh-token-rotate-launchd.sh                         # 2026-05-24 seed: triage pending (operator-secret-dependent)
 install-github-cache-reconcile-launchd.sh                  # 2026-05-24 seed: triage pending
 install-lint-storm-detector-launchd.sh                     # 2026-05-24 seed: triage pending
-install-mission-grade-launchd.sh                           # 2026-05-24 seed: triage pending
 install-operator-leverage-launchd.sh                       # 2026-05-24 seed: triage pending
 install-overnight-research-launchd.sh                      # 2026-05-24 seed: triage pending (opt-in research mode)
 install-pid-invariant-launchd.sh                           # 2026-05-24 seed: triage pending

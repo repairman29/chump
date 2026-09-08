@@ -1,68 +1,43 @@
 #!/usr/bin/env bash
-# install-mission-grade-launchd.sh — INFRA-599: install launchd agent that
-# runs `chump mission-grade` every 30 minutes, emitting a kind=mission_grade
-# event to .chump-locks/ambient.jsonl so the operator never has to ask
-# "are we on mission?" manually.
+# install-mission-grade-launchd.sh — INFRA-599 / CREDIBLE-421: install a
+# recurring cron job that runs `chump mission-grade` every 30 minutes,
+# emitting a kind=mission_grade event to .chump-locks/ambient.jsonl so
+# `chump kpi report`'s "Mission Grade History" trend is never empty and the
+# operator never has to ask "are we on mission?" manually.
 #
-# Idempotent: safe to re-run.
-# Disable:    launchctl unload ~/Library/LaunchAgents/dev.chump.mission-grade.plist
-# Force fire: launchctl start dev.chump.mission-grade
+# CREDIBLE-421: this used to hand-roll a macOS-only launchd plist, which
+# meant it silently did nothing on Linux workers and was never wired into
+# chump-fleet-bootstrap.sh's daemon manifest — so the gauge stayed dark on
+# every machine. Now delegates to `chump cron install` (INFRA-2057), which
+# auto-detects launchd (macOS) vs systemd --user (Linux) and is idempotent.
+#
+# Disable: chump cron uninstall --name mission-grade
+# Status:  chump cron status --name mission-grade
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
 REPO="$(resolve_main_worktree "$0")"
-PLIST_NAME="dev.chump.mission-grade.plist"
-DEST="$HOME/Library/LaunchAgents/$PLIST_NAME"
 
-mkdir -p "$HOME/Library/LaunchAgents"
+CHUMP_BIN="$(command -v chump || echo "$HOME/.cargo/bin/chump")"
+if [[ ! -x "$CHUMP_BIN" ]]; then
+  echo "ERROR: chump binary not found (looked at PATH and $HOME/.cargo/bin/chump)" >&2
+  exit 1
+fi
 
-cat >"$DEST" <<EOF
-<?xml version="1.0" encoding="UTF-8"?>
-<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-<plist version="1.0">
-<dict>
-  <key>Label</key>
-  <string>dev.chump.mission-grade</string>
-  <key>ProgramArguments</key>
-  <array>
-    <string>/bin/bash</string>
-    <string>-lc</string>
-    <string>$HOME/.cargo/bin/chump mission-grade</string>
-  </array>
-  <!-- Every 30 minutes. Emits kind=mission_grade to ambient.jsonl so the
-       operator dashboard and fleet workers can check pillar health without
-       running the subcommand manually. -->
-  <key>StartInterval</key>
-  <integer>1800</integer>
-  <key>RunAtLoad</key>
-  <true/>
-  <key>StandardOutPath</key>
-  <string>/tmp/chump-mission-grade.out.log</string>
-  <key>StandardErrorPath</key>
-  <string>/tmp/chump-mission-grade.err.log</string>
-  <key>WorkingDirectory</key>
-  <string>$REPO</string>
-  <key>EnvironmentVariables</key>
-  <dict>
-    <key>HOME</key>
-    <string>$HOME</string>
-    <key>PATH</key>
-    <string>/usr/local/bin:/opt/homebrew/bin:$HOME/.cargo/bin:/usr/bin:/bin</string>
-    <key>CHUMP_REPO_ROOT</key>
-    <string>$REPO</string>
-  </dict>
-</dict>
-</plist>
-EOF
+"$CHUMP_BIN" cron install --name mission-grade --interval 1800s \
+  --exec "$CHUMP_BIN mission-grade" \
+  --working-dir "$REPO" \
+  --description "CREDIBLE-421/INFRA-599: 4-pillar mission scorecard, emits kind=mission_grade to ambient.jsonl" \
+  --stdout-log /tmp/chump-mission-grade.out.log \
+  --stderr-log /tmp/chump-mission-grade.err.log \
+  --env "CHUMP_REPO_ROOT=$REPO"
 
-launchctl unload "$DEST" 2>/dev/null || true
-launchctl load "$DEST"
-
-echo "Installed and loaded: $DEST"
-launchctl list | grep -F "dev.chump.mission-grade" || true
 echo
-echo "Fires every 30 min (RunAtLoad=true so it runs now too)."
-echo "Force fire  : launchctl start dev.chump.mission-grade"
+"$CHUMP_BIN" cron status --name mission-grade || true
+echo
+echo "Fires every 30 min (installs run immediately too)."
+echo "Force fire  : chump mission-grade"
 echo "Tail logs   : tail -f /tmp/chump-mission-grade.{out,err}.log"
 echo "Check event : tail -5 $REPO/.chump-locks/ambient.jsonl | grep mission_grade"
+echo "Full trend  : chump kpi report"

@@ -244,3 +244,11 @@ installers:
     install: cp launchd/com.chump.fleet-version-skew-detect.plist ~/Library/LaunchAgents/ && sed -i '' "s|/path/to/Chump|$(pwd)|g; s|/path/to/HOME|$HOME|g" ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist && launchctl load ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist
     check: launchctl list 2>/dev/null | grep -q com.chump.fleet-version-skew-detect
     adds: ~/Library/LaunchAgents/com.chump.fleet-version-skew-detect.plist + 6h run
+
+  - id: mission-grade-cron
+    why: "CREDIBLE-421 — `chump mission-grade` emits kind=mission_grade to ambient.jsonl (the input `chump kpi report`'s Mission Grade History trend reads), but nothing ran it on a cadence: the old installer hand-rolled a macOS-only launchd plist and was never added to this manifest, so the gauge stayed dark ('No mission-grade snapshots recorded yet') on every host. Now delegates to cross-platform `chump cron install` (launchd on macOS, systemd --user on Linux, INFRA-2057)."
+    priority: P1
+    install: bash scripts/setup/install-mission-grade-launchd.sh
+    check: test -f "$HOME/Library/LaunchAgents/com.chump.mission-grade.plist" -o -f "$HOME/.config/systemd/user/chump-mission-grade.timer"
+    depends_on: [chump-binary]
+    adds: 30-min cadence run of `chump mission-grade` via chump-cron (launchd plist or systemd timer)
