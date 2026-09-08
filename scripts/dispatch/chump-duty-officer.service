@@ -1,0 +1,19 @@
+# RESILIENT-274 — the duty-officer: the no-human incident responder. Reads firing
+# health signals from ambient, looks each up in docs/process/PLAYBOOK_REGISTRY.yaml,
+# and routes T1 (executable auto-heal) -> T2 (agent runbook) -> T3 (escalate/page),
+# paging the operator ONLY at T3 through the quiet gate. This is the "human at 3am"
+# as a daemon, not a board session. Paired with chump-duty-officer.timer (~5 min).
+# Written in the helsinki (/root) convention; install-helsinki-atc.sh + chump-node-
+# install.sh host-rewrite /root -> the run-user HOME (User=, HOME=, WorkingDirectory,
+# PATH) so the SAME unit works on any owned node (cuphead/CJ: ubuntu/jeff HOME).
+[Unit]
+Description=Chump duty-officer — route firing health signals T1 auto-heal / T2 runbook / T3 page (RESILIENT-274)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+Environment=CHUMP_DUTY_OFFICER_EXECUTE=1
+ExecStart=/bin/bash -lc "set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/coord/duty-officer-loop.sh tick"
+TimeoutStartSec=300
