@@ -188839,7 +188839,7 @@ gaps:
 - id: MISSION-068
   domain: MISSION
   title: "MISSION: Implement Hetzner substrate configuration (MISSION-065 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -188848,6 +188848,7 @@ gaps:
     - Configuration can be toggled via environment variable or config file
   notes: |
     [2026-08-26T02:47:55Z] rot-reaper: PR #4215 auto-closed (required-check-red, 40h) 2026-08-26; re-attempt on fresh main.
+    [2026-09-08T14:38:03Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1079B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
