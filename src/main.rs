@@ -12807,6 +12807,35 @@ async fn main() -> Result<()> {
                     .filter(|g| g.status == "open" && g.title.to_lowercase().starts_with("race-"))
                     .collect();
 
+                // CREDIBLE-225: placeholder-title pollution — gaps filed with a
+                // throwaway/scratch title (e.g. "tmp", "test", "wip") carry no
+                // real intent, so their AC ends up genericized around the
+                // literal title text (see CREDIBLE-225 itself: title "tmp",
+                // AC reading "The change described by \"tmp\" is implemented
+                // ..."). is_acceptance_criteria_vague() doesn't catch these
+                // since the AC field is non-empty — this is a title-level check.
+                let placeholder_titles = [
+                    "tmp",
+                    "temp",
+                    "test",
+                    "testing",
+                    "wip",
+                    "asdf",
+                    "xxx",
+                    "foo",
+                    "todo",
+                    "placeholder",
+                    "scratch",
+                    "untitled",
+                ];
+                let placeholder_pollution: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        g.status == "open"
+                            && placeholder_titles.contains(&g.title.trim().to_lowercase().as_str())
+                    })
+                    .collect();
+
                 let done_with_closed_pr: Vec<&gap_store::GapRow> = all_gaps
                     .iter()
                     .filter(|g| g.status == "done" && g.closed_pr.is_some())
@@ -12850,6 +12879,7 @@ async fn main() -> Result<()> {
                         "open_with_closed_pr": open_with_closed_pr.len(),
                         "done_with_closed_pr": done_with_closed_pr.len(),
                         "race_test_pollution": race_pollution.len(),
+                        "placeholder_title_pollution": placeholder_pollution.len(),
                         "p0_gaps": p0_open.iter().map(|g| {
                             let age_days = (now_secs - g.created_at) / 86400;
                             let auto_filed = g.notes.contains(auto_filed_marker);
@@ -13005,6 +13035,14 @@ async fn main() -> Result<()> {
                     println!();
                     println!("race-* test pollution (open): {}", race_pollution.len());
                     for g in &race_pollution {
+                        println!("  {} — {}", g.id, g.title);
+                    }
+                    println!();
+                    println!(
+                        "placeholder-title pollution (open): {}",
+                        placeholder_pollution.len()
+                    );
+                    for g in &placeholder_pollution {
                         println!("  {} — {}", g.id, g.title);
                     }
                     // CREDIBLE-107: --flag-empty-evidence section.

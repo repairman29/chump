@@ -124,6 +124,17 @@ else
     fail "race_test_pollution count should be >=1 (got $RACE_COUNT)"
 fi
 
+# 4d. placeholder-title pollution check (CREDIBLE-225).
+"$BIN" gap reserve --domain CREDIBLE --priority P2 --effort xs \
+    --title "tmp" --quiet 2>/dev/null
+PLACEHOLDER_COUNT=$({ "$BIN" gap audit-priorities --json 2>/dev/null || true; } \
+    | python3 -c "import sys,json; d=json.load(sys.stdin); print(d.get('placeholder_title_pollution',0))" 2>/dev/null || echo 0)
+if [[ "$PLACEHOLDER_COUNT" -ge 1 ]]; then
+    ok "placeholder_title_pollution count >= 1 (got $PLACEHOLDER_COUNT)"
+else
+    fail "placeholder_title_pollution count should be >=1 (got $PLACEHOLDER_COUNT)"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
