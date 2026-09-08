@@ -840,6 +840,87 @@ pub fn build_claim_bust_section(repo_root: &Path) -> ClaimBustSection {
     ClaimBustSection { rows }
 }
 
+// ── Green-First-Try Rate Section (CREDIBLE-1112, slice of CREDIBLE-272) ─────
+
+/// Ship-pipeline green-first-try%: of the gaps that shipped (`kind=gap_shipped`),
+/// what fraction had zero `kind=bot_merge_phase_failure` events recorded against
+/// the same `gap_id` before shipping — i.e. the pipeline went green without a
+/// failed phase (fmt/clippy/test/push/pr-create) forcing a retry.
+#[derive(Debug, Default, Clone)]
+pub struct GreenFirstTrySection {
+    pub total_ships: u64,
+    pub green_first_try: u64,
+}
+
+impl GreenFirstTrySection {
+    pub fn green_first_try_pct(&self) -> f64 {
+        if self.total_ships == 0 {
+            0.0
+        } else {
+            (self.green_first_try as f64 / self.total_ships as f64) * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.total_ships == 0 {
+            return "═══ Green-First-Try% (CREDIBLE-1112) ═══\n  No gap_shipped events found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Green-First-Try% (CREDIBLE-1112) ═══\n  {}/{} ships green on first try ({:.1}%)\n",
+            self.green_first_try,
+            self.total_ships,
+            self.green_first_try_pct(),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"total_ships":{},"green_first_try":{},"green_first_try_pct":{:.1}}}"#,
+            self.total_ships,
+            self.green_first_try,
+            self.green_first_try_pct(),
+        )
+    }
+}
+
+/// Scan ambient.jsonl and correlate `gap_shipped` events against
+/// `bot_merge_phase_failure` events sharing the same `gap_id`.
+pub fn build_green_first_try_section(repo_root: &Path) -> GreenFirstTrySection {
+    use std::collections::HashSet;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut failed_gap_ids: HashSet<String> = HashSet::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "bot_merge_phase_failure" {
+            continue;
+        }
+        if let Some(gap_id) = extract_field(line, "gap_id") {
+            failed_gap_ids.insert(gap_id);
+        }
+    }
+
+    let mut section = GreenFirstTrySection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_shipped" {
+            continue;
+        }
+        let gap_id = match extract_field(line, "gap_id") {
+            Some(id) => id,
+            None => continue,
+        };
+        section.total_ships += 1;
+        if !failed_gap_ids.contains(&gap_id) {
+            section.green_first_try += 1;
+        }
+    }
+    section
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
@@ -852,6 +933,7 @@ pub struct KpiReport {
     pub leverage: LeverageSection,
     pub tokens_per_ship: TokensPerShipReport,
     pub handoff_rate: HandoffRateSection,
+    pub green_first_try: GreenFirstTrySection,
 }
 
 impl KpiReport {
@@ -873,12 +955,14 @@ impl KpiReport {
         out.push_str(&self.tokens_per_ship.render_text());
         out.push('\n');
         out.push_str(&self.handoff_rate.render_text());
+        out.push('\n');
+        out.push_str(&self.green_first_try.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
@@ -886,6 +970,7 @@ impl KpiReport {
             self.leverage.render_json(),
             self.tokens_per_ship.render_json(),
             self.handoff_rate.render_json(),
+            self.green_first_try.render_json(),
         )
     }
 }
@@ -1124,6 +1209,7 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         leverage: build_leverage_section(repo_root),
         tokens_per_ship: build_report(repo_root, window_days),
         handoff_rate: build_handoff_rate_section(repo_root, window_days),
+        green_first_try: build_green_first_try_section(repo_root),
     }
 }
 
@@ -3203,6 +3289,49 @@ mod tests {
         let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
         assert!(section.date.is_empty());
         assert!(section.render_text().contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1112_green_first_try_pct_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // CREDIBLE-1: shipped clean, no phase failure recorded.
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-1","pr_number":"101","commit_sha":"aaa"}"#,
+                // CREDIBLE-2: hit a clippy failure before shipping — NOT green-first-try.
+                r#"{"ts":"2026-09-01T00:05:00Z","kind":"bot_merge_phase_failure","step":"clippy","exit_code":13,"gap_id":"CREDIBLE-2","branch":"chump/credible-2"}"#,
+                r#"{"ts":"2026-09-01T00:10:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-2","pr_number":"102","commit_sha":"bbb"}"#,
+                // CREDIBLE-3: shipped clean, no phase failure recorded.
+                r#"{"ts":"2026-09-01T00:15:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-3","pr_number":"103","commit_sha":"ccc"}"#,
+                // Unrelated phase failure for a gap that never shipped — must not affect the ratio.
+                r#"{"ts":"2026-09-01T00:20:00Z","kind":"bot_merge_phase_failure","step":"test","exit_code":14,"gap_id":"CREDIBLE-4","branch":"chump/credible-4"}"#,
+            ],
+        );
+        let section = build_green_first_try_section(&tmp);
+        assert_eq!(section.total_ships, 3);
+        assert_eq!(section.green_first_try, 2);
+        assert!((section.green_first_try_pct() - (200.0 / 3.0)).abs() < 0.01);
+        assert!(section
+            .render_text()
+            .contains("2/3 ships green on first try"));
+        assert!(section
+            .render_json()
+            .contains(r#""total_ships":3,"green_first_try":2"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1112_green_first_try_zero_when_no_ships() {
+        let tmp = tempdir();
+        let section = build_green_first_try_section(&tmp);
+        assert_eq!(section.total_ships, 0);
+        assert_eq!(section.green_first_try, 0);
+        assert_eq!(section.green_first_try_pct(), 0.0);
+        assert!(section
+            .render_text()
+            .contains("No gap_shipped events found"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
