@@ -354,6 +354,13 @@ jobs:
         # the chump binary when it is missing.
         run: bash scripts/ci/test-outcome-gate.sh
 
+      - name: gap-store single source of truth — sqlite canonical, postgrest dormant, no silent 2nd store (RESILIENT-1057)
+        if: matrix.shard == 1
+        # Pure shell source-inspection; guards against reintroducing the gap-store
+        # split-brain ([[gap-store-split-brain-swamp]]). Runtime parity is checked
+        # on-node by scripts/coord/gap-store-single-source-check.sh.
+        run: bash scripts/ci/test-gap-store-single-source.sh
+
       - name: farmer stale-lease heartbeat — a present lease must never crash the tick (RESILIENT-313)
         if: matrix.shard == 1
         # Runs ON LINUX by design (test-farmer.sh SKIPs non-Darwin and never
