@@ -4712,6 +4712,67 @@ pub fn parse_json_ac_list(s: &str) -> Vec<String> {
     parse_json_string_list(s).unwrap_or_default()
 }
 
+/// EFFECTIVE-679: a single idea-drop record persisted to the curator's
+/// JSON queue file (`.chump/drops.json`).
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
+pub struct DropRecord {
+    pub id: String,
+    pub sentence: String,
+    pub citation: String,
+    pub status: String,
+    pub timestamp: i64,
+}
+
+/// Path to the idea-drop queue file under `<repo_root>/.chump/drops.json`.
+pub fn drops_path(repo_root: &Path) -> PathBuf {
+    repo_root.join(".chump").join("drops.json")
+}
+
+/// Persist a `{sentence, citation}` idea drop to the queue file, returning
+/// `(id, created)` where `created` is `true` for a brand-new record and
+/// `false` when an identical `(sentence, citation)` pair already existed.
+/// Idempotent: re-submitting the same pair returns the existing record's id
+/// instead of appending a duplicate.
+pub fn add_drop(repo_root: &Path, sentence: &str, citation: &str) -> Result<(String, bool)> {
+    let path = drops_path(repo_root);
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {} for drops.json", parent.display()))?;
+    }
+    let mut drops: Vec<DropRecord> = if path.exists() {
+        let body = std::fs::read_to_string(&path)
+            .with_context(|| format!("reading {}", path.display()))?;
+        serde_json::from_str(&body).unwrap_or_default()
+    } else {
+        Vec::new()
+    };
+
+    if let Some(existing) = drops
+        .iter()
+        .find(|d| d.sentence == sentence && d.citation == citation)
+    {
+        return Ok((existing.id.clone(), false));
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+    let record = DropRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        sentence: sentence.to_string(),
+        citation: citation.to_string(),
+        status: "new".to_string(),
+        timestamp,
+    };
+    let id = record.id.clone();
+    drops.push(record);
+
+    let body = serde_json::to_string_pretty(&drops).context("serializing drops.json")?;
+    std::fs::write(&path, body).with_context(|| format!("writing {}", path.display()))?;
+    Ok((id, true))
+}
+
 /// INFRA-1411: load a single gap from its YAML file as a fallback when
 /// state.db is missing the row or holds vague (TODO/TBD) acceptance_criteria.
 ///

@@ -934,6 +934,38 @@ async fn handle_lessons_post(
     })))
 }
 
+/// EFFECTIVE-679: POST /api/drop request body.
+#[derive(Debug, serde::Deserialize)]
+struct DropPostRequest {
+    sentence: String,
+    #[serde(default)]
+    citation: String,
+}
+
+/// EFFECTIVE-679: POST /api/drop — cheap idea-drop capture endpoint.
+/// Persists `{sentence, citation}` via `chump_gap_store::add_drop`, which is
+/// idempotent on the `(sentence, citation)` pair.
+async fn handle_drop_post(
+    Json(body): Json<DropPostRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    let sentence = body.sentence.trim();
+    if sentence.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "sentence must be non-empty".to_string(),
+        ));
+    }
+    let repo_root = crate::repo_path::runtime_base();
+    let (id, created) = chump_gap_store::add_drop(&repo_root, sentence, body.citation.trim())
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, e.to_string()))?;
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(serde_json::json!({ "id": id }))))
+}
+
 /// META-080: GET /api/lessons?tag=<task-tag> — agents read relevant lessons.
 /// Without `tag`, returns all non-expired lessons.
 async fn handle_lessons_get(
@@ -9417,6 +9449,8 @@ fn build_api_router() -> Router {
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
+        // EFFECTIVE-679: cheap idea-drop capture endpoint.
+        .route("/api/drop", post(handle_drop_post))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))
@@ -10236,6 +10270,47 @@ mod api_battle_tests {
             list.contains(id),
             "created gap {id} must appear in /api/gaps"
         );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn drop_post_is_idempotent_and_persists() {
+        let _dir = gap_write_test_env();
+        let repo_root = crate::repo_path::runtime_base();
+        let mut app = build_api_router();
+
+        let payload = serde_json::json!({"sentence": "hello world", "citation": "ref1"});
+        let req = json_req("POST", "/api/drop", payload.clone());
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert_eq!(res.status(), StatusCode::CREATED);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        let id = v.get("id").and_then(|x| x.as_str()).unwrap().to_string();
+        assert!(!id.is_empty());
+
+        // Re-posting the identical payload returns the same id, no dupe.
+        let req = json_req("POST", "/api/drop", payload);
+        let res = Service::call(&mut app, req).await.unwrap();
+        assert!(res.status() == StatusCode::OK || res.status() == StatusCode::CREATED);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v2: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v2.get("id").and_then(|x| x.as_str()), Some(id.as_str()));
+
+        // Durable on disk under the repo's .chump dir, with expected keys.
+        let drops_path = repo_root.join(".chump").join("drops.json");
+        let raw = std::fs::read_to_string(&drops_path).unwrap();
+        let drops: serde_json::Value = serde_json::from_str(&raw).unwrap();
+        let arr = drops.as_array().unwrap();
+        assert_eq!(arr.len(), 1, "no duplicate entry should be appended");
+        let rec = &arr[0];
+        assert_eq!(rec.get("id").and_then(|x| x.as_str()), Some(id.as_str()));
+        assert_eq!(
+            rec.get("sentence").and_then(|x| x.as_str()),
+            Some("hello world")
+        );
+        assert_eq!(rec.get("citation").and_then(|x| x.as_str()), Some("ref1"));
+        assert_eq!(rec.get("status").and_then(|x| x.as_str()), Some("new"));
+        assert!(rec.get("timestamp").and_then(|x| x.as_i64()).is_some());
     }
 
     #[tokio::test]

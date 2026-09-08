@@ -28,6 +28,8 @@ postgres = { version = "0.19", optional = true }
 # (async fn complete) plus the chump-gap-architect bin's tokio runtime.
 tokio = { version = "1", features = ["rt", "macros", "process"] }
 thiserror = "2"
+# EFFECTIVE-679: idea-drop endpoint needs generated ids for new drop records.
+uuid = { version = "1", features = ["v4"] }
 
 [features]
 # Opt-in test helpers (`conn_for_test`) for downstream crates that want to
