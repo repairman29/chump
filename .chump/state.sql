@@ -56671,7 +56671,7 @@ gaps:
 - id: EFFECTIVE-413
   domain: EFFECTIVE
   title: wire ALL inference slots — 25 free tool-capable models unreachable, and a paid sub never loads
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -56685,7 +56685,11 @@ gaps:
   notes: |
     Decomposed into 11 slices: EFFECTIVE-1531, EFFECTIVE-1532, EFFECTIVE-1533, EFFECTIVE-1534, EFFECTIVE-1535, EFFECTIVE-1536, EFFECTIVE-1537, EFFECTIVE-1538, EFFECTIVE-1539, EFFECTIVE-1540, EFFECTIVE-1541
   opened_date: '2026-08-19'
+  closed_date: '2026-09-08'
+  closed_pr: 4571
   outcome_id: CHUMPOS
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4571 titled 'EFFECTIVE-413: ...' merged 2026-09-08; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: EFFECTIVE-414
   domain: EFFECTIVE
