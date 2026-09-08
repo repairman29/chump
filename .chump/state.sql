@@ -4058,9 +4058,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new test case in the `tests` module of `src/precision_controller.rs` that exercises the audited positive location‑pinned CI assertion, and modify `scripts/ci/test-graphql-exhausted-false-positive-guard.sh` to replace the static guard with a dynamic path‑dispatch that evaluates the same assertion at runtime, causing the script to emit a PASS/FAIL result for that location.
+    
+    Target file(s):
+    - src/precision_controller.rs
+    - scripts/ci/test-graphql-exhausted-false-positive-guard.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All positive location assertions identified in the audit are converted to CLI behavior tests or dynamic path dispatches.
-    - CI run passes across refactored module structures.
+    - Running `cargo test --test precision_controller` executes a test named `test_positive_location_assertion_<id>` in `src/precision_controller.rs` and it exits with status 0.
+    - "Invoking `scripts/ci/test-graphql-exhausted-false-positive-guard.sh` with a mock positive location prints a line `PASS: <location>` and exits with code 0, as defined in the updated guard logic."
+    - A full CI run (`cargo test` followed by the guard script) completes with no failing tests or script errors, confirming the refactored module structure passes.
   depends_on: [CREDIBLE-1078]
   notes: |
     [chump harvest check 'gates']
@@ -4085,9 +4094,20 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Insert a pre‑check in each negative‑assertion helper (e.g., `fail` in test‑disk‑critical‑auto‑action.sh and test‑stale‑binary‑ship‑blocked.sh, and `assert_contains` in test‑gate‑signal‑audit.sh) that verifies the target file or symbol exists before evaluating its absence; if the target is missing, emit a “SKIPPED: target missing” message and exit with a distinct non‑zero code so the test does not pass vacuously.
+    
+    Target file(s):
+    - scripts/ci/test-disk-critical-auto-action.sh
+    - scripts/ci/test-gate-signal-audit.sh
+    - scripts/ci/test-stale-binary-ship-blocked.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - All negative assertions in scripts/ci/ incorporate target existence checks prior to evaluating absence.
-    - No negative assertion in scripts/ci/ passes vacuously when files/symbols move.
+    - "? In scripts/ci/test-disk-critical-auto-action.sh the `fail` function now begins with a file‑existence test and, when the target does not exist, prints “SKIPPED : target missing” and exits with code 2 instead of performing the original negative assertion."
+    - "? In scripts/ci/test-gate-signal-audit.sh the `assert_contains` function now checks that its target file exists before reading it; if the file is absent it prints “SKIPPED : target missing” and returns exit code 2."
+    - In scripts/ci/test-stale-binary-ship-blocked.sh the `fail` function now includes the same existence guard and behavior as described for `test-disk-critical-auto-action.sh`.
+    - Executing the CI suite with a deliberately removed target file causes the corresponding test to be reported as “SKIPPED” (visible in CI log) rather than as a passing test.
   depends_on: [CREDIBLE-1078, CREDIBLE-1079]
   notes: |
     [chump harvest check 'gates']
@@ -117256,7 +117276,7 @@ gaps:
     - "Idempotent: if the installed binary's build SHA already matches origin/main HEAD it skips cargo entirely, mirroring refresh-runner-binary.sh's SHA-skip; host-agnostic via detect_host()"
     - "VERIFY-LIVE: re-running on CJ leaves `almanac repos` resolvable and `almanac stats <slug>` >0 files; no side effects"
   notes: |
-    Decomposed into 5 slices: INFRA-5255, INFRA-5256, INFRA-5257, INFRA-5258, INFRA-5259
+    Decomposed into 5 slices: INFRA-5578, INFRA-5579, INFRA-5580, INFRA-5581, INFRA-5582
   opened_date: '2026-08-21'
 
 - id: INFRA-3637
@@ -177214,6 +177234,213 @@ gaps:
     - Running `almanac stats` on a fresh CJ node reports >0 files
     - "`chump gap reserve` dedupe returns hits (i.e., finds existing almanac data) instead of the message \"almanac unavailable\""
   depends_on: [INFRA-5575, INFRA-5576]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5578
+  domain: INFRA
+  title: "INFRA: Create install-almanac-organ.sh script with shebang and detect_host stub (INFRA-3635 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - File scripts/setup/install-almanac-organ.sh is created and has executable permissions
+    - "Script starts with a proper bash shebang (#!/usr/bin/env bash)"
+    - Script sources scripts/setup/chump-node-install.sh and calls detect_host() early in execution
+    - Running the script without arguments prints a helpful usage message and exits with code 1
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5579
+  domain: INFRA
+  title: "INFRA: Add repository cloning logic (INFRA-3635 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "If ~/Projects/almanac does not exist, the script clones https://github.com/repairman29/almanac into that path"
+    - "Clone is performed with `git clone --depth 1 --branch main https://github.com/repairman29/almanac ~/Projects/almanac`"
+    - "When ~/Projects/almanac already exists, the script skips the clone and logs \"repo already present\""
+    - After a successful clone, the directory contains a .git folder and a Cargo.toml file
+  depends_on: [INFRA-5578]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5580
+  domain: INFRA
+  title: "INFRA: Implement SHA idempotency check (INFRA-3635 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script fetches the latest commit SHA of origin/main from the cloned repository
+    - Script computes SHA‑256 of the existing ~/.cargo/bin/almanac binary using the sha256_hex function from chump-node-install.sh
+    - "If the binary SHA matches the repository HEAD SHA, the script logs \"binary up‑to‑date, skipping build\" and exits with code 0"
+    - If the binary is missing or SHA differs, the script proceeds to the build step
+    - Log messages clearly indicate whether a skip or a build will occur
+  depends_on: [INFRA-5579]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5581
+  domain: INFRA
+  title: "INFRA: Build almanac binary and hard‑copy to ~/.cargo/bin (INFRA-3635 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When the idempotency check determines a build is needed, the script runs `cargo build --release` inside ~/Projects/almanac
+    - Build completes without errors and produces target/release/almanac executable
+    - The resulting binary is copied to ~/.cargo/bin/almanac, preserving executable permissions
+    - After copy, `~/.cargo/bin/almanac --version` runs and reports a version string that includes the current commit SHA
+    - If the build fails, the script exits with a non‑zero status and leaves no partially‑copied binary
+  depends_on: [INFRA-5580]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5582
+  domain: INFRA
+  title: "INFRA: Add live verification and ensure idempotent side‑effects (INFRA-3635 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After installation, running `almanac repos` returns a non‑empty list and exits with code 0
+    - Running `almanac stats <some‑slug>` (where <some‑slug> is any repo slug returned by the previous command) prints a number greater than 0
+    - Re‑executing install-almanac-organ.sh does not modify existing repo data or create duplicate files in ~/.cargo/bin
+    - "Script finishes with exit code 0 on successful verification and logs \"verification passed\""
+    - No side‑effects such as additional git clones or extra cargo builds occur on the verification run
+  depends_on: [INFRA-5581]
   notes: |
     [chump harvest check 'MISSION']
     === primitives_index match for 'MISSION' ===
