@@ -1653,6 +1653,21 @@ async fn spawn_sonnet(
         "spawning Sonnet sub-agent (fire-and-forget)"
     );
 
+    // CREDIBLE-359: structured telemetry for every Agent-tool dispatch, so
+    // the fleet-wide opus-vs-sonnet delegation ratio (META-069) is auditable
+    // from ambient.jsonl instead of inferred from log-scraping.
+    emit_ambient(
+        &cfg.ambient_path,
+        &serde_json::json!({
+            "ts": Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "kind": "sub_agent_dispatched",
+            "role": det.role,
+            "gap_id": gap_id,
+            "model": "sonnet",
+            "delegated": true,
+        }),
+    );
+
     // Fire-and-forget: spawn claude -p in background so supervisor tick
     // doesn't block on LLM latency. Background process inherits ambient.
     tokio::spawn(async move {
@@ -1724,6 +1739,20 @@ async fn autorestart_curator(cfg: &Config, det: &DetectionResult) -> Result<()> 
     }
 
     info!(role, target = %target, "respawning curator pane");
+
+    // CREDIBLE-359: respawning a curator pane restarts its own Opus session
+    // in place — no delegation to a Sonnet sub-agent — so it's the
+    // delegated=false counterpart to the spawn_sonnet telemetry above.
+    emit_ambient(
+        &cfg.ambient_path,
+        &serde_json::json!({
+            "ts": Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+            "kind": "sub_agent_dispatched",
+            "role": role,
+            "model": "opus",
+            "delegated": false,
+        }),
+    );
 
     let respawn_status = std::process::Command::new("tmux")
         .args(["respawn-pane", "-t", &target, "-k", &respawn_cmd])
