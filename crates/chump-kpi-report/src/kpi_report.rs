@@ -221,6 +221,86 @@ impl ShipRateSection {
     }
 }
 
+// ── CREDIBLE-1113: time-to-land (CREDIBLE-272 slice) ────────────────────────
+//
+// "Time-to-land" is measured commit → production deployment. In this repo,
+// landing on `main` (via the squash-merge ship pipeline) *is* production
+// deployment — there is no separate deploy step. A squash merge keeps the
+// original author date (when the commit was authored / "committed") but
+// stamps a fresh committer date at merge time (when it landed), so
+// `committer_date - author_date` is a real, git-native measurement with no
+// dependency on ambient.jsonl or gap-store correlation.
+#[derive(Debug, Clone)]
+pub struct TimeToLandEntry {
+    pub commit: String,
+    pub commit_ts: i64,
+    pub landed_ts: i64,
+    pub seconds: i64,
+}
+
+#[derive(Debug, Default)]
+pub struct TimeToLandSection {
+    pub entries: Vec<TimeToLandEntry>,
+    pub window_days: u64,
+}
+
+impl TimeToLandSection {
+    pub fn mean_seconds(&self) -> f64 {
+        if self.entries.is_empty() {
+            return 0.0;
+        }
+        let sum: i64 = self.entries.iter().map(|e| e.seconds).sum();
+        sum as f64 / self.entries.len() as f64
+    }
+
+    pub fn p50_seconds(&self) -> i64 {
+        if self.entries.is_empty() {
+            return 0;
+        }
+        let mut secs: Vec<i64> = self.entries.iter().map(|e| e.seconds).collect();
+        secs.sort_unstable();
+        secs[secs.len() / 2]
+    }
+
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("═══ Time To Land (CREDIBLE-272) ═══\n");
+        if self.entries.is_empty() {
+            out.push_str("  No commits found in window — cannot measure time-to-land.\n");
+            return out;
+        }
+        out.push_str(&format!(
+            "  window: {}d  commits: {}  mean: {:.0}s  p50: {}s\n",
+            self.window_days,
+            self.entries.len(),
+            self.mean_seconds(),
+            self.p50_seconds(),
+        ));
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let entries_json: Vec<String> = self
+            .entries
+            .iter()
+            .map(|e| {
+                format!(
+                    r#"{{"commit":"{}","commit_ts":{},"landed_ts":{},"seconds":{}}}"#,
+                    e.commit, e.commit_ts, e.landed_ts, e.seconds
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"window_days":{},"commits":{},"mean_seconds":{:.1},"p50_seconds":{},"entries":[{}]}}"#,
+            self.window_days,
+            self.entries.len(),
+            self.mean_seconds(),
+            self.p50_seconds(),
+            entries_json.join(","),
+        )
+    }
+}
+
 /// A single mission-grade snapshot from ambient.jsonl.
 #[derive(Debug, Clone)]
 pub struct MissionGradeSnapshot {
@@ -852,6 +932,7 @@ pub struct KpiReport {
     pub leverage: LeverageSection,
     pub tokens_per_ship: TokensPerShipReport,
     pub handoff_rate: HandoffRateSection,
+    pub time_to_land: TimeToLandSection,
 }
 
 impl KpiReport {
@@ -873,12 +954,14 @@ impl KpiReport {
         out.push_str(&self.tokens_per_ship.render_text());
         out.push('\n');
         out.push_str(&self.handoff_rate.render_text());
+        out.push('\n');
+        out.push_str(&self.time_to_land.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"time_to_land":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
@@ -886,6 +969,7 @@ impl KpiReport {
             self.leverage.render_json(),
             self.tokens_per_ship.render_json(),
             self.handoff_rate.render_json(),
+            self.time_to_land.render_json(),
         )
     }
 }
@@ -1124,6 +1208,59 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         leverage: build_leverage_section(repo_root),
         tokens_per_ship: build_report(repo_root, window_days),
         handoff_rate: build_handoff_rate_section(repo_root, window_days),
+        time_to_land: build_time_to_land_section(repo_root, window_days),
+    }
+}
+
+/// CREDIBLE-1113: build the time-to-land section by reading `author date`
+/// (commit) and `committer date` (landed on main = production, since this
+/// repo's ship pipeline squash-merges straight to `main` with no separate
+/// deploy step) off `git log HEAD`. Never panics on a missing/broken git repo
+/// — returns an empty section instead.
+fn build_time_to_land_section(repo_root: &Path, window_days: u64) -> TimeToLandSection {
+    let cutoff = current_unix().saturating_sub(window_days * 86_400) as i64;
+    let out = std::process::Command::new("git")
+        .args(["log", "--pretty=format:%H|%at|%ct", "HEAD"])
+        .current_dir(repo_root)
+        .output();
+    let out = match out {
+        Ok(o) if o.status.success() => o,
+        _ => {
+            return TimeToLandSection {
+                entries: Vec::new(),
+                window_days,
+            }
+        }
+    };
+    let text = String::from_utf8_lossy(&out.stdout);
+    let mut entries = Vec::new();
+    for line in text.lines() {
+        let mut parts = line.splitn(3, '|');
+        let (commit, at, ct) = match (parts.next(), parts.next(), parts.next()) {
+            (Some(c), Some(a), Some(t)) => (c, a, t),
+            _ => continue,
+        };
+        let commit_ts: i64 = match at.parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        let landed_ts: i64 = match ct.parse() {
+            Ok(v) => v,
+            Err(_) => continue,
+        };
+        if landed_ts < cutoff {
+            continue;
+        }
+        entries.push(TimeToLandEntry {
+            commit: commit.to_string(),
+            commit_ts,
+            landed_ts,
+            seconds: (landed_ts - commit_ts).max(0),
+        });
+    }
+    TimeToLandSection {
+        entries,
+        window_days,
     }
 }
 
@@ -3203,6 +3340,57 @@ mod tests {
         let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
         assert!(section.date.is_empty());
         assert!(section.render_text().contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // ── CREDIBLE-1113: time-to-land ─────────────────────────────────────────
+
+    #[test]
+    fn credible_1113_time_to_land_measures_author_to_committer_gap() {
+        let tmp = tempdir();
+        std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.email", "test@example.com"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        std::process::Command::new("git")
+            .args(["config", "user.name", "Test"])
+            .current_dir(&tmp)
+            .output()
+            .unwrap();
+        // Author date (commit) 1000s before committer date (landed on main) —
+        // a known, exact time-to-land duration.
+        std::process::Command::new("git")
+            .args(["commit", "--allow-empty", "-m", "test commit"])
+            .current_dir(&tmp)
+            .env("GIT_AUTHOR_DATE", "1700000000 +0000")
+            .env("GIT_COMMITTER_DATE", "1700001000 +0000")
+            .output()
+            .unwrap();
+
+        let section = build_time_to_land_section(&tmp, 3650);
+        assert_eq!(section.entries.len(), 1);
+        assert_eq!(section.entries[0].seconds, 1000);
+        assert_eq!(section.p50_seconds(), 1000);
+        assert!((section.mean_seconds() - 1000.0).abs() < f64::EPSILON);
+        let text = section.render_text();
+        assert!(text.contains("mean: 1000s"), "text was: {text}");
+        let json = section.render_json();
+        assert!(json.contains(r#""seconds":1000"#), "json was: {json}");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible_1113_time_to_land_empty_when_no_git_repo() {
+        let tmp = tempdir();
+        let section = build_time_to_land_section(&tmp, 30);
+        assert!(section.entries.is_empty());
+        assert!(section.render_text().contains("No commits found"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
