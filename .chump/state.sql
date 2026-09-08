@@ -6791,7 +6791,7 @@ gaps:
 - id: CREDIBLE-225
   domain: CREDIBLE
   title: tmp
-  status: blocked
+  status: closed_not_a_bug
   priority: P2
   effort: m
   acceptance_criteria:
@@ -6801,7 +6801,10 @@ gaps:
   notes: |
     Decomposed into 5 slices: CREDIBLE-716, CREDIBLE-717, CREDIBLE-718, CREDIBLE-719, CREDIBLE-720
     [2026-09-03T19:22:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    
+    [2026-09-08T13:35:17Z] closed_not_a_bug (session credible-225-fleet-1-20260908-133127): gap has title 'tmp', empty description, no real spec. Auto-decompose has run against it at least twice (2026-08-19 -> CREDIBLE-581..585; later -> CREDIBLE-716..720), each time producing hallucinated self-referential sub-gaps ('Impact analysis for tmp change', 'Implement tmp change in identified code paths') with no grounding in an actual feature request. Fleet's own loop-detector (INFRA-3832) already auto-blocked this gap after 3 consecutive non-ship cycles. Closing as invalid rather than fabricating a fake 'tmp' code change; also closing the orphaned decompose sub-gaps below to stop further churn. Root-cause (decompose should refuse empty-description parents) filed separately.
   opened_date: '2026-08-19'
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-226
   domain: CREDIBLE
@@ -16992,7 +16995,7 @@ gaps:
 - id: CREDIBLE-581
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-395: Impact analysis for tmp change (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: xs
   description: |
@@ -17007,11 +17010,14 @@ gaps:
     - atomic_claim.rs defines a `const TMP_IMPACT_ANALYSIS` string that explicitly lists the `rating_picker_demotion` function as an affected path.
     - reflect.rs includes a unit test `test_tmp_impact_analysis` that asserts the `TMP_IMPACT_ANALYSIS` constant contains the substring “tmp”.
     - Both files compile without warnings and the new constant is publicly re‑exported (e.g., via `pub(crate)`) so that `cargo test` exercises the new test.
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-582
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-396: Implement \"tmp\" change in identified code paths (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P1
   effort: s
   acceptance_criteria:
@@ -17019,11 +17025,14 @@ gaps:
     - Compilation succeeds without warnings.
     - No existing functionality is broken (all current tests still pass).
   depends_on: [CREDIBLE-581]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-583
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-397: Add unit test verifying new \"tmp\" behavior (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P1
   effort: s
   acceptance_criteria:
@@ -17031,11 +17040,14 @@ gaps:
     - The test fails on the pre‑change code base and passes after the implementation.
     - Test is placed in the appropriate test module and follows project naming conventions.
   depends_on: [CREDIBLE-582]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-584
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-398: Add integration/CI test script for \"tmp\" (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -17043,11 +17055,14 @@ gaps:
     - The script exits with status 0 only when the new behavior is present.
     - The script is referenced in the CI configuration and runs on each push.
   depends_on: [CREDIBLE-582]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-585
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-399: Enforce formatting, clippy, and regression check (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: xs
   description: |
@@ -17063,6 +17078,9 @@ gaps:
     - "`scripts/ci/test-infra-124-docs-delta-trailer.sh` exits with a non‑zero status if `cargo fmt --check` would report a formatting issue."
     - "`scripts/ci/test-infra-257-doc-only-guards.sh` contains the exact command `cargo clippy --all-targets -D warnings` inside its `run_check` function."
   depends_on: [CREDIBLE-583, CREDIBLE-584]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-586
   domain: CREDIBLE
@@ -20692,7 +20710,7 @@ gaps:
 - id: CREDIBLE-716
   domain: CREDIBLE
   title: "CREDIBLE: Analyze required code changes for tmp (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: xs
   description: |
@@ -20709,11 +20727,14 @@ gaps:
     - In `scripts/ci/test-credible-155.sh`, the `run_verify` function checks that the YAML produced by `format_gap_yaml` contains a non‑empty `required_changes` array and fails the CI step if the array is missing or empty.
     - The CI inventory document `docs/process/CI_GATES_GENERATED_INVENTORY.md` contains a new section describing the `required_changes` field, its purpose, and format.
     - Running the CI test suite prints a line “required_changes validated” when the `run_verify` check passes, confirming the observable output.
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-717
   domain: CREDIBLE
   title: "CREDIBLE: Implement tmp change in CREDIBLE code path (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: s
   description: |
@@ -20729,11 +20750,14 @@ gaps:
     - The CI script `scripts/ci/test-credible-155.sh` completes successfully (exit status 0) after the change.
     - No other functions in `crates/chump-bench/src/bench.rs` emit new compilation warnings or failures.
   depends_on: [CREDIBLE-716]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-718
   domain: CREDIBLE
   title: "CREDIBLE: Add unit test for tmp behavior (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: s
   description: |
@@ -20749,11 +20773,14 @@ gaps:
     - The test verifies that calling the tmp‑creation API with a valid identifier returns `Ok` and that the created file contains the expected contents.
     - The test verifies that calling the same API with an invalid path returns an `Err` variant.
   depends_on: [CREDIBLE-717]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-719
   domain: CREDIBLE
   title: "CREDIBLE: Run cargo fmt and clippy checks (CREDIBLE-225 slice)"
-  status: open
+  status: closed_not_a_bug
   priority: P2
   effort: xs
   description: |
@@ -20769,6 +20796,9 @@ gaps:
     - Running `scripts/ci/test-pr-fmt-shepherd.sh` on a repository where `cargo clippy -- -D warnings` emits any warning exits with a non‑zero status and prints the clippy warning messages.
     - The `write_pr_checks` function in `scripts/ci/test-pr-fmt-shepherd.sh` invokes both `cargo fmt -- --check` and `cargo clippy -- -D warnings` in that order before completing.
   depends_on: [CREDIBLE-717]
+  notes: |
+    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
+  closed_date: '2026-09-08'
 
 - id: CREDIBLE-720
   domain: CREDIBLE
@@ -59295,7 +59325,7 @@ gaps:
     - "provider is gemini-3.6-flash not llama3.2:3b"
     - child slices filed into state.db
   notes: |
-     | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+    | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
   closed_date: '2026-08-31'
 
 - id: EFFECTIVE-517
@@ -180549,6 +180579,21 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5649
+  domain: INFRA
+  title: decompose should refuse vague/empty-description parent gaps instead of hallucinating sub-gaps
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    CREDIBLE-225 (title: 'tmp', empty description) was auto-decomposed at least twice by 'chump gap decompose --apply': 2026-08-19 produced CREDIBLE-581..585, a later run produced CREDIBLE-716..720. Both sets are self-referential hallucinations ('Impact analysis for tmp change', 'Implement tmp change in identified code paths') with zero grounding in a real feature request. The fleet's own loop-detector (INFRA-3832) already auto-blocked CREDIBLE-225 after 3 consecutive non-ship cycles. All 10 gaps (CREDIBLE-225 + 9 sub-gaps) were closed_not_a_bug in this session rather than shipping fake code. Root cause: decompose has no guard against LLM-hallucinated slicing when the parent has no real spec to slice.
+  acceptance_criteria:
+    - chump gap decompose refuses (or warns loudly) when the parent gap's title is a placeholder (e.g. 'tmp') and/or description is empty, instead of calling the LLM and filing sub-gaps with no grounding
+    - add a regression test in scripts/ci/test-*.sh or a Rust unit test covering the refusal path
+    - cargo fmt + clippy --all-targets -D warnings + check pass
+  notes: |
+    [2026-09-08T13:35:36Z] Filed while shipping/closing CREDIBLE-225 (session credible-225-fleet-1-20260908-133127).
 
 - id: INFRA-604
   domain: INFRA
