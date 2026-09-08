@@ -287,6 +287,18 @@ enabled     chump-digest.timer  role=data
 #     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
 #     not host-suffixed).
 enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file:~/cj-worker-run.sh
+# chump-node1-worker.service - the concrete worker unit on a non-CJ owned
+#     muscle node (mugman runs it as chump-node1-worker.service from
+#     ~/node1-worker-run.sh). RESILIENT-1083: the CJ block above was
+#     CJ-SHAPED (only chump-cj-worker), so a role=muscle organ-reconcile on a
+#     muscle node saw chump-node1-worker as "active but out-of-role" and
+#     drift-removed it (RESILIENT-1016) on the next node-refresh whose
+#     reset --hard wiped the local manifest survival edit, taking the node
+#     dark. Declaring it here - role=muscle, file:~/node1-worker-run.sh
+#     guarded so CJ/brain nodes lacking that script skip it silently - makes
+#     the muscle reconcile KEEP it instead of reaping the worker it is meant
+#     to preserve. The manifest now describes the real per-node roster.
+enabled     chump-node1-worker.service  role=muscle requires=bin:chump,bin:git,file:~/node1-worker-run.sh
 enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df,file:~/cj-disk-monitor-run.sh
 enabled     chump-cj-sync.service  role=data requires=bin:git,file:~/cj-sync-run.sh
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
