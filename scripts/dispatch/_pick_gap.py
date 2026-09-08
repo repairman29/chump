@@ -64,6 +64,45 @@ import time
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 
+# EFFECTIVE-1543: pickable = genuinely-open work ONLY.
+# The queue was spinning on done work (1,943 open, 0 closed/90min while worker
+# PRs kept merging): the picker trusted the JSON `status` field alone, but
+# `chump gap list --json` can hand back stale / split-brain rows (the gap store
+# has multiple drifting reps; observed EFFECTIVE-449 status=already_satisfied +
+# closed_pr=4381 re-picked into a DUPLICATE PR). A gap is pickable ONLY when its
+# status is open/ready AND it carries NO linked PR (closed_pr) and NO shipped_in
+# marker. Anything already done/shipped/closed/in-flight is excluded here so a
+# lying status field can never resurrect done work.
+PICKABLE_STATUSES = {"open", "ready"}
+_DONE_LIKE_STATUSES = {
+    "already_satisfied", "done", "shipped", "superseded", "closed",
+    "closed_not_a_bug", "duplicate", "wont_fix", "wontfix", "blocked",
+    "in_progress", "in-progress", "in_review", "in_flight", "perpetual",
+    "ready_to_ship",
+}
+
+
+def _is_pickable_open(g: dict) -> bool:
+    """True only for genuinely-open, un-shipped, un-linked gaps.
+
+    Belt-and-suspenders against a stale/split-brain status field: a gap that
+    already has a closed_pr or shipped_in is done regardless of what `status`
+    claims, and must never be re-picked.
+    """
+    status = (g.get("status") or "").strip().lower()
+    if status not in PICKABLE_STATUSES:
+        return False
+    cp = g.get("closed_pr")
+    if cp not in (None, "", 0, "0"):
+        return False
+    shipped = g.get("shipped_in")
+    if isinstance(shipped, str):
+        shipped = shipped.strip()
+    if shipped not in (None, "", 0, "0"):
+        return False
+    return True
+
+
 # MISSION-011: default active mission outcome when no explicit override is set.
 _DEFAULT_ACTIVE_MISSION = "MISSION-010"
 
@@ -446,7 +485,7 @@ def main() -> int:
         # blow through preflight (already-done = bail), and waste a cycle.
         # Observed in 2026-05-02 fleet logs: 6 workers each picking the
         # same closed INFRA-340 within 90s.
-        if g.get("status") != "open":
+        if not _is_pickable_open(g):
             continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by a more general gap and should never be picked up by

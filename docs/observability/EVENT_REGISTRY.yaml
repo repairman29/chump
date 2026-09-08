@@ -4585,6 +4585,17 @@ events:
       adjudication; a wrong auto-close would discard real work.
     consumers: [fleet-brief, operator-recall, audit-priorities]
     fields_required: [ts, kind, gap_id, pr_number, reason, source]
+  # ── EFFECTIVE-1543: merged-PR-title closure (queue-drain backstop) ──────────
+  - kind: gap_closed_from_merged_pr
+    effect_metric: self
+    emitter: scripts/coord/gap-doctor-reconcile.py --check-merged-pr-titles (EFFECTIVE-1543)
+    trigger: open gap whose gap-ID leads a MERGED PR title but whose canonical
+      state.db row was never flipped to done (closed_pr NULL) — the async-merge
+      ghost class that --check-closure-drift (needs closed_pr) and
+      --check-already-satisfied (no-op cycle-log signal only) both miss. The
+      picker re-selects these forever; this drains them from GitHub truth.
+    consumers: [fleet-brief, operator-recall, audit-priorities]
+    fields_required: [ts, kind, gap_id, pr_number, merged_at, source]
   # ── INFRA-1040: graphql exhaustion fleet-wide signal ──────────────────────
   - kind: graphql_exhausted
     effect_metric: self
