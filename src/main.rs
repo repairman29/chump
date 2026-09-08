@@ -10314,6 +10314,33 @@ async fn main() -> Result<()> {
                 let why = args.iter().any(|a| a == "--why");
                 let skip_obs_acs = args.iter().any(|a| a == "--skip-obs-acs");
                 let custom_acceptance_criteria = flag("--acceptance-criteria");
+                // CREDIBLE-1098 (CREDIBLE-284/CREDIBLE-1030 slice): --no-ac-required
+                // bypasses the P0/P1 acceptance-criteria requirement below.
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
+
+                // CREDIBLE-1098: P0/P1 gaps require --acceptance-criteria unless
+                // --no-ac-required (or the env bypass) is passed. Checked before the
+                // match below consumes custom_acceptance_criteria.
+                let custom_ac_provided = custom_acceptance_criteria
+                    .as_deref()
+                    .map(|s| !s.is_empty())
+                    .unwrap_or(false);
+                {
+                    let enforce_priorities = ["P0", "P1"];
+                    let needs_ac = enforce_priorities.contains(&priority.as_str());
+                    let ac_bypass_env =
+                        std::env::var("CHUMP_GAP_RESERVE_NO_AC").as_deref() == Ok("1");
+                    if needs_ac && !custom_ac_provided && !no_ac_required && !ac_bypass_env {
+                        eprintln!();
+                        eprintln!(
+                            "chump gap: P0/P1 gaps require --acceptance-criteria <text> (per CREDIBLE-1098)."
+                        );
+                        eprintln!(
+                            "Bypass: --no-ac-required, or CHUMP_GAP_RESERVE_NO_AC=1."
+                        );
+                        std::process::exit(1);
+                    }
+                }
 
                 // INFRA-756: compute acceptance_criteria. Default to 4 obs-AC templates
                 // unless --skip-obs-acs is set or --acceptance-criteria is provided.
