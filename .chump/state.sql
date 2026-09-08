@@ -34167,10 +34167,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Modify the `run` function in `crates/chump-preflight/src/preflight.rs` to invoke `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` sequentially, capture their exit statuses, and return an error (non‑zero exit) with a clear message when either command reports needed changes or warnings; otherwise return success.
+    
+    Target file(s):
+    - crates/chump-preflight/src/preflight.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "`cargo fmt` runs without changes needed."
-    - "`cargo clippy --all-targets -D warnings` completes with zero warnings."
-    - All existing tests and the new tests from slices 3‑5 pass.
+    - In `crates/chump-preflight/src/preflight.rs`, the `run` function returns `Ok(())` only when both `cargo fmt -- --check` and `cargo clippy --all-targets -D warnings` exit with status 0.
+    - Executing the preflight binary (e.g., `cargo run --bin chump-preflight`) on a repository that is already formatted and has no clippy warnings prints “cargo fmt --check passed” and “cargo clippy passed” and exits with status 0.
+    - When a Rust source file is deliberately mis‑formatted, running the preflight binary exits with a non‑zero status and its stdout contains the substring “cargo fmt needs changes”.
+    - When `cargo clippy` would emit a warning, running the preflight binary exits with a non‑zero status and its stderr includes the specific clippy warning text.
   depends_on: [EFFECTIVE-1046]
   notes: |
     [chump harvest check 'readable']
@@ -50877,6 +50885,272 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: EFFECTIVE-1531
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Raise MAX_SLOTS constant to accommodate CHUMP_PROVIDER_15_* entries (EFFECTIVE-413 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - MAX_SLOTS constant in src/provider_cascade.rs is increased from 14 to at least 20
+    - All CHUMP_PROVIDER_15_* entries from .env are loaded without error
+    - Running the inference inventory shows the previously missing paid slot is now reachable
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1532
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Fix stale comment on MAX_SLOTS line describing Gemini variants (EFFECTIVE-413 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Comment on line 20 of src/provider_cascade.rs accurately reflects current slot usage (no Gemini references)
+    - Code compiles with no warnings about outdated comments
+  depends_on: [EFFECTIVE-1531]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1533
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Encode free‑first, paid‑fallback ordering in PRIORITY values (EFFECTIVE-413 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - All free slots have higher PRIORITY numeric values than paid‑per‑token slots
+    - Subscription slots have the lowest PRIORITY values
+    - No slot (12‑15) has a missing PRIORITY field
+  depends_on: [EFFECTIVE-1532]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1534
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Cap unbounded paid slot 14 (deepseek‑v4‑pro) with RPD limit (EFFECTIVE-413 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - provider_cascade.rs line 418 now includes an rpd_limit for slot 14 (e.g., 1000 requests per day)
+    - Runtime logs show the cap being enforced when the limit is reached
+  depends_on: [EFFECTIVE-1533]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1535
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add configuration entries for the 25 free Zen models (tool_call=true) (EFFECTIVE-413 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - All 25 free Zen models appear in the .env file with CHUMP_PROVIDER_* keys
+    - Each entry sets tool_call=true and appropriate context limits
+    - Running the inventory CSV shows these models as reachable
+  depends_on: [EFFECTIVE-1533]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1536
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Verify loading of highest‑value free models (longcat‑2.0‑free, mimo‑v2‑pro‑free, grok‑code, deepseek‑v4‑flash‑free) (EFFECTIVE-413 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Each of the four named models can be selected via the inference API without error
+    - Response latency and context size meet documented expectations
+  depends_on: [EFFECTIVE-1535]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1537
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Wire live‑key providers: xai, openai‑direct, deepseek‑direct (EFFECTIVE-413 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Provider entries for xai, openai‑direct, and deepseek‑direct are added to .env and provider_cascade.rs
+    - Each provider can successfully authenticate using the supplied live keys
+    - Inference calls using these providers return valid results
+  depends_on: [EFFECTIVE-1533]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1538
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Handle disabled slots: together (3) and github‑models (7) (EFFECTIVE-413 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Slots 3 and 7 are marked as disabled in configuration (e.g., enabled=false)
+    - No attempt is made to load or invoke these slots during runtime
+    - Documentation notes the reason for disabling
+  depends_on: [EFFECTIVE-1533]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1539
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Deduplicate slot 4 vs slot 8 (gemini‑2.5‑flash) and keep correct configuration (EFFECTIVE-413 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Only one slot for gemini‑2.5‑flash remains after cleanup
+    - Chosen slot retains the correct RPD (86400) and CONTEXT_K (128) values
+    - Priority for the retained slot is set to 12
+  depends_on: [EFFECTIVE-1533]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
 - id: EFFECTIVE-154
   domain: EFFECTIVE
   title: "EFFECTIVE: Wire bypass-env-var-allowlist.txt into role curator-opus-target"
@@ -50896,6 +51170,67 @@ gaps:
     - Executing `bash scripts/ci/test-quartermaster-audit-loop.sh` completes successfully with exit code 0.
   opened_date: '2026-07-26'
   outcome_id: EFFECTIVE-000
+
+- id: EFFECTIVE-1540
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Update .env.example with new provider templates and corrected comments (EFFECTIVE-413 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - .env.example contains placeholders for all newly added free Zen models and live‑key providers
+    - Comments accurately describe slot ordering and priority rules
+    - File passes a lint check for missing or malformed entries
+  depends_on: [EFFECTIVE-1535, EFFECTIVE-1536, EFFECTIVE-1537, EFFECTIVE-1538, EFFECTIVE-1539]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+
+- id: EFFECTIVE-1541
+  domain: EFFECTIVE
+  title: "EFFECTIVE: Add integration test to verify free slots are tried before paid slots and paid slot respects RPD cap (EFFECTIVE-413 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Test simulates a series of inference requests exhausting free slot quotas
+    - After free quota is exhausted, requests fall back to paid‑per‑token slots in correct priority order
+    - When the capped paid slot 14 reaches its RPD limit, further requests are rejected or routed to the next slot
+    - Test passes in CI pipeline
+  depends_on: [EFFECTIVE-1534, EFFECTIVE-1536, EFFECTIVE-1537, EFFECTIVE-1540]
+  notes: |
+    [chump harvest check 'inference']
+    === primitives_index match for 'inference' ===
+    
+    === cluster keyword match for 'inference' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'inference' ===
+      chump/src/inference_router.rs:8 — llm_router (//! See docs/arsenal/cross-pollination/CP-011-bicameral-mind.md for the)
+    
+    === repo-description match for 'inference' ===
+    
+    === HARVEST_ROADMAP.md mention of 'inference' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'inference' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
 
 - id: EFFECTIVE-155
   domain: EFFECTIVE
@@ -54525,7 +54860,7 @@ gaps:
     - "ALSO WIRE the three providers holding live keys with no slot: xai (a ready template already sits unused in .env.example:430-433), openai-direct, deepseek-direct. And decide on the two disabled slots: together (3) and github-models (7), the latter of which has a literal unexpanded '' as its key"
     - "DEDUPE slot 4 vs slot 8: both declare model=gemini-2.5-flash on the same base at the SAME priority=12, so ordering between them is arbitrary. Slot 4 claims RPD 86400 (~36x the real free quota) and CONTEXT_K=128 for a 1M-context model, and carries no privacy tier while its twin is marked trains. Slot 4 is a stale hand-entry"
   notes: |
-    Decomposed into 12 slices: EFFECTIVE-1435, EFFECTIVE-1436, EFFECTIVE-1437, EFFECTIVE-1438, EFFECTIVE-1439, EFFECTIVE-1440, EFFECTIVE-1441, EFFECTIVE-1442, EFFECTIVE-1443, EFFECTIVE-1444, EFFECTIVE-1445, EFFECTIVE-1446
+    Decomposed into 11 slices: EFFECTIVE-1531, EFFECTIVE-1532, EFFECTIVE-1533, EFFECTIVE-1534, EFFECTIVE-1535, EFFECTIVE-1536, EFFECTIVE-1537, EFFECTIVE-1538, EFFECTIVE-1539, EFFECTIVE-1540, EFFECTIVE-1541
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
