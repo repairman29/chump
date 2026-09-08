@@ -17,6 +17,13 @@
 //!                        emits ambient ALERTs; Phase 1 forbids new
 //!                        ambient emit, so this subcommand prints a
 //!                        notice and exits 0.
+//! - `check-second-store` — RESILIENT-1057: sqlite (`state.db`) is the
+//!                        canonical gap store. If `CHUMP_GAP_STORE_URL` is
+//!                        set (the optional PostgREST second store,
+//!                        INFRA-2092), probe it via `curl` and compare its
+//!                        open-gap count to sqlite's. Unset/unreachable is
+//!                        treated as dormant (fine); reachable-but-diverging
+//!                        is the silent split-brain this guards against.
 //!
 //! ## Exit codes
 //!
@@ -24,14 +31,80 @@
 //! - `sync-from-yaml` — 0 on success, 1 on DB error.
 //! - `sync-from-db`   — 0 (banner only).
 //! - `safe-sweep`     — 0 (banner only).
+//! - `check-second-store` — 0 if canonical/dormant/consistent, 1 if diverged.
 
-use std::process::ExitCode;
+use std::process::{Command, ExitCode};
 
+use chump_gap_store::backend::guard::{evaluate, SecondStoreState};
 use chump_gap_store::maintenance::doctor::{GapDoctor, HealMode};
 use chump_gap_store::maintenance::resolve_repo_root;
+use chump_gap_store::GapStore;
 
 fn usage() {
-    eprintln!("usage: chump-gap-doctor <doctor|sync-from-yaml|sync-from-db|safe-sweep> [--apply] [--dry-run]");
+    eprintln!("usage: chump-gap-doctor <doctor|sync-from-yaml|sync-from-db|safe-sweep|check-second-store> [--apply] [--dry-run]");
+}
+
+/// RESILIENT-1057: probe the optional PostgREST second store (if
+/// `CHUMP_GAP_STORE_URL` is set) via `curl` and turn the result into a
+/// [`SecondStoreState`]. Shelling out to `curl` avoids pulling an HTTP
+/// client dependency into `chump-gap-store` for a check that only runs
+/// when an operator has opted into the second store.
+fn probe_second_store(base_url: &str) -> SecondStoreState {
+    // `Prefer: count=exact` + `Range: 0-0` asks PostgREST for a
+    // `Content-Range: 0-0/<exact-count>` header without transferring rows.
+    let output = Command::new("curl")
+        .arg("-sS")
+        .arg("-i")
+        .arg("--max-time")
+        .arg("5")
+        .arg("-H")
+        .arg("Prefer: count=exact")
+        .arg("-H")
+        .arg("Range-Unit: items")
+        .arg("-H")
+        .arg("Range: 0-0")
+        .arg(format!("{base_url}/shared_gaps?status=eq.open&select=id"))
+        .output();
+
+    let output = match output {
+        Ok(o) => o,
+        Err(e) => {
+            return SecondStoreState::Unreachable {
+                detail: format!("curl spawn failed: {e}"),
+            }
+        }
+    };
+    if !output.status.success() {
+        return SecondStoreState::Unreachable {
+            detail: format!(
+                "curl exited {}: {}",
+                output.status,
+                String::from_utf8_lossy(&output.stderr).trim()
+            ),
+        };
+    }
+    let text = String::from_utf8_lossy(&output.stdout);
+    let status_line = text.lines().next().unwrap_or("");
+    if !(status_line.contains(" 200") || status_line.contains(" 206")) {
+        return SecondStoreState::Unreachable {
+            detail: format!("non-2xx response: {}", status_line.trim()),
+        };
+    }
+    // Content-Range: 0-0/1946  (or 0-0/*  if PostgREST couldn't count)
+    let count = text
+        .lines()
+        .find_map(|line| {
+            line.strip_prefix("Content-Range: ")
+                .or_else(|| line.strip_prefix("content-range: "))
+        })
+        .and_then(|v| v.rsplit('/').next())
+        .and_then(|n| n.trim().parse::<u64>().ok());
+    match count {
+        Some(n) => SecondStoreState::Reachable { open_count: n },
+        None => SecondStoreState::Unreachable {
+            detail: format!("no parseable Content-Range in response headers: {status_line}"),
+        },
+    }
 }
 
 fn main() -> ExitCode {
@@ -149,6 +222,46 @@ fn main() -> ExitCode {
                  Run: chump gap dump --per-file --out-dir docs/gaps to apply.)"
             );
             ExitCode::SUCCESS
+        }
+        "check-second-store" => {
+            // RESILIENT-1057: sqlite (state.db) is canonical. If
+            // CHUMP_GAP_STORE_URL points at a live PostgREST second store,
+            // verify it agrees with sqlite's open-gap count instead of
+            // silently trusting (or ignoring) it.
+            let store = match GapStore::open(&root) {
+                Ok(s) => s,
+                Err(e) => {
+                    eprintln!(
+                        "[chump-gap-doctor] check-second-store: failed to open state.db: {:#}",
+                        e
+                    );
+                    return ExitCode::from(2);
+                }
+            };
+            let sqlite_open = match store.list_by_status_ordered("open") {
+                Ok(rows) => rows.len() as u64,
+                Err(e) => {
+                    eprintln!(
+                        "[chump-gap-doctor] check-second-store: failed to list open gaps: {:#}",
+                        e
+                    );
+                    return ExitCode::from(2);
+                }
+            };
+            let second_store = match std::env::var("CHUMP_GAP_STORE_URL") {
+                Ok(url) if !url.trim().is_empty() => probe_second_store(url.trim()),
+                _ => SecondStoreState::NotConfigured,
+            };
+            let verdict = evaluate(sqlite_open, &second_store);
+            println!(
+                "[chump-gap-doctor] check-second-store: {}",
+                verdict.render()
+            );
+            if verdict.is_alarm() {
+                ExitCode::from(1)
+            } else {
+                ExitCode::SUCCESS
+            }
         }
         "safe-sweep" => {
             // Phase 1 forbids new ambient emit; the Python tool's
