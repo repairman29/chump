@@ -1,11 +1,17 @@
 - id: CREDIBLE-225
   domain: CREDIBLE
   title: tmp
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"tmp\" is implemented in the relevant CREDIBLE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 5 slices: CREDIBLE-581, CREDIBLE-582, CREDIBLE-583, CREDIBLE-584, CREDIBLE-585
+    
+    Closing: fix already shipped in PR #4556 (commit 68b4cbd08) — placeholder-title gap pollution (tmp/test/wip) detection added to 'chump gap audit-priorities' (src/main.rs, placeholder_title_pollution field) with regression test in scripts/ci/test-gap-audit-priorities.sh (4d: reserves a gap titled 'tmp', asserts placeholder_title_pollution count >= 1). Verified present on main as of this session. The 5 decomposed sub-gaps (CREDIBLE-581..585) were LLM-generated against the literal placeholder title 'tmp' and never had real content — closing this umbrella supersedes them; no further code change needed.
+  closed_date: '2026-09-08'
+  closed_pr: 4556
 
