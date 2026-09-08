@@ -1,0 +1,11 @@
+# Pairs with chump-duty-officer.service. Fires the incident-response scan every
+# ~5 min so a firing health signal is caught + routed without a human. Enable:
+# systemctl enable --now chump-duty-officer.timer
+[Unit]
+Description=Run the Chump duty-officer incident-response scan every 5 minutes (RESILIENT-274)
+[Timer]
+OnBootSec=2min
+OnUnitActiveSec=5min
+Persistent=true
+[Install]
+WantedBy=timers.target

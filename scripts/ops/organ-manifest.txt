@@ -195,7 +195,14 @@ enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
 # completeness (scripts/ci/test-resilient-366-organ-roll-call.sh) now fails CI
 # if a roster timer is ever added to the installer without a matching line
 # here, so this class of drift cannot recur silently again.
-enabled     chump-armed-rebaser.timer  role=muscle requires=bin:gh
+# RESILIENT-1054: chump-armed-rebaser.timer REMOVED from the desired roster.
+# The cross-node rebaser swarm (armed-rebaser / armed-pr-rebaser / pr-auto-rebase
+# + worker pr-repair-rebase) force-pushed open PRs faster than the `verified`
+# aggregator finishes = the merge-race that stalled ships to zero. The shepherd
+# neutered them via zz-shepherd-disable.conf drop-ins on all nodes; enforcing them
+# in the roster would durably re-create the race. chump-merge-serializer.timer
+# (RESILIENT-372, below) is the SOLE merge driver. Do NOT re-add this line.
+# disabled    chump-armed-rebaser.timer  role=muscle requires=bin:gh
 
 # chump-merge-serializer.timer: RESILIENT-372 native-merge-queue substitute.
 # Native GitHub merge queue is Team/Enterprise-only and unavailable on this
@@ -207,6 +214,9 @@ enabled     chump-armed-rebaser.timer  role=muscle requires=bin:gh
 # disabling chump-armed-rebaser.timer so it stops resetting verified on main moves.
 enabled     chump-merge-serializer.timer  role=muscle requires=bin:gh
 enabled     chump-board-cycle.timer  role=brain
+# RESILIENT-274: the duty-officer — reads firing health signals, routes
+# T1 auto-heal / T2 runbook / T3 page (the no-human incident responder).
+enabled     chump-duty-officer.timer  role=brain
 # RESILIENT-376: the DISCORD DIGEST organ — twice-daily phone-readable
 # factory pulse (SHIPPED/THE NUMBER/STUCK/NEEDS-YOUR-CALL) to the operator
 # Discord DM. role=data (publishes state, no muscle). Deterministic state
