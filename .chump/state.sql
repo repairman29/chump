@@ -4389,11 +4389,18 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add logic to the `check_already_satisfied` function that detects when all files changed by a PR reside under the `docs/gaps/` directory and, in that case, marks the corresponding gap as “bookkeeping‑only” in the audit output, while preserving that flag after the gap markdown is updated to list the same files.
+    
+    Target file(s):
+    - scripts/coord/gap-doctor-reconcile.py
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - A test creates a PR that only modifies files under `docs/gaps/` and closes a gap.
-    - The audit flags the gap as bookkeeping‑only.
-    - The flag persists after the gap text is updated to list the same files the PR touched (simulating CREDIBLE‑175).
-    - Test passes in CI.
+    - Running `gap-doctor-reconcile.py` on a synthetic PR that modifies only `docs/gaps/example.md` produces an audit JSON where the gap’s `bookkeeping_only` field is true.
+    - After updating `docs/gaps/example.md` to list the changed file and re‑running `gap-doctor-reconcile.py`, the `bookkeeping_only` flag remains true.
+    - The `check_already_satisfied` function returns early with the bookkeeping‑only flag set when `changed_files` matches the pattern `docs/gaps/*` (validated by a unit test added to `scripts/coord/gap-doctor-reconcile.py`).
+    - A CI test that opens a PR changing a non‑gap file (e.g., `src/main.rs`) confirms that the `bookkeeping_only` flag is not set for that gap.
   depends_on: [CREDIBLE-1091, CREDIBLE-1096]
   notes: |
     [chump harvest check 'closed']
@@ -4422,11 +4429,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new “Acceptance Criteria Flag” subsection to the A2A_MAILBOX_SEMANTICS design document that documents the `--acceptance-criteria <text>` and `--no-ac-required` CLI options, and update the CLI implementation (in the existing command handling code) to enforce that gaps created with priority P0 or P1 must include `--acceptance-criteria` unless `--no-ac-required` is supplied, storing the exact text verbatim in the gap record.
+    
+    Target file(s):
+    - docs/design/A2A_MAILBOX_SEMANTICS.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - CLI accepts a `--acceptance-criteria <text>` argument and stores the exact text in the gap record.
-    - When creating a gap with priority P0 or P1, the command fails if `--acceptance-criteria` is omitted, returning a non‑zero exit code and a clear error message.
-    - "`--no-ac-required` flag bypasses the requirement for P0/P1 and allows creation without AC."
-    - Provided acceptance criteria are persisted verbatim (no trimming or formatting changes).
+    - Running `credible create-gap --priority P0` without `--acceptance-criteria` exits with a non‑zero status and prints the error message “Acceptance criteria required for priority P0/P1”.
+    - "Running `credible create-gap --priority P0 --acceptance-criteria \"User must verify X\"` exits with status 0 and the created gap record contains the exact string “User must verify X” unchanged."
+    - Running `credible create-gap --priority P0 --no-ac-required` exits with status 0 and does not require an `--acceptance-criteria` argument.
+    - The file `docs/design/A2A_MAILBOX_SEMANTICS.md` includes a new subsection titled “Acceptance Criteria Flag” that describes the two flags, their purpose, and the enforcement rules.
   notes: |
     [chump harvest check 'reserve']
     === primitives_index match for 'reserve' ===
@@ -4505,10 +4519,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Update the `sync_pull` function in `crates/chump-gap-store/src/sync.rs` to read the `acceptance_criteria` field from the parent `GapRow` when a decompose operation is performed and copy that exact string into every generated sub‑task `GapRow`, while removing any later code that would overwrite or generate new acceptance criteria for those sub‑tasks.
+    
+    Target file(s):
+    - crates/chump-gap-store/src/sync.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Decompose operation reads any existing `acceptance_criteria` from the parent gap and copies it unchanged to all generated sub‑tasks.
-    - Decompose never overwrites or generates new acceptance criteria; the original text remains identical after decomposition.
-    - "CI smoke test validates: (a) reserve P1 without AC is refused, (b) reserve P1 with AC stores the exact text, (c) after decompose the stored AC on the parent and sub‑tasks is unchanged."
+    - In `crates/chump-gap-store/src/sync.rs`, after a decompose call the parent `GapRow`'s `acceptance_criteria` field is unchanged from its original value.
+    - In `crates/chump-gap-store/src/sync.rs`, each sub‑task `GapRow` created by decompose contains an `acceptance_criteria` field that exactly matches the parent’s original text.
+    - Executing `scripts/ci/test-wizard-daemon-dry-run-readonly.sh` with a reservation that includes custom acceptance criteria produces CI output showing the identical acceptance‑criteria text stored on the parent gap and on all generated sub‑tasks.
   depends_on: [CREDIBLE-1098, CREDIBLE-1099]
   notes: |
     [chump harvest check 'reserve']
@@ -15207,11 +15228,19 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Extend the `cmd_safe_sweep` function in `scripts/coord/gap-doctor.py` to parse the sweep JSON, generate a markdown report that lists each missing target with a clickable link to the source file and line, and dispatch the report non‑blocking to the Slack channel `#rot-detector` (via webhook) and as a GitHub issue labeled “rot-detector”.  Add a minimal test harness in `scripts/ci/test-gap-doctor-safe-sweep.sh` that validates the report file creation and the non‑zero‑exit‑code behavior.
+    
+    Target file(s):
+    - scripts/coord/gap-doctor.py
+    - scripts/ci/test-gap-doctor-safe-sweep.sh
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The script converts the JSON output of the sweep into a markdown report summarising each missing target with file and line number.
-    - "The report is automatically posted to the designated Slack channel #rot‑detector or opened as a GitHub issue labeled \"rot‑detector\"."
-    - The report is marked as informational only; it does not block PR merges or CI pipelines.
-    - Each entry in the report includes a link to the source file and line for easy triage.
+    - In `scripts/coord/gap-doctor.py`, after processing the sweep JSON, a file `sweep_report.md` is written containing a markdown table where each row includes the missing target name, the repository file path, and a hyperlink to the exact line on GitHub.
+    - The `cmd_safe_sweep` implementation calls the configured Slack webhook URL and creates a GitHub issue titled “Sweep Report – <timestamp>” with label `rot-detector`; both actions complete without causing the function to exit with a non‑zero status.
+    - Running `scripts/ci/test-gap-doctor-safe-sweep.sh` against a fixture JSON produces `sweep_report.md`, posts to Slack, creates the GitHub issue, and the script exits with status 0.
+    - The generated markdown report is marked as informational only (no `fail` or `error` flags) and does not block PR merges or CI pipelines, as verified by the CI pipeline’s success status after the test script runs.
   depends_on: [CREDIBLE-531]
 
 - id: CREDIBLE-534
@@ -98023,7 +98052,7 @@ gaps:
   acceptance_criteria:
     - Running Claude Code sessions poll URGENT-INBOX mid-session and act on fix_trunk signals within a bounded interval; a test signal is picked up without a session restart.
   notes: |
-    Decomposed into 9 slices: INFRA-5308, INFRA-5309, INFRA-5310, INFRA-5311, INFRA-5312, INFRA-5313, INFRA-5314, INFRA-5315, INFRA-5316
+    Decomposed into 9 slices: INFRA-5615, INFRA-5616, INFRA-5617, INFRA-5618, INFRA-5619, INFRA-5620, INFRA-5621, INFRA-5622, INFRA-5623
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -99651,7 +99680,7 @@ gaps:
     - "[\"chump claim INFRA-X --paths foo.sh,bar.rs scans every currently-open PR (gh pr list --json files) for path overlap\",\"On any overlap with an open PR: refuse claim with clear message: [claim] paths overlap with open PR #N (gap INFRA-Y, paths: foo.sh). Options: (a) coordinate with #N author and merge into that PR, (b) wait for #N to land then rebase, (c) --allow-overlap to proceed anyway (audit-logged via kind=claim_path_overlap_allowed).\",\"Auto-detection of same-region work (not just same-file): when same file overlaps, run git diff to extract modified line-ranges; only flag as collision if the proposed claim would touch the same line-range. Single-file with disjoint line-ranges still allowed.\",\"Operator-mode: when CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1 (operator-only env, source-controlled), claim proceeds without check (operator may know they want to ship 2 PRs touching same file)\",\"Emit kind=claim_path_overlap_blocked (and recovered) to ambient.jsonl with {claimed_gap, blocking_pr, blocking_gap, overlapping_paths}\",\"Smoke test scripts/ci/test-claim-path-overlap.sh: mock 1 open PR with file [a.sh]; claim with --paths a.sh exits non-zero with redirect message; claim with --paths b.sh succeeds\",\"Today trigger 2026-06-02: INFRA-2343 (PR #2924, 37h old) and INFRA-2347 both fixed the same 3 printf"
     - "grep -q patterns in scripts/coord/trunk-sentinel-daemon.sh. Different gap IDs, different titles, same code. Bypassed every existing dedup gate.\",\"Filing-time companion follow-up (separate gap if scope grows): chump gap reserve also checks title-similarity against OPEN PR titles (not just other gaps). Catches the case where 2 authors independently file 2 gaps for the same problem.\"]"
   notes: |
-    Decomposed into 4 slices: INFRA-4996, INFRA-4997, INFRA-4998, INFRA-4999
+    Decomposed into 4 slices: INFRA-5624, INFRA-5625, INFRA-5626, INFRA-5627
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -179224,6 +179253,342 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5615
+  domain: INFRA
+  title: "INFRA: INFRA-5308: Add URGENT-INBOX polling hook to Claude session runtime (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Polling hook is invoked at least once per session lifecycle
+    - Hook does not block the main execution thread
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5616
+  domain: INFRA
+  title: "INFRA: INFRA-5309: Implement bounded interval timer for polling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Timer triggers the polling hook every 30 seconds (configurable)
+    - Timer stops automatically when the session ends
+  depends_on: [INFRA-5615]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5617
+  domain: INFRA
+  title: "INFRA: INFRA-5310: Integrate URGENT-INBOX client library into session process (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Session can successfully authenticate to URGENT-INBOX
+    - Session can fetch messages from the URGENT-INBOX endpoint without errors
+  depends_on: [INFRA-5615]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5618
+  domain: INFRA
+  title: "INFRA: INFRA-5311: Detect fix_trunk signal in poll response (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "When a message with type \"fix_trunk\" is received, it is identified by the parser"
+    - The parsed signal includes the required payload fields (e.g., trunkId, action)
+  depends_on: [INFRA-5617]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5619
+  domain: INFRA
+  title: "INFRA: INFRA-5312: Trigger session fix_trunk handler on detected signal (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Detected fix_trunk signal invokes the existing session fix_trunk routine
+    - Invocation occurs without throwing exceptions
+  depends_on: [INFRA-5618]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5620
+  domain: INFRA
+  title: "INFRA: INFRA-5313: Ensure session continues without restart after handling fix_trunk (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After fix_trunk handling, the session remains active and can process further user code
+    - No session restart logs are emitted
+  depends_on: [INFRA-5619]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5621
+  domain: INFRA
+  title: "INFRA: INFRA-5314: Unit test for fix_trunk signal detection (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test injects a mock URGENT-INBOX message with type fix_trunk
+    - Parser returns a correctly populated signal object
+    - Test passes in CI
+  depends_on: [INFRA-5618]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5622
+  domain: INFRA
+  title: "INFRA: INFRA-5315: Integration test for end‑to‑end polling and fix_trunk handling (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test starts a Claude session, sends a mock fix_trunk message to URGENT-INBOX
+    - Session polls, detects the signal, runs fix_trunk handler, and continues processing
+    - Test verifies that the session does not restart and the handler was executed
+  depends_on: [INFRA-5620, INFRA-5621]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5623
+  domain: INFRA
+  title: "INFRA: INFRA-5316: Deploy polling configuration and add monitoring alerts (INFRA-2342 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Polling interval and URGENT-INBOX credentials are stored in config and deployed
+    - Monitoring alerts fire if polling fails three consecutive times
+  depends_on: [INFRA-5622]
+  notes: |
+    [chump harvest check 'polling']
+    === primitives_index match for 'polling' ===
+    
+    === cluster keyword match for 'polling' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'polling' ===
+    
+    === repo-description match for 'polling' ===
+    
+    === HARVEST_ROADMAP.md mention of 'polling' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'polling' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+
+- id: INFRA-5624
+  domain: INFRA
+  title: "INFRA: INFRA-4996: Detect file‑level path overlap with open PRs (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running `chump claim INFRA-X --paths foo.sh,bar.rs` invokes `gh pr list --json files` and identifies any open PR that contains any of the supplied paths.
+    - "If an overlap is found, the command exits with a non‑zero status and prints a clear message: `[claim] paths overlap with open PR #N (gap INFRA-Y, paths: foo.sh)`."
+    - Smoke‑test script `scripts/ci/test-claim-path-overlap.sh` mocks an open PR with file `a.sh`; a claim with `--paths a.sh` fails with the expected message, while a claim with `--paths b.sh` succeeds.
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5625
+  domain: INFRA
+  title: "INFRA: INFRA-4997: Refine overlap detection to line‑range level (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a file‑level overlap is detected, the tool runs `git diff` on the PR to extract modified line‑range intervals.
+    - The claim is blocked only if the proposed claim would modify any of those line‑ranges.
+    - If the overlapping file has disjoint line‑ranges (e.g., PR touches lines 10‑20 and claim touches lines 30‑40), the claim proceeds successfully.
+  depends_on: [INFRA-5624]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5626
+  domain: INFRA
+  title: "INFRA: INFRA-4998: Operator‑mode bypass for overlap checks (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Setting the environment variable `CHUMP_CLAIM_PATH_OVERLAP_OPERATOR=1` disables all path‑overlap checks.
+    - With the variable set, a claim that would otherwise be blocked proceeds without error and without emitting block messages.
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5627
+  domain: INFRA
+  title: "INFRA: INFRA-4999: Auditing and --allow-overlap flag (INFRA-2434 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Adding a `--allow-overlap` flag permits a claim to proceed despite detected overlap.
+    - When `--allow-overlap` is used, an audit event `kind=claim_path_overlap_allowed` is written to `ambient.jsonl`.
+    - When a claim is blocked (no `--allow-overlap`), an event `kind=claim_path_overlap_blocked` with payload `{claimed_gap, blocking_pr, blocking_gap, overlapping_paths}` is emitted to `ambient.jsonl`.
+    - When a previously blocked claim later succeeds (e.g., after the blocking PR merges), a `kind=claim_path_overlap_recovered` event is emitted.
+  depends_on: [INFRA-5624, INFRA-5625]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
 
 - id: INFRA-604
   domain: INFRA
