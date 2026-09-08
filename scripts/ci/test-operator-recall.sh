@@ -310,6 +310,31 @@ else
 fi
 rm -rf "$_dir8"
 
+# ── Test 9: CREDIBLE-130 — fleet_credit_exhausted must NOT trigger AUTH_DEAD ──
+echo "Test 9: fleet_credit_exhausted does not false-positive AUTH_DEAD..."
+_dir9="$(mktemp -d)"
+_amb9="$_dir9/ambient.jsonl"
+_ts9="$(_now_iso)"
+# Enough credit-exhaustion events to blow past any of the AUTH_DEAD thresholds
+# if it were (wrongly) counted alongside fleet_auth_storm/oauth_token_refresh_failed.
+for i in $(seq 1 5); do
+    printf '{"ts":"%s","kind":"fleet_credit_exhausted","auth_mode":"api_key","auth_path":"ANTHROPIC_API_KEY","error":"Credit balance is too low on this account"}\n' \
+        "$_ts9" >> "$_amb9"
+done
+
+_rc=0
+CHUMP_AMBIENT_LOG="$_amb9" \
+REPO_ROOT="$REPO_ROOT" \
+CHUMP_OPERATOR_RECALL_COOLDOWN_SECS=0 \
+"$RECALL_SCRIPT" --check-only 2>/dev/null || _rc=$?
+
+if (( _rc == 0 )); then
+    _ok "fleet_credit_exhausted alone does not trip any halt condition (rc=0)"
+else
+    _fail "fleet_credit_exhausted incorrectly tripped a halt condition (rc=$_rc)"
+fi
+rm -rf "$_dir9"
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo
 echo "Results: ${_pass} passed, ${_fail} failed"
