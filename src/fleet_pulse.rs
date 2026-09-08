@@ -14,6 +14,8 @@
 //!   5. last_admin_merges — last 5 kind=admin_merge_executed
 //!   6. last_alerts       — last 5 kind=ALERT
 //!   7. last_clusters     — last 5 kind=ci_failure_cluster
+//!   8. admin_merge_count — total kind=admin_merge_executed events in the
+//!      trailing floor_temp window (CREDIBLE-1114, CREDIBLE-272 slice)
 //!
 //! Read-only aggregator. Zero state mutation. Completes in <500ms by
 //! reading local files; no live `gh` API calls.
@@ -66,6 +68,11 @@ pub struct FleetPulse {
     pub last_admin_merges: Vec<AmbientEvent>,
     pub last_alerts: Vec<AmbientEvent>,
     pub last_clusters: Vec<AmbientEvent>,
+    /// Total kind=admin_merge_executed events in the trailing floor_temp
+    /// window (`floor_temp.window_secs`). CREDIBLE-1114: distinct from
+    /// `last_admin_merges` (which caps at 5 and drops the count once >5
+    /// events land in the window).
+    pub admin_merge_count: usize,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -84,6 +91,12 @@ pub fn build(repo_root: &Path) -> FleetPulse {
     let last_admin_merges = tail_events(&ambient, "admin_merge_executed", 5);
     let last_alerts = tail_events(&ambient, "ALERT", 5);
     let last_clusters = tail_events(&ambient, "ci_failure_cluster", 5);
+    let admin_merge_count = floor
+        .components
+        .iter()
+        .find(|c| c.kind == "admin_merge_executed")
+        .map(|c| c.count)
+        .unwrap_or(0);
 
     FleetPulse {
         generated_at: now_rfc3339(),
@@ -94,6 +107,7 @@ pub fn build(repo_root: &Path) -> FleetPulse {
         last_admin_merges,
         last_alerts,
         last_clusters,
+        admin_merge_count,
     }
 }
 
@@ -279,6 +293,11 @@ pub fn render_text(p: &FleetPulse) -> String {
     }
     out.push('\n');
     out.push_str(&format!(
+        "Admin-merge count (last {}h): {}\n",
+        p.floor_temp.window_secs / 3600,
+        p.admin_merge_count
+    ));
+    out.push_str(&format!(
         "Last {} admin-merges:\n",
         p.last_admin_merges.len()
     ));
@@ -393,6 +412,41 @@ mod tests {
             Some(false)
         );
         assert_eq!(extract_json_bool(r#"{"foo": "bar"}"#, "active"), None);
+    }
+
+    #[test]
+    #[serial_test::serial(ambient_env)]
+    fn admin_merge_count_matches_events_in_window() {
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // 7 admin-merges within the trailing 24h window + 1 unrelated event.
+        // last_admin_merges caps at 5, so 7 proves the aggregate count
+        // doesn't silently truncate the way the "last N" list does.
+        // floor_temp::compute() filters by a real wall-clock cutoff, so
+        // these must be recent timestamps, not fixed historical ones.
+        let now = now_rfc3339();
+        make_ambient(
+            &locks,
+            &[
+                (now.as_str(), "admin_merge_executed", "one"),
+                (now.as_str(), "admin_merge_executed", "two"),
+                (now.as_str(), "wedge_detected", "noise"),
+                (now.as_str(), "admin_merge_executed", "three"),
+                (now.as_str(), "admin_merge_executed", "four"),
+                (now.as_str(), "admin_merge_executed", "five"),
+                (now.as_str(), "admin_merge_executed", "six"),
+                (now.as_str(), "admin_merge_executed", "seven"),
+            ],
+        );
+        std::env::set_var("CHUMP_AMBIENT_LOG", locks.join("ambient.jsonl"));
+        let p = build(dir.path());
+        assert_eq!(p.admin_merge_count, 7);
+        // last_admin_merges is capped at 5 — the aggregate count must not be.
+        assert_eq!(p.last_admin_merges.len(), 5);
+        let text = render_text(&p);
+        assert!(text.contains("Admin-merge count (last 24h): 7"));
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
     }
 
     #[test]
