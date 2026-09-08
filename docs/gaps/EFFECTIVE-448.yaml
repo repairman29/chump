@@ -1,0 +1,15 @@
+- id: EFFECTIVE-448
+  domain: EFFECTIVE
+  title: execute-gap terminates on EndTurn prose with zero edits — DeepSeek flash+pro investigate-never-edit wall (0 landing rate)
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - In src/agent_loop/iteration_controller.rs EndTurn branch, when the loop would Complete but ZERO edit-tool calls (str_replace/write_file/patch_file) have been made this run, fire an edit-nudge retry regardless of model_calls_count (the current model_calls_count<=2 cap must not gate the no-edit case).
+    - The nudge injects an explicit instruction to stop investigating and emit a str_replace now.
+    - A bounded retry cap (e.g. <=2 extra nudges) prevents an infinite loop when a model genuinely cannot edit.
+    - "Test: a mock LlmClient emitting >2 read-only tool calls then an EndTurn prose reply triggers at least one edit-nudge before terminating, asserted in iteration_controller tests."
+  opened_date: '2026-08-23'
+  closed_date: '2026-09-08'
+  closed_pr: 4192
+
