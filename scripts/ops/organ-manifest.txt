@@ -290,6 +290,25 @@ enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file
 enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df,file:~/cj-disk-monitor-run.sh
 enabled     chump-cj-sync.service  role=data requires=bin:git,file:~/cj-sync-run.sh
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
+# RESILIENT-318: disk-hygiene reapers on the MUSCLE (worker) nodes. Worker
+# nodes accumulate linked worktrees (.claude/worktrees/*, /tmp/chump-*) and
+# cargo build targets far faster than any other node — they are the ones that
+# claim gaps and build. Without a reaper kept alive on a cadence the disk fills
+# and the worker re-hits disk_critical and stalls, re-showing `timeout` under
+# disk pressure. VERIFIED on mugman 2026-09-08: disk 92% / 78 worktrees, worker
+# un-churned but re-stalling; the muscle-scoped organ-reconcile was DRIFT-REMOVE'ing
+# a hand-enabled chump-stale-worktree-reaper.timer within the hour because it was
+# absent from this manifest (present-but-out-of-role). Tagged role=muscle so the
+# muscle reconcile ENABLES + KEEPS them (an unfiltered brain/primary reconcile
+# enables every `enabled` line regardless of role, so disk hygiene still lands
+# there too). The .timer's paired oneshot .service is covered by reconcile's
+# sibling-protection. Unit files are placed on owned nodes by the fleet's
+# launchd->systemd porter from the in-repo launchd plists + scripts/ops/
+# {stale-worktree-reaper,cargo-target-reaper}.sh; on a node lacking the unit,
+# organ-reconcile's enable step WARNs + backs off (harmless). Both scripts are
+# safe by construction (lease/lsof/log-freshness/age-min guards + .chump-no-reap).
+enabled     chump-stale-worktree-reaper.timer  role=muscle requires=bin:git
+enabled     chump-cargo-target-reaper.timer  role=muscle requires=bin:git
 # chump-fleet-server (INFRA-2175): the metric-gauge API + bat-phone intake.
 # Serves /api/dashboard-summary etc on 127.0.0.1:7070 from the local repo
 # data (github_cache.db, ambient.jsonl, claim leases). ~48 gauges stayed
