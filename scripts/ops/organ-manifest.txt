@@ -380,6 +380,17 @@ enabled     chump-nba-dispatch.timer  role=brain requires=bin:jq
 # peer-heartbeat mechanism every other organ in this manifest relies on.
 enabled     chump-cascade-unblock-detector.timer  role=brain requires=bin:gh
 
+# chump-gap-store-single-source-check.timer: RESILIENT-1058 — schedules the
+# RESILIENT-1057 gap-store split-brain guard (scripts/coord/gap-store-
+# single-source-check.sh) as a live organ instead of a script only ever run
+# by hand. Fails LOUD (non-zero exit -> failed unit) the moment the CLI and
+# canonical sqlite state.db disagree, or a non-empty dormant postgrest store
+# diverges from state.db — the exact silent split-brain that cost hours
+# before this guard existed. Declared here so organ-reconcile re-arms it if
+# it drifts or fails, the same peer-heartbeat mechanism every other organ in
+# this manifest relies on. role=data (it observes/reports, no writes).
+enabled     chump-gap-store-single-source-check.timer  role=data requires=bin:sqlite3,bin:chump
+
 # chump-rca-reflex.timer: the INFRA-249 recurring-gap-pattern-detector, wired
 # as a live organ (RESILIENT-365). Was DARK — 0 organ units, only a human-
 # facing ALERT line — while 44 symptom PRs shipped in one night against 0

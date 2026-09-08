@@ -1,0 +1,28 @@
+# RESILIENT-1058 — wires scripts/coord/gap-store-single-source-check.sh
+# (RESILIENT-1057) into a scheduled organ instead of a script only ever run
+# by hand. Paired with chump-gap-store-single-source-check.timer.
+#
+# The check exits non-zero on ANY detected split-brain (CLI/sqlite disagree,
+# or a non-empty postgrest store diverging from state.db). A non-zero exit
+# here fails the unit — organ-watchdog's reset-failed+restart heal loop and
+# the duty officer's health scan both already watch for failed units, so
+# this organ needs no bespoke paging path to become visible.
+#
+# CHUMP_REPO_ROOT / HOME are set explicitly, same reasoning as every other
+# root-owned organ unit here (script's default $HOME/Projects/Chump is
+# capital-C and does not exist on case-sensitive Linux —
+# docs/process/LINUX_NODE_ONBOARDING.md). Host-agnostic via the systemd
+# /root specifier: install-helsinki-atc.sh inserts the per-node User= line
+# at deploy time, so /root resolves to root's home on helsinki and to jeff's
+# home on an owned node (CJ) from this SAME tracked unit.
+[Unit]
+Description=Chump gap-store single-source-of-truth check (RESILIENT-1058 / RESILIENT-1057)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/gap-store-single-source-check.sh'
