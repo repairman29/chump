@@ -207,6 +207,22 @@ fi
 export CARGO_INCREMENTAL="${CARGO_INCREMENTAL:-0}"
 export CARGO_PROFILE_DEV_DEBUG="${CARGO_PROFILE_DEV_DEBUG:-line-tables-only}"
 
+# no-cargo-on-2-core (standing rule): 2-core muscle nodes OOM on cargo and fill
+# the shared target. Three build paths hit CARGO_TARGET_DIR from a worker cycle:
+#   (1) the agent's own cargo build/test, (2) the pre-commit hook's
+#   `cargo check --bin chump --tests` (fires on ANY staged .rs, even a docs gap),
+#   (3) the INFRA-666 pre-ship `cargo clippy --workspace --all-targets`.
+# On low-core nodes, EXPORT the skip-envs BEFORE the agent spawns so child git
+# hooks inherit them; CI fast-checks + the full test suite remain the real gate.
+# Override with CHUMP_NO_CARGO_MAX_CORES=0. c374bcc stopped porting cargo TIMERS
+# to these nodes; this closes the worker's own in-cycle build paths it missed.
+_ncpu=$(nproc 2>/dev/null || echo 4)
+if [[ "$_ncpu" -le "${CHUMP_NO_CARGO_MAX_CORES:-2}" ]]; then
+    export CHUMP_SKIP_PRESHIP_CLIPPY=1
+    export CHUMP_CHECK_BUILD=0
+    printf "[worker] no-cargo-on-2-core: %s cores <= %s — cargo banned on this tier; skipping pre-ship-clippy + pre-commit cargo-check (CI is the gate)\n" "$_ncpu" "${CHUMP_NO_CARGO_MAX_CORES:-2}" >&2
+fi
+
 # Per-worker counter of consecutive empty picks. Reset on every
 # successful pick.
 _starve_count=0

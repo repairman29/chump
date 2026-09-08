@@ -164,6 +164,11 @@ if [[ "$DISK_CRITICAL_GB" -gt 0 ]]; then
     _home_free_gb=$(( _home_free_kb / 1024 / 1024 ))
     if [[ $_home_free_gb -lt $DISK_CRITICAL_GB ]]; then
         AGGRESSIVE_MODE=1
+        # A disk reaper that only DRY-RUNs while the disk fills is false safety.
+        # When disk is genuinely critical, reaping stale (age-guarded, no-live-owner)
+        # artifacts IS the job — auto-execute even if the ported systemd unit omitted
+        # --execute. Override with CHUMP_CARGO_REAPER_NO_AUTO_EXECUTE=1.
+        if [[ "${CHUMP_CARGO_REAPER_NO_AUTO_EXECUTE:-0}" != "1" ]]; then EXECUTE=1; fi
         FINGERPRINT_AGE_D=1
         FLEET_AGE_D=2
         echo "[cargo-target-reaper] disk-critical: ${_home_free_gb}GB free on \$HOME (< ${DISK_CRITICAL_GB}GB threshold) — escalating: FINGERPRINT_AGE_D=${FINGERPRINT_AGE_D} FLEET_AGE_D=${FLEET_AGE_D}"
@@ -243,6 +248,28 @@ if [[ -d "$TARGET_DEBUG" ]]; then
     while IFS= read -r -d '' entry; do
         maybe_delete "$entry"
     done < <(find "${TARGET_DEBUG}/deps" -maxdepth 1 -name 'lib*.rlib' -mtime "+${FINGERPRINT_AGE_D}" -print0 2>/dev/null)
+fi
+
+# ── (i) fleet SHARED cargo target (chump-shared-target) ────────────────────
+# scripts/dispatch/worker.sh defaults CARGO_TARGET_DIR to ~/.cargo/chump-shared-target.
+# Historically NONE of (a)-(h) covered it, so its debug/ grew unbounded (18G on mugman)
+# while the reaper reported 0 reaped. Reap stale fingerprints/deps here too, age-guarded,
+# and skip entirely if a live builder owns this exact dir (build-safe).
+SHARED_TARGET="${CARGO_TARGET_DIR:-${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}}"
+SHARED_DEBUG="${SHARED_TARGET}/debug"
+_shared_hot=0
+while IFS= read -r _pid; do
+    _senv=$(ps eww -p "$_pid" 2>/dev/null | grep -o 'CARGO_TARGET_DIR=[^ ]*' | head -1 || true)
+    [[ "${_senv##*=}" == "$SHARED_TARGET" ]] && _shared_hot=1
+done < <(pgrep -f "cargo|rustc" 2>/dev/null || true)
+if [[ -d "$SHARED_DEBUG" && $_shared_hot -eq 0 ]]; then
+    echo "[cargo-target-reaper] Scanning ${SHARED_DEBUG} (shared fleet target, >${FINGERPRINT_AGE_D}d)…"
+    while IFS= read -r -d '' entry; do maybe_delete "$entry"; done \
+        < <(find "${SHARED_DEBUG}/.fingerprint" -mindepth 1 -maxdepth 1 -mtime "+${FINGERPRINT_AGE_D}" -print0 2>/dev/null)
+    while IFS= read -r -d '' entry; do maybe_delete "$entry"; done \
+        < <(find "${SHARED_DEBUG}/deps" -mindepth 1 -maxdepth 1 -mtime "+${FINGERPRINT_AGE_D}" -print0 2>/dev/null)
+elif [[ $_shared_hot -eq 1 ]]; then
+    echo "[cargo-target-reaper] shared target ${SHARED_TARGET} has a LIVE builder — skipping (build-safe)"
 fi
 
 # ── (c) fleet shared target dirs ─────────────────────────────────────────────
