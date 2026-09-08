@@ -25,6 +25,13 @@
 
 set -euo pipefail
 
+# RESILIENT-1055: $USER is not exported in every invocation context (notably a
+# `sudo -E env …` bring-up, where the environment carries HOME but not USER), so
+# under `set -u` the linger step below (`loginctl enable-linger "$USER"`) aborted
+# the whole installer with "USER: unbound variable" — leaving the refresh timer
+# half-installed. Resolve it from the effective login name as a fallback.
+USER="${USER:-$(id -un 2>/dev/null || echo root)}"
+
 CADENCE_MIN="${CADENCE_MIN:-30}"
 UNIT_DIR="$HOME/.config/systemd/user"
 SCRIPT_SRC=""

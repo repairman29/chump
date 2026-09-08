@@ -865,6 +865,129 @@ reconcile_role_organs() {
     no "manifest organ set reconcile had issues — see $LOG_DIR/organ-reconcile-*.log; non-fatal (e.g. non-root), re-run to retry"
   fi
 }
+
+# RESILIENT-1055: PLACE the role's manifest unit FILES before reconcile enables
+# them. THE ROOT BUG this closes: reconcile_role_organs above only runs
+# `systemctl enable --now <unit>` — it never COPIES the tracked unit file into
+# /etc/systemd/system. On a fresh box those files don't exist, so every
+# manifest organ enable-failed -> `backoff:` forever, and bring-up was
+# incomplete no matter how many times it ran (the exact cuphead/mugman symptom:
+# ~17 manifest units with NO file on the box, reconcile logging perpetual
+# backoff). This function copies each role-matched manifest unit (and its paired
+# .service/.timer sibling) from scripts/dispatch/, HOST-REWRITTEN via the shared
+# organ-unit-install-lib.sh, into /etc/systemd/system — so `enable --now` finds
+# a real, correctly-pathed unit. It also:
+#   * rewrites the tracked units' baked ~/Projects/chump repo path to this box's
+#     actual $NODE_DIR/repo (node-install clones there, not ~/Projects/chump),
+#   * symlinks the installed binary onto the organs' PATH ($RUN_HOME/.cargo/bin)
+#     so `requires=bin:chump` organs resolve and organ ExecStarts find `chump`,
+#   * always places chump-organ-reconcile.{service,timer} (the manifest
+#     self-excludes it) and scopes ITS recurring reconcile to this node's role
+#     via a drop-in, so the timer-driven self-heal converges to the role roster
+#     instead of the whole manifest (which would re-add out-of-role organs).
+# Systemd hosts only; needs root to write /etc/systemd/system (warns + skips
+# non-root, non-fatal — reconcile_role_organs degrades the same way).
+place_role_unit_files() {
+  [ "${HOST_KIND:-}" = "linux-systemd" ] || { info ORGANS "unit-file placement is systemd-only (host=${HOST_KIND:-unset}) — skipping"; return 0; }
+  local repo="$NODE_DIR/repo"
+  local manifest="$repo/scripts/ops/organ-manifest.txt"
+  local dispatch="$repo/scripts/dispatch"
+  local lib_manifest="$repo/scripts/ops/lib/organ-manifest-lib.sh"
+  local lib_unit="$repo/scripts/ops/lib/organ-unit-install-lib.sh"
+  if [ ! -f "$manifest" ] || [ ! -f "$lib_manifest" ] || [ ! -f "$lib_unit" ]; then
+    info ORGANS "manifest/libs not found under $repo — skipping unit-file placement"
+    return 0
+  fi
+  if [ "$(id -u)" != "0" ] && [ "${CHUMP_NODE_INSTALL_ALLOW_NONROOT_PLACE:-0}" != "1" ]; then
+    no "unit-file placement needs root to write /etc/systemd/system — skipping (re-run install as root/sudo)"
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: place role-matched manifest unit files (role=$ROLE) into /etc/systemd/system"; return 0; fi
+
+  # shellcheck source=/dev/null
+  . "$lib_manifest"; . "$lib_unit"
+  local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
+  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-/etc/systemd/system}"
+  mkdir -p "$dest_dir"
+  info ORGANS "placing role-matched manifest unit files (role=$ROLE, user=$run_user, home=$run_home)"
+
+  # Make `chump` resolvable on the organs' injected PATH ($RUN_HOME/.cargo/bin).
+  if [ -x "$BIN" ]; then
+    mkdir -p "$run_home/.cargo/bin" 2>/dev/null || true
+    ln -sf "$BIN" "$run_home/.cargo/bin/chump" 2>/dev/null || true
+  fi
+
+  local PAGING_OFF=() ENABLED=(); declare -A ORGAN_ROLE ORGAN_REQUIRES
+  organ_manifest_parse "$manifest" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES || { no "manifest parse failed — skipping placement"; return 0; }
+
+  local rf; rf="$(organ_role_filter)"
+  declare -A _want_base    # base-unit-name -> 1 for role-matched units
+  local unit role tok in_role
+  for unit in "${ENABLED[@]}"; do
+    role="${ORGAN_ROLE[$unit]:-brain}"
+    in_role=0
+    if [ -z "$rf" ]; then in_role=1
+    else
+      IFS=',' read -ra _toks <<< "$rf"
+      for tok in "${_toks[@]}"; do [ "$tok" = "$role" ] && { in_role=1; break; }; done
+    fi
+    [ "$in_role" = 1 ] || continue
+    local base="${unit%.service}"; base="${base%.timer}"
+    _want_base["$base"]=1
+  done
+  # Self-heal beat: organ-reconcile is intentionally absent from the manifest
+  # (self-exclusion), so add it explicitly for EVERY role.
+  _want_base["chump-organ-reconcile"]=1
+
+  declare -A _KEEP_ROOT=( [chump-organ-deploy.service]=1 [chump-organ-deploy.timer]=1 )
+  local placed=() skipped_nofile=() base f keep suffix
+  for base in "${!_want_base[@]}"; do
+    for suffix in service timer; do
+      f="${base}.${suffix}"
+      local src="$dispatch/$f" dest="$dest_dir/$f"
+      [ -f "$src" ] || continue    # not every base has both a .service and a .timer
+      keep=0; [ -n "${_KEEP_ROOT[$f]:-}" ] && keep=1
+      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep"; then
+        # Repo-path rewrite: the tracked units bake ~/Projects/chump; this box's
+        # repo is at $NODE_DIR/repo. Rewrite the (post-home-rewrite) repo path.
+        sed -i "s#${run_home%/}/Projects/chump#${NODE_DIR}/repo#g" "$dest" 2>/dev/null || true
+        placed+=("$f")
+      fi
+    done
+    # A base named in the role set but with NO tracked file at all (the
+    # CJ-legacy hand-installed chump-cj-* units) — record it; the manifest's
+    # file: requires guard makes the reconcile skip it cleanly, so this is a
+    # note, not an error.
+    if [ ! -f "$dispatch/${base}.service" ] && [ ! -f "$dispatch/${base}.timer" ]; then
+      skipped_nofile+=("$base")
+    fi
+  done
+
+  systemctl daemon-reload 2>/dev/null || true
+
+  # Scope the recurring organ-reconcile timer to THIS node's role (unless --role
+  # all) so the timer-driven self-heal converges to the role roster, not the
+  # whole manifest. A drop-in beats editing the unit (survives re-copy).
+  if [ -f "$dest_dir/chump-organ-reconcile.service" ] && [ "$ROLE" != all ]; then
+    mkdir -p "$dest_dir/chump-organ-reconcile.service.d"
+    cat > "$dest_dir/chump-organ-reconcile.service.d/zz-node-role.conf" <<EOF
+# RESILIENT-1055 — scope this node's recurring reconcile to its --role roster so
+# the timer-driven self-heal never re-adds out-of-role organs. Written by
+# chump-node-install.sh at bring-up (role=$ROLE).
+[Service]
+Environment=CHUMP_ORGAN_RECONCILE_ROLE=$rf
+EOF
+    systemctl daemon-reload 2>/dev/null || true
+  fi
+
+  # Arm the reconcile beat itself (not a manifest 'enabled' line, so
+  # reconcile_role_organs won't enable it).
+  [ -f "$dest_dir/chump-organ-reconcile.timer" ] && systemctl enable --now chump-organ-reconcile.timer 2>/dev/null || true
+
+  ok "placed ${#placed[@]} role-matched unit file(s): ${placed[*]:-none}"
+  [ "${#skipped_nofile[@]}" -gt 0 ] && info ORGANS "role-matched but no tracked file (skipped, guarded by requires=file:): ${skipped_nofile[*]}"
+  return 0
+}
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
@@ -936,6 +1059,11 @@ WK"
     [ -z "$name" ] && continue
     svc_install "$name" "$exec"; svc_up "$name"; ok "organ installed+up: $name"
   done
+  # RESILIENT-1055: PLACE the role's manifest unit files (host-rewritten) BEFORE
+  # reconcile enables them — otherwise reconcile's `enable --now` hits a
+  # never-copied unit and backs it off forever. Placement + reconcile together
+  # are what make a fresh `--role` box come up with its COMPLETE role roster.
+  place_role_unit_files
   reconcile_role_organs
 }
 

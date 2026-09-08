@@ -49,6 +49,13 @@
 
 set -euo pipefail
 
+# RESILIENT-1055: $USER isn't exported under a `sudo -E env …` bring-up, so under
+# `set -u` the linger step (`loginctl enable-linger "$USER"`) aborted this whole
+# installer with "USER: unbound variable" — leaving the /healthz organ
+# half-installed. Resolve it from the effective login name as a fallback (same
+# fix as install-node-refresh-systemd.sh).
+USER="${USER:-$(id -un 2>/dev/null || echo root)}"
+
 UNIT_DIR="$HOME/.config/systemd/user"
 CADENCE_MIN="${CADENCE_MIN:-30}"
 FLEET_UNIT="${CHUMP_FLEET_SERVER_UNIT:-chump-fleet-server.service}"

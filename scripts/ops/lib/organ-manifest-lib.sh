@@ -61,3 +61,61 @@ organ_manifest_parse() {
   done < "$manifest"
   return 0
 }
+
+# organ_is_applicable <unit> <requires-string> <reason-var-name>
+#
+# RESILIENT-347 / RESILIENT-1055: is <unit> applicable to THIS node given its
+# declared `requires=` spec (comma-separated bin:/env:/dep:/file: tokens, see
+# organ-manifest.txt's header)? Empty/absent requires means "always applicable".
+# Writes the first unmet reason into the nameref target (via printf -v) for the
+# caller to log/emit. Lives HERE (shared) so organ-reconcile.sh and
+# organ-role-roster.sh compute applicability identically — no drift. Uses
+# ${SYSTEMCTL_BIN:-systemctl} so a caller can stub systemctl in tests.
+organ_is_applicable() {
+  local unit="$1" requires="$2" reason_var="$3"
+  [[ -z "$requires" ]] && return 0
+  local systemctl_bin="${SYSTEMCTL_BIN:-systemctl}"
+  local tok IFS=','
+  for tok in $requires; do
+    case "$tok" in
+      bin:*)
+        local bin="${tok#bin:}"
+        if ! command -v "$bin" >/dev/null 2>&1; then
+          printf -v "$reason_var" 'missing_bin:%s' "$bin"; return 1
+        fi
+        ;;
+      env:*)
+        local var="${tok#env:}"
+        if [[ -z "${!var:-}" ]]; then
+          printf -v "$reason_var" 'missing_env:%s' "$var"; return 1
+        fi
+        ;;
+      dep:*)
+        local dep="${tok#dep:}"
+        if ! "$systemctl_bin" is-active --quiet "$dep" 2>/dev/null; then
+          printf -v "$reason_var" 'missing_dep:%s' "$dep"; return 1
+        fi
+        ;;
+      file:*)
+        # An organ that only APPLIES where a host-specific asset exists (chiefly
+        # the CJ-legacy hand-installed chump-cj-* units, whose ExecStart points
+        # at a /home/<user>/cj-*-run.sh that exists only on that one box and has
+        # no tracked unit file — so a fresh `--role` bring-up must SKIP them, not
+        # `enable --now` a file-less unit into an eternal backoff). A leading ~/
+        # or $HOME/ expands against the effective HOME.
+        local path="${tok#file:}"
+        case "$path" in
+          '~/'*)      path="${HOME:-/root}/${path#\~/}";;
+          '$HOME/'*)  path="${HOME:-/root}/${path#\$HOME/}";;
+        esac
+        if [[ ! -e "$path" ]]; then
+          printf -v "$reason_var" 'missing_file:%s' "$path"; return 1
+        fi
+        ;;
+      *)
+        printf -v "$reason_var" 'unknown_requires_spec:%s' "$tok"; return 1
+        ;;
+    esac
+  done
+  return 0
+}
