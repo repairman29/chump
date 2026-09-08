@@ -48,6 +48,7 @@ import importlib.util
 import json
 import sqlite3
 import os
+import re
 import subprocess
 import sys
 from pathlib import Path
@@ -555,6 +556,147 @@ def check_already_satisfied(state_db: Path, ambient_path: Path, dry_run: bool) -
     return (closed, flagged)
 
 
+
+# ─────────────────────────────────────────────────────────────────────────────
+# EFFECTIVE-1543 — merged-PR-title closure (the queue-drain backstop).
+#
+# The biggest ghost class: a worker shipped REAL work in a PR that MERGED, but
+# the async merge landed after the worker cycle ended, so the canonical state.db
+# gap was never flipped to done (closed_pr stays NULL). check_closure_drift is
+# blind (no closed_pr to scan) and check_already_satisfied only fires on
+# no-op/duplicate cycle-log signals — an actually-implemented gap trips neither.
+# Result: 1,943 open with 0 drained/90min while worker PRs kept merging; the
+# picker re-selects these ghosts forever (EFFECTIVE-449 shipped a DUPLICATE #4527
+# that way). Merged PR titles on origin follow the immutable "<GAP-ID>: <desc>"
+# convention (same source close-gaps-from-commit-subjects.sh trusts on commit
+# subjects) — this pass reads them as ground truth and writes the CANONICAL
+# state.db (not just the YAML mirror), so the picker's queue actually drains.
+# ─────────────────────────────────────────────────────────────────────────────
+
+_GAP_TITLE_RE = re.compile(r"^([A-Z][A-Z0-9]*-\d+):")
+
+
+def open_gap_ids(state_db: Path) -> list:
+    """All status=open gap ids, read straight from canonical SQLite."""
+    if not state_db.exists():
+        print(f"merged-pr-titles: state.db not found at {state_db} — skipping",
+              file=sys.stderr)
+        return []
+    try:
+        con = sqlite3.connect(f"file:{state_db}?mode=ro", uri=True)
+    except sqlite3.Error as e:
+        print(f"merged-pr-titles: cannot open {state_db}: {e}", file=sys.stderr)
+        return []
+    try:
+        rows = con.execute("SELECT id FROM gaps WHERE status='open'").fetchall()
+    except sqlite3.Error as e:
+        print(f"merged-pr-titles: sqlite read failed: {e}", file=sys.stderr)
+        return []
+    finally:
+        con.close()
+    return [r[0] for r in rows]
+
+
+def merged_pr_gap_map(repo: str, limit: int) -> dict:
+    """gap-id -> (pr_number, merged_at) from recent MERGED PRs whose title leads
+    with '<GAP-ID>:'. Newest PR wins (gh list is newest-first). Filing PRs and
+    [no-close] PRs are skipped (never close on a gap-filing commit)."""
+    r = subprocess.run(
+        ["gh", "pr", "list", "--repo", repo, "--state", "merged",
+         "--limit", str(limit), "--json", "number,title,mergedAt"],
+        capture_output=True, text=True,
+    )
+    if r.returncode != 0:
+        print(f"merged-pr-titles: gh pr list failed: {r.stderr.strip()[:200]}",
+              file=sys.stderr)
+        return {}
+    try:
+        prs = json.loads(r.stdout or "[]")
+    except Exception:
+        return {}
+    out = {}
+    for p in prs:
+        title = p.get("title") or ""
+        if "[no-close]" in title:
+            continue
+        low = title.lower()
+        if low.startswith("chore(gaps): file") or low.startswith("file "):
+            continue
+        m = _GAP_TITLE_RE.match(title)
+        if not m:
+            continue
+        gid = m.group(1)
+        if gid in out:
+            continue  # keep the newest merged PR for this gap
+        out[gid] = (p.get("number"), p.get("mergedAt") or "")
+    return out
+
+
+def check_closed_pr_titles(state_db: Path, ambient_path: Path, dry_run: bool,
+                           limit: int = 300) -> int:
+    """Close open gaps whose gap-ID leads a MERGED PR title. Returns count closed.
+
+    HIGH confidence: the PR is verified merged (gh --state merged) AND its title
+    leads with the exact gap-ID. Writes status=done + closed_pr + closed_date +
+    evidence to the canonical state.db and emits kind=gap_closed_from_merged_pr.
+    """
+    from datetime import datetime, timezone
+
+    repo = resolve_gh_repo()
+    if repo is None:
+        print("merged-pr-titles: gh repo unresolved (offline?) — cannot verify "
+              "merges, skipping", file=sys.stderr)
+        return 0
+    open_ids = set(open_gap_ids(state_db))
+    if not open_ids:
+        print("merged-pr-titles: no open gaps — nothing to drain")
+        return 0
+    pr_map = merged_pr_gap_map(repo, limit)
+    ghosts = {gid: pr_map[gid] for gid in open_ids if gid in pr_map}
+    if not ghosts:
+        print(f"merged-pr-titles: scanned {len(open_ids)} open gap(s) against "
+              f"last {limit} merged PRs — no merged-but-open ghosts, clean")
+        return 0
+    print(f"merged-pr-titles: {len(ghosts)} open gap(s) have a MERGED PR titled "
+          f"with their ID — draining")
+    closed = 0
+    for gid, (pr_num, merged_at) in sorted(ghosts.items()):
+        cd = (merged_at or "")[:10]
+        print(f"  GHOST {gid}: merged PR #{pr_num} ({cd}) — gap still open")
+        if dry_run:
+            closed += 1
+            continue
+        evidence = (
+            f"merged-pr-title closure (EFFECTIVE-1543): PR #{pr_num} titled "
+            f"'{gid}: ...' merged {cd}; canonical gap was left open (closed_pr "
+            f"NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles."
+        )
+        try:
+            con = sqlite3.connect(state_db)
+            con.execute(
+                "UPDATE gaps SET status='done', closed_pr=?, closed_date=?, "
+                "evidence=? WHERE id=? AND status='open'",
+                (int(pr_num), cd, evidence, gid),
+            )
+            con.commit()
+            con.close()
+            ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+            _emit(ambient_path, {
+                "ts": ts, "kind": "gap_closed_from_merged_pr",
+                "gap_id": gid, "pr_number": int(pr_num),
+                "merged_at": merged_at, "source": "gap-doctor-reconcile",
+            })
+            closed += 1
+            print(f"  CLOSED {gid} done (PR #{pr_num} merged {cd}) — drift resolved")
+        except Exception as e:
+            print(f"  WARN could not close {gid}: {e}", file=sys.stderr)
+    if dry_run:
+        print(f"  (dry-run — {closed} would close; no writes)")
+    else:
+        print(f"  drained {closed} merged-but-open ghost(s)")
+    return closed
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--dry-run", action="store_true", help="report without writing")
@@ -572,11 +714,29 @@ def main():
              "already_satisfied when a worker cycle log shows the work already "
              "shipped in a merged PR, else FLAG low-confidence matches",
     )
+    ap.add_argument(
+        "--check-merged-pr-titles", action="store_true",
+        help="EFFECTIVE-1543: close open gaps whose gap-ID leads a MERGED PR "
+             "title (the async-merge ghost class closed_pr-drift + "
+             "already-satisfied both miss); writes canonical state.db",
+    )
+    ap.add_argument(
+        "--merged-pr-limit", type=int, default=300,
+        help="how many recent merged PRs to scan for --check-merged-pr-titles",
+    )
     args = ap.parse_args()
 
     # INFRA-3826: the already-satisfied backstop reads the canonical state.db
     # DIRECTLY (resolve_state_db) and does not need — and must not depend on —
     # the possibly-lying `chump gap list` load_db(). Handle it before that call.
+    if args.check_merged_pr_titles:
+        state_db = resolve_state_db()
+        ambient = REPO_ROOT / ".chump-locks" / "ambient.jsonl"
+        print(f"Reading gap store directly: {state_db}")
+        check_closed_pr_titles(state_db, ambient, args.dry_run, args.merged_pr_limit)
+        # Self-healing oneshot: a clean run (even one that closed gaps) is SUCCESS.
+        sys.exit(0)
+
     if args.check_already_satisfied:
         state_db = resolve_state_db()
         ambient = REPO_ROOT / ".chump-locks" / "ambient.jsonl"
