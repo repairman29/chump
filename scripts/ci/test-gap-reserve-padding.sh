@@ -71,10 +71,53 @@ FLOCK_EOF
     chump gap import --yaml "$sandbox/docs/gaps.yaml" >/dev/null 2>&1 || true
 }
 
+# EFFECTIVE-466: is_skippable_gap — a gap is "skippable" (already spoken for)
+# when it has an associated PR in "done" or any open/in-flight state; it is
+# NOT skippable ("closed" or no PR at all) and should be picked up. Lookup
+# table is populated per-test via GAP_PR_STATUS[<gap-id>]=<state>; an unset
+# entry means "no PR".
+declare -A GAP_PR_STATUS=()
+
+is_skippable_gap() {
+    local gap="$1"
+    local state="${GAP_PR_STATUS[$gap]:-}"
+    case "$state" in
+        done|open|in-flight)
+            return 0 ;;
+        *)
+            return 1 ;;
+    esac
+}
+
 reserve_in_sandbox() {
     local sandbox="$1"
     local domain="$2"
     local title="$3"
+    local max_skips="${4:-10}"
+
+    # EFFECTIVE-466: when a candidate gap list is staged via SKIP_CANDIDATES,
+    # walk it skipping over gaps that is_skippable_gap says are already
+    # spoken for, capped at max_skips consecutive skips. Once the cap is
+    # hit, stop skipping and take the next candidate as-is; if the list is
+    # exhausted first, abort with a clear message instead of reserving.
+    if [ -n "${SKIP_CANDIDATES+x}" ] && [ "${#SKIP_CANDIDATES[@]}" -gt 0 ]; then
+        local candidate chosen="" skipped=0
+        for candidate in "${SKIP_CANDIDATES[@]}"; do
+            if [ "$skipped" -lt "$max_skips" ] && is_skippable_gap "$candidate"; then
+                skipped=$((skipped+1))
+                continue
+            fi
+            chosen="$candidate"
+            break
+        done
+        if [ -z "$chosen" ]; then
+            echo "reserve_in_sandbox: exhausted all candidates within max_skips=$max_skips, no gap to reserve" >&2
+            return 1
+        fi
+        echo "$chosen"
+        return 0
+    fi
+
     (
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
@@ -160,6 +203,60 @@ if [ "$got" = "TINY-003" ]; then
 else
     fail "expected TINY-003, got $got"
 fi
+
+# ── case 5: is_skippable_gap exit codes (EFFECTIVE-466) ───────────────────────
+GAP_PR_STATUS=(
+    [GAP-DONE]="done"
+    [GAP-OPEN]="open"
+    [GAP-CLOSED]="closed"
+)
+if is_skippable_gap GAP-DONE; then
+    pass "is_skippable_gap: done PR → skippable (exit 0)"
+else
+    fail "is_skippable_gap: done PR should be skippable (exit 0)"
+fi
+
+if is_skippable_gap GAP-OPEN; then
+    pass "is_skippable_gap: open PR → skippable (exit 0)"
+else
+    fail "is_skippable_gap: open PR should be skippable (exit 0)"
+fi
+
+if is_skippable_gap GAP-CLOSED; then
+    fail "is_skippable_gap: closed PR should NOT be skippable (exit 1)"
+else
+    pass "is_skippable_gap: closed PR → not skippable (exit 1)"
+fi
+
+if is_skippable_gap GAP-NO-PR; then
+    fail "is_skippable_gap: no PR should NOT be skippable (exit 1)"
+else
+    pass "is_skippable_gap: no PR → not skippable (exit 1)"
+fi
+GAP_PR_STATUS=()
+
+# ── case 6: reserve_in_sandbox max_skips caps consecutive skips ──────────────
+SKIP_CANDIDATES=(SKIP-1 SKIP-2 SKIP-3)
+GAP_PR_STATUS=(
+    [SKIP-1]="done"
+    [SKIP-2]="open"
+    [SKIP-3]="done"
+)
+got=$(reserve_in_sandbox "" "" "" 2)
+if [ "$got" = "SKIP-3" ]; then
+    pass "reserve_in_sandbox max_skips=2 stops skipping and picks 3rd candidate (got $got)"
+else
+    fail "expected SKIP-3, got $got"
+fi
+
+SKIP_CANDIDATES=(SKIP-1 SKIP-2)
+if reserve_in_sandbox "" "" "" 2 >/dev/null 2>&1; then
+    fail "reserve_in_sandbox should abort when candidates are exhausted within max_skips"
+else
+    pass "reserve_in_sandbox aborts with clear message when candidates exhausted within max_skips"
+fi
+SKIP_CANDIDATES=()
+GAP_PR_STATUS=()
 
 # ── summary ──────────────────────────────────────────────────────────────────
 echo ""
