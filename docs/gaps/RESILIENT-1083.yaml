@@ -1,0 +1,42 @@
+- id: RESILIENT-1083
+  domain: RESILIENT
+  title: "organ-reconcile enable-pass is UNFILTERED while reap-pass is role-filtered — a restricted-role node perpetually resurrects+fails out-of-role organs"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    2026-09-08: on a pure-muscle node, organ-reconcile.sh fights itself. Its
+    DRIFT-REMOVE (reap) pass IS role-filtered — it disables units "out-of-role
+    (not in role-filtered manifest)". But its ENABLE pass (scripts/ops/
+    organ-reconcile.sh ~line 355, `for unit in ENABLED[]; enable --now`) is
+    UNFILTERED by design (organ-manifest.txt header: "CJ's own timer reconcile
+    is unfiltered (whole manifest) ... only shapes fresh bring-up"). That
+    assumption holds for a node that runs the WHOLE manifest (CJ/helsinki), but
+    breaks on a restricted-role node: every reconcile pass the enable-pass
+    re-`enable --now`s brain organs (chump-board-cycle.timer, nba-dispatch.timer,
+    organ-watchdog.timer, merge-serializer.timer — all role=brain) that the
+    reap-pass just disabled, and those brain units' ExecStart points at
+    /home/ubuntu/Projects/chump (a helsinki/Mac path absent on the Oracle nodes)
+    so they immediately fail status=200/CHDIR. Net: the muscle node shows a
+    rotating set of failed brain organs that can never be reaped, and the
+    fleet-health-sentinel keeps re-alarming on them. Confirmed by isolation:
+    once the 4 brain `.timer` lines are removed from the node's manifest, the
+    reconcile stops resurrecting them and they stay disabled across passes.
+  acceptance_criteria:
+    - "the enable-pass respects CHUMP_ORGAN_RECONCILE_ROLE the same way the reap-pass does, so a restricted-role node never enables an out-of-role organ (or: only enable an organ whose ExecStart target exists on this host) — the two passes must not contradict"
+    - "brain organ units stop hardcoding /home/ubuntu/Projects/chump in ExecStart; they resolve the repo root portably (the same ~/chump / mirror the node actually has) so an in-role brain node doesn't CHDIR-fail either"
+    - "regression: a role=muscle reconcile on a node that lacks brain deps leaves ZERO enabled brain organs and ZERO failed brain units after two consecutive passes"
+  evidence: |
+    VERIFIED LIVE 2026-09-08 on mugman (muscle). journalctl showed the reconcile
+    at 04:14:47 running `sudo systemctl enable --now chump-board-cycle.timer /
+    chump-nba-dispatch.timer / chump-merge-serializer.timer /
+    chump-organ-watchdog.timer` (PWD=/home/ubuntu/chump) immediately after the
+    same run's DRIFT-REMOVE pass disabled them — the two passes contradicting.
+    chump-board-cycle.service failed with "Changing to the requested working
+    directory failed: No such file or directory ... status=200/CHDIR" because its
+    ExecStart cd's to /home/ubuntu/Projects/chump. Node-local stopgap applied:
+    commented the 4 brain `.timer` lines in mugman's organ-manifest.txt; the
+    reconcile then stopped resurrecting them and mugman went to NONE FAILED and
+    stayed there across a subsequent reconcile pass.
+  outcome_id: MISSION-010
+  opened_date: '2026-09-08'
