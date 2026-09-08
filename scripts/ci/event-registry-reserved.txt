@@ -891,3 +891,5 @@ node_binary_release_miss  # reason: RESILIENT-1044 — emitted by scripts/ops/no
 pixel_build_started  # reason: RESILIENT-1044 — emitted by scripts/ops/build-on-pixel.sh (local emit() helper) when the owned-iron build-offload run begins on the Pixel. Documented in docs/process/PIXEL_BUILD_OFFLOAD.md.
 pixel_build_failed  # reason: RESILIENT-1044 — emitted by scripts/ops/build-on-pixel.sh when the Pixel build/publish orchestration fails (unreachable Pixel, scp/remote-build failure). Documented in docs/process/PIXEL_BUILD_OFFLOAD.md.
 pixel_build_published  # reason: RESILIENT-1044 — emitted by scripts/ops/build-on-pixel.sh when the owned Pixel-built binary is published to the fleet-binaries release. Documented in docs/process/PIXEL_BUILD_OFFLOAD.md.
+
+bin_bloat_guard_flagged  # reason: EFFECTIVE-414 — emitted by scripts/git-hooks/pre-commit-bin-bloat-guard.sh; git-hooks/ outside PROD_PATHS grep scan (same disposition as rust_first_* entries above).

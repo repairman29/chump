@@ -1885,6 +1885,17 @@ if [ -x "$RUST_FIRST_HOOK" ]; then
     fi
 fi
 
+# 15a-2. Bin-bloat-guard — crate-first for new code (EFFECTIVE-414)
+# ------------------------------------------------------------------
+# Flags (does not block — advisory-first per docs/process/WHEN_TO_CRATE.md)
+# any commit that ADDS a new src/*.rs file over ~400 lines: "should this be
+# crates/chump-<name>?" Never fails the commit. Bypass: CHUMP_BIN_BLOAT_GUARD_CHECK=0.
+
+BIN_BLOAT_GUARD_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-bin-bloat-guard.sh"
+if [ -x "$BIN_BLOAT_GUARD_HOOK" ]; then
+    "$BIN_BLOAT_GUARD_HOOK" || true
+fi
+
 # 15b. Auto-document new CHUMP_* env vars (RESILIENT-207, 2026-07-29)
 # ------------------------------------------------------------------
 # Kills the chronic env-var-coverage CI failure (DOC-026, 5+/week fleet-wide) by

@@ -942,6 +942,16 @@ events:
     trigger: CSS token-discipline pre-commit gate found violations but commit
       body had 'Token-Discipline-Bypass:' trailer — bypass logged with
       {commit_sha, reason, files} for audit.
+  - kind: bin_bloat_guard_flagged
+    effect_metric: self
+    emitter: scripts/git-hooks/pre-commit-bin-bloat-guard.sh (EFFECTIVE-414)
+    trigger: commit ADDS a new src/*.rs file over the line threshold
+      (default 400, CHUMP_BIN_BLOAT_GUARD_THRESHOLD) — advisory-only per
+      docs/process/WHEN_TO_CRATE.md, never blocks the commit. Fields.
+      files=comma-separated paths, lines=comma-separated matching line
+      counts, threshold=the configured cutoff.
+    fields_required: [ts, kind, files, lines, threshold]
+    consumers: [fleet-brief, audit-log, WHEN_TO_CRATE-effectiveness]
   - kind: rust_first_bypass_used
     effect_metric: self
     emitter: scripts/git-hooks/pre-commit-rust-first.sh (META-064)

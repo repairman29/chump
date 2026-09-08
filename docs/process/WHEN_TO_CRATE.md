@@ -64,11 +64,14 @@ crate."
 in a doc becomes instance N of the fleet's most-repeated failure (no unscheduled instrument).
 Crate-first ships as a **CI gate**, not a suggestion:
 
-- A `bin-bloat-guard` check: when a PR adds a **new `src/*.rs` file to the bin** over a
-  threshold (start ~400 net-added lines), it flags — *"New N-line module in the bin. Should
-  this be `crates/chump-<name>`? Extract it, or justify with a one-line trailer."*
-- **Advisory first** (a PR comment) to calibrate the threshold, then promote to **blocking**
-  once trusted — the same advisory→blocking path the reviewer bot already uses.
+- A `bin-bloat-guard` check (shipped EFFECTIVE-414:
+  `scripts/git-hooks/pre-commit-bin-bloat-guard.sh`, mirrored into `chump preflight` via
+  `CONTENT_GUARD_MIRRORS`): when a commit adds a **new `src/*.rs` file to the bin** over a
+  threshold (default 400 lines, `CHUMP_BIN_BLOAT_GUARD_THRESHOLD`), it flags — *"New N-line
+  module in the bin. Should this be `crates/chump-<name>`?"* — and emits
+  `kind=bin_bloat_guard_flagged` to `ambient.jsonl`.
+- **Advisory first** (warns, never blocks) to calibrate the threshold, then promote to
+  **blocking** once trusted — the same advisory→blocking path the reviewer bot already uses.
 - It composes with the campaign: retroactive extraction carves the legacy bin *down*; the
   guard keeps it *down*.
 
