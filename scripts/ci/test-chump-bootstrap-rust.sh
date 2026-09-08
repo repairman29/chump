@@ -132,6 +132,30 @@ else
     fail "cargo check FAILED on bootstrapped crate"
 fi
 
+# ── Git history assertions (EFFECTIVE-805) ────────────────────────────────────
+echo
+echo "── Phase 5: git history assertions ──"
+
+if [[ -d "$BOOTSTRAPPED" ]]; then
+    ok "repository exists at target dir"
+else
+    fail "repository does not exist at target dir"
+fi
+
+COMMIT_COUNT=$(cd "$BOOTSTRAPPED" && git rev-list --count HEAD 2>/dev/null || echo 0)
+if [[ "$COMMIT_COUNT" -ge 1 ]]; then
+    ok "git repository has at least one commit"
+else
+    fail "git repository has no commits"
+fi
+
+FIRST_COMMIT_MSG=$(cd "$BOOTSTRAPPED" && git log --reverse --format=%s 2>/dev/null | head -1)
+if [[ "$FIRST_COMMIT_MSG" == "chore: initial scaffold — "* ]]; then
+    ok "first commit is the scaffold commit ('$FIRST_COMMIT_MSG')"
+else
+    fail "first commit is not the scaffold commit (got: '$FIRST_COMMIT_MSG')"
+fi
+
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo
 if [[ "$FAIL" -gt 0 ]]; then
