@@ -778,11 +778,20 @@ process_worktree() {
         fi
     else
         # Dry-run: just report what would happen.
-        local _dr_uncommitted _dr_unpushed
-        _dr_uncommitted=$(git -C "$wt_path" status --porcelain 2>/dev/null | wc -l | tr -d ' ')
-        _dr_unpushed=0
-        if git -C "$wt_path" rev-parse @{u} >/dev/null 2>&1; then
-            _dr_unpushed=$(git -C "$wt_path" log '@{u}..HEAD' --oneline 2>/dev/null | wc -l | tr -d ' ')
+        # INFRA-5648: a bare /tmp/chump-* dir is NOT a git worktree — `git status`
+        # exits 128, and under `set -euo pipefail` a bare command-substitution
+        # assignment propagates that 128 and ABORTS the whole reaper mid-scan
+        # (cuphead: chump-stale-worktree-reaper.service died exit 128 while
+        # dry-run-scanning /tmp/chump-fleet-default, a plain log dir). Guard the
+        # git calls behind a .git presence check — mirroring _wip_stash_work's
+        # `[[ -f "$wt/.git" ]] || return 0` in the execute path — and keep `|| =0`
+        # fallbacks so a corrupt-but-present .git cannot abort the reaper either.
+        local _dr_uncommitted=0 _dr_unpushed=0
+        if [[ -f "$wt_path/.git" || -d "$wt_path/.git" ]]; then
+            _dr_uncommitted=$(git -C "$wt_path" status --porcelain 2>/dev/null | wc -l | tr -d ' ') || _dr_uncommitted=0
+            if git -C "$wt_path" rev-parse @{u} >/dev/null 2>&1; then
+                _dr_unpushed=$(git -C "$wt_path" log '@{u}..HEAD' --oneline 2>/dev/null | wc -l | tr -d ' ') || _dr_unpushed=0
+            fi
         fi
         if [[ "$_dr_uncommitted" -gt 0 || "$_dr_unpushed" -gt 0 ]]; then
             info "  [dry-run] would stash uncommitted=$_dr_uncommitted / unpushed=$_dr_unpushed to wip/<gap>-<ts>"
