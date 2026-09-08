@@ -80,6 +80,12 @@ REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
 AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
+# RESILIENT-1055: the ONE host-agnostic unit rewriter, shared with
+# chump-node-install.sh's fresh-node --role placer. Extracted verbatim from the
+# inline rewrite this script used to carry (byte-identical output, guarded by
+# scripts/ci/test-organ-unit-install-lib.sh) so both placers can never drift.
+LIB_ORGAN_UNIT="$REPO_ROOT/scripts/ops/lib/organ-unit-install-lib.sh"
+[[ -f "$LIB_ORGAN_UNIT" ]] && source "$LIB_ORGAN_UNIT"
 
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
@@ -97,8 +103,12 @@ emit() {  # kind, extra-json (no leading/trailing comma)
 SYSTEM_UNITS=(
   chump-pr-lander.service
   chump-pr-lander.timer
-  chump-armed-rebaser.service
-  chump-armed-rebaser.timer
+  # RESILIENT-1054/1055: chump-armed-rebaser is REMOVED from the roster. The
+  # cross-node rebaser swarm (armed-rebaser / armed-pr-rebaser / pr-auto-rebase)
+  # caused the merge-race — multiple nodes rebasing armed PRs reset each other's
+  # `verified`. chump-merge-serializer.timer is the SOLE merge driver now. The
+  # tracked scripts/dispatch/chump-armed-rebaser.{service,timer} files remain in
+  # the tree (nothing references them) but are neither copied nor enabled here.
   chump-board-cycle.service
   chump-board-cycle.timer
   chump-sla-scorecard.service
@@ -286,60 +296,15 @@ for unit in "${SYSTEM_UNITS[@]}"; do
     exit 1
   fi
   tmp="$(mktemp)"
-  # RESILIENT-353 / INFRA-3647 / RESILIENT-1051 host-rewrite. Tracked units are
-  # NOT all helsinki-shaped (User=root, HOME=/root) — several (e.g.
-  # chump-nba-dispatch.service, chump-gap-drain.service) are CJ-native
-  # (User=jeff, /home/jeff/... paths), and a source machine authoring a NEW
-  # unit could bake in any other user's home (e.g. /home/ubuntu, this box).
-  # A rewrite hardcoded to "/root" only fixes the root-shaped half of the
-  # roster and ships every OTHER source path verbatim onto a third node,
-  # producing a WorkingDirectory/HOME that doesn't exist there -> CHDIR/127
-  # on every cycle. Detect the unit's OWN baked-in source user (its `User=`
-  # line; default root when absent, matching the historical helsinki shape)
-  # and rewrite THAT home, not a hardcoded one, so the same manifest wires
-  # correctly regardless of which machine authored the tracked unit:
-  #   s#$SRC_HOME/#...#g  -> path PREFIXES ($SRC_HOME/Projects, $SRC_HOME/.chump, ...)
-  #   s#=$SRC_HOME$#...#  -> a BARE $SRC_HOME as the WHOLE value of an
-  #                      assignment, the class the prefix rule silently missed.
-  #                      Chiefly `Environment=HOME=/root` (no trailing slash):
-  #                      it survived the prefix sed, so on an owned node HOME
-  #                      stayed /root even as User= flipped to jeff, and every
-  #                      tool read /root/.config/gh, /root/.almanac, cwd=/ and
-  #                      failed CLOSED while reporting fake-perfect ("instruments
-  #                      lie" keystone). Also covers a bare WorkingDirectory=$SRC_HOME.
-  _src_user="$(grep -m1 -E '^User=' "$src" | cut -d= -f2 || true)"
-  [[ -z "$_src_user" ]] && _src_user="root"
-  if [[ "$_src_user" == "root" ]]; then
-    _src_home="/root"
-  else
-    _src_home="$(getent passwd "$_src_user" 2>/dev/null | cut -d: -f6 || true)"
-    [[ -z "$_src_home" ]] && _src_home="/home/$_src_user"
-  fi
-  sed -e "s#${_src_home%/}/#${RUN_HOME%/}/#g" \
-      -e "s#=${_src_home%/}\$#=${RUN_HOME%/}#" \
-      -e "s#^User=${_src_user}\$#User=${RUN_USER}#" "$src" > "$tmp"
-  # Host-agnostic runtime context for EVERY generated organ, applied uniformly
-  # (one pattern, not per-service): run as the repo-owning user (git/ssh/cargo),
-  # with that user's real HOME, ~/.cargo/bin on PATH, and cwd at the repo root,
-  # so cwd-based tools (chump gap, gh repo view) don't run from / and
-  # $HOME-based tools (gh, almanac) read the run-user's config, on any host.
-  if grep -q "^\[Service\]" "$tmp"; then
-    _repo_on_host="${RUN_HOME%/}/Projects/chump"
-    grep -q "^User=" "$tmp"             || sed -i "/^\[Service\]/a User=${RUN_USER}" "$tmp"
-    grep -q "^Environment=HOME=" "$tmp" || sed -i "/^\[Service\]/a Environment=HOME=${RUN_HOME%/}" "$tmp"
-    grep -q "^WorkingDirectory=" "$tmp" || sed -i "/^\[Service\]/a WorkingDirectory=${_repo_on_host}" "$tmp"
-    grep -q "^Environment=PATH=" "$tmp" || sed -i "/^\[Service\]/a Environment=PATH=${RUN_HOME%/}/.cargo/bin:/usr/local/bin:/usr/bin:/bin" "$tmp"
-  fi
-  # RESILIENT-374: re-assert User=root for keep-root organs. The rewrite +
-  # injection above may have flipped/added User=<run-user>; a deploy organ must
-  # stay root. Narrow, explicit, and the ONLY place a unit is forced back to root.
-  if [[ -n "${_KEEP_ROOT_ORGANS[$unit]:-}" ]]; then
-    if grep -q "^User=" "$tmp"; then
-      sed -i "s#^User=.*#User=root#" "$tmp"
-    else
-      sed -i "/^\[Service\]/a User=root" "$tmp"
-    fi
-  fi
+  # RESILIENT-353 / INFRA-3647 / RESILIENT-1051 host-rewrite — now the shared
+  # organ_unit_host_rewrite (scripts/ops/lib/organ-unit-install-lib.sh), the
+  # SAME rewriter chump-node-install.sh's --role placer uses. It detects each
+  # unit's OWN baked-in source user + home, rewrites path prefixes AND a bare
+  # `Environment=HOME=/root` (the "instruments lie" keystone), injects the
+  # uniform host-agnostic runtime context (User/HOME/WorkingDirectory/PATH), and
+  # (for the keep-root deploy organ) re-asserts User=root.
+  _keep_root=0; [[ -n "${_KEEP_ROOT_ORGANS[$unit]:-}" ]] && _keep_root=1
+  organ_unit_host_rewrite "$src" "$tmp" "$RUN_USER" "$RUN_HOME" "$_keep_root"
   if [[ ! -f "$dest" ]] || ! cmp -s "$tmp" "$dest"; then
     CHANGED_UNITS+=("$unit")
   fi

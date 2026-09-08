@@ -74,41 +74,35 @@ emit() {  # kind, extra-json (no leading/trailing comma)
   return 0  # emit is best-effort telemetry; it must never sink the reconcile (set -e)
 }
 
-# RESILIENT-347: is `unit` applicable to THIS node given its declared
-# `requires=` spec (comma-separated bin:/env:/dep: tokens, see manifest
-# header)? Empty/absent requires means "always applicable" (back-compat with
-# pre-347 manifest lines). Writes the first unmet reason into $2 (a nameref
-# target via printf -v) for the caller to log/emit.
-organ_is_applicable() {
-  local unit="$1" requires="$2" reason_var="$3"
-  [[ -z "$requires" ]] && return 0
-  local tok IFS=','
-  for tok in $requires; do
-    case "$tok" in
-      bin:*)
-        local bin="${tok#bin:}"
-        if ! command -v "$bin" >/dev/null 2>&1; then
-          printf -v "$reason_var" 'missing_bin:%s' "$bin"; return 1
-        fi
-        ;;
-      env:*)
-        local var="${tok#env:}"
-        if [[ -z "${!var:-}" ]]; then
-          printf -v "$reason_var" 'missing_env:%s' "$var"; return 1
-        fi
-        ;;
-      dep:*)
-        local dep="${tok#dep:}"
-        if ! "$SYSTEMCTL_BIN" is-active --quiet "$dep" 2>/dev/null; then
-          printf -v "$reason_var" 'missing_dep:%s' "$dep"; return 1
-        fi
-        ;;
-      *)
-        printf -v "$reason_var" 'unknown_requires_spec:%s' "$tok"; return 1
-        ;;
-    esac
-  done
-  return 0
+# RESILIENT-347 / RESILIENT-1055: organ_is_applicable now lives in
+# organ-manifest-lib.sh (sourced above) so it and scripts/ops/organ-role-roster.sh
+# compute applicability identically. It honors bin:/env:/dep:/file: requires
+# tokens; see that lib + the manifest header.
+
+# RESILIENT-1055: node-LOCAL organs the role-scoped drift-removal must NEVER
+# reap. These are units chump-node-install.sh installs directly (not via the
+# manifest) — the worker, heartbeat, the common self-heal organs — plus the
+# reconcile's OWN beat (chump-organ-reconcile, intentionally self-excluded from
+# the manifest) and the --user refresh timers. Without this exemption a
+# role-scoped reconcile saw them as "active/enabled but out-of-role" and
+# disabled them on its very first pass — reaping the worker it was meant to keep
+# alive and its own timer (VERIFIED in the FTUE container: worker + reconcile
+# went inactive immediately after a `--role muscle` bring-up).
+NODE_LOCAL_ORGAN_BASES=(
+  chump-organ-reconcile
+  chump-worker
+  chump-node-heartbeat
+  chump-process-organ-heal
+  chump-fleet-health-sentinel
+  chump-node-refresh
+  chump-node-deploy-lag-watchdog
+  chump-fleet-server
+)
+organ_is_node_local() {
+  local base="${1%.service}"; base="${base%.timer}"
+  local n
+  for n in "${NODE_LOCAL_ORGAN_BASES[@]}"; do [[ "$base" == "$n" ]] && return 0; done
+  return 1
 }
 
 # RESILIENT-347: is `unit` still cooling down from a prior verify failure?
@@ -237,6 +231,11 @@ MODE="${1:---apply}"
 if [[ "$MODE" == "--check" ]]; then
   fail=0
   for unit in "${PAGING_OFF[@]}"; do
+    # RESILIENT-1055: only assert neutered for pager units that ACTUALLY EXIST on
+    # this box. A role-scoped node never installs the pagers (they're primary-
+    # node organs), so `systemctl show` returns an empty ExecStart and the old
+    # grep read that as "not neutered" DRIFT for a unit that simply isn't here.
+    "$SYSTEMCTL_BIN" cat "$unit" >/dev/null 2>&1 || continue
     # effective ExecStart must be neutered to /bin/true
     if ! "$SYSTEMCTL_BIN" show "$unit" -p ExecStart 2>/dev/null | grep -q '/bin/true'; then
       echo "DRIFT: $unit auto-paging is NOT neutered"; fail=1
@@ -273,6 +272,10 @@ if [[ "$MODE" == "--check" ]]; then
       _base="${unit%.service}"; _base="${_base%.timer}"
       [[ -n "${_EXPECTED_UNIT[${_base}.timer]:-}" ]] && continue
       [[ -n "${_EXPECTED_UNIT[${_base}.service]:-}" ]] && continue
+      # RESILIENT-1055: never flag node-local organs (worker/heartbeat/sentinel/
+      # the reconcile's own beat) — chump-node-install installs them directly,
+      # they're not manifest units and are NOT drift.
+      organ_is_node_local "$unit" && continue
       if organ_is_live "$unit"; then
         echo "DRIFT: $unit is active/enabled but out-of-role (not in role-filtered manifest)"; fail=1
       fi
@@ -300,6 +303,11 @@ NEED_RELOAD=0
 
 # 1) Auto-pagers → neuter (repo-declared drop-in) + stop; drop the legacy snowflake.
 for unit in "${PAGING_OFF[@]}"; do
+  # RESILIENT-1055: only neuter pagers that ACTUALLY EXIST on this box. A
+  # role-scoped node never installs the primary-node pagers, so there is no unit
+  # to neuter — skip rather than litter /etc/systemd/system with a .d/ drop-in
+  # dir for a non-existent unit.
+  "$SYSTEMCTL_BIN" cat "$unit" >/dev/null 2>&1 || continue
   dropin_dir="$SYSTEMD_DIR/${unit}.d"
   dropin="$dropin_dir/$DROPIN_NAME"
   want="$(dropin_body "$unit")"
@@ -425,6 +433,11 @@ if [[ -n "$ROLE_FILTER" ]]; then
     base="${unit%.service}"; base="${base%.timer}"
     [[ -n "${EXPECTED_UNIT[${base}.timer]:-}" ]] && continue
     [[ -n "${EXPECTED_UNIT[${base}.service]:-}" ]] && continue
+    # RESILIENT-1055: never reap node-local organs (worker/heartbeat/sentinel/
+    # the reconcile's own beat) — chump-node-install installs them directly.
+    # Reaping them was the FTUE-verified bug: a `--role muscle` reconcile
+    # disabled the very worker + reconcile timer the bring-up had just started.
+    organ_is_node_local "$unit" && continue
     [[ -n "${REAPED_BASE[$base]:-}" ]] && continue   # already reaped via its sibling
     organ_is_live "$unit" || continue
     echo "DRIFT-REMOVE: $unit is active/enabled/failed but out-of-role (not in role-filtered manifest) — disabling + reaping (with paired timer/service)"
