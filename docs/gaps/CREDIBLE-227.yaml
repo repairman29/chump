@@ -1,7 +1,7 @@
 - id: CREDIBLE-227
   domain: CREDIBLE
   title: provider slot limits are hand-entered and never verified — two slots declare the SAME model with a 57x RPD difference
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -11,5 +11,7 @@
     - "4 OF 13 SLOTS CANNOT BE RATE-LIMITED AT ALL: CHUMP_PROVIDER_12/13/14/15 declare only BASE/KEY/MODEL/MODEL_CLASS — no RPM, TIER, PRIORITY or CONTEXT_K. Either backfill their metadata or make the loader refuse/warn on an incomplete slot, so a half-declared slot is visible instead of silently unlimited"
     - "provider_quality.rs already records success/failure/latency/tool-call outcomes and drives demotion, but NOTHING compares observation back to the configured ceiling. Close that loop: a slot repeatedly 429ing well under its declared RPD is evidence the declared number is wrong, and that signal is already being collected and thrown away"
     - "HONEST CONSEQUENCE TO RECORD: a same-session capacity claim ('100K+ free requests/day idle') was made from the 86400 figure and had to be retracted. Config read as measurement is exactly the signal-vs-outcome error this fleet keeps making"
+  closed_date: '2026-09-08'
+  closed_pr: 4429
   outcome_id: CREDIBLE-000
 
