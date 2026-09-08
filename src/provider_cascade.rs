@@ -17,7 +17,19 @@ use crate::local_openai::{self, LocalOpenAIProvider};
 use crate::provider_quality;
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
-const MAX_SLOTS: u32 = 14; // INFRA-789: slots 12-14 for Gemini 2.5 Flash Lite, 3 Flash, 3.1 Flash Lite
+// EFFECTIVE-413: raised from 14 — a pinned ceiling silently dropped any
+// CHUMP_PROVIDER_{N}_* block past slot 14 (e.g. slot 15, an OpenCode Zen
+// subscription slot) with no error, just an unreachable provider. Slots
+// 12-14 are OpenCode Zen variants, not Gemini (stale comment fixed here).
+const MAX_SLOTS: u32 = 40;
+
+// EFFECTIVE-413 AC #4: money-risk guard. A slot that omits RPD entirely
+// parses to rpd_limit=0, which the cascade treats as "unlimited" (see the
+// `if slot.rpd_limit > 0` gate below) — silently unbounded spend for any
+// paid-per-token slot whose operator simply forgot the RPD line. Slots that
+// omit RPD get this safe default cap instead of true-unlimited; set RPD
+// explicitly (including `RPD=0`) to opt out and get genuine no-limit.
+const DEFAULT_RPD_WHEN_UNSET: u32 = 500;
 
 /// INFRA-352: emit a structured ambient.jsonl event when the cascade has
 /// exhausted every slot it could try and is about to return Err to the caller.
@@ -480,6 +492,9 @@ pub struct ProviderSlot {
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
     /// Daily request cap (0 = unlimited). Set via CHUMP_PROVIDER_{N}_RPD.
+    /// EFFECTIVE-413: `from_env()` only produces 0 here for an *explicit*
+    /// `RPD=0`; a slot that omits RPD entirely gets `DEFAULT_RPD_WHEN_UNSET`
+    /// instead, so this field being 0 always reflects a deliberate choice.
     pub rpd_limit: u32,
     /// Calls made today (resets at midnight local time, approximately via day_start tracking).
     pub calls_today: AtomicU32,
@@ -663,10 +678,23 @@ impl ProviderCascade {
                 .unwrap_or(n * 10);
             let rpm_raw = std::env::var(format!("CHUMP_PROVIDER_{}_RPM", n)).ok();
             let rpm = rpm_raw.as_ref().and_then(|v| v.parse().ok()).unwrap_or(30);
-            let rpd = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n))
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+            let rpd_env = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n)).ok();
+            let rpd: u32 = match rpd_env.as_ref().and_then(|v| v.parse().ok()) {
+                Some(explicit) => explicit,
+                None => {
+                    // EFFECTIVE-413 AC #4: no explicit RPD → assume the
+                    // operator forgot it, not that they want unbounded
+                    // spend. An explicit `RPD=0` still opts into true
+                    // unlimited (handled by the `Some(explicit)` arm above).
+                    eprintln!(
+                        "[cascade] WARNING: slot {} ({}) has no CHUMP_PROVIDER_{}_RPD set — \
+                         defaulting to {} instead of unlimited. Set RPD explicitly (RPD=0 for \
+                         genuine unlimited) to silence this.",
+                        n, name, n, DEFAULT_RPD_WHEN_UNSET
+                    );
+                    DEFAULT_RPD_WHEN_UNSET
+                }
+            };
             let privacy = std::env::var(format!("CHUMP_PROVIDER_{}_PRIVACY", n))
                 .map(|s| parse_privacy_tier(&s))
                 .unwrap_or(PrivacyTier::Safe);
