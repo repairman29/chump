@@ -11,6 +11,7 @@ use axum::{
 };
 use serde::{Deserialize, Serialize};
 use tokio::time::{interval, Duration};
+use tower_http::services::ServeDir;
 
 use crate::dashboard;
 use crate::db::{now_ms, FleetStore};
@@ -31,6 +32,10 @@ pub struct AppState {
 }
 
 pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
+    // INFRA-5663: the daily cockpit is a single static page served from the
+    // repo working tree (kept current with green-main by node-refresh's hard
+    // reset), so "merged" reaches "running" with no copy-into-the-binary step.
+    let cockpit_dir = repo_root.join("web").join("cockpit-live");
     let state = AppState { store, repo_root };
     Router::new()
         .route("/api/events", get(get_events))
@@ -41,10 +46,15 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/mission", post(post_mission))
         .route("/api/gap", post(post_gap))
         .route("/api/gaps", get(get_gaps))
+        .route("/api/doc/{name}", get(get_doc))
         .route("/api/sentinel-heartbeat", post(post_sentinel_heartbeat))
         .route("/api/fleet/nodes", get(get_fleet_nodes))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
+        // INFRA-5663: static cockpit page at `/` (and any other non-API path).
+        // API routes are matched first; anything unmatched falls through to the
+        // static dir, so `/` serves web/cockpit-live/index.html.
+        .fallback_service(ServeDir::new(cockpit_dir).append_index_html_on_directories(true))
         .with_state(state)
 }
 
@@ -567,16 +577,20 @@ async fn post_sentinel_heartbeat(
 /// server-side from the pushed heartbeats.
 ///
 /// Replaces the SSH crawl the sentinel's `--fleet` grade did (the covenant
-/// break): the operator reads one authenticated route instead of `ssh`-ing each
-/// node. Each node reports its `failed` count plus `failed_units` / `healers`
-/// detail; the server stamps `age_secs` + `stale` per node so a dead sentinel
-/// shows as a stale row rather than silence. Same fail-closed bearer auth as
-/// `/api/gaps`.
-async fn get_fleet_nodes(State(s): State<AppState>, headers: axum::http::HeaderMap) -> Response {
-    if let Some(rejection) = check_bearer_auth(&headers) {
-        return rejection;
-    }
-
+/// break): the operator reads one route instead of `ssh`-ing each node. Each
+/// node reports its `failed` count plus `failed_units` / `healers` detail; the
+/// server stamps `age_secs` + `stale` per node so a dead sentinel shows as a
+/// stale row rather than silence.
+///
+/// INFRA-5663: this is an **unauthenticated read**, matching the cockpit spec
+/// (`docs/process/COCKPIT.md` §2: reads — events/segments/dashboard-summary/
+/// live/fleet/nodes — are open; only mutating routes + `/api/gaps` are
+/// Bearer-gated). The daily cockpit page fetches it from an unauthed browser to
+/// render the honest "nodes: 1 of 3" tile per `merged-not-running-disease`. The
+/// *write* side (`POST /api/sentinel-heartbeat`) stays fail-closed behind
+/// `CHUMP_BATPHONE_TOKEN`, and this read is safe only on the tailnet bind — no
+/// public exposure without read-auth (RESILIENT-1088).
+async fn get_fleet_nodes(State(s): State<AppState>) -> Response {
     let rows = match s.store.list_node_heartbeats() {
         Ok(r) => r,
         Err(e) => {
@@ -628,6 +642,51 @@ async fn get_fleet_nodes(State(s): State<AppState>, headers: axum::http::HeaderM
         nodes,
     })
     .into_response()
+}
+
+/// GET /api/doc/{name} (INFRA-5663) — render an allow-listed durable repo doc
+/// straight from the working tree at HEAD.
+///
+/// The cockpit renders durable knowledge (roadmap, mission) as a *view* of
+/// files that already exist in the repo — never a forked copy in the page
+/// (`docs/process/COCKPIT.md` §4: "rendered from repo files at HEAD, never
+/// forked into the page"). `name` is matched against a fixed allow-list, so
+/// there is no path traversal and no arbitrary-file read — only the two Phase-1
+/// docs the cockpit needs. This is the Phase-1 seed of the fuller `/docs/*`
+/// route (Phase 2). Unauthenticated read, tailnet-only like the other reads.
+async fn get_doc(State(s): State<AppState>, Path(name): Path<String>) -> Response {
+    // Fixed allow-list: cockpit key -> repo-relative path. No traversal.
+    let rel: &str = match name.as_str() {
+        "roadmap" => "docs/ROADMAP.md",
+        "mission" => "docs/MISSION.md",
+        _ => {
+            return (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("unknown doc {name:?}")})),
+            )
+                .into_response();
+        }
+    };
+
+    let path = s.repo_root.join(rel);
+    match std::fs::read_to_string(&path) {
+        Ok(body) => (
+            [(
+                axum::http::header::CONTENT_TYPE,
+                "text/markdown; charset=utf-8",
+            )],
+            body,
+        )
+            .into_response(),
+        Err(e) => {
+            tracing::warn!("GET /api/doc/{name}: {e}");
+            (
+                axum::http::StatusCode::NOT_FOUND,
+                Json(serde_json::json!({"error": format!("doc unavailable: {e}")})),
+            )
+                .into_response()
+        }
+    }
 }
 
 /// GET /healthz — liveness probe.
