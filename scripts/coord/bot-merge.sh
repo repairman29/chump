@@ -394,6 +394,22 @@ _bm_err_handler() {
     printf '\033[0;31m[bot-merge]   kind=bot_merge_uncaught_error emitted to ambient.\033[0m\n' >&2 || true
 }
 trap '_bm_err_handler "$?" "$BASH_COMMAND" "$LINENO"' ERR
+_BM_ERR_TRAP_CMD='_bm_err_handler "$?" "$BASH_COMMAND" "$LINENO"'
+
+# CREDIBLE-295: `set +e` does NOT suppress the ERR trap above — only wrapping
+# a command as the non-final member of a `||` list (e.g. `cmd || true`) is
+# exempt from both errexit AND the ERR trap. Any best-effort region that
+# instead captures `$?` manually after a bare `set +e ... cmd ... set -e`
+# (the auto-close-gap stage's `chump gap ship` call, INFRA-1030) still fires
+# the ERR trap on the very failure it's deliberately handling — a false
+# bot_merge_uncaught_error even though the rc is captured and handled below.
+#
+# To suppress it for such a region, write `trap - ERR` / `trap "$_BM_ERR_TRAP_CMD" ERR`
+# INLINE at the call site — do NOT wrap those two commands in a helper
+# function. Bash saves and restores the ERR (and DEBUG/RETURN) trap around
+# every function call unless `set -o functrace` is active, so a `trap - ERR`
+# executed inside a function silently reverts the instant that function
+# returns, leaving the outer trap re-armed and the "suspend" a no-op.
 
 # ── META-156: per-step ambient observability ─────────────────────────────────
 # Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
@@ -4490,8 +4506,15 @@ except Exception:
                 fi
 
                 # INFRA-469 / INFRA-587: run_timed_hb captures output + has 60s timeout.
+                # CREDIBLE-295: suspend the ERR trap for this call — `set +e`
+                # alone does not stop it firing on a non-zero rc that we are
+                # about to capture and handle deliberately (see comment on
+                # _BM_ERR_TRAP_CMD above). Inline, NOT via a helper function —
+                # a `trap - ERR` inside a called function reverts the moment
+                # that function returns.
                 _tmpship=$(mktemp)
                 set +e
+                trap - ERR
                 CHUMP_REPO="$_autoclose_main_repo" \
                 CHUMP_REAL_BINARY="$_autoclose_chump" \
                 run_timed_hb "gap ship $_gid" 60 \
@@ -4499,6 +4522,7 @@ except Exception:
                         --closed-pr "$TARGET_PR" \
                         --update-yaml > "$_tmpship" 2>&1
                 _autoclose_rc=$?
+                trap "$_BM_ERR_TRAP_CMD" ERR
                 set -e
                 _autoclose_err=$(cat "$_tmpship")
                 rm -f "$_tmpship"
