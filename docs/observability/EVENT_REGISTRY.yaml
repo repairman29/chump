@@ -12371,6 +12371,79 @@ events:
     trigger: git reset --hard origin/main exited non-zero after a successful fetch; the rebuild sequence is aborted
     consumers: [ambient, fleet-brief]
     fields_required: [ts, kind, rc, from, to]
+
+  - kind: node_script_host_noop
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: script-host refresh ran and the checkout already contains the target ref (origin/main) — nothing to fast-forward
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, sha, target]
+
+  - kind: node_script_host_refreshed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: the worker's ~/chump script-host checkout was fast-forwarded to origin/main (worktree-safe) so merged shell/script fixes reach the running worker
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, from, to]
+
+  - kind: node_script_host_fetch_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: git fetch origin main exited non-zero; the refresh is aborted and the checkout is left untouched
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, rc, output]
+
+  - kind: node_script_host_diverged
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: the script-host HEAD carries local commits not on origin/main (not a fast-forward) — refresh STOPS and touches nothing, awaiting reconciliation
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, head, target]
+
+  - kind: node_script_host_ff_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: git merge --ff-only origin/main (or the pre-ff stash push) failed; any stashed node-local mods are restored and the refresh is aborted
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind]
+
+  - kind: node_script_host_mods_stashed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: node-local tracked modifications (e.g. a muscle-node organ-manifest.txt stopgap) were stashed before the fast-forward so they survive the refresh
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, msg]
+
+  - kind: node_script_host_pop_conflict
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: re-applying the stashed node-local mods conflicted with an upstream change; the mods are KEPT in the git stash (recoverable) and the working tree is reset clean to the target — loud signal for reconciliation
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, target, note]
+
+  - kind: node_script_host_skipped_worktree
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/node-script-host-refresh.sh (RESILIENT-1080)
+    emitter_paths: [scripts/ops/node-script-host-refresh.sh]
+    trigger: refused to run because the resolved repo is not a main checkout (linked worktree / no .git dir) or HEAD is not on main — never advances a worktree
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, repo, reason]
+
   - kind: barnacle_threshold_crossed
     effect_metric: self
     emitter: scripts/coord/barnacle-buster.sh (RESILIENT-359)
