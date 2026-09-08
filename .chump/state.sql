@@ -4788,9 +4788,20 @@ gaps:
   status: open
   priority: P2
   effort: xs
+  description: |
+    Add a concise paragraph to the AUTO_ADMIN_MERGE_POLICY documentation (under the “Fix‑class allowlist” heading) and update the README and CONTRIBUTING files so they explicitly state that auto‑close steps are now performed on a best‑effort basis and will not emit a `bot_merge_uncaught_error`.
+    
+    Target file(s):
+    - docs/process/AUTO_ADMIN_MERGE_POLICY.md
+    - README.md
+    - CONTRIBUTING.md
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - README/CONTRIBUTING sections mention that auto‑close steps are now best‑effort and will not emit bot_merge_uncaught_error.
-    - Documentation is built without errors and reviewed.
+    - docs/process/AUTO_ADMIN_MERGE_POLICY.md contains the sentence “Auto‑close steps are performed on a best‑effort basis and will not raise `bot_merge_uncaught_error`” under the “Fix‑class allowlist” heading.
+    - README.md includes a bullet in its “Auto‑close” section that mentions the failure‑tolerant behavior.
+    - CONTRIBUTING.md includes the same note in its “Merging” guidelines section.
+    - Executing `scripts/eval/doc-hygiene-round-prompt.bash` exits with status 0 and outputs “Documentation hygiene check passed”.
   depends_on: [CREDIBLE-1109]
   notes: |
     [chump harvest check 'bot-merge']
@@ -4808,6 +4819,57 @@ gaps:
     === cross-pollination briefs mentioning 'bot-merge' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+
+- id: CREDIBLE-1113
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-1045: Implement summarized_pct >95% guard (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The relevant CREDIBLE code path now enforces that summarized_pct is greater than 95%; if not, the operation is aborted with a clear error.
+    - The change compiles without warnings (cargo fmt + clippy --all-targets -D warnings).
+    - All existing tests continue to pass; no regression is introduced.
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
+
+- id: CREDIBLE-1114
+  domain: CREDIBLE
+  title: "CREDIBLE: CREDIBLE-1046: Add test for summarized_pct >95% behavior (CREDIBLE-300 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new automated test (cargo test or scripts/ci/test-*.sh) verifies that summarized_pct >95% is enforced.
+    - The test fails when the guard from CREDIBLE-1045 is removed, proving it validates the new behavior.
+    - The test passes in CI and does not introduce any new warnings.
+  depends_on: [CREDIBLE-1113]
+  notes: |
+    [chump harvest check 'Almanac']
+    === primitives_index match for 'Almanac' ===
+    
+    === cluster keyword match for 'Almanac' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+    
+    === extracted_primitives (per-file, line-refd) match for 'Almanac' ===
+    
+    === repo-description match for 'Almanac' ===
+    
+    === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'Almanac' ===
 
 - id: CREDIBLE-112
   domain: CREDIBLE
@@ -6791,7 +6853,7 @@ gaps:
 - id: CREDIBLE-225
   domain: CREDIBLE
   title: tmp
-  status: closed_not_a_bug
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -6801,10 +6863,7 @@ gaps:
   notes: |
     Decomposed into 5 slices: CREDIBLE-716, CREDIBLE-717, CREDIBLE-718, CREDIBLE-719, CREDIBLE-720
     [2026-09-03T19:22:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1081B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
-    
-    [2026-09-08T13:35:17Z] closed_not_a_bug (session credible-225-fleet-1-20260908-133127): gap has title 'tmp', empty description, no real spec. Auto-decompose has run against it at least twice (2026-08-19 -> CREDIBLE-581..585; later -> CREDIBLE-716..720), each time producing hallucinated self-referential sub-gaps ('Impact analysis for tmp change', 'Implement tmp change in identified code paths') with no grounding in an actual feature request. Fleet's own loop-detector (INFRA-3832) already auto-blocked this gap after 3 consecutive non-ship cycles. Closing as invalid rather than fabricating a fake 'tmp' code change; also closing the orphaned decompose sub-gaps below to stop further churn. Root-cause (decompose should refuse empty-description parents) filed separately.
   opened_date: '2026-08-19'
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-226
   domain: CREDIBLE
@@ -8138,7 +8197,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    Decomposed into 2 slices: CREDIBLE-1045, CREDIBLE-1046
+    Decomposed into 2 slices: CREDIBLE-1113, CREDIBLE-1114
   opened_date: '2026-08-22'
   outcome_id: MISSION-010
   evidence: |
@@ -16250,10 +16309,18 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new public function `is_fresh(binary_sha: &str, main_sha: &str, max_minutes: u64, max_commits: u64) -> bool` to `crates/chump-verify/src/external_verify_merge.rs` that computes the commit distance with `git rev-list --count` and the timestamp difference with `git show -s --format=%ct`, returns true only when both the elapsed minutes ≤ max_minutes and the commit count ≤ max_commits, and gracefully returns false for missing SHAs or unavailable git metadata.
+    
+    Target file(s):
+    - crates/chump-verify/src/external_verify_merge.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - Function `is_fresh(binary_sha, main_sha) -> bool` returns true when the binary is within N minutes or M commits of the latest main SHA
-    - Logic uses git metadata or CI‑provided timestamps without external network calls
-    - Edge cases (no commits, missing timestamps) are handled gracefully
+    - In `crates/chump-verify/src/external_verify_merge.rs`, the function `is_fresh` returns true when the time delta between `binary_sha` and `main_sha` is ≤ 30 minutes and the commit distance is ≤ 5 commits (default parameters).
+    - The implementation invokes the command `git rev-list --count <binary_sha>..<main_sha>` and uses its output to enforce the M‑commit threshold.
+    - When either `binary_sha` or `main_sha` does not exist in the repository, `is_fresh` returns false without panicking or crashing.
+    - A unit test `test_is_fresh_within_thresholds` added to the same file asserts that `is_fresh` yields true for two commits created less than 30 minutes apart and less than 5 commits apart, and a test `test_is_fresh_outside_thresholds` asserts false for commits beyond those limits.
   depends_on: [CREDIBLE-555]
   notes: |
     [chump harvest check 'Deploy']
@@ -16741,10 +16808,17 @@ gaps:
   status: open
   priority: P2
   effort: s
+  description: |
+    Add a new public function `normalize_path(path: &str) -> String` to `src/web_server.rs` that expands `$VAR` environment‑variable placeholders using `std::env::var`, replaces Windows‑style backslashes with forward slashes, collapses redundant components (e.g., `.` and `..`), and returns the canonical path string; update `seed_starter_gaps` in the same file to invoke this function on any path values before they are stored.
+    
+    Target file(s):
+    - src/web_server.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - "Function `normalize_path(path: str) -> str` resolves environment variable placeholders and normalizes path separators"
-    - Two paths that differ only by variable name (e.g., `$HOME/project` vs `$PROJECT_ROOT/project`) resolve to the same canonical form
-    - Unit tests verify resolution for at least three different variable patterns
+    - "A unit test `test_normalize_path_env_resolution` in `src/web_server.rs` asserts that `normalize_path(\"$HOME/project\")` and `normalize_path(\"$PROJECT_ROOT/project\")` produce identical strings when `HOME` and `PROJECT_ROOT` are set to the same directory."
+    - "The function `normalize_path` in `src/web_server.rs` returns a path containing only forward slashes and no trailing separator for inputs such as `\"C:\\\\Users\\\\Bob\\\\..\\\\Bob\\\\proj\"`; this is verified by a dedicated test case in the same file."
+    - The existing function `seed_starter_gaps` in `src/web_server.rs` now calls `normalize_path` on each incoming path, and a test `test_seed_starter_gaps_uses_normalization` confirms that the stored gap paths are the normalized forms produced by `normalize_path`.
   depends_on: [CREDIBLE-570]
   notes: |
     [chump harvest check 'almanac']
@@ -16995,7 +17069,7 @@ gaps:
 - id: CREDIBLE-581
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-395: Impact analysis for tmp change (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: xs
   description: |
@@ -17010,14 +17084,11 @@ gaps:
     - atomic_claim.rs defines a `const TMP_IMPACT_ANALYSIS` string that explicitly lists the `rating_picker_demotion` function as an affected path.
     - reflect.rs includes a unit test `test_tmp_impact_analysis` that asserts the `TMP_IMPACT_ANALYSIS` constant contains the substring “tmp”.
     - Both files compile without warnings and the new constant is publicly re‑exported (e.g., via `pub(crate)`) so that `cargo test` exercises the new test.
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-582
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-396: Implement \"tmp\" change in identified code paths (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
@@ -17025,14 +17096,11 @@ gaps:
     - Compilation succeeds without warnings.
     - No existing functionality is broken (all current tests still pass).
   depends_on: [CREDIBLE-581]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-583
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-397: Add unit test verifying new \"tmp\" behavior (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
@@ -17040,14 +17108,11 @@ gaps:
     - The test fails on the pre‑change code base and passes after the implementation.
     - Test is placed in the appropriate test module and follows project naming conventions.
   depends_on: [CREDIBLE-582]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-584
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-398: Add integration/CI test script for \"tmp\" (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -17055,14 +17120,11 @@ gaps:
     - The script exits with status 0 only when the new behavior is present.
     - The script is referenced in the CI configuration and runs on each push.
   depends_on: [CREDIBLE-582]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-585
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-399: Enforce formatting, clippy, and regression check (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: xs
   description: |
@@ -17078,9 +17140,6 @@ gaps:
     - "`scripts/ci/test-infra-124-docs-delta-trailer.sh` exits with a non‑zero status if `cargo fmt --check` would report a formatting issue."
     - "`scripts/ci/test-infra-257-doc-only-guards.sh` contains the exact command `cargo clippy --all-targets -D warnings` inside its `run_check` function."
   depends_on: [CREDIBLE-583, CREDIBLE-584]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-586
   domain: CREDIBLE
@@ -20710,7 +20769,7 @@ gaps:
 - id: CREDIBLE-716
   domain: CREDIBLE
   title: "CREDIBLE: Analyze required code changes for tmp (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: xs
   description: |
@@ -20727,14 +20786,11 @@ gaps:
     - In `scripts/ci/test-credible-155.sh`, the `run_verify` function checks that the YAML produced by `format_gap_yaml` contains a non‑empty `required_changes` array and fails the CI step if the array is missing or empty.
     - The CI inventory document `docs/process/CI_GATES_GENERATED_INVENTORY.md` contains a new section describing the `required_changes` field, its purpose, and format.
     - Running the CI test suite prints a line “required_changes validated” when the `run_verify` check passes, confirming the observable output.
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-717
   domain: CREDIBLE
   title: "CREDIBLE: Implement tmp change in CREDIBLE code path (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: s
   description: |
@@ -20750,14 +20806,11 @@ gaps:
     - The CI script `scripts/ci/test-credible-155.sh` completes successfully (exit status 0) after the change.
     - No other functions in `crates/chump-bench/src/bench.rs` emit new compilation warnings or failures.
   depends_on: [CREDIBLE-716]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-718
   domain: CREDIBLE
   title: "CREDIBLE: Add unit test for tmp behavior (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: s
   description: |
@@ -20773,14 +20826,11 @@ gaps:
     - The test verifies that calling the tmp‑creation API with a valid identifier returns `Ok` and that the created file contains the expected contents.
     - The test verifies that calling the same API with an invalid path returns an `Err` variant.
   depends_on: [CREDIBLE-717]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-719
   domain: CREDIBLE
   title: "CREDIBLE: Run cargo fmt and clippy checks (CREDIBLE-225 slice)"
-  status: closed_not_a_bug
+  status: open
   priority: P2
   effort: xs
   description: |
@@ -20796,9 +20846,6 @@ gaps:
     - Running `scripts/ci/test-pr-fmt-shepherd.sh` on a repository where `cargo clippy -- -D warnings` emits any warning exits with a non‑zero status and prints the clippy warning messages.
     - The `write_pr_checks` function in `scripts/ci/test-pr-fmt-shepherd.sh` invokes both `cargo fmt -- --check` and `cargo clippy -- -D warnings` in that order before completing.
   depends_on: [CREDIBLE-717]
-  notes: |
-    [2026-09-08T13:35:20Z] closed_not_a_bug: orphaned auto-decompose sub-gap of CREDIBLE-225, which was itself a vague 'tmp' placeholder with no real spec. Closing alongside parent to stop fleet churn (see CREDIBLE-225 notes).
-  closed_date: '2026-09-08'
 
 - id: CREDIBLE-720
   domain: CREDIBLE
@@ -59325,7 +59372,7 @@ gaps:
     - "provider is gemini-3.6-flash not llama3.2:3b"
     - child slices filed into state.db
   notes: |
-    | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
+     | CLOSED(self-test): EFFECTIVE-513 bat-phone decompose routing verification artifact — not real backlog work
   closed_date: '2026-08-31'
 
 - id: EFFECTIVE-517
@@ -117949,7 +117996,7 @@ gaps:
     - "reopener and stale-PR-reaper share one policy: keep a PR alive only if gap open AND branch mergeable/rebaseable; retire conflicting+stale+low-priority PRs (gap stays open for clean re-pick)"
     - "receipt 2026-08-19: closed #3919(INFRA-1784)/#3910(META-193) 03:14:1x, reopened by repairman29 at 03:14:4x (~25s); both DIRTY+P2 → un-retireable, re-jam"
   notes: |
-    Decomposed into 6 slices: INFRA-5348, INFRA-5349, INFRA-5350, INFRA-5351, INFRA-5352, INFRA-5353
+    Decomposed into 6 slices: INFRA-5657, INFRA-5658, INFRA-5659, INFRA-5660, INFRA-5661, INFRA-5662
   opened_date: '2026-08-19'
 
 - id: INFRA-3606
@@ -118286,7 +118333,7 @@ gaps:
     - "The dangling muscle worker.sh (referenced at :141 but never written; only node-heartbeat.sh is written at :144) is written from the existing pixel-worker.sh loop so a muscle install no longer reports the worker organ DOWN"
     - self_test() enumerates the manifest-derived applicable set (not hardcoded brain_organs/muscle_organs) and prints INSTALLED only when every applicable organ reports svc_status=up; --dry-run on systemd prints the exact set it WOULD supervise
   notes: |
-    Decomposed into 6 slices: INFRA-4351, INFRA-4352, INFRA-4353, INFRA-4354, INFRA-4355, INFRA-4356
+    Decomposed into 6 slices: INFRA-5648, INFRA-5649, INFRA-5650, INFRA-5651, INFRA-5652, INFRA-5653
   opened_date: '2026-08-21'
   outcome_id: COTG
 
@@ -118406,7 +118453,7 @@ gaps:
     - The 9 live CJ organs (cargo-sweep-gc, disk-monitor, main-health-watchdog, node-orchestrator, pr-lander, pr-stuck-live-scan, reviver, rot-reaper, worktree-reaper) each get a registry line with a working pgrep detector, verified against live pgrep -f on closetjunky.
     - "DEPTH: happy-path + one adversarial (a launched organ missing from the registry); gaps named."
   notes: |
-    Decomposed into 3 slices: INFRA-3720, INFRA-3721, INFRA-3722
+    Decomposed into 3 slices: INFRA-5654, INFRA-5655, INFRA-5656
   opened_date: '2026-08-21'
 
 - id: INFRA-3649
@@ -180580,20 +180627,552 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
 
+- id: INFRA-5648
+  domain: INFRA
+  title: "INFRA: Expose organ‑reconcile parsing functions to node‑install (INFRA-3641 slice)"
+  status: done
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - scripts/setup/chump-node-install.sh sources or imports the required functions from scripts/ops/organ-reconcile.sh without syntax errors
+    - install_organs can call the manifest parser (e.g., organ_is_node_local) and receives correct return codes
+    - No new runtime warnings are emitted when the script is executed
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+  closed_date: '2026-09-08'
+  closed_pr: 4547
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4547 titled 'INFRA-5648: ...' merged 2026-09-08; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
+
 - id: INFRA-5649
   domain: INFRA
-  title: decompose should refuse vague/empty-description parent gaps instead of hallucinating sub-gaps
+  title: "INFRA: Add manifest parsing to install_organs (INFRA-3641 slice)"
   status: open
   priority: P2
   effort: s
-  description: |
-    CREDIBLE-225 (title: 'tmp', empty description) was auto-decomposed at least twice by 'chump gap decompose --apply': 2026-08-19 produced CREDIBLE-581..585, a later run produced CREDIBLE-716..720. Both sets are self-referential hallucinations ('Impact analysis for tmp change', 'Implement tmp change in identified code paths') with zero grounding in a real feature request. The fleet's own loop-detector (INFRA-3832) already auto-blocked CREDIBLE-225 after 3 consecutive non-ship cycles. All 10 gaps (CREDIBLE-225 + 9 sub-gaps) were closed_not_a_bug in this session rather than shipping fake code. Root cause: decompose has no guard against LLM-hallucinated slicing when the parent has no real spec to slice.
   acceptance_criteria:
-    - chump gap decompose refuses (or warns loudly) when the parent gap's title is a placeholder (e.g. 'tmp') and/or description is empty, instead of calling the LLM and filing sub-gaps with no grounding
-    - add a regression test in scripts/ci/test-*.sh or a Rust unit test covering the refusal path
-    - cargo fmt + clippy --all-targets -D warnings + check pass
+    - install_organs reads scripts/ops/organ-manifest.txt and parses only lines with the 'enabled' flag
+    - "For each parsed organ, requires specifications (bin:/env:/dep:) are evaluated against the current host; organs whose requirements are satisfied are passed to svc_install and svc_up"
+    - Organs that do not satisfy requirements are skipped silently (no error, no abort)
+    - The existing organ‑reconcile.sh applicability logic is reused unchanged
+  depends_on: [INFRA-5648]
   notes: |
-    [2026-09-08T13:35:36Z] Filed while shipping/closing CREDIBLE-225 (session credible-225-fleet-1-20260908-133127).
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5650
+  domain: INFRA
+  title: "INFRA: Generate muscle worker.sh from pixel‑worker.sh loop (INFRA-3641 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A file named worker.sh is created in the same directory where node‑install expects it
+    - The content of worker.sh matches the loop logic currently present in pixel‑worker.sh for the muscle organ
+    - worker.sh is marked executable
+    - After the change, node‑install no longer reports the muscle worker organ as DOWN
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5651
+  domain: INFRA
+  title: "INFRA: Update self_test to use manifest‑derived organ set (INFRA-3641 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - self_test enumerates the set of applicable organs by re‑using the manifest parser instead of hard‑coded brain_organs/muscle_organs
+    - "When run normally, self_test prints \"INSTALLED\" only if every applicable organ returns svc_status=up"
+    - When run with --dry-run, self_test prints the exact list of organs it would supervise
+    - No hard‑coded organ names remain in the self_test implementation
+  depends_on: [INFRA-5649]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5652
+  domain: INFRA
+  title: "INFRA: Add unit test for manifest parsing and applicability (INFRA-3641 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A test script (e.g., test/organ_manifest_test.sh) supplies a sample organ-manifest.txt with varied enabled/disabled and requires entries
+    - The test asserts that the parser selects only the organs whose requirements match the test host environment
+    - The test runs automatically as part of the project's CI and passes
+    - Test output clearly indicates success or failure
+  depends_on: [INFRA-5649]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5653
+  domain: INFRA
+  title: "INFRA: Update documentation for new organ installation flow (INFRA-3641 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README or relevant docs include a section describing that install_organs now reads organ-manifest.txt
+    - Documentation mentions the generation of worker.sh for the muscle organ and the revised self_test behavior
+    - All code‑reference links point to the updated functions in chump-node-install.sh and organ-reconcile.sh
+    - Documentation builds without warnings
+  depends_on: [INFRA-5649, INFRA-5650, INFRA-5651, INFRA-5652]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5654
+  domain: INFRA
+  title: "INFRA: Create process‑organ revivable registry definition (INFRA-3648 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A repository‑declared registry file (e.g., scripts/ops/organ-registry.txt) is added and committed.
+    - "Each line in the registry contains: organ name, launcher path, pgrep detector pattern, optional heartbeat file path and max‑age, matching the format of organ‑manifest.txt."
+    - A Bash function `load_organ_registry` is added to scripts/ops/organ-reconcile.sh that parses the registry into associative arrays and validates syntax.
+    - The function returns success (exit code 0) when the registry is syntactically valid and all required fields are present.
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5655
+  domain: INFRA
+  title: "INFRA: Add pgrep detectors for the nine CJ organs and verify against live processes (INFRA-3648 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The registry contains a line for each of the nine CJ organs (cargo-sweep-gc, disk-monitor, main-health-watchdog, node-orchestrator, pr-lander, pr-stuck-live-scan, reviver, rot-reaper, worktree-reaper) with correct launcher path and pgrep pattern.
+    - "`organ_is_live` in scripts/ops/organ-reconcile.sh is extended to use the pgrep detector from the registry when systemd is not applicable."
+    - Running `pgrep -f <pattern>` for each organ matches at least one process on a test node (verified with a temporary script).
+    - A unit‑test script confirms that `organ_is_live <organ>` returns true for all nine organs when they are running.
+  depends_on: [INFRA-5654]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5656
+  domain: INFRA
+  title: "INFRA: Extend roll‑call test and implement --check mode using the registry (INFRA-3648 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`scripts/ci/test-resilient-366-organ-roll-call.sh` is updated to load the registry and perform a roll‑call; it fails when a launched organ is absent from the registry."
+    - A new `--check` flag is added (exposed via scripts/ops/organ-reconcile.sh or a helper) that reports per organ DETECTED‑ALIVE / DEAD / UNKNOWN based on the registry and pgrep/heartbeat detection.
+    - The `--check` mode exits with status 0 when all required organs are reported ALIVE and exits non‑zero when any required organ is reported DEAD.
+    - Happy‑path execution (all organs present and registered) exits 0 with all organs reported ALIVE.
+    - Adversarial test where one organ is launched but missing from the registry causes the script to exit non‑zero and report the mismatch.
+    - No reliance on `systemctl`; detection uses only the registry, pgrep, and optional heartbeat file logic.
+  depends_on: [INFRA-5655]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: INFRA-5657
+  domain: INFRA
+  title: "INFRA: Investigate current PR reopener behavior (INFRA-3604 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documented the existing reopener flow and trigger conditions
+    - Identified the specific condition that causes a manually‑closed stale conflicting PR to be auto‑reopened within ~25 seconds
+  notes: |
+    [chump harvest check 'while']
+    === primitives_index match for 'while' ===
+    
+    === cluster keyword match for 'while' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'while' ===
+    
+    === repo-description match for 'while' ===
+    
+    === HARVEST_ROADMAP.md mention of 'while' (deep-scan findings) ===
+      130:**Actual state (per CP-007 investigation):** the fork is **0 ahead, 276 BEHIND** upstream. Jeff's fork is **stale, not divergent** — taken once on 2026-04-16 and never touched while upstream marched 276 hourly-bot commits. Zero original divergence.
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'while' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5658
+  domain: INFRA
+  title: "INFRA: Define unified PR retention policy (INFRA-3604 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Created a policy spec that a PR stays alive only if the gap is open AND the target branch is mergeable or rebaseable
+    - Specified that conflicting, stale, low‑priority PRs must be retired while the gap remains open for clean re‑pick
+  depends_on: [INFRA-5657]
+  notes: |
+    [chump harvest check 'while']
+    === primitives_index match for 'while' ===
+    
+    === cluster keyword match for 'while' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'while' ===
+    
+    === repo-description match for 'while' ===
+    
+    === HARVEST_ROADMAP.md mention of 'while' (deep-scan findings) ===
+      130:**Actual state (per CP-007 investigation):** the fork is **0 ahead, 276 BEHIND** upstream. Jeff's fork is **stale, not divergent** — taken once on 2026-04-16 and never touched while upstream marched 276 hourly-bot commits. Zero original divergence.
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'while' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5659
+  domain: INFRA
+  title: "INFRA: Implement policy check in PR reopener (INFRA-3604 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Reopener now evaluates the unified policy before reopening a PR
+    - PRs whose target branch is not mergeable/rebaseable are not reopened
+    - Unit test verifies that a stale conflicting PR closed manually is not reopened within 30 seconds
+  depends_on: [INFRA-5658]
+  notes: |
+    [chump harvest check 'while']
+    === primitives_index match for 'while' ===
+    
+    === cluster keyword match for 'while' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'while' ===
+    
+    === repo-description match for 'while' ===
+    
+    === HARVEST_ROADMAP.md mention of 'while' (deep-scan findings) ===
+      130:**Actual state (per CP-007 investigation):** the fork is **0 ahead, 276 BEHIND** upstream. Jeff's fork is **stale, not divergent** — taken once on 2026-04-16 and never touched while upstream marched 276 hourly-bot commits. Zero original divergence.
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'while' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5660
+  domain: INFRA
+  title: "INFRA: Update stale‑PR‑reaper to use the same policy (INFRA-3604 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Stale‑PR‑reaper now shares the unified policy logic with the reopener
+    - Conflicting, stale PRs are automatically retired when the policy disallows keeping them alive
+    - Unit test confirms that such PRs are removed from the merge queue
+  depends_on: [INFRA-5658]
+  notes: |
+    [chump harvest check 'while']
+    === primitives_index match for 'while' ===
+    
+    === cluster keyword match for 'while' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'while' ===
+    
+    === repo-description match for 'while' ===
+    
+    === HARVEST_ROADMAP.md mention of 'while' (deep-scan findings) ===
+      130:**Actual state (per CP-007 investigation):** the fork is **0 ahead, 276 BEHIND** upstream. Jeff's fork is **stale, not divergent** — taken once on 2026-04-16 and never touched while upstream marched 276 hourly-bot commits. Zero original divergence.
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'while' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5661
+  domain: INFRA
+  title: "INFRA: Add integration tests for PR lifecycle (INFRA-3604 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Integration test simulates closing a stale conflicting PR and verifies it is not reopened
+    - Test covers both reopener and stale‑PR‑reaper paths and runs in CI without failures
+  depends_on: [INFRA-5659, INFRA-5660]
+  notes: |
+    [chump harvest check 'while']
+    === primitives_index match for 'while' ===
+    
+    === cluster keyword match for 'while' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'while' ===
+    
+    === repo-description match for 'while' ===
+    
+    === HARVEST_ROADMAP.md mention of 'while' (deep-scan findings) ===
+      130:**Actual state (per CP-007 investigation):** the fork is **0 ahead, 276 BEHIND** upstream. Jeff's fork is **stale, not divergent** — taken once on 2026-04-16 and never touched while upstream marched 276 hourly-bot commits. Zero original divergence.
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'while' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5662
+  domain: INFRA
+  title: "INFRA: Deploy changes to production and monitor (INFRA-3604 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Changes are released to production with feature flag enabled
+    - Monitoring over 24 hours shows zero auto‑reopens of stale conflicting PRs within 30 seconds
+    - Rollback plan ready and tested
+  depends_on: [INFRA-5661]
+  notes: |
+    [chump harvest check 'while']
+    === primitives_index match for 'while' ===
+    
+    === cluster keyword match for 'while' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'while' ===
+    
+    === repo-description match for 'while' ===
+    
+    === HARVEST_ROADMAP.md mention of 'while' (deep-scan findings) ===
+      130:**Actual state (per CP-007 investigation):** the fork is **0 ahead, 276 BEHIND** upstream. Jeff's fork is **stale, not divergent** — taken once on 2026-04-16 and never touched while upstream marched 276 hourly-bot commits. Zero original divergence.
+      238:The single most important finding from this entire pass isn't any individual primitive. It's the **echeo tree-sitter DRY catch**. We just shipped a tree-sitter crawler in INFRA-1719 (Sonnet's work, 2 days ago) while an existing one sat in echeo. Whether it was harvested-but-unacknowledged or reinvented, **the Harvester catalog would have flagged it at decompose time** if it had been live.
+    
+    === cross-pollination briefs mentioning 'while' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
 - id: INFRA-604
   domain: INFRA
