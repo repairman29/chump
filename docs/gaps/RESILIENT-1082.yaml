@@ -1,0 +1,36 @@
+- id: RESILIENT-1082
+  domain: RESILIENT
+  title: "brain->muscle role switch leaves a stale farmer-heartbeat that gates the worker RED forever (worker never claims despite a full queue)"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    2026-09-08: the worker readiness gate (RESILIENT-069 in
+    scripts/dispatch/worker.sh) skips claiming whenever `chump farmer status
+    --quiet` is RED. That status includes a heartbeat-fresh check
+    (src/farmer_status.rs check_heartbeat_fresh) that is deliberately VACUOUS-PASS
+    when .chump/farmer-heartbeat is ABSENT ("never installed on this host"), and
+    RED only when the file EXISTS but is stale. The farmer that writes the
+    heartbeat is role=brain (chump-farmer.timer) — it does NOT run on a muscle
+    node. So when a node is switched brain->muscle, the farmer stops but its LAST
+    heartbeat file is left behind; it then ages past HEARTBEAT_MAX_AGE_S (120s)
+    and pins `farmer status` RED permanently, so the muscle worker refuses to
+    claim ANY gap even with a full backlog. This is silent: the worker just logs
+    "farmer status RED — skipping claim" every 60s indefinitely.
+  acceptance_criteria:
+    - "a brain->muscle role switch (and the role=muscle reconcile / node-role-assign path) removes the node's farmer local state — at minimum .chump/farmer-heartbeat — so the vacuous-GREEN 'farmer never ran here' path applies and the worker can claim"
+    - "the worker readiness gate does not deadlock a muscle node: farmer-heartbeat staleness must not gate a node where the farmer is out-of-role (either the switch clears it, or the gate treats out-of-role-farmer as vacuous-GREEN)"
+    - "a regression guard proves a muscle node with a leftover stale farmer-heartbeat still reaches farmer status GREEN after the role-switch cleanup"
+  evidence: |
+    VERIFIED LIVE 2026-09-08 on mugman. `chump farmer status` = RED, sole
+    failing check heartbeat_fresh (age=365707s ~ 4.2 days; file dated 2026-09-03,
+    before the 2026-09-07 brain->muscle switch recorded in mugman.json). The
+    worker journal showed 4 solid days of "RESILIENT-069: farmer status RED —
+    skipping claim this cycle" — zero gaps claimed while 1,900+ gaps sat open.
+    Removing the stale leftover ~/chump/.chump/farmer-heartbeat (role-switch
+    cruft; nothing on a muscle node rewrites it) flipped status to GREEN, and the
+    very next worker cycle picked gap CREDIBLE-297, implemented it (+ a test),
+    committed it worker-authored, pushed the branch, and opened PR #4523 — the
+    first autonomously fleet-authored ship after the loop had been dark.
+  outcome_id: MISSION-010
+  opened_date: '2026-09-08'
