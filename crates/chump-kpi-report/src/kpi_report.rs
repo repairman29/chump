@@ -921,6 +921,179 @@ pub fn build_green_first_try_section(repo_root: &Path) -> GreenFirstTrySection {
     section
 }
 
+// ── Time-to-Land Section (CREDIBLE-1113, slice of CREDIBLE-272) ─────────────
+
+/// Ship-pipeline time-to-land: wall-clock seconds from `kind=gap_claimed` to
+/// `kind=gap_shipped` for the same `gap_id`, aggregated as p50/p90/max.
+#[derive(Debug, Default, Clone)]
+pub struct TimeToLandSection {
+    pub sample_count: u64,
+    pub p50_seconds: Option<u64>,
+    pub p90_seconds: Option<u64>,
+    pub max_seconds: Option<u64>,
+}
+
+impl TimeToLandSection {
+    pub fn render_text(&self) -> String {
+        if self.sample_count == 0 {
+            return "═══ Time-to-Land (CREDIBLE-1113) ═══\n  No claim→ship pairs found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Time-to-Land (CREDIBLE-1113) ═══\n  n={} p50={}s p90={}s max={}s\n",
+            self.sample_count,
+            self.p50_seconds.unwrap_or(0),
+            self.p90_seconds.unwrap_or(0),
+            self.max_seconds.unwrap_or(0),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"sample_count":{},"p50_seconds":{},"p90_seconds":{},"max_seconds":{}}}"#,
+            self.sample_count,
+            opt_u64(self.p50_seconds),
+            opt_u64(self.p90_seconds),
+            opt_u64(self.max_seconds),
+        )
+    }
+}
+
+fn opt_u64(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => "null".to_string(),
+    }
+}
+
+fn percentile_u64_slice(sorted: &[u64], pct: usize) -> Option<u64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let rank = (pct * sorted.len()).div_ceil(100);
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    Some(sorted[idx])
+}
+
+/// Scan ambient.jsonl and correlate `gap_claimed` events against `gap_shipped`
+/// events sharing the same `gap_id`, taking the earliest claim before each ship.
+pub fn build_time_to_land_section(repo_root: &Path) -> TimeToLandSection {
+    use std::collections::HashMap;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut claimed_at: HashMap<String, u64> = HashMap::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_claimed" {
+            continue;
+        }
+        let (Some(gap_id), Some(ts)) = (
+            extract_field(line, "gap_id"),
+            extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)),
+        ) else {
+            continue;
+        };
+        claimed_at
+            .entry(gap_id)
+            .and_modify(|existing| *existing = (*existing).min(ts))
+            .or_insert(ts);
+    }
+
+    let mut durations: Vec<u64> = Vec::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_shipped" {
+            continue;
+        }
+        let (Some(gap_id), Some(shipped_ts)) = (
+            extract_field(line, "gap_id"),
+            extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)),
+        ) else {
+            continue;
+        };
+        if let Some(&claim_ts) = claimed_at.get(&gap_id) {
+            if shipped_ts >= claim_ts {
+                durations.push(shipped_ts - claim_ts);
+            }
+        }
+    }
+
+    let mut section = TimeToLandSection {
+        sample_count: durations.len() as u64,
+        ..Default::default()
+    };
+    durations.sort_unstable();
+    section.p50_seconds = percentile_u64_slice(&durations, 50);
+    section.p90_seconds = percentile_u64_slice(&durations, 90);
+    section.max_seconds = durations.last().copied();
+    section
+}
+
+// ── Gate False-Positive Rate Section (CREDIBLE-1115, slice of CREDIBLE-272) ─
+
+/// Ship-pipeline gate FP rate: of the halt-class/gate signals routed through
+/// the duty-officer quiet gate (`kind=duty_officer_action`), what fraction
+/// were determined to be false positives (`verdict=refuted`) rather than
+/// genuine (`verdict=healed|suppressed|runbook_needed`).
+#[derive(Debug, Default, Clone)]
+pub struct GateFalsePositiveSection {
+    pub total_signals: u64,
+    pub false_positives: u64,
+}
+
+impl GateFalsePositiveSection {
+    pub fn fp_rate_pct(&self) -> f64 {
+        if self.total_signals == 0 {
+            0.0
+        } else {
+            (self.false_positives as f64 / self.total_signals as f64) * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.total_signals == 0 {
+            return "═══ Gate FP Rate (CREDIBLE-1115) ═══\n  No duty_officer_action events found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Gate FP Rate (CREDIBLE-1115) ═══\n  {}/{} signals refuted as false positive ({:.1}%)\n",
+            self.false_positives,
+            self.total_signals,
+            self.fp_rate_pct(),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"total_signals":{},"false_positives":{},"fp_rate_pct":{:.1}}}"#,
+            self.total_signals,
+            self.false_positives,
+            self.fp_rate_pct(),
+        )
+    }
+}
+
+/// Scan ambient.jsonl for `kind=duty_officer_action` events and tally verdicts.
+pub fn build_gate_false_positive_section(repo_root: &Path) -> GateFalsePositiveSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut section = GateFalsePositiveSection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "duty_officer_action" {
+            continue;
+        }
+        section.total_signals += 1;
+        if extract_field(line, "verdict").as_deref() == Some("refuted") {
+            section.false_positives += 1;
+        }
+    }
+    section
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
@@ -934,6 +1107,8 @@ pub struct KpiReport {
     pub tokens_per_ship: TokensPerShipReport,
     pub handoff_rate: HandoffRateSection,
     pub green_first_try: GreenFirstTrySection,
+    pub time_to_land: TimeToLandSection,
+    pub gate_false_positive: GateFalsePositiveSection,
 }
 
 impl KpiReport {
@@ -957,12 +1132,16 @@ impl KpiReport {
         out.push_str(&self.handoff_rate.render_text());
         out.push('\n');
         out.push_str(&self.green_first_try.render_text());
+        out.push('\n');
+        out.push_str(&self.time_to_land.render_text());
+        out.push('\n');
+        out.push_str(&self.gate_false_positive.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{},"time_to_land":{},"gate_false_positive":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
@@ -971,6 +1150,8 @@ impl KpiReport {
             self.tokens_per_ship.render_json(),
             self.handoff_rate.render_json(),
             self.green_first_try.render_json(),
+            self.time_to_land.render_json(),
+            self.gate_false_positive.render_json(),
         )
     }
 }
@@ -1210,6 +1391,8 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         tokens_per_ship: build_report(repo_root, window_days),
         handoff_rate: build_handoff_rate_section(repo_root, window_days),
         green_first_try: build_green_first_try_section(repo_root),
+        time_to_land: build_time_to_land_section(repo_root),
+        gate_false_positive: build_gate_false_positive_section(repo_root),
     }
 }
 
@@ -3484,6 +3667,78 @@ mod tests {
         assert!(section
             .render_text()
             .contains("No gap_shipped events found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1113_time_to_land_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // CREDIBLE-1: claimed at t0, shipped 100s later.
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"gap_claimed","gap_id":"CREDIBLE-1"}"#,
+                r#"{"ts":"2026-09-01T00:01:40Z","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+                // CREDIBLE-2: claimed at t0, shipped 200s later.
+                r#"{"ts":"2026-09-01T01:00:00Z","kind":"gap_claimed","gap_id":"CREDIBLE-2"}"#,
+                r#"{"ts":"2026-09-01T01:03:20Z","kind":"gap_shipped","gap_id":"CREDIBLE-2"}"#,
+                // CREDIBLE-3: shipped with no matching claim — excluded from the sample.
+                r#"{"ts":"2026-09-01T02:00:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-3"}"#,
+            ],
+        );
+        let section = build_time_to_land_section(&tmp);
+        assert_eq!(section.sample_count, 2);
+        assert_eq!(section.max_seconds, Some(200));
+        assert!(section.render_text().contains("n=2"));
+        assert!(section.render_json().contains(r#""sample_count":2"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1113_time_to_land_empty_when_no_pairs() {
+        let tmp = tempdir();
+        let section = build_time_to_land_section(&tmp);
+        assert_eq!(section.sample_count, 0);
+        assert!(section.p50_seconds.is_none());
+        assert!(section.render_text().contains("No claim→ship pairs found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1115_gate_fp_rate_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"duty_officer_action","signal":"a","tier":"T2","verdict":"refuted","detail":"x"}"#,
+                r#"{"ts":"2026-09-01T00:01:00Z","kind":"duty_officer_action","signal":"b","tier":"T1","verdict":"healed","detail":"x"}"#,
+                r#"{"ts":"2026-09-01T00:02:00Z","kind":"duty_officer_action","signal":"c","tier":"T3","verdict":"suppressed","detail":"x"}"#,
+                // Unrelated event kind must not affect the tally.
+                r#"{"ts":"2026-09-01T00:03:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+            ],
+        );
+        let section = build_gate_false_positive_section(&tmp);
+        assert_eq!(section.total_signals, 3);
+        assert_eq!(section.false_positives, 1);
+        assert!((section.fp_rate_pct() - (100.0 / 3.0)).abs() < 0.01);
+        assert!(section
+            .render_text()
+            .contains("1/3 signals refuted as false positive"));
+        assert!(section
+            .render_json()
+            .contains(r#""total_signals":3,"false_positives":1"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1115_gate_fp_rate_zero_when_no_signals() {
+        let tmp = tempdir();
+        let section = build_gate_false_positive_section(&tmp);
+        assert_eq!(section.total_signals, 0);
+        assert_eq!(section.fp_rate_pct(), 0.0);
+        assert!(section
+            .render_text()
+            .contains("No duty_officer_action events found"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }
