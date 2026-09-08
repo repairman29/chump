@@ -97,9 +97,41 @@ NODE_LOCAL_ORGAN_BASES=(
   chump-node-refresh
   chump-node-deploy-lag-watchdog
   chump-fleet-server
+  # RESILIENT-1083: node-lifecycle INFRA installed directly by chump-node-install.sh
+  # / install-node-housekeeping.sh (NOT the manifest). Reaping any of these breaks
+  # the node itself — auth/token refresh, the self-hosted-runner binary refresh,
+  # worker autoscaling, and disk / build / process hygiene — so a role-scoped
+  # reconcile must never treat them as "out-of-role drift". (Brain COORDINATION
+  # daemons that leak onto a muscle node are deliberately NOT listed: those SHOULD
+  # be reaped by the drift-removal pass.)
+  chump-oauth-refresh
+  chump-oracle-refresh
+  chump-refresh-runner-binary
+  chump-node-orchestrator
+  chump-disk-health-monitor
+  chump-disk-monitor
+  chump-worktree-reaper
+  chump-stale-worktree-reaper
+  chump-cargo-sweep-gc
+  chump-cargo-target-reaper
+  chump-active-target-reaper
+  chump-stale-process-watchdog
 )
 organ_is_node_local() {
   local base="${1%.service}"; base="${base%.timer}"
+  # RESILIENT-1083 (worker-orphan class): a muscle node's concrete worker unit and
+  # its node-orchestrator autoscale peers (chump-cj-worker, chump-node1-worker,
+  # chump-cj-worker2/3, chump-worker@N, ...) are ALWAYS node-local — installed by
+  # chump-node-install.sh / node-orchestrator.sh and driven by a node-local run
+  # script (~/cj-worker-run.sh, ~/node1-worker-run.sh), never a manifest organ.
+  # This glob is the GENERAL replacement for the per-node manifest reap-protection
+  # lines (the CJ-shaped chump-cj-worker / chump-node1-worker lines): a NEW muscle
+  # node's worker survives a role-scoped reconcile with ZERO manifest or node-local
+  # hand-edit. Without it, removing the per-node manifest line let the drift-removal
+  # pass reap the worker (mugman went dark 2026-09-08 after a manifest reset --hard).
+  case "$base" in
+    chump-*worker|chump-*worker[0-9]*|chump-worker@*) return 0;;
+  esac
   local n
   for n in "${NODE_LOCAL_ORGAN_BASES[@]}"; do [[ "$base" == "$n" ]] && return 0; done
   return 1
@@ -209,7 +241,25 @@ organ_manifest_parse "$MANIFEST" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES ||
 # list of role= values (as declared in organ-manifest.txt); empty/unset means
 # "all roles" — the pre-existing, back-compat behavior for the primary node's
 # own timer-driven reconcile, which is not role-scoped.
+# RESILIENT-1083: node role identity lives OUTSIDE the repo in ~/.chump/node.env
+# (written by chump-node-install.sh's write_node_env), so it SURVIVES the deploy
+# mirror's `git reset --hard origin/main` that reverts any tracked-manifest edit.
+# Sourcing it lets a muscle node's recurring (root-run) chump-organ-reconcile.timer
+# self-scope to its role even when the systemd role drop-in (zz-node-role.conf) is
+# absent — the exact mugman hole where an UNSCOPED root timer kept re-enabling
+# (resurrecting) role=brain organs on a muscle node, which the fragile STOPGAP
+# manifest hand-edits used to comment out by hand. An explicit
+# CHUMP_ORGAN_RECONCILE_ROLE in the environment still WINS (back-compat: the
+# install-time reconcile and the drop-in path are unchanged); node.env's
+# CHUMP_NODE_ROLE is only the fallback when nothing else scoped this run, and an
+# absent/empty value keeps the pre-existing whole-manifest behavior.
+_NODE_ENV="${CHUMP_STATE_DIR:-$HOME/.chump}/node.env"
+# shellcheck disable=SC1090
+[[ -f "$_NODE_ENV" ]] && source "$_NODE_ENV" 2>/dev/null || true
 ROLE_FILTER="${CHUMP_ORGAN_RECONCILE_ROLE:-}"
+if [[ -z "$ROLE_FILTER" && -n "${CHUMP_NODE_ROLE:-}" && "${CHUMP_NODE_ROLE}" != "all" ]]; then
+  ROLE_FILTER="$(organ_role_filter_for "${CHUMP_NODE_ROLE}")"
+fi
 if [[ -n "$ROLE_FILTER" ]]; then
   FILTERED_ENABLED=()
   IFS=',' read -ra _role_filter_toks <<< "$ROLE_FILTER"

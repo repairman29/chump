@@ -287,18 +287,19 @@ enabled     chump-digest.timer  role=data
 #     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
 #     not host-suffixed).
 enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file:~/cj-worker-run.sh
-# chump-node1-worker.service - the concrete worker unit on a non-CJ owned
-#     muscle node (mugman runs it as chump-node1-worker.service from
-#     ~/node1-worker-run.sh). RESILIENT-1083: the CJ block above was
-#     CJ-SHAPED (only chump-cj-worker), so a role=muscle organ-reconcile on a
-#     muscle node saw chump-node1-worker as "active but out-of-role" and
-#     drift-removed it (RESILIENT-1016) on the next node-refresh whose
-#     reset --hard wiped the local manifest survival edit, taking the node
-#     dark. Declaring it here - role=muscle, file:~/node1-worker-run.sh
-#     guarded so CJ/brain nodes lacking that script skip it silently - makes
-#     the muscle reconcile KEEP it instead of reaping the worker it is meant
-#     to preserve. The manifest now describes the real per-node roster.
-enabled     chump-node1-worker.service  role=muscle requires=bin:chump,bin:git,file:~/node1-worker-run.sh
+# RESILIENT-1083 (worker-orphan class, PERMANENT fix — SUPERSEDES #4533): a non-CJ
+# muscle node's concrete worker (mugman's chump-node1-worker.service from
+# ~/node1-worker-run.sh, plus any future node's worker and its node-orchestrator
+# autoscale peers) NO LONGER needs a per-node line here. organ-reconcile.sh's
+# organ_is_node_local now treats every worker unit (chump-*worker*) as node-local
+# and NEVER reaps it — the general replacement for the CJ-shaped per-node
+# reap-protection lines. The earlier hardcoded `chump-node1-worker.service
+# role=muscle` line (#4533) was node-specific and, being TRACKED, was reverted by
+# every `git reset --hard origin/main` — which un-declared the worker and let the
+# drift-removal pass reap it (mugman went dark 2026-09-08 ~30s after a manifest
+# reset). The worker is installed by chump-node-install.sh / node-orchestrator
+# (node-local), not this manifest, so it does not belong here. The chump-cj-worker
+# line above is retained only as belt-and-suspenders for the load-bearing CJ node.
 enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df,file:~/cj-disk-monitor-run.sh
 enabled     chump-cj-sync.service  role=data requires=bin:git,file:~/cj-sync-run.sh
 enabled     chump-postgrest.service  role=data requires=bin:postgrest
