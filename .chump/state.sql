@@ -8099,7 +8099,7 @@ gaps:
 - id: CREDIBLE-295
   domain: CREDIBLE
   title: "bot-merge auto-close-gap stage emits false bot_merge_uncaught_error post-arm on shell/doc PRs. RESILIENT-052 ERR trap fires exit_code=1 at bot-merge.sh ~line 4448 (step auto-close gap via PR, INFRA-154) on #4050/#4051/#4053 even though the gap ship is already set+e-guarded (_autoclose_rc captured). The throw is DOWNSTREAM in the auto-close stage — the rc!=0 else-branch or the CREDIBLE-178 chump-pr-ac-coverage advisory running under set -e. Cosmetic (PR still merges + gap still closes) BUT it pollutes the bot_merge_uncaught_error ambient signal and can false-trigger the duty-officer/incident response — an inverse-green-facade that erodes signal trust. AC: a shell/doc PR ships with ZERO bot_merge_uncaught_error emitted; every best-effort step in the auto-close stage (ac-coverage advisory, else-branch) is failure-tolerant (logged, never thrown); prove on one live shell PR ship."
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -8109,6 +8109,10 @@ gaps:
   notes: |
     Decomposed into 9 slices: CREDIBLE-1101, CREDIBLE-1102, CREDIBLE-1103, CREDIBLE-1104, CREDIBLE-1105, CREDIBLE-1106, CREDIBLE-1108, CREDIBLE-1109, CREDIBLE-1110
   opened_date: '2026-08-21'
+  closed_date: '2026-09-08'
+  closed_pr: 4559
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4559 titled 'CREDIBLE-295: ...' merged 2026-09-08; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: CREDIBLE-296
   domain: CREDIBLE
@@ -181178,7 +181182,7 @@ gaps:
 - id: INFRA-5663
   domain: INFRA
   title: "INFRA: INFRA-5284: Add startup wallclock budget at main.rs entry (INFRA-1809 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -181199,6 +181203,10 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+  closed_date: '2026-09-08'
+  closed_pr: 4560
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4560 titled 'INFRA-5663: ...' merged 2026-09-08; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: INFRA-5664
   domain: INFRA
