@@ -42,8 +42,15 @@
 #   CHUMP_FLEET_SERVER_BIN     stable install path (default ~/.local/bin/chump-fleet-server)
 #   CHUMP_FLEET_SERVER_UNIT    long-running unit name (default chump-fleet-server.service)
 #   CHUMP_FLEET_SERVER_PORT    bind port (default 7070)
-#   CHUMP_FLEET_SERVER_BIND    bind address (default 127.0.0.1; a tailnet IP exposes
-#                              the authed create/audit API — see main.rs caveat)
+#   CHUMP_FLEET_SERVER_BIND    bind address (default 0.0.0.0 = all interfaces, so
+#                              localhost AND the tailnet cockpit both reach it;
+#                              RESILIENT-1091). Public exposure is blocked at the
+#                              FIREWALL layer, never the bind: on cuphead both the
+#                              Oracle VCN security-list and the host iptables terminal
+#                              REJECT drop public tcp/7070 (only :22 is open). The
+#                              read endpoints are unauthed (RESILIENT-1088), so only
+#                              install fleet-server on a node whose firewall drops
+#                              public 7070. Set to 127.0.0.1 to force localhost-only.
 #   CHUMP_PROVIDERS_ENV        creds sourced by the service (default ~/.chump/providers.env)
 #   CADENCE_MIN                refresh cadence in minutes (default 30)
 
@@ -82,7 +89,7 @@ fi
 
 TARGET_BIN="${CHUMP_FLEET_SERVER_BIN:-$HOME/.local/bin/chump-fleet-server}"
 PORT="${CHUMP_FLEET_SERVER_PORT:-7070}"
-BIND="${CHUMP_FLEET_SERVER_BIND:-127.0.0.1}"
+BIND="${CHUMP_FLEET_SERVER_BIND:-0.0.0.0}"  # RESILIENT-1091: all ifaces (localhost+tailnet); public blocked by firewall, not bind
 PROVIDERS_ENV="${CHUMP_PROVIDERS_ENV:-$HOME/.chump/providers.env}"
 
 SYS_UNIT_PATH="/etc/systemd/system/$FLEET_UNIT"
