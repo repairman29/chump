@@ -7062,37 +7062,51 @@ async fn main() -> Result<()> {
                 // real ship rate is ~0.5/hr — conditioning "healthy, autonomous"
                 // when the fleet ships little. git reads local origin/main (no
                 // fetch), matching the shell script's window semantics exactly.
-                let count_merges_since = |cutoff_ts: i64| -> usize {
-                    let cutoff_iso = chrono::DateTime::from_timestamp(cutoff_ts, 0)
-                        .map(|d| d.to_rfc3339())
-                        .unwrap_or_default();
-                    if cutoff_iso.is_empty() {
-                        return 0;
-                    }
+                // CREDIBLE-129: `git log ... origin/main` can transiently fail
+                // (loose ref mid-gc/pack-refs, a fetch killed mid-transport, a
+                // stale index/ref lock from a concurrent git process on the
+                // same worktree) — see docs/investigations/CREDIBLE-1107-fleet-brief-subshell-audit.md.
+                // The old `.unwrap_or(0)` made that failure bitwise identical
+                // to "zero real ships", which produced the false fleet-dead
+                // banner. Return `None` on a failed measurement (after one
+                // retry, since the race is transient) so callers can print
+                // "unavailable" instead of a misleading 0 and skip the
+                // stalled/healthy verdicts that a real 0 would otherwise
+                // drive.
+                let count_merges_since = |cutoff_ts: i64| -> Option<usize> {
+                    let cutoff_iso =
+                        chrono::DateTime::from_timestamp(cutoff_ts, 0).map(|d| d.to_rfc3339())?;
                     let main_root = repo_path::main_checkout_root();
-                    std::process::Command::new("git")
-                        .args([
-                            "-C",
-                            &main_root.to_string_lossy(),
-                            "log",
-                            "--format=%H",
-                            &format!("--since={cutoff_iso}"),
-                            "origin/main",
-                        ])
-                        .output()
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| {
-                            String::from_utf8_lossy(&o.stdout)
+                    let run_git_log = || -> Option<usize> {
+                        let output = std::process::Command::new("git")
+                            .args([
+                                "-C",
+                                &main_root.to_string_lossy(),
+                                "log",
+                                "--format=%H",
+                                &format!("--since={cutoff_iso}"),
+                                "origin/main",
+                            ])
+                            .output()
+                            .ok()?;
+                        if !output.status.success() {
+                            return None;
+                        }
+                        Some(
+                            String::from_utf8_lossy(&output.stdout)
                                 .lines()
                                 .filter(|l| !l.trim().is_empty())
-                                .count()
-                        })
-                        .unwrap_or(0)
+                                .count(),
+                        )
+                    };
+                    // One retry: the ref-unresolvable window (concurrent
+                    // fetch/gc/pack-refs) is typically sub-second.
+                    run_git_log().or_else(run_git_log)
                 };
                 let ships = count_merges_since(cutoff);
                 // INFRA-2013: 1h ship count — leading indicator (not subject to 24h rolling lag)
                 let ships_1h = count_merges_since(cutoff_1h);
+                let ships_measurement_failed = ships.is_none() || ships_1h.is_none();
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
@@ -7171,7 +7185,10 @@ async fn main() -> Result<()> {
                 // the last 30 min (the same signal the shell path uses via gh).
                 // When condition fires: emit fleet_stalled to ambient.jsonl so
                 // watchers (operator-recall, cluster-detector, etc.) can page.
-                let fleet_stalled = ships_1h == 0 && pr_stuck >= 2;
+                // CREDIBLE-129: only fire on a REAL 0 — if the git measurement
+                // itself failed (ships_1h == None), we don't know the real
+                // ship rate, so don't manufacture a stalled verdict from it.
+                let fleet_stalled = ships_1h == Some(0) && pr_stuck >= 2;
                 if fleet_stalled {
                     let stall_line = format!(
                         "{{\"ts\":\"{ts_iso}\",\"kind\":\"fleet_stalled\",\"ships_1h\":0,\"blocked_open\":{pr_stuck},\"source\":\"chump-fleet-brief\"}}\n"
@@ -7261,6 +7278,16 @@ async fn main() -> Result<()> {
                         "📌 RESILIENT has {re} pickable gap(s) — file 1-2 to balance"
                     ));
                 }
+                // CREDIBLE-129 AC #1/#3: a failed ship-count measurement must
+                // never present as "0 + healthy" — it's a measurement
+                // failure, not a fleet-health verdict, so it takes priority
+                // over every other suggestion (including "looks healthy").
+                if ships_measurement_failed {
+                    suggestions.insert(
+                        0,
+                        "⚠  ship-count unavailable (git log origin/main failed) — measurement failed, not a fleet-health verdict; re-run or check for a stale ref/index lock".to_string(),
+                    );
+                }
                 if suggestions.is_empty() {
                     suggestions.push("✓  No urgent actions — fleet looks healthy".to_string());
                 }
@@ -7271,6 +7298,7 @@ async fn main() -> Result<()> {
                         "window_h": window_secs / 3600,
                         "ships_24h": ships,
                         "ships_1h": ships_1h,
+                        "ships_measurement_failed": ships_measurement_failed,
                         "fleet_stalled": fleet_stalled,
                         "auto_fixed": auto_fixed,
                         "manual_rescues": manual_rescues,
@@ -7292,15 +7320,26 @@ async fn main() -> Result<()> {
                 } else {
                     let window_h = window_secs / 3600;
                     println!("═══ Fleet brief (last {window_h}h) ═══");
-                    // INFRA-2013: show 1h ships alongside rolling average
-                    println!(
-                        "Ships: {ships}  (≈{}/hr) | last 1h: {ships_1h}",
-                        if window_h > 0 {
-                            format!("{:.1}", ships as f64 / window_h as f64)
-                        } else {
-                            "?".to_string()
+                    // INFRA-2013: show 1h ships alongside rolling average.
+                    // CREDIBLE-129: a failed git measurement prints
+                    // "unavailable", never a bare 0 that reads as real data.
+                    match (ships, ships_1h) {
+                        (Some(s), Some(s1h)) => {
+                            println!(
+                                "Ships: {s}  (≈{}/hr) | last 1h: {s1h}",
+                                if window_h > 0 {
+                                    format!("{:.1}", s as f64 / window_h as f64)
+                                } else {
+                                    "?".to_string()
+                                }
+                            );
                         }
-                    );
+                        _ => {
+                            println!(
+                                "Ships: unavailable (git log origin/main failed) | last 1h: unavailable"
+                            );
+                        }
+                    }
                     // INFRA-2013: prominent STALLED banner when condition met
                     if fleet_stalled {
                         eprintln!("*** STALLED: 0 merges in last 1h with {pr_stuck} stuck PRs — investigate now ***");
