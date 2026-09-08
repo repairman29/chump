@@ -1,0 +1,29 @@
+- id: EFFECTIVE-449
+  domain: EFFECTIVE
+  title: "EFFECTIVE: enricher.rs module and chump-gap-enricher bin (EFFECTIVE-446 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - crates/chump-gap-store/src/maintenance/enricher.rs exists with pure, unit-tested detect (classify_thinness) + build_enrich_prompt + parse_enriched_spec + to_field_update
+  notes: |
+    [chump harvest check 'concrete']
+    === primitives_index match for 'concrete' ===
+    
+    === cluster keyword match for 'concrete' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'concrete' ===
+    
+    === repo-description match for 'concrete' ===
+    
+    === HARVEST_ROADMAP.md mention of 'concrete' (deep-scan findings) ===
+      98:Each below is concrete enough to file with full AC. Want me to file any/all?
+    
+    === cross-pollination briefs mentioning 'concrete' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+  opened_date: '2026-08-24'
+  closed_date: '2026-09-08'
+  closed_pr: 4381
+
