@@ -83,10 +83,12 @@ jobs:
       - uses: actions/checkout@v7
 
       # ── GATE: host-agnostic contract + real /healthz (decides the job) ──────
+      # Inline `run:` (not a `| ` block) so the parity smoke (INFRA-1867) reads
+      # the harness path as the gate command — it is allowlisted by
+      # scripts/ci/preflight-ci-parity-exceptions.txt (`ftue-cold-install.sh`).
+      # GitHub runs `run:` with bash -eo pipefail by default.
       - name: cold-install FTUE — contract + live /healthz (gate)
-        run: |
-          set -uo pipefail
-          bash scripts/ci/ftue-cold-install.sh --selfcheck
+        run: bash scripts/ci/ftue-cold-install.sh --selfcheck
 
       # ── FIDELITY (advisory): clean Ubuntu 22.04 systemd container bring-up ──
       # Visible + continuous, never blocks the merge (see header). RESILIENT-1051
@@ -97,6 +99,4 @@ jobs:
           # The install path PULLs a prebuilt binary; a token lets the fetch
           # path authenticate if the harness exercises a real artifact pull.
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          set -uo pipefail
-          bash scripts/ci/ftue-cold-install.sh --engine docker
+        run: bash scripts/ci/ftue-cold-install.sh --engine docker
