@@ -12438,3 +12438,13 @@ events:
       dies, something notices. Pages the board (severity=halt).
     consumers: [ambient, notify-operator (page), Roll Call]
     fields_required: [ts, kind, node, severity, msg]
+
+  - kind: fleet_health_race_signature
+    effect_metric: self
+    emitter: scripts/ops/fleet-health-sentinel.sh (RESILIENT-1055)
+    trigger: two or more force-push/rebaser organs are active on one node at
+      once — the concurrent-rebase race that silently clobbered ~2000 PRs. The
+      sentinel does NOT auto-disable (killing the wrong one can wedge the merge
+      train); it pages the board (severity=halt) so a human neuters all but one.
+    consumers: [ambient, notify-operator (page), Roll Call]
+    fields_required: [ts, kind, node, severity, msg]

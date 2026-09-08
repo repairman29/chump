@@ -34,7 +34,11 @@
 #
 # THREE JOBS:
 #   1. DETECT, fleet-wide — (a) any failed chump-* systemd unit on any node;
-#      (b) any required HEALER inactive-or-absent on any node.
+#      (b) any required HEALER inactive-or-absent on any node; (c) any SYSTEM-
+#      scope organ (the self-drive board-cycle/nba-dispatch/duty-officer, the
+#      merge-serializer, organ-reconcile) inactive OR DEAD — active with no
+#      scheduled next fire (RESILIENT-1055; the --user scan is blind to these);
+#      (d) a force-push RACE: ≥2 rebaser organs active on one node at once.
 #   2. ACT — where safe, self-heal (reset-failed+restart a failed oneshot,
 #      enable --now an inactive healer/timer, or trigger the #4512 safe
 #      reconcile). Where it cannot, emit a halt-class ambient event AND page
@@ -67,6 +71,12 @@
 #   CHUMP_SENTINEL_PAGE_SINK     TEST/audit hook: also append page payloads here
 #   CHUMP_SENTINEL_REQUIRED_HEALERS  space list, overrides the required set
 #   CHUMP_SENTINEL_WATCHED_HEALERS   space list, overrides the watched-if-present set
+#   CHUMP_SENTINEL_SYSTEM_ORGANS     space list, SYSTEM-scope organs to watch+re-arm
+#                                    (self-drive + merge + reconcile; RESILIENT-1055)
+#   CHUMP_SENTINEL_RACE_ORGANS       space list, force-push/rebaser organs; ≥2 active = PAGE
+#   CHUMP_SENTINEL_SYSTEMCTL_SYS     SYSTEM systemctl binary/shim (default: systemctl)
+#   CHUMP_SENTINEL_SUDO              privilege-escalation prefix for SYSTEM mutations
+#                                    (default: "sudo -n"; tests set it empty w/ a fake)
 #   CHUMP_SYSTEMCTL              systemctl binary/shim (default: systemctl --user)
 #
 # Bash 4+; runs on the Oracle nodes (bash 5.1) and the board. Fail-soft: a
@@ -101,6 +111,29 @@ REQUIRED_HEALERS="${CHUMP_SENTINEL_REQUIRED_HEALERS:-chump-node-refresh.timer ch
 # Watched-if-present: the classic organ healers. Re-enable when present but
 # inactive; ignore when a node legitimately never carried them.
 WATCHED_HEALERS="${CHUMP_SENTINEL_WATCHED_HEALERS:-organ-watchdog.timer organ-reconcile.timer reaper-watchdog.timer chump-organ-watchdog.timer chump-organ-reconcile.timer}"
+
+# ── SYSTEM-scope roster (RESILIENT-1055) ─────────────────────────────────────
+# The full live self-drive + merge + reconcile roster runs under the SYSTEM
+# systemd manager (/etc/systemd/system), NOT --user. This sentinel runs --user,
+# so its --user is-active is BLIND to them — the structural hole that let
+# closetjunky's organ-reconcile timer and cuphead's board-cycle timer decay to
+# "no next elapse" completely unwatched (verified live 2026-09-08). We check
+# these against the SYSTEM manager and heal with sudo. Watched-if-present:
+# absent → skip (the manifest/install organ owns provisioning — we never invent
+# a unit); present-but-inactive OR present-but-DEAD (active with no scheduled
+# next fire) → re-arm.
+SYSTEM_ORGANS="${CHUMP_SENTINEL_SYSTEM_ORGANS:-chump-organ-reconcile.timer chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer chump-merge-serializer.timer}"
+# Force-push/rebaser organs. A node is meant to run AT MOST ONE. Two or more
+# active at once is the force-push race that quietly clobbered ~2000 PRs — the
+# operator neuters all-but-one with drop-ins on purpose, so if ≥2 come back
+# active we PAGE (never auto-touch; disabling the wrong one could wedge merges).
+RACE_ORGANS="${CHUMP_SENTINEL_RACE_ORGANS:-chump-armed-pr-rebaser.timer chump-pr-auto-rebase.timer chump-pr-rebase-loop.timer chump-rebaser.timer}"
+# SYSTEM systemd manager. Reads (is-active/show) need no privilege even from a
+# --user session; mutations go through $SUDO. Tests inject fakes at both.
+SYSTEMCTL_SYS="${CHUMP_SENTINEL_SYSTEMCTL_SYS:-systemctl}"
+# No colon: an explicitly-empty override ("") must be honored (tests run the
+# heal with a fake systemctl and no privilege prefix), not fall back to sudo.
+SUDO="${CHUMP_SENTINEL_SUDO-sudo -n}"
 
 MODE="local"
 DRY=0
@@ -137,6 +170,7 @@ log()  { echo "[fleet-health-sentinel] $*" >&2; }
 # scanner-anchor: "kind":"fleet_health_unit_failed"
 # scanner-anchor: "kind":"fleet_health_healer_down"
 # scanner-anchor: "kind":"fleet_health_sentinel_peer_dead"
+# scanner-anchor: "kind":"fleet_health_race_signature"
 emit() {
     # emit <kind> [k=v ...]
     local kind="$1"; shift || true
@@ -190,11 +224,50 @@ failed_chump_units() {
         | grep -oE 'chump-[A-Za-z0-9_.@:-]+\.(service|timer)' | sort -u || true
 }
 
+# ── SYSTEM-scope helpers (RESILIENT-1055) ────────────────────────────────────
+sc_sys() { $SYSTEMCTL_SYS "$@" 2>/dev/null; }
+sys_unit_exists() { sc_sys list-unit-files "$1" --no-legend 2>/dev/null | grep -q "$1"; }
+sys_unit_active() { [[ "$(sc_sys is-active "$1" 2>/dev/null)" == "active" ]]; }
+
+# timer_dead <unit.timer> — true when a timer is ACTIVE but has NO scheduled
+# next fire. This is the OnUnitActiveSec-without-OnCalendar decay: the timer is
+# (re)started well after boot, its oneshot service is never triggered by it, so
+# the relative anchor never resolves and the timer sits active forever with
+# NextElapse=infinity, silently never firing again. systemd reports it "active"
+# so a plain is-active check calls it healthy — this is the trap that hid the
+# decay. Healthy iff at least ONE NextElapse field names a real future time.
+# Verified signatures (2026-09-08): healthy organ-reconcile mono="1w 22h 38min",
+# dead board-cycle mono="infinity" rt="".
+timer_dead() {
+    local unit="$1" rt mono
+    rt="$(sc_sys show "$unit" -p NextElapseUSecRealtime --value 2>/dev/null)"
+    mono="$(sc_sys show "$unit" -p NextElapseUSecMonotonic --value 2>/dev/null)"
+    case "$rt"   in ""|"0"|"n/a"|"infinity") ;; *) return 1 ;; esac
+    case "$mono" in ""|"0"|"n/a"|"infinity") ;; *) return 1 ;; esac
+    return 0
+}
+
+# heal_system_organ <unit.timer> — bring a present-but-broken system organ back.
+# Inactive → enable --now. Dead (active/no-next) → start the ONESHOT SERVICE
+# once: that both runs the beat now AND re-anchors OnUnitActiveSec so the timer
+# computes a real next fire (a bare `timer restart` does NOT re-arm it — proven
+# live: restarting board-cycle.timer left mono=infinity; starting the .service
+# set mono to a real +15min). Returns 0 iff the timer ends active with a next.
+heal_system_organ() {
+    local timer="$1" svc="${1%.timer}.service"
+    sys_unit_active "$timer" || $SUDO $SYSTEMCTL_SYS enable --now "$timer" >/dev/null 2>&1 || true
+    if timer_dead "$timer"; then
+        $SUDO $SYSTEMCTL_SYS start "$svc" >/dev/null 2>&1 || true
+    fi
+    sleep 1
+    sys_unit_active "$timer" && ! timer_dead "$timer"
+}
+
 # ── LOCAL: scan + heal this node ─────────────────────────────────────────────
 # Returns (via globals) counts for the snapshot/report.
-SNAP_FAILED=0; SNAP_HEALED=0; SNAP_UNHEALED=0; SNAP_HEALERS_DOWN=0; SNAP_HEALERS_FIXED=0
+SNAP_FAILED=0; SNAP_HEALED=0; SNAP_UNHEALED=0; SNAP_HEALERS_DOWN=0; SNAP_HEALERS_FIXED=0; SNAP_RACE_ACTIVE=0
 scan_and_heal_local() {
-    SNAP_FAILED=0; SNAP_HEALED=0; SNAP_UNHEALED=0; SNAP_HEALERS_DOWN=0; SNAP_HEALERS_FIXED=0
+    SNAP_FAILED=0; SNAP_HEALED=0; SNAP_UNHEALED=0; SNAP_HEALERS_DOWN=0; SNAP_HEALERS_FIXED=0; SNAP_RACE_ACTIVE=0
 
     # 1. failed chump units -----------------------------------------------------
     local u still
@@ -262,13 +335,64 @@ scan_and_heal_local() {
             log "re-enabled watched healer: $h"
         fi
     done
+
+    # 4. SYSTEM-scope roster: the self-drive + merge + reconcile organs the
+    #    --user scan above is structurally blind to (RESILIENT-1055). ----------
+    scan_and_heal_system_organs
+
+    # 5. force-push RACE signature — page (never auto-touch). -------------------
+    race_signature_check
+}
+
+# scan_and_heal_system_organs — watch the SYSTEM-scope roster the --user scan
+# cannot see. Present-but-inactive OR present-but-DEAD (active/no-next) → re-arm
+# with sudo; absent → skip (install organ owns provisioning); unrecoverable →
+# page. This is the watch set that keeps organ-reconcile — and the self-drive
+# organs — from decaying unnoticed the way they did on 2026-09-08.
+scan_and_heal_system_organs() {
+    local u state
+    for u in $SYSTEM_ORGANS; do
+        sys_unit_exists "$u" || continue
+        if sys_unit_active "$u" && ! timer_dead "$u"; then continue; fi   # healthy
+        if timer_dead "$u"; then state="dead(active,no-next-fire)"; else state="inactive"; fi
+        SNAP_HEALERS_DOWN=$((SNAP_HEALERS_DOWN+1))
+        log "SYSTEM organ needs heal: $u [$state]"
+        [[ $DRY -eq 1 ]] && continue
+        if heal_system_organ "$u"; then
+            SNAP_HEALERS_FIXED=$((SNAP_HEALERS_FIXED+1))
+            emit "fleet_health_self_healed" unit="$u" action="rearm-system-organ" was="$state"
+            log "re-armed SYSTEM organ: $u (was $state)"
+        else
+            page "SYSTEM organ $u is $state and could not be re-armed (sudo start ${u%.timer}.service failed) on $NODE_ID" \
+                 "fleet_health_healer_down"
+        fi
+    done
+}
+
+# race_signature_check — a node runs AT MOST ONE force-push/rebaser organ. Two
+# or more active at once is the race that silently clobbered ~2000 PRs. We do
+# NOT auto-disable (killing the wrong one can wedge the merge train) — we PAGE
+# so a human/board neuters all-but-one deliberately.
+race_signature_check() {
+    local u active=0 names=""
+    for u in $RACE_ORGANS; do
+        sys_unit_exists "$u" || continue
+        if sys_unit_active "$u"; then active=$((active+1)); names="$names $u"; fi
+    done
+    SNAP_RACE_ACTIVE=$active
+    if [[ $active -ge 2 ]]; then
+        log "RACE SIGNATURE: $active rebaser organs active:$names"
+        [[ $DRY -eq 1 ]] && return 0
+        page "RACE SIGNATURE on $NODE_ID: $active force-push/rebaser organs active at once —$names (the 2000-PR-loss pattern; neuter all but one)" \
+             "fleet_health_race_signature"
+    fi
 }
 
 write_heartbeat() {
     mkdir -p "$STATE_DIR" 2>/dev/null || true
     local ep; ep="$(now_epoch)"
-    printf '{"ts":"%s","epoch":%s,"node":"%s","failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s}\n' \
-        "$(ts_iso)" "$ep" "$NODE_ID" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" \
+    printf '{"ts":"%s","epoch":%s,"node":"%s","failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s}\n' \
+        "$(ts_iso)" "$ep" "$NODE_ID" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" \
         > "$HEARTBEAT_FILE" 2>/dev/null || true
     echo "$ep" > "$REAPER_HB" 2>/dev/null || true
     # best-effort push outward so grading can move server-side once fleet-server is up
@@ -280,16 +404,16 @@ write_heartbeat() {
 }
 
 snapshot_json() {
-    printf '{"node":"%s","epoch":%s,"failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s}\n' \
-        "$NODE_ID" "$(now_epoch)" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED"
+    printf '{"node":"%s","epoch":%s,"failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s}\n' \
+        "$NODE_ID" "$(now_epoch)" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE"
 }
 
 do_local_pass() {
     scan_and_heal_local
     write_heartbeat
     emit "fleet_health_sentinel_tick" mode=local failed="$SNAP_FAILED" \
-        healed="$SNAP_HEALED" unhealed="$SNAP_UNHEALED" healers_down="$SNAP_HEALERS_DOWN"
-    log "local pass: failed=$SNAP_FAILED healed=$SNAP_HEALED unhealed=$SNAP_UNHEALED healers_down=$SNAP_HEALERS_DOWN healers_fixed=$SNAP_HEALERS_FIXED"
+        healed="$SNAP_HEALED" unhealed="$SNAP_UNHEALED" healers_down="$SNAP_HEALERS_DOWN" race_active="$SNAP_RACE_ACTIVE"
+    log "local pass: failed=$SNAP_FAILED healed=$SNAP_HEALED unhealed=$SNAP_UNHEALED healers_down=$SNAP_HEALERS_DOWN healers_fixed=$SNAP_HEALERS_FIXED race_active=$SNAP_RACE_ACTIVE"
 }
 
 # ── FLEET: cross-node grade (the sentinel-is-watched-too closure) ────────────
