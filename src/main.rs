@@ -1073,6 +1073,9 @@ fn print_help() {
     println!("  kpi report --agents --date YYYY-MM-DD  specific date");
     println!("  kpi report --claims  claim-lint bust-rate per model (CREDIBLE-208)");
     println!(
+        "  kpi report --debt-index  crown gauge (live_pct/debt/top-5 dormant) + NBA feed (CREDIBLE-357)"
+    );
+    println!(
         "  kpi report --integration  integration-cycle dashboard: ship velocity, CI efficiency, quality, external costs (INFRA-2143)"
     );
     println!("  kpi report --integration --window 24h|7d|30d  window override (default 7d)");
@@ -16889,6 +16892,7 @@ async fn main() -> Result<()> {
         let want_claims = args.iter().any(|a| a == "--claims");
         let want_integration = args.iter().any(|a| a == "--integration");
         let want_mission_binary = args.iter().any(|a| a == "--mission-binary");
+        let want_debt_index = args.iter().any(|a| a == "--debt-index");
 
         let repo_root = repo_path::repo_root();
 
@@ -16934,6 +16938,18 @@ async fn main() -> Result<()> {
         // CREDIBLE-208: --claims shows claim-lint bust-rate per model.
         if want_claims {
             let section = kpi_report::build_claim_bust_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
+
+        // CREDIBLE-357: --debt-index shows the crown gauge (live_pct/debt/
+        // top-5 dormant-by-Crit) + next_best_action candidate list.
+        if want_debt_index {
+            let section = kpi_report::build_debt_index_section(&repo_root);
             if want_json {
                 println!("{}", section.render_json());
             } else {
