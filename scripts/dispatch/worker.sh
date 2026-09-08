@@ -422,6 +422,71 @@ classify_model_capability_failure() {
     echo "none"
 }
 
+# RESILIENT-1086 / RESILIENT-676: probe the free-tier cascade for a LIVE
+# provider. Echoes the first entry (model@base:KEY_ENV) whose base answers
+# HTTP 200 on {base}/models with its Bearer key, and returns 0; returns 1 if
+# NONE are live (e.g. every entry is a 402/credit-dead OpenRouter). Mirrors the
+# free-tier probe loop in scripts/coord/auth-status.sh and the entry format in
+# src/execute_gap.rs::parse_free_tier_providers. Used to (a) refuse to demote
+# onto a dead floor (RESILIENT-676) and (b) bias the cascade toward the
+# confirmed-live provider instead of collapsing onto a dead one (RESILIENT-1086).
+# CI seam: CHUMP_FAKE_FREETIER_PROBE="live:<entry>" → prints entry, returns 0;
+# any other value → returns 1 (hermetic, no network).
+probe_free_tier_live() {
+    if [[ -n "${CHUMP_FAKE_FREETIER_PROBE:-}" ]]; then
+        case "$CHUMP_FAKE_FREETIER_PROBE" in
+            live:*) printf '%s\n' "${CHUMP_FAKE_FREETIER_PROBE#live:}"; return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+    local _list="${1:-${CHUMP_FREE_TIER_PROVIDERS:-}}"
+    [[ -n "${_list//[[:space:]]/}" ]] || return 1
+    local _oldifs="$IFS" _entry _key_env _model_base _model _base _key_val _code
+    IFS=','
+    for _entry in $_list; do
+        IFS="$_oldifs"
+        _entry="${_entry#"${_entry%%[![:space:]]*}"}"   # ltrim
+        _entry="${_entry%"${_entry##*[![:space:]]}"}"   # rtrim
+        [[ -z "$_entry" || "$_entry" != *@* ]] && { IFS=','; continue; }
+        _key_env="${_entry##*:}"
+        _model_base="${_entry%:*}"
+        _model="${_model_base%@*}"
+        _base="${_model_base#*@}"
+        [[ -z "$_model" || -z "$_base" || -z "$_key_env" ]] && { IFS=','; continue; }
+        _key_val="${!_key_env:-}"
+        [[ -z "$_key_val" ]] && { IFS=','; continue; }   # empty key → skip, never false-live
+        _code="$(curl -s -o /dev/null -w '%{http_code}' \
+            --max-time "${CHUMP_FREETIER_PROBE_TIMEOUT_S:-10}" \
+            -H "Authorization: Bearer $_key_val" \
+            "${_base%/}/models" 2>/dev/null || echo 000)"
+        if [[ "$_code" == "200" ]]; then
+            printf '%s\n' "$_entry"
+            IFS="$_oldifs"
+            return 0
+        fi
+        IFS=','
+    done
+    IFS="$_oldifs"
+    return 1
+}
+
+# RESILIENT-1086: cheap liveness probe of the Anthropic sub (claude -p, haiku).
+# Returns 0 if the sub answers PONG, non-zero otherwise. Mirrors the oauth
+# probe in scripts/coord/auth-status.sh. Uses the ambient CLAUDE_CODE_OAUTH_TOKEN
+# (sourced from ~/.chump/providers.env by the worker wrapper). Used to
+# auto-repromote off the free-tier floor once the sub recovers, so a demotion
+# is never sticky (2026-09-08: sub recovered but worker stayed pinned to a dead
+# floor 40min until manual restart).
+# CI seam: CHUMP_FAKE_SUB_PROBE=live → 0; anything else → 1 (hermetic, no network).
+probe_sub_live() {
+    if [[ -n "${CHUMP_FAKE_SUB_PROBE:-}" ]]; then
+        [[ "$CHUMP_FAKE_SUB_PROBE" == "live" ]] && return 0 || return 1
+    fi
+    command -v claude >/dev/null 2>&1 || return 1
+    ( cd /tmp && timeout "${CHUMP_SUB_PROBE_TIMEOUT_S:-45}" \
+        claude -p "Reply with exactly: PONG" --model haiku 2>/dev/null | grep -q PONG )
+}
+
 # INFRA-206: per-agent domain affinity. If FLEET_AGENT_DOMAINS is set (comma-
 # separated, e.g. "INFRA,EVAL,DOC"), agent K is assigned domains[(K-1) % N],
 # overriding the fleet-wide FLEET_DOMAIN_FILTER for this worker only.
@@ -546,6 +611,41 @@ while :; do
         continue
     fi
     # ── end RESILIENT-073 ────────────────────────────────────────────────────
+
+    # ── RESILIENT-1086: auto-repromote off the free-tier floor when the sub
+    # recovers ────────────────────────────────────────────────────────────────
+    # RESILIENT-575 demotes this worker to chump-local after a sub outage. That
+    # demotion USED to be sticky: the sub recovered (probe PONG rc=0) but the
+    # worker stayed pinned to the free-tier floor until a manual `systemctl
+    # restart` — on 2026-09-08 that left mugman wedged 40min emitting 18x rc=75
+    # against a dead OpenRouter floor. Re-probe the sub on a cadence while
+    # demoted; the first time it answers, return FLEET_BACKEND to the sub
+    # (claude), archive the outage marker, and emit fleet_backend_repromote.
+    # The demotion is an in-process env flip, so the marker file is the record
+    # of "am I currently demoted"; keying off both avoids repromoting a worker
+    # that was never demoted this run.
+    if [[ "$FLEET_BACKEND" == "chump-local" ]] \
+       && [[ "${CHUMP_SUB_AUTO_REPROMOTE:-1}" != "0" ]] \
+       && [[ -f "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" ]]; then
+        _reprom_every="${CHUMP_SUB_REPROMOTE_EVERY_CYCLES:-3}"
+        if (( cycle % _reprom_every == 0 )); then
+            if probe_sub_live; then
+                log "RESILIENT-1086: sub recovered (probe PONG) — repromoting worker $AGENT_ID chump-local → claude"
+                export FLEET_BACKEND="claude"
+                : > "$FLEET_LOG_DIR/agent-${AGENT_ID}.sub-outage-fails" 2>/dev/null || true
+                _amb_rp="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                mkdir -p "$(dirname "$_amb_rp")" 2>/dev/null || true
+                printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_repromote","agent_id":"%s","from_backend":"chump-local","to_backend":"claude","cycle":%s}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                    "$AGENT_ID" "$cycle" >> "$_amb_rp" 2>/dev/null || true
+                mv "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" \
+                   "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json.repromoted-$(date +%s)" 2>/dev/null || true
+            else
+                log "RESILIENT-1086: still demoted to chump-local; sub probe failed (cycle $cycle) — staying on floor"
+            fi
+        fi
+    fi
+    # ── end RESILIENT-1086 auto-repromote ─────────────────────────────────────
 
     # FLEET-054: auto-pause when waste rate spikes. Workers check for the
     # .chump/fleet-paused sentinel before each claim cycle. The sentinel blocks
@@ -1654,9 +1754,21 @@ Operator or sibling worker can rescue this branch via:
                 if [[ "$_model_pinned" -eq 1 && -n "$_cl_model" ]]; then
                     export OPENAI_MODEL="$_cl_model"
                     if [[ -n "${CHUMP_FREE_TIER_PROVIDERS:-}" ]]; then
+                        # RESILIENT-1086: pin the escalated model as the PREFERRED
+                        # provider, but PRESERVE the rest of the configured cascade
+                        # as fallback — NEVER collapse the list to a single entry.
+                        # The prior code replaced the whole list with one
+                        # `${model}@${first_base:KEY}`; when that first base was a
+                        # credit-dead provider (OpenRouter 402) the live entries
+                        # (Groq gpt-oss-20b / Cerebras) were dropped and every
+                        # cycle died rc=75 BILLING_EXHAUSTED, never falling through
+                        # to a working floor (2026-09-08 total-stall). Prepending
+                        # keeps the escalated model first while the Rust cascade
+                        # (src/provider_cascade.rs) still falls through the dead
+                        # OpenRouter entries to the live Groq/Cerebras floor.
                         _prov_suffix="${CHUMP_FREE_TIER_PROVIDERS%%,*}"   # first entry
                         _prov_suffix="@${_prov_suffix#*@}"               # strip model, keep @base:KEY
-                        export CHUMP_FREE_TIER_PROVIDERS="${_cl_model}${_prov_suffix}"
+                        export CHUMP_FREE_TIER_PROVIDERS="${_cl_model}${_prov_suffix},${CHUMP_FREE_TIER_PROVIDERS}"
                     fi
                 elif [[ -z "${CHUMP_FREE_TIER_PROVIDERS:-}" && -n "$_cl_model" ]]; then
                     # No provider list configured — legacy single-model path:
@@ -1951,29 +2063,58 @@ Operator or sibling worker can rescue this branch via:
                 _sub_fallback_threshold="${CHUMP_SUB_FALLBACK_THRESHOLD:-2}"
                 log "RESILIENT-575: sub backend failure class=$_sub_fail_class consecutive=$_sub_fail_n/$_sub_fallback_threshold on $GAP_ID"
                 if [[ "$_sub_fail_n" -ge "$_sub_fallback_threshold" ]] && [[ "${CHUMP_SUB_FALLBACK:-1}" != "0" ]]; then
+                    # ── RESILIENT-676/1086: probe-before-switch ────────────────
+                    # NEVER demote onto a dead floor. When the sub fails, the
+                    # old code blindly switched to chump-local — but if every
+                    # free-tier provider is 402/credit-dead (the exact 2026-09-08
+                    # rc=75 total-stall: 3 dead OpenRouter entries), that "floor"
+                    # can't run a single gap, so the worker just trades a
+                    # rate-limited sub for a dead floor and spins rc=75 forever.
+                    # Probe the cascade first; only demote if a provider is
+                    # actually live, and page (fleet_backend_no_live_floor) when
+                    # none is. The probe runs only on the demotion path (after 2
+                    # consecutive sub failures), so its per-entry curl timeout is
+                    # not in any hot loop.
+                    _live_floor="$(probe_free_tier_live || true)"
                     _amb_sf="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
                     mkdir -p "$(dirname "$_amb_sf")" "$REPO_ROOT/.chump-locks/backend-outage" 2>/dev/null || true
-                    printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_auto_fallback","agent_id":"%s","from_backend":"claude","to_backend":"chump-local","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s"}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
-                        "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
-                        >> "$_amb_sf" 2>/dev/null || true
-                    log "ALERT RESILIENT-575: kind=fleet_backend_auto_fallback sub backend failing (${_sub_fail_class} x${_sub_fail_n}) — switching worker $AGENT_ID to chump-local free-tier cascade"
-                    export FLEET_BACKEND="chump-local"
-                    : > "$_sub_fail_ctr_file" 2>/dev/null || true
-                    printf '{"backend":"claude","since":"%s","agent":"%s","fail_class":"%s"}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_sub_fail_class" \
-                        > "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" 2>/dev/null || true
-                    # AC2: unblock gaps this worker auto-blocked while the sub
-                    # was silently failing — a working backend just returned
-                    # (the free-tier cascade), so those cooldowns no longer
-                    # reflect a bad gap, only a dead backend window.
-                    _unblocked_n=$(ls "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null | wc -l | tr -d ' ')
-                    rm -f "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null || true
-                    printf '{"ts":"%s","session":"%s","kind":"fleet_backend_outage_unblock","agent_id":"%s","unblocked_count":%s}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
-                        "$AGENT_ID" "${_unblocked_n:-0}" \
-                        >> "$_amb_sf" 2>/dev/null || true
-                    log "RESILIENT-575: unblocked ${_unblocked_n:-0} cooldown record(s) for worker $AGENT_ID now that chump-local is active"
+                    if [[ -z "$_live_floor" ]]; then
+                        # No live floor — stay on the sub (it may recover) and PAGE.
+                        printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_no_live_floor","agent_id":"%s","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s","note":"sub failing AND no live free-tier provider (all 402/dead) — NOT demoting to a dead floor (RESILIENT-676/1086)"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
+                            >> "$_amb_sf" 2>/dev/null || true
+                        log "ALERT RESILIENT-1086: sub failing (${_sub_fail_class} x${_sub_fail_n}) AND no live free-tier provider (all 402/dead) — NOT demoting to a dead floor; staying on claude + paging operator"
+                    else
+                        printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_auto_fallback","agent_id":"%s","from_backend":"claude","to_backend":"chump-local","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
+                            >> "$_amb_sf" 2>/dev/null || true
+                        log "ALERT RESILIENT-575: kind=fleet_backend_auto_fallback sub backend failing (${_sub_fail_class} x${_sub_fail_n}) — switching worker $AGENT_ID to chump-local free-tier cascade (live floor: ${_live_floor%%@*})"
+                        export FLEET_BACKEND="chump-local"
+                        # RESILIENT-1086: bias the cascade toward the confirmed-
+                        # live provider so chump-local doesn't burn cycles on the
+                        # dead OpenRouter entries before reaching the live floor.
+                        # (Prepend only when not already first — avoid churn.)
+                        if [[ "${CHUMP_FREE_TIER_PROVIDERS%%,*}" != "$_live_floor" ]]; then
+                            export CHUMP_FREE_TIER_PROVIDERS="${_live_floor},${CHUMP_FREE_TIER_PROVIDERS}"
+                        fi
+                        : > "$_sub_fail_ctr_file" 2>/dev/null || true
+                        printf '{"backend":"claude","since":"%s","agent":"%s","fail_class":"%s","live_floor":"%s"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_sub_fail_class" "${_live_floor%%@*}" \
+                            > "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" 2>/dev/null || true
+                        # AC2: unblock gaps this worker auto-blocked while the sub
+                        # was silently failing — a working backend just returned
+                        # (the free-tier cascade), so those cooldowns no longer
+                        # reflect a bad gap, only a dead backend window.
+                        _unblocked_n=$(ls "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null | wc -l | tr -d ' ')
+                        rm -f "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null || true
+                        printf '{"ts":"%s","session":"%s","kind":"fleet_backend_outage_unblock","agent_id":"%s","unblocked_count":%s}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "${_unblocked_n:-0}" \
+                            >> "$_amb_sf" 2>/dev/null || true
+                        log "RESILIENT-575: unblocked ${_unblocked_n:-0} cooldown record(s) for worker $AGENT_ID now that chump-local is active"
+                    fi
                 fi
             else
                 rm -f "$FLEET_LOG_DIR/agent-${AGENT_ID}.sub-outage-fails" 2>/dev/null || true

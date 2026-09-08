@@ -551,6 +551,27 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [agent_id, unblocked_count]
 
+  - kind: fleet_backend_repromote
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-1086)
+    trigger: a worker demoted to chump-local by RESILIENT-575 re-probes the sub
+      (claude -p PONG) on a cadence (CHUMP_SUB_REPROMOTE_EVERY_CYCLES, default 3)
+      while the backend-outage marker is present; the first probe that answers
+      returns FLEET_BACKEND to claude so the demotion is never sticky (2026-09-08:
+      sub recovered but worker stayed pinned to a dead floor 40min until restart)
+    consumers: [fleet-brief, watchdog, operator-recall]
+    fields_required: [agent_id, from_backend, to_backend, cycle]
+
+  - kind: fleet_backend_no_live_floor
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-676, RESILIENT-1086)
+    trigger: the sub failed CHUMP_SUB_FALLBACK_THRESHOLD consecutive cycles AND a
+      probe-before-switch (probe_free_tier_live) found NO live free-tier provider
+      (every entry 402/credit-dead) — so the worker refuses to demote onto a dead
+      floor, stays on claude, and pages instead of silently spinning rc=75
+    consumers: [fleet-brief, watchdog, operator-recall]
+    fields_required: [agent_id, fail_class, consecutive_failures, gap_id]
+
   - kind: model_ladder_capability_escalation
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (RESILIENT-1007, RESILIENT-596 slice)

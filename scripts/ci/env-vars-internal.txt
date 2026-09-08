@@ -2679,3 +2679,18 @@ CHUMP_SHARED_TARGET_IDLE_MIN
 # 900 (sentinel cadence 5m x stale-mult 3); override to stay coherent with the
 # sentinel's CHUMP_SENTINEL_CADENCE_MIN / CHUMP_SENTINEL_STALE_MULT.
 CHUMP_SENTINEL_STALE_SECS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FAKE_FREETIER_PROBE
+# detected in: (standard input)
+CHUMP_FAKE_SUB_PROBE
+# detected in: (standard input)
+CHUMP_FREETIER_PROBE_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_SUB_AUTO_REPROMOTE
+# detected in: (standard input)
+CHUMP_SUB_PROBE_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_SUB_REPROMOTE_EVERY_CYCLES
