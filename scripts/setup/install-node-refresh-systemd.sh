@@ -159,10 +159,76 @@ else
     echo "WARN: node-deploy-lag-watchdog.sh not found — skipping watchdog install" >&2
 fi
 
+# --- RESILIENT-1080: node-script-host-refresh (keep the worker's SCRIPT checkout
+# current) ---------------------------------------------------------------------
+# The binary-refresh timer above keeps the installed `chump` BINARY current, but
+# a worker runs its shell/script organs (worker.sh, the gap pickers, dispatch/*)
+# from a SCRIPT-HOST checkout — canonically ~/chump — that never advanced on its
+# own. Merged shell/script fixes (e.g. the #4529 picker dedup) therefore stalled
+# on the node, leaving the worker re-picking already-done gaps (mugman,
+# 2026-09-08). This timer fast-forwards that checkout to origin/main on a cadence
+# WITHOUT the destructive `reset --hard` node-main-sync.sh uses — preserving
+# node-local tracked customizations (the muscle-node organ-manifest.txt stopgap)
+# and untracked hand-deployed files, and refusing to touch a diverged checkout.
+SCRIPTHOST_SRC=""
+for candidate in \
+    "$(dirname "$SCRIPT_SRC")/node-script-host-refresh.sh" \
+    "${CHUMP_NODE_REPO:-}/scripts/ops/node-script-host-refresh.sh" \
+    "$(dirname "$0")/../ops/node-script-host-refresh.sh"; do
+    if [[ -n "$candidate" && -f "$candidate" ]]; then SCRIPTHOST_SRC="$(cd "$(dirname "$candidate")" && pwd)/$(basename "$candidate")"; break; fi
+done
+
+# Resolve the SCRIPT-HOST checkout the worker actually runs from (NOT the binary
+# mirror). Precedence: explicit override → first of the canonical worker
+# checkouts that is a git repo → ~/chump.
+if [[ -z "${CHUMP_SCRIPT_HOST_REPO:-}" ]]; then
+    for _shc in "$HOME/chump" "$HOME/Projects/Chump" "$HOME/chump-host"; do
+        if [[ -e "$_shc/.git" ]]; then CHUMP_SCRIPT_HOST_REPO="$_shc"; break; fi
+    done
+    CHUMP_SCRIPT_HOST_REPO="${CHUMP_SCRIPT_HOST_REPO:-$HOME/chump}"
+fi
+
+if [[ -n "$SCRIPTHOST_SRC" ]]; then
+    chmod +x "$SCRIPTHOST_SRC" 2>/dev/null || true
+    echo "script-host refresh script: $SCRIPTHOST_SRC"
+    echo "script-host checkout:       $CHUMP_SCRIPT_HOST_REPO"
+    {
+        echo "[Unit]"
+        echo "Description=chump node script-host refresh (keep the worker's ~/chump script checkout current with origin/main, worktree-safe) — RESILIENT-1080"
+        echo "After=network-online.target"
+        echo ""
+        echo "[Service]"
+        echo "Type=oneshot"
+        # Fast-forward + a possible stash cycle only — seconds, not a build. Keep
+        # a generous bound so a slow fetch on a 2-core node never wedges forever.
+        echo "TimeoutStartSec=300"
+        echo "Environment=CHUMP_SCRIPT_HOST_REPO=${CHUMP_SCRIPT_HOST_REPO}"
+        [[ -n "${GH_TOKEN:-}" ]] && echo "Environment=GH_TOKEN=${GH_TOKEN}"
+        echo "ExecStart=/usr/bin/env bash ${SCRIPTHOST_SRC}"
+        echo "Nice=10"
+    } > "$UNIT_DIR/chump-script-host-refresh.service"
+    {
+        echo "[Unit]"
+        echo "Description=chump node script-host refresh timer (every ${CADENCE_MIN}m) — RESILIENT-1080"
+        echo ""
+        echo "[Timer]"
+        # Offset the first run so it doesn't collide with the binary refresh.
+        echo "OnBootSec=7min"
+        echo "OnUnitActiveSec=${CADENCE_MIN}min"
+        echo "Persistent=true"
+        echo ""
+        echo "[Install]"
+        echo "WantedBy=timers.target"
+    } > "$UNIT_DIR/chump-script-host-refresh.timer"
+else
+    echo "WARN: node-script-host-refresh.sh not found — skipping script-host refresh install" >&2
+fi
+
 echo "wrote:"
 echo "  $UNIT_DIR/chump-node-refresh.service"
 echo "  $UNIT_DIR/chump-node-refresh.timer"
 [[ -n "$WATCHDOG_SRC" ]] && echo "  $UNIT_DIR/chump-node-deploy-lag-watchdog.service" && echo "  $UNIT_DIR/chump-node-deploy-lag-watchdog.timer"
+[[ -n "$SCRIPTHOST_SRC" ]] && echo "  $UNIT_DIR/chump-script-host-refresh.service" && echo "  $UNIT_DIR/chump-script-host-refresh.timer"
 
 # --- linger (best-effort) ----------------------------------------------------
 if command -v loginctl >/dev/null 2>&1; then
@@ -177,10 +243,12 @@ fi
 systemctl --user daemon-reload
 systemctl --user enable --now chump-node-refresh.timer
 [[ -n "$WATCHDOG_SRC" ]] && systemctl --user enable --now chump-node-deploy-lag-watchdog.timer
+[[ -n "$SCRIPTHOST_SRC" ]] && systemctl --user enable --now chump-script-host-refresh.timer
 echo ""
 echo "=== timer status ==="
 systemctl --user list-timers chump-node-refresh.timer --no-pager 2>/dev/null || true
 [[ -n "$WATCHDOG_SRC" ]] && systemctl --user list-timers chump-node-deploy-lag-watchdog.timer --no-pager 2>/dev/null || true
+[[ -n "$SCRIPTHOST_SRC" ]] && systemctl --user list-timers chump-script-host-refresh.timer --no-pager 2>/dev/null || true
 echo ""
 echo "Manual run:   systemctl --user start chump-node-refresh.service"
 echo "Logs:         journalctl --user -u chump-node-refresh.service -n 50 --no-pager"
