@@ -183,8 +183,15 @@ You are reviewing this Chump PR. Reply on TWO lines:
 
 Line 1 — the verdict, EXACTLY one of:
 APPROVE: <one-sentence reason>
-CONCERN: <comma-separated list of concerns>
+CONCERN: <comma-separated list of concerns, EACH one citing the specific file:line it applies to, e.g. "src/foo.rs:42 unwrap() on a Result from an untrusted source">
 ESCALATE: <reason this needs human review>
+
+Every CONCERN you raise MUST point at a specific file:line in the diff above. Do
+NOT reuse a boilerplate concern (e.g. "new unwrap()/expect() in production",
+"new external dependencies added") unless you can point at the exact line that
+justifies it. A concern with no file:line citation will be treated as
+ungrounded and will NOT block the merge on its own — it only wastes the
+reviewer's credibility. Cite evidence, don't recite a checklist.
 
 Line 2 — the SPIRIT lens, EXACTLY one of:
 SPIRIT: GENUINE - <why the change genuinely does what the gap needs>
@@ -413,6 +420,26 @@ if [[ "$HARMONY" == "REGRESSION-RISK" && "$VERDICT" == "APPROVE" ]]; then
     VERDICT="CONCERN"
     REASON="regression risk (HARMONY lens): ${_harm_reason:-breaks existing behaviour}"
     VERDICT_LINE="CONCERN: $REASON"
+fi
+
+
+# ── 7d. Grounding check (CREDIBLE-207): CONCERN must cite file:line evidence ──
+# The prompt now requires each concern to point at specific file:line evidence
+# in the diff. A CONCERN with no such citation is treated as ungrounded — not
+# proof the change is fine (still worth a human look), but not something that
+# should silently auto-block a clean PR on a hallucinated boilerplate reason
+# either. (CREDIBLE-207, PR #3495 EFFECTIVE-373: reviewer raised CONCERN citing
+# "new unwrap()/expect() in production" + "new external dependencies added" —
+# BOTH demonstrably false in that diff — because it dumped its entire
+# boilerplate concern-reason list instead of specific verified findings.) An
+# ungrounded CONCERN downgrades to ESCALATE so a human decides, instead of
+# blocking the merge on an unverifiable claim.
+if [[ "$VERDICT" == "CONCERN" ]] && ! echo "$REASON" | grep -qE '[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+:[0-9]+'; then
+    yellow "CONCERN has no file:line citation — treating as ungrounded, downgrading to ESCALATE (CREDIBLE-207)."
+    _orig_reason="$REASON"
+    REASON="reviewer raised CONCERN without citing file:line evidence — ungrounded, needs human triage. Original: ${_orig_reason}"
+    VERDICT="ESCALATE"
+    VERDICT_LINE="ESCALATE: $REASON"
 fi
 
 green "Verdict: $VERDICT"
