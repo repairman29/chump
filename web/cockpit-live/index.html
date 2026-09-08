@@ -1,0 +1,431 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>ChumpOS Daily Cockpit</title>
+<!--
+  ChumpOS Daily Cockpit — "The Manual, Live" (docs/process/COCKPIT.md, INFRA-5663).
+  ONE screen. No scroll, no tabs, no config. The page owns NO truth: every number
+  is a live fetch from chump-fleet-server on this same origin, or a repo doc
+  rendered at HEAD. Delete this file and you lose nothing.
+
+  Doctrine (COCKPIT.md §3/§5): any tile without a fresh live feed renders GREY
+  ("unknown") or RED (stale) — a rotted number must look broken, never fake-green.
+  Design tokens lifted from web/v2/index.html :root (INFRA-1280), skin only.
+-->
+<style>
+  /* --- web/v2 tokens (INFRA-1280), dark-first --- */
+  :root{
+    --bg:#0a0a0a; --bg-surface:#141414; --bg-elevated:#1e1e1e;
+    --text:#f0f0f0; --text-secondary:#8a8a8e;
+    --accent:#0a84ff; --accent-dim:rgba(10,132,255,0.15);
+    --border:rgba(255,255,255,0.08);
+    --success:#30d158; --warn:#ff9f0a; --error:#ff453a;
+    --grey:#6a6a6e; --grey-dim:rgba(120,120,128,0.14);
+    --radius:10px; --radius-sm:6px;
+    --mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  }
+  @media (prefers-color-scheme: light){
+    :root:not([data-theme="dark"]){
+      --bg:#fafafa; --bg-surface:#ffffff; --bg-elevated:#f0f0f0;
+      --text:#1a1a1a; --text-secondary:#4a4a4f;
+      --accent:#0a84ff; --accent-dim:rgba(10,132,255,0.10);
+      --border:rgba(0,0,0,0.10);
+      --success:#1f8a3a; --warn:#c87a00; --error:#c8281c;
+      --grey:#8a8a8e; --grey-dim:rgba(120,120,128,0.10);
+    }
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text);
+    font-family:var(--sans); font-size:14px; line-height:1.4;
+    padding:calc(env(safe-area-inset-top,0px) + 14px) 16px 14px;
+    display:flex; flex-direction:column; gap:12px;
+    min-height:100vh; overflow:hidden;
+  }
+  a{color:var(--accent); text-decoration:none}
+  a:hover{text-decoration:underline}
+
+  header.top{display:flex; align-items:baseline; justify-content:space-between; gap:12px; flex:0 0 auto}
+  header.top h1{font-size:13px; font-weight:600; letter-spacing:.02em; color:var(--text-secondary); text-transform:uppercase}
+  header.top .tick{font-family:var(--mono); font-size:12px; color:var(--text-secondary); display:flex; align-items:center; gap:6px}
+  #tickDot{width:8px;height:8px;border-radius:50%;background:var(--grey);transition:background .2s}
+  #tickDot.live{background:var(--success)}
+
+  .grid{
+    flex:1 1 auto; display:grid; gap:12px; min-height:0;
+    grid-template-columns:1.35fr 1fr;
+    grid-template-rows:auto 1fr auto;
+    grid-template-areas:
+      "hero run"
+      "hero build"
+      "attention build";
+  }
+  @media (max-width:820px){
+    body{overflow:auto}
+    .grid{grid-template-columns:1fr; grid-template-areas:"hero" "run" "build" "attention"}
+  }
+
+  .panel{
+    background:var(--bg-surface); border:1px solid var(--border);
+    border-radius:var(--radius); padding:14px 16px;
+    display:flex; flex-direction:column; gap:10px; min-height:0;
+  }
+  .panel > .phead{display:flex; align-items:center; justify-content:space-between; gap:8px}
+  .phead .ptitle{font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--text-secondary)}
+  .age{font-family:var(--mono); font-size:11px; color:var(--text-secondary); white-space:nowrap}
+  .age.stale{color:var(--error); font-weight:600}
+  .age.unknown{color:var(--grey)}
+
+  .hero{grid-area:hero}
+  .run{grid-area:run}
+  .build{grid-area:build}
+  .attention{grid-area:attention}
+
+  .covenant{font-size:15px; line-height:1.45; color:var(--text)}
+  .covenant .src{display:block; margin-top:4px; font-size:11px; color:var(--text-secondary); font-family:var(--mono)}
+  .persons{display:flex; align-items:baseline; gap:12px; margin-top:4px}
+  .persons .label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary)}
+  .persons .val{font-family:var(--mono); font-size:34px; font-weight:700; line-height:1}
+  .persons .val.unknown{color:var(--grey)}
+  .persons .note{font-size:11px; color:var(--text-secondary)}
+
+  .bar{height:10px; border-radius:6px; background:var(--grey-dim); overflow:hidden; margin-top:2px}
+  .bar > span{display:block; height:100%; background:var(--accent)}
+  .bar.unknown{background:repeating-linear-gradient(45deg,var(--grey-dim),var(--grey-dim) 6px,transparent 6px,transparent 12px)}
+
+  .rows{display:flex; flex-direction:column; gap:9px}
+  .row{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
+  .row .k{font-size:12px; color:var(--text-secondary)}
+  .row .k b{color:var(--text); font-weight:600}
+  .row .v{font-family:var(--mono); font-size:13px; text-align:right}
+  .v.ok{color:var(--success)} .v.warn{color:var(--warn)} .v.err{color:var(--error)} .v.unknown{color:var(--grey)}
+
+  .dot{display:inline-block; width:9px;height:9px;border-radius:50%; margin-right:5px; vertical-align:baseline}
+  .dot.ok{background:var(--success)} .dot.stale{background:var(--error)} .dot.miss{background:var(--grey)}
+  .nodes{display:flex; gap:14px; flex-wrap:wrap; font-family:var(--mono); font-size:12px}
+  .nodes .n{display:flex; align-items:center}
+  .nodes .n .nm{color:var(--text-secondary)}
+
+  .metrics{display:flex; gap:22px; flex-wrap:wrap}
+  .metric .mv{font-family:var(--mono); font-size:26px; font-weight:700; line-height:1}
+  .metric .mv.unknown{color:var(--grey)}
+  .metric .ml{font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); margin-top:3px}
+
+  .roadmap{min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px}
+  .roadmap .ri{font-size:12.5px; padding-left:14px; text-indent:-14px}
+  .roadmap .ri::before{content:"▸ "; color:var(--accent)}
+
+  .attn{display:flex; flex-direction:column; gap:8px}
+  .attn .item{font-size:12.5px; display:flex; gap:8px; align-items:baseline}
+  .attn .healthy{color:var(--success); font-weight:600}
+  .attn .muted{color:var(--grey)}
+
+  .corpus{flex:0 0 auto; display:flex; gap:6px 16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-secondary); font-family:var(--mono)}
+  .corpus b{color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:.04em}
+  .err-inline{color:var(--error); font-size:11px; font-family:var(--mono)}
+</style>
+</head>
+<body>
+  <header class="top">
+    <h1>ChumpOS · The Manual, Live</h1>
+    <div class="tick"><span id="tickDot"></span><span id="tickTxt">connecting…</span></div>
+  </header>
+
+  <div class="grid">
+    <!-- ───────── NORTH STAR / COVENANT ───────── -->
+    <section class="panel hero">
+      <div class="phead">
+        <span class="ptitle">North Star · Covenant</span>
+        <span class="age unknown" id="age-hero">—</span>
+      </div>
+      <div class="covenant" id="covenant">
+        <span class="muted" style="color:var(--grey)">loading mission from HEAD…</span>
+        <span class="src" id="covenant-src"></span>
+      </div>
+      <div class="persons">
+        <span class="label">Persons&nbsp;served</span>
+        <span class="val unknown" id="persons">unknown · 0</span>
+        <span class="note" id="persons-note">north-star signal not wired (empty /api/mission)</span>
+      </div>
+      <div>
+        <div class="row"><span class="k">p_full_trek — hands-off-from-clean-install</span><span class="v unknown" id="ptrek-v">unknown</span></div>
+        <div class="bar unknown" id="ptrek-bar"><span style="width:0"></span></div>
+      </div>
+    </section>
+
+    <!-- ───────── HOW WE RUN ───────── -->
+    <section class="panel run">
+      <div class="phead">
+        <span class="ptitle">How we run · doctrine as live gauges</span>
+        <span class="age unknown" id="age-run">—</span>
+      </div>
+      <div class="rows">
+        <div class="row">
+          <span class="k"><b>merged≠running</b> — nodes reporting</span>
+          <span class="v unknown" id="nodes-count">? of 3</span>
+        </div>
+        <div class="nodes" id="nodes-list"><span class="muted" style="color:var(--grey)">…</span></div>
+        <div class="row"><span class="k"><b>manage-PRs</b> — casino EV band · Brier</span><span class="v unknown" id="casino">unknown</span></div>
+        <div class="row"><span class="k"><b>silence-unless-stalled</b> — stalled PRs &gt;4h</span><span class="v unknown" id="stalled">unknown</span></div>
+        <div class="row"><span class="k"><b>gaps-are-truth</b> — open · blocked · in-flight</span><span class="v unknown" id="gappulse">unknown</span></div>
+      </div>
+    </section>
+
+    <!-- ───────── WHAT WE'RE BUILDING ───────── -->
+    <section class="panel build">
+      <div class="phead">
+        <span class="ptitle">What we're building</span>
+        <span class="age unknown" id="age-build">—</span>
+      </div>
+      <div class="metrics">
+        <div class="metric"><div class="mv unknown" id="ships">–</div><div class="ml">ships / 24h</div></div>
+        <div class="metric"><div class="mv unknown" id="ciqa">–</div><div class="ml">CI / QA</div></div>
+        <div class="metric"><div class="mv unknown" id="leases">–</div><div class="ml">who's working</div></div>
+      </div>
+      <div class="phead" style="margin-top:2px"><span class="ptitle">Roadmap @ HEAD</span></div>
+      <div class="roadmap" id="roadmap"><span class="muted" style="color:var(--grey)">loading docs/ROADMAP.md…</span></div>
+    </section>
+
+    <!-- ───────── ATTENTION ───────── -->
+    <section class="panel attention">
+      <div class="phead">
+        <span class="ptitle">Attention · humans only (empty = healthy)</span>
+        <span class="age unknown" id="age-attn">—</span>
+      </div>
+      <div class="attn" id="attn"><span class="muted">…</span></div>
+    </section>
+  </div>
+
+  <div class="corpus">
+    <b>Durable corpus:</b>
+    <a href="/api/doc/mission">MISSION</a>
+    <a href="/api/doc/roadmap">ROADMAP</a>
+    <a href="https://github.com/repairman29/chump/blob/main/CLAUDE.md" target="_blank" rel="noopener">CLAUDE.md</a>
+    <a href="https://github.com/repairman29/chump/blob/main/docs/process/COCKPIT.md" target="_blank" rel="noopener">COCKPIT spec</a>
+    <a href="/api/fleet/nodes">node roster</a>
+    <a href="/api/dashboard-summary">raw summary</a>
+  </div>
+
+<script>
+"use strict";
+// The page owns no truth. Every tile is a live fetch or a rendered HEAD doc.
+// A failed/empty fetch => GREY "unknown"; a stale live feed => RED. Never fake-green.
+
+const EXPECTED_NODES = ["cuphead", "mugman", "cj"];   // roster; merged≠running honesty
+const REFRESH_MS = 30000;
+const STALE_MS = 90000;   // a live tile older than this reads RED
+
+function agoTxt(ms){
+  const s = Math.max(0, Math.round((Date.now()-ms)/1000));
+  if (s < 60) return s+"s ago";
+  if (s < 3600) return Math.round(s/60)+"m ago";
+  return Math.round(s/3600)+"h ago";
+}
+function setAge(id, ms, ok){
+  const el = document.getElementById(id); if(!el) return;
+  if (ms == null){ el.textContent = "—"; el.className = "age unknown"; return; }
+  el.textContent = agoTxt(ms);
+  el.className = "age" + ((Date.now()-ms > STALE_MS) ? " stale" : (ok===false ? " unknown" : ""));
+}
+async function getJSON(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if (!r.ok) throw new Error(url+" → HTTP "+r.status);
+  return r.json();
+}
+async function getText(url){
+  const r = await fetch(url, {cache:"no-store"});
+  if (!r.ok) throw new Error(url+" → HTTP "+r.status);
+  return r.text();
+}
+const heroTs = {}; // per-panel last-good fetch time
+
+// ── HERO: covenant (docs/MISSION.md @ HEAD) + persons-served + p_full_trek ──
+async function loadHero(){
+  // covenant / mission doctrine line — rendered from HEAD, never typed.
+  try{
+    const md = await getText("/api/doc/mission");
+    const line = firstDoctrineLine(md);
+    const cov = document.getElementById("covenant");
+    cov.innerHTML = "";
+    cov.append(document.createTextNode(line));
+    const src = document.createElement("span");
+    src.className = "src"; src.textContent = "rendered from docs/MISSION.md @ HEAD";
+    cov.append(src);
+    heroTs.hero = Date.now();
+    setAge("age-hero", heroTs.hero, true);
+  }catch(e){
+    const cov = document.getElementById("covenant");
+    cov.innerHTML = '<span class="err-inline">covenant source unavailable — '+esc(e.message)+'</span>';
+    setAge("age-hero", null);
+  }
+  // persons-served — the one real-user signal; empty today => honest unknown·0.
+  try{
+    const m = await getJSON("/api/mission");   // 405/empty today
+    const n = (m && (m.persons_served ?? m.count));
+    const el = document.getElementById("persons");
+    if (n == null){ el.textContent = "unknown · 0"; el.className = "val unknown"; }
+    else { el.textContent = String(n); el.className = "val"; document.getElementById("persons-note").textContent = (m.last_session||""); }
+  }catch(_){
+    // GET /api/mission is POST-only today (405) — that emptiness at the top IS the daily pressure.
+    const el = document.getElementById("persons");
+    el.textContent = "unknown · 0"; el.className = "val unknown";
+  }
+  // p_full_trek — Phase 2 (/api/vital-signs). Honest grey until wired.
+  document.getElementById("ptrek-v").textContent = "unknown";
+  document.getElementById("ptrek-bar").className = "bar unknown";
+}
+
+function firstDoctrineLine(md){
+  const lines = md.split(/\r?\n/);
+  // Prefer the first blockquote prose line; fall back to first real sentence.
+  for (const raw of lines){
+    let t = raw.trim();
+    if (t.startsWith(">")) t = t.replace(/^>+/,"").trim();
+    else if (!t || t.startsWith("#") || t.startsWith("|") || t.startsWith("-") || t.startsWith("*")) continue;
+    t = t.replace(/\*\*/g,"").replace(/^["'*]+|["'*]+$/g,"").replace(/\[([^\]]+)\]\([^)]*\)/g,"$1").trim();
+    if (t.length > 20) return t.length > 220 ? t.slice(0,217)+"…" : t;
+  }
+  return md.trim().slice(0,200) || "(mission doc empty)";
+}
+
+// ── HOW WE RUN ──
+async function loadRun(){
+  // nodes — merged≠running; show the honest N of 3, missing nodes as grey "?".
+  try{
+    const d = await getJSON("/api/fleet/nodes");
+    const reporting = {};
+    (d.nodes||[]).forEach(n => reporting[(n.node||"").toLowerCase()] = n);
+    const cnt = document.getElementById("nodes-count");
+    cnt.textContent = (d.node_count ?? Object.keys(reporting).length) + " of " + EXPECTED_NODES.length;
+    cnt.className = "v" + (d.stale_count>0 ? " err" : (d.node_count < EXPECTED_NODES.length ? " warn" : " ok"));
+    const list = document.getElementById("nodes-list"); list.innerHTML = "";
+    EXPECTED_NODES.forEach(name => {
+      const n = reporting[name];
+      const span = document.createElement("span"); span.className = "n";
+      let cls = "miss", tail = "?";
+      if (n){ cls = n.stale ? "stale" : "ok"; tail = n.stale ? "stale "+agoTxt(n.epoch*1000) : agoTxt(n.epoch*1000);
+              const f=(n.health&&n.health.failed)||0; if(f>0){cls="stale"; tail=f+" failed";} }
+      span.innerHTML = '<span class="dot '+cls+'"></span><span class="nm">'+name+'</span>&nbsp;'+esc(tail);
+      list.append(span);
+    });
+    heroTs.run = Date.now(); setAge("age-run", heroTs.run, true);
+  }catch(e){
+    document.getElementById("nodes-count").textContent = "? of 3";
+    document.getElementById("nodes-list").innerHTML = '<span class="err-inline">'+esc(e.message)+'</span>';
+    setAge("age-run", null);
+  }
+  // casino EV/Brier — from ambient pr_book_odds; none emitted => honest grey.
+  try{
+    const now = Date.now();
+    const evs = await getJSON("/api/events?from="+(now-86400000)+"&to="+now+"&limit=5000");
+    const odds = (evs||[]).filter(e => e.kind === "pr_book_odds");
+    const el = document.getElementById("casino");
+    if (odds.length){
+      const p = odds[odds.length-1];
+      const pl = (typeof p.payload === "string") ? safeParse(p.payload) : (p.payload||p);
+      const ev = pl.ev ?? pl.EV, br = pl.brier ?? pl.Brier;
+      el.textContent = (ev!=null?("EV "+ev):"EV ?") + " · " + (br!=null?("Brier "+br):"Brier ?");
+      el.className = "v ok";
+    } else { el.textContent = "unknown"; el.className = "v unknown"; }
+    // stalled PRs — derive from stuck signals in the same window.
+    const stuck = (evs||[]).filter(e => /stuck|blocked|stall/i.test(e.kind||""));
+    const st = document.getElementById("stalled");
+    if (!evs || evs.length===0){ st.textContent = "unknown"; st.className = "v unknown"; }
+    else { st.textContent = String(stuck.length); st.className = "v " + (stuck.length>0 ? "warn" : "ok"); }
+  }catch(_){
+    document.getElementById("casino").textContent = "unknown";
+    document.getElementById("stalled").textContent = "unknown";
+  }
+  // gap-pulse — Phase 2 (/api/gap-pulse). Honest grey.
+  document.getElementById("gappulse").textContent = "unknown";
+  refreshAttention();
+}
+
+function safeParse(s){ try{ return JSON.parse(s); }catch(_){ return {}; } }
+
+// ── WHAT WE'RE BUILDING ──
+async function loadBuild(){
+  try{
+    const d = await getJSON("/api/dashboard-summary");
+    const ships = document.getElementById("ships");
+    ships.textContent = d.today_ships ?? "–";
+    ships.className = "mv" + (d.today_ships==null ? " unknown" : "");
+    const ci = document.getElementById("ciqa");
+    if (d.ci_qa_score){
+      ci.textContent = Math.round(d.ci_qa_score.pct) + "%";
+      ci.className = "mv " + (d.ci_qa_score.status==="OK" ? "" : "");
+      ci.title = "n="+d.ci_qa_score.sample_size+" · "+d.ci_qa_score.status;
+    } else { ci.textContent="–"; ci.className="mv unknown"; }
+    const lz = document.getElementById("leases");
+    const nL = (d.active_leases||[]).length;
+    lz.textContent = nL; lz.className = "mv" + (d.active_leases ? "" : " unknown");
+    lz.title = (d.active_leases||[]).join(", ") || "idle";
+    heroTs.build = Date.now(); setAge("age-build", heroTs.build, true);
+  }catch(e){
+    ["ships","ciqa","leases"].forEach(id=>{const el=document.getElementById(id);el.textContent="–";el.className="mv unknown";});
+    setAge("age-build", null);
+  }
+  // roadmap — rendered from HEAD.
+  try{
+    const md = await getText("/api/doc/roadmap");
+    const items = roadmapItems(md);
+    const rm = document.getElementById("roadmap"); rm.innerHTML = "";
+    if (!items.length){ rm.innerHTML = '<span class="muted" style="color:var(--grey)">(no headings in ROADMAP.md)</span>'; }
+    items.slice(0,7).forEach(t=>{ const d=document.createElement("div"); d.className="ri"; d.textContent=t; rm.append(d); });
+  }catch(e){
+    document.getElementById("roadmap").innerHTML = '<span class="err-inline">'+esc(e.message)+'</span>';
+  }
+}
+function roadmapItems(md){
+  const out=[];
+  for (const raw of md.split(/\r?\n/)){
+    const m = raw.match(/^#{2,3}\s+(.+?)\s*$/);
+    if (m){ let t=m[1].replace(/\*\*/g,"").replace(/`/g,"").replace(/\[([^\]]+)\]\([^)]*\)/g,"$1").trim(); if(t) out.push(t); }
+  }
+  return out;
+}
+
+// ── ATTENTION ──
+function refreshAttention(){
+  const el = document.getElementById("attn"); el.innerHTML = "";
+  const items = [];
+  const stalledTxt = document.getElementById("stalled").textContent;
+  const stalledN = parseInt(stalledTxt,10);
+  if (!isNaN(stalledN) && stalledN>0) items.push('<span class="item">• '+stalledN+' stalled PR(s) &gt;4h <a href="/api/events">→ events</a></span>');
+  // decisions-waiting: source is ~/Projects/TODO.md — the operator's Mac, not this node.
+  items.push('<span class="item muted">• decisions waiting: source TODO.md is off-node <a href="https://github.com/repairman29/chump" target="_blank" rel="noopener">→</a></span>');
+  if (items.filter(i=>!i.includes("muted")).length===0){
+    el.innerHTML = '<span class="item"><span class="healthy">✓ nothing needs you right now</span></span>' + items.join("");
+  } else {
+    el.innerHTML = items.join("");
+  }
+  setAge("age-attn", Date.now(), true);
+}
+
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
+
+// ── WS /api/live — drives the live tick + freshness heartbeat ──
+function connectLive(){
+  const dot = document.getElementById("tickDot"), txt = document.getElementById("tickTxt");
+  let ws;
+  try { ws = new WebSocket((location.protocol==="https:"?"wss":"ws")+"://"+location.host+"/api/live"); }
+  catch(_){ txt.textContent="live: unavailable"; return; }
+  ws.onopen = ()=>{ dot.classList.add("live"); txt.textContent="live"; };
+  ws.onmessage = ()=>{ dot.classList.add("live"); txt.textContent="live · "+new Date().toLocaleTimeString(); };
+  ws.onclose = ()=>{ dot.classList.remove("live"); txt.textContent="live: reconnecting…"; setTimeout(connectLive, 4000); };
+  ws.onerror = ()=>{ try{ws.close();}catch(_){} };
+}
+
+function refreshAll(){ loadHero(); loadRun(); loadBuild(); }
+refreshAll();
+connectLive();
+setInterval(refreshAll, REFRESH_MS);
+// keep age stamps ticking even between refreshes
+setInterval(()=>{ ["hero","run","build"].forEach(k=> heroTs[k] && setAge("age-"+k, heroTs[k], true)); }, 5000);
+</script>
+</body>
+</html>

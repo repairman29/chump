@@ -1,11 +1,15 @@
 //! Integration tests for the fleet-health telemetry routes (RESILIENT-1055):
 //! POST /api/sentinel-heartbeat (ingest) + GET /api/fleet/nodes (aggregate).
 //!
-//! Uses `axum::Router::oneshot` (no network socket). Auth is the same
-//! fail-closed bat-phone bearer check as /api/gap, so the security assertions
-//! mirror mission_intake.rs. The round-trip test proves the whole point of the
-//! stream: a node's per-organ health (which units are failed) becomes an
-//! authenticated API READ instead of an SSH crawl.
+//! Uses `axum::Router::oneshot` (no network socket). The *write* side
+//! (POST /api/sentinel-heartbeat) is the same fail-closed bat-phone bearer
+//! check as /api/gap. The *read* side (GET /api/fleet/nodes) is an
+//! UNAUTHENTICATED read as of INFRA-5663 (cockpit spec §2: reads are open,
+//! only mutating routes + /api/gaps are Bearer-gated), so the daily cockpit
+//! page can render the honest "nodes: N of 3" tile from an unauthed browser.
+//! The round-trip test proves the whole point of the stream: a node's
+//! per-organ health (which units are failed) becomes an API READ instead of
+//! an SSH crawl — and that the read stays open while the ingest fails closed.
 //!
 //! All assertions live in ONE test so the shared-process `CHUMP_BATPHONE_TOKEN`
 //! env var is mutated sequentially, never racing a parallel test.
@@ -70,30 +74,37 @@ async fn sentinel_heartbeat_and_fleet_nodes_roundtrip() {
     let token = "s3cret-fleet-token";
     let app = build_app();
 
-    // (a) Fail-closed: no token configured -> 503 on both routes.
+    // (a) Ingest fails closed when no token configured (-> 503). The READ is
+    // open (INFRA-5663): it returns 200 with an empty roster, never 503.
     std::env::remove_var(BATPHONE_TOKEN_ENV);
     assert_eq!(
         post_heartbeat(&app, Some(&format!("Bearer {token}")), json!({"node": "x"})).await,
         StatusCode::SERVICE_UNAVAILABLE,
         "ingest must fail closed when token unset"
     );
+    let (open_status, open_body) = get_nodes(&app, None).await;
     assert_eq!(
-        get_nodes(&app, Some(&format!("Bearer {token}"))).await.0,
-        StatusCode::SERVICE_UNAVAILABLE,
-        "aggregate read must fail closed when token unset"
+        open_status,
+        StatusCode::OK,
+        "INFRA-5663: fleet/nodes read is open — 200 even with no token configured"
+    );
+    assert_eq!(
+        open_body["node_count"],
+        json!(0),
+        "open read of an empty store returns node_count 0, not an error"
     );
 
-    // (b) Wrong / missing bearer -> 401.
+    // (b) Wrong / missing bearer: ingest still 401; the open read is unaffected.
     std::env::set_var(BATPHONE_TOKEN_ENV, token);
     assert_eq!(
         post_heartbeat(&app, Some("Bearer nope"), json!({"node": "x"})).await,
         StatusCode::UNAUTHORIZED,
-        "wrong token -> 401"
+        "wrong token -> 401 on the write side"
     );
     assert_eq!(
         get_nodes(&app, None).await.0,
-        StatusCode::UNAUTHORIZED,
-        "missing bearer -> 401"
+        StatusCode::OK,
+        "INFRA-5663: read stays open (200) with no bearer, even when a token IS configured"
     );
 
     // (c) Missing `node` -> 400 (the aggregation key is required).
