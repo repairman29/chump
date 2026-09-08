@@ -1706,6 +1706,7 @@ dependencies = [
  "anyhow",
  "async-trait",
  "chrono",
+ "chump-bench",
  "postgres",
  "rusqlite",
  "serde",
