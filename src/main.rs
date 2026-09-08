@@ -10335,9 +10335,7 @@ async fn main() -> Result<()> {
                         eprintln!(
                             "chump gap: P0/P1 gaps require --acceptance-criteria <text> (per CREDIBLE-1098)."
                         );
-                        eprintln!(
-                            "Bypass: --no-ac-required, or CHUMP_GAP_RESERVE_NO_AC=1."
-                        );
+                        eprintln!("Bypass: --no-ac-required, or CHUMP_GAP_RESERVE_NO_AC=1.");
                         std::process::exit(1);
                     }
                 }
