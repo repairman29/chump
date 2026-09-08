@@ -1,0 +1,15 @@
+# RESILIENT-1058 — pairs with chump-gap-store-single-source-check.service.
+# 30-minute cadence: a real split-brain (postgrest reachable + non-empty +
+# diverging from state.db) is a slow-forming condition, not a hot path —
+# mirrors chump-almanac-liveness.timer's periodic-sweep cadence rather than
+# the 5-10min consumer cadences used for fast-firing ambient signals.
+[Unit]
+Description=Chump gap-store single-source-of-truth check (RESILIENT-1058 / RESILIENT-1057)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
