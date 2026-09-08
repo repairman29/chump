@@ -421,12 +421,15 @@ write_node_env() {
       printf 'export CHUMP_TEAM_URL=%s\n' "$team_url"
       printf 'export CHUMP_TEAM_API_KEY=%s\n' "$team_api_key"
       printf 'export CHUMP_STORE_BACKEND=%s\n' "$store_backend"
+      # RESILIENT-1083: persist this node's role OUTSIDE the repo so the recurring
+      # organ-reconcile can self-scope to it (and survive `git reset --hard`).
+      printf 'export CHUMP_NODE_ROLE=%s\n' "$ROLE"
     } > "$node_env"
   )
   # Source now so subsequent phases inherit the canonical settings.
   # shellcheck disable=SC1090
   . "$node_env"
-  export CHUMP_STATE_DIR CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND
+  export CHUMP_STATE_DIR CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE
   ok "node.env written + sourced: $node_env"
 }
 

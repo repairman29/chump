@@ -119,3 +119,19 @@ organ_is_applicable() {
   done
   return 0
 }
+
+# organ_role_filter_for <role> -> echoes the comma-separated organ-manifest role=
+# tags a node with that --role should carry (RESILIENT-746 / RESILIENT-1083).
+# Shared by chump-node-install.sh (install-time scoping) and organ-reconcile.sh
+# (recurring self-scope from ~/.chump/node.env's CHUMP_NODE_ROLE). Keep in sync
+# with chump-node-install.sh's organ_role_filter(). brain = coordination /
+# registry / reporting (everything the manifest does not tag muscle); muscle =
+# the worker/ship-code organs only; all / empty = whole manifest (no scoping).
+organ_role_filter_for() {
+  case "${1:-}" in
+    brain)   echo "brain,data,janitor,trust";;
+    muscle)  echo "muscle";;
+    all|"")  echo "";;
+    *)       echo "";;
+  esac
+}
