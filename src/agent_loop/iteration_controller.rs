@@ -206,6 +206,14 @@ pub(crate) fn track_git_commit_storm(
     }
     *counter += outcome.git_commit_calls as u32;
     if *counter > max_consecutive_commits {
+        // EFFECTIVE-824: log the storm detection event so operators can spot
+        // this breaker tripping in the logs, not just infer it from the
+        // aborted-run error text.
+        tracing::warn!(
+            consecutive_git_commits = *counter,
+            threshold = max_consecutive_commits,
+            "git_commit storm breaker tripped: aborting run"
+        );
         return Some(format!(
             "Aborting: {} consecutive git_commit calls with no intervening successful write. \
              The model appears to be storming on git_commit without making progress. \
