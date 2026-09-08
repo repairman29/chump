@@ -1213,6 +1213,12 @@ events:
     trigger: launch-time auth probe failed
     consumers: [operator-recall, audit-log]
 
+  - kind: fleet_credit_exhausted
+    effect_metric: self
+    emitter: scripts/dispatch/run-fleet.sh (INFRA-621, CREDIBLE-130)
+    trigger: launch-time auth probe failed with error_class=credit-exhausted (billing exhausted, credentials valid)
+    consumers: [operator-recall, audit-log]
+
   - kind: fleet_auth_refresh
     effect_metric: self
     emitter: scripts/dispatch/worker.sh refresh_oauth_token

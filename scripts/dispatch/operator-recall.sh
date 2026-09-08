@@ -464,6 +464,20 @@ _oauth_fail_hits="${_oauth_fail_hits//[[:space:]]/}"
 _auth_stale_hits=$(_scan_ambient "$_auth_window" '"kind":"auth_token_stale"' | wc -l 2>/dev/null || echo 0)
 _auth_stale_hits="${_auth_stale_hits//[[:space:]]/}"
 
+# CREDIBLE-130: fleet_credit_exhausted (billing exhausted, credentials fine)
+# is deliberately EXCLUDED from every AUTH_DEAD signal above — it must never
+# be added to the fleet_auth_storm/oauth_token_refresh_failed/auth_token_stale
+# scan set, since that would resurrect the 2026-06-08 misdiagnosis (a valid
+# key on a zero-balance account paged as "auth credentials appear fully
+# dead"). Surface it as its own informational line instead so an operator
+# checking recall status sees the real cause and the real fix (top up
+# credits / switch CHUMP_AUTH_MODE), not an auth-rotation runbook.
+_credit_exhausted_hits=$(_scan_ambient "$_auth_window" '"kind":"fleet_credit_exhausted"' | wc -l 2>/dev/null || echo 0)
+_credit_exhausted_hits="${_credit_exhausted_hits//[[:space:]]/}"
+if (( _credit_exhausted_hits > 0 )); then
+    echo "[operator-recall] INFO: fleet_credit_exhausted seen ${_credit_exhausted_hits}x in last ${_auth_window}s — billing exhausted, NOT an auth failure; not counted toward AUTH_DEAD. Top up credits or switch CHUMP_AUTH_MODE." >&2
+fi
+
 _reason=""
 if (( _auth_exits >= _auth_threshold )); then
     _reason="fleet_auth_storm with action=worker_exit seen ${_auth_exits}x in last ${_auth_window}s (threshold=${_auth_threshold}); auth credentials appear fully dead"

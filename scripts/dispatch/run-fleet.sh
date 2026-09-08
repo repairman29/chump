@@ -768,6 +768,21 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
             "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
             >> "$_amb_log" 2>/dev/null || true
 
+        # CREDIBLE-130 AC3: credit-exhaustion also gets its own distinct kind
+        # (separate from fleet_auth_misconfigured) so operator-recall and any
+        # other ambient consumer can route on it without needing to parse the
+        # error_class field out of a generically-named auth event. This is the
+        # signal that would have short-circuited the 2026-06-08 misdiagnosis —
+        # a consumer watching for fleet_auth_* kinds alone would still not see
+        # this as an auth problem.
+        if [[ "$_probe_error_class" == "credit-exhausted" ]]; then
+            printf '{"ts":"%s","kind":"fleet_credit_exhausted","auth_mode":"%s","auth_path":"%s","error":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "$_fleet_auth_mode" "$_fleet_auth_path" \
+                "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
+                >> "$_amb_log" 2>/dev/null || true
+        fi
+
         if [[ "${CHUMP_FLEET_FORCE_LAUNCH:-0}" != "1" ]]; then
             exit 3
         else
