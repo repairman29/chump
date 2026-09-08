@@ -1,0 +1,28 @@
+- id: CREDIBLE-1107
+  domain: CREDIBLE
+  title: "CREDIBLE: Audit fleet-brief subshell execution and error swallowing in git queries (CREDIBLE-129 slice)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Identify all subshell invocations and git operations (e.g. git fetch, git log) in fleet-brief.sh that suppress stderr or default to 0 on non-zero exit codes
+    - Document root cause scenario causing silent empty string or 0 return during transient network or git lock failures
+  notes: |
+    [chump harvest check 'fleet-brief']
+    === primitives_index match for 'fleet-brief' ===
+    
+    === cluster keyword match for 'fleet-brief' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'fleet-brief' ===
+    
+    === repo-description match for 'fleet-brief' ===
+    
+    === HARVEST_ROADMAP.md mention of 'fleet-brief' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'fleet-brief' ===
+      /home/ubuntu/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/ubuntu/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/ubuntu/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+  closed_date: '2026-09-08'
+  closed_pr: 4542
+
