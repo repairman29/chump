@@ -1224,18 +1224,28 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
     };
     let now = current_unix();
 
-    let pillar_of = |title: &str| -> Option<&'static str> {
+    // CREDIBLE-421: title-prefix tagging (`EFFECTIVE: ...`) is opt-in and most
+    // gaps are titled `<DOMAIN>-<NUM>: ...` instead, so a title-only check
+    // left 70% of 30d ships "untagged" even though the gap's `domain` field
+    // already carries the pillar. Fall back to domain when the title has no
+    // explicit prefix.
+    let pillar_of = |title: &str, domain: &str| -> Option<&'static str> {
         let up = title.to_uppercase();
         if up.starts_with("EFFECTIVE:") {
-            Some("effective")
+            return Some("effective");
         } else if up.starts_with("CREDIBLE:") {
-            Some("credible")
+            return Some("credible");
         } else if up.starts_with("RESILIENT:") {
-            Some("resilient")
+            return Some("resilient");
         } else if up.starts_with("ZERO-WASTE:") {
-            Some("zero_waste")
-        } else {
-            None
+            return Some("zero_waste");
+        }
+        match domain.to_uppercase().as_str() {
+            "EFFECTIVE" => Some("effective"),
+            "CREDIBLE" => Some("credible"),
+            "RESILIENT" => Some("resilient"),
+            "ZERO-WASTE" | "ZERO_WASTE" | "ZEROWASTE" => Some("zero_waste"),
+            _ => None,
         }
     };
 
@@ -1253,7 +1263,7 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
             if let Some(closed) = g.closed_at {
                 if (closed as u64) >= cutoff {
                     total += 1;
-                    match pillar_of(&g.title) {
+                    match pillar_of(&g.title, &g.domain) {
                         Some("effective") => effective += 1,
                         Some("credible") => credible += 1,
                         Some("resilient") => resilient += 1,
@@ -2441,6 +2451,28 @@ mod tests {
         }
     }
 
+    fn seed_gap_store_with_domain(dir: &Path, entries: &[(&str, &str, i64)]) {
+        let chump_dir = dir.join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir)
+            .output();
+
+        let store = chump_gap_store::GapStore::open(dir).unwrap();
+        for (domain, title, closed_ts) in entries {
+            let reserved = store.reserve(domain, title, "P1", "s").unwrap();
+            let iso = unix_to_iso_date(*closed_ts);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=999 WHERE id=?3",
+                rusqlite::params![closed_ts, iso, reserved],
+            )
+            .unwrap();
+        }
+    }
+
     fn unix_to_iso_date(ts: i64) -> String {
         let d = (ts / 86_400) + 2_440_588;
         let f = d + 1401 + ((((4 * d + 274_277) / 146_097) * 3) / 4) - 38;
@@ -2701,6 +2733,32 @@ mod tests {
         assert!(section.windows[0].resilient >= 1, "resilient pillar");
         assert!(section.windows[0].zero_waste >= 1, "zero_waste pillar");
         assert!(section.windows[0].untagged >= 1, "untagged");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible421_ship_rate_pillar_classification_falls_back_to_domain() {
+        // CREDIBLE-421: most gaps are titled "<DOMAIN>-<NUM>: ..." rather than
+        // an explicit "EFFECTIVE: ..." prefix, so the domain field must also
+        // classify a ship into its pillar instead of leaving it untagged.
+        let tmp = tempdir();
+        let now = current_unix() as i64;
+        seed_gap_store_with_domain(
+            &tmp,
+            &[
+                ("EFFECTIVE", "EFFECTIVE-1: speed up", now),
+                ("CREDIBLE", "CREDIBLE-2: add scorecard", now),
+                ("RESILIENT", "RESILIENT-3: watchdog", now),
+                ("ZERO-WASTE", "ZERO-WASTE-4: trim", now),
+                ("INFRA", "INFRA-5: unrelated plumbing", now),
+            ],
+        );
+        let section = build_ship_rate_section(&tmp);
+        assert_eq!(section.windows[0].effective, 1, "effective via domain");
+        assert_eq!(section.windows[0].credible, 1, "credible via domain");
+        assert_eq!(section.windows[0].resilient, 1, "resilient via domain");
+        assert_eq!(section.windows[0].zero_waste, 1, "zero_waste via domain");
+        assert_eq!(section.windows[0].untagged, 1, "only INFRA stays untagged");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
