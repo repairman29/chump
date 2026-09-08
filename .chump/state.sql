@@ -16395,7 +16395,7 @@ gaps:
 - id: CREDIBLE-569
   domain: CREDIBLE
   title: "CREDIBLE: Set up data extraction pipeline for chump drift flags (CREDIBLE-222 slice)"
-  status: open
+  status: done
   priority: P2
   effort: s
   description: |
@@ -16424,6 +16424,10 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'almanac' ===
+  closed_date: '2026-09-08'
+  closed_pr: 4541
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4541 titled 'CREDIBLE-569: ...' merged 2026-09-08; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: CREDIBLE-570
   domain: CREDIBLE
@@ -22736,11 +22740,18 @@ gaps:
   status: open
   priority: P1
   effort: xs
+  description: |
+    Modify the `handle_run_ab_sweep_with_summary` function in `crates/mcp-servers/chump-mcp-eval/src/main.rs` to emit timestamped “Sweep start” and “Sweep complete” lines to a dedicated log file, and add two new CLI flags (`--schedule-sweep` and `--run-sweep-now`) that respectively install a daily launchd job and trigger an immediate sweep without altering the schedule.
+    
+    Target file(s):
+    - crates/mcp-servers/chump-mcp-eval/src/main.rs
+    
+    (Spec enriched by chump-gap-enricher — EFFECTIVE-446. Original filer context preserved below.)
   acceptance_criteria:
-    - The sweep script is added to a launchd/plist job (or equivalent scheduler) that runs at least once per day.
-    - Each scheduled run writes a timestamped entry to a log file indicating start and completion.
-    - The scheduled job can be triggered manually for testing without affecting the schedule.
-    - No manual invocation is required for the daily execution.
+    - "In `crates/mcp-servers/chump-mcp-eval/src/main.rs`, `handle_run_ab_sweep_with_summary` writes a line beginning with “Sweep start:” followed by an ISO‑8601 timestamp to `logs/credible_sweep.log` at the start of each run."
+    - "The same function writes a line beginning with “Sweep complete:” followed by an ISO‑8601 timestamp to `logs/credible_sweep.log` at the end of each run."
+    - Running the compiled binary with the `--run-sweep-now` flag creates both a “Sweep start” and a “Sweep complete” entry in `logs/credible_sweep.log` within a single execution.
+    - After invoking the binary with the `--schedule-sweep` flag, a launchd plist file `~/Library/LaunchAgents/com.credible.sweep.plist` is created and `launchctl list | grep com.credible.sweep` reports the job as loaded; subsequently executing `launchctl start com.credible.sweep` adds a new paired “Sweep start”/“Sweep complete” entry to `logs/credible_sweep.log`.
   depends_on: [CREDIBLE-787]
 
 - id: CREDIBLE-789
