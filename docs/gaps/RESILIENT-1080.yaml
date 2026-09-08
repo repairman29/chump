@@ -1,0 +1,48 @@
+- id: RESILIENT-1080
+  domain: RESILIENT
+  title: "script-host ~/chump never advances — merged shell/organ changes never reach running organs (merged != reaches-node for script-based organs)"
+  status: open
+  priority: P0
+  effort: m
+  description: |
+    2026-09-08: the through-line "merged != reaches-node" for every SCRIPT-based
+    organ. chump-node-refresh (RESILIENT-200) keeps the BINARY current from the
+    ~/.chumpnode/repo mirror, and the mirror itself is kept ~2 commits behind
+    origin/main. BUT the system-level organ units source their shell scripts +
+    organ-manifest from a SEPARATE checkout, /home/ubuntu/chump, that NOTHING
+    advances. It silently re-stales without bound:
+      - mugman  /home/ubuntu/chump was 223 commits behind origin/main
+      - cuphead /home/ubuntu/chump was parked on a feature branch, 13 behind
+    39 (mugman) / 43 (cuphead) system organ .service units run
+    `cd /home/ubuntu/chump; bash scripts/ops/<organ>.sh` (e.g.
+    chump-organ-reconcile.service: `cd /home/ubuntu/chump; exec bash
+    scripts/ops/organ-reconcile.sh --apply`), so every merged change to
+    organ-reconcile.sh, worker.sh, coord/*, the sentinel, and organ-manifest.txt
+    (incl. the #4512/#4521 timer-aware role-reap) never reached the running
+    organs. The organ that would REAP out-of-role units was itself running
+    ~200-commit-old code, so it could not reap. Fixed live by a worktree-aware
+    fast-forward of ~/chump on both nodes (all 32/73 worktrees under /tmp were
+    untouched; 0 destroyed), which immediately let the current reconcile reap the
+    out-of-role cruft. That hand-crank is not durable — ~/chump will re-stale.
+  acceptance_criteria:
+    - "the SCRIPT source the system organs read is kept within a few commits of origin/main automatically on every node, the way node-refresh already keeps the binary + mirror current — never unbounded-stale again"
+    - "the refresh is worktree-SAFE: it must fast-forward the main checkout ref ONLY when clean-mergeable, and MUST NOT touch, reset, or checkout over any /tmp claim worktree (32-73 live per node) or discard an untracked hand-deployed file; if it cannot advance safely it no-ops loudly, never force-resets"
+    - "prefer the architecturally-clean fix where feasible: repoint the system organ units to source scripts from ~/.chumpnode/repo (the mirror node-refresh already keeps current) so the second ~/chump checkout stops being a stale source at all; OR add a worktree-aware ~/chump fast-forward to node-refresh"
+    - "a deploy-lag signal fires if the script source drifts beyond a threshold (e.g. > N commits behind origin/main) so silent re-staling is loud"
+    - "CI proves the refresh advances a behind checkout to green-main AND leaves a sibling worktree's HEAD/branch/worktree-list byte-identical (worktree-safety is the load-bearing invariant)"
+  evidence: |
+    VERIFIED LIVE 2026-09-08. Root-caused on cuphead+mugman. mugman ~/chump 223
+    behind, cuphead on feature branch resilient-1054-derace-manifest 13 behind
+    (its only unique commit already merged as #4517). The system
+    chump-organ-reconcile.service sourced organ-reconcile.sh from the stale
+    ~/chump, so the RESILIENT-1016/#4512 timer-aware reap + RESILIENT-1055/#4521
+    role roster never ran — 5+ out-of-role brain organs (chump-board-cycle,
+    chump-merge-serializer, chump-nba-dispatch, chump-organ-watchdog,
+    chump-rot-reaper) stayed failed on the muscle node. After a worktree-aware
+    fast-forward (stash tracked mods, back up + move the untracked hand-deployed
+    sentinel aside, `git merge --ff-only origin/main`), both nodes reached
+    origin/main HEAD b1443a873; the very next organ-reconcile pass reaped ~60
+    out-of-role units. Proof zero worktrees destroyed: the worktree list before
+    vs after differed on exactly one line — the main checkout's own SHA.
+  outcome_id: MISSION-010
+  opened_date: '2026-09-08'
