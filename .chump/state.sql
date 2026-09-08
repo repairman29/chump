@@ -4848,7 +4848,7 @@ gaps:
 - id: CREDIBLE-1114
   domain: CREDIBLE
   title: "CREDIBLE: CREDIBLE-1046: Add test for summarized_pct >95% behavior (CREDIBLE-300 slice)"
-  status: open
+  status: done
   priority: P2
   effort: xs
   acceptance_criteria:
@@ -4870,6 +4870,10 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'Almanac' ===
+  closed_date: '2026-09-08'
+  closed_pr: 4553
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4553 titled 'CREDIBLE-1114: ...' merged 2026-09-08; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: CREDIBLE-112
   domain: CREDIBLE
