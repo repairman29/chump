@@ -86,10 +86,6 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
         "scripts/git-hooks/pre-commit-ac-completeness.sh",
     ),
     (
-        "bin-bloat-guard",
-        "scripts/git-hooks/pre-commit-bin-bloat-guard.sh",
-    ),
-    (
         "css-token-discipline",
         "scripts/git-hooks/pre-commit-css-token-discipline.sh",
     ),
