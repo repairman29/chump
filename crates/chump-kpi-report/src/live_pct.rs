@@ -41,7 +41,7 @@ impl Criticality {
     /// 4x an `Info` stage, `Warn` 2x — deliberately non-linear so a single
     /// down `Crit` stage visibly drags the overall percentage instead of
     /// being diluted by a long tail of `Info` stages.
-    fn weight(self) -> f64 {
+    pub(crate) fn weight(self) -> f64 {
         match self {
             Criticality::Info => 1.0,
             Criticality::Warn => 2.0,

@@ -1847,6 +1847,100 @@ pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
     }
 }
 
+// ── Debt Index — Crown Gauge + NBA (CREDIBLE-357) ───────────────────────────
+//
+// Maps the live gap registry (`.chump/state.db`) onto `debt_index::Capability`
+// so the crown gauge (live_pct/debt/top-5 dormant-by-Crit) and the
+// next_best_action candidate list are computed from real, current fleet
+// state rather than a fixture. Priority maps to criticality (P0/P1 -> Crit,
+// P2 -> Warn, else Info); status maps to liveness (done/shipped -> Complete,
+// in_progress/claimed -> Running, else Pending — dormant); effort maps to
+// `stages_short` (xs=1 .. xl=5, unknown effort defaults to 2) as the "how far
+// behind" proxy since the registry doesn't track literal pipeline stages.
+pub struct DebtIndexSection {
+    pub gauge: crate::debt_index::CrownGauge,
+    pub nba_text: String,
+    pub nba_candidate_count: usize,
+}
+
+impl DebtIndexSection {
+    pub fn render_text(&self) -> String {
+        format!("{}\n{}", self.gauge.render_text(), self.nba_text)
+    }
+
+    pub fn render_json(&self) -> String {
+        let top5 = self
+            .gauge
+            .top5_dormant_names
+            .iter()
+            .map(|n| format!("{:?}", n))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{"live_pct":{:.4},"debt":{:.2},"top5_dormant":[{}],"nba_candidate_count":{}}}"#,
+            self.gauge.live_pct, self.gauge.debt, top5, self.nba_candidate_count,
+        )
+    }
+}
+
+fn gap_priority_to_criticality(priority: &str) -> crate::live_pct::Criticality {
+    use crate::live_pct::Criticality;
+    match priority {
+        "P0" | "P1" => Criticality::Crit,
+        "P2" => Criticality::Warn,
+        _ => Criticality::Info,
+    }
+}
+
+fn gap_status_to_stage_status(status: &str) -> crate::live_pct::StageStatus {
+    use crate::live_pct::StageStatus;
+    match status {
+        "done" | "shipped" => StageStatus::Complete,
+        "in_progress" | "claimed" | "running" => StageStatus::Running,
+        _ => StageStatus::Pending,
+    }
+}
+
+fn gap_effort_to_stages_short(effort: &str) -> u32 {
+    match effort {
+        "xs" => 1,
+        "s" => 2,
+        "m" => 3,
+        "l" => 4,
+        "xl" => 5,
+        _ => 2,
+    }
+}
+
+/// Build the crown-gauge + NBA section from the current gap registry.
+pub fn build_debt_index_section(repo_root: &Path) -> DebtIndexSection {
+    let capabilities: Vec<crate::debt_index::Capability> =
+        match chump_gap_store::GapStore::open(repo_root) {
+            Ok(store) => store
+                .list(None)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|g| crate::debt_index::Capability {
+                    name: format!("{} {}", g.id, g.title),
+                    criticality: gap_priority_to_criticality(&g.priority),
+                    status: gap_status_to_stage_status(&g.status),
+                    stages_short: gap_effort_to_stages_short(&g.effort),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+    let gauge = crate::debt_index::compute_crown_gauge(&capabilities);
+    let nba_text = crate::debt_index::render_nba_candidates(&capabilities);
+    let nba_candidate_count = crate::debt_index::next_best_action_candidates(&capabilities).len();
+
+    DebtIndexSection {
+        gauge,
+        nba_text,
+        nba_candidate_count,
+    }
+}
+
 // ── Integration Cycle Dashboard (INFRA-2143) ────────────────────────────────
 //
 // Cross-references: INFRA-2132 (integration_cycle_* ambient events read here),
