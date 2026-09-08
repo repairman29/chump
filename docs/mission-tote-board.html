@@ -1,0 +1,31 @@
+<!DOCTYPE html>
+<!--
+  Mission Tote Board (EFFECTIVE-514).
+
+  Canonical, version-controlled HTML asset. The block between the
+  MISSION-DOC-KEEPER markers below is regenerated from live fleet state
+  (gap statuses in .chump/state.db + the Debt Index crown gauge from
+  `chump kpi report --debt-index`) by scripts/dev/mission-doc-keeper.sh.
+  Do not hand-edit inside the markers — the next keeper run overwrites it.
+-->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Chump — Mission Tote Board</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+</head>
+<body>
+  <h1>Chump — Mission Tote Board</h1>
+  <p>Static snapshot, version-controlled in-repo. See <a href="MISSION.md">docs/MISSION.md</a> for the load-bearing mission doc.</p>
+
+  <!-- MISSION-DOC-KEEPER:BEGIN dynamic -->
+  <ul id="mission-tote-board-stats">
+    <li id="stat-open-gaps">Open gaps: <strong>1287</strong></li>
+    <li id="stat-live-pct">live_pct: <strong>0.0%</strong></li>
+    <li id="stat-debt">debt: <strong>0.00</strong></li>
+  </ul>
+  <p class="generated-at">Generated: 2026-09-08T22:07:12Z by scripts/dev/mission-doc-keeper.sh</p>
+  <!-- MISSION-DOC-KEEPER:END dynamic -->
+
+</body>
+</html>
