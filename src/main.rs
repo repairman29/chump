@@ -3921,8 +3921,33 @@ async fn main() -> Result<()> {
                                     )
                                 })
                                 .collect();
+                            let jtbd_json = if r.outcome.jtbd_who.is_some()
+                                || r.outcome.jtbd_struggling_moment.is_some()
+                                || r.outcome.jtbd_done_signal.is_some()
+                            {
+                                format!(
+                                    r#","jtbd":{{"who":"{}","struggling_moment":"{}","done_signal":"{}"}}"#,
+                                    r.outcome
+                                        .jtbd_who
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .replace('"', "\\\""),
+                                    r.outcome
+                                        .jtbd_struggling_moment
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .replace('"', "\\\""),
+                                    r.outcome
+                                        .jtbd_done_signal
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .replace('"', "\\\""),
+                                )
+                            } else {
+                                String::new()
+                            };
                             println!(
-                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","definition_of_done":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]}}"#,
+                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","definition_of_done":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]{}}}"#,
                                 r.outcome.id,
                                 r.outcome.title.replace('"', "\\\""),
                                 r.outcome.priority,
@@ -3933,6 +3958,7 @@ async fn main() -> Result<()> {
                                 r.done,
                                 r.other,
                                 gaps_json.join(","),
+                                jtbd_json,
                             );
                         } else {
                             println!("=== Outcome: {} ===", r.outcome.id);
@@ -3941,6 +3967,22 @@ async fn main() -> Result<()> {
                             println!("Status   : {}", r.outcome.status);
                             if !r.outcome.definition_of_done.is_empty() {
                                 println!("DoD      : {}", r.outcome.definition_of_done);
+                            }
+                            if r.outcome.jtbd_who.is_some()
+                                || r.outcome.jtbd_struggling_moment.is_some()
+                                || r.outcome.jtbd_done_signal.is_some()
+                            {
+                                println!();
+                                println!("Job to be done:");
+                                if let Some(who) = &r.outcome.jtbd_who {
+                                    println!("  Who              : {}", who);
+                                }
+                                if let Some(m) = &r.outcome.jtbd_struggling_moment {
+                                    println!("  Struggling moment: {}", m);
+                                }
+                                if let Some(s) = &r.outcome.jtbd_done_signal {
+                                    println!("  Done signal      : {}", s);
+                                }
                             }
                             println!();
                             println!("Child gaps (advisory rollup — never gates close):");

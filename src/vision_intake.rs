@@ -157,6 +157,20 @@ pub async fn run(text: &str, json: bool, create: bool) -> Result<()> {
             .context("chump intake --create: failed to create outcome")?;
         outcome_id = Some(id.clone());
 
+        // EFFECTIVE-443: persist the JTBD-sharpen triple onto the outcome
+        // row so it survives past this CLI turn — `chump outcome show`
+        // renders it alongside the definition-of-done. Best-effort: a
+        // failure here shouldn't undo the outcome that was just created.
+        if let Some(jtbd) = &output.jtbd {
+            if let Err(e) =
+                store.set_outcome_jtbd(&id, &jtbd.who, &jtbd.struggling_moment, &jtbd.done_signal)
+            {
+                eprintln!(
+                    "chump intake --create: outcome {id} created, but failed to persist JTBD: {e:#}"
+                );
+            }
+        }
+
         if perceived.ambiguity_level < AMBIGUITY_GAP_THRESHOLD {
             match structure_and_file_gap(&output, &perceived, &id).await {
                 Ok((filed_gap_id, ac)) => {

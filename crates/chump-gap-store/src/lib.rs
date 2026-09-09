@@ -121,6 +121,15 @@ pub struct OutcomeRow {
     /// Only meaningful when status == "parked"; NULL otherwise.
     #[serde(default)]
     pub park_reason: Option<String>,
+    /// EFFECTIVE-443: JTBD-sharpen triple captured at intake time. All three
+    /// are `None` for outcomes created without a JTBD (pre-slice outcomes,
+    /// or ones created via `chump outcome create` directly).
+    #[serde(default)]
+    pub jtbd_who: Option<String>,
+    #[serde(default)]
+    pub jtbd_struggling_moment: Option<String>,
+    #[serde(default)]
+    pub jtbd_done_signal: Option<String>,
 }
 
 /// MISSION-033: first-class Repo object.
@@ -685,6 +694,24 @@ impl GapStore {
         let _ = self
             .conn
             .execute("ALTER TABLE outcomes ADD COLUMN park_reason TEXT", []);
+
+        // EFFECTIVE-443: JTBD-sharpen columns — who is struggling, the
+        // struggling moment, and the done-signal — captured at intake time
+        // (`chump intake --create`) so the plain-language "job to be done"
+        // survives past the CLI turn that produced it instead of being
+        // printed once and lost. Nullable, no default: outcomes created
+        // before this slice (and outcomes created outside vision-intake)
+        // simply have no JTBD triple.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE outcomes ADD COLUMN jtbd_who TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE outcomes ADD COLUMN jtbd_struggling_moment TEXT",
+            [],
+        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE outcomes ADD COLUMN jtbd_done_signal TEXT", []);
 
         // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
         // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
@@ -5034,10 +5061,30 @@ impl GapStore {
         Ok(())
     }
 
+    /// EFFECTIVE-443: attach the JTBD-sharpen triple to an existing outcome.
+    /// Called by `chump intake --create` right after `create_outcome` when
+    /// the vision-intake subagent supplied a `jtbd` object. A no-op (Ok) if
+    /// the outcome id doesn't exist — the caller already has the outcome.
+    pub fn set_outcome_jtbd(
+        &self,
+        id: &str,
+        who: &str,
+        struggling_moment: &str,
+        done_signal: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE outcomes SET jtbd_who=?2, jtbd_struggling_moment=?3, jtbd_done_signal=?4
+             WHERE id=?1",
+            params![id, who, struggling_moment, done_signal],
+        )?;
+        Ok(())
+    }
+
     /// Fetch one outcome by ID. Returns None if not found.
     pub fn get_outcome(&self, id: &str) -> Result<Option<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,
+                    jtbd_who,jtbd_struggling_moment,jtbd_done_signal
              FROM outcomes WHERE id=?1",
         )?;
         stmt.query_row(params![id], |r| {
@@ -5050,6 +5097,9 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                jtbd_who: r.get(8)?,
+                jtbd_struggling_moment: r.get(9)?,
+                jtbd_done_signal: r.get(10)?,
             })
         })
         .optional()
@@ -5059,7 +5109,8 @@ impl GapStore {
     /// List all outcomes, ordered by id.
     pub fn list_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,
+                    jtbd_who,jtbd_struggling_moment,jtbd_done_signal
              FROM outcomes ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -5072,6 +5123,9 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                jtbd_who: r.get(8)?,
+                jtbd_struggling_moment: r.get(9)?,
+                jtbd_done_signal: r.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -5136,7 +5190,8 @@ impl GapStore {
     /// Keeps existing per-gap P0 checks intact — adds outcome-level view alongside.
     pub fn list_p0_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,
+                    jtbd_who,jtbd_struggling_moment,jtbd_done_signal
              FROM outcomes WHERE priority='P0' AND status='open' ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -5149,6 +5204,9 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                jtbd_who: r.get(8)?,
+                jtbd_struggling_moment: r.get(9)?,
+                jtbd_done_signal: r.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -6341,6 +6399,60 @@ mod tests {
         assert!(
             !known.iter().any(|k| k == "tottaly-done"),
             "unknown stays unknown"
+        );
+    }
+
+    #[test]
+    fn set_outcome_jtbd_persists_and_round_trips() {
+        // EFFECTIVE-443: the JTBD-sharpen triple (who / struggling-moment /
+        // done-signal) must survive a write + re-fetch — before this slice,
+        // outcomes only had jtbd fields in the ephemeral CLI output, not the
+        // stored row, so a fresh `get_outcome`/`list_outcomes` always came
+        // back with all three fields unset.
+        let (store, _dir) = test_store();
+        store
+            .create_outcome("VISION-test1", "A test outcome", "P2", "done means x")
+            .unwrap();
+
+        // Freshly created outcome has no JTBD yet.
+        let fresh = store.get_outcome("VISION-test1").unwrap().unwrap();
+        assert!(fresh.jtbd_who.is_none());
+        assert!(fresh.jtbd_struggling_moment.is_none());
+        assert!(fresh.jtbd_done_signal.is_none());
+
+        store
+            .set_outcome_jtbd(
+                "VISION-test1",
+                "a solo dog walker juggling paper routes",
+                "the phone rings mid-walk and they lose track of who's next",
+                "they can glance at one place and see every upcoming route",
+            )
+            .unwrap();
+
+        let updated = store.get_outcome("VISION-test1").unwrap().unwrap();
+        assert_eq!(
+            updated.jtbd_who.as_deref(),
+            Some("a solo dog walker juggling paper routes")
+        );
+        assert_eq!(
+            updated.jtbd_struggling_moment.as_deref(),
+            Some("the phone rings mid-walk and they lose track of who's next")
+        );
+        assert_eq!(
+            updated.jtbd_done_signal.as_deref(),
+            Some("they can glance at one place and see every upcoming route")
+        );
+
+        // list_outcomes must also carry the persisted triple through.
+        let listed = store
+            .list_outcomes()
+            .unwrap()
+            .into_iter()
+            .find(|o| o.id == "VISION-test1")
+            .unwrap();
+        assert_eq!(
+            listed.jtbd_who.as_deref(),
+            Some("a solo dog walker juggling paper routes")
         );
     }
 
