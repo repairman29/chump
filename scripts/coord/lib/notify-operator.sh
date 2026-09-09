@@ -130,6 +130,26 @@ _notify_escalation_verdict() {
     echo "page"                                    # unknown kind = novel = page
 }
 
+# RESILIENT-1093: single-voice curation queue. Path to the JSONL file that
+# page-verdict signals land in instead of hitting Discord immediately — see
+# _notify_curate_enqueue / discord-curator-flush.sh.
+_notify_queue_path() {
+    local root; root="$(_notify_repo_root)"
+    printf '%s\n' "${CHUMP_DISCORD_CURATION_QUEUE:-${root}/.chump-locks/discord-curation-queue.jsonl}"
+}
+
+_notify_curate_enqueue() {  # content, kind
+    local content="$1" kind="$2" queue; queue="$(_notify_queue_path)"
+    mkdir -p "$(dirname "$queue")" 2>/dev/null || true
+    CONTENT="$content" KIND="$kind" TS="$(date -u +%Y-%m-%dT%H:%M:%SZ)" python3 -c '
+import os, json
+print(json.dumps({
+    "ts": os.environ.get("TS", ""),
+    "kind": os.environ.get("KIND", "") or "unclassified",
+    "content": os.environ["CONTENT"],
+}))' >> "$queue" 2>/dev/null || true
+}
+
 notify_operator() {
     local content="${1:-}"
     [[ -n "${content//[[:space:]]/}" ]] || return 0
@@ -154,8 +174,31 @@ notify_operator() {
             # Page-worthy: record whether it was classified or fell through as novel.
             [[ -n "$_kind" ]] && _notify_emit "operator_paged" ",\"signal\":\"${_kind}\",\"class\":\"registry-page\"" \
                               || _notify_emit "operator_paged" ",\"class\":\"unclassified-caller\""
+
+            # RESILIENT-1093: this is the multi-source burst the single-voice
+            # curation layer exists for. 18 independent call sites each used to
+            # dial Discord the moment they had something page-worthy to say, so
+            # N organs firing in one window produced N separate DMs. Defer to the
+            # curation queue instead; discord-curator-flush.sh (run on a cadence)
+            # drains it into ONE combined DM. CHUMP_NOTIFY_CURATE=0 opts a caller
+            # back into the old immediate-send behavior (e.g. discord-curator-
+            # flush.sh itself, delivering the already-combined message).
+            if [[ "${CHUMP_NOTIFY_CURATE:-1}" != "0" ]]; then
+                _notify_curate_enqueue "$content" "$_kind"
+                return 0
+            fi
         fi
     fi
+
+    _notify_deliver "$content"
+}
+
+# _notify_deliver — the actual Discord REST send, extracted out of
+# notify_operator so discord-curator-flush.sh can deliver ONE combined message
+# without re-running the per-signal escalation classification above.
+_notify_deliver() {
+    local content="${1:-}"
+    [[ -n "${content//[[:space:]]/}" ]] || return 0
 
     local token uid
     token="$(_notify_env DISCORD_TOKEN)"
