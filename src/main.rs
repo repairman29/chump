@@ -10389,6 +10389,7 @@ async fn main() -> Result<()> {
                 // Prevents recurrence of the data gap that caused BEAST routing to fail.
                 let reserve_external_repo = flag("--external-repo");
                 let force = args.iter().any(|a| a == "--force");
+                let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
                 // INFRA-592: --quiet suppresses progress; default emits one-line
                 // per phase to stderr so --json piping of stdout is unaffected.
                 let quiet = args.iter().any(|a| a == "--quiet");
@@ -10406,7 +10407,7 @@ async fn main() -> Result<()> {
                         let parts: Vec<&str> = raw.split('|').collect();
                         serde_json::to_string(&parts).unwrap_or_else(|_| "[]".into())
                     }
-                    None if !skip_obs_acs => {
+                    None if !skip_obs_acs && !no_ac_required => {
                         // EFFECTIVE-294: concrete, claimable default AC (no TODO
                         // placeholders) so a reserved gap is immediately pickable.
                         // The old obs-AC TODO template left ~32% of the open queue
