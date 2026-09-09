@@ -10,9 +10,21 @@
   is a live fetch from chump-fleet-server on this same origin, or a repo doc
   rendered at HEAD. Delete this file and you lose nothing.
 
+  Reading order (this revision): the PRIMARY band answers the only two questions
+  that matter to the Board — "is the machine working FOR SOMEONE, and does it need
+  FEWER humans?" — before any internal plumbing. Four lead gauges:
+    1. zero-touch ship rate  (fewer-humans axis · CREDIBLE-047)
+    2. production status      (is-it-shipping-or-starved · last-merge age)
+    3. pickable vs open gaps  (why it is / isn't moving)
+    4. persons served         (is-it-for-someone · the north star)
+  Internal counts (nodes, casino, CI/QA, leases, roadmap) are DEMOTED below.
+
   Doctrine (COCKPIT.md §3/§5): any tile without a fresh live feed renders GREY
   ("unknown") or RED (stale) — a rotted number must look broken, never fake-green.
-  Design tokens lifted from web/v2/index.html :root (INFRA-1280), skin only.
+  Where the fleet-server exposes no endpoint yet, the tile stays grey and NAMES the
+  endpoint that must ship (matches COCKPIT.md's planned /api/vital-signs autonomy
+  pillar + /api/gap-pulse). Design tokens lifted from web/v2/index.html :root
+  (INFRA-1280), skin only.
 -->
 <style>
   /* --- web/v2 tokens (INFRA-1280), dark-first --- */
@@ -55,24 +67,53 @@
   #tickDot{width:8px;height:8px;border-radius:50%;background:var(--grey);transition:background .2s}
   #tickDot.live{background:var(--success)}
 
+  /* ── PRIMARY band — the answer, top of screen ── */
+  .primary{
+    flex:0 0 auto; display:grid; gap:12px;
+    grid-template-columns:repeat(4,1fr);
+  }
+  @media (max-width:900px){ .primary{grid-template-columns:repeat(2,1fr)} }
+  @media (max-width:560px){ .primary{grid-template-columns:1fr} }
+  .ptile{
+    background:var(--bg-surface); border:1px solid var(--border);
+    border-left:3px solid var(--grey); border-radius:var(--radius);
+    padding:12px 14px; display:flex; flex-direction:column; gap:4px; min-height:0;
+  }
+  .ptile.ok{border-left-color:var(--success)}
+  .ptile.warn{border-left-color:var(--warn)}
+  .ptile.err{border-left-color:var(--error)}
+  .ptile.unknown{border-left-color:var(--grey)}
+  .ptile .cap{display:flex; align-items:baseline; justify-content:space-between; gap:8px}
+  .ptile .lbl{font-size:10.5px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--text-secondary)}
+  .ptile .big{font-family:var(--mono); font-size:34px; font-weight:700; line-height:1.05; margin-top:1px}
+  .ptile .big.unknown,.ptile .big.grey{color:var(--grey)}
+  .ptile .big.ok{color:var(--success)} .ptile .big.warn{color:var(--warn)} .ptile .big.err{color:var(--error)}
+  .ptile .sub{font-size:11px; color:var(--text-secondary); line-height:1.35}
+  .ptile .sub b{color:var(--text); font-weight:600}
+  .ptile .gap{font-size:10px; font-family:var(--mono); color:var(--grey)}
+
+  /* covenant strip (doctrine, demoted from hero to a single rendered line) */
+  .covstrip{flex:0 0 auto; font-size:12.5px; color:var(--text-secondary); line-height:1.4}
+  .covstrip .q{color:var(--text)}
+  .covstrip .src{font-size:10.5px; font-family:var(--mono); color:var(--grey)}
+
+  /* ── SECONDARY band — demoted internals ── */
   .grid{
     flex:1 1 auto; display:grid; gap:12px; min-height:0;
-    grid-template-columns:1.35fr 1fr;
-    grid-template-rows:auto 1fr auto;
+    grid-template-columns:1fr 1fr;
+    grid-template-rows:1fr auto;
     grid-template-areas:
-      "hero run"
-      "hero build"
-      "attention build";
+      "run   build"
+      "attn  build";
   }
   @media (max-width:820px){
     body{overflow:auto}
-    .grid{grid-template-columns:1fr; grid-template-areas:"hero" "run" "build" "attention"}
+    .grid{grid-template-columns:1fr; grid-template-rows:none; grid-template-areas:"run" "build" "attn"}
   }
-
   .panel{
     background:var(--bg-surface); border:1px solid var(--border);
-    border-radius:var(--radius); padding:14px 16px;
-    display:flex; flex-direction:column; gap:10px; min-height:0;
+    border-radius:var(--radius); padding:12px 16px;
+    display:flex; flex-direction:column; gap:9px; min-height:0;
   }
   .panel > .phead{display:flex; align-items:center; justify-content:space-between; gap:8px}
   .phead .ptitle{font-size:11px; font-weight:600; letter-spacing:.04em; text-transform:uppercase; color:var(--text-secondary)}
@@ -80,24 +121,11 @@
   .age.stale{color:var(--error); font-weight:600}
   .age.unknown{color:var(--grey)}
 
-  .hero{grid-area:hero}
   .run{grid-area:run}
   .build{grid-area:build}
-  .attention{grid-area:attention}
+  .attention{grid-area:attn}
 
-  .covenant{font-size:15px; line-height:1.45; color:var(--text)}
-  .covenant .src{display:block; margin-top:4px; font-size:11px; color:var(--text-secondary); font-family:var(--mono)}
-  .persons{display:flex; align-items:baseline; gap:12px; margin-top:4px}
-  .persons .label{font-size:11px; text-transform:uppercase; letter-spacing:.04em; color:var(--text-secondary)}
-  .persons .val{font-family:var(--mono); font-size:34px; font-weight:700; line-height:1}
-  .persons .val.unknown{color:var(--grey)}
-  .persons .note{font-size:11px; color:var(--text-secondary)}
-
-  .bar{height:10px; border-radius:6px; background:var(--grey-dim); overflow:hidden; margin-top:2px}
-  .bar > span{display:block; height:100%; background:var(--accent)}
-  .bar.unknown{background:repeating-linear-gradient(45deg,var(--grey-dim),var(--grey-dim) 6px,transparent 6px,transparent 12px)}
-
-  .rows{display:flex; flex-direction:column; gap:9px}
+  .rows{display:flex; flex-direction:column; gap:8px}
   .row{display:flex; align-items:baseline; justify-content:space-between; gap:10px}
   .row .k{font-size:12px; color:var(--text-secondary)}
   .row .k b{color:var(--text); font-weight:600}
@@ -110,10 +138,10 @@
   .nodes .n{display:flex; align-items:center}
   .nodes .n .nm{color:var(--text-secondary)}
 
-  .metrics{display:flex; gap:22px; flex-wrap:wrap}
-  .metric .mv{font-family:var(--mono); font-size:26px; font-weight:700; line-height:1}
+  .metrics{display:flex; gap:20px; flex-wrap:wrap}
+  .metric .mv{font-family:var(--mono); font-size:22px; font-weight:700; line-height:1}
   .metric .mv.unknown{color:var(--grey)}
-  .metric .ml{font-size:11px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); margin-top:3px}
+  .metric .ml{font-size:10.5px; text-transform:uppercase; letter-spacing:.03em; color:var(--text-secondary); margin-top:3px}
 
   .roadmap{min-height:0; overflow-y:auto; display:flex; flex-direction:column; gap:6px; padding-right:4px}
   .roadmap .ri{font-size:12.5px; padding-left:14px; text-indent:-14px}
@@ -127,6 +155,7 @@
   .corpus{flex:0 0 auto; display:flex; gap:6px 16px; flex-wrap:wrap; font-size:11.5px; color:var(--text-secondary); font-family:var(--mono)}
   .corpus b{color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:.04em}
   .err-inline{color:var(--error); font-size:11px; font-family:var(--mono)}
+  .muted{color:var(--grey)}
 </style>
 </head>
 <body>
@@ -135,28 +164,49 @@
     <div class="tick"><span id="tickDot"></span><span id="tickTxt">connecting…</span></div>
   </header>
 
-  <div class="grid">
-    <!-- ───────── NORTH STAR / COVENANT ───────── -->
-    <section class="panel hero">
-      <div class="phead">
-        <span class="ptitle">North Star · Covenant</span>
-        <span class="age unknown" id="age-hero">—</span>
-      </div>
-      <div class="covenant" id="covenant">
-        <span class="muted" style="color:var(--grey)">loading mission from HEAD…</span>
-        <span class="src" id="covenant-src"></span>
-      </div>
-      <div class="persons">
-        <span class="label">Persons&nbsp;served</span>
-        <span class="val unknown" id="persons">unknown · 0</span>
-        <span class="note" id="persons-note">north-star signal not wired (empty /api/mission)</span>
-      </div>
-      <div>
-        <div class="row"><span class="k">p_full_trek — hands-off-from-clean-install</span><span class="v unknown" id="ptrek-v">unknown</span></div>
-        <div class="bar unknown" id="ptrek-bar"><span style="width:0"></span></div>
-      </div>
-    </section>
+  <!-- ═══════ PRIMARY: is the machine working for someone, and does it need fewer humans? ═══════ -->
+  <section class="primary">
+    <!-- 1 · fewer-humans axis -->
+    <div class="ptile unknown" id="t-zt">
+      <div class="cap"><span class="lbl">Zero-touch ship rate</span><span class="age unknown" id="age-zt">—</span></div>
+      <div class="big unknown" id="zt-v">unknown</div>
+      <div class="sub" id="zt-sub">human-touches-per-merge · baseline 12.5%</div>
+      <div class="gap" id="zt-gap"></div>
+    </div>
 
+    <!-- 2 · is-it-working axis -->
+    <div class="ptile unknown" id="t-prod">
+      <div class="cap"><span class="lbl">Production</span><span class="age unknown" id="age-prod">—</span></div>
+      <div class="big unknown" id="prod-v">unknown</div>
+      <div class="sub" id="prod-sub">last merge · worker state</div>
+      <div class="gap" id="prod-gap"></div>
+    </div>
+
+    <!-- 3 · why it is / isn't moving -->
+    <div class="ptile unknown" id="t-pick">
+      <div class="cap"><span class="lbl">Pickable / open gaps</span><span class="age unknown" id="age-pick">—</span></div>
+      <div class="big unknown" id="pick-v">? / ?</div>
+      <div class="sub" id="pick-sub">open ≠ pickable under active filter</div>
+      <div class="gap" id="pick-gap"></div>
+    </div>
+
+    <!-- 4 · is-it-for-someone axis (north star) -->
+    <div class="ptile unknown" id="t-persons">
+      <div class="cap"><span class="lbl">Persons served</span><span class="age unknown" id="age-persons">—</span></div>
+      <div class="big unknown" id="persons-v">unknown · 0</div>
+      <div class="sub" id="persons-sub">the one real-user signal — reads 0 today</div>
+      <div class="gap" id="persons-gap"></div>
+    </div>
+  </section>
+
+  <!-- covenant / north star — rendered from HEAD, demoted to a single line -->
+  <div class="covstrip" id="covstrip">
+    <span class="muted">loading mission from HEAD…</span>
+    <span class="src" id="covenant-src"></span>
+  </div>
+
+  <!-- ═══════ SECONDARY: doctrine gauges + build state (demoted) ═══════ -->
+  <div class="grid">
     <!-- ───────── HOW WE RUN ───────── -->
     <section class="panel run">
       <div class="phead">
@@ -168,10 +218,10 @@
           <span class="k"><b>merged≠running</b> — nodes reporting</span>
           <span class="v unknown" id="nodes-count">? of 3</span>
         </div>
-        <div class="nodes" id="nodes-list"><span class="muted" style="color:var(--grey)">…</span></div>
+        <div class="nodes" id="nodes-list"><span class="muted">…</span></div>
         <div class="row"><span class="k"><b>manage-PRs</b> — casino EV band · Brier</span><span class="v unknown" id="casino">unknown</span></div>
         <div class="row"><span class="k"><b>silence-unless-stalled</b> — stalled PRs &gt;4h</span><span class="v unknown" id="stalled">unknown</span></div>
-        <div class="row"><span class="k"><b>gaps-are-truth</b> — open · blocked · in-flight</span><span class="v unknown" id="gappulse">unknown</span></div>
+        <div class="row"><span class="k"><b>failed organs</b> — units failed across fleet</span><span class="v unknown" id="failed">unknown</span></div>
       </div>
     </section>
 
@@ -187,7 +237,7 @@
         <div class="metric"><div class="mv unknown" id="leases">–</div><div class="ml">who's working</div></div>
       </div>
       <div class="phead" style="margin-top:2px"><span class="ptitle">Roadmap @ HEAD</span></div>
-      <div class="roadmap" id="roadmap"><span class="muted" style="color:var(--grey)">loading docs/ROADMAP.md…</span></div>
+      <div class="roadmap" id="roadmap"><span class="muted">loading docs/ROADMAP.md…</span></div>
     </section>
 
     <!-- ───────── ATTENTION ───────── -->
@@ -214,22 +264,59 @@
 "use strict";
 // The page owns no truth. Every tile is a live fetch or a rendered HEAD doc.
 // A failed/empty fetch => GREY "unknown"; a stale live feed => RED. Never fake-green.
+//
+// Data path (all UNAUTHENTICATED reads, tailnet-only, COCKPIT.md §2):
+//   /api/dashboard-summary  → today_ships, ci_qa_score, active_leases
+//   /api/events             → ambient stream; rows carry event_kind + payload(JSON string).
+//                             fleet-recorder tails ambient.jsonl → events(event_kind). We derive:
+//                               gap_shipped                    → last-merge age + 24h ship count
+//                               worker_stand_down/worker_stuck → STARVED verdict + filter + count
+//                               autonomous_ship_rate_regression→ latest zero-touch curr_rate
+//                               pr_book_odds                   → casino EV/Brier
+//   /api/fleet/nodes        → nodes reporting + failed_units_total
+//   /api/doc/{mission,roadmap} → covenant + roadmap, rendered from HEAD
+//   WS /api/live            → live tick + freshness heartbeat
+//
+// Endpoints that DON'T exist yet (tiles stay grey and name the gap, per doctrine):
+//   • continuous zero-touch rate — only regression events emit today (CREDIBLE-047);
+//     needs /api/vital-signs autonomy pillar (COCKPIT.md §3).
+//   • pickable/open gap COUNTS unauthed — /api/gaps is Bearer-gated; needs /api/gap-pulse.
+//   • persons-served — GET /api/mission is POST-only (405); needs the north-star wire.
 
 const EXPECTED_NODES = ["cuphead", "mugman", "cj"];   // roster; merged≠running honesty
 const REFRESH_MS = 30000;
-const STALE_MS = 90000;   // a live tile older than this reads RED
+const STALE_MS = 90000;      // a live tile older than this reads RED
+const EVENTS_WINDOW_MS = 86400000;  // 24h ambient window
+const AUTONOMY_BASELINE = 12.5;     // CREDIBLE-047 baseline zero-touch %
+const SHIPPING_FRESH_MS = 3 * 3600000;  // a merge in the last 3h => actively SHIPPING
 
 function agoTxt(ms){
   const s = Math.max(0, Math.round((Date.now()-ms)/1000));
   if (s < 60) return s+"s ago";
   if (s < 3600) return Math.round(s/60)+"m ago";
-  return Math.round(s/3600)+"h ago";
+  if (s < 86400) return Math.round(s/3600)+"h ago";
+  return Math.round(s/86400)+"d ago";
+}
+function durTxt(ms){
+  const s = Math.max(0, Math.round(ms/1000));
+  if (s < 60) return s+"s";
+  if (s < 3600) return Math.round(s/60)+"m";
+  if (s < 86400) return (Math.round(s/360)/10)+"h";
+  return (Math.round(s/8640)/10)+"d";
 }
 function setAge(id, ms, ok){
   const el = document.getElementById(id); if(!el) return;
   if (ms == null){ el.textContent = "—"; el.className = "age unknown"; return; }
   el.textContent = agoTxt(ms);
   el.className = "age" + ((Date.now()-ms > STALE_MS) ? " stale" : (ok===false ? " unknown" : ""));
+}
+function tileClass(id, state){ // state: ok|warn|err|unknown
+  const el = document.getElementById(id); if(!el) return;
+  el.className = "ptile " + state;
+}
+function bigClass(id, state){
+  const el = document.getElementById(id); if(!el) return;
+  el.className = "big " + state;
 }
 async function getJSON(url){
   const r = await fetch(url, {cache:"no-store"});
@@ -241,47 +328,187 @@ async function getText(url){
   if (!r.ok) throw new Error(url+" → HTTP "+r.status);
   return r.text();
 }
-const heroTs = {}; // per-panel last-good fetch time
+function safeParse(s){ try{ return (typeof s==="string") ? JSON.parse(s) : (s||{}); }catch(_){ return {}; } }
+function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
-// ── HERO: covenant (docs/MISSION.md @ HEAD) + persons-served + p_full_trek ──
-async function loadHero(){
-  // covenant / mission doctrine line — rendered from HEAD, never typed.
+const stamp = {}; // per-panel last-good fetch time
+
+// Each ambient row: {event_kind, ts_ms, gap_id, session_id, payload:"<json>"}.
+// Return newest-first array of {ts_ms, p} for one kind; p = parsed payload.
+function eventsOfKind(rows, kind){
+  return (rows||[])
+    .filter(e => (e.event_kind||"") === kind)
+    .map(e => ({ ts_ms: e.ts_ms, p: safeParse(e.payload) }))
+    .sort((a,b) => b.ts_ms - a.ts_ms);
+}
+
+// ── PRIMARY band: one dashboard-summary + one events pull feed all four lead tiles ──
+async function loadPrimary(){
+  // dashboard-summary — ships/24h + CI/QA + leases (also demoted tiles below).
+  let summary = null;
+  try{ summary = await getJSON("/api/dashboard-summary"); }catch(_){ summary = null; }
+  renderBuild(summary);   // demoted build panel + returns nothing
+
+  // one ambient pull, reused across derived tiles.
+  let rows = null;
+  try{
+    const now = Date.now();
+    rows = await getJSON("/api/events?from="+(now-EVENTS_WINDOW_MS)+"&to="+now+"&limit=50000");
+  }catch(_){ rows = null; }
+
+  renderZeroTouch(rows);
+  renderProduction(rows, summary);
+  renderPickable(rows);
+  renderRun(rows);          // demoted casino/stalled panel reuses the same pull
+  renderPersons();          // independent (its own endpoint)
+  refreshAttention();
+}
+
+// 1 ── zero-touch ship rate (fewer-humans axis) ──
+function renderZeroTouch(rows){
+  const v = document.getElementById("zt-v"), sub = document.getElementById("zt-sub"), gap = document.getElementById("zt-gap");
+  if (rows == null){
+    v.textContent = "unknown"; bigClass("zt-v","unknown"); tileClass("t-zt","unknown");
+    sub.innerHTML = "human-touches-per-merge · baseline "+AUTONOMY_BASELINE+"%";
+    gap.textContent = "live: /api/events unreachable";
+    setAge("age-zt", null); return;
+  }
+  const reg = eventsOfKind(rows, "autonomous_ship_rate_regression");
+  if (reg.length){
+    const p = reg[0].p;
+    const rate = p.curr_rate ?? p.rate ?? p.pct;
+    if (rate != null){
+      const rv = Number(rate);
+      v.textContent = rv.toFixed(1) + "%";
+      const st = rv >= AUTONOMY_BASELINE ? "ok" : (rv > 0 ? "warn" : "err");
+      bigClass("zt-v", st); tileClass("t-zt", st);
+      const drop = (p.drop_pp!=null) ? " · last Δ −"+p.drop_pp+"pp" : "";
+      sub.innerHTML = "<b>"+rv.toFixed(1)+"%</b> autonomous · baseline "+AUTONOMY_BASELINE+"%"+drop;
+      gap.textContent = "from last autonomous_ship_rate_regression event";
+      stamp.zt = reg[0].ts_ms; setAge("age-zt", stamp.zt, true);
+      return;
+    }
+  }
+  // No continuous feed. Honest grey + name the gap (matches COCKPIT.md autonomy pillar).
+  v.textContent = "unknown"; bigClass("zt-v","unknown"); tileClass("t-zt","unknown");
+  sub.innerHTML = "human-touches-per-merge · baseline "+AUTONOMY_BASELINE+"%";
+  gap.textContent = "GAP: no continuous feed — needs /api/vital-signs autonomy pillar";
+  setAge("age-zt", null);
+}
+
+// 2 ── production status (is-it-working axis) ──
+function renderProduction(rows, summary){
+  const v = document.getElementById("prod-v"), sub = document.getElementById("prod-sub"), gap = document.getElementById("prod-gap");
+  const ships24 = summary && (summary.today_ships ?? null);
+  if (rows == null && ships24 == null){
+    v.textContent = "unknown"; bigClass("prod-v","unknown"); tileClass("t-prod","unknown");
+    sub.textContent = "last merge · worker state";
+    gap.textContent = "live: /api/events + /api/dashboard-summary unreachable";
+    setAge("age-prod", null); return;
+  }
+  const ships = eventsOfKind(rows||[], "gap_shipped");
+  const lastShip = ships.length ? ships[0].ts_ms : null;
+  const standDown = eventsOfKind(rows||[], "worker_stand_down");
+  const stuck = eventsOfKind(rows||[], "worker_stuck");
+  const standCount = standDown.length + stuck.length;
+  const lastStand = standDown[0] || stuck[0] || null;
+
+  // Verdict.
+  let state, verdict, note;
+  if (lastShip != null && (Date.now()-lastShip) <= SHIPPING_FRESH_MS){
+    state = "ok"; verdict = "SHIPPING";
+    note = "last merge <b>"+agoTxt(lastShip)+"</b>";
+  } else if (standCount > 0){
+    state = "err"; verdict = "STARVED";
+    const p = lastStand ? lastStand.p : {};
+    const reason = p.reason || "no pickable gap";
+    const filters = p.filters ? (" · filter <b>"+esc(String(p.filters))+"</b>") : "";
+    note = esc(String(reason)) + filters;
+  } else if (ships24 != null && ships24 > 0){
+    state = "warn"; verdict = "SLOW";
+    note = lastShip!=null ? ("last merge <b>"+agoTxt(lastShip)+"</b>") : (ships24+" merged/24h");
+  } else {
+    state = "err"; verdict = "DROUGHT";
+    note = "no merge in 24h";
+  }
+  v.textContent = verdict; bigClass("prod-v", state); tileClass("t-prod", state);
+  const shipsTxt = (ships24!=null) ? (ships24+" merged/24h") : (ships.length+" ship-events/24h");
+  const standTxt = standCount>0 ? (" · worker stood down <b>"+standCount+"×</b>/24h") : "";
+  sub.innerHTML = note + " · " + shipsTxt + standTxt;
+  gap.textContent = (ships24==null) ? "ships/24h from event stream (dashboard-summary unreachable)" : "";
+  const st = lastShip || (lastStand && lastStand.ts_ms) || Date.now();
+  stamp.prod = st; setAge("age-prod", st, true);
+}
+
+// 3 ── pickable vs open gaps (why it is / isn't moving) ──
+function renderPickable(rows){
+  const v = document.getElementById("pick-v"), sub = document.getElementById("pick-sub"), gap = document.getElementById("pick-gap");
+  // Exact counts require /api/gaps (Bearer-gated → unauthed page can't read) or a
+  // new unauthed /api/gap-pulse. Until then: honest unknown for the numbers, but
+  // DERIVE the pickable-under-active-filter signal from the newest stand_down.
+  v.textContent = "? / ?"; bigClass("pick-v","unknown"); tileClass("t-pick","unknown");
+  if (rows == null){
+    sub.textContent = "open ≠ pickable under active filter";
+    gap.textContent = "GAP: counts need unauthed /api/gap-pulse (/api/gaps is Bearer-gated)";
+    setAge("age-pick", null); return;
+  }
+  const standDown = eventsOfKind(rows, "worker_stand_down");
+  if (standDown.length){
+    const p = standDown[0].p;
+    const filt = p.filters ? esc(String(p.filters)) : "active filter";
+    const reason = p.reason ? esc(String(p.reason)) : "";
+    // A recent stand_down means ~0 pickable under that filter — the real story.
+    v.textContent = "≈0 / ?"; bigClass("pick-v","err"); tileClass("t-pick","err");
+    sub.innerHTML = "<b>~0 pickable</b> under <b>"+filt+"</b>";
+    gap.textContent = reason ? ("stand_down: "+reason) : "derived from worker_stand_down";
+    stamp.pick = standDown[0].ts_ms; setAge("age-pick", stamp.pick, true);
+  } else {
+    sub.textContent = "open ≠ pickable under active filter";
+    gap.textContent = "GAP: exact counts need unauthed /api/gap-pulse (/api/gaps is Bearer-gated)";
+    setAge("age-pick", null);
+  }
+}
+
+// 4 ── persons served (north star) ──
+async function renderPersons(){
+  const v = document.getElementById("persons-v"), sub = document.getElementById("persons-sub"), gap = document.getElementById("persons-gap");
+  try{
+    const m = await getJSON("/api/mission");   // POST-only today → 405 → catch
+    const n = (m && (m.persons_served ?? m.count));
+    if (n == null){
+      v.textContent = "unknown · 0"; bigClass("persons-v","unknown"); tileClass("t-persons","unknown");
+      gap.textContent = "GAP: north-star signal not wired (GET /api/mission is POST-only)";
+    } else {
+      v.textContent = String(n);
+      bigClass("persons-v", Number(n)>0 ? "ok" : "unknown"); tileClass("t-persons", Number(n)>0 ? "ok" : "unknown");
+      sub.textContent = m.last_session ? String(m.last_session) : "the one real-user signal";
+      gap.textContent = "";
+      stamp.persons = Date.now(); setAge("age-persons", stamp.persons, true);
+      return;
+    }
+  }catch(_){
+    v.textContent = "unknown · 0"; bigClass("persons-v","unknown"); tileClass("t-persons","unknown");
+    gap.textContent = "GAP: north-star signal not wired (GET /api/mission is POST-only)";
+  }
+  sub.textContent = "the one real-user signal — reads 0 today";
+  setAge("age-persons", null);
+}
+
+// ── covenant / north-star line (docs/MISSION.md @ HEAD, rendered never typed) ──
+async function loadCovenant(){
   try{
     const md = await getText("/api/doc/mission");
     const line = firstDoctrineLine(md);
-    const cov = document.getElementById("covenant");
-    cov.innerHTML = "";
-    cov.append(document.createTextNode(line));
-    const src = document.createElement("span");
-    src.className = "src"; src.textContent = "rendered from docs/MISSION.md @ HEAD";
-    cov.append(src);
-    heroTs.hero = Date.now();
-    setAge("age-hero", heroTs.hero, true);
+    const strip = document.getElementById("covstrip");
+    strip.innerHTML = '<span class="q"></span> <span class="src"></span>';
+    strip.querySelector(".q").textContent = line;
+    strip.querySelector(".src").textContent = "· docs/MISSION.md @ HEAD";
   }catch(e){
-    const cov = document.getElementById("covenant");
-    cov.innerHTML = '<span class="err-inline">covenant source unavailable — '+esc(e.message)+'</span>';
-    setAge("age-hero", null);
+    document.getElementById("covstrip").innerHTML = '<span class="err-inline">covenant source unavailable — '+esc(e.message)+'</span>';
   }
-  // persons-served — the one real-user signal; empty today => honest unknown·0.
-  try{
-    const m = await getJSON("/api/mission");   // 405/empty today
-    const n = (m && (m.persons_served ?? m.count));
-    const el = document.getElementById("persons");
-    if (n == null){ el.textContent = "unknown · 0"; el.className = "val unknown"; }
-    else { el.textContent = String(n); el.className = "val"; document.getElementById("persons-note").textContent = (m.last_session||""); }
-  }catch(_){
-    // GET /api/mission is POST-only today (405) — that emptiness at the top IS the daily pressure.
-    const el = document.getElementById("persons");
-    el.textContent = "unknown · 0"; el.className = "val unknown";
-  }
-  // p_full_trek — Phase 2 (/api/vital-signs). Honest grey until wired.
-  document.getElementById("ptrek-v").textContent = "unknown";
-  document.getElementById("ptrek-bar").className = "bar unknown";
 }
-
 function firstDoctrineLine(md){
   const lines = md.split(/\r?\n/);
-  // Prefer the first blockquote prose line; fall back to first real sentence.
   for (const raw of lines){
     let t = raw.trim();
     if (t.startsWith(">")) t = t.replace(/^>+/,"").trim();
@@ -292,16 +519,15 @@ function firstDoctrineLine(md){
   return md.trim().slice(0,200) || "(mission doc empty)";
 }
 
-// ── HOW WE RUN ──
-async function loadRun(){
-  // nodes — merged≠running; show the honest N of 3, missing nodes as grey "?".
+// ── SECONDARY · HOW WE RUN (demoted): nodes + casino + stalled + failed organs ──
+async function loadNodes(){
   try{
     const d = await getJSON("/api/fleet/nodes");
     const reporting = {};
     (d.nodes||[]).forEach(n => reporting[(n.node||"").toLowerCase()] = n);
     const cnt = document.getElementById("nodes-count");
     cnt.textContent = (d.node_count ?? Object.keys(reporting).length) + " of " + EXPECTED_NODES.length;
-    cnt.className = "v" + (d.stale_count>0 ? " err" : (d.node_count < EXPECTED_NODES.length ? " warn" : " ok"));
+    cnt.className = "v" + (d.stale_count>0 ? " err" : ((d.node_count ?? 0) < EXPECTED_NODES.length ? " warn" : " ok"));
     const list = document.getElementById("nodes-list"); list.innerHTML = "";
     EXPECTED_NODES.forEach(name => {
       const n = reporting[name];
@@ -309,72 +535,69 @@ async function loadRun(){
       let cls = "miss", tail = "?";
       if (n){ cls = n.stale ? "stale" : "ok"; tail = n.stale ? "stale "+agoTxt(n.epoch*1000) : agoTxt(n.epoch*1000);
               const f=(n.health&&n.health.failed)||0; if(f>0){cls="stale"; tail=f+" failed";} }
-      span.innerHTML = '<span class="dot '+cls+'"></span><span class="nm">'+name+'</span>&nbsp;'+esc(tail);
+      span.innerHTML = '<span class="dot '+cls+'"></span><span class="nm">'+esc(name)+'</span>&nbsp;'+esc(tail);
       list.append(span);
     });
-    heroTs.run = Date.now(); setAge("age-run", heroTs.run, true);
+    const fu = document.getElementById("failed");
+    const total = d.failed_units_total ?? null;
+    if (total == null){ fu.textContent = "unknown"; fu.className = "v unknown"; }
+    else { fu.textContent = String(total); fu.className = "v " + (total>0 ? "err" : "ok"); }
+    stamp.run = Date.now(); setAge("age-run", stamp.run, true);
   }catch(e){
     document.getElementById("nodes-count").textContent = "? of 3";
     document.getElementById("nodes-list").innerHTML = '<span class="err-inline">'+esc(e.message)+'</span>';
+    document.getElementById("failed").textContent = "unknown";
+    document.getElementById("failed").className = "v unknown";
     setAge("age-run", null);
   }
-  // casino EV/Brier — from ambient pr_book_odds; none emitted => honest grey.
-  try{
-    const now = Date.now();
-    const evs = await getJSON("/api/events?from="+(now-86400000)+"&to="+now+"&limit=5000");
-    const odds = (evs||[]).filter(e => e.kind === "pr_book_odds");
-    const el = document.getElementById("casino");
-    if (odds.length){
-      const p = odds[odds.length-1];
-      const pl = (typeof p.payload === "string") ? safeParse(p.payload) : (p.payload||p);
-      const ev = pl.ev ?? pl.EV, br = pl.brier ?? pl.Brier;
-      el.textContent = (ev!=null?("EV "+ev):"EV ?") + " · " + (br!=null?("Brier "+br):"Brier ?");
-      el.className = "v ok";
-    } else { el.textContent = "unknown"; el.className = "v unknown"; }
-    // stalled PRs — derive from stuck signals in the same window.
-    const stuck = (evs||[]).filter(e => /stuck|blocked|stall/i.test(e.kind||""));
-    const st = document.getElementById("stalled");
-    if (!evs || evs.length===0){ st.textContent = "unknown"; st.className = "v unknown"; }
-    else { st.textContent = String(stuck.length); st.className = "v " + (stuck.length>0 ? "warn" : "ok"); }
-  }catch(_){
-    document.getElementById("casino").textContent = "unknown";
-    document.getElementById("stalled").textContent = "unknown";
+}
+// casino + stalled reuse the ambient rows already pulled by loadPrimary.
+function renderRun(rows){
+  const casino = document.getElementById("casino"), stalled = document.getElementById("stalled");
+  if (rows == null){
+    casino.textContent = "unknown"; casino.className = "v unknown";
+    stalled.textContent = "unknown"; stalled.className = "v unknown";
+    return;
   }
-  // gap-pulse — Phase 2 (/api/gap-pulse). Honest grey.
-  document.getElementById("gappulse").textContent = "unknown";
-  refreshAttention();
+  const odds = eventsOfKind(rows, "pr_book_odds");
+  if (odds.length){
+    const p = odds[0].p;
+    const ev = p.ev ?? p.EV, br = p.brier ?? p.Brier;
+    casino.textContent = (ev!=null?("EV "+ev):"EV ?") + " · " + (br!=null?("Brier "+br):"Brier ?");
+    casino.className = "v ok";
+  } else { casino.textContent = "unknown"; casino.className = "v unknown"; }
+  const stuck = (rows||[]).filter(e => /stuck|blocked|stall/i.test(e.event_kind||""));
+  stalled.textContent = String(stuck.length);
+  stalled.className = "v " + (stuck.length>0 ? "warn" : "ok");
 }
 
-function safeParse(s){ try{ return JSON.parse(s); }catch(_){ return {}; } }
-
-// ── WHAT WE'RE BUILDING ──
-async function loadBuild(){
-  try{
-    const d = await getJSON("/api/dashboard-summary");
-    const ships = document.getElementById("ships");
-    ships.textContent = d.today_ships ?? "–";
-    ships.className = "mv" + (d.today_ships==null ? " unknown" : "");
-    const ci = document.getElementById("ciqa");
-    if (d.ci_qa_score){
-      ci.textContent = Math.round(d.ci_qa_score.pct) + "%";
-      ci.className = "mv " + (d.ci_qa_score.status==="OK" ? "" : "");
-      ci.title = "n="+d.ci_qa_score.sample_size+" · "+d.ci_qa_score.status;
-    } else { ci.textContent="–"; ci.className="mv unknown"; }
-    const lz = document.getElementById("leases");
-    const nL = (d.active_leases||[]).length;
-    lz.textContent = nL; lz.className = "mv" + (d.active_leases ? "" : " unknown");
-    lz.title = (d.active_leases||[]).join(", ") || "idle";
-    heroTs.build = Date.now(); setAge("age-build", heroTs.build, true);
-  }catch(e){
+// ── SECONDARY · WHAT WE'RE BUILDING (demoted): ships/CI/leases + roadmap ──
+function renderBuild(d){
+  if (d == null){
     ["ships","ciqa","leases"].forEach(id=>{const el=document.getElementById(id);el.textContent="–";el.className="mv unknown";});
-    setAge("age-build", null);
+    setAge("age-build", null); return;
   }
-  // roadmap — rendered from HEAD.
+  const ships = document.getElementById("ships");
+  ships.textContent = d.today_ships ?? "–";
+  ships.className = "mv" + (d.today_ships==null ? " unknown" : "");
+  const ci = document.getElementById("ciqa");
+  if (d.ci_qa_score){
+    ci.textContent = Math.round(d.ci_qa_score.pct) + "%";
+    ci.className = "mv";
+    ci.title = "n="+d.ci_qa_score.sample_size+" · "+d.ci_qa_score.status;
+  } else { ci.textContent="–"; ci.className="mv unknown"; }
+  const lz = document.getElementById("leases");
+  const nL = (d.active_leases||[]).length;
+  lz.textContent = nL; lz.className = "mv" + (d.active_leases ? "" : " unknown");
+  lz.title = (d.active_leases||[]).map(l => (l.gap||l)).join(", ") || "idle";
+  stamp.build = Date.now(); setAge("age-build", stamp.build, true);
+}
+async function loadRoadmap(){
   try{
     const md = await getText("/api/doc/roadmap");
     const items = roadmapItems(md);
     const rm = document.getElementById("roadmap"); rm.innerHTML = "";
-    if (!items.length){ rm.innerHTML = '<span class="muted" style="color:var(--grey)">(no headings in ROADMAP.md)</span>'; }
+    if (!items.length){ rm.innerHTML = '<span class="muted">(no headings in ROADMAP.md)</span>'; }
     items.slice(0,7).forEach(t=>{ const d=document.createElement("div"); d.className="ri"; d.textContent=t; rm.append(d); });
   }catch(e){
     document.getElementById("roadmap").innerHTML = '<span class="err-inline">'+esc(e.message)+'</span>';
@@ -393,20 +616,25 @@ function roadmapItems(md){
 function refreshAttention(){
   const el = document.getElementById("attn"); el.innerHTML = "";
   const items = [];
+  const prodVerdict = document.getElementById("prod-v").textContent;
+  if (prodVerdict === "STARVED"){
+    const why = document.getElementById("prod-sub").textContent;
+    items.push('<span class="item">• worker STARVED — '+esc(why)+' <a href="/api/events">→ events</a></span>');
+  } else if (prodVerdict === "DROUGHT"){
+    items.push('<span class="item">• merge DROUGHT — no merge in 24h <a href="/api/events">→ events</a></span>');
+  }
   const stalledTxt = document.getElementById("stalled").textContent;
   const stalledN = parseInt(stalledTxt,10);
-  if (!isNaN(stalledN) && stalledN>0) items.push('<span class="item">• '+stalledN+' stalled PR(s) &gt;4h <a href="/api/events">→ events</a></span>');
-  // decisions-waiting: source is ~/Projects/TODO.md — the operator's Mac, not this node.
+  if (!isNaN(stalledN) && stalledN>0) items.push('<span class="item">• '+stalledN+' stalled PR-signal(s) <a href="/api/events">→ events</a></span>');
   items.push('<span class="item muted">• decisions waiting: source TODO.md is off-node <a href="https://github.com/repairman29/chump" target="_blank" rel="noopener">→</a></span>');
-  if (items.filter(i=>!i.includes("muted")).length===0){
+  const real = items.filter(i=>!i.includes("muted"));
+  if (real.length===0){
     el.innerHTML = '<span class="item"><span class="healthy">✓ nothing needs you right now</span></span>' + items.join("");
   } else {
     el.innerHTML = items.join("");
   }
   setAge("age-attn", Date.now(), true);
 }
-
-function esc(s){ return String(s).replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c])); }
 
 // ── WS /api/live — drives the live tick + freshness heartbeat ──
 function connectLive(){
@@ -420,12 +648,12 @@ function connectLive(){
   ws.onerror = ()=>{ try{ws.close();}catch(_){} };
 }
 
-function refreshAll(){ loadHero(); loadRun(); loadBuild(); }
+function refreshAll(){ loadPrimary(); loadNodes(); loadCovenant(); loadRoadmap(); }
 refreshAll();
 connectLive();
 setInterval(refreshAll, REFRESH_MS);
 // keep age stamps ticking even between refreshes
-setInterval(()=>{ ["hero","run","build"].forEach(k=> heroTs[k] && setAge("age-"+k, heroTs[k], true)); }, 5000);
+setInterval(()=>{ ["zt","prod","pick","persons","run","build"].forEach(k=> stamp[k] && setAge("age-"+k, stamp[k], true)); }, 5000);
 </script>
 </body>
 </html>
