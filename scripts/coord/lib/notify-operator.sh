@@ -150,6 +150,57 @@ print(json.dumps({
 }))' >> "$queue" 2>/dev/null || true
 }
 
+# RESILIENT-1095: global page-rate ceiling. RESILIENT-1093 batches every
+# "page"-verdict signal into the curation queue unconditionally, so those
+# already coalesce at flush cadence. "direct" owed-messages (chump_digest,
+# board_ceo_briefing, discord_advisor_reply — see operator-escalation-
+# registry.txt) skip that queue on purpose ("deliver every time") and dial
+# Discord immediately, one call = one DM. That path has no ceiling: three
+# direct messages landing in the same window are three separate DMs, the
+# exact cross-source burst RESILIENT-1093 exists to prevent. This tracks
+# recent direct deliveries in a rolling window; once the ceiling is hit,
+# further direct messages are coalesced into the curation queue too instead
+# of dialing out again immediately. Halt severity never reaches here — it's
+# checked before notify_operator does any of this.
+_notify_rate_state_file() {
+    local root; root="$(_notify_repo_root)"
+    printf '%s\n' "${CHUMP_NOTIFY_RATE_LOG:-${root}/.chump-locks/discord-notify-rate.log}"
+}
+
+# Returns 0 (true) when the direct-delivery ceiling is already hit in the
+# trailing window — caller should coalesce instead of delivering immediately.
+# Returns 1 (false) and records "now" as a delivery timestamp otherwise.
+_notify_rate_over_ceiling() {
+    local state ceiling window now cutoff count tmp t
+    state="$(_notify_rate_state_file)"
+    mkdir -p "$(dirname "$state")" 2>/dev/null || true
+    touch "$state" 2>/dev/null || true
+    ceiling="${CHUMP_NOTIFY_RATE_CEILING:-3}"
+    window="${CHUMP_NOTIFY_RATE_WINDOW_S:-300}"
+    now="$(date -u +%s)"
+    cutoff=$((now - window))
+
+    count=0
+    tmp="${state}.tmp.$$"
+    : > "$tmp"
+    while read -r t; do
+        [[ -n "$t" ]] || continue
+        if (( t >= cutoff )); then
+            printf '%s\n' "$t" >> "$tmp"
+            count=$((count + 1))
+        fi
+    done < "$state"
+
+    if (( count >= ceiling )); then
+        rm -f "$tmp" 2>/dev/null || true
+        return 0
+    fi
+
+    printf '%s\n' "$now" >> "$tmp"
+    mv "$tmp" "$state" 2>/dev/null || rm -f "$tmp"
+    return 1
+}
+
 notify_operator() {
     local content="${1:-}"
     [[ -n "${content//[[:space:]]/}" ]] || return 0
@@ -169,6 +220,17 @@ notify_operator() {
             # but emit operator_direct_message rather than operator_paged — it is
             # not an escalation, so it must not inflate the page-rate vital sign.
             _notify_emit "operator_direct_message" ",\"signal\":\"${_kind}\""
+
+            # RESILIENT-1095: global page-rate ceiling. Direct messages skip the
+            # curation queue by design, but that made them the one uncapped
+            # burst path — hold this one and coalesce it once the ceiling is hit.
+            # scanner-anchor: "kind":"operator_notify_rate_held"
+            if _notify_rate_over_ceiling; then
+                _notify_emit "operator_notify_rate_held" ",\"signal\":\"${_kind}\""
+                echo "[notify-operator] DIRECT held (page-rate ceiling hit, coalescing): kind=${_kind}" >&2
+                _notify_curate_enqueue "$content" "$_kind"
+                return 0
+            fi
             echo "[notify-operator] DIRECT (owed-message, delivered without paging): kind=${_kind}" >&2
         else
             # Page-worthy: record whether it was classified or fell through as novel.

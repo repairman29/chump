@@ -178,6 +178,79 @@ else
     ok "operator_direct_message is not counted against the operator page-rate"
 fi
 
+# 10. RESILIENT-1095: global page-rate ceiling on the `direct` path. Direct
+#     messages skip the RESILIENT-1093 curation queue by design ("deliver
+#     every time"), which made them the one cross-source burst path with no
+#     ceiling at all — three direct messages in one window is three separate
+#     DMs. Fire 3 direct-verdict signals with a ceiling of 2: the first 2
+#     must attempt immediate delivery, the 3rd must be held and coalesced
+#     into the curation queue instead.
+TMPDIR2="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR2"' RETURN 2>/dev/null || true
+
+RATE_LOG="${TMPDIR2}/rate.log"
+QUEUE="${TMPDIR2}/queue.jsonl"
+AMBIENT="${TMPDIR2}/ambient.jsonl"
+
+out="$(bash -c "
+    unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID
+    export CHUMP_NOTIFY_RATE_CEILING=2
+    export CHUMP_NOTIFY_RATE_WINDOW_S=300
+    export CHUMP_NOTIFY_RATE_LOG='$RATE_LOG'
+    export CHUMP_DISCORD_CURATION_QUEUE='$QUEUE'
+    export CHUMP_AMBIENT_LOG='$AMBIENT'
+    source '$LIB'
+    CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply one'
+    CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply two'
+    CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply three'
+" 2>&1)"
+
+immediate_attempts="$(grep -c '^\[notify-operator\] SKIP:' <<<"$out" || true)"
+if [[ "$immediate_attempts" == "2" ]]; then
+    ok "2 direct messages under the ceiling attempt immediate delivery"
+else
+    bad "expected 2 immediate delivery attempts under the ceiling, got ${immediate_attempts} -- output: $out"
+fi
+
+if grep -q 'DIRECT held' <<<"$out"; then
+    ok "the 3rd direct message over the ceiling is held, not sent immediately"
+else
+    bad "the 3rd direct message was not held at the ceiling -- output: $out"
+fi
+
+if [[ -s "$QUEUE" ]] && [[ "$(wc -l < "$QUEUE" | tr -d ' ')" == "1" ]]; then
+    ok "the held direct message landed in the curation queue (exactly 1 entry)"
+else
+    bad "expected exactly 1 entry in the curation queue after the ceiling was hit"
+fi
+
+held_count="$(grep -c '"kind":"operator_notify_rate_held"' "$AMBIENT" 2>/dev/null || true)"
+if [[ "$held_count" == "1" ]]; then
+    ok "operator_notify_rate_held emitted once for the held message"
+else
+    bad "expected 1 operator_notify_rate_held event, got '${held_count}'"
+fi
+
+# 10b. Halt severity must bypass the rate ceiling entirely, same as it
+#      bypasses curation — an emergency can never be held for a later flush.
+halt_out="$(bash -c "
+    unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID
+    export CHUMP_NOTIFY_RATE_CEILING=2
+    export CHUMP_NOTIFY_RATE_WINDOW_S=300
+    export CHUMP_NOTIFY_RATE_LOG='$RATE_LOG'
+    export CHUMP_DISCORD_CURATION_QUEUE='$QUEUE'
+    export CHUMP_AMBIENT_LOG='$AMBIENT'
+    source '$LIB'
+    CHUMP_NOTIFY_SEVERITY='halt' notify_operator 'fleet is on fire'
+" 2>&1)"
+if grep -q '^\[notify-operator\] SKIP:' <<<"$halt_out"; then
+    ok "halt severity still attempts immediate delivery even after the ceiling was hit"
+else
+    bad "halt severity did not attempt immediate delivery -- output: $halt_out"
+fi
+
+rm -rf "$TMPDIR2"
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ $FAIL -eq 0 ]] || exit 1
