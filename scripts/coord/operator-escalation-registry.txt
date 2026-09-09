@@ -51,6 +51,7 @@ discord_advisor_agent_failed	suppress	# INFRA-3835: a failed advisor turn is a Q
 discord_advisor_reply	direct	# INFRA-3835: The Advisor's answer to a Jeff DM. This notify_operator call IS the reply — deliver it, but it is not an incident, so no operator_paged.
 chump_digest	direct	# RESILIENT-376: the twice-daily Discord digest. Scheduled owed-message, not an incident — deliver every time but emit operator_direct_message, never operator_paged (a digest must not inflate the page-rate vital sign or trip cry-wolf watchers).
 board_ceo_briefing	direct	# RESILIENT-1092: the hourly Sonnet strategy briefing (chump-board-ceo-briefing.timer, OnUnitActiveSec=60min). Scheduled owed-message like chump_digest, not an incident — deliver every time but emit operator_direct_message, never operator_paged.
+discord_command_reply	direct	# RESILIENT-1096: the Discord slash-command agent's answer to an operator command. This notify_operator call IS the reply, mirrors discord_advisor_reply — deliver it, but it is not an incident.
 
 # ── PAGE: halt-class or no automated remedy → reach the operator ──────────────
 # (Unlisted kinds also page by default; these document intent + catch typos.)
@@ -59,6 +60,9 @@ credential_rotation_needed	page	# T2 — only the operator can rotate a live sec
 fleet_stopped_unexpected	page	# halt-class — fleet down with no self-recovery
 security_incident	page	# always a human decision
 operator_decision_required	page	# explicit T3 hand-off
+sla_breach	page	# RESILIENT-1096: merge-sla-scorecard.sh halt-severity breach — no automated remedy, operator must intervene
+production_halt	page	# RESILIENT-1096: back-pressure-controller.sh HALTED production (workers stopped) — no automated remedy, operator must decide when/whether to resume
+discord_command_agent_failed	page	# RESILIENT-1096: mirrors discord_advisor_agent_failed's fallback-safety-net shape, but a failed COMMAND (operator explicitly asked for something) has no in-script graceful-reply fallback — page so the operator knows their command silently failed
 
 # RESILIENT-373: board-cycle beat escalation is now severity-gated + deduped by
 # scripts/coord/lib/board-cycle-escalate.sh. The routine report NEVER pages; a
