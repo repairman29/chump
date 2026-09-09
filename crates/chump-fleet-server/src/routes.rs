@@ -36,6 +36,14 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
     // repo working tree (kept current with green-main by node-refresh's hard
     // reset), so "merged" reaches "running" with no copy-into-the-binary step.
     let cockpit_dir = repo_root.join("web").join("cockpit-live");
+    // INFRA-2176: the fleet-scrubber forensic timeline is a static single-page
+    // app that reads this server's /api/segments, /api/events, /api/sessions/active
+    // and /api/live routes. It is mounted at /scrubber so `chump fleet view`
+    // (scripts/dev/chump-fleet-view.sh) and the README's documented URL
+    // (http://localhost:7070/scrubber) resolve against the same origin the API
+    // is served from — no CORS, no separate process. Nested before the cockpit
+    // fallback so /scrubber/* wins over the catch-all ServeDir.
+    let scrubber_dir = repo_root.join("web").join("fleet-scrubber");
     let state = AppState { store, repo_root };
     Router::new()
         .route("/api/events", get(get_events))
@@ -51,6 +59,13 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/fleet/nodes", get(get_fleet_nodes))
         .route("/api/live", get(ws_live))
         .route("/healthz", get(healthz))
+        // INFRA-2176: fleet-scrubber static SPA at /scrubber (append_index so
+        // /scrubber serves web/fleet-scrubber/index.html; /scrubber/fixtures/*
+        // resolves for ?fixtures=1 demo mode).
+        .nest_service(
+            "/scrubber",
+            ServeDir::new(scrubber_dir).append_index_html_on_directories(true),
+        )
         // INFRA-5663: static cockpit page at `/` (and any other non-API path).
         // API routes are matched first; anything unmatched falls through to the
         // static dir, so `/` serves web/cockpit-live/index.html.
