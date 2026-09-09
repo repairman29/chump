@@ -841,6 +841,12 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-notify-operator.sh
 
+      # RESILIENT-1096. shard-3: pure shell, no chump binary, and shards 1/4 are
+      # the ones paying the cold cargo build.
+      - name: every CHUMP_NOTIFY_KIND has an escalation-registry verdict (RESILIENT-1096)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-notify-kind-escalation-coverage.sh
+
       # RESILIENT-266. shard-3: pure shell, no chump binary, and shards 1/4 are
       # the ones paying the cold cargo build.
       - name: discord gateway daemon guard (RESILIENT-266)

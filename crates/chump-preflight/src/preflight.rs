@@ -1054,6 +1054,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // without it and main's fast-checks went red at 20:15:44. Carried here
         // so this PR unbreaks main rather than needing a separate fix.
         "scripts/ci/test-notify-operator.sh",
+        // RESILIENT-1096: every literal CHUMP_NOTIFY_KIND assignment in
+        // production scripts must have a suppress|page|direct verdict in
+        // operator-escalation-registry.txt. Pure shell, no cargo, no network.
+        "scripts/ci/test-notify-kind-escalation-coverage.sh",
         "scripts/ci/test-discord-gateway.sh",
         // RESILIENT-248: pr-rescue zero-CI-runs detector. Pure decision-function
         // fixture — no network, no cargo, no GH_TOKEN, well under a second.
