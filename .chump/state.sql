@@ -57070,7 +57070,7 @@ gaps:
 - id: EFFECTIVE-443
   domain: EFFECTIVE
   title: "JTBD-sharpen the vision/outcome intake: capture who + struggling-moment + done-signal"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -57080,6 +57080,10 @@ gaps:
   notes: |
     Decomposed into 5 slices: EFFECTIVE-1457, EFFECTIVE-1458, EFFECTIVE-1459, EFFECTIVE-1460, EFFECTIVE-1461
   opened_date: '2026-08-22'
+  closed_date: '2026-09-09'
+  closed_pr: 4575
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4575 titled 'EFFECTIVE-443: ...' merged 2026-09-09; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: EFFECTIVE-445
   domain: EFFECTIVE
