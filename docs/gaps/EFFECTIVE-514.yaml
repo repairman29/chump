@@ -1,0 +1,14 @@
+- id: EFFECTIVE-514
+  domain: EFFECTIVE
+  title: Mission-doc keeper — sonnet agent keeps the OS/mission HTML assets current from live state
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Scope: Tote Board + mission HTML. AC: a sonnet agent regenerates dynamic sections (current-state numbers, gap statuses, live_pct/debt once Debt Index lands) from live fleet state on a cadence; canonical HTML version-controlled in-repo. CONSTRAINT: artifact-URL republish needs a Claude Code session; durable path = serve live numbers via fleet HTTP server (like the PWA) + agent refreshes the static spec; a scheduled session republishes the artifact.
+  acceptance_criteria:
+    1. The change described by "Mission-doc keeper — sonnet agent keeps the OS/mission HTML assets current from live state" is implemented in the relevant EFFECTIVE code path(s).
+    2. At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    3. cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-09-08'
+  closed_pr: 4579
