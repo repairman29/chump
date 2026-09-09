@@ -154,6 +154,21 @@ else
     bad "security_incident emitted [$emits] — page path regressed, escalations lost"
 fi
 
+# 9f. RESILIENT-1092: the hourly board_ceo_briefing must not page the phone —
+#     without a registry entry it falls through to the fail-loud PAGE default,
+#     turning a scheduled strategy briefing into a 24x/day false-alarm page.
+if grep -qE '^board_ceo_briefing[[:space:]]+direct\b' "$REG"; then
+    ok "registry classifies board_ceo_briefing as direct"
+else
+    bad "board_ceo_briefing is not classified direct — hourly briefing will page the phone"
+fi
+emits="$(_verdict_emits board_ceo_briefing)"
+if grep -q "operator_direct_message" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "board_ceo_briefing emits operator_direct_message, not operator_paged"
+else
+    bad "board_ceo_briefing emitted [$emits] — expected operator_direct_message and no operator_paged"
+fi
+
 # 9e. The new operator_direct_message emit MUST NOT be counted by the page-rate
 #     vital sign (that metric is the cry-wolf tripwire this whole fix protects).
 VITAL="$REPO_ROOT/scripts/ops/vital-signs.sh"
