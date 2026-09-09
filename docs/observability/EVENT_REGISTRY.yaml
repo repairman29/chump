@@ -3316,6 +3316,18 @@ events:
       page-rate vital sign.
     consumers: [discord]
 
+  - kind: operator_notify_rate_held
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-1095)
+    trigger: a `direct`-verdict message (owed-message, normally delivered
+      immediately and unconditionally) hit the global page-rate ceiling —
+      CHUMP_NOTIFY_RATE_CEILING direct deliveries already sent in the
+      trailing CHUMP_NOTIFY_RATE_WINDOW_S window. Instead of dialing Discord
+      again immediately, the message is coalesced into the RESILIENT-1093
+      curation queue and delivered on the next flush along with whatever
+      else is pending. Halt-severity messages never reach this check.
+    consumers: [ambient]
+
   - kind: operator_page
     effect_metric: self
     emitter: scripts/dispatch/operator-page.sh (INFRA-1774)
