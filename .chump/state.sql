@@ -56694,7 +56694,7 @@ gaps:
 - id: EFFECTIVE-414
   domain: EFFECTIVE
   title: "build bin-bloat-guard CI gate: flag new large src/*.rs files landing in the bin (enforce crate-first, WHEN_TO_CRATE.md)"
-  status: blocked
+  status: open
   priority: P2
   effort: m
   acceptance_criteria:
@@ -56704,6 +56704,7 @@ gaps:
   notes: |
     Decomposed into 10 slices: EFFECTIVE-988, EFFECTIVE-989, EFFECTIVE-990, EFFECTIVE-991, EFFECTIVE-992, EFFECTIVE-993, EFFECTIVE-994, EFFECTIVE-995, EFFECTIVE-996, EFFECTIVE-997
     [2026-09-03T19:38:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=1080B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    [2026-09-09T21:35:43Z] rot-reaper: PR #4572 auto-closed (required-check-red, 26h) 2026-09-09; re-attempt on fresh main.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
