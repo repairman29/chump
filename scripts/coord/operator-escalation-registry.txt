@@ -85,3 +85,13 @@ fleet_health_self_healed	suppress
 fleet_health_unit_failed	page
 fleet_health_healer_down	page
 fleet_health_sentinel_peer_dead	page
+
+# ── DURABILITY GAUGE: hours-unattended-before-stall ──────────────────────────
+# scripts/ops/durability-gauge.sh pages when production (merges to origin/main)
+# has stopped for longer than the stall threshold with no human clearing it —
+# the exact class that let the fleet sit dark ~15h on 2026-09-09 while only the
+# human operator noticed. A live unhealed stall has no automated remedy the
+# gauge itself can apply (it detects, it does not un-wedge), so it PAGES; the
+# gauge debounces on the stall onset so a multi-hour outage pages once, and the
+# page flows through the single-voice curation queue like every other page.
+durability_stall	page	# production stopped, no human clearing it — operator must un-wedge (frozen filter / disabled self-heal / dead daemon)

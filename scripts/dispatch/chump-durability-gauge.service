@@ -1,0 +1,17 @@
+# Chump durability-gauge — the "hours-unattended-before-stall" ORGAN. Reads the
+# productive-action timeline (merges to origin/main) + the human-touch timeline
+# (ambient operator interventions), writes ~/.chump/durability-gauge.json + a
+# durability_gauge ambient heartbeat every 15m (paired with the .timer), and
+# PAGES the operator via notify-operator.sh on a live unhealed stall. Deployed
+# by scripts/setup/install-helsinki-atc.sh, which host-rewrites /root/ -> the
+# run-user's HOME and User=root -> the run-user per node.
+[Unit]
+Description=Chump durability-gauge — hours-unattended-before-stall, pages on a live stall
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/durability-gauge.sh'

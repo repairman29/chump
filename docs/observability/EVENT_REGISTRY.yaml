@@ -12202,6 +12202,22 @@ events:
     consumers: [fleet-brief, ops-audit, operator-recall]
     fields_required: [ts, kind, signs, green, amber, red, unknown, p_full_trek, out]
 
+  - kind: durability_gauge
+    effect_metric: self
+    emitter: scripts/ops/durability-gauge.sh (the hours-unattended-before-stall gauge)
+    trigger: every durability-gauge collector pass (chump-durability-gauge.timer),
+      after it reads the productive-action timeline (merges to origin/main) and the
+      human-touch timeline (ambient operator interventions), computes the stall
+      picture (current silence, is_stalled, longest/most-recent stall, MTTS,
+      unattended streak) and writes ~/.chump/durability-gauge.json. A heartbeat so
+      a dead/frozen gauge — the instrument that is supposed to catch a stall — is
+      itself observable from the stream instead of silently going stale. On a LIVE
+      unhealed stall the gauge also pages the operator via notify-operator.sh with
+      CHUMP_NOTIFY_KIND=durability_stall (registered `page`); that page surfaces as
+      a separate operator_paged event, not as a durability_stall kind.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, is_stalled, unattended_streak_hours, hours_unattended_before_stall, longest_stall_hours, stall_threshold_hours, out]
+
   # ── INFRA-1564: dev-script launchd wiring ─────────────────────────────────
   - kind: decomposition_hint_tracked
     status: active
