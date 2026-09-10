@@ -251,6 +251,55 @@ fi
 
 rm -rf "$TMPDIR2"
 
+# 11. RESILIENT-1094: unclassified (no registry entry) non-halt signals must
+#     BUFFER, not page. Before this change every new organ DMing without a
+#     registry line paged the phone by default — this proves that's gone.
+BUF="$(mktemp)"; rm -f "$BUF"
+emits="$(bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID; \
+    export CHUMP_AMBIENT_LOG='$(mktemp)'; export CHUMP_DISCORD_COS_BUFFER='$BUF'; \
+    source '$LIB' 2>/dev/null; \
+    CHUMP_NOTIFY_KIND='totally_novel_unregistered_kind_$$' notify_operator 'regression probe' >/dev/null 2>&1; \
+    cat \"\$CHUMP_AMBIENT_LOG\"")"
+if grep -q "operator_notify_buffered" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "unclassified kind emits operator_notify_buffered, not operator_paged"
+else
+    bad "unclassified kind emitted [$emits] — expected operator_notify_buffered only (RESILIENT-1094 regression)"
+fi
+if [[ -f "$BUF" ]] && grep -q "totally_novel_unregistered_kind_$$" "$BUF" && grep -q "regression probe" "$BUF"; then
+    ok "unclassified signal lands durably in the discord-cos buffer"
+else
+    bad "unclassified signal did NOT land in the buffer — RESILIENT-1094's never-silently-drop guarantee is broken"
+fi
+rm -f "$BUF"
+
+# 12. A kind with NO CHUMP_NOTIFY_KIND at all (the original unclassified-caller
+#     case) must also buffer, not page.
+BUF="$(mktemp)"; rm -f "$BUF"
+emits="$(bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID CHUMP_NOTIFY_KIND; \
+    export CHUMP_AMBIENT_LOG='$(mktemp)'; export CHUMP_DISCORD_COS_BUFFER='$BUF'; \
+    source '$LIB' 2>/dev/null; \
+    notify_operator 'no kind at all' >/dev/null 2>&1; \
+    cat \"\$CHUMP_AMBIENT_LOG\"")"
+if grep -q "operator_notify_buffered" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "no-kind caller buffers instead of paging"
+else
+    bad "no-kind caller emitted [$emits] — expected operator_notify_buffered only"
+fi
+rm -f "$BUF"
+
+# 13. CHUMP_NOTIFY_SEVERITY=halt must still bypass the buffer and page,
+#     regardless of registry state — the fail-loud escape hatch is preserved.
+emits="$(bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID; \
+    export CHUMP_AMBIENT_LOG='$(mktemp)'; \
+    source '$LIB' 2>/dev/null; \
+    CHUMP_NOTIFY_SEVERITY=halt CHUMP_NOTIFY_KIND='totally_novel_unregistered_kind_$$' notify_operator 'halt probe' >/dev/null 2>&1; \
+    cat \"\$CHUMP_AMBIENT_LOG\"")"
+if ! grep -q "operator_notify_buffered" <<<"$emits"; then
+    ok "halt severity bypasses the buffer entirely (no operator_notify_buffered emitted)"
+else
+    bad "halt severity emitted [$emits] — halt must never be buffered, always fail loud"
+fi
+
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ $FAIL -eq 0 ]] || exit 1

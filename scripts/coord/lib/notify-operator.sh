@@ -86,14 +86,24 @@ _notify_env() {
 #   CHUMP_NOTIFY_KIND      the ambient/signal kind (e.g. discord_gateway_down)
 #   CHUMP_NOTIFY_SEVERITY  set to "halt" to force a page regardless of registry
 # Registry: scripts/coord/operator-escalation-registry.txt — "<kind><TAB>suppress|page|direct".
-# Rules: halt severity → PAGE. kind in registry → its verdict. Unknown kind or
-# no kind → PAGE (fail loud: "no playbook → tell me").
+# Rules: halt severity → PAGE, always, bypassing the registry entirely. Below
+# halt, kind in registry → its verdict. Unknown kind or no kind → BUFFER
+# (RESILIENT-1094: fail-loud-by-page made NOISE the default — every new organ
+# that DMs without a registry line paged the phone; hold it durably instead so
+# a single curated voice summarizes it, never-silently-drop preserved by
+# durability, not immediacy).
 #   suppress → log operator_notify_suppressed, DO NOT DM.
 #   page     → emit operator_paged (counts against page-rate) AND DM the phone.
+#              Only for kinds EXPLICITLY registered as page — a documented,
+#              known escalation, not a novel one.
 #   direct   → INFRA-3835: emit operator_direct_message and DM, but it is NOT an
 #              escalation (no operator_paged). For normal messages the fleet owes
 #              the operator, e.g. the Advisor's answer — the DM IS the payload,
 #              a parallel "you were paged" event would be pure noise.
+#   unclassified → RESILIENT-1094: no registry entry (or no kind, or no
+#              registry file). Append to the durable discord-cos
+#              hold-and-summarize buffer (.chump-locks/discord-cos-buffer.jsonl)
+#              and emit operator_notify_buffered. DO NOT DM.
 _notify_ambient_log() {
     local root; root="$(_notify_repo_root)"
     printf '%s\n' "${CHUMP_AMBIENT_LOG:-${root}/.chump-locks/ambient.jsonl}"
@@ -106,16 +116,23 @@ _notify_emit() {  # kind, extra_json_fragment
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "${2:-}" >> "$log" 2>/dev/null || true
 }
 
-# Returns "page", "suppress", or "direct" on stdout. Default is PAGE
-# (novel/no-playbook). Whitespace-split (space OR tab); anything after the
-# verdict is an inline comment. "direct" (INFRA-3835) means a normal DM the
-# fleet owes the operator — deliver it, but it is NOT an escalation.
+# Returns "page", "suppress", "direct", or "unclassified" on stdout.
+# Whitespace-split (space OR tab); anything after the verdict is an inline
+# comment. "direct" (INFRA-3835) means a normal DM the fleet owes the operator
+# — deliver it, but it is NOT an escalation. "unclassified" (RESILIENT-1094)
+# is the never-silently-drop default for a kind with NO registry entry (or no
+# kind, or no registry file at all) — the caller routes this into the
+# discord-cos hold-and-summarize buffer rather than paging, so a brand-new
+# organ DM'ing without a registry line doesn't cry wolf on the phone. Only an
+# EXPLICIT `page` line in the registry (or a typo'd verdict on a known kind —
+# still fail loud, since that's a registered-but-broken entry, not a novel
+# one) returns "page".
 _notify_escalation_verdict() {
     local kind="$1" root reg k verdict _rest
-    [[ -n "$kind" ]] || { echo "page"; return; }   # unclassified caller → page
+    [[ -n "$kind" ]] || { echo "unclassified"; return; }   # no kind at all
     root="$(_notify_repo_root)"
     reg="${root}/scripts/coord/operator-escalation-registry.txt"
-    [[ -f "$reg" ]] || { echo "page"; return; }    # no registry → fail loud
+    [[ -f "$reg" ]] || { echo "unclassified"; return; }    # no registry at all
     while read -r k verdict _rest; do
         [[ -z "$k" || "$k" == \#* ]] && continue
         if [[ "$kind" == "$k" ]]; then
@@ -127,7 +144,30 @@ _notify_escalation_verdict() {
             return
         fi
     done < "$reg"
-    echo "page"                                    # unknown kind = novel = page
+    echo "unclassified"                             # unlisted kind = novel = buffer, not page
+}
+
+# Durable hold-and-summarize buffer (RESILIENT-1094, feeds the discord-cos
+# curation buffer of RESILIENT-1093). Never-silently-drop is preserved by
+# durability, not by an immediate page: the signal lands on disk so a single
+# curated voice can summarize it later, instead of every unclassified DM
+# firing its own operator_paged straight to the phone.
+_notify_buffer_path() {
+    local root; root="$(_notify_repo_root)"
+    printf '%s\n' "${CHUMP_DISCORD_COS_BUFFER:-${root}/.chump-locks/discord-cos-buffer.jsonl}"
+}
+
+_notify_buffer_signal() {
+    local kind="$1" content="$2" buf ts; buf="$(_notify_buffer_path)"
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    mkdir -p "$(dirname "$buf")" 2>/dev/null || true
+    TS="$ts" KIND="$kind" CONTENT="$content" python3 -c '
+import json, os, sys
+sys.stdout.write(json.dumps({
+    "ts": os.environ["TS"],
+    "kind": os.environ.get("KIND", ""),
+    "content": os.environ["CONTENT"],
+}) + "\n")' >> "$buf" 2>/dev/null
 }
 
 # RESILIENT-1093: single-voice curation queue. Path to the JSONL file that
@@ -232,10 +272,25 @@ notify_operator() {
                 return 0
             fi
             echo "[notify-operator] DIRECT (owed-message, delivered without paging): kind=${_kind}" >&2
+        elif [[ "$_verdict" == "unclassified" ]]; then
+            # RESILIENT-1094: no registry entry (or no kind at all) is no longer
+            # an automatic page — that made NOISE the default: every new organ
+            # that DMs without a registry line paged the phone. Hold it in the
+            # durable discord-cos buffer (RESILIENT-1093) instead, so a single
+            # curated voice can summarize it later. Never-silently-drop is kept
+            # by durability, not by an immediate page.
+            _notify_buffer_signal "$_kind" "$content"
+            # scanner-anchor: "kind":"operator_notify_buffered"
+            _notify_emit "operator_notify_buffered" ",\"signal\":\"${_kind}\",\"reason\":\"unclassified-non-halt\""
+            echo "[notify-operator] BUFFERED (unclassified, non-halt): kind=${_kind}" >&2
+            return 0
         else
-            # Page-worthy: record whether it was classified or fell through as novel.
-            [[ -n "$_kind" ]] && _notify_emit "operator_paged" ",\"signal\":\"${_kind}\",\"class\":\"registry-page\"" \
-                              || _notify_emit "operator_paged" ",\"class\":\"unclassified-caller\""
+            # Explicit page-classified kind: record the escalation. RESILIENT-1094
+            # routes unclassified / no-kind signals to the hold-and-summarize
+            # buffer above, so reaching here means the verdict was an EXPLICIT
+            # registry `page` entry and $_kind is always non-empty — the old
+            # `|| unclassified-caller` fallback is now unreachable, dropped here.
+            _notify_emit "operator_paged" ",\"signal\":\"${_kind}\",\"class\":\"registry-page\""
 
             # RESILIENT-1093: this is the multi-source burst the single-voice
             # curation layer exists for. 18 independent call sites each used to

@@ -3338,11 +3338,25 @@ events:
 
   - kind: operator_paged
     effect_metric: self
-    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-274)
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-274, RESILIENT-1094)
     trigger: the notify_operator escalation gate classified a signal as
-      page-worthy (halt-class, or a novel/no-playbook kind per
-      operator-escalation-registry.txt) and DM'd the operator's phone.
+      page-worthy — halt-class severity, or a kind EXPLICITLY registered as
+      `page` in operator-escalation-registry.txt — and DM'd the operator's
+      phone. An unlisted/no-playbook kind below halt severity no longer pages;
+      see operator_notify_buffered.
     consumers: [discord]
+
+  - kind: operator_notify_buffered
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-1094)
+    trigger: the notify_operator escalation gate classified a non-halt signal
+      as `unclassified` (no registry entry, or no kind at all) and appended it
+      to the durable discord-cos hold-and-summarize buffer
+      (.chump-locks/discord-cos-buffer.jsonl, see RESILIENT-1093) instead of
+      paging the phone. Ends the cry-wolf default where every new organ that
+      DMs without a registry line paged; never-silently-drop is preserved by
+      durability, not immediacy.
+    consumers: [ambient, discord-cos curation buffer]
 
   - kind: operator_notify_suppressed
     effect_metric: self

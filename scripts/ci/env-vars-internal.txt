@@ -2723,3 +2723,4 @@ CHUMP_NOTIFY_RATE_WINDOW_S
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_CAPABILITY_STALE_MIN
+CHUMP_DISCORD_COS_BUFFER
