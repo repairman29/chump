@@ -56711,6 +56711,8 @@ gaps:
     [2026-09-10T01:36:25Z] rot-reaper: PR #4572 auto-closed (required-check-red, 30h) 2026-09-10; RESPAWN CAP 3 reached (4 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-10T03:06:38Z] rot-reaper: PR #4572 auto-closed (required-check-red, 32h) 2026-09-10; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-10T04:06:47Z] rot-reaper: PR #4572 auto-closed (required-check-red, 33h) 2026-09-10; RESPAWN CAP 3 reached (6 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-10T05:36:59Z] rot-reaper: PR #4572 auto-closed (required-check-red, 34h) 2026-09-10; RESPAWN CAP 3 reached (7 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-10T06:06:32Z] rot-reaper: PR #4572 auto-closed (required-check-red, 35h) 2026-09-10; RESPAWN CAP 3 reached (8 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -76051,7 +76053,7 @@ gaps:
     - EVENT_REGISTRY.yaml entries for `deliberation_started`, `deliberation_resolved`, `deliberation_handoff`, `deliberation_fairness_violation` present before code ships
     - "Release gate: 7-day fleet run with > 5 deliberations resolved (verified via `kind=deliberation_resolved` events in ambient.jsonl), zero operator-interventions for overlap conflicts"
   notes: |
-    Decomposed into 14 slices: INFRA-5103, INFRA-5104, INFRA-5105, INFRA-5106, INFRA-5107, INFRA-5108, INFRA-5109, INFRA-5110, INFRA-5111, INFRA-5112, INFRA-5113, INFRA-5114, INFRA-5115, INFRA-5116
+    Decomposed into 14 slices: INFRA-5670, INFRA-5671, INFRA-5672, INFRA-5673, INFRA-5674, INFRA-5675, INFRA-5676, INFRA-5677, INFRA-5678, INFRA-5679, INFRA-5680, INFRA-5681, INFRA-5682, INFRA-5683
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -181383,6 +181385,391 @@ gaps:
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
 
+- id: INFRA-5670
+  domain: INFRA
+  title: "INFRA: Implement deterministic comparator in `chump_coord::deliberate` (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`deliberate(gap_id, my_progress, other_session)` returns a `DeliberationOutcome` where the winner is chosen by: higher `percent_complete`, then newer `last_commit_sha`, then older `started_at`."
+    - Function is pure, deterministic, and compiles without warnings.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5671
+  domain: INFRA
+  title: "INFRA: Add unit tests for comparator ordering rules (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test case where `percent_complete` differs – higher wins.
+    - Test case where `percent_complete` equal but `last_commit_sha` differs – newer wins.
+    - Test case where both previous fields equal but `started_at` differs – older wins.
+  depends_on: [INFRA-5670]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5672
+  domain: INFRA
+  title: "INFRA: Property‑test comparator over 10 000 random progress pairs (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`tests/a2a_deliberation_comparator.rs` generates 10 000 random `(my_progress, other_progress)` pairs."
+    - For each pair, running the comparator on both sides yields the same winner (no divergence).
+    - Test suite passes in CI with 100 % success.
+  depends_on: [INFRA-5670, INFRA-5671]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5673
+  domain: INFRA
+  title: "INFRA: Define `ask_progress` RPC request/response structs (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`AskProgressRequest` contains `{gap_id, session_id}`."
+    - "`AskProgressResponse` contains `{percent_complete, last_commit_sha, last_activity_ts, remaining_ac: Vec<...>}`."
+    - Serialization format matches existing Layer 2b conventions and compiles.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5674
+  domain: INFRA
+  title: "INFRA: Detect INTENT overlap and trigger `ask_progress` RPC (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When INFRA‑1116 overlap is detected, the local session opens an `ask_progress` RPC to the remote session.
+    - "`ask_progress` is sent using the structs defined in slice 3."
+    - Successful receipt of the response is logged as `deliberation_started` event.
+  depends_on: [INFRA-5673]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5675
+  domain: INFRA
+  title: "INFRA: Implement loser side HANDOFF broadcast and lease retraction (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - After comparator decides a loser, the loser sends a `HANDOFF` message containing its WIP commit SHA.
+    - Loser retracts its lease within 5 seconds of sending HANDOFF.
+    - "`deliberation_handoff` event is emitted with payload `{winner_session, loser_session, wip_sha}`."
+  depends_on: [INFRA-5670, INFRA-5674]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5676
+  domain: INFRA
+  title: "INFRA: Add fairness monitor tracking wins/losses per session (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Scratchpad stores counters `deliberation_wins` and `deliberation_losses` for each active session.
+    - After each resolved deliberation, counters are updated accordingly.
+    - When a session’s win rate exceeds 80 % over the last 50 deliberations, a `deliberation_fairness_violation` event is emitted.
+  depends_on: [INFRA-5675, INFRA-5677]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5677
+  domain: INFRA
+  title: "INFRA: Add EVENT_REGISTRY.yaml entries for deliberation lifecycle (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`deliberation_started`, `deliberation_resolved`, `deliberation_handoff`, and `deliberation_fairness_violation` entries exist with correct schema definitions."
+    - YAML validates against the central event registry schema.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5678
+  domain: INFRA
+  title: "INFRA: Handle unresponsive side timeout (a2a_rpc_timeout) (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If `ask_progress` RPC does not respond within the configured deadline, the local side declares itself the winner.
+    - "`a2a_rpc_timeout` metric is incremented and a `deliberation_resolved` event records the timeout cause."
+  depends_on: [INFRA-5674]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5679
+  domain: INFRA
+  title: "INFRA: Handle both sessions at 0 % progress (seniority rule) (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When both `percent_complete` values are 0, comparator falls back to older `started_at` (seniority).
+    - Unit test verifies senior session wins in this scenario.
+  depends_on: [INFRA-5670]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5680
+  domain: INFRA
+  title: "INFRA: Attach diff patch to HANDOFF on WIP conflict (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If loser’s WIP conflicts with winner’s state, loser generates a diff patch and includes it in the HANDOFF payload.
+    - Patch can be applied by the winner without manual intervention.
+    - Test validates that a synthetic conflict results in a non‑empty patch attached to HANDOFF.
+  depends_on: [INFRA-5675]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5681
+  domain: INFRA
+  title: "INFRA: Three‑way overlap: pairwise deliberation in lexical session order (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When three sessions overlap, the system sorts session IDs lexicographically and performs pairwise deliberations in that order.
+    - Each pair follows the deterministic comparator logic and emits `deliberation_started`/`deliberation_resolved` events.
+    - Integration test confirms that after all pairwise rounds, only one session retains the lease.
+  depends_on: [INFRA-5674]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5682
+  domain: INFRA
+  title: "INFRA: Integration test for full deliberation flow (including fairness monitor) (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test spins up three mock sessions with configurable progress, commit SHA, and start times.
+    - Verifies overlap detection, RPC exchange, comparator outcome, HANDOFF broadcast, lease retraction, fairness counters update, and all relevant events emitted.
+    - All assertions pass in CI.
+  depends_on: [INFRA-5672, INFRA-5674, INFRA-5675, INFRA-5676, INFRA-5678, INFRA-5679, INFRA-5680, INFRA-5681]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5683
+  domain: INFRA
+  title: "INFRA: Release‑gate validation script for 7‑day fleet run (INFRA-1122 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Script parses `ambient.jsonl` from the fleet run, counts `deliberation_resolved` events, and verifies at least 5 distinct deliberations occurred.
+    - Ensures no `operator_intervention` events related to overlap conflicts are present.
+    - Script exits with zero status only when both conditions are satisfied.
+  depends_on: [INFRA-5682]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
 - id: INFRA-604
   domain: INFRA
   title: "EFFECTIVE: chump pillar-balance command — productize the manual iter-cadence pillar check"
@@ -187935,7 +188322,7 @@ gaps:
 - id: MISSION-001
   domain: MISSION
   title: "MISSION: agent visibility & cross-silo coordination — umbrella for INFRA-1139/1141/1144/1145/1146/1147 + silo-breakers"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -187944,7 +188331,8 @@ gaps:
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
   notes: |
-    Demoted P1→P2 2026-07-19 re-rank: open >60 days with no ship activity; P1 now reserved for current-cycle critical path (docs/ROADMAP.md). Re-promote freely if picked up.
+    Decomposed into 4 slices: MISSION-093, MISSION-094, MISSION-095, MISSION-096
+    [2026-09-10T06:54:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=6123B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -189535,6 +189923,164 @@ gaps:
     - Fleet state identical after both runs.
     - Automated acceptance test covers idempotency.
   depends_on: [MISSION-091]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-093
+  domain: MISSION
+  title: "MISSION: Define failure-class taxonomy for transient vs permanent errors (MISSION-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - FailureClass enum (TRANSIENT, PERMANENT, UNKNOWN) defined in mission core types
+    - Helper function created to map error types and status codes to appropriate failure class
+    - Unit tests verify taxonomy mapping for network timeouts, rate limits, and 4xx validation errors
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-094
+  domain: MISSION
+  title: "MISSION: Emit lifecycle events for mission success, failure, and timeout (MISSION-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Event bus emits structured mission:started, mission:succeeded, mission:failed, and mission:timed_out events"
+    - Failure and timeout events include FailureClass payload derived from taxonomy
+    - Unit tests verify event payload schema includes mission_id, agent_id, timestamp, and metadata
+  depends_on: [MISSION-093]
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-095
+  domain: MISSION
+  title: "MISSION: Implement agent cost tracking and operator telemetry reporting (MISSION-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Agent runner collects token usage and execution duration per mission step
+    - Cost metrics reported to operator telemetry log/console upon mission completion or failure
+    - Unit tests confirm accurate aggregation of total estimated cost across multi-step agent workflows
+  notes: |
+    [chump harvest check 'MISSION']
+    === primitives_index match for 'MISSION' ===
+    
+    === cluster keyword match for 'MISSION' ===
+      cluster smugglers-rpg (25 repos): ai-gm-service, mythseeker2, MythSeeker, smuggler-discord-bot, smuggler, analytics-platform-service, zendesk-background-agent, services-dashboard, service-frontends, mock-services, bot-simulation-service, commercial-platform, internal-zendesk-tools, auth-platform-service, combat-system-service, character-system-service, mission-engine-service, chat-platform-service, payment-platform-service, economy-system-service, marketplace-system-service, code-generation-service, asset-management-service, audio-generation-service, smugglers
+    
+    === extracted_primitives (per-file, line-refd) match for 'MISSION' ===
+    
+    === repo-description match for 'MISSION' ===
+      mission-engine-service: Dynamic mission and quest generation system
+    
+    === HARVEST_ROADMAP.md mention of 'MISSION' (deep-scan findings) ===
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      187:- `mission-engine-service` — Supabase + Redis + LLM choreographer pattern. **Directly applicable to Chump's gap-decompose pipeline.**
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'MISSION' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+
+- id: MISSION-096
+  domain: MISSION
+  title: "MISSION: Create smoke test command for agent observability verification (MISSION-001 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CLI command created to execute a synthetic agent mission smoke test
+    - Smoke test verifies that success/failure events are emitted and cost data is captured
+    - Command outputs detailed pass/fail diagnostic log and exits with status 0 on success
+  depends_on: [MISSION-094, MISSION-095]
   notes: |
     [chump harvest check 'MISSION']
     === primitives_index match for 'MISSION' ===
