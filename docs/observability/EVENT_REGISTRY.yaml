@@ -2065,6 +2065,15 @@ events:
       records how many incidents it found plus the raw vitals (disk %, merge age,
       worker-silence, main-red span) so a frozen watch is itself observable.
     consumers: [ambient]
+  - kind: sustained_main_red
+    effect_metric: self
+    emitter: scripts/coord/lib/board-vitals.sh (RESILIENT-1128, RESILIENT-417 slice)
+    trigger: main's current consecutive real-red span (main_red_span_min) has
+      reached the sustained-outage threshold (default 48h) — a dedicated,
+      log-only alarm distinct from the 30m-default main_red page in section 4,
+      for "this has been broken for days" rather than "act now."
+    consumers: [ambient]
+    fields_required: [ts, kind, main_red_span_min, threshold_min]
   # NOTE: board_vitals_alert (the notify/page kind set via CHUMP_NOTIFY_KIND) is
   # deliberately NOT registered here — like its sibling board_cycle_alert, it is
   # a notify/page kind whose home is scripts/coord/operator-escalation-registry.txt,

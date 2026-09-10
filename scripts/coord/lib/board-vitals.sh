@@ -62,6 +62,9 @@
 #   CHUMP_BOARD_VITALS_DROUGHT_MIN     merge-stall threshold minutes (default 180 = 3h)
 #   CHUMP_BOARD_VITALS_WORKER_SILENT_MIN worker not-producing threshold min (default 40)
 #   CHUMP_BOARD_VITALS_MAIN_RED_MIN    sustained main-red threshold minutes (default 30)
+#   CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN  sustained_main_red LOG-ONLY alarm
+#                                      threshold minutes (default 2880 = 48h,
+#                                      RESILIENT-1128 / RESILIENT-417 slice)
 #   CHUMP_BOARD_VITALS_MAIN_RED_LIVE   0 disables the live per-beat invocation of
 #                                      main-health-watchdog.sh (RESILIENT-414);
 #                                      default 1. Without this, main_red_detected
@@ -469,6 +472,22 @@ board_vitals_check() {
         incidents=$((incidents+1))
         _bv_maybe_page "main_red" \
 "🔴 **main CI red ${main_red_span}m.** main has been failing for ${main_red_span}m (threshold ${main_red_min}m) — the whole fleet builds on red. A human should look. (board-vitals.sh)"
+    fi
+
+    # ── 4b · MAIN sustained-red ALARM (RESILIENT-1128, RESILIENT-417 slice) ──
+    # Section 4 above pages at the "act now" bar (default 30m) under the
+    # generic "main_red" signature. This is a SEPARATE, dedicated detector for
+    # the "this has been broken for days" bar (default 48h) — logged under
+    # its own sustained_main_red kind so a downstream consumer doesn't have to
+    # infer "sustained" by thresholding board_vitals_page_sent's main_red span
+    # field itself. Reuses the same main_red_span computed in 3b, so a
+    # transient red (any span short of the threshold) never emits this —
+    # no separate false-positive surface to maintain.
+    local sustained_main_red_min
+    sustained_main_red_min="${CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN:-2880}"  # 48h
+    if (( main_red_span >= sustained_main_red_min )); then
+        _bv_emit "sustained_main_red" \
+"\"main_red_span_min\":${main_red_span},\"threshold_min\":${sustained_main_red_min}"
     fi
 
     # ── 5 · FLOOR: credential / credit needs — genuinely Jeff's to fix ───────

@@ -266,6 +266,42 @@ BG="$TMP/blocked-green.jsonl"
 _notemitted "5 in-flight PRs + main GREEN → merge_stall still suppressed (unchanged behavior)" \
     "$BG" '"board_vitals_page_(dryrun|sent)".*"merge_stall"'
 
+# ── RESILIENT-1128 (RESILIENT-417 slice): sustained_main_red 48h alarm ───────
+echo "[test-board-vitals] RESILIENT-1128: sustained_main_red fires only past the 48h-equivalent bar"
+SR="$TMP/sustained-red.jsonl"
+{
+  echo '{"ts":"2026-08-25T00:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T01:00:00Z","kind":"main_red_detected","status":"red"}'
+} > "$SR"
+( set -a
+  CHUMP_AMBIENT_LOG="$SR"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-sr"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999         # isolate: the 30m-bar page must not fire here
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0             # use the synthetic ambient lines above
+  CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN=2880 # 48h, the real default (explicit for clarity)
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "~49h consecutive red span → sustained_main_red logged" \
+    "$SR" '"sustained_main_red","main_red_span_min":29'
+
+echo "[test-board-vitals] RESILIENT-1128: transient red never crosses the 48h bar (no false positive)"
+TR="$TMP/transient-red.jsonl"
+{
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:40:00Z","kind":"main_red_detected","status":"red"}'
+} > "$TR"
+( set -a
+  CHUMP_AMBIENT_LOG="$TR"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-tr"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "40m transient red span → no sustained_main_red (no false positive)" \
+    "$TR" '"kind":"sustained_main_red"'
+
 echo
 echo "[test-board-vitals] PASS=$PASS FAIL=$FAIL"
 [[ "$FAIL" -eq 0 ]] || exit 1
