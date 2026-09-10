@@ -1,7 +1,7 @@
 - id: RESILIENT-629
   domain: RESILIENT
   title: "RESILIENT: Auto-sync main checkout with origin/main via cron and post-merge webhook (RESILIENT-149 slice)"
-  status: done
+  status: open
   priority: P1
   effort: s
   acceptance_criteria:
@@ -25,6 +25,4 @@
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
-  closed_date: '2026-09-10'
-  closed_pr: 4386
 
