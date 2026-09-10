@@ -681,6 +681,16 @@ jobs:
       - name: Fleet-health sentinel gate (RESILIENT-1052)
         run: bash scripts/ci/test-fleet-health-sentinel.sh
 
+      # RESILIENT-001: the mirror-converge jam. A node's working tree
+      # accumulates generated files (untracked docs/gaps/*.yaml mirrors, local
+      # chore(backlog) autocommits); a merge-based advance (`git pull`) then
+      # ABORTS on the untracked collision and the node silently sits stale for
+      # hours/days (cuphead ~4h, mugman ~2 DAYS). This gate proves the old
+      # `git pull` jams AND that backlog-sync.sh --reader now converges via
+      # `git reset --hard` over the same dirty tree while preserving ignored DBs.
+      - name: Mirror-converge dirty-tree gate (RESILIENT-001)
+        run: bash scripts/ci/test-backlog-sync-reader-dirty-tree.sh
+
       # RESILIENT-1055 / RESILIENT-1102: the shared organ-unit host-rewriter +
       # role-roster placement. Locks the byte-for-byte rewrite contract both
       # placers depend on, INCLUDING RESILIENT-1102: the baked
