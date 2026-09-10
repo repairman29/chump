@@ -140,13 +140,15 @@ install-git-guard-hook.sh
 # (mold/lld linker), not a service the fleet depends on to function.
 install-fast-linker.sh
 
-# reason: RESILIENT-300 — installs the primary-node (helsinki) ATC roster
-# (pr-lander + armed-rebaser system timers, node-refresh user timer). It is
-# node-specific bring-up, not something every fleet checkout runs — a laptop
-# dev checkout has no business enabling these. Invoked manually per
-# docs/process/LINUX_NODE_ONBOARDING.md when standing up/rebuilding the
-# primary shipping node.
-install-helsinki-atc.sh
+# reason: RESILIENT-300 — installs the primary-node (owned-iron, brain role)
+# ATC roster (pr-lander + armed-rebaser system timers, node-refresh user
+# timer). It is node-specific bring-up, not something every fleet checkout
+# runs — a laptop dev checkout has no business enabling these. Invoked
+# manually per docs/process/LINUX_NODE_ONBOARDING.md when standing up/
+# rebuilding the primary shipping node. (RESILIENT-1101: renamed from
+# install-helsinki-atc.sh — helsinki was decommissioned 2026-08-17; a
+# compat symlink of that name still resolves here.)
+install-atc.sh
 
 # reason: INFRA-2394 — weekly re-run of the installer-wiring audit
 # (scripts/audit/audit-launchd-installers.sh). Situational/opt-in: useful
@@ -157,7 +159,7 @@ install-installer-audit-launchd.sh
 # reason: RESILIENT-315 / RESILIENT-318 — Linux/systemd installer for the
 # Batched Merge Train (chump-integrator). Node-specific bring-up, not a
 # fresh-bootstrap requirement: the primary node gets it via the ATC roster
-# (install-helsinki-atc.sh SYSTEM_UNITS + organ-manifest.txt), and a laptop
+# (install-atc.sh SYSTEM_UNITS + organ-manifest.txt), and a laptop
 # dev checkout has no business enabling it. Run manually per
 # docs/process/SCALING.md / LINUX_NODE_ONBOARDING.md to install it standalone.
 install-integrator-daemon-systemd.sh
