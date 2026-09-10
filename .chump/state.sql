@@ -96635,7 +96635,7 @@ gaps:
 - id: RESILIENT-1102
   domain: RESILIENT
   title: Ratchet track solved stays solved
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -96645,6 +96645,8 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+  closed_date: '2026-09-10'
+  closed_pr: 4596
 
 - id: RESILIENT-1103
   domain: RESILIENT
@@ -96719,7 +96721,7 @@ gaps:
 - id: RESILIENT-1108
   domain: RESILIENT
   title: Organ-success verifier page or heal on FAILED result not just inactive
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -96729,6 +96731,7 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+  closed_pr: 4597
 
 - id: RESILIENT-1109
   domain: RESILIENT
@@ -96780,7 +96783,7 @@ gaps:
 - id: RESILIENT-1111
   domain: RESILIENT
   title: Surface verified-working N of M on the cockpit
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -96790,6 +96793,10 @@ gaps:
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+  closed_date: '2026-09-10'
+  closed_pr: 4599
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4599 titled 'RESILIENT-1111: ...' merged 2026-09-10; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: RESILIENT-1112
   domain: RESILIENT
