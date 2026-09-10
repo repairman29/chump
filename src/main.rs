@@ -193,6 +193,7 @@ mod phi_proxy;
 mod pilot_metrics;
 mod plan_mode;
 mod platform_router;
+mod playbook_registry;
 mod plugin;
 mod policy_override;
 mod pr_coupling_cost;
