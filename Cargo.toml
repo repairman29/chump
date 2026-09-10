@@ -80,6 +80,10 @@ name = "chump-consensus-aggregator-daemon"
 path = "src/bin/consensus_aggregator_daemon.rs"
 
 [[bin]]
+name = "openrouter-model-index"
+path = "src/bin/openrouter_model_index.rs"
+
+[[bin]]
 name = "quantum-tool-choice"
 path = "experiments/quantum_tool_choice.rs"
 
