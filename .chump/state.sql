@@ -56275,7 +56275,7 @@ gaps:
 - id: EFFECTIVE-319
   domain: EFFECTIVE
   title: "chump impact <diff>: enumerate which gates/tests a diff exercises (blast-radius preview before push)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -56284,6 +56284,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 5 slices: EFFECTIVE-1562, EFFECTIVE-1563, EFFECTIVE-1564, EFFECTIVE-1565, EFFECTIVE-1566
+    [2026-09-10T17:28:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3316B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
   evidence: |
@@ -197117,7 +197118,7 @@ gaps:
 - id: PRODUCT-177
   domain: PRODUCT
   title: "voice seam: Siri Shortcut → key-gated orchestrator ask endpoint (port olive's production pattern)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   description: |
@@ -197130,6 +197131,7 @@ gaps:
     - unknown or revoked key is refused with a spoken reconnect hint, never a silent failure
   notes: |
     Decomposed into 7 slices: PRODUCT-223, PRODUCT-224, PRODUCT-225, PRODUCT-226, PRODUCT-227, PRODUCT-228, PRODUCT-229
+    [2026-09-10T17:30:07Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1267B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   source_doc: docs/ALMANAC.md
   opened_date: '2026-08-19'
 
