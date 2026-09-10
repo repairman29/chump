@@ -387,6 +387,7 @@ REPLY_TO=""
 URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
 AWAIT=0
+STRICT=0
 while :; do
     case "${1:-}" in
         --await)
@@ -426,6 +427,10 @@ while :; do
             ;;
         --no-fanout)
             NO_FANOUT="1"
+            shift
+            ;;
+        --strict)
+            STRICT=1
             shift
             ;;
         *) break ;;
