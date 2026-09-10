@@ -950,10 +950,12 @@ place_role_unit_files() {
       local src="$dispatch/$f" dest="$dest_dir/$f"
       [ -f "$src" ] || continue    # not every base has both a .service and a .timer
       keep=0; [ -n "${_KEEP_ROOT[$f]:-}" ] && keep=1
-      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep"; then
-        # Repo-path rewrite: the tracked units bake ~/Projects/chump; this box's
-        # repo is at $NODE_DIR/repo. Rewrite the (post-home-rewrite) repo path.
-        sed -i "s#${run_home%/}/Projects/chump#${NODE_DIR}/repo#g" "$dest" 2>/dev/null || true
+      # RESILIENT-1102: pass this box's ACTUAL repo ($NODE_DIR/repo, where
+      # node-install clones — NOT ~/Projects/chump) so the shared rewriter bakes
+      # a WorkingDirectory/ExecStart that exists. The repo-path rewrite now lives
+      # in organ_unit_host_rewrite itself (single source of truth), so both this
+      # placer and install-helsinki-atc.sh converge identically — no post-hoc sed.
+      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep" "$repo"; then
         placed+=("$f")
       fi
     done

@@ -278,7 +278,26 @@ echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board
 # organ-watchdog end the shipped-but-dark disease on any node, not just helsinki.
 RUN_USER="${CHUMP_RUN_USER:-$(stat -c %U "$REPO_ROOT" 2>/dev/null || echo root)}"
 RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6 || true)"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
-echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME"
+
+# RESILIENT-1102: the repo path baked into every organ's WorkingDirectory/
+# ExecStart. It MUST be this box's REAL checkout — owned nodes live at
+# $HOME/chump (no Projects segment), and the pre-fix rewriter preserved a baked
+# `Projects/chump` suffix that pointed at a non-existent dir, so systemd killed
+# every organ at CHDIR (status=200/CHDIR) before it ran. Normally $REPO_ROOT is
+# exactly right (organ-deploy runs this installer from the persistent checkout).
+# The ONE exception is the INFRA-3598 class: a manual run from an ephemeral
+# .claude/worktrees/<gap>/ dir would bake a path that vanishes at session end,
+# reintroducing the same break — so when $REPO_ROOT looks ephemeral, fall back
+# to a stable on-disk checkout ($HOME/chump, then the legacy $HOME/Projects/chump,
+# then $HOME/chump-host) rather than the worktree.
+UNIT_REPO_ROOT="$REPO_ROOT"
+if [[ "$REPO_ROOT" == *"/.claude/worktrees/"* ]]; then
+  for _cand in "${RUN_HOME%/}/chump" "${RUN_HOME%/}/Projects/chump" "${RUN_HOME%/}/chump-host"; do
+    if [[ -e "$_cand/.git" ]]; then UNIT_REPO_ROOT="$_cand"; break; fi
+  done
+  echo "  NOTE: ephemeral worktree ($REPO_ROOT) — baking stable repo path $UNIT_REPO_ROOT into organ units"
+fi
+echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME repo=$UNIT_REPO_ROOT"
 mkdir -p "$SYSTEMD_DEST_DIR"
 CHANGED_UNITS=()
 # RESILIENT-374: organs whose JOB is the privileged system-unit deploy itself
@@ -309,7 +328,7 @@ for unit in "${SYSTEM_UNITS[@]}"; do
   # uniform host-agnostic runtime context (User/HOME/WorkingDirectory/PATH), and
   # (for the keep-root deploy organ) re-asserts User=root.
   _keep_root=0; [[ -n "${_KEEP_ROOT_ORGANS[$unit]:-}" ]] && _keep_root=1
-  organ_unit_host_rewrite "$src" "$tmp" "$RUN_USER" "$RUN_HOME" "$_keep_root"
+  organ_unit_host_rewrite "$src" "$tmp" "$RUN_USER" "$RUN_HOME" "$_keep_root" "$UNIT_REPO_ROOT"
   if [[ ! -f "$dest" ]] || ! cmp -s "$tmp" "$dest"; then
     CHANGED_UNITS+=("$unit")
   fi

@@ -24,19 +24,32 @@
 # rewrites THAT home, then injects a uniform host-agnostic runtime context, so
 # the SAME manifest wires correctly on any host.
 
-# organ_unit_host_rewrite <src-file> <dest-file> <run-user> <run-home> [keep_root]
+# organ_unit_host_rewrite <src-file> <dest-file> <run-user> <run-home> [keep_root] [repo_root]
 #   Writes the host-rewritten unit from <src-file> to <dest-file>.
 #   run-user / run-home: the box's repo-owning user + that user's real HOME.
 #   keep_root (optional, "1"): force User=root even after the rewrite — for the
 #     one narrow class of organs whose JOB is the privileged system-unit deploy
 #     (chump-organ-deploy.*), which a de-privileged rewrite would break
 #     (RESILIENT-374). Everything else runs as the repo-owning user.
+#   repo_root (optional): the repo's ACTUAL checkout path on this host, baked
+#     into every WorkingDirectory=/ExecStart=/cd/CHUMP_REPO_ROOT= that names the
+#     repo. Historically the rewriter only prefix-swapped the source HOME and
+#     PRESERVED the baked `Projects/chump` suffix, so an owned node whose repo
+#     lives at $HOME/chump (NO Projects segment — the standard owned-iron layout)
+#     got units pointing at a non-existent $HOME/Projects/chump and systemd
+#     killed every organ at CHDIR (status=200/CHDIR) before it ran — the true
+#     root of the fleet-wide "merged != running" disease (RESILIENT-1102). Pass
+#     the real checkout root (install-helsinki-atc.sh -> $REPO_ROOT;
+#     chump-node-install.sh -> $NODE_DIR/repo) so the paths resolve on any node.
+#     Omitting it falls back to the legacy $HOME/Projects/chump assumption, so
+#     pre-existing 5-arg callers keep their exact prior behavior.
 #   Returns non-zero if <src-file> is missing.
 organ_unit_host_rewrite() {
-  local src="$1" dest="$2" run_user="$3" run_home="$4" keep_root="${5:-0}"
+  local src="$1" dest="$2" run_user="$3" run_home="$4" keep_root="${5:-0}" repo_root="${6:-}"
   [[ -f "$src" ]] || { echo "organ_unit_host_rewrite: missing src $src" >&2; return 1; }
 
-  local repo_on_host="${run_home%/}/Projects/chump"
+  local repo_on_host="${repo_root:-${run_home%/}/Projects/chump}"
+  repo_on_host="${repo_on_host%/}"
 
   # Detect the unit's OWN baked-in source user (its `User=` line; default root
   # when absent, matching the historical helsinki shape) and rewrite THAT home.
@@ -50,11 +63,23 @@ organ_unit_host_rewrite() {
     [[ -z "$src_home" ]] && src_home="/home/$src_user"
   fi
 
-  # s#$SRC_HOME/#...#g  -> path PREFIXES ($SRC_HOME/Projects, $SRC_HOME/.chump, …)
+  # s#$SRC_HOME/Projects/chump#$REPO_ON_HOST#g -> the repo path itself, wherever
+  #   it appears (WorkingDirectory=, ExecStart=, an inline `cd …`, CHUMP_REPO_ROOT=,
+  #   a PATH entry). It runs FIRST — BEFORE the home-prefix swap — so the whole
+  #   baked repo path is redirected to this box's ACTUAL checkout, not merely
+  #   home-prefix-swapped into a $HOME/Projects/chump that may not exist on an
+  #   owned node (the 200/CHDIR root, RESILIENT-1102). `chump` is always a
+  #   complete path segment here (the char after it is always /, ;, ), ", space,
+  #   or EOL — never `chumpX`), so a plain global swap cannot over-match a
+  #   sibling token. Assumes run-user == REPO_ROOT's owner (both placers derive
+  #   run-user via stat %U of the checkout), so the later home-swap never re-hits
+  #   $REPO_ON_HOST.
+  # s#$SRC_HOME/#...#g  -> remaining path PREFIXES ($SRC_HOME/.chump, $SRC_HOME/.cargo, …)
   # s#=$SRC_HOME$#...#  -> a BARE $SRC_HOME as the WHOLE value of an assignment
   #                       (chiefly `Environment=HOME=/root`, no trailing slash).
   # s#^User=$SRC_USER$# -> the User= line itself.
-  sed -e "s#${src_home%/}/#${run_home%/}/#g" \
+  sed -e "s#${src_home%/}/Projects/chump#${repo_on_host}#g" \
+      -e "s#${src_home%/}/#${run_home%/}/#g" \
       -e "s#=${src_home%/}\$#=${run_home%/}#" \
       -e "s#^User=${src_user}\$#User=${run_user}#" "$src" > "$dest"
 
