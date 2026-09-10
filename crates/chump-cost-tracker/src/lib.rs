@@ -53,7 +53,12 @@ pub fn provider_daily_summary() -> String {
             .map(|m| {
                 m.iter()
                     .map(|(name, (calls, tokens))| {
-                        format!("{}: {} calls, ~{}k tokens", name, calls, tokens / 1000)
+                        format!(
+                            "{}: {} calls, ~{}k tokens",
+                            name,
+                            calls,
+                            (tokens + 500) / 1000
+                        )
                     })
                     .collect::<Vec<_>>()
             })
