@@ -87119,13 +87119,14 @@ gaps:
 - id: INFRA-1748
   domain: INFRA
   title: "EFFECTIVE: main.rs decomposition PILOT — port chump fanout + chump rollup to inventory-style self-registration (INFRA-1687 follow-up; original was falsely auto-closed)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
     - chump fanout and chump rollup are moved out of src/main.rs into self-registering modules via the inventory pattern; main.rs no longer holds their command bodies; both run with identical output before/after; editing one no longer forces recompile of the other.
   notes: |
     Decomposed into 4 slices: INFRA-5754, INFRA-5755, INFRA-5756, INFRA-5757
+    [2026-09-10T09:39:51Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=942B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
