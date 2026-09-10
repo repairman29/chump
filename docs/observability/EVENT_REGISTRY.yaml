@@ -7027,6 +7027,39 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, reason]
 
+  - kind: almanac_fleet_index_started
+    effect_metric: self
+    emitter: scripts/index-almanac.sh (RESILIENT-404)
+    trigger: a fleet-wide almanac reindex sweep began — repo_count is how
+      many git checkouts were discovered under ALMANAC_FLEET_ROOTS.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repo_count, dry_run]
+
+  - kind: almanac_fleet_index_repo_failed
+    effect_metric: self
+    emitter: scripts/index-almanac.sh (RESILIENT-404)
+    trigger: one repo's per-repo index command exited non-zero during a
+      fleet sweep — logged and counted, not fatal to the rest of the sweep.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repo, path]
+
+  - kind: almanac_fleet_index_completed
+    effect_metric: self
+    emitter: scripts/index-almanac.sh (RESILIENT-404)
+    trigger: a fleet-wide almanac reindex sweep finished — ok_count/
+      fail_count give the per-repo outcome tally and the last-full-index
+      marker was written.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, repo_count, ok_count, fail_count, index_dir]
+
+  - kind: almanac_fleet_index_no_binary
+    effect_metric: self
+    emitter: scripts/index-almanac.sh (RESILIENT-404)
+    trigger: the almanac CLI was absent at ALMANAC_BIN — the sweep was
+      skipped entirely instead of silently no-op'ing.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, bin]
+
   - kind: vision_acuity
     effect_metric: almanac_summary_coverage_pct
     emitter: scripts/ops/almanac-vision-keeper.sh (INFRA-3637)
