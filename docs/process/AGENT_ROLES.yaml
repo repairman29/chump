@@ -1,0 +1,51 @@
+# docs/process/AGENT_ROLES.yaml
+#
+# INFRA-5773 (INFRA-1863 slice): registry of legitimate agent roles for
+# `chump claim --role <role>` (crates/chump-atomic-claim/src/atomic_claim.rs).
+# Role-scoped claims are the Child C slice of the owner-by-scope vision
+# (docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md) — `--role` is orthogonal to
+# `--paths`; paths stay optional/advisory when a role is declared.
+#
+# Read by: crates/chump-atomic-claim/src/atomic_claim.rs (`known_role_names`)
+#
+# Schema per entry:
+#   name:        role identifier, matches --role <name> exactly (kebab-case)
+#   skills:      short list of skill/domain tags this role is expected to own
+#   description: one-line summary of the role's lane
+#
+# Adding a role: append an entry here. No code change needed — the claim
+# validator reads this file's `name:` list at claim time.
+
+version: 1
+roles:
+  - name: curator
+    skills: [fleet-health, doctrine, coordination]
+    description: Generic long-running curator loop (see .claude/agents/*.md for specific curator lanes)
+
+  - name: fleet-worker
+    skills: [rust, shell, general-implementation]
+    description: Pull-model worker that claims and ships individual gaps from state.db
+
+  - name: paramedic
+    skills: [pr-rescue, wedge-recovery, ci-triage]
+    description: Emergency responder for wedged/stuck PRs and fleet-health incidents
+
+  - name: ci-audit
+    skills: [ci, flake-triage, test-gates]
+    description: CI/test-gate curator — decomposes failure clusters into flake/logic-bug/missing-gate buckets
+
+  - name: handoff
+    skills: [typed-contracts, dispatch-routing, lease-collision]
+    description: Routes sub-agent dispatch through typed contracts and checks active leases before edits
+
+  - name: target
+    skills: [demo-target, external-repo, umbrella-decomposition]
+    description: Demo-target and Column-A stewardship, external-repo gap work
+
+  - name: decompose
+    skills: [gap-slicing, umbrella-audit]
+    description: Slices umbrella gaps into concrete sub-gaps against current-codebase context
+
+  - name: shepherd
+    skills: [pr-rescue, rebase, cluster-diagnosis]
+    description: PR-rescue curator — unwedges BEHIND/BLOCKED/DIRTY PRs, diagnoses cross-PR clusters

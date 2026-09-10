@@ -83,6 +83,12 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-5773 (INFRA-1863 slice): declares a role from
+    /// `docs/process/AGENT_ROLES.yaml`. Validated against the registry
+    /// before any state mutation; unregistered roles are rejected with a
+    /// clear error. Orthogonal to `--paths` — role-scoped claims keep
+    /// paths optional/advisory.
+    pub role: Option<String>,
 }
 
 impl ClaimArgs {
@@ -105,6 +111,8 @@ impl ClaimArgs {
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --role ROLE      Declare a role from docs/process/AGENT_ROLES.yaml (INFRA-1863 slice);\n                        \
+                                        rejected if ROLE is not in the registry\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -152,6 +160,7 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut role: Option<String> = None;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,6 +225,14 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--role" => {
+                    role = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--role needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -245,8 +262,50 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            role,
         })
     }
+}
+
+/// INFRA-5773 (INFRA-1863 slice): parse the `name:` field of each role entry
+/// in `docs/process/AGENT_ROLES.yaml`. Deliberately avoids a YAML-parsing
+/// dependency — the schema is a flat list of `- name: <value>` lines, so a
+/// line-oriented scan is sufficient and keeps this crate's dependency
+/// footprint small (EFFECTIVE-399 build-speed rationale).
+pub fn known_role_names(repo_root: &Path) -> Vec<String> {
+    let path = repo_root.join("docs/process/AGENT_ROLES.yaml");
+    let Ok(text) = std::fs::read_to_string(&path) else {
+        return Vec::new();
+    };
+    text.lines()
+        .filter_map(|line| {
+            let line = line.trim();
+            let rest = line.strip_prefix("- name:")?;
+            Some(rest.trim().to_string())
+        })
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Validate `role` against the `docs/process/AGENT_ROLES.yaml` registry.
+/// Returns a clear, actionable error listing the registered roles when
+/// `role` is not found (or the registry is missing/empty).
+pub fn validate_role(repo_root: &Path, role: &str) -> Result<()> {
+    let known = known_role_names(repo_root);
+    if known.iter().any(|r| r == role) {
+        return Ok(());
+    }
+    if known.is_empty() {
+        bail!(
+            "--role {role} rejected: docs/process/AGENT_ROLES.yaml is missing or empty \
+             (expected at {})",
+            repo_root.join("docs/process/AGENT_ROLES.yaml").display()
+        );
+    }
+    bail!(
+        "--role {role} is not registered in docs/process/AGENT_ROLES.yaml. Known roles: {}",
+        known.join(", ")
+    );
 }
 
 /// Outcome of a successful claim.
@@ -332,6 +391,25 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
     let mut gates = Vec::new();
     let mut has_fail = false;
     let mut has_warn = false;
+
+    // Gate 0: --role validation against docs/process/AGENT_ROLES.yaml (INFRA-5773)
+    if let Some(role) = &args.role {
+        match validate_role(&args.repo_root, role) {
+            Ok(()) => gates.push(GateResult {
+                gate: "role".to_string(),
+                status: "pass".to_string(),
+                message: format!("--role {role} is registered in AGENT_ROLES.yaml"),
+            }),
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "role".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
 
     // Gate 1: Fetch + verify state.db status
     let fetch_result = run_git(
@@ -675,6 +753,14 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
              `chump fleet level 5` to re-enable the fleet.",
             level
         );
+    }
+
+    // INFRA-5773 (INFRA-1863 slice): validate --role against
+    // docs/process/AGENT_ROLES.yaml BEFORE any state mutation. Pure file
+    // read, no chump-op/DB/network — safe to run immediately after the
+    // kill switch.
+    if let Some(role) = &args.role {
+        validate_role(&args.repo_root, role)?;
     }
 
     // 1. Fetch latest base branch — best-effort; the worktree-add will
