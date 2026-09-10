@@ -9,6 +9,12 @@ last_audited: 2026-04-25
 Hermes Phase 1.5. Chump's core agent loop is platform-agnostic; messaging
 platforms plug in through the `PlatformAdapter` trait in `src/adapters/mod.rs`.
 
+> **Default transport + failover for fleet-to-human notifications** (outbound
+> alerts, not this inbound-adapter trait) is decided in
+> [`docs/design/MESSAGING_TRANSPORT_FALLBACK.md`](../design/MESSAGING_TRANSPORT_FALLBACK.md)
+> (RESILIENT-270): Discord first, Telegram fallback, config-selected at
+> runtime — never a cargo-feature default.
+
 ## Architecture
 
 ```

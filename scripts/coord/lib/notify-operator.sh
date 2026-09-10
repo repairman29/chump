@@ -310,10 +310,56 @@ notify_operator() {
     _notify_deliver "$content"
 }
 
-# _notify_deliver — the actual Discord REST send, extracted out of
+# _notify_deliver — RESILIENT-270: the fallback chain, not just Discord.
+# Rung 1 (default, verified by a real send 2026-08-09) is Discord via
+# _notify_deliver_discord. If that rung is unreachable — configured but the
+# send fails, NOT simply unconfigured — the failure is recorded to ambient
+# (so "Discord was down at 3am" is visible after the fact, not inferred from
+# silence) and rung 2 (Telegram, config-gated, UNVERIFIED until a real send
+# proves it — see docs/design/MESSAGING_TRANSPORT_FALLBACK.md) is attempted
+# if TELEGRAM_BOT_TOKEN + TELEGRAM_CHAT_ID are both set. Selection is a
+# config read (env/.env), never a cargo feature — that is the whole point of
+# this gap: a default that depends on a compile-time flag is a default that
+# silently is not there.
+_notify_deliver() {
+    local content="${1:-}"
+    [[ -n "${content//[[:space:]]/}" ]] || return 0
+
+    _notify_deliver_discord "$content" && return 0
+    local discord_rc=$?
+
+    # Unconfigured (rc via the SKIP path below returns 0, not here) never
+    # reaches this branch; only a CONFIGURED-but-failed Discord send does.
+    # scanner-anchor: "kind":"notify_discord_failed"
+    _notify_emit "notify_discord_failed" ""
+    echo "[notify-operator] Discord rung failed — attempting Telegram fallback" >&2
+
+    local tg_token tg_chat
+    tg_token="$(_notify_env TELEGRAM_BOT_TOKEN)"
+    tg_chat="$(_notify_env TELEGRAM_CHAT_ID)"
+    if [[ -z "$tg_token" || -z "$tg_chat" ]]; then
+        # scanner-anchor: "kind":"notify_fallback_unavailable"
+        _notify_emit "notify_fallback_unavailable" ",\"rung\":\"telegram\",\"reason\":\"unconfigured\""
+        echo "[notify-operator] Telegram fallback unavailable: TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID unset" >&2
+        return "$discord_rc"
+    fi
+
+    if _notify_deliver_telegram "$content" "$tg_token" "$tg_chat"; then
+        # scanner-anchor: "kind":"notify_fallback_delivered"
+        _notify_emit "notify_fallback_delivered" ",\"rung\":\"telegram\""
+        echo "[notify-operator] delivered via Telegram fallback" >&2
+        return 0
+    fi
+    # scanner-anchor: "kind":"notify_fallback_failed"
+    _notify_emit "notify_fallback_failed" ",\"rung\":\"telegram\""
+    echo "[notify-operator] FAIL: Telegram fallback also failed — no rung delivered" >&2
+    return 1
+}
+
+# _notify_deliver_discord — the actual Discord REST send, extracted out of
 # notify_operator so discord-curator-flush.sh can deliver ONE combined message
 # without re-running the per-signal escalation classification above.
-_notify_deliver() {
+_notify_deliver_discord() {
     local content="${1:-}"
     [[ -n "${content//[[:space:]]/}" ]] || return 0
 
@@ -411,6 +457,81 @@ for i, chunk in enumerate(out, 1):
         return 0
     fi
     echo "[notify-operator] FAIL: ${failed} of $((sent + failed)) part(s) failed" >&2
+    return 1
+}
+
+# _notify_deliver_telegram — RESILIENT-270 rung 2. Plain Bot HTTP API
+# sendMessage, mirroring the bash-mirrors-Rust shape of _notify_deliver_discord
+# (src/telegram.rs's own sendMessage call is the Rust-side reference — same
+# endpoint, no cargo feature, no gateway required for outbound-only use).
+# Telegram's text limit is 4096 chars; chunk rather than truncate for the same
+# reason Discord does (RESILIENT-263) — the tail of an escalation is the ask.
+#
+#   UNVERIFIED (RESILIENT-270, 2026-09-10): TELEGRAM_CHAT_ID is not currently
+#   set anywhere in the fleet, so this path has never delivered a real
+#   message to a real device. Labelled per AC6 — do not treat this rung as
+#   proven until a real send confirms it, then update this comment and
+#   docs/design/MESSAGING_TRANSPORT_FALLBACK.md.
+_notify_deliver_telegram() {
+    local content="${1:-}" token="${2:-}" chat_id="${3:-}"
+    [[ -n "${content//[[:space:]]/}" ]] || return 0
+    [[ -n "$token" && -n "$chat_id" ]] || return 1
+
+    local -a parts=()
+    while IFS= read -r part; do
+        [[ -n "$part" ]] && parts+=("$(printf '%b' "$part")")
+    done < <(printf '%s' "$content" | python3 -c '
+import sys
+LIMIT = 4000
+text = sys.stdin.read()
+out, buf = [], ""
+def flush():
+    global buf
+    if buf.strip():
+        out.append(buf.rstrip("\n"))
+    buf = ""
+for para in text.split("\n"):
+    while len(para) > LIMIT:
+        cut = para.rfind(" ", 0, LIMIT)
+        if cut <= 0:
+            cut = LIMIT
+        if len(buf) + len(para[:cut]) + 1 > LIMIT:
+            flush()
+        buf += para[:cut] + "\n"
+        para = para[cut:].lstrip()
+    if len(buf) + len(para) + 1 > LIMIT:
+        flush()
+    buf += para + "\n"
+flush()
+for i, chunk in enumerate(out, 1):
+    if len(out) > 1:
+        chunk = f"({i}/{len(out)}) " + chunk
+    print(chunk.replace("\\", "\\\\").replace("\n", "\\n"))
+' 2>/dev/null)
+    if (( ${#parts[@]} == 0 )); then parts=("$content"); fi
+
+    local api="https://api.telegram.org/bot${token}/sendMessage"
+    local code sent=0 failed=0
+    for part in "${parts[@]}"; do
+        code="$(CHAT_ID="$chat_id" TEXT="$part" python3 -c \
+                'import json,os,sys;print(json.dumps({"chat_id":int(os.environ["CHAT_ID"]),"text":os.environ["TEXT"]}))' \
+            | curl -sS --max-time 10 -o /dev/null -w '%{http_code}' \
+                -X POST "$api" \
+                -H "Content-Type: application/json" \
+                --data @- 2>/dev/null)" || true
+        if [[ "$code" == "200" ]]; then
+            sent=$((sent + 1))
+        else
+            failed=$((failed + 1))
+            echo "[notify-operator] FAIL (telegram): part returned HTTP ${code:-000}" >&2
+        fi
+    done
+
+    if (( failed == 0 && sent > 0 )); then
+        echo "[notify-operator] delivered via telegram (${sent} part(s))" >&2
+        return 0
+    fi
+    echo "[notify-operator] FAIL (telegram): ${failed} of $((sent + failed)) part(s) failed" >&2
     return 1
 }
 
