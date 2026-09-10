@@ -289,3 +289,413 @@ impl MissionStore for FileBackedMissionStore {
         Ok(out)
     }
 }
+
+/// Classification of failure severity for retry logic.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum FailureClass {
+    /// Transient failures that may succeed on retry (e.g., network timeouts, rate limits).
+    Transient,
+    /// Permanent failures that require operator intervention (e.g., validation errors, not found).
+    Permanent,
+    /// Unknown failure class; defaults to transient for safety.
+    Unknown,
+}
+
+impl FailureClass {
+    /// Returns true if the failure class is transient.
+    pub fn is_transient(self) -> bool {
+        matches!(self, FailureClass::Transient)
+    }
+
+    /// Returns true if the failure class is permanent.
+    pub fn is_permanent(self) -> bool {
+        matches!(self, FailureClass::Permanent)
+    }
+
+    /// String representation for logging and events.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FailureClass::Transient => "transient",
+            FailureClass::Permanent => "permanent",
+            FailureClass::Unknown => "unknown",
+        }
+    }
+}
+
+/// Maps an error type and optional status code to a failure class.
+///
+/// This helper centralizes the logic for determining whether an error is
+/// transient or permanent based on common patterns.
+pub fn map_error_to_failure_class(
+    err: &dyn std::error::Error,
+    status_code: Option<u16>,
+) -> FailureClass {
+    // First, check if we have a status code (HTTP-like errors)
+    if let Some(code) = status_code {
+        match code {
+            408 | 429 | 500 | 502 | 503 | 504 => return FailureClass::Transient,
+            400 | 401 | 403 | 404 | 409 | 422 => return FailureClass::Permanent,
+            _ => return FailureClass::Unknown,
+        }
+    }
+
+    // Fallback to error type inspection
+    let err_str = err.to_string().to_lowercase();
+    if err_str.contains("timeout")
+        || err_str.contains("network")
+        || err_str.contains("connection")
+        || err_str.contains("rate limit")
+        || err_str.contains("temporarily unavailable")
+    {
+        return FailureClass::Transient;
+    }
+    if err_str.contains("not found")
+        || err_str.contains("invalid")
+        || err_str.contains("validation")
+        || err_str.contains("unauthorized")
+        || err_str.contains("forbidden")
+    {
+        return FailureClass::Permanent;
+    }
+    FailureClass::Unknown
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_failure_class_as_str() {
+        assert_eq!(FailureClass::Transient.as_str(), "transient");
+        assert_eq!(FailureClass::Permanent.as_str(), "permanent");
+        assert_eq!(FailureClass::Unknown.as_str(), "unknown");
+    }
+
+    #[test]
+    fn test_map_error_to_failure_class_status_codes() {
+        // Mock error type
+        let err = std::io::Error::new(std::io::ErrorKind::Other, "mock");
+
+        // Transient status codes
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(408)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(429)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(500)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(502)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(503)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(504)),
+            FailureClass::Transient
+        );
+
+        // Permanent status codes
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(400)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(401)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(403)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(404)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(409)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(422)),
+            FailureClass::Permanent
+        );
+
+        // Unknown status code
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(418)),
+            FailureClass::Unknown
+        );
+    }
+
+    #[test]
+    fn test_map_error_to_failure_class_error_strings() {
+        let err_timeout = std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout");
+        assert_eq!(
+            map_error_to_failure_class(&err_timeout, None),
+            FailureClass::Transient
+        );
+
+        let err_network =
+            std::io::Error::new(std::io::ErrorKind::NotConnected, "network unreachable");
+        assert_eq!(
+            map_error_to_failure_class(&err_network, None),
+            FailureClass::Transient
+        );
+
+        let err_rate_limit = std::io::Error::new(std::io::ErrorKind::Other, "rate limit exceeded");
+        assert_eq!(
+            map_error_to_failure_class(&err_rate_limit, None),
+            FailureClass::Transient
+        );
+
+        let err_not_found = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        assert_eq!(
+            map_error_to_failure_class(&err_not_found, None),
+            FailureClass::Permanent
+        );
+
+        let err_invalid = std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid input");
+        assert_eq!(
+            map_error_to_failure_class(&err_invalid, None),
+            FailureClass::Permanent
+        );
+
+        let err_validation = std::io::Error::new(std::io::ErrorKind::Other, "validation failed");
+        assert_eq!(
+            map_error_to_failure_class(&err_validation, None),
+            FailureClass::Permanent
+        );
+
+        let err_unauthorized =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unauthorized");
+        assert_eq!(
+            map_error_to_failure_class(&err_unauthorized, None),
+            FailureClass::Permanent
+        );
+
+        let err_forbidden = std::io::Error::new(std::io::ErrorKind::Other, "forbidden");
+        assert_eq!(
+            map_error_to_failure_class(&err_forbidden, None),
+            FailureClass::Permanent
+        );
+
+        let err_unknown = std::io::Error::new(std::io::ErrorKind::Other, "some random error");
+        assert_eq!(
+            map_error_to_failure_class(&err_unknown, None),
+            FailureClass::Unknown
+        );
+    }
+}
+
+/// Classification of failure severity for retry logic.
+#[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
+pub enum FailureClass {
+    /// Transient failures that may succeed on retry (e.g., network timeouts, rate limits).
+    Transient,
+    /// Permanent failures that require operator intervention (e.g., validation errors, not found).
+    Permanent,
+    /// Unknown failure class; defaults to transient for safety.
+    Unknown,
+}
+
+impl FailureClass {
+    /// Returns true if the failure class is transient.
+    pub fn is_transient(self) -> bool {
+        matches!(self, FailureClass::Transient)
+    }
+
+    /// Returns true if the failure class is permanent.
+    pub fn is_permanent(self) -> bool {
+        matches!(self, FailureClass::Permanent)
+    }
+
+    /// String representation for logging and events.
+    pub fn as_str(self) -> &'static str {
+        match self {
+            FailureClass::Transient => "transient",
+            FailureClass::Permanent => "permanent",
+            FailureClass::Unknown => "unknown",
+        }
+    }
+}
+
+/// Maps an error type and optional status code to a failure class.
+///
+/// This helper centralizes the logic for determining whether an error is
+/// transient or permanent based on common patterns.
+pub fn map_error_to_failure_class(
+    err: &dyn std::error::Error,
+    status_code: Option<u16>,
+) -> FailureClass {
+    // First, check if we have a status code (HTTP-like errors)
+    if let Some(code) = status_code {
+        match code {
+            408 | 429 | 500 | 502 | 503 | 504 => return FailureClass::Transient,
+            400 | 401 | 403 | 404 | 409 | 422 => return FailureClass::Permanent,
+            _ => return FailureClass::Unknown,
+        }
+    }
+
+    // Fallback to error type inspection
+    let err_str = err.to_string().to_lowercase();
+    if err_str.contains("timeout")
+        || err_str.contains("network")
+        || err_str.contains("connection")
+        || err_str.contains("rate limit")
+        || err_str.contains("temporarily unavailable")
+    {
+        return FailureClass::Transient;
+    }
+    if err_str.contains("not found")
+        || err_str.contains("invalid")
+        || err_str.contains("validation")
+        || err_str.contains("unauthorized")
+        || err_str.contains("forbidden")
+    {
+        return FailureClass::Permanent;
+    }
+    FailureClass::Unknown
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_failure_class_as_str() {
+        assert_eq!(FailureClass::Transient.as_str(), "transient");
+        assert_eq!(FailureClass::Permanent.as_str(), "permanent");
+        assert_eq!(FailureClass::Unknown.as_str(), "unknown");
+    }
+
+    #[test]
+    fn test_map_error_to_failure_class_status_codes() {
+        // Mock error type
+        let err = std::io::Error::new(std::io::ErrorKind::Other, "mock");
+
+        // Transient status codes
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(408)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(429)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(500)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(502)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(503)),
+            FailureClass::Transient
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(504)),
+            FailureClass::Transient
+        );
+
+        // Permanent status codes
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(400)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(401)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(403)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(404)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(409)),
+            FailureClass::Permanent
+        );
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(422)),
+            FailureClass::Permanent
+        );
+
+        // Unknown status code
+        assert_eq!(
+            map_error_to_failure_class(&err, Some(418)),
+            FailureClass::Unknown
+        );
+    }
+
+    #[test]
+    fn test_map_error_to_failure_class_error_strings() {
+        let err_timeout = std::io::Error::new(std::io::ErrorKind::TimedOut, "timeout");
+        assert_eq!(
+            map_error_to_failure_class(&err_timeout, None),
+            FailureClass::Transient
+        );
+
+        let err_network =
+            std::io::Error::new(std::io::ErrorKind::NotConnected, "network unreachable");
+        assert_eq!(
+            map_error_to_failure_class(&err_network, None),
+            FailureClass::Transient
+        );
+
+        let err_rate_limit = std::io::Error::new(std::io::ErrorKind::Other, "rate limit exceeded");
+        assert_eq!(
+            map_error_to_failure_class(&err_rate_limit, None),
+            FailureClass::Transient
+        );
+
+        let err_not_found = std::io::Error::new(std::io::ErrorKind::NotFound, "not found");
+        assert_eq!(
+            map_error_to_failure_class(&err_not_found, None),
+            FailureClass::Permanent
+        );
+
+        let err_invalid = std::io::Error::new(std::io::ErrorKind::InvalidInput, "invalid input");
+        assert_eq!(
+            map_error_to_failure_class(&err_invalid, None),
+            FailureClass::Permanent
+        );
+
+        let err_validation = std::io::Error::new(std::io::ErrorKind::Other, "validation failed");
+        assert_eq!(
+            map_error_to_failure_class(&err_validation, None),
+            FailureClass::Permanent
+        );
+
+        let err_unauthorized =
+            std::io::Error::new(std::io::ErrorKind::PermissionDenied, "unauthorized");
+        assert_eq!(
+            map_error_to_failure_class(&err_unauthorized, None),
+            FailureClass::Permanent
+        );
+
+        let err_forbidden = std::io::Error::new(std::io::ErrorKind::Other, "forbidden");
+        assert_eq!(
+            map_error_to_failure_class(&err_forbidden, None),
+            FailureClass::Permanent
+        );
+
+        let err_unknown = std::io::Error::new(std::io::ErrorKind::Other, "some random error");
+        assert_eq!(
+            map_error_to_failure_class(&err_unknown, None),
+            FailureClass::Unknown
+        );
+    }
+}
