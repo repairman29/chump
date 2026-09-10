@@ -96,6 +96,16 @@ else
 fi
 
 # ── Check 2: Mass deletions from unrelated files ──────────────────────────────
+# An explicit Revert commit (subject starting with "Revert", matching
+# check-pr-scope.sh Rule B) legitimizes deleting files that aren't otherwise
+# named in the PR title/body — the revert IS the explanation. Without this,
+# a genuine `git revert` of a large addition false-positives here even
+# though check-pr-scope.sh's silent-revert check already passes it.
+_revert_commit_count="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null \
+    | grep -icE "^revert" || true)"
+HAS_REVERT_COMMIT=0
+[[ "$_revert_commit_count" -gt 0 ]] && HAS_REVERT_COMMIT=1
+
 # Collect PR context: title + body from gh CLI if available, else from commit messages
 PR_CONTEXT=""
 if command -v gh &>/dev/null; then
