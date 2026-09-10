@@ -193011,7 +193011,7 @@ gaps:
 - id: MISSION-076
   domain: MISSION
   title: "multi-repo execution lane: ChumpOS can TAG external-repo work but cannot EXECUTE it — 77 gaps stranded"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -193024,6 +193024,7 @@ gaps:
     - "OBSERVATION BEFORE ACTION: do not run autonomous agents across 90 repos while CREDIBLE-220 (nothing watches non-chump CI — two repos sat red ~6 months) and RESILIENT-247 (pr-rescue.sh exists but is unscheduled) are open. You cannot supervise what you cannot see"
   notes: |
     Decomposed into 6 slices: MISSION-097, MISSION-098, MISSION-099, MISSION-100, MISSION-101, MISSION-102
+    [2026-09-10T12:00:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2875B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: MISSION-032
 
@@ -197908,7 +197909,7 @@ gaps:
 - id: RESILIENT-087
   domain: RESILIENT
   title: "RESILIENT P0: the fleet CANNOT self-restart headlessly — tmux worker-launch needs a TTY; any halt requires a human terminal (blocks unattended autonomy / empty-conductor-chair / BEAST)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   description: |
@@ -197920,6 +197921,7 @@ gaps:
     - MISSION-010 unattended operation is possible (fleet survives + self-recovers a halt overnight, no human terminal)
   notes: |
     Decomposed into 5 slices: RESILIENT-1097, RESILIENT-1098, RESILIENT-1099, RESILIENT-1100, RESILIENT-1101
+    [2026-09-10T11:51:07Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1112B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
