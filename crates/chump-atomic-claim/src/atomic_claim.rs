@@ -83,6 +83,12 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-5775: acknowledge a claim whose `--paths` span more than one
+    /// top-level directory. Required together with `reason` or the claim
+    /// is rejected outright (see `guard_and_narrow_paths`).
+    pub broad: bool,
+    /// INFRA-5775: human-readable justification required alongside `--broad`.
+    pub reason: Option<String>,
 }
 
 impl ClaimArgs {
@@ -105,6 +111,10 @@ impl ClaimArgs {
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --broad          Acknowledge a --paths claim spanning >1 top-level directory\n                        \
+                                        (requires --reason; INFRA-5775). Multi-dir claims without --broad\n                        \
+                                        auto-narrow to the most-specific common parent directory.\n  \
+                       --reason TEXT    Justification required alongside --broad\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -152,6 +162,8 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut broad = false;
+        let mut reason: Option<String> = None;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,6 +228,18 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--broad" => {
+                    broad = true;
+                    i += 1;
+                }
+                "--reason" => {
+                    reason = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--reason needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -245,6 +269,8 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            broad,
+            reason,
         })
     }
 }
@@ -656,7 +682,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
 
 /// Run the atomic claim. Each step is a separate function so the unit
 /// tests can exercise individual pieces in isolation.
-pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
     // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
     // FIRST: must run BEFORE any state mutation OR any chump op that can
     // fail. Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
@@ -748,6 +774,29 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 );
             }
         }
+    }
+
+    // INFRA-5775: broad-scope claim guard + auto-narrowing (INFRA-1863 slice).
+    // A --paths CSV spanning >1 top-level directory needs an explicit
+    // --broad + --reason acknowledgement; a --paths CSV spanning >1
+    // directory within the SAME top-level directory is auto-narrowed to
+    // the most-specific common parent directory instead of being rejected.
+    // Runs before INFRA-1885 so the narrowed value is what gets breadth-checked.
+    if let Some(paths_csv) = &args.paths {
+        let early_session_id = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let ambient_log_early = args.repo_root.join(".chump-locks/ambient.jsonl");
+        let narrowed = guard_and_narrow_paths(
+            paths_csv,
+            args.broad,
+            args.reason.as_deref(),
+            &args.gap_id,
+            &early_session_id,
+            &ambient_log_early,
+        )?;
+        args.paths = Some(narrowed);
     }
 
     // INFRA-1885: lease-breadth cap — reject claims of exact top-level dirs
@@ -1547,6 +1596,163 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
 /// Top-level directory names that are too broad to hold as a lease path.
 /// Operators must supply a more specific sub-path (e.g. `src/foo.rs` instead
 /// of `src`) to avoid blocking sibling sessions for entire directory trees.
+/// INFRA-5775: split a `--paths` CSV into trimmed, non-empty path strings.
+fn split_paths_csv(paths_csv: &str) -> Vec<String> {
+    paths_csv
+        .split(',')
+        .map(|p| p.trim().to_string())
+        .filter(|p| !p.is_empty())
+        .collect()
+}
+
+/// INFRA-5775: the first path segment, e.g. `src` for `src/foo/bar.rs`.
+fn top_level_dir(path: &str) -> &str {
+    path.split('/').next().unwrap_or(path)
+}
+
+/// INFRA-5775: longest common path-component prefix across `paths`,
+/// joined back into a directory string. Falls back to `.` (repo root)
+/// when the paths share no common component.
+fn common_parent_dir(paths: &[String]) -> String {
+    let comp_lists: Vec<Vec<&str>> = paths.iter().map(|p| p.split('/').collect()).collect();
+    let min_len = comp_lists.iter().map(|c| c.len()).min().unwrap_or(0);
+    let mut common: Vec<&str> = Vec::new();
+    'outer: for i in 0..min_len {
+        let seg = comp_lists[0][i];
+        for c in &comp_lists[1..] {
+            if c[i] != seg {
+                break 'outer;
+            }
+        }
+        common.push(seg);
+    }
+    if common.is_empty() {
+        ".".to_string()
+    } else {
+        common.join("/")
+    }
+}
+
+/// INFRA-5775 (INFRA-1863 slice): broad-scope claim guard + auto-narrowing.
+///
+/// - `--paths` spanning >1 TOP-LEVEL directory (e.g. `src/a.rs,docs/b.md`)
+///   is rejected unless `--broad` is set AND a non-empty `--reason` is
+///   given; when both are present the claim proceeds unchanged and an
+///   audit event is emitted.
+/// - `--paths` spanning >1 directory within the SAME top-level directory
+///   (e.g. `src/foo/a.rs,src/bar/b.rs`) is silently auto-narrowed to the
+///   most-specific common parent directory (`src` in that example) —
+///   no flag required. `--broad` skips narrowing if the caller wants the
+///   original scope kept verbatim.
+/// - A single path, or paths that already share one directory, pass through
+///   unchanged.
+fn guard_and_narrow_paths(
+    paths_csv: &str,
+    broad: bool,
+    reason: Option<&str>,
+    gap_id: &str,
+    session_id: &str,
+    ambient_log: &Path,
+) -> Result<String> {
+    let paths = split_paths_csv(paths_csv);
+    if paths.len() <= 1 {
+        return Ok(paths_csv.to_string());
+    }
+
+    let top_dirs: std::collections::BTreeSet<&str> =
+        paths.iter().map(|p| top_level_dir(p)).collect();
+
+    if top_dirs.len() > 1 {
+        let reason_text = reason.map(str::trim).filter(|r| !r.is_empty());
+        return match (broad, reason_text) {
+            (true, Some(r)) => {
+                emit_claim_broad_scope(ambient_log, gap_id, session_id, &paths, r);
+                Ok(paths_csv.to_string())
+            }
+            (true, None) => bail!(
+                "INFRA-5775: --broad requires --reason '<text>' explaining why a \
+                 multi-directory claim is necessary."
+            ),
+            (false, _) => bail!(
+                "INFRA-5775: claim spans {} top-level directories ({}).\n  \
+                 Multi-directory claims require --broad + --reason '<text>'.\n  \
+                 Or narrow --paths to a single top-level directory.",
+                top_dirs.len(),
+                top_dirs.into_iter().collect::<Vec<_>>().join(", ")
+            ),
+        };
+    }
+
+    // Single top-level directory. If the caller explicitly wants the full
+    // scope kept (--broad, no cross-top-level violation), skip narrowing.
+    if broad {
+        return Ok(paths_csv.to_string());
+    }
+
+    let distinct_dirs: std::collections::BTreeSet<Option<&str>> = paths
+        .iter()
+        .map(|p| p.rsplit_once('/').map(|(dir, _)| dir))
+        .collect();
+    if distinct_dirs.len() <= 1 {
+        return Ok(paths_csv.to_string());
+    }
+
+    let narrowed = common_parent_dir(&paths);
+    eprintln!(
+        "[claim] INFRA-5775: auto-narrowed --paths ({}) to common parent '{}' (no --broad given).",
+        paths_csv, narrowed
+    );
+    Ok(narrowed)
+}
+
+/// INFRA-5775: emit `kind=claim_broad_scope` to ambient.jsonl when a
+/// multi-top-level-directory claim proceeds via `--broad --reason`.
+/// Best-effort — silently no-ops if the file isn't writable.
+fn emit_claim_broad_scope(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    paths: &[String],
+    reason: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let paths_json = {
+        let parts: Vec<String> = paths
+            .iter()
+            .map(|p| format!("\"{}\"", json_escape(p)))
+            .collect();
+        format!("[{}]", parts.join(","))
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_broad_scope\",\
+         \"session_id\":\"{sid}\",\"gap\":\"{gap}\",\
+         \"paths\":{paths},\"reason\":\"{reason}\"}}\n",
+        ts = ts,
+        sid = json_escape(session_id),
+        gap = json_escape(gap_id),
+        paths = paths_json,
+        reason = json_escape(reason),
+    );
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── end INFRA-5775 ───────────────────────────────────────────────────────────
+
 const BROAD_LEASE_DIRS: &[&str] = &["src", "scripts/ci", "docs/gaps", "src/lib", "app"];
 
 /// INFRA-1885: Check that no path in `paths_csv` is an exact match against a
@@ -5835,6 +6041,109 @@ mod tests {
         assert!(s.starts_with("claim-infra-123-"));
         // claim-infra-123-<pid>-<epoch> = 4 dash-separated segments
         assert_eq!(s.matches('-').count(), 4);
+    }
+
+    // INFRA-5775: broad-scope claim guard + auto-narrowing.
+    fn narrow_no_broad(paths_csv: &str) -> Result<String> {
+        let tmp = std::env::temp_dir().join(format!(
+            "infra5775-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        guard_and_narrow_paths(paths_csv, false, None, "INFRA-TEST", "sess-1", &tmp)
+    }
+
+    #[test]
+    fn guard_single_path_passes_through_unchanged() {
+        assert_eq!(narrow_no_broad("src/foo.rs").unwrap(), "src/foo.rs");
+    }
+
+    #[test]
+    fn guard_same_directory_passes_through_unchanged() {
+        assert_eq!(
+            narrow_no_broad("src/foo.rs,src/bar.rs").unwrap(),
+            "src/foo.rs,src/bar.rs"
+        );
+    }
+
+    #[test]
+    fn guard_multi_dir_same_top_level_auto_narrows() {
+        // AC2: >1 directory within one top-level dir narrows to the
+        // most-specific common parent, no --broad required.
+        assert_eq!(narrow_no_broad("src/foo/a.rs,src/bar/b.rs").unwrap(), "src");
+        assert_eq!(
+            narrow_no_broad("src/foo/a.rs,src/foo/sub/b.rs").unwrap(),
+            "src/foo"
+        );
+    }
+
+    #[test]
+    fn guard_multi_top_level_dir_rejected_without_broad() {
+        // AC1: >1 top-level directory requires --broad + --reason.
+        let err = narrow_no_broad("src/foo.rs,docs/bar.md").unwrap_err();
+        assert!(err.to_string().contains("INFRA-5775"));
+        assert!(err.to_string().contains("--broad"));
+    }
+
+    #[test]
+    fn guard_multi_top_level_dir_rejected_with_broad_but_no_reason() {
+        let tmp = std::env::temp_dir().join("infra5775-no-reason");
+        let err = guard_and_narrow_paths(
+            "src/foo.rs,docs/bar.md",
+            true,
+            None,
+            "INFRA-TEST",
+            "sess-1",
+            &tmp,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("--reason"));
+    }
+
+    #[test]
+    fn guard_multi_top_level_dir_allowed_with_broad_and_reason() {
+        let tmp = std::env::temp_dir().join(format!(
+            "infra5775-broad-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let result = guard_and_narrow_paths(
+            "src/foo.rs,docs/bar.md",
+            true,
+            Some("cross-cutting rename"),
+            "INFRA-TEST",
+            "sess-1",
+            &tmp,
+        )
+        .unwrap();
+        assert_eq!(result, "src/foo.rs,docs/bar.md");
+    }
+
+    #[test]
+    fn guard_broad_without_top_level_violation_skips_narrowing() {
+        let tmp = std::env::temp_dir().join("infra5775-broad-skip-narrow");
+        // Same top-level dir, --broad set (no --reason needed since there's
+        // no cross-top-level violation) — original scope kept verbatim.
+        let result = guard_and_narrow_paths(
+            "src/foo/a.rs,src/bar/b.rs",
+            true,
+            None,
+            "INFRA-TEST",
+            "sess-1",
+            &tmp,
+        )
+        .unwrap();
+        assert_eq!(result, "src/foo/a.rs,src/bar/b.rs");
+    }
+
+    #[test]
+    fn common_parent_dir_handles_identical_paths() {
+        let paths = vec!["src/foo.rs".to_string(), "src/foo.rs".to_string()];
+        assert_eq!(common_parent_dir(&paths), "src/foo.rs");
     }
 
     // INFRA-1328: gh_owner_repo URL parser — pure logic, no network.

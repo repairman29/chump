@@ -756,6 +756,17 @@ events:
     consumers: [fleet-brief, audit-log]
     fields_required: [ts, kind, session_id, gap, paths, reason]
 
+  - kind: claim_broad_scope
+    effect_metric: self
+    emitter: crates/chump-atomic-claim/src/atomic_claim.rs emit_claim_broad_scope (INFRA-5775)
+    trigger: operator claimed --paths spanning more than one top-level
+      directory and acknowledged it with --broad --reason '<text>'.
+      Without --broad, a multi-top-level-directory claim is rejected
+      outright; a multi-directory claim within a single top-level
+      directory is silently auto-narrowed instead (no event emitted).
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, session_id, gap, paths, reason]
+
   - kind: gap_claim_nats_conflict
     effect_metric: self
     emitter: src/atomic_claim.rs nats_dual_write (INFRA-986)
