@@ -743,6 +743,22 @@ impl GapStore {
             ",
         );
 
+        // MISSION-097 (MISSION-076 slice): execution contract fields.
+        // Nullable/defaulted additive columns — ALTER TABLE ADD COLUMN is
+        // idempotent (duplicate-column errors are silently ignored), so
+        // re-running migrate() and every existing INSERT/SELECT on repos
+        // keep working unchanged.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE repos ADD COLUMN test_command TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE repos ADD COLUMN build_command TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE repos ADD COLUMN merge_policy TEXT NOT NULL DEFAULT 'human_review'",
+            [],
+        );
+
         Ok(())
     }
 }
