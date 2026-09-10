@@ -582,6 +582,16 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [agent_id, gap_id, fail_class, model, rc]
 
+  - kind: model_ladder_artifact_suppressed
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (RESILIENT-597, RESILIENT-596 slice)
+    trigger: a model_ladder_capability_escalation fired AND a PR was already open
+      on this gap's branch (bot-merge.sh ran earlier in the same cycle before the
+      capability error surfaced); worker closes the PR so the unverified attempt
+      can never merge or count as a real ship
+    consumers: [fleet-brief, watchdog]
+    fields_required: [agent_id, gap_id, pr, fail_class]
+
   - kind: gap_parked_unverified_ship
     effect_metric: self
     emitter: scripts/dispatch/worker.sh (EFFECTIVE-441)
