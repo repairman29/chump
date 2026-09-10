@@ -84,6 +84,7 @@ mod discord_intent;
 mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (META-128/C7)
 mod dispatch;
 mod doctor;
+mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
