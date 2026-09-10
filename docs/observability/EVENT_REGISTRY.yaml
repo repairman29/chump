@@ -2313,6 +2313,43 @@ events:
     fields_required: [ts, kind, source_kind]
     status: stable
 
+  - kind: organ_run_failed
+    effect_metric: resilient
+    emitter: scripts/ops/organ-success-verifier.sh (RESILIENT-1108)
+    trigger: a manifest-enabled organ's payload .service last run FAILED —
+      ExecMainStatus non-zero (ExecMainStatus=200 = CHDIR, the all-night
+      WorkingDirectory-missing signature) or Result in the failed set
+      (exit-code, core-dump, signal, watchdog, start-limit-hit, oom-kill,
+      timeout, resources, protocol). Pages the duty officer via notify-operator
+      (registered `page` in operator-escalation-registry.txt). This is the
+      green-timer/dead-service blind spot is-active never revealed.
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, unit, service, exec_status, result, failure_class]
+    status: stable
+
+  - kind: organ_success_verify_tick
+    effect_metric: self
+    emitter: scripts/ops/organ-success-verifier.sh (RESILIENT-1108)
+    trigger: the verifier's per-cycle summary — how many enabled organs were
+      verified-ok vs failed vs skipped (not-loaded), how many pages fired, and
+      the names of the failed units. Heartbeat so a dead verifier is itself
+      visible via the reaper-heartbeat pattern.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, enabled_total, verified_ok, failed]
+    status: stable
+
+  - kind: organ_run_verify_dedup_skip
+    effect_metric: self
+    emitter: scripts/ops/organ-success-verifier.sh (RESILIENT-1108)
+    trigger: a still-broken organ seen again for the same (unit, exec_status)
+      inside CHUMP_ORGAN_SUCCESS_DEDUP_WINDOW_S (default 3600s) — the first
+      sighting already paged via organ_run_failed; this is the audited
+      held-not-re-paged trail so one persistently-failing organ doesn't spam
+      the duty officer every cycle.
+    consumers: [audit-log]
+    fields_required: [ts, kind, unit, exec_status]
+    status: stable
+
   - kind: pr_stuck_cycle_1_rebase_attempted
     effect_metric: pr_auto_closed_for_respawn_within_30m
     emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)

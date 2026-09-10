@@ -229,8 +229,17 @@ SYSTEM_UNITS=(
   # instead of a script only ever run by hand.
   chump-gap-store-single-source-check.service
   chump-gap-store-single-source-check.timer
+  # RESILIENT-1108 (umbrella RESILIENT-1103): the organ-success verifier — reads
+  # each manifest-enabled organ's last-run systemctl Result/ExecMainStatus and
+  # pages on any FAILED run. Rostered here (AND declared `enabled` in organ-
+  # manifest.txt) so it can never repeat the merged-not-running class it was
+  # built to catch: a unit in only ONE of the two rosters is either never
+  # installed (absent from this list) or never revivable (absent from the
+  # manifest). Both required; the RESILIENT-366 Roll-Call test enforces it.
+  chump-organ-success-verifier.service
+  chump-organ-success-verifier.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
