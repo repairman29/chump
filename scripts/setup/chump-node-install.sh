@@ -1044,6 +1044,59 @@ EOF
   [ "${#skipped_nofile[@]}" -gt 0 ] && info ORGANS "role-matched but no tracked file (skipped, guarded by requires=file:): ${skipped_nofile[*]}"
   return 0
 }
+# RESILIENT-1099: render the tracked, node-neutral
+# scripts/dispatch/worker-launcher.template.sh into a live per-node launcher
+# at $ORGAN_DIR/worker.sh. Node identity is the ONLY per-node input this
+# function supplies (AGENT_ID / WORKER_MACHINE / FLEET_SESSION /
+# WORKER_SKILLS / FLEET_DOMAIN_FILTER / REPO_ROOT) — self-heal policy and
+# model-routing are sourced by worker.sh itself from the tracked
+# worker-policy.env / model-escalation-ladder.env, so this launcher never
+# carries fleet policy that could drift between nodes. Replaces the
+# untracked, hand-copied ~/nodeN-worker-run.sh class of launcher (the exact
+# drift that froze the fleet ~15h on 2026-09-08: see
+# scripts/setup/worker-policy.env header).
+#
+# Falls back to a minimal inline launcher (same shape as before RESILIENT-1099)
+# if the template isn't present yet in this node's checkout (e.g. mid-upgrade
+# from a pre-RESILIENT-1099 clone) so a fresh install never hard-fails here.
+render_worker_launcher() {
+  local repo="${CHUMP_NODE_REPO:-$NODE_DIR/repo}"
+  local template="$repo/scripts/dispatch/worker-launcher.template.sh"
+  local agent_id="${CHUMP_WORKER_AGENT_ID:-$(hostname -s 2>/dev/null || echo node1)-worker}"
+  local machine="${CHUMP_WORKER_MACHINE:-$(hostname -s 2>/dev/null || echo node1)}"
+  local session="${CHUMP_WORKER_SESSION:-$machine}"
+  local skills="${CHUMP_WORKER_SKILLS:-}"
+  local domain="${CHUMP_WORKER_DOMAIN_FILTER:-}"
+
+  if [ ! -f "$template" ]; then
+    info ORGANS "worker-launcher.template.sh not found in checkout — falling back to minimal inline launcher"
+    run "cat > '$ORGAN_DIR/worker.sh' <<'WK'
+#!/usr/bin/env bash
+export AGENT_ID=\"\${CHUMP_WORKER_AGENT_ID:-\$(hostname -s 2>/dev/null || echo node1)-worker}\"
+export REPO_ROOT=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
+export FLEET_LOG_DIR=\"\${FLEET_LOG_DIR:-$LOG_DIR}\"
+exec bash \"\$REPO_ROOT/scripts/dispatch/worker.sh\"
+WK"
+    run "chmod +x '$ORGAN_DIR/worker.sh'"
+    return 0
+  fi
+
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: render $template -> $ORGAN_DIR/worker.sh (AGENT_ID=$agent_id WORKER_MACHINE=$machine FLEET_SESSION=$session WORKER_SKILLS=$skills FLEET_DOMAIN_FILTER=$domain REPO_ROOT=$repo)"
+    return 0
+  fi
+
+  sed \
+    -e "s|__AGENT_ID__|$agent_id|g" \
+    -e "s|__WORKER_MACHINE__|$machine|g" \
+    -e "s|__FLEET_SESSION__|$session|g" \
+    -e "s|__WORKER_SKILLS__|$skills|g" \
+    -e "s|__FLEET_DOMAIN_FILTER__|$domain|g" \
+    -e "s|__REPO_ROOT__|$repo|g" \
+    "$template" > "$ORGAN_DIR/worker.sh"
+  chmod +x "$ORGAN_DIR/worker.sh"
+  ok "rendered worker launcher (agent_id=$agent_id machine=$machine skills=${skills:-any} domain=${domain:-any})"
+}
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
@@ -1101,14 +1154,7 @@ FHS"
   # internally), so a fresh --role muscle install self-starts the worker
   # instead of silently staying loaded-not-active.
   if [ "$ROLE" = muscle ] || [ "$ROLE" = all ]; then
-    run "cat > '$ORGAN_DIR/worker.sh' <<'WK'
-#!/usr/bin/env bash
-export AGENT_ID=\"\${CHUMP_WORKER_AGENT_ID:-\$(hostname -s 2>/dev/null || echo node1)-worker}\"
-export REPO_ROOT=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
-export FLEET_LOG_DIR=\"\${FLEET_LOG_DIR:-$LOG_DIR}\"
-exec bash \"\$REPO_ROOT/scripts/dispatch/worker.sh\"
-WK"
-    run "chmod +x '$ORGAN_DIR/worker.sh'"
+    render_worker_launcher
   fi
   local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
   echo "$list" | while IFS='|' read -r name exec; do
