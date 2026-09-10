@@ -2318,6 +2318,13 @@ async fn main() -> Result<()> {
         }
     }
 
+    // INFRA-5754: inventory-based command self-registration infra (INFRA-1748
+    // slice 1). No commands registered yet — resolves to None and falls
+    // through to the existing per-command `if` chain below.
+    if let Some(code) = commands::try_dispatch(&args) {
+        std::process::exit(code);
+    }
+
     // External-repo command group (onboard / improve / external verify-merge).
     // Extracted to commands::dispatch_external (INFRA-3289, slice 1 of INFRA-3287).
     if let Some(code) = commands::dispatch_external::try_dispatch(&args) {
