@@ -28,6 +28,15 @@
 set -uo pipefail
 
 _here="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# RESILIENT-001: the jam-proof mirror-converge primitive. The reader MUST NOT
+# advance the tree with a merge (`git pull`) — see reader() below.
+# shellcheck source=lib/converge-mirror.sh
+source "$_here/lib/converge-mirror.sh" 2>/dev/null || true
+if ! command -v converge_mirror_hard_reset >/dev/null 2>&1; then
+  # Fallback for a partial checkout missing the lib: a plain robust reset still
+  # beats a merge (which aborts on untracked collisions).
+  converge_mirror_hard_reset() { git reset --hard "${1:?}"; }
+fi
 REPO="${CHUMP_REPO:-$(git -C "$_here" rev-parse --show-toplevel 2>/dev/null || echo "$HOME/chump-host")}"
 CHUMP="${CHUMP_BIN:-chump}"
 DRY=0; ROLE=""
@@ -44,9 +53,24 @@ CACHE="$REPO/.chump/github_cache.db"
 
 # ── reader: pull the shared truth, rebuild the local backlog ────────────────
 reader() {
-  log "git pull origin main"
-  if ! git pull --no-edit --quiet origin main 2>/dev/null; then
-    log "pull failed (offline or conflict) — keeping current backlog"; return 1
+  # RESILIENT-001: fetch + `git reset --hard origin/main`, NOT `git pull`.
+  # A merge-based pull ABORTS ("untracked working tree files would be
+  # overwritten by merge") whenever the running fleet has dropped an untracked
+  # docs/gaps/<ID>.yaml mirror (or a local chore(backlog) autocommit) that
+  # origin/main now carries as a tracked file — and the old `2>/dev/null … pull
+  # failed (offline or conflict)` swallowed that PERMANENT structural jam as if
+  # it were a transient blip, so the node silently sat stale for hours/days.
+  # reset --hard converges over that dirty tree while preserving gitignored DBs
+  # (.chump/state.db et al. are never touched). Safe here: a reader is a pure
+  # mirror; state.db is rebuilt from state.sql immediately below and live claims
+  # live in NATS-KV, so nothing un-pushed is lost (see header, RESILIENT-194).
+  log "git fetch origin main"
+  if ! git fetch --quiet origin main 2>/dev/null; then
+    log "fetch failed (offline) — keeping current backlog"; return 1
+  fi
+  log "converge: git reset --hard origin/main"
+  if ! converge_mirror_hard_reset origin/main; then
+    log "reset --hard origin/main failed — keeping current backlog"; return 1
   fi
   log "chump restore --from-sql"
   "$CHUMP" restore --from-sql >/dev/null 2>&1 || { log "restore failed"; return 1; }

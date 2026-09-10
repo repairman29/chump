@@ -77,6 +77,15 @@ source "$_NODE_REFRESH_DIR/../coord/lib/github.sh" 2>/dev/null || true
 # 2-core node both went unalarmed.
 # shellcheck source=../lib/halt-class-emit.sh
 source "$_NODE_REFRESH_DIR/../lib/halt-class-emit.sh" 2>/dev/null || true
+# RESILIENT-001: the shared jam-proof mirror-converge primitive. Both
+# mirror-advancing organs (this script + scripts/coord/backlog-sync.sh --reader)
+# converge through ONE implementation so neither can regress to a merge-based
+# advance that aborts on an untracked docs/gaps/*.yaml collision.
+# shellcheck source=../coord/lib/converge-mirror.sh
+source "$_NODE_REFRESH_DIR/../coord/lib/converge-mirror.sh" 2>/dev/null || true
+if ! command -v converge_mirror_hard_reset >/dev/null 2>&1; then
+    converge_mirror_hard_reset() { git reset --hard "${1:?}"; }
+fi
 
 # --- RESILIENT-1040: ensure gh is authenticated in THIS context -------------
 # ROOT CAUSE of the 5-gap self-sustain saga (1036-1039): this script is
@@ -506,7 +515,9 @@ _check_gh_auth_precondition
 
 # --- fetch + advance the mirror to the last-GREEN main, not raw HEAD --------
 # These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to the
-# green pointer is the correct "make current" operation. If a node ever grows
+# green pointer is the correct "make current" operation (RESILIENT-001: the
+# converge MUST be a reset, never a merge — a merge aborts on the untracked
+# docs/gaps/*.yaml mirrors the fleet drops into this tree). If a node ever grows
 # a real working tree, guard this behind a clean-tree check.
 git fetch origin main --quiet 2>>"$LOG" || log "WARN: git fetch failed (offline?); building local main"
 
@@ -552,8 +563,8 @@ if [[ "$INSTALLED_SHA" == "$MAIN_SHA"* || "$MAIN_SHA" == "$INSTALLED_SHA"* ]] \
     exit 0
 fi
 
-git reset --hard "$RESET_TARGET" >>"$LOG" 2>&1 || {
-    log "FATAL: git reset --hard $RESET_TARGET failed"
+converge_mirror_hard_reset "$RESET_TARGET" >>"$LOG" 2>&1 || {
+    log "FATAL: converge (git reset --hard) to $RESET_TARGET failed"
     emit node_binary_refresh_failed "\"reason\":\"reset_failed\",\"target\":\"$RESET_TARGET\""
     exit 1
 }
