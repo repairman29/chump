@@ -681,6 +681,16 @@ jobs:
       - name: Fleet-health sentinel gate (RESILIENT-1052)
         run: bash scripts/ci/test-fleet-health-sentinel.sh
 
+      # RESILIENT-1055 / RESILIENT-1102: the shared organ-unit host-rewriter +
+      # role-roster placement. Locks the byte-for-byte rewrite contract both
+      # placers depend on, INCLUDING RESILIENT-1102: the baked
+      # WorkingDirectory/ExecStart must resolve to the box's REAL checkout and
+      # EXIST on disk (never an assumed $HOME/Projects/chump that killed every
+      # organ at status=200/CHDIR before it ran). Hermetic: tmp dirs + stubbed
+      # systemctl, no network/root; the GNU-sed rewrite runs for real on ubuntu.
+      - name: Organ role-roster + host-rewrite gate (RESILIENT-1055/1102)
+        run: bash scripts/ci/test-resilient-1055-role-roster.sh
+
       # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
       # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
       # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.

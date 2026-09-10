@@ -188,9 +188,15 @@ grep -Eq '^(Environment|ExecStart)=.*%h' "$CJ_INSTALLED" \
     && fail "installed chump-organ-watchdog.service leaked a %h specifier (expands to /root at runtime): $(cat "$CJ_INSTALLED")"
 grep -q '/root/Projects/chump' "$CJ_INSTALLED" \
     && fail "installed chump-organ-watchdog.service leaked an un-rewritten /root/Projects/chump path for a non-root run-user: $(cat "$CJ_INSTALLED")"
-grep -q '/home/jeff/Projects/chump/scripts/ops/organ-watchdog.sh' "$CJ_INSTALLED" \
-    || fail "installed chump-organ-watchdog.service ExecStart not host-rewritten to the run-user home: $(cat "$CJ_INSTALLED")"
-ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape): exec path host-rewritten, no /root/Projects path, no %h"
+# RESILIENT-1102: the repo path is now rewritten to this box's ACTUAL checkout
+# ($REPO_ROOT, where the installer runs from) — NOT an assumed
+# $RUN_HOME/Projects/chump, which does not exist on an owned node and killed the
+# organ with status=200/CHDIR. A stale Projects/chump repo path must NOT survive.
+grep -q "${REPO_ROOT}/scripts/ops/organ-watchdog.sh" "$CJ_INSTALLED" \
+    || fail "installed chump-organ-watchdog.service ExecStart not rewritten to the real checkout ($REPO_ROOT): $(cat "$CJ_INSTALLED")"
+grep -q 'Projects/chump/scripts/ops/organ-watchdog.sh' "$CJ_INSTALLED" \
+    && fail "installed chump-organ-watchdog.service still bakes a Projects/chump repo path (RESILIENT-1102): $(cat "$CJ_INSTALLED")"
+ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape): exec path rewritten to the real checkout, no Projects/chump ghost, no %h"
 
 # RESILIENT-200 class guard: NO dispatch *.service may resolve its home via %h
 # in an active directive — the installer host-rewrite keys off "/root/" literals
@@ -222,9 +228,25 @@ for u in "$TMP/cj-dest"/*.service; do
     && fail "$b HOME still resolves under /root for run-user jeff: $(grep -n '^Environment=HOME=' "$u")"
   grep -q '^WorkingDirectory=' "$u" \
     || fail "$b has no WorkingDirectory= (systemd cwd defaults to /, breaking cwd-based chump gap / gh repo view)"
+  # RESILIENT-1102: the WorkingDirectory must be a directory that EXISTS. Before
+  # the fix, every organ baked $RUN_HOME/Projects/chump — a path that does not
+  # exist on an owned node (repo at $HOME/chump) — so systemd killed it at CHDIR
+  # (status=200/CHDIR) before it ran. This class had ZERO coverage; assert that
+  # the baked cwd resolves on disk. (Here the installer ran from $REPO_ROOT, the
+  # real checkout, so the rewritten WorkingDirectory points there and exists.)
+  # The baked WorkingDirectory must resolve to a directory that EXISTS. Before
+  # the fix it was an assumed $RUN_HOME/Projects/chump (absent on owned nodes),
+  # so systemd killed the organ at CHDIR (status=200/CHDIR) before it ran.
+  # (Note: we assert on WorkingDirectory only, NOT a blanket grep for
+  # Projects/chump — some units, e.g. chump-gap-closure-reconcile.service,
+  # legitimately list $HOME/Projects/chump as ONE runtime self-resolving repo
+  # candidate guarded by `-d "$c/.git"`, which is robust, not the bug.)
+  _wd="$(sed -n 's/^WorkingDirectory=//p' "$u" | head -1)"
+  [ -d "$_wd" ] \
+    || fail "$b WorkingDirectory '$_wd' does not exist on disk — systemd would kill it at CHDIR (status=200/CHDIR; RESILIENT-1102)"
 done
 [ "$installed_svcs" -gt 0 ] || fail "no .service units were installed to the stubbed dest dir — roster/install path broke"
-ok "all $installed_svcs generated organs run with HOME off /root + cwd at the repo root (INFRA-3647 keystone)"
+ok "all $installed_svcs generated organs run with HOME off /root + cwd at the real checkout that EXISTS on disk (INFRA-3647 + RESILIENT-1102)"
 
 # ── Test: host-rewrite generalizes past hardcoded /root (RESILIENT-1051) ───
 # Several tracked units (chump-nba-dispatch.service, chump-gap-drain.service,
@@ -261,16 +283,26 @@ ubuntu_rc=$?
 for jeff_native in chump-nba-dispatch.service chump-gap-drain.service chump-digest.service; do
     installed="$TMP/ubuntu-dest/$jeff_native"
     [ -f "$installed" ] || fail "$jeff_native was not installed to the stubbed dest dir"
-    leaked="$(grep -v '^#' "$installed" | grep -E 'home/jeff|^User=jeff' || true)"
+    # Exclude the real checkout path ($REPO_ROOT) from the leak check: repo paths
+    # are legitimately rewritten to it (RESILIENT-1102), and on a dev box it may
+    # itself live under /home/jeff — that is the real repo, not an un-rewritten
+    # source leak. Any OTHER /home/jeff or User=jeff is a genuine leak.
+    leaked="$(grep -v '^#' "$installed" | grep -F -v "$REPO_ROOT" | grep -E 'home/jeff|^User=jeff' || true)"
     [ -z "$leaked" ] \
         || fail "$jeff_native leaked an un-rewritten /home/jeff path for run-user ubuntu (RESILIENT-1051): $leaked"
     grep -q '^User=ubuntu' "$installed" \
         || fail "$jeff_native missing User=ubuntu (host-rewrite from a jeff-shaped source): $(grep -n '^User=' "$installed")"
     grep -q '^Environment=HOME=/home/ubuntu$' "$installed" \
         || fail "$jeff_native HOME not rewritten to /home/ubuntu: $(grep -n '^Environment=HOME=' "$installed")"
-    grep -q '^WorkingDirectory=/home/ubuntu/Projects/chump$' "$installed" \
-        || fail "$jeff_native WorkingDirectory not rewritten to /home/ubuntu/Projects/chump: $(grep -n '^WorkingDirectory=' "$installed")"
+    # RESILIENT-1102: WorkingDirectory is now the box's REAL checkout ($REPO_ROOT,
+    # where the installer ran), not an assumed $HOME/Projects/chump ghost — and
+    # it must EXIST on disk (a non-existent cwd is status=200/CHDIR at runtime).
+    grep -q "^WorkingDirectory=${REPO_ROOT}\$" "$installed" \
+        || fail "$jeff_native WorkingDirectory not rewritten to the real checkout ($REPO_ROOT): $(grep -n '^WorkingDirectory=' "$installed")"
+    _wd="$(sed -n 's/^WorkingDirectory=//p' "$installed" | head -1)"
+    [ -d "$_wd" ] \
+        || fail "$jeff_native WorkingDirectory '$_wd' does not exist — systemd CHDIR kill (status=200/CHDIR; RESILIENT-1102)"
 done
-ok "jeff-shaped source units (nba-dispatch, gap-drain, digest) host-rewrite cleanly for run-user ubuntu — no leaked /home/jeff (RESILIENT-1051)"
+ok "jeff-shaped source units (nba-dispatch, gap-drain, digest) host-rewrite cleanly for run-user ubuntu — repo path -> the real (existing) checkout, no /home/jeff leak, no Projects/chump ghost (RESILIENT-1051 + 1102)"
 
 echo "ALL PASS"

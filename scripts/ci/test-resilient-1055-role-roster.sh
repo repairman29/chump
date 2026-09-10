@@ -111,10 +111,44 @@ DESTU="$TMP/out.service"
 organ_unit_host_rewrite "$SRCU" "$DESTU" "ubuntu" "/home/ubuntu" 0 || fail "host_rewrite returned non-zero"
 grep -q '^User=ubuntu$' "$DESTU" || fail "host_rewrite: User=root should become User=ubuntu"
 grep -q '^Environment=HOME=/home/ubuntu$' "$DESTU" || fail "host_rewrite: bare Environment=HOME=/root should become /home/ubuntu (the instruments-lie keystone)"
-grep -q '^ExecStart=/home/ubuntu/Projects/chump/scripts/x.sh$' "$DESTU" || fail "host_rewrite: /root path prefix should rewrite to run-home"
+# Legacy 5-arg call (no repo_root) preserves the historical $HOME/Projects/chump
+# assumption — backward compat for any caller that hasn't opted into the fix.
+grep -q '^ExecStart=/home/ubuntu/Projects/chump/scripts/x.sh$' "$DESTU" || fail "host_rewrite: /root path prefix should rewrite to run-home (legacy default)"
 # keep-root
 organ_unit_host_rewrite "$SRCU" "$DESTU" "ubuntu" "/home/ubuntu" 1 || fail "host_rewrite keep-root returned non-zero"
 grep -q '^User=root$' "$DESTU" || fail "host_rewrite keep-root: User must stay root"
 pass "organ_unit_host_rewrite: root->run-user, bare HOME rewrite, path-prefix rewrite, keep-root all hold"
+
+# ── 5. RESILIENT-1102: repo_root rewrites the baked repo path to the REAL ────
+# checkout, so units never point at a non-existent $HOME/Projects/chump (the
+# owned-node 200/CHDIR root — this whole class had ZERO test coverage before).
+SRCR="$TMP/repo-unit.service"
+cat > "$SRCR" <<'EOF'
+[Unit]
+Description=x
+[Service]
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+WorkingDirectory=/root/Projects/chump
+ExecStart=/bin/bash -lc 'source /root/.chump/providers.env; cd /root/Projects/chump; exec /root/Projects/chump/scripts/ops/x.sh'
+EOF
+# The box's real repo lives at $HOME/chump (NO Projects segment) — and it EXISTS.
+REAL_REPO="$TMP/home-ubuntu/chump"; mkdir -p "$REAL_REPO"
+DESTR="$TMP/out-repo.service"
+organ_unit_host_rewrite "$SRCR" "$DESTR" "ubuntu" "$TMP/home-ubuntu" 0 "$REAL_REPO" || fail "host_rewrite(repo_root) returned non-zero"
+# Every repo reference resolves to the real checkout; home-only paths (.chump)
+# still track the run-home.
+grep -q "^WorkingDirectory=${REAL_REPO}\$" "$DESTR" || fail "repo_root: WorkingDirectory not rewritten to the real checkout: $(grep -n '^WorkingDirectory=' "$DESTR")"
+grep -q "^Environment=CHUMP_REPO_ROOT=${REAL_REPO}\$" "$DESTR" || fail "repo_root: CHUMP_REPO_ROOT not rewritten: $(grep -n CHUMP_REPO_ROOT "$DESTR")"
+grep -q "cd ${REAL_REPO};" "$DESTR" || fail "repo_root: inline 'cd <repo>' not rewritten: $(grep -n ExecStart "$DESTR")"
+grep -q "exec ${REAL_REPO}/scripts/ops/x.sh" "$DESTR" || fail "repo_root: ExecStart repo path not rewritten: $(grep -n ExecStart "$DESTR")"
+grep -q "source ${TMP}/home-ubuntu/.chump/providers.env" "$DESTR" || fail "repo_root: home-only .chump path should track run-home, not the repo: $(grep -n ExecStart "$DESTR")"
+grep -q 'Projects/chump' "$DESTR" && fail "repo_root: a stale Projects/chump path leaked into the unit: $(grep -n 'Projects/chump' "$DESTR")"
+# THE class that hid: the baked WorkingDirectory must be a directory that
+# actually exists on disk (a non-existent cwd is status=200/CHDIR at runtime).
+_wd="$(sed -n 's/^WorkingDirectory=//p' "$DESTR")"
+[ -d "$_wd" ] || fail "repo_root: baked WorkingDirectory '$_wd' does not exist on disk (this is the 200/CHDIR bug)"
+pass "organ_unit_host_rewrite: repo_root redirects every repo path to the real (existing) checkout — no Projects/chump ghost, WorkingDirectory exists"
 
 echo "ALL PASS"
