@@ -1157,8 +1157,28 @@ BT"
 }
 
 # ---------- 7. SELF-TEST (defines 'installed') ----------
+# INFRA-3641 AC3: --dry-run on a systemd host prints the EXACT manifest-derived
+# organ set this role WOULD supervise (unit, kind, applicable/skip + reason) —
+# read-only, no systemctl mutation, no live-status query needed since nothing
+# has actually been installed yet. Reuses organ-role-roster.sh (already the
+# read-only "what would this role run" primitive RESILIENT-1055 shipped) so
+# there is no second per-host organ-listing implementation to drift.
+self_test_dry_run_organs() {
+  [ "$HOST_KIND" = linux-systemd ] || { info SELF-TEST "--dry-run organ roster is systemd-only (host=$HOST_KIND) — skipping"; return 0; }
+  local roster="$NODE_DIR/repo/scripts/ops/organ-role-roster.sh"
+  [ -f "$roster" ] || roster="$(dirname "$0")/../ops/organ-role-roster.sh"
+  if [ ! -f "$roster" ]; then info SELF-TEST "organ-role-roster.sh not found — skipping dry-run roster"; return 0; fi
+  local rf; rf="$(organ_role_filter)"
+  info SELF-TEST "--dry-run: manifest-derived organ set this role WOULD supervise (role=$ROLE, role-filter=[${rf:-all}])"
+  CHUMP_ORGAN_RECONCILE_ROLE="$rf" bash "$roster" | while IFS=$'\t' read -r state unit kind reason; do
+    [ -z "$unit" ] && continue
+    if [ "$state" = SKIP ]; then printf '  SKIP  %s (%s) — %s\n' "$unit" "$kind" "$reason"
+    else printf '  WOULD-SUPERVISE  %s (%s)\n' "$unit" "$kind"; fi
+  done
+}
 self_test() {
   info SELF-TEST "verifying node is installed & healthy"
+  if [ "$DRY" = 1 ]; then self_test_dry_run_organs; return 0; fi
   local fail=0
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
   check_creds || fail=1
