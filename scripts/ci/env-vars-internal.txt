@@ -2768,3 +2768,22 @@ CHUMP_CONFIG_DRIFT_TRACKED_GLOB
 CHUMP_STARVE_AUTO_RELAX
 # detected in: (standard input)
 CHUMP_STARVE_AUTO_SHUTDOWN
+CHUMP_DURABILITY_HUMAN_FIXTURE
+# detected in: (standard input)
+CHUMP_DURABILITY_HUMAN_KINDS
+# detected in: (standard input)
+CHUMP_DURABILITY_MERGES_FIXTURE
+# detected in: (standard input)
+CHUMP_DURABILITY_NOW
+# detected in: (standard input)
+CHUMP_DURABILITY_NO_PAGE
+# detected in: (standard input)
+CHUMP_DURABILITY_OUT
+# detected in: (standard input)
+CHUMP_DURABILITY_PAGE_STATE
+# detected in: (standard input)
+CHUMP_DURABILITY_STALL_HOURS
+# detected in: (standard input)
+CHUMP_DURABILITY_WINDOW_DAYS
+# detected in: (standard input)
+CHUMP_STARVE_AUTO_RELAX

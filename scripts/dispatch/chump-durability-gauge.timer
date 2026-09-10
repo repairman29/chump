@@ -1,0 +1,18 @@
+# Drives chump-durability-gauge.service every 15 minutes so the fleet's
+# durability picture (hours-unattended-before-stall) stays fresh with no human
+# step — the same cadence and self-healing shape as every other data organ in
+# organ-manifest.txt.
+[Unit]
+Description=Chump durability-gauge beat — refresh durability-gauge.json + stall page every 15m
+
+# OnCalendar (wall-clock, self-anchoring) not OnUnitActiveSec: a self-chaining
+# timer loses its anchor on a daemon-reload/unit re-create and sits 'active' but
+# never fires again (the exact way chump-faculty-collector went dark Aug-2026).
+# Persistent=true still catches missed runs across a reboot.
+[Timer]
+OnBootSec=4min
+OnCalendar=*:0/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target
