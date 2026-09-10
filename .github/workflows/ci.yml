@@ -1061,6 +1061,9 @@ jobs:
       - name: stale-pr-reaper file-parity check (INFRA-258)
         run: bash scripts/ci/test-infra-258-reaper-partial-delivery.sh
 
+      - name: stale-pr-reaper spares recoverable BLOCKED PRs (PR #4589 fix)
+        run: bash scripts/ci/test-reaper-spare-recoverable-blocked.sh
+
       - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
         run: bash scripts/ci/test-cargo-target-reaper.sh
 

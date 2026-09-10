@@ -98,6 +98,13 @@ PR_FIXTURE="$TMP/prs.json"
 echo "[]" > "$PR_FIXTURE"
 PR_CLOSE_LOG="$TMP/pr-close.log"
 : > "$PR_CLOSE_LOG"
+# ROLLUP_FIXTURE controls how classify_blocked_pr (REAPER-SPARE / PR #4589)
+# classifies the BLOCKED PR under test. Default: a hard, non-flake CI FAILURE
+# so the PR is genuinely dead and reaches the INFRA-1410 rebase→close path the
+# cases below assert. Individual tests override it (e.g. a pending rollup) to
+# exercise the spare path.
+ROLLUP_FIXTURE="$TMP/rollup.json"
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
 cat > "$TMP/bin/gh" <<EOF
 #!/usr/bin/env bash
 case "\$*" in
@@ -106,6 +113,10 @@ case "\$*" in
         ;;
     "pr close "*)
         echo "\$*" >> "$PR_CLOSE_LOG"
+        ;;
+    "pr view "*statusCheckRollup*)
+        # REAPER-SPARE classifier: return the configurable rollup+mergeable.
+        cat "$ROLLUP_FIXTURE"
         ;;
     "pr view "*)
         # stale-pr-reaper's existing freshness gate calls this; return a recent
@@ -243,6 +254,58 @@ fi
 if grep -q '"1004"' "$STATE_FILE"; then
     fail "state for PR 1004 should be cleared after close: $(cat "$STATE_FILE")"
 fi
+
+# ── Test 4b: REAPER-SPARE — pending CI (recoverable) is SPARED, not bounced ──
+# PR #4589 class guard, end-to-end through the real reaper: a BLOCKED PR whose
+# only reason is a still-running required check must NOT be rebased or closed —
+# it emits pr_stuck_spared and is left alone even well past the SLO.
+echo "Test 4b: BLOCKED-on-pending-CI PR is SPARED (never rebased/closed)"
+reset_state
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"IN_PROGRESS","conclusion":null}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
+mk_pr_json 1041 chump/test-pending "INFRA-9041: CI still running" BLOCKED "$(old_iso 5)" '[]' > "$PR_FIXTURE"
+env "${COMMON_ENV[@]}" CHUMP_PR_STUCK_SLO_HRS=2 CHUMP_PR_STUCK_RECLOSE_MINS=30 "$REAPER" >/dev/null 2>&1 || true
+if [[ "$(count_kind pr_stuck_spared)" -ge 1 \
+   && "$(count_kind pr_stuck_cycle_1_rebase_attempted)" == "0" \
+   && "$(count_kind pr_auto_closed_for_respawn)" == "0" \
+   && ! -s "$REBASE_LOG" \
+   && ! -s "$PR_CLOSE_LOG" ]]; then
+    pass
+else
+    fail "pending-CI PR should be spared, not bounced
+    ambient: $(cat "$AMBIENT")
+    rebase log: $(cat "$REBASE_LOG")
+    close log: $(cat "$PR_CLOSE_LOG")"
+fi
+
+# ── Test 4c: REAPER-SPARE — flake-budget-exhausted green PR re-armed, spared ──
+# The exact PR #4589 incident: a green PR whose only failing required check is a
+# known flake that spent its INFRA-304 budget. Must re-arm (delete the budget
+# markers) and spare — NEVER close.
+echo "Test 4c: flake-budget-exhausted PR is re-armed + SPARED (PR #4589 incident)"
+reset_state
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
+FLAKE_CD="$TMP/repo/.chump-locks/ci-flake-cooldown"
+mkdir -p "$FLAKE_CD"
+: > "$FLAKE_CD/pr-1042.commented"   # budget-exceeded marker set by ci-flake-rerun
+echo 3 > "$FLAKE_CD/pr-1042.count"
+mk_pr_json 1042 chump/test-flake "INFRA-9042: known flake budget spent" BLOCKED "$(old_iso 5)" '[]' > "$PR_FIXTURE"
+env "${COMMON_ENV[@]}" CHUMP_PR_STUCK_SLO_HRS=2 CHUMP_PR_STUCK_RECLOSE_MINS=30 CHUMP_FLAKE_BUDGET=3 CHUMP_REAPER_FLAKE_REARM_MAX=1 "$REAPER" >/dev/null 2>&1 || true
+if [[ "$(count_kind pr_stuck_flake_rearmed)" -ge 1 \
+   && "$(count_kind pr_auto_closed_for_respawn)" == "0" \
+   && ! -s "$PR_CLOSE_LOG" \
+   && ! -f "$FLAKE_CD/pr-1042.commented" \
+   && ! -f "$FLAKE_CD/pr-1042.count" ]]; then
+    pass
+else
+    fail "flake-exhausted green PR should be re-armed + spared, budget markers cleared
+    ambient: $(cat "$AMBIENT")
+    close log: $(cat "$PR_CLOSE_LOG")
+    markers: $(ls "$FLAKE_CD" 2>/dev/null)"
+fi
+
+# Restore the default hard-fail rollup for the remaining cases.
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
+rm -rf "$TMP/repo/.chump-locks/ci-flake-cooldown"
 
 # ── Test 5: do-not-respawn label → exempt emit, no rebase/close ─────────────
 echo "Test 5: do-not-respawn label exempts PR"

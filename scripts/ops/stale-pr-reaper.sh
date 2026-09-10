@@ -35,6 +35,9 @@ set -euo pipefail
 # emit/rotate path; the watchdog reads /tmp/chump-reaper-<NAME>.heartbeat.
 # shellcheck source=../lib/reaper-instrumentation.sh
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
+# Absolute dir of THIS script — used to locate sibling helpers (e.g.
+# lib/classify-blocked-pr.py) independently of cwd or REAPER_REPO_ROOT.
+REAPER_SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 reaper_setup pr
 reaper_check_disk_headroom  # INFRA-453: exit 0 + ALERT if <5% free
 reaper_rotate_log /tmp/chump-stale-pr-reaper.out.log
@@ -387,6 +390,7 @@ fi
 RESPAWN_REBASED=0
 RESPAWN_CLOSED=0
 RESPAWN_EXEMPT=0
+RESPAWN_SPARED=0
 
 if [[ "${CHUMP_PR_AUTO_RESPAWN:-1}" != "0" ]]; then
     green "=== PR-stuck SLO + auto-respawn (INFRA-1410) ==="
@@ -495,8 +499,8 @@ print(count)
             warn "TRUNK RED: holding all PR bounces this cycle (${_would_bounce_count:-0} PR(s) spared). Will retry when trunk recovers."
             warn "Re-enable: fix trunk + wait for trunk-red-detector to clear last_failed_sha."
             # Skip the entire auto-respawn loop — set variables used in summary.
-            RESPAWN_REBASED=0; RESPAWN_CLOSED=0; RESPAWN_EXEMPT=0
-            green "  respawn summary (HELD): rebased=0  closed=0  exempt=0  [trunk-RED hold active]"
+            RESPAWN_REBASED=0; RESPAWN_CLOSED=0; RESPAWN_EXEMPT=0; RESPAWN_SPARED=0
+            green "  respawn summary (HELD): rebased=0  closed=0  exempt=0  spared=0  [trunk-RED hold active]"
         fi
     fi
     # ── end RESILIENT-050 trunk-RED hold ────────────────────────────────────
@@ -586,6 +590,75 @@ except Exception:
 " 2>/dev/null || echo 0
     }
 
+    # ── REAPER-SPARE helpers: never bounce a RECOVERABLE BLOCKED PR ──────────
+    # mergeStateStatus=BLOCKED is a catch-all. Before the SLO loop rebases or
+    # (worse) closes a BLOCKED PR, classify WHY it is blocked so recoverable
+    # work is spared. See scripts/ops/lib/classify-blocked-pr.py for the pure
+    # decision function (fixture-tested). Incident: PR #4589 — a green PR reaped
+    # after 3 known-flake reruns tripped the INFRA-304 budget.
+    #
+    # Bypass: CHUMP_REAPER_SPARE_RECOVERABLE=0 restores the historical
+    # close-any-BLOCKED-PR behavior (pre-fix; not recommended).
+    # The classifier is a sibling of THIS script (resolved relative to the
+    # reaper's own dir, not REAPER_REPO_ROOT — the latter is the repo being
+    # operated on, which may be a worktree that does not carry scripts/).
+    CLASSIFY_HELPER="$REAPER_SCRIPT_DIR/lib/classify-blocked-pr.py"
+    # Cooldown markers live in the OPERATED repo's .chump-locks (same location
+    # ci-flake-rerun.sh writes them: REAPER_REPO_ROOT/.chump-locks/ci-flake-cooldown).
+    FLAKE_COOLDOWN_DIR="${REAPER_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.chump-locks/ci-flake-cooldown"
+
+    # classify_blocked_pr PR_NUM — echo one of:
+    #   pending | flake_exhausted | blocked_no_failure | hard_fail | conflict
+    # Recoverable (spare): pending, flake_exhausted, blocked_no_failure.
+    # Dead (fall through to bounce): hard_fail, conflict.
+    classify_blocked_pr() {
+        local _pr="$1"
+        # Fail-safe: if the classifier helper is missing (partial checkout),
+        # spare the PR rather than reaping it — destroying correct work is worse
+        # than leaving a dead PR open for the next cycle / operator.
+        if [[ ! -f "$CLASSIFY_HELPER" ]]; then
+            echo "blocked_no_failure"; return
+        fi
+        # Test override: feed a fixture rollup + mergeable instead of calling gh.
+        if [[ -n "${CHUMP_REAPER_ROLLUP_OVERRIDE:-}" ]]; then
+            python3 "$CLASSIFY_HELPER" \
+                --rollup-file "$CHUMP_REAPER_ROLLUP_OVERRIDE" \
+                --mergeable "${CHUMP_REAPER_MERGEABLE_OVERRIDE:-MERGEABLE}" \
+                --pr "$_pr" \
+                --cooldown-dir "$FLAKE_COOLDOWN_DIR" \
+                --flake-budget "${CHUMP_FLAKE_BUDGET:-3}" 2>/dev/null \
+                || echo "blocked_no_failure"
+            return
+        fi
+        local _view _rollup_file _mergeable
+        _view=$(gh pr view "$_pr" --json statusCheckRollup,mergeable 2>/dev/null || echo '{}')
+        # Trailing-X template only — BSD/macOS mktemp rejects a suffix after the
+        # X's (returns empty), which would strand every classification.
+        _rollup_file=$(mktemp "${TMPDIR:-/tmp}/reaper-rollup-XXXXXX" 2>/dev/null || echo "")
+        [[ -z "$_rollup_file" ]] && { echo "blocked_no_failure"; return; }
+        printf '%s' "$_view" \
+            | python3 -c 'import json,sys; d=json.load(sys.stdin); json.dump(d.get("statusCheckRollup") or [], open(sys.argv[1],"w"))' "$_rollup_file" 2>/dev/null \
+            || printf '[]' > "$_rollup_file"
+        _mergeable=$(printf '%s' "$_view" | python3 -c 'import json,sys; print((json.load(sys.stdin).get("mergeable") or ""))' 2>/dev/null || echo "")
+        python3 "$CLASSIFY_HELPER" \
+            --rollup-file "$_rollup_file" \
+            --mergeable "$_mergeable" \
+            --pr "$_pr" \
+            --cooldown-dir "$FLAKE_COOLDOWN_DIR" \
+            --flake-budget "${CHUMP_FLAKE_BUDGET:-3}" 2>/dev/null \
+            || echo "blocked_no_failure"
+        rm -f "$_rollup_file" 2>/dev/null || true
+    }
+
+    # rearm_flake_budget PR_NUM — reset the INFRA-304 per-PR flake budget so
+    # ci-flake-rerun.sh is permitted to retry the known flake on the next
+    # failing run-id. Deletes the count + one-time-comment markers only.
+    rearm_flake_budget() {
+        local _pr="$1"
+        rm -f "$FLAKE_COOLDOWN_DIR/pr-${_pr}.count" \
+              "$FLAKE_COOLDOWN_DIR/pr-${_pr}.commented" 2>/dev/null || true
+    }
+
     # RESPAWN_PRS_JSON was fetched earlier (before the trunk-RED check) to
     # allow the hold count to be accurate. Reuse it here.
     RESPAWN_TSV=$(python3 -c "
@@ -642,6 +715,49 @@ for r in rows:
         # Skip filing PRs (they shouldn't be auto-closed for respawn).
         if is_filing_pr_title "$PR_TITLE"; then
             continue
+        fi
+
+        # ── REAPER-SPARE: classify WHY this PR is BLOCKED before touching it ──
+        # Recoverable blocks (CI still running, or a known-flake budget block on
+        # an otherwise-green PR) must NEVER be rebased-then-closed — that is the
+        # PR #4589 class where correct work was destroyed. Only genuinely dead
+        # PRs (a hard non-flake CI failure, or a merge conflict) fall through to
+        # the rebase→close respawn path below.
+        if [[ "${CHUMP_REAPER_SPARE_RECOVERABLE:-1}" != "0" ]]; then
+            _spare_verdict=$(classify_blocked_pr "$PR_NUM")
+            case "$_spare_verdict" in
+                pending|blocked_no_failure)
+                    info "  PR #$PR_NUM BLOCKED but RECOVERABLE ($_spare_verdict) — sparing (no hard failure to justify a close)."
+                    # Clear any stale rebase-attempt state so the 30-min close
+                    # timer never fires for a PR that is simply waiting on CI.
+                    if [[ -n "$(respawn_state_get "$PR_NUM" "rebase_attempted_at")" ]]; then
+                        respawn_state_clear "$PR_NUM"
+                    fi
+                    respawn_emit pr_stuck_spared "$PR_NUM" "\"reason\":\"$_spare_verdict\""
+                    RESPAWN_SPARED=$((RESPAWN_SPARED + 1))
+                    continue
+                    ;;
+                flake_exhausted)
+                    _rearm_n=$(respawn_state_get "$PR_NUM" "flake_rearmed_count"); _rearm_n="${_rearm_n:-0}"
+                    _rearm_max="${CHUMP_REAPER_FLAKE_REARM_MAX:-1}"
+                    if [[ "$_rearm_n" -lt "$_rearm_max" ]]; then
+                        info "  PR #$PR_NUM BLOCKED only by a flake-budget-exhausted known flake — re-arming budget (attempt $((_rearm_n + 1))/$_rearm_max), sparing. NEVER closing a green PR."
+                        rearm_flake_budget "$PR_NUM"
+                        # Drop any pending close timer; keep the re-arm counter.
+                        respawn_state_clear "$PR_NUM"
+                        respawn_state_set "$PR_NUM" "{\"flake_rearmed_count\":$((_rearm_n + 1))}"
+                        respawn_emit pr_stuck_flake_rearmed "$PR_NUM" "\"attempt\":$((_rearm_n + 1)),\"max\":$_rearm_max"
+                    else
+                        warn "  PR #$PR_NUM flake budget re-exhausted after $_rearm_n re-arm(s) — ESCALATING to operator, NOT closing (anti-memento: keep correct work)."
+                        respawn_emit pr_stuck_flake_escalated "$PR_NUM" "\"rearmed\":$_rearm_n,\"reason\":\"flake_persists_after_rearm\""
+                    fi
+                    RESPAWN_SPARED=$((RESPAWN_SPARED + 1))
+                    continue
+                    ;;
+                *)
+                    : # hard_fail / conflict → genuinely dead; fall through.
+                    ;;
+            esac
         fi
 
         ATTEMPTED_AT=$(respawn_state_get "$PR_NUM" "rebase_attempted_at")
@@ -733,7 +849,7 @@ next picker. To exempt a PR from this loop permanently, run:
     done <<< "$RESPAWN_TSV"
 
     if [[ "$_trunk_red" -eq 0 ]]; then
-        green "  respawn summary: rebased=$RESPAWN_REBASED  closed=$RESPAWN_CLOSED  exempt=$RESPAWN_EXEMPT"
+        green "  respawn summary: rebased=$RESPAWN_REBASED  closed=$RESPAWN_CLOSED  exempt=$RESPAWN_EXEMPT  spared=$RESPAWN_SPARED"
     fi
 fi
 
@@ -869,9 +985,9 @@ except Exception:
 fi
 
 echo ""
-green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed, $RESPAWN_REBASED respawn-rebased, $RESPAWN_CLOSED respawn-closed, $RETIRED stale-conflicting retired ==="
+green "=== reaper done: $CLOSED closed, $WARNED warnings, $GHOST_CLOSED ghost gaps closed, $RESPAWN_REBASED respawn-rebased, $RESPAWN_CLOSED respawn-closed, $RESPAWN_SPARED respawn-spared, $RETIRED stale-conflicting retired ==="
 
 # INFRA-120: stamp heartbeat + emit reaper_run event. Disarm trap first so we
 # don't double-emit on the EXIT trap.
 trap - EXIT
-reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED,\"respawn_rebased\":$RESPAWN_REBASED,\"respawn_closed\":$RESPAWN_CLOSED,\"retired\":$RETIRED}"
+reaper_finish ok "{\"closed\":$CLOSED,\"warned\":$WARNED,\"ghost_closed\":$GHOST_CLOSED,\"respawn_rebased\":$RESPAWN_REBASED,\"respawn_closed\":$RESPAWN_CLOSED,\"respawn_spared\":$RESPAWN_SPARED,\"retired\":$RETIRED}"

@@ -1066,6 +1066,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-pr-rescue-noci.sh",
         // RESILIENT-050: trunk-RED hold gate — fast (~2s), no network needed.
         "scripts/ci/test-reaper-trunk-red-hold.sh",
+        // REAPER-SPARE (PR #4589 fix): stale-pr-reaper must SPARE recoverable
+        // BLOCKED PRs (pending required checks, or a flake-budget-exhausted
+        // known flake on an otherwise-green PR) and only bounce genuinely dead
+        // ones (hard non-flake failure / conflict). Pure decision-function
+        // fixtures + INFRA-304 markers, no network, ~1s.
+        "scripts/ci/test-reaper-spare-recoverable-blocked.sh",
         // RESILIENT-066: fleet-pause autolift + pause-immune choir — Tier A,
         // pure shell, no GitHub API, ~2s.
         "scripts/ci/test-fleet-pause-autolift.sh",
