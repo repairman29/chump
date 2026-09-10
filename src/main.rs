@@ -54,6 +54,7 @@ mod chump_init;
 mod chump_log;
 mod ci_lesson;
 mod ci_summary;
+mod cli_subcommand_scaffold;
 mod cli_tool;
 mod cluster_mesh;
 mod codebase_digest_tool;
@@ -1046,6 +1047,11 @@ fn print_help() {
     println!("  brain query <memory|reflections|routing> [--limit N] [--bot NAME] [--json]");
     println!("  orchestrate        Opus-driven conversational loop (interactive)");
     println!();
+    println!("SCAFFOLDED (EFFECTIVE-178, stub — not yet implemented)");
+    for sub in cli_subcommand_scaffold::SCAFFOLD_SUBCOMMANDS {
+        println!("  {:<10} {}", sub.name, sub.description);
+    }
+    println!();
     println!("ANALYTICS");
     println!("  health  (alias: h)  current gap-registry health snapshot");
     println!(
@@ -1496,6 +1502,16 @@ async fn main() -> Result<()> {
     // non-hook callers).
     if args.get(1).map(String::as_str) == Some("verify-claim-branch") {
         std::process::exit(verify_claim_branch::run_cli(&args));
+    }
+
+    // EFFECTIVE-1547 (EFFECTIVE-178 slice): dispatch scaffolded
+    // recovery/orchestration verbs (lease, unwedge, wait, daemons) that
+    // don't have a real implementation yet. Cheap name lookup ahead of
+    // store/config init, same shape as the guards above.
+    if let Some(sub_name) = args.get(1) {
+        if let Some(sub) = cli_subcommand_scaffold::find(sub_name) {
+            std::process::exit(cli_subcommand_scaffold::dispatch(sub, &args[2..]));
+        }
     }
 
     // INFRA-2028: every `gh` subprocess chump spawns inherits this process's
