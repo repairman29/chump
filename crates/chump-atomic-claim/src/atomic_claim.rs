@@ -83,6 +83,9 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-5773: optional agent role, validated against
+    /// docs/process/AGENT_ROLES.yaml. Unregistered roles reject the claim.
+    pub role: Option<String>,
 }
 
 impl ClaimArgs {
@@ -107,7 +110,8 @@ impl ClaimArgs {
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
-                       --json        Output JSON format (use with --check-only)"
+                       --json        Output JSON format (use with --check-only)\n  \
+                       --role ROLE   Validate ROLE against docs/process/AGENT_ROLES.yaml (INFRA-5773)"
                 );
                 std::process::exit(0);
             }
@@ -152,6 +156,7 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut role: Option<String> = None;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,6 +221,14 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--role" => {
+                    role = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--role needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -245,6 +258,7 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            role,
         })
     }
 }
@@ -675,6 +689,13 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
              `chump fleet level 5` to re-enable the fleet.",
             level
         );
+    }
+
+    // INFRA-5773: role validation — reject unregistered --role before any
+    // state mutation. Pure file read (docs/process/AGENT_ROLES.yaml), so it
+    // is safe to run this early, same rationale as the kill switch above.
+    if let Some(role) = &args.role {
+        crate::agent_roles::validate_role(role, &args.repo_root)?;
     }
 
     // 1. Fetch latest base branch — best-effort; the worktree-add will

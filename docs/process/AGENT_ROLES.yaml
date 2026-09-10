@@ -1,0 +1,86 @@
+# AGENT_ROLES.yaml — registry of agent roles + skill profiles (INFRA-1863 slice, INFRA-5773)
+#
+# Canonical source of truth for `chump claim --role <role>` validation
+# (crates/chump-atomic-claim/src/agent_roles.rs). A role NOT listed here is
+# rejected at claim time with a clear error rather than silently accepted.
+#
+# To add a role: add an entry under `roles:` with a `description` and a
+# `skills` list, then reference the matching curator doc (if any) under
+# `.claude/agents/<role>.md`.
+
+roles:
+  curator:
+    description: >-
+      General curator lane role — domain-scoped fleet curation (see
+      .claude/agents/ for the specific curator roster: ci-audit, handoff,
+      target, decompose, shepherd, and others each register their own
+      narrower role below).
+    skills:
+      - fleet-health-audit
+      - gap-triage
+      - ambient-monitoring
+
+  fleet-worker:
+    description: >-
+      Pull-model worker that polls state.db, claims an open gap, and ships
+      it end to end (scripts/dispatch/worker.sh).
+    skills:
+      - rust
+      - shell
+      - git
+      - gh-cli
+
+  paramedic:
+    description: >-
+      On-call rescue role for wedged fleet state — unsticks leases,
+      revives dead daemons, clears stale worktrees.
+    skills:
+      - lease-recovery
+      - worktree-repair
+      - daemon-revival
+
+  ci-audit:
+    description: >-
+      CI/test-gate curator — decomposes CI failure clusters into flake vs.
+      logic-bug vs. missing-gate buckets, dispatches Sonnet sub-agents on
+      flake-rerun-able sub-issues (.claude/agents/ci-audit.md).
+    skills:
+      - ci-failure-triage
+      - flake-detection
+      - sub-agent-dispatch
+
+  handoff:
+    description: >-
+      Typed-handoff curator — routes sub-agent dispatch through
+      crates/chump-handoff/src/contracts.rs typed contracts instead of
+      free-form prompts (.claude/agents/handoff.md).
+    skills:
+      - typed-contracts
+      - lease-collision-detection
+      - sub-agent-dispatch
+
+  target:
+    description: >-
+      Demo-target curator — owns Column-A demo target selection, umbrella
+      stewardship, and parallel sub-fleet dispatch (.claude/agents/target.md).
+    skills:
+      - demo-repo-curation
+      - umbrella-decomposition
+      - parallel-dispatch
+
+  decompose:
+    description: >-
+      Gap-slicing curator — slices umbrella gaps into concrete sub-gaps
+      against current-codebase context via `chump gap decompose`.
+    skills:
+      - gap-decomposition
+      - umbrella-audit
+
+  shepherd:
+    description: >-
+      PR-rescue curator — unwedges stuck PRs (BEHIND rebases, BLOCKED
+      re-arms, DIRTY conflict triage), diagnoses cross-PR failure clusters.
+    skills:
+      - pr-rescue
+      - rebase-triage
+      - fleet-wedge-diagnosis

@@ -3,5 +3,6 @@
 //! `crate::autonomy_level` paths stay valid unchanged. `autonomy_level` (the
 //! fleet kill switch, RESILIENT-073) is a pure-leaf dependency of the claim
 //! path, so it moves along with it.
+pub mod agent_roles;
 pub mod atomic_claim;
 pub mod autonomy_level;
