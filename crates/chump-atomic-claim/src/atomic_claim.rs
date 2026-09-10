@@ -83,6 +83,20 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-1863 (META-074 child C, AC1/AC4): role-scoped claim. Must match
+    /// a registered role in docs/process/AGENT_ROLES.yaml. When set, path
+    /// overlap with a sibling lease is advisory (warn + `claim_collision_avoided`)
+    /// instead of a hard block.
+    pub role: Option<String>,
+    /// INFRA-1863 AC1: the module/concern/feature-area this claim covers.
+    /// Free-text; paired with `role` for role-scoped claims. Advisory only —
+    /// not currently validated against a fixed vocabulary.
+    pub scope: Option<String>,
+    /// INFRA-1863 AC3: acknowledges a multi-directory `--paths` claim.
+    /// Requires `reason` to be set too.
+    pub broad: bool,
+    /// INFRA-1863 AC3: one-sentence justification for a `--broad` claim.
+    pub reason: Option<String>,
 }
 
 impl ClaimArgs {
@@ -105,6 +119,11 @@ impl ClaimArgs {
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --role ROLE      Role-scoped claim (INFRA-1863); must match docs/process/AGENT_ROLES.yaml.\n                        \
+                                        Path overlap becomes advisory (warn) instead of a hard block\n  \
+                       --scope SCOPE    Module/concern/feature-area for a role-scoped claim (free text)\n  \
+                       --broad          Acknowledge a --paths CSV spanning >1 top-level directory (needs --reason)\n  \
+                       --reason TEXT    Justification required alongside --broad\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -152,6 +171,10 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut role: Option<String> = None;
+        let mut scope: Option<String> = None;
+        let mut broad = false;
+        let mut reason: Option<String> = None;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,6 +239,34 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--role" => {
+                    role = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--role needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
+                "--scope" => {
+                    scope = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--scope needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
+                "--broad" => {
+                    broad = true;
+                    i += 1;
+                }
+                "--reason" => {
+                    reason = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--reason needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -225,6 +276,32 @@ impl ClaimArgs {
             .unwrap_or_else(|_| PathBuf::from("/tmp"));
         let remote = std::env::var("CHUMP_REMOTE").unwrap_or_else(|_| "origin".into());
         let base_branch = std::env::var("CHUMP_BASE_BRANCH").unwrap_or_else(|_| "main".into());
+
+        // INFRA-1863 AC4: --role must match a registered role.
+        if let Some(r) = &role {
+            crate::role_scope::validate_role(&repo_root, r)?;
+        }
+
+        // INFRA-1863 AC2: append-only metadata files are exempt from lease
+        // semantics — strip them out of the declared paths CSV.
+        // AC3: a --paths CSV spanning >1 top-level directory requires
+        // --broad --reason, otherwise it's rejected outright.
+        let paths = match paths {
+            Some(csv) => {
+                let stripped = crate::role_scope::strip_append_only_exempt(&csv);
+                match stripped {
+                    Some(remaining) => {
+                        Some(crate::role_scope::enforce_broad_scope_guard(
+                            &remaining,
+                            broad,
+                            reason.as_deref(),
+                        )?)
+                    }
+                    None => None,
+                }
+            }
+            None => None,
+        };
 
         Ok(Self {
             gap_id,
@@ -245,6 +322,10 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            role,
+            scope,
+            broad,
+            reason,
         })
     }
 }
@@ -1198,7 +1279,26 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                     "[claim]   These are hot shared files — concurrent edits risk merge conflicts."
                 );
 
-                if !args.force_overlap {
+                if let Some(role) = &args.role {
+                    // INFRA-1863 AC1/AC7: role-scoped claims are advisory by
+                    // default — the collision is logged (both the existing
+                    // hot-file event above and this migration-signal event)
+                    // but does not block. `claim_collision_avoided` is the
+                    // metric that tracks how often role-typing avoided a
+                    // block that the old file-lease semantics would have
+                    // enforced.
+                    emit_claim_collision_avoided_event(
+                        &ambient_log,
+                        &args.gap_id,
+                        role,
+                        args.scope.as_deref(),
+                        &overlap_result.overlap_paths,
+                    );
+                    eprintln!(
+                        "[claim]   role-scoped claim (role={role}) — proceeding advisory; \
+                         old file-lease semantics would have blocked here."
+                    );
+                } else if !args.force_overlap {
                     eprintln!(
                         "[claim]   Re-run with --force-overlap to proceed anyway (event still emitted)."
                     );
@@ -4131,6 +4231,51 @@ fn emit_claim_hot_file_overlap_event(
         cg = json_escape(claim_gap),
         sg = json_escape(sibling_gap),
         ss = json_escape(sibling_session),
+        op = paths_json,
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// INFRA-1863 (META-074 child C, AC7): emitted when a role-scoped claim
+/// overlaps a sibling lease's paths under old file-lease semantics but
+/// proceeds anyway (advisory-by-default). This is the migration-success
+/// signal: a rising count means role/scope typing is doing real work
+/// avoiding blocks the old semantics would have enforced.
+fn emit_claim_collision_avoided_event(
+    ambient_log: &Path,
+    claim_gap: &str,
+    role: &str,
+    scope: Option<&str>,
+    overlap_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(overlap_paths).unwrap_or_else(|_| "[]".to_string());
+    let scope_json = match scope {
+        Some(s) => format!("\"{}\"", json_escape(s)),
+        None => "null".to_string(),
+    };
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_collision_avoided\",\
+         \"claim_gap\":\"{cg}\",\"role\":\"{r}\",\"scope\":{sc},\
+         \"overlap_paths\":{op}}}\n",
+        ts = ts,
+        cg = json_escape(claim_gap),
+        r = json_escape(role),
+        sc = scope_json,
         op = paths_json,
     );
     use std::io::Write;

@@ -1,0 +1,52 @@
+# AGENT_ROLES.yaml — role registry for `chump claim --role <role> --scope <scope>`
+# INFRA-1863 (META-074 child C, AC4).
+#
+# This is the machine-checked companion to docs/process/ROLE_REGISTRY.md
+# (which describes the human-facing operational roster — dispatcher,
+# driver, medic, etc.). AGENT_ROLES.yaml enumerates the *claim-time* roles
+# a session can assert via `--role`, with a skill profile used to sanity-check
+# scope assignment. `chump claim --role X` rejects X if it isn't listed here.
+#
+# Format read by crates/chump-atomic-claim/src/role_scope.rs::load_registered_roles
+# is intentionally minimal (line-scanned, not a full YAML parse): every role
+# entry MUST have a `- name: <role>` line. Additional fields (skills,
+# description) are for humans and future tooling, not parsed today.
+
+roles:
+  - name: curator
+    description: >-
+      Long-running lane-owner role (ci-audit, shepherd, handoff, target,
+      decompose, ...). Claims by concern/lane, not by file.
+    skills: [triage, gap-review, a2a-coordination]
+
+  - name: fleet-worker
+    description: >-
+      Short-lived per-gap implementer. Claims by module/feature-area for the
+      duration of a single gap.
+    skills: [rust, shell, git, gh]
+
+  - name: paramedic
+    description: >-
+      Incident-response role — revives dead daemons, unsticks wedges, frees
+      orphaned leases. Claims broad scope by exception (see --broad).
+    skills: [incident-response, launchd, process-supervision]
+
+  - name: ci-audit
+    description: CI/test-gate curator — flake vs logic-bug vs missing-gate triage.
+    skills: [ci-triage, flake-detection, sub-agent-dispatch]
+
+  - name: handoff
+    description: Typed-handoff routing curator — contracts + collision-safe edits.
+    skills: [contract-routing, lease-scanning]
+
+  - name: target
+    description: Demo-target + umbrella-decomposition curator.
+    skills: [gap-decomposition, sub-fleet-dispatch]
+
+  - name: decompose
+    description: Gap-slicing curator — umbrella-to-sub-gap decomposition.
+    skills: [gap-decomposition]
+
+  - name: shepherd
+    description: PR-rescue curator — BEHIND/BLOCKED/DIRTY triage and rescue.
+    skills: [pr-rescue, rebase, merge-queue]

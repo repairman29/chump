@@ -5,3 +5,4 @@
 //! path, so it moves along with it.
 pub mod atomic_claim;
 pub mod autonomy_level;
+pub mod role_scope;
