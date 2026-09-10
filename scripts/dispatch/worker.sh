@@ -85,6 +85,19 @@ if [[ -f "$CHUMP_MODEL_LADDER_MANIFEST" ]]; then
     set +a
 fi
 
+# Config-under-management: the worker self-heal policy (CHUMP_STARVE_AUTO_RELAX
+# etc.) is single-sourced from this repo-committed file instead of a node's
+# hand-deployed, git-untracked ~/node1-worker-run.sh launcher — the file whose
+# unset CHUMP_STARVE_AUTO_RELAX let a narrow filter stand the fleet down 138x
+# on 2026-09-08. The file uses ":=" assignment so an explicit launcher/env
+# value still wins (a node can opt out), while the unset drift-state gets the
+# fleet's intended default. See scripts/setup/worker-policy.env for rationale.
+CHUMP_WORKER_POLICY_ENV="${CHUMP_WORKER_POLICY_ENV:-$REPO_ROOT/scripts/setup/worker-policy.env}"
+if [[ -f "$CHUMP_WORKER_POLICY_ENV" ]]; then
+    # shellcheck disable=SC1090
+    source "$CHUMP_WORKER_POLICY_ENV"
+fi
+
 # INFRA-461: derive a unique per-worker session ID so leases written by this
 # worker (or any chump/coord subprocess it invokes) DO NOT stomp the
 # operator's interactive session via the .chump-locks/.wt-session-id
