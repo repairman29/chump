@@ -290,13 +290,11 @@ impl ClaimArgs {
             Some(csv) => {
                 let stripped = crate::role_scope::strip_append_only_exempt(&csv);
                 match stripped {
-                    Some(remaining) => {
-                        Some(crate::role_scope::enforce_broad_scope_guard(
-                            &remaining,
-                            broad,
-                            reason.as_deref(),
-                        )?)
-                    }
+                    Some(remaining) => Some(crate::role_scope::enforce_broad_scope_guard(
+                        &remaining,
+                        broad,
+                        reason.as_deref(),
+                    )?),
                     None => None,
                 }
             }

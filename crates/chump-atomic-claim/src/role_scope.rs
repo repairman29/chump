@@ -190,10 +190,7 @@ mod tests {
 
     #[test]
     fn validate_role_unknown_rejected() {
-        let tmp = std::env::temp_dir().join(format!(
-            "role-scope-test-{}",
-            std::process::id()
-        ));
+        let tmp = std::env::temp_dir().join(format!("role-scope-test-{}", std::process::id()));
         std::fs::create_dir_all(tmp.join("docs/process")).unwrap();
         std::fs::write(
             tmp.join("docs/process/AGENT_ROLES.yaml"),
