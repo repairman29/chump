@@ -193,7 +193,7 @@ curator_spawn_one() {
             return 1
         }
     else
-        tmux new-window -t "$CURATOR_TMUX_SESSION" -n "$role" -c "$REPO_ROOT" \
+        tmux new-window -d -t "$CURATOR_TMUX_SESSION" -n "$role" -c "$REPO_ROOT" \
             "/bin/bash -lc '$cmd'" 2>/dev/null || {
             log "  ✗ curator-opus-$role: tmux new-window failed"
             return 1
