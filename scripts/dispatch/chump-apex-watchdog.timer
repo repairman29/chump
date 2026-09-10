@@ -1,0 +1,15 @@
+# RESILIENT-1098 — pairs with chump-apex-watchdog.service. Fires every 5
+# minutes, independent of chump-organ-watchdog.timer's own cadence, since the
+# whole point is this watchdog must NOT share fate with the thing it watches.
+# OnCalendar is wall-clock and self-anchoring (see RESILIENT-413's note on
+# chump-organ-watchdog.timer for why OnUnitActiveSec is the wrong choice here).
+[Unit]
+Description=Run the Chump apex watchdog every 5 minutes (RESILIENT-1098)
+
+[Timer]
+OnBootSec=1min
+OnCalendar=*:0/5
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -6908,6 +6908,46 @@ events:
     consumers: [fleet-brief]
     fields_required: [ts, kind, healed, dry_run]
 
+  - kind: apex_watchdog_tick
+    effect_metric: self
+    emitter: scripts/ops/apex-watchdog.sh (RESILIENT-1098)
+    trigger: every apex-watchdog cycle, success or no-op — the heartbeat
+      proving the cross-node watchdog-of-the-watchdog is itself alive. A dead
+      apex-watchdog is exactly the SPOF this gap exists to cure, so it must
+      be independently observable (same pattern as organ_watchdog_tick).
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, self, peers_checked, peers_paged, dry_run]
+
+  - kind: node_unreachable
+    effect_metric: node_unreachable_duration
+    emitter: scripts/ops/apex-watchdog.sh (RESILIENT-1098)
+    trigger: a peer node (docs/fleet/nodes/*.json) failed its HTTP health
+      probe for CHUMP_APEX_WATCHDOG_MISS_THRESHOLD (default 3) consecutive
+      cycles — the apex layer's escalation for a whole-node wedge that
+      organ-watchdog/organ-reconcile, both running ON the wedged node, can
+      never self-report.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, peer, tailnet_ip, consecutive_misses, dry_run]
+
+  - kind: node_reachable_again
+    effect_metric: node_unreachable_duration
+    emitter: scripts/ops/apex-watchdog.sh (RESILIENT-1098)
+    trigger: a peer node that had previously crossed the node_unreachable
+      miss-threshold passed its HTTP health probe again — closes the
+      escalation window opened by node_unreachable.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, peer, tailnet_ip, prior_misses]
+
+  - kind: node_remote_heal_attempted
+    effect_metric: node_unreachable_duration
+    emitter: scripts/ops/apex-watchdog.sh (RESILIENT-1098)
+    trigger: opt-in (CHUMP_APEX_WATCHDOG_REMOTE_HEAL=1) — after a peer
+      crosses the node_unreachable threshold, the watchdog attempted a
+      best-effort remote revive (ssh reset-failed + restart the peer's own
+      chump-organ-watchdog.service) and this records the outcome.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, peer, tailnet_ip, result]
+
   - kind: process_organ_revived
     effect_metric: process_organ_heal_rate
     emitter: scripts/ops/process-organ-heal.sh (INFRA-3650)

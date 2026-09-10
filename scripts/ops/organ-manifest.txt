@@ -173,6 +173,18 @@ enabled     chump-backlog-sync-writer.timer  role=data requires=bin:git,bin:chum
 # is supervised... so the healer can never stay dead" half of RESILIENT-356.
 enabled     chump-organ-watchdog.timer  role=brain
 
+# chump-apex-watchdog.timer (RESILIENT-1098): the apex layer ABOVE
+# organ-watchdog/organ-reconcile. Both of those self-heal ON the node they
+# heal — a whole-node wedge (this node's own systemd/reconcile loop gone
+# dark) has no in-band healer. apex-watchdog is the cross-node peer
+# heartbeat check: it watches OTHER fleet nodes (docs/fleet/nodes/*.json),
+# not this one, so a peer node still notices and pages within one cycle even
+# if this node's entire self-heal chain is dead. Declared role=brain here
+# (same scope as organ-watchdog) so organ-reconcile keeps it alive on the
+# coordination-role nodes; requires=bin:curl since the peer probe is an HTTP
+# health check.
+enabled     chump-apex-watchdog.timer  role=brain requires=bin:curl
+
 # chump-process-organ-heal.timer: the process-level sibling of
 # chump-organ-watchdog.timer (INFRA-3650, PEER-HEAL-03). organ-watchdog heals
 # chump-*.service/.timer SYSTEMD units; nothing revived a raw background bash
