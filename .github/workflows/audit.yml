@@ -841,6 +841,12 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-notify-operator.sh
 
+      # RESILIENT-270. shard-3: pure shell, no chump binary, and shards 1/4 are
+      # the ones paying the cold cargo build.
+      - name: Discord -> Telegram fallback chain (RESILIENT-270)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-notify-operator-fallback.sh
+
       # RESILIENT-1096. shard-3: pure shell, no chump binary, and shards 1/4 are
       # the ones paying the cold cargo build.
       - name: every CHUMP_NOTIFY_KIND has an escalation-registry verdict (RESILIENT-1096)

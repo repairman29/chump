@@ -3426,6 +3426,41 @@ events:
       else is pending. Halt-severity messages never reach this check.
     consumers: [ambient]
 
+  - kind: notify_discord_failed
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: rung 1 (Discord DM, see docs/design/MESSAGING_TRANSPORT_FALLBACK.md)
+      was configured but the send failed — bad token, API down, network error.
+      Never fires when Discord is simply unconfigured (that stays a quiet
+      no-op); only a configured-but-unreachable send counts as a failure.
+      Followed by an attempt at rung 2 (Telegram).
+    consumers: [ambient]
+
+  - kind: notify_fallback_unavailable
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: rung 1 failed (notify_discord_failed) and rung 2 (Telegram) is not
+      configured — TELEGRAM_BOT_TOKEN or TELEGRAM_CHAT_ID unset. The operator
+      has no working channel at this moment; the loudest "nobody got told"
+      signal short of both rungs existing and both failing.
+    consumers: [ambient]
+
+  - kind: notify_fallback_delivered
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: rung 1 failed and rung 2 (Telegram) delivered successfully.
+      Delivery succeeded, but this is still worth reading — it means Discord
+      was down at the time.
+    consumers: [ambient]
+
+  - kind: notify_fallback_failed
+    effect_metric: self
+    emitter: scripts/coord/lib/notify-operator.sh (RESILIENT-270)
+    trigger: both rung 1 (Discord) and rung 2 (Telegram) failed to deliver.
+      No channel reached the operator for this message — read
+      .chump-locks/ambient.jsonl immediately.
+    consumers: [ambient]
+
   - kind: operator_page
     effect_metric: self
     emitter: scripts/dispatch/operator-page.sh (INFRA-1774)
