@@ -193031,7 +193031,7 @@ gaps:
 - id: MISSION-077
   domain: MISSION
   title: picker scores score(gap) not score(gap, agent) — fine for one repo, wrong the moment agents differ
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -193057,6 +193057,7 @@ gaps:
     CONSEQUENCE FOR PRODUCT TEAMS (operator question, same day): teams are ALREADY the data model — chump-team carries team_id and OperatorQuota. And a worker can ALREADY declare a specialty at launch via WORKER_SKILLS / WORKER_MACHINE / WORKER_BACKEND. What is missing is only the honoring: nothing reads the declaration when picking. So 'product team per repo' is a launch-flag + picker-filter change, not new architecture.
     
     This is the fifth instance today of the same fleet pattern: instrument built, never run (cf. pr-rescue.sh unscheduled RESILIENT-247, non-chump CI unwatched CREDIBLE-220, organs never swept EFFECTIVE-389, tracemap never pointed at its own example input EFFECTIVE-397).
+    [2026-09-10T12:30:25Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=4206B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: MISSION-032
 
