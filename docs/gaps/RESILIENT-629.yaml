@@ -1,0 +1,30 @@
+- id: RESILIENT-629
+  domain: RESILIENT
+  title: "RESILIENT: Auto-sync main checkout with origin/main via cron and post-merge webhook (RESILIENT-149 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - A cron job runs every 60 seconds to execute `git -C /path/to/main/checkout pull --ff-only`
+    - A webhook endpoint triggers an immediate pull on push to origin/main
+    - After any new commit to origin/main, the local checkout is updated within 1 minute without manual intervention
+    - Log entries are recorded for each sync attempt (success/failure)
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+  closed_date: '2026-09-10'
+  closed_pr: 4386
+
