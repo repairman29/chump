@@ -56716,6 +56716,7 @@ gaps:
     [2026-09-10T07:34:49Z] rot-reaper: PR #4572 auto-closed (required-check-red, 36h) 2026-09-10; RESPAWN CAP 3 reached (9 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-10T07:35:19Z] rot-reaper: PR #4572 auto-closed (required-check-red, 36h) 2026-09-10; RESPAWN CAP 3 reached (10 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-10T07:35:28Z] rot-reaper: PR #4572 auto-closed (required-check-red, 36h) 2026-09-10; RESPAWN CAP 3 reached (11 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-10T08:21:45Z] rot-reaper: PR #4572 auto-closed (required-check-red, 37h) 2026-09-10; RESPAWN CAP 3 reached (12 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
@@ -76044,7 +76045,7 @@ gaps:
 - id: INFRA-1122
   domain: INFRA
   title: "RESILIENT: A2A Layer 3e — multi-agent deliberation primitives with deterministic comparator (META-061)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -76057,13 +76058,14 @@ gaps:
     - "Release gate: 7-day fleet run with > 5 deliberations resolved (verified via `kind=deliberation_resolved` events in ambient.jsonl), zero operator-interventions for overlap conflicts"
   notes: |
     Decomposed into 14 slices: INFRA-5670, INFRA-5671, INFRA-5672, INFRA-5673, INFRA-5674, INFRA-5675, INFRA-5676, INFRA-5677, INFRA-5678, INFRA-5679, INFRA-5680, INFRA-5681, INFRA-5682, INFRA-5683
+    [2026-09-10T08:00:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1104B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1123
   domain: INFRA
   title: "CREDIBLE: A2A Layer 4f — signed provenance with key rotation + revocation + trust anchor (META-061)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -76079,6 +76081,7 @@ gaps:
     - "Release gate: all six A2A layers running under signed-event mode for 7 days with `CHUMP_A2A_LAYER=4`; one chaos test for key revocation; < 0.5 CPU overhead at 32 workers × 100 events/min"
   notes: |
     Decomposed into 14 slices: INFRA-5684, INFRA-5685, INFRA-5686, INFRA-5687, INFRA-5688, INFRA-5689, INFRA-5690, INFRA-5691, INFRA-5692, INFRA-5693, INFRA-5694, INFRA-5695, INFRA-5696, INFRA-5697
+    [2026-09-10T08:06:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=942B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -87119,7 +87122,7 @@ gaps:
   acceptance_criteria:
     - chump fanout and chump rollup are moved out of src/main.rs into self-registering modules via the inventory pattern; main.rs no longer holds their command bodies; both run with identical output before/after; editing one no longer forces recompile of the other.
   notes: |
-    Decomposed into 4 slices: INFRA-5602, INFRA-5603, INFRA-5604, INFRA-5605
+    Decomposed into 4 slices: INFRA-5754, INFRA-5755, INFRA-5756, INFRA-5757
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -89292,7 +89295,7 @@ gaps:
     - "Local-vs-CI parity smoke: scripts/ci/test-preflight-parity.sh runs chump preflight + parses the CI workflow YAML + asserts every required-check has a preflight match (or explicit exempt)"
     - "Telemetry: emit kind=ci_qa_score {window_h:24, accurate_failures:N, false_positives:N, missed_locally:N, flake_count:N} hourly; score = (accurate / (accurate + false_positive + missed_locally + flake)) × 100. Target ≥95% by Week 4, 100% by Week 8"
   notes: |
-    Decomposed into 13 slices: INFRA-5426, INFRA-5427, INFRA-5428, INFRA-5429, INFRA-5430, INFRA-5431, INFRA-5432, INFRA-5433, INFRA-5434, INFRA-5435, INFRA-5436, INFRA-5437, INFRA-5438
+    Decomposed into 11 slices: INFRA-5743, INFRA-5744, INFRA-5745, INFRA-5746, INFRA-5747, INFRA-5748, INFRA-5749, INFRA-5750, INFRA-5751, INFRA-5752, INFRA-5753
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -183722,6 +183725,592 @@ gaps:
     - scripts/ci/test-cli-surface-baseline.sh passes with 100% parity across all chump CLI commands
     - All CI checks including test-main-rs-loc.sh pass cleanly
   depends_on: [INFRA-5741]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5743
+  domain: INFRA
+  title: "INFRA: Enforce phase and total timeouts on pre-push hook (INFRA-1861 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Pre-push hook caps execution at 30 seconds per phase and 90 seconds total.
+    - If any phase or total duration is exceeded, hook aborts with non-zero exit code and emits structured telemetry event kind=prepush_timeout.
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5744
+  domain: INFRA
+  title: "INFRA: Fix pr-hygiene body-mention regex for markdown links and revert commits (INFRA-1861 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - pr-hygiene check correctly identifies deleted file mentions in PR bodies using markdown link syntax [text](path), plain file path mentions, and Revert commit messages.
+    - No false-positive failures occur on valid PR bodies referencing deleted files.
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5745
+  domain: INFRA
+  title: "INFRA: Add standardized bypass guidance output to heuristic check failures (INFRA-1861 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Every heuristic check script producing a FAIL output prints a line starting with 'How to bypass cleanly:' detailing the flag or annotation to override."
+    - An audit script verifies all active failure output paths contain the required bypass line.
+  depends_on: [INFRA-5744]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5746
+  domain: INFRA
+  title: "INFRA: Audit KNOWN_FLAKES.yaml catalog and enforce gap issue linkage (INFRA-1861 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - 100% of entries in docs/process/KNOWN_FLAKES.yaml reference an active, valid issue key for root-cause tracking.
+    - Un-catalogued test flakes fail CI run and block merge until catalogued or root-caused.
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5747
+  domain: INFRA
+  title: "INFRA: Establish CI gates inventory matrix in docs/process/CI_GATES_INVENTORY.md (INFRA-1861 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - docs/process/CI_GATES_INVENTORY.md lists every required CI workflow check.
+    - Each check is documented with either its local preflight equivalent command or an explicit exemption reason.
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5748
+  domain: INFRA
+  title: "INFRA: Implement Local-vs-CI parity script scripts/ci/test-preflight-parity.sh (INFRA-1861 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - scripts/ci/test-preflight-parity.sh parses workflow YAML files for all required checks.
+    - Script asserts each check is mapped in chump preflight or listed with an explicit exemption in CI_GATES_INVENTORY.md.
+    - Exits with non-zero code if an unmapped, non-exempt required CI check is found.
+  depends_on: [INFRA-5747]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5749
+  domain: INFRA
+  title: "INFRA: Expand chump preflight scope to match required CI checks (INFRA-1861 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - chump preflight --scope all executes local equivalents for syntax, basic contract, and test checks in under 60 seconds warm.
+    - Catches syntax errors in src/preflight.rs locally prior to git push.
+    - Passes scripts/ci/test-preflight-parity.sh assertion without missing gates.
+  depends_on: [INFRA-5747, INFRA-5748]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5750
+  domain: INFRA
+  title: "INFRA: Surface cascade-cancelled job summaries in PR run status (INFRA-1861 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a required check fails and causes downstream job cancellations, a PR summary notice is posted listing all cancelled job names explicitly.
+    - Cancelled jobs are visible directly on the PR checks tab without navigating workflow logs.
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5751
+  domain: INFRA
+  title: "INFRA: Emit audit_orphan_landed event on main branch allowlist drift (INFRA-1861 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI run on main compares EVENT_REGISTRY against orphan-allowlist.
+    - When a new orphan event is detected on main, emits event kind=audit_orphan_landed with orphan details.
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5752
+  domain: INFRA
+  title: "INFRA: Extend rescue daemon to auto-create batch-allowlist PRs for orphan drift (INFRA-1861 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Daemon subscribing to kind=audit_orphan_landed opens a batch-allowlist update PR within 5 minutes of event emission.
+    - PR passes all PR hygiene checks automatically.
+  depends_on: [INFRA-5751]
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5753
+  domain: INFRA
+  title: "INFRA: Implement ci_qa_score hourly telemetry metric collector (INFRA-1861 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Hourly background task calculates accuracy score over a rolling 24h window: (accurate / (accurate + false_positive + missed_locally + flake)) * 100."
+    - "Emits telemetry event kind=ci_qa_score with fields window_h:24, accurate_failures, false_positives, missed_locally, flake_count, and calculated score."
+  notes: |
+    [chump harvest check 'every']
+    === primitives_index match for 'every' ===
+    
+    === cluster keyword match for 'every' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'every' ===
+    
+    === repo-description match for 'every' ===
+      almanac: A grounded, persistent knowledge index over a massive codebase that agents query over MCP instead of doing their own file-by-file research. Every answer carries a file:line receipt.
+      code-roach: Self-learning code quality platform that gets smarter with every fix
+    
+    === HARVEST_ROADMAP.md mention of 'every' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'every' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5754
+  domain: INFRA
+  title: "INFRA: Define command registration interface and inventory macro infrastructure (INFRA-1748 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Define the command trait or registration struct compatible with the inventory crate
+    - Add inventory dispatch lookup logic in command module root
+    - Code compiles clean with zero unused warnings when no subcommands are registered
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5755
+  domain: INFRA
+  title: "INFRA: Extract chump fanout into a self-registering module (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Move chump fanout CLI definition and execution logic out of main.rs into a standalone module
+    - "Register chump fanout using inventory::submit!"
+    - chump fanout command runs with identical CLI output and behavior as before
+  depends_on: [INFRA-5754]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5756
+  domain: INFRA
+  title: "INFRA: Extract chump rollup into a self-registering module (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Move chump rollup CLI definition and execution logic out of main.rs into a standalone module
+    - "Register chump rollup using inventory::submit!"
+    - chump rollup command runs with identical CLI output and behavior as before
+  depends_on: [INFRA-5754]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5757
+  domain: INFRA
+  title: "INFRA: Refactor main.rs to use inventory lookup and remove inline command bodies (INFRA-1748 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Remove hardcoded fanout and rollup command bodies from main.rs
+    - main.rs delegates execution via inventory command registry
+    - Editing chump fanout source file does not force recompile of chump rollup module
+    - Cargo check and existing test suite pass with identical output
+  depends_on: [INFRA-5755, INFRA-5756]
   notes: |
     [chump harvest check 'EFFECTIVE']
     === primitives_index match for 'EFFECTIVE' ===
