@@ -890,6 +890,56 @@ reconcile_role_organs() {
 #     instead of the whole manifest (which would re-add out-of-role organs).
 # Systemd hosts only; needs root to write /etc/systemd/system (warns + skips
 # non-root, non-fatal — reconcile_role_organs degrades the same way).
+# RESILIENT-1097: break the chicken-and-egg that left ~18 manifest organs
+# un-installable on cuphead. place_role_unit_files() below needs root to
+# write /etc/systemd/system and skips ENTIRELY when the install ran as a
+# non-root user; reconcile_role_organs() (organ-reconcile.sh) also runs as
+# that same non-root user and can only `enable --now` a unit that already
+# has a file on disk, so every role-matched organ backs off forever
+# ("WARN could not enable --now ... +7 more"). chump-organ-deploy.timer
+# (RESILIENT-374, User=root) is the ONE organ built to break exactly this:
+# once it is armed, its OWN root-run cycles call install-helsinki-atc.sh
+# --auto AS ROOT and place the REST of the role roster. So bootstrapping
+# just this one keystone unit via `sudo` (when available) unsticks the
+# whole roster on the very next timer tick — reproducible on any fresh box,
+# no hand-run installer, no full-root re-install required.
+bootstrap_organ_deploy_via_sudo() {
+  local repo="$1" lib_manifest="$2" lib_unit="$3" dispatch="$4"
+  # chump-organ-deploy.timer is role=janitor in the manifest — only brain/all
+  # role-filters include janitor (organ_role_filter), so a muscle-only node
+  # has no business installing it.
+  case "$ROLE" in brain|all) ;; *) return 0;; esac
+  command -v sudo >/dev/null 2>&1 || {
+    info ORGANS "no sudo on PATH — cannot bootstrap chump-organ-deploy.timer, role roster will stay dark until a root install"
+    return 0
+  }
+  if ! sudo -n true 2>/dev/null; then
+    info ORGANS "no passwordless sudo for $(whoami 2>/dev/null || id -un) — cannot bootstrap chump-organ-deploy.timer; grant NOPASSWD sudo for systemctl/install, or run install as root once"
+    return 0
+  fi
+  # shellcheck source=/dev/null
+  . "$lib_manifest"; . "$lib_unit"
+  local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
+  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-/etc/systemd/system}"
+  local tmp; tmp="$(mktemp -d)"
+  local placed=0 f
+  for f in chump-organ-deploy.service chump-organ-deploy.timer; do
+    [ -f "$dispatch/$f" ] || continue
+    if organ_unit_host_rewrite "$dispatch/$f" "$tmp/$f" "$run_user" "$run_home" 1 "$repo" \
+        && sudo mkdir -p "$dest_dir" \
+        && sudo install -m 644 "$tmp/$f" "$dest_dir/$f"; then
+      placed=$((placed + 1))
+    fi
+  done
+  rm -rf "$tmp"
+  if [ "$placed" -gt 0 ]; then
+    sudo systemctl daemon-reload 2>/dev/null || true
+    sudo systemctl enable --now chump-organ-deploy.timer 2>/dev/null || true
+    ok "bootstrapped chump-organ-deploy.timer via sudo ($placed unit file(s) placed) — its own root cycle will place the rest of the role roster"
+  else
+    info ORGANS "chump-organ-deploy unit files not found under $dispatch — cannot bootstrap"
+  fi
+}
 place_role_unit_files() {
   [ "${HOST_KIND:-}" = "linux-systemd" ] || { info ORGANS "unit-file placement is systemd-only (host=${HOST_KIND:-unset}) — skipping"; return 0; }
   local repo="$NODE_DIR/repo"
@@ -902,6 +952,7 @@ place_role_unit_files() {
     return 0
   fi
   if [ "$(id -u)" != "0" ] && [ "${CHUMP_NODE_INSTALL_ALLOW_NONROOT_PLACE:-0}" != "1" ]; then
+    bootstrap_organ_deploy_via_sudo "$repo" "$lib_manifest" "$lib_unit" "$dispatch"
     no "unit-file placement needs root to write /etc/systemd/system — skipping (re-run install as root/sudo)"
     return 0
   fi
