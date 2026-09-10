@@ -126242,7 +126242,7 @@ gaps:
 - id: INFRA-3842
   domain: INFRA
   title: "NBA spine phase 1 — canonical ChumpOS metrics registry + bus: ~50 computed gauges from 10 emitters write to one source of truth so the pane and NBA engine read one board instead of scattered json/ambient/journal/discord"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -126251,6 +126251,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 12 slices: INFRA-5805, INFRA-5806, INFRA-5807, INFRA-5808, INFRA-5809, INFRA-5810, INFRA-5811, INFRA-5812, INFRA-5813, INFRA-5814, INFRA-5815, INFRA-5816
+    [2026-09-10T19:55:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4010B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: FLEET-RADIO
 
 - id: INFRA-3843
@@ -207995,7 +207996,7 @@ gaps:
 - id: RESILIENT-417
   domain: RESILIENT
   title: "No systemic-gate-red diagnose+fix organ: main sat red 2 days on css baseline drift and nothing fixed it; build a gate-medic that detects sustained main-red, diagnoses the broken required check, lands or dispatches the fix"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -208004,6 +208005,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 9 slices: RESILIENT-1128, RESILIENT-1129, RESILIENT-1130, RESILIENT-1131, RESILIENT-1132, RESILIENT-1133, RESILIENT-1134, RESILIENT-1135, RESILIENT-1136
+    [2026-09-10T20:15:40Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=3473B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   outcome_id: CHUMPOS
 
 - id: RESILIENT-418
