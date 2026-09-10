@@ -15,6 +15,8 @@
 #   CHUMP_SESSION_ID         — required (session identifier)
 #   CHUMP_AGENT_HARNESS      — claude | opencode | codex | manual (default: manual)
 #   FLEET_MODEL              — opus | sonnet | haiku | local | unknown
+#   CHUMP_ROLE               — free-form role label, e.g. curator (default: unknown)
+#   CHUMP_SKILLS             — CSV skill list, e.g. rust,docs,sql
 #   CHUMP_PUBLISH_HARDWARE=1 — opt-in to publishing gpu/ip fields
 #   CHUMP_MACHINE_LABEL      — operator-set machine name (else hostname)
 #   CHUMP_GPU_LABEL          — only used when CHUMP_PUBLISH_HARDWARE=1
