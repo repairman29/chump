@@ -56709,6 +56709,7 @@ gaps:
     [2026-09-09T23:36:04Z] rot-reaper: PR #4572 auto-closed (required-check-red, 28h) 2026-09-09; re-attempt on fresh main.
     [2026-09-10T01:06:18Z] rot-reaper: PR #4572 auto-closed (required-check-red, 30h) 2026-09-10; RESPAWN CAP 3 reached (3 prior recycles) — NOT re-queued, escalating to operator.
     [2026-09-10T01:36:25Z] rot-reaper: PR #4572 auto-closed (required-check-red, 30h) 2026-09-10; RESPAWN CAP 3 reached (4 prior recycles) — NOT re-queued, escalating to operator.
+    [2026-09-10T03:06:38Z] rot-reaper: PR #4572 auto-closed (required-check-red, 32h) 2026-09-10; RESPAWN CAP 3 reached (5 prior recycles) — NOT re-queued, escalating to operator.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
