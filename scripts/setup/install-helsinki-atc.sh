@@ -74,9 +74,15 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+# pwd -P (physical) not the logical pwd: organ-deploy invokes this installer via
+# a symlinked path (the hand-bootstrapped /home/ubuntu/Projects/chump ->
+# /home/ubuntu/chump), and a logical pwd would preserve that symlink in REPO_ROOT
+# — which then gets baked into every organ's WorkingDirectory/ExecStart, keeping
+# the bootstrap symlink permanently load-bearing (RESILIENT-1102 residue). The
+# organ-unit test computes its own REPO_ROOT with pwd -P for the same reason.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd -P)"
 AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
