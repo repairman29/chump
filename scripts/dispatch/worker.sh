@@ -2163,6 +2163,30 @@ Operator or sibling worker can rescue this branch via:
                     "$AGENT_ID" "$GAP_ID" "$_cap_fail_class" "${_cl_model:-unknown}" "$rc" \
                     >> "$_amb_cap" 2>/dev/null || true
                 log "ALERT RESILIENT-1007: model capability failure (${_cap_fail_class}) on $GAP_ID at model=${_cl_model:-unknown} — escalating to next CHUMP_MODEL_ESCALATION_LADDER rung, skipping cooldown/auto-block"
+
+                # AC4 (RESILIENT-597): a capability-failed attempt is not a
+                # verified fix — the model can push a branch and have
+                # bot-merge.sh open a PR earlier in the same cycle, then hit
+                # the capability error later and still exit rc=1 overall.
+                # Without this, that PR sits open (or armed for auto-merge)
+                # while the ladder retries on the next rung — a real risk of
+                # shipping an attempt nobody verified. Close it so it can
+                # never merge and is never counted as a real ship; the
+                # escalated rung produces the artifact that actually ships.
+                if command -v gh >/dev/null 2>&1; then
+                    _cap_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+                    _cap_pr="$(gh pr list --head "$_cap_branch" --state open --json number \
+                        --jq '.[0].number // empty' 2>/dev/null || true)"
+                    if [[ -n "$_cap_pr" ]]; then
+                        gh pr close "$_cap_pr" --comment "RESILIENT-597: closing — model capability failure (${_cap_fail_class}) on this attempt, escalating to the next CHUMP_MODEL_ESCALATION_LADDER rung. This artifact was not verified and must not ship." \
+                            >/dev/null 2>&1 || true
+                        printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"model_ladder_artifact_suppressed","agent_id":"%s","gap_id":"%s","pr":%s,"fail_class":"%s"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "$GAP_ID" "$_cap_pr" "$_cap_fail_class" \
+                            >> "$_amb_cap" 2>/dev/null || true
+                        log "ALERT RESILIENT-597: closed PR #$_cap_pr for $GAP_ID (capability failure ${_cap_fail_class}) — suppressing artifact ship"
+                    fi
+                fi
             fi
         fi
 
