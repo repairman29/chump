@@ -691,6 +691,14 @@ jobs:
       - name: Organ role-roster + host-rewrite gate (RESILIENT-1055/1102)
         run: bash scripts/ci/test-resilient-1055-role-roster.sh
 
+      # RESILIENT-1104/1105: THE RATCHET — invariant-guard evaluate/emit/page
+      # logic against a hermetic registry + override probes (metric-at-floor OK,
+      # metric-below-page-floor flags+would-page+exits-nonzero, warn-only breach
+      # never fails, NA skips, dry-run suppresses the DM, fleet-doctor folds a
+      # regression into a FAIL). EDGE depth; no live gh, no Discord.
+      - name: Invariant-guard (Ratchet) gate (RESILIENT-1104/1105)
+        run: bash scripts/ci/test-invariant-guard.sh
+
       # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
       # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
       # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.

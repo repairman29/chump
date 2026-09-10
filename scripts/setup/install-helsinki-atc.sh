@@ -223,6 +223,13 @@ SYSTEM_UNITS=(
   # detection + ambient ALERT run regardless.
   chump-rca-reflex.service
   chump-rca-reflex.timer
+  # RESILIENT-1104/1105: THE RATCHET — the invariant-guard organ. Runs every
+  # registered invariant/metric-floor each cycle (scripts/ops/invariant-registry.txt)
+  # and pages on regression ("solved stays solved"). Rostered here so a fresh
+  # node boots WITH the ratchet running; declared `enabled` in organ-manifest.txt
+  # so organ-reconcile revives it if it dies (a dead ratchet is silent amnesia).
+  chump-invariant-guard.service
+  chump-invariant-guard.timer
   # cascade-unblock-detector (RESILIENT-418 / INFRA-2070): the launchd
   # installer (install-meta-118-daemons.sh) only wired this on Mac/helsinki;
   # on CJ nothing fanned a merged wedge_auto_fix PR out to sibling PRs blocked
@@ -245,7 +252,7 @@ SYSTEM_UNITS=(
   chump-organ-success-verifier.service
   chump-organ-success-verifier.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-invariant-guard.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then

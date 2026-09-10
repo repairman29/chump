@@ -433,6 +433,12 @@ enabled     chump-gap-store-single-source-check.timer  role=data requires=bin:sq
 # the detection + ambient ALERT sweep itself stays alive and self-heals like
 # every other organ here.
 enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
+# RESILIENT-1104/1105: THE RATCHET. The invariant-guard runs every registered
+# invariant/metric-floor each cycle (scripts/ops/invariant-registry.txt) and
+# pages on regression — "solved stays solved". Manifest-declared so organ-
+# reconcile revives it if it ever dies (a dead ratchet is how a solved problem
+# quietly un-solves itself). role=data: a read-only gauge sweep, not a mutator.
+enabled     chump-invariant-guard.timer  role=data
 
 # chump-organ-success-verifier.timer (RESILIENT-1108, umbrella RESILIENT-1103):
 # the organ that verifies organs actually RAN and SUCCEEDED — reads each

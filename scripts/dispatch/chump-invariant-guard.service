@@ -1,0 +1,23 @@
+# RESILIENT-1104 / RESILIENT-1105 — systemd unit for THE RATCHET guard-organ.
+# Paired with chump-invariant-guard.timer. Deployed by
+# scripts/setup/install-helsinki-atc.sh (system unit, root-owned; host-rewritten
+# per-node by the installer, same pattern as chump-rca-reflex.service /
+# chump-almanac-liveness.service).
+#
+# Runs scripts/ops/invariant-guard.sh once per tick: read the invariant registry
+# (scripts/ops/invariant-registry.txt), evaluate every metric-floor / invariant,
+# emit a per-invariant ambient reading, and PAGE the operator on any page-
+# severity regression (kind=invariant_violation → PAGE in the escalation
+# registry). This is the "solved stays solved" enforcement loop — a fix that
+# earned a registry row keeps being verified forever.
+[Unit]
+Description=Chump invariant-guard — the Ratchet: continuously verify every registered invariant/metric-floor, page on regression (RESILIENT-1104 / RESILIENT-1105)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+TimeoutStartSec=300
+Nice=10
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/invariant-guard.sh'

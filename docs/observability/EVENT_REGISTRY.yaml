@@ -12632,3 +12632,36 @@ events:
       train); it pages the board (severity=halt) so a human neuters all but one.
     consumers: [ambient, notify-operator (page), Roll Call]
     fields_required: [ts, kind, node, severity, msg]
+
+  # ── RESILIENT-1104/1105: THE RATCHET — invariant-guard organ ───────────────
+  - kind: invariant_reading
+    effect_metric: self
+    emitter: scripts/ops/invariant-guard.sh (RESILIENT-1104)
+    trigger: every guard pass, once per registered invariant in
+      scripts/ops/invariant-registry.txt — the durable per-invariant gauge
+      (id, measured value, comparator, threshold, owner, severity, status),
+      healthy or not. This is the reading a future regression is measured
+      against; a floor that stops being read is a floor that stopped guarding.
+    consumers: [ambient, invariant-guard, fleet-doctor (check_invariant_registry)]
+    fields_required: [ts, kind, node, id, value, threshold, status]
+
+  - kind: invariant_violation
+    effect_metric: self
+    emitter: scripts/ops/invariant-guard.sh (RESILIENT-1105)
+    trigger: a registered invariant/metric-floor regressed (measured value
+      failed its comparator vs threshold). severity=page violations route
+      through notify-operator (kind=invariant_violation → PAGE) as an incident —
+      the "solved stays solved" alarm, e.g. autonomous ship rate 12.5%→0%.
+      severity=warn violations emit here but do not page.
+    consumers: [ambient, notify-operator (page), fleet-doctor]
+    fields_required: [ts, kind, node, id, value, threshold, severity, msg]
+
+  - kind: invariant_guard_tick
+    effect_metric: self
+    emitter: scripts/ops/invariant-guard.sh (RESILIENT-1104)
+    trigger: every guard pass, once — the guard's own heartbeat with the
+      pass tallies (total/ok/skip/warn_violations/page_violations). Makes the
+      ratchet itself watchable: a dead ratchet stops ticking, which the roll-call
+      + organ-reconcile revive gate catch.
+    consumers: [ambient, Roll Call, organ-reconcile]
+    fields_required: [ts, kind, node, total, page_violations]

@@ -85,3 +85,13 @@ fleet_health_self_healed	suppress
 fleet_health_unit_failed	page
 fleet_health_healer_down	page
 fleet_health_sentinel_peer_dead	page
+
+# ── RESILIENT-1104/1105: THE RATCHET — invariant-guard organ ───────────────
+# The per-invariant reading (every cycle) and the guard's heartbeat are pure
+# telemetry — SUPPRESS. A page-severity invariant VIOLATION is a real regression
+# of something we already fixed, with no automated remedy (a human must decide
+# why the floor broke) — so it PAGES. This is the whole point of the ratchet:
+# autonomy 12.5%→0% reaches the phone instead of sliding back silently.
+invariant_reading	suppress	# per-invariant gauge reading, healthy or not — telemetry, not an incident
+invariant_guard_tick	suppress	# the guard's own heartbeat (a dead ratchet stops ticking; watched by roll-call)
+invariant_violation	page	# a registered invariant/metric-floor regressed — no auto-remedy, operator decides

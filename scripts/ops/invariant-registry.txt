@@ -1,0 +1,52 @@
+# scripts/ops/invariant-registry.txt — RESILIENT-1104 / RESILIENT-1105
+#
+# THE RATCHET. "Solved stays solved." Every fix, invariant, or metric-floor the
+# fleet earns becomes a ROW here — a continuously-verified guard-rail. The
+# invariant-guard organ (scripts/ops/invariant-guard.sh) runs EVERY row each
+# cycle, emits a per-invariant ambient reading, and PAGES the operator the
+# moment a row is violated. A regression can no longer slip back in silently:
+# the guard that noticed the metric once keeps noticing it forever.
+#
+# This is the DATA-DRIVEN sibling of scripts/coord/fleet-doctor-strict.sh's
+# hardcoded check_* invariants (which fleet-doctor now folds in via its
+# check_invariant_registry). fleet-doctor answers "is the fleet healthy right
+# now"; this registry answers "has anything we already fixed regressed" — and
+# both share the same register/emit/exit-nonzero-on-violation contract.
+#
+# ── FORMAT ────────────────────────────────────────────────────────────────────
+# One invariant per line, six pipe-delimited fields (surrounding spaces are
+# trimmed). Blank lines and lines beginning with '#' are ignored.
+#
+#   id | check | comparator | threshold | owner | severity
+#
+#   id          stable snake_case identifier (appears in the ambient reading + page).
+#   check       command that prints ONE token to stdout: the MEASURED VALUE (a
+#               number) or the literal "NA" to SKIP this cycle (offline / not-yet-
+#               measurable — a skip never pages). A path starting with "scripts/"
+#               resolves relative to the repo root; anything else runs as-is.
+#   comparator  the relation that must HOLD for the invariant to be OK, read as
+#               "value <comparator> threshold":
+#                 ge  ok iff value >= threshold   (a FLOOR — the common case)
+#                 gt  ok iff value >  threshold
+#                 le  ok iff value <= threshold   (a CEILING)
+#                 lt  ok iff value <  threshold
+#               A floor is violated when the measured value drops BELOW it.
+#   threshold   the number the comparator tests against.
+#   owner       the pillar/team that owns the fix (EFFECTIVE|CREDIBLE|RESILIENT|
+#               ZERO-WASTE|...). Carried into the reading + page so an incident
+#               routes to a human without a lookup.
+#   severity    page  → a violation DMs the operator (kind=invariant_violation,
+#                       an incident) AND makes the guard exit non-zero.
+#               warn  → a violation is emitted to ambient only (no DM, no non-zero
+#                       exit) — for placeholder/immature metrics not yet worth a page.
+#
+# ── ADDING A ROW ──────────────────────────────────────────────────────────────
+# When you fix a regression or set a metric floor, add its row HERE in the SAME
+# change — that is how a fix becomes a ratchet instead of a one-off. Point the
+# `check` at a probe under scripts/ops/invariant-checks/ that prints the measured
+# value (or NA). No guard edit is needed; the guard picks the row up next cycle.
+
+# id                              | check                                              | comparator | threshold | owner      | severity
+zero_touch_ship_rate             | scripts/ops/invariant-checks/zero-touch-ship-rate.sh | ge        | 12.5      | RESILIENT  | page
+hours_unattended_before_stall    | scripts/ops/invariant-checks/hours-unattended.sh     | ge        | 6         | RESILIENT  | page
+persons_served                   | scripts/ops/invariant-checks/persons-served.sh       | ge        | 1         | EFFECTIVE  | warn

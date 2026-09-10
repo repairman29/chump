@@ -41,6 +41,13 @@
 #                        organ_watchdog_tick or organ_reconcile_applied/noop
 #                        goes stale past its cadence, or has never ticked at
 #                        all while the other has.
+#   16. invariant-registry — RESILIENT-1104/1105 (THE RATCHET): folds the
+#                        data-driven invariant registry (scripts/ops/invariant-
+#                        registry.txt, run by scripts/ops/invariant-guard.sh)
+#                        into fleet-doctor's own invariant model. FAILs iff any
+#                        PAGE-severity metric-floor has regressed (e.g. the
+#                        autonomous ship rate slipping below its 12.5% floor).
+#                        Runs the guard READ-ONLY (--dry-run, never pages here).
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -58,7 +65,9 @@
 
 set -uo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
+# REPO_ROOT honors a pre-set override so the check_* functions can be sourced
+# and unit-tested (FLEET_DOCTOR_SOURCED=1) without $0 pointing at the real file.
+REPO_ROOT="${CHUMP_FLEET_DOCTOR_REPO_ROOT:-$(cd "$(dirname "$0")/../.." && pwd -P)}"
 AMBIENT_EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
 CHUMP_BIN="${CHUMP_BIN:-chump}"
 
@@ -1200,6 +1209,54 @@ print(last_reconcile)
         "organ-watchdog ticked $(( now_ts - last_watchdog ))s ago, organ-reconcile ticked $(( now_ts - last_reconcile ))s ago (thresholds ${watchdog_max_s}s/${reconcile_max_s}s)" ""
 }
 
+# ── Check 16 (RESILIENT-1104/1105): the Ratchet — invariant registry ───────────
+#
+# Fold the data-driven invariant registry (scripts/ops/invariant-registry.txt,
+# run by scripts/ops/invariant-guard.sh — THE RATCHET) into fleet-doctor's own
+# invariant model. fleet-doctor's other checks are hardcoded check_* functions;
+# this one check makes the ENTIRE registry — every metric-floor a fix ever
+# earned — part of the single "is the fleet healthy" number, without fleet-doctor
+# having to know each floor. A new floor is one registry row, and it shows up
+# here for free. Runs the guard READ-ONLY (--dry-run: evaluate + emit readings,
+# never page from here — the guard organ owns paging on its own timer) and FAILs
+# iff any PAGE-severity invariant is violated.
+check_invariant_registry() {
+    local guard="$REPO_ROOT/scripts/ops/invariant-guard.sh"
+    if [[ ! -f "$guard" ]]; then
+        register_check "invariant-registry" "skip" "invariant-guard.sh not found — Ratchet not installed" ""
+        return
+    fi
+    local snap rc
+    rc=0
+    # --dry-run never pages; --json gives a parseable snapshot. Fail-soft.
+    snap="$(bash "$guard" --json --dry-run 2>/dev/null)" || rc=$?
+    if [[ -z "$snap" ]]; then
+        register_check "invariant-registry" "skip" "invariant-guard produced no snapshot (rc=$rc)" ""
+        return
+    fi
+    local page_viol which
+    page_viol="$(printf '%s' "$snap" | python3 -c '
+import sys,json
+try:
+    d=json.load(sys.stdin)
+    pv=d.get("page_violations",0)
+    ids=[i["id"] for i in d.get("invariants",[]) if i.get("status")=="violation" and i.get("severity")=="page"]
+    print(pv); print(",".join(ids))
+except Exception:
+    print(0); print("")
+' 2>/dev/null)"
+    local pv; pv="$(printf '%s' "$page_viol" | sed -n 1p)"; pv="${pv:-0}"
+    which="$(printf '%s' "$page_viol" | sed -n 2p)"
+    if [[ "$pv" =~ ^[0-9]+$ ]] && (( pv > 0 )); then
+        register_check "invariant-registry" "fail" \
+            "$pv page-severity invariant(s) REGRESSED: ${which:-?} — a metric-floor we already earned has slipped back (the Ratchet caught it)" \
+            "bash $REPO_ROOT/scripts/ops/invariant-guard.sh --json  # inspect the violated floor(s); the guard organ pages on its own timer"
+    else
+        register_check "invariant-registry" "pass" \
+            "no page-severity invariant regressions (registry: scripts/ops/invariant-registry.txt)" ""
+    fi
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1224,6 +1281,7 @@ check_required_status_checks
 check_ops_defect_selfdiag
 check_auth_probe
 check_self_healer_heartbeat
+check_invariant_registry
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

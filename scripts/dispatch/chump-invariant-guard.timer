@@ -1,0 +1,16 @@
+# RESILIENT-1104 / RESILIENT-1105 — timer for THE RATCHET guard-organ.
+# Paired with chump-invariant-guard.service. Cadence mirrors the other periodic
+# sweep organs (chump-rca-reflex / chump-almanac-liveness): this is a watcher,
+# not a hot path. The whole point is that the watching NEVER stops — so the
+# organ is itself watched (it emits kind=invariant_guard_tick every pass; a dead
+# ratchet stops ticking, which the roll-call + heartbeat gates catch).
+[Unit]
+Description=Chump invariant-guard timer — run the Ratchet every 15m (RESILIENT-1104 / RESILIENT-1105)
+
+[Timer]
+OnBootSec=8min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
