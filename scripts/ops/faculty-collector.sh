@@ -113,12 +113,12 @@ mkfac() { # key name question value unit position state organ note
 # ── 1. BUILD — intent -> shipped work (merges/24h) ──────────────────────────
 merges="$(merges_24h "$REPO_ROOT" "$GH_REPO")"
 [[ "$merges" =~ ^[0-9]+$ ]] || merges=0
-# saturate at 60 merges/24h — a full owned-node factory day
-b_frac="$(sat "$merges" 60)"
+# No capping at 60 — use raw merges with a large divisor to avoid clamping
+b_frac="$(sat "$merges" 1000000)"
 FAC+=("$(mkfac build "Build" "intent -> shipped work" \
         "$merges" "merges/24h" "$(bandpos organ "$b_frac")" organ \
         "run-fleet · workers · integrator" \
-        "$merges PRs merged in the last 24h; saturates toward peer at ~60/day.")")
+        "$merges PRs merged in the last 24h; raw count (no saturation).")")
 
 # ── 2. SEE — code the OS can actually read (almanac coverage) ───────────────
 # Parse the SPECIFIC lines. embeddings line = symbol%, summaries line =
