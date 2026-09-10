@@ -400,8 +400,22 @@ pub fn resolve(creds: AuthCredentials) -> ActiveAuth {
             // RESILIENT-057: OAUTH is cost-primary — prefer it when present.
             // ANTHROPIC_API_KEY is the non-expiring fallback floor, used
             // only when OAUTH is absent.
+            //
+            // RESILIENT-1103: a present-but-known-dead OAUTH token (per the
+            // validate-before-use cache, populated by real spawn outcomes)
+            // must not win over a usable API key — otherwise Auto mode picks
+            // a credential it already knows will fail. Cache miss (unknown
+            // validity) stays optimistic and still prefers OAUTH.
             if creds.has_oauth() {
-                ActiveMode::OAuth
+                let known_dead =
+                    cached_validation(&ActiveMode::OAuth, &creds.oauth_token) == Some(false);
+                if known_dead && creds.has_api_key() {
+                    ActiveMode::ApiKey
+                } else if known_dead {
+                    ActiveMode::None
+                } else {
+                    ActiveMode::OAuth
+                }
             } else if creds.has_api_key() {
                 ActiveMode::ApiKey
             } else {
@@ -1319,6 +1333,61 @@ mod tests {
                 std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
             },
         );
+    }
+
+    /// RESILIENT-1103 AC3: verify the Auto-mode selection order directly
+    /// against `resolve()` (not just the `resolve_for_spawn` wrapper) —
+    /// valid token > invalid (known-dead) token > missing token > API key
+    /// alone.
+    #[test]
+    fn auto_mode_selection_order_valid_invalid_missing_api_key() {
+        with_env(&[], &["CHUMP_AUTH_MODE"], || {
+            let dir = tempfile::tempdir().unwrap();
+            let cache = dir.path().join("auth-validation-cache.tsv");
+            std::env::set_var("CHUMP_AUTH_VALIDATION_CACHE", &cache);
+
+            // 1. Valid (unknown/no cache entry = optimistic) token + API key
+            //    present => OAuth wins.
+            let creds_valid = AuthCredentials {
+                api_key: "sk-ant-key".into(),
+                oauth_token: "sk-ant-oat01-valid".into(),
+            };
+            assert_eq!(resolve(creds_valid).mode, ActiveMode::OAuth);
+
+            // 2. Invalid (cached-dead) token + API key present => falls back
+            //    to ApiKey, not the dead OAuth token.
+            record_validation_result_at(&ActiveMode::OAuth, "sk-ant-oat01-dead", false, &cache);
+            let creds_invalid = AuthCredentials {
+                api_key: "sk-ant-key".into(),
+                oauth_token: "sk-ant-oat01-dead".into(),
+            };
+            assert_eq!(resolve(creds_invalid).mode, ActiveMode::ApiKey);
+
+            // 3. Missing token + API key present => ApiKey.
+            let creds_missing = AuthCredentials {
+                api_key: "sk-ant-key".into(),
+                oauth_token: String::new(),
+            };
+            assert_eq!(resolve(creds_missing).mode, ActiveMode::ApiKey);
+
+            // 4. API key only, no OAUTH at all => ApiKey (baseline floor).
+            let creds_api_key_only = AuthCredentials {
+                api_key: "sk-ant-key".into(),
+                oauth_token: String::new(),
+            };
+            assert_eq!(resolve(creds_api_key_only).mode, ActiveMode::ApiKey);
+
+            // 5. Invalid token + NO API key => None (no viable credential;
+            //    a known-dead token is never used even with nothing to fall
+            //    back to).
+            let creds_invalid_no_key = AuthCredentials {
+                api_key: String::new(),
+                oauth_token: "sk-ant-oat01-dead".into(),
+            };
+            assert_eq!(resolve(creds_invalid_no_key).mode, ActiveMode::None);
+
+            std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
+        });
     }
 
     #[test]
