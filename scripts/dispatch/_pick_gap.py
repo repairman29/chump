@@ -60,6 +60,10 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _dep_resolution import MalformedDepList, parse_dep_list, unresolved_deps  # noqa: E402
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
@@ -553,27 +557,15 @@ def main() -> int:
         # empty-deps shape was silently filtered out and the picker
         # returned nothing — making it look like the queue was empty
         # while open gaps sat unpicked.
-        deps_raw = g.get("depends_on")
-        if isinstance(deps_raw, str):
-            try:
-                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
-            except json.JSONDecodeError:
-                # Malformed depends_on — skip to be safe.
-                continue
-        elif isinstance(deps_raw, list):
-            dep_list = deps_raw
-        else:
-            dep_list = []
+        try:
+            dep_list = parse_dep_list(g.get("depends_on"))
+        except MalformedDepList:
+            # Malformed depends_on — skip to be safe.
+            continue
         if dep_list:  # any non-empty dep array
             # INFRA-398: check if all dependencies are satisfied
             # (done or active) before skipping the gap.
-            unresolved = [d for d in dep_list if d not in active]
-            # Find which unresolved deps are actually done in the gap list
-            for gap in gaps:
-                if gap.get("id") in unresolved and gap.get("status") == "done":
-                    unresolved.remove(gap.get("id"))
-            # Skip only if there are unresolved dependencies
-            if unresolved:
+            if unresolved_deps(dep_list, gaps, active):
                 continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by another gap and should not be auto-picked.

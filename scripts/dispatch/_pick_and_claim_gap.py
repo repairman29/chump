@@ -66,6 +66,9 @@ import sys
 import time
 from pathlib import Path
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _dep_resolution import MalformedDepList, parse_dep_list, unresolved_deps  # noqa: E402
+
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 
@@ -736,18 +739,16 @@ def main() -> int:
             continue
         if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
             continue
-        deps_raw = g.get("depends_on")
-        if isinstance(deps_raw, str):
-            try:
-                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
-            except json.JSONDecodeError:
-                continue
-        elif isinstance(deps_raw, list):
-            dep_list = deps_raw
-        else:
-            dep_list = []
-        if dep_list:
+        try:
+            dep_list = parse_dep_list(g.get("depends_on"))
+        except MalformedDepList:
+            # Malformed depends_on — skip to be safe.
             continue
+        if dep_list:  # any non-empty dep array
+            # INFRA-398 (mirrored, RESILIENT-1114): check if all dependencies
+            # are satisfied (done or active) before skipping the gap.
+            if unresolved_deps(dep_list, gaps, active):
+                continue
 
         # INFRA-314: Extract affinity metadata (only when affinity is enabled).
         affinity_score = 0
