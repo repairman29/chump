@@ -75,3 +75,42 @@ gate was cautious is as load-bearing as the gate itself.
     has flipped it on yet.
 - **DEPTH tier:** D2 (opt-in autonomous-write flag, gap-store blast radius,
   fails closed to detect-and-ALERT-only when unset).
+
+## `CHUMP_STARVE_AUTO_RELAX` (INFRA-391) — flipped default-ON for workers
+
+- **Default (as of this entry):** ON (`1`) for any worker, set as fleet policy
+  in the tracked `scripts/setup/worker-policy.env`, which `scripts/dispatch/
+  worker.sh` sources each cycle. The code-level fallback in worker.sh remains
+  `:-0` (off) so a checkout without the policy file is unchanged; the policy
+  file uses `:=` so an explicit per-node/env value still wins (opt-out honored).
+- **What ON does:** after `CHUMP_STARVE_THRESHOLD` consecutive empty picks, the
+  worker widens its OWN filter in place — drop `FLEET_DOMAIN_FILTER`, then bump
+  the effort tier, then the priority tier (smallest meaningful blast-radius
+  increase each step) — and resets its starve counter, instead of ramping
+  toward the INFRA-613 stand-down (`exit 0`).
+- **What OFF does:** the pre-existing behavior — emit the `fleet_starved`
+  suggestion to ambient + log, keep polling with exponential backoff, and stand
+  down after `CHUMP_STAND_DOWN_THRESHOLD` empty cycles.
+- **Why flipped on:** the toggle shipped default-OFF and then lived nowhere in
+  git — it was simply absent from every node's hand-deployed, git-untracked
+  `~/node1-worker-run.sh`. On 2026-09-08 a hand-edited
+  `FLEET_DOMAIN_FILTER=EFFECTIVE,CREDIBLE` on mugman narrowed the worker to a
+  domain with no pickable gaps; with auto-relax unset, the worker stood down
+  138x over ~15h while the fleet sat frozen, and nothing in git could review,
+  reproduce, or heal the policy. Making it fleet policy (a) brings the toggle
+  under management so a drifted filter self-corrects instead of freezing, and
+  (b) leaves stand-down reachable only when the filter is genuinely maximally
+  relaxed and the backlog is truly empty.
+- **Risk / blast radius:** a relaxing worker can pick up work OUTSIDE its
+  originally-configured domain/effort/priority once starved. That is the
+  intended trade (a broader pick beats a dark worker), and it only takes effect
+  AFTER starvation — a worker with pickable in-filter work is unaffected. The
+  single-merge-driver invariant (RESILIENT-1054) is untouched: relax changes
+  only which GAPS a muscle worker builds, never the merge path.
+- **Log:**
+  - 2026-09-09 — flipped default-ON for workers via `worker-policy.env`
+    (config-under-management). Guarded by
+    `scripts/ci/test-worker-policy-env.sh`.
+- **DEPTH tier:** D2 (behavior-flip via tracked config; blast radius = which
+  gaps a starved worker picks; fails safe to the prior off-path when the policy
+  file is absent, and honors an explicit opt-out).
