@@ -51,6 +51,23 @@ organ_unit_host_rewrite() {
   local repo_on_host="${repo_root:-${run_home%/}/Projects/chump}"
   repo_on_host="${repo_on_host%/}"
 
+  # RESILIENT-1102 residue: collapse any symlink in the passed repo root to the
+  # REAL on-disk checkout BEFORE baking it into the units. A bring-up may hand a
+  # placer a symlinked repo path (e.g. the hand-bootstrapped
+  # /home/ubuntu/Projects/chump -> /home/ubuntu/chump used to unwedge the
+  # fleet-wide CHDIR jam): install-helsinki-atc.sh derives its REPO_ROOT with a
+  # LOGICAL `pwd`, and organ-deploy passes CHUMP_REPO_ROOT verbatim, so the
+  # symlink path flowed straight through this rewriter and every organ baked
+  # WorkingDirectory=.../Projects/chump — keeping that bootstrap symlink
+  # permanently load-bearing. Resolving here (the ONE chokepoint both placers
+  # share) makes the units name the real checkout, so the symlink can be retired.
+  # Only resolve a path that actually EXISTS on disk: the legacy no-repo_root
+  # fallback ($HOME/Projects/chump) and the lib's synthetic-path unit tests pass
+  # roots that may not exist, and must keep their exact prior (verbatim) behavior.
+  if [[ -d "$repo_on_host" ]]; then
+    repo_on_host="$(cd "$repo_on_host" 2>/dev/null && pwd -P || echo "$repo_on_host")"
+  fi
+
   # Detect the unit's OWN baked-in source user (its `User=` line; default root
   # when absent, matching the historical helsinki shape) and rewrite THAT home.
   local src_user src_home

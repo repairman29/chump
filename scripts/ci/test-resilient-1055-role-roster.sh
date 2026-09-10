@@ -134,7 +134,12 @@ WorkingDirectory=/root/Projects/chump
 ExecStart=/bin/bash -lc 'source /root/.chump/providers.env; cd /root/Projects/chump; exec /root/Projects/chump/scripts/ops/x.sh'
 EOF
 # The box's real repo lives at $HOME/chump (NO Projects segment) — and it EXISTS.
+# Compare against its PHYSICAL path: the rewriter now realpath-resolves the repo
+# root (so a bootstrap symlink can never be baked in), and on macOS $TMP itself
+# sits under /var -> /private/var, so the resolved output differs from the raw
+# $TMP path. Resolving here also hardens the test against any symlinked TMPDIR.
 REAL_REPO="$TMP/home-ubuntu/chump"; mkdir -p "$REAL_REPO"
+REAL_REPO="$(cd "$REAL_REPO" && pwd -P)"
 DESTR="$TMP/out-repo.service"
 organ_unit_host_rewrite "$SRCR" "$DESTR" "ubuntu" "$TMP/home-ubuntu" 0 "$REAL_REPO" || fail "host_rewrite(repo_root) returned non-zero"
 # Every repo reference resolves to the real checkout; home-only paths (.chump)
@@ -150,5 +155,20 @@ grep -q 'Projects/chump' "$DESTR" && fail "repo_root: a stale Projects/chump pat
 _wd="$(sed -n 's/^WorkingDirectory=//p' "$DESTR")"
 [ -d "$_wd" ] || fail "repo_root: baked WorkingDirectory '$_wd' does not exist on disk (this is the 200/CHDIR bug)"
 pass "organ_unit_host_rewrite: repo_root redirects every repo path to the real (existing) checkout — no Projects/chump ghost, WorkingDirectory exists"
+
+# ── 6. RESILIENT-1102 residue: a SYMLINKED repo_root is collapsed to the REAL ─
+# on-disk checkout, so a hand-bootstrapped symlink (e.g. $HOME/Projects/chump ->
+# $HOME/chump) never gets baked into the units — otherwise that bootstrap symlink
+# stays permanently load-bearing and can never be retired.
+REAL2="$TMP/box/chump"; mkdir -p "$REAL2"
+REAL2="$(cd "$REAL2" && pwd -P)"               # physical (see section 5 note)
+mkdir -p "$TMP/box/Projects"
+ln -s "$REAL2" "$TMP/box/Projects/chump"       # the bootstrap symlink
+LINK2="$TMP/box/Projects/chump"
+DESTS="$TMP/out-symlink.service"
+organ_unit_host_rewrite "$SRCR" "$DESTS" "ubuntu" "$TMP/box" 0 "$LINK2" || fail "host_rewrite(symlink repo_root) returned non-zero"
+grep -q "^WorkingDirectory=${REAL2}\$" "$DESTS" || fail "symlink repo_root: WorkingDirectory must bake the REAL checkout, not the symlink: $(grep -n '^WorkingDirectory=' "$DESTS")"
+grep -q "Projects/chump" "$DESTS" && fail "symlink repo_root: the bootstrap symlink path leaked into the unit (still load-bearing): $(grep -n 'Projects/chump' "$DESTS")"
+pass "organ_unit_host_rewrite: a symlinked repo_root collapses to the real checkout — the bootstrap symlink is not baked in and can be retired"
 
 echo "ALL PASS"
