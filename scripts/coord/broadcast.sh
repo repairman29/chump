@@ -69,6 +69,15 @@
 #     .chump-locks/inbox/<sender>-sent-pending.jsonl with
 #     {ts, corr_id, to, expires_at} so a sender can audit outstanding
 #     unconfirmed sends without blocking (see a2a-delivery-tail.sh).
+#
+# INFRA-1948 (schema validation, slice E of INFRA-1862):
+#   --strict  — reject calls whose required fields are missing/defaulted
+#     instead of silently substituting a placeholder. Today's non-strict
+#     default lets `STUCK <gap-id>` (no reason) silently emit
+#     reason="unspecified" — the exact positional-arg-confusion failure
+#     mode that motivated INFRA-1862. Opt-in per INFRA-1862 AC #7
+#     (backward-compat): existing callers are unaffected until they add
+#     --strict. Flip to default after a 7-day clean window per AC #7.
 
 # ── INFRA-1998: Rust pass-through (opt-in via CHUMP_MESSAGING_RUST=1) ─────────
 if [[ "${CHUMP_MESSAGING_RUST:-0}" == "1" ]]; then
@@ -387,8 +396,13 @@ REPLY_TO=""
 URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
 AWAIT=0
+STRICT=0
 while :; do
     case "${1:-}" in
+        --strict)
+            STRICT=1
+            shift
+            ;;
         --await)
             AWAIT="${2:-0}"
             [[ "$AWAIT" =~ ^[0-9]+$ ]] || { echo "Usage: $0 --await <seconds>" >&2; exit 1; }
@@ -469,12 +483,38 @@ print(json.dumps(d))
 " "$json" "$REPLY_TO"
 }
 
+# INFRA-1948: strict-mode field validation. Called after an event's
+# positional args are parsed but before the JSON payload is built. Exits 1
+# with a message pointing at the expected shape when a required field is
+# missing or was silently defaulted to a placeholder — the class of bug
+# that shipped a STUCK event with reason=unspecified instead of failing.
+_strict_check() {
+    local field="$1" value="$2" usage="$3"
+    [[ "$STRICT" == "1" ]] || return 0
+    if [[ -z "$value" ]]; then
+        echo "[broadcast --strict] missing required field: $field" >&2
+        echo "Usage: $usage" >&2
+        exit 1
+    fi
+}
+
+_strict_check_gap_id() {
+    local gap="$1" usage="$2"
+    [[ "$STRICT" == "1" ]] || return 0
+    if [[ ! "$gap" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+        echo "[broadcast --strict] malformed gap id: '$gap' (expected DOMAIN-NNN, e.g. INFRA-1862)" >&2
+        echo "Usage: $usage" >&2
+        exit 1
+    fi
+}
+
 case "$EVENT" in
 
     INTENT)
         GAP="${1:-}"
         FILES="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] INTENT <gap-id> [files]"
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")")"
@@ -496,6 +536,7 @@ case "$EVENT" in
         # used as both the JSON "to" field AND the inbox target.
         EFFECTIVE_TO="${TO:-$POS_TO}"
         [[ -n "$GAP" && -n "$EFFECTIVE_TO" ]] || { echo "Usage: $0 [--to <recipient>] HANDOFF <gap-id> [<to-session>]" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] [--to <recipient>] HANDOFF <gap-id> [<to-session>]"
         CORR_ID="$(_derive_corr "$GAP")"
         JSON="$(_maybe_add_parent_corr_id "$(build_json event HANDOFF session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" to "$EFFECTIVE_TO")")"
         emit_to_file "$JSON"
@@ -509,6 +550,8 @@ case "$EVENT" in
     STUCK)
         GAP="${1:-}"; REASON="${2:-unspecified}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 STUCK <gap-id> \"<reason>\"" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] STUCK <gap-id> \"<reason>\""
+        _strict_check "reason" "${2:-}" "$0 [--strict] STUCK <gap-id> \"<reason>\"  (reason must not be omitted — got positional-arg confusion defaulting to 'unspecified')"
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON" to "$TO")")"
@@ -526,6 +569,7 @@ case "$EVENT" in
     DONE)
         GAP="${1:-}"; COMMIT="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] DONE <gap-id> [commit-sha]"
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")")"
@@ -561,6 +605,7 @@ case "$EVENT" in
         KIND_ARG="${1:-}"; MSG="${2:-}"
         KIND="${KIND_ARG#kind=}"
         [[ -n "$KIND" ]] || { echo "Usage: $0 ALERT kind=<kind> \"<message>\"" >&2; exit 1; }
+        _strict_check "message" "$MSG" "$0 [--strict] ALERT kind=<kind> \"<message>\""
         CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG" to "$TO")")"

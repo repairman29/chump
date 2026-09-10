@@ -735,12 +735,30 @@ impl GapStore {
                 last_clone_at   INTEGER,
                 last_ship_at    INTEGER,
                 cascade_tier    TEXT NOT NULL DEFAULT 'dogfood',
-                status          TEXT NOT NULL DEFAULT 'active'
+                status          TEXT NOT NULL DEFAULT 'active',
+                test_command    TEXT,
+                build_command   TEXT,
+                merge_policy    TEXT NOT NULL DEFAULT 'human_review'
              );
              CREATE INDEX IF NOT EXISTS repos_status ON repos(status);
              CREATE INDEX IF NOT EXISTS repos_last_scan_at ON repos(last_scan_at);
              CREATE INDEX IF NOT EXISTS repos_last_clone_at ON repos(last_clone_at);
             ",
+        );
+
+        // MISSION-097 (MISSION-076 slice): execution contract fields on
+        // pre-existing repos tables (the CREATE TABLE above only applies
+        // the columns on first creation — ALTER TABLE backfills them onto
+        // DBs that already have a repos table).
+        let _ = self
+            .conn
+            .execute("ALTER TABLE repos ADD COLUMN test_command TEXT", []);
+        let _ = self
+            .conn
+            .execute("ALTER TABLE repos ADD COLUMN build_command TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE repos ADD COLUMN merge_policy TEXT NOT NULL DEFAULT 'human_review'",
+            [],
         );
 
         Ok(())
