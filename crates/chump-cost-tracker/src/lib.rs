@@ -139,7 +139,7 @@ const DEFAULT_COST_WARN_USD: f64 = 2.00;
 /// Add `usd` to the session spend accumulator.
 /// Call this after each provider call with the estimated cost.
 pub fn add_session_cost_usd(usd: f64) {
-    if usd <= 0.0 {
+    if usd < 0.0 {
         return;
     }
     let micro = (usd * 1_000_000.0) as u64;
