@@ -434,6 +434,17 @@ enabled     chump-gap-store-single-source-check.timer  role=data requires=bin:sq
 # every other organ here.
 enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
 
+# chump-organ-success-verifier.timer (RESILIENT-1108, umbrella RESILIENT-1103):
+# the organ that verifies organs actually RAN and SUCCEEDED — reads each
+# enabled organ's last-run systemctl Result/ExecMainStatus and pages on any
+# FAILED run (200/CHDIR, non-zero exit). Exists because the all-night CHDIR
+# incident hid indefinitely: every organ died at chdir(2) before ExecStart
+# while `systemctl is-active <timer>` — the only thing reconcile/watchdog
+# checked — stayed green. Declared here so organ-reconcile re-arms it if it
+# drifts or fails, the same peer-heartbeat mechanism every other organ relies
+# on (and so the verifier is itself verified).
+enabled     chump-organ-success-verifier.timer  role=brain
+
 # --- Model routing config (RESILIENT-1009, a RESILIENT-596 slice) -----------
 # The default floor model, cost-tiered escalation ladder, and free-tier
 # provider list (with API-key env-var NAMES, never values) are single-sourced

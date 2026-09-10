@@ -44,6 +44,8 @@ gap_flipped_done_on_merge	suppress	# CREDIBLE-275: routine when correct (title/C
 oauth_token_refreshed	suppress
 ci_flake_rerun	suppress	# nextest flake wrapper + manual rerun playbook
 discord_advisor_agent_failed	suppress	# INFRA-3835: a failed advisor turn is a QUIET diagnostic (ambient log), never a phone page. The in-script fallback in discord-advisor-agent.sh sends Jeff ONE graceful "let me get back to you" DM (via discord_advisor_reply/direct) — and ONLY when no answer already landed — so a crash never double-DMs.
+organ_success_verify_tick	suppress	# RESILIENT-1108: the verifier's per-cycle summary heartbeat (N verified-ok / M enabled). Routine observability, not an incident — the FAILED organs it finds page via organ_run_failed.
+organ_run_verify_dedup_skip	suppress	# RESILIENT-1108: a still-broken organ seen again inside its dedup window. The FIRST sighting already paged via organ_run_failed; this is the audited "held, not re-paged" trail.
 
 # ── DIRECT: not an escalation — a normal DM the fleet owes the operator. ───────
 # Deliver the message; emit operator_direct_message (NOT operator_paged) so it
@@ -55,6 +57,7 @@ discord_command_reply	direct	# RESILIENT-1096: the Discord slash-command agent's
 
 # ── PAGE: halt-class or no automated remedy → reach the operator ──────────────
 # (Unlisted kinds also page by default; these document intent + catch typos.)
+organ_run_failed	page	# RESILIENT-1108: a manifest-enabled organ's LAST RUN failed (200/CHDIR, non-zero exit, core-dump, ...). A restart-loop cannot fix a config/CHDIR fault — organ-watchdog already tried; the operator must fix the unit. This is the page the all-night CHDIR outage never sent.
 pr_auto_closed_no_reopen	page	# RESILIENT-263 origin: real work destroyed, needs a human
 credential_rotation_needed	page	# T2 — only the operator can rotate a live secret
 fleet_stopped_unexpected	page	# halt-class — fleet down with no self-recovery

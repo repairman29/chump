@@ -1,0 +1,16 @@
+# RESILIENT-1108 — pairs with chump-organ-success-verifier.service.
+# 10-minute cadence: an organ that is failing every run is exactly the kind of
+# signal that must not sit unpaged for an hour (tonight it hid all night). The
+# verifier's own work is a cheap `systemctl show` per enabled organ, so 10min is
+# cheap; tighter than that would just re-page the same broken organ inside its
+# dedup window. Matches the outcome-verify-heal-consumer cadence.
+[Unit]
+Description=Run the Chump organ-success verifier every 10 minutes (RESILIENT-1108)
+
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

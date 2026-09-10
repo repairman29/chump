@@ -1,0 +1,29 @@
+# RESILIENT-1108 (Outcome-Verification, umbrella RESILIENT-1103) — the organ
+# that verifies organs actually RAN and SUCCEEDED, not merely that their timer
+# is-active. Runs one pass of scripts/ops/organ-success-verifier.sh, which reads
+# each manifest-`enabled` organ's last-run systemctl Result/ExecMainStatus and
+# pages the duty officer on any FAILED run (200/CHDIR, non-zero exit, etc.).
+#
+# WHY THIS UNIT ITSELF AVOIDS A WorkingDirectory. The all-night incident this
+# organ exists to catch was caused by a WorkingDirectory=/home/ubuntu/Projects/
+# chump that did not exist on the node — systemd killed every organ at chdir(2)
+# (status=200/CHDIR) before ExecStart ran. So this unit sets NO WorkingDirectory
+# at all and instead invokes the script by absolute path, exactly like
+# chump-organ-watchdog.service and chump-outcome-verify-heal-consumer.service.
+#
+# Host-agnostic via the systemd /root specifier (INFRA-3647): install-helsinki-
+# atc.sh inserts the per-node User= line at deploy time, so /root resolves to
+# root's home on helsinki and to the run-user's home on an owned node from this
+# SAME tracked unit. CHUMP_REPO_ROOT is REQUIRED because the script's default
+# $HOME/Projects/Chump is capital-C and does not exist on case-sensitive Linux.
+[Unit]
+Description=Chump organ-success verifier — page on any organ whose last run FAILED (RESILIENT-1108)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/organ-success-verifier.sh'
