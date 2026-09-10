@@ -83,6 +83,15 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-5775: operator-explicit acknowledgement that `--paths` spans
+    /// more than one top-level directory. Requires `reason` to be set too.
+    /// Without this flag, a multi-directory `--paths` auto-narrows to the
+    /// most-specific common parent directory instead of being rejected.
+    pub broad: bool,
+    /// INFRA-5775: required alongside `--broad` — one-sentence justification
+    /// for why the claim legitimately needs to span multiple top-level
+    /// directories. Recorded for audit.
+    pub reason: Option<String>,
 }
 
 impl ClaimArgs {
@@ -105,6 +114,8 @@ impl ClaimArgs {
                                         auto-rename to <branch>-N and continue instead of aborting\n  \
                        --force-overlap  Override hot-file collision block (INFRA-1394); warning still emitted\n  \
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
+                       --broad          Acknowledge --paths spans >1 top-level directory (requires --reason)\n  \
+                       --reason TEXT    Justification for a --broad claim (INFRA-5775)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)"
@@ -152,6 +163,8 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut broad = false;
+        let mut reason: Option<String> = None;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,6 +229,18 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--broad" => {
+                    broad = true;
+                    i += 1;
+                }
+                "--reason" => {
+                    reason = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--reason needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -245,6 +270,8 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            broad,
+            reason,
         })
     }
 }
@@ -656,7 +683,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
 
 /// Run the atomic claim. Each step is a separate function so the unit
 /// tests can exercise individual pieces in isolation.
-pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
     // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
     // FIRST: must run BEFORE any state mutation OR any chump op that can
     // fail. Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
@@ -748,6 +775,20 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 );
             }
         }
+    }
+
+    // INFRA-5775: multi-directory scope guard — a claim whose --paths spans
+    // more than one top-level directory either needs explicit operator
+    // sign-off (--broad + --reason) or gets auto-narrowed to the
+    // most-specific common parent directory. Runs BEFORE the INFRA-1885
+    // lease-breadth check below so that check sees the (possibly narrowed)
+    // final paths.
+    if let Some(paths_csv) = args.paths.clone() {
+        args.paths = Some(check_and_narrow_multi_dir_scope(
+            &paths_csv,
+            args.broad,
+            args.reason.as_deref(),
+        )?);
     }
 
     // INFRA-1885: lease-breadth cap — reject claims of exact top-level dirs
@@ -1655,6 +1696,178 @@ fn emit_lease_broad_dir_claim(
 }
 
 // ── end INFRA-1885 ───────────────────────────────────────────────────────────
+
+// ── INFRA-5775: multi-directory claim guard + auto-narrow ──────────────────
+
+/// Returns the distinct top-level path segments (first `/`-delimited
+/// component) found across `paths_csv`, in first-seen order, deduplicated.
+fn top_level_dirs(paths_csv: &str) -> Vec<&str> {
+    let mut seen: Vec<&str> = Vec::new();
+    for p in paths_csv
+        .split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+    {
+        let top = p.split('/').next().unwrap_or(p);
+        if !seen.contains(&top) {
+            seen.push(top);
+        }
+    }
+    seen
+}
+
+/// INFRA-5775: the most-specific directory that is a common ancestor of
+/// every path in `paths_csv` (longest shared `/`-delimited prefix). Returns
+/// `.` (repo root) when the paths share no ancestor below root — which is
+/// always the case when the paths span more than one top-level directory.
+fn common_parent_dir(paths_csv: &str) -> String {
+    let segments: Vec<Vec<&str>> = paths_csv
+        .split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .map(|p| p.split('/').collect())
+        .collect();
+    let Some(first) = segments.first() else {
+        return ".".to_string();
+    };
+    let mut common: Vec<&str> = Vec::new();
+    for (i, seg) in first.iter().enumerate() {
+        if segments[1..].iter().all(|s| s.get(i) == Some(seg)) {
+            common.push(seg);
+        } else {
+            break;
+        }
+    }
+    if common.is_empty() {
+        ".".to_string()
+    } else {
+        common.join("/")
+    }
+}
+
+/// INFRA-5775: gate + auto-narrow for claims whose `--paths` spans more than
+/// one top-level directory.
+///
+/// - `paths_csv` names 0 or 1 top-level directories: no-op, returns
+///   `paths_csv` unchanged.
+/// - Spans >1 top-level directories AND `broad` is set: requires `reason`
+///   to be a non-empty justification, else rejects the claim. When present,
+///   the original (unnarrowed) `paths_csv` is returned unchanged.
+/// - Spans >1 top-level directories AND `broad` is NOT set: auto-narrows to
+///   the most-specific common parent directory (see `common_parent_dir`)
+///   and returns that instead, printing a notice so the operator knows the
+///   lease scope was reduced.
+fn check_and_narrow_multi_dir_scope(
+    paths_csv: &str,
+    broad: bool,
+    reason: Option<&str>,
+) -> Result<String> {
+    let dirs = top_level_dirs(paths_csv);
+    if dirs.len() <= 1 {
+        return Ok(paths_csv.to_string());
+    }
+
+    if broad {
+        let reason_text = reason.map(str::trim).unwrap_or("");
+        if reason_text.is_empty() {
+            bail!(
+                "INFRA-5775: --broad requires --reason '<text>' when --paths spans \
+                 >1 top-level directory ({dirs}).",
+                dirs = dirs.join(", ")
+            );
+        }
+        eprintln!(
+            "[claim] INFRA-5775: --broad claim across {} top-level directories \
+             ({}) — reason: {}",
+            dirs.len(),
+            dirs.join(", "),
+            reason_text
+        );
+        return Ok(paths_csv.to_string());
+    }
+
+    let narrowed = common_parent_dir(paths_csv);
+    eprintln!(
+        "[claim] INFRA-5775: --paths spans {} top-level directories ({}); \
+         auto-narrowing lease scope to '{}'. Pass --broad --reason '<text>' \
+         to keep the full multi-directory scope.",
+        dirs.len(),
+        dirs.join(", "),
+        narrowed
+    );
+    Ok(narrowed)
+}
+
+#[cfg(test)]
+mod infra_5775_multi_dir_scope_tests {
+    use super::*;
+
+    #[test]
+    fn single_top_level_dir_is_unaffected() {
+        let out = check_and_narrow_multi_dir_scope("src/a.rs,src/b.rs", false, None).unwrap();
+        assert_eq!(out, "src/a.rs,src/b.rs");
+    }
+
+    #[test]
+    fn multi_dir_without_broad_auto_narrows() {
+        let out = check_and_narrow_multi_dir_scope("src/a.rs,docs/b.md", false, None).unwrap();
+        assert_eq!(out, ".");
+    }
+
+    #[test]
+    fn multi_dir_with_broad_and_reason_passes_through() {
+        let out = check_and_narrow_multi_dir_scope(
+            "src/a.rs,docs/b.md",
+            true,
+            Some("cross-cutting rename touching both crates"),
+        )
+        .unwrap();
+        assert_eq!(out, "src/a.rs,docs/b.md");
+    }
+
+    #[test]
+    fn multi_dir_with_broad_but_no_reason_errors() {
+        let err = check_and_narrow_multi_dir_scope("src/a.rs,docs/b.md", true, None)
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--reason"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn multi_dir_with_broad_but_empty_reason_errors() {
+        let err = check_and_narrow_multi_dir_scope("src/a.rs,docs/b.md", true, Some("  "))
+            .unwrap_err()
+            .to_string();
+        assert!(err.contains("--reason"), "unexpected error: {err}");
+    }
+
+    #[test]
+    fn same_top_level_dir_is_not_gated_even_when_sub_dirs_differ() {
+        // "scripts/ci/a.sh" and "scripts/dev/b.sh" share top-level "scripts" —
+        // only 1 distinct top-level directory, so the gate never fires and
+        // paths pass through untouched.
+        let out = check_and_narrow_multi_dir_scope("scripts/ci/a.sh,scripts/dev/b.sh", false, None)
+            .unwrap();
+        assert_eq!(out, "scripts/ci/a.sh,scripts/dev/b.sh");
+    }
+
+    #[test]
+    fn common_parent_dir_of_disjoint_top_level_dirs_is_root() {
+        // Whenever the multi-dir gate fires (>1 distinct top-level dir), the
+        // paths by definition share no ancestor below repo root.
+        assert_eq!(common_parent_dir("src/a.rs,docs/b.md,scripts/c.sh"), ".");
+    }
+
+    #[test]
+    fn top_level_dirs_dedupes_and_preserves_order() {
+        assert_eq!(
+            top_level_dirs("src/a.rs,docs/b.md,src/c.rs"),
+            vec!["src", "docs"]
+        );
+    }
+}
+
+// ── end INFRA-5775 ───────────────────────────────────────────────────────────
 
 /// INFRA-1025 AC6: check whether <remote>/<branch> exists on the remote.
 /// Uses `git ls-remote --exit-code` which exits 2 when the ref is absent.
