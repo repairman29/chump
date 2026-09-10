@@ -90742,6 +90742,20 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
 
+- id: MISSION-093
+  domain: MISSION
+  title: Open loop no persons-served gauge ever recorded close the value loop
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    DESIGN GAP 4: open loop, produces into a void. 253 ships/30d, persons-served gauge NEVER recorded a reading (Mission Grade History empty). Optimizes internal production not value. See docs/design/DESIGN_GAPS_SELF_RUNNING.md Gap 4.
+  acceptance_criteria:
+    - "The change described by \"Open loop no persons-served gauge ever recorded close the value loop\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
 - id: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA-001
   domain: N ROUTING HINT FOR ONE-JEFF-MANY-REPOS AND MANY-JEFFS-ONE-REPO; NO NEW INFRASTRUCTURE, JUST METADATA
   title: "EFFECTIVE: preferred_operator gap field — m"
@@ -96618,6 +96632,118 @@ gaps:
   evidence: |
     COMMAND: head organ-manifest.txt; ls scripts/setup/install-helsinki-atc.sh. OUTPUT: manifest header says desired systemd state on the PRIMARY node (helsinki); installer still named install-helsinki-atc.sh though helsinki was decommissioned 2026-08-17 and logic is node-neutral via --role brain|muscle. THEORY: naming/docs misdescribe the reproducible bring-up and mislead operators about which node is primary; pure rename+doc, no behavior change. ALT: rename installer with a compat symlink + reword manifest header to owned-iron; keep --role logic intact.
 
+- id: RESILIENT-1102
+  domain: RESILIENT
+  title: Ratchet track solved stays solved
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    UMBRELLA Track A THE RATCHET: solved stays solved. Ratcheting is ad-hoc/partial (roster+organ-death+CI guarded, NOT config/toggles/metric-floors). Sub-gaps RESILIENT-1104..1107. See docs/design/DESIGN_GAPS_SELF_RUNNING.md Track A.
+  acceptance_criteria:
+    - "The change described by \"Ratchet track solved stays solved\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1103
+  domain: RESILIENT
+  title: Outcome-verification track verify organs work not just scheduled
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    UMBRELLA Track B OUTCOME-VERIFICATION: verify organs work not just scheduled. Fleet measures is-active not success (why CHDIR bug hid). Sub-gaps RESILIENT-1108..1111. See docs/design/DESIGN_GAPS_SELF_RUNNING.md Track B.
+  acceptance_criteria:
+    - "The change described by \"Outcome-verification track verify organs work not just scheduled\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1104
+  domain: RESILIENT
+  title: Invariant registry and guard-organ extending fleet-doctor-strict
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track A sub-gap of RESILIENT-1102. Invariant registry + one guard-organ extending fleet-doctor-strict so adding a ratchet = registering an invariant. See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Invariant registry and guard-organ extending fleet-doctor-strict\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1105
+  domain: RESILIENT
+  title: Metric floors and regression-guards on zero-touch hours-unattended served
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track A sub-gap of RESILIENT-1102. Metric floors + regression-guards on zero-touch/hours-unattended/served, generalizing autonomous-ship-rate.sh. See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Metric floors and regression-guards on zero-touch hours-unattended served\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1106
+  domain: RESILIENT
+  title: Config-drift guard for load-bearing config outside git
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track A sub-gap of RESILIENT-1102. Config-drift guard for load-bearing config outside git (hook: PR 4593 config-as-code). See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Config-drift guard for load-bearing config outside git\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1107
+  domain: RESILIENT
+  title: Meta-rule no recurring-class fix without its invariant-check
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track A sub-gap of RESILIENT-1102. Meta-rule: no fix for a recurring class ships without its invariant-check registered. See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Meta-rule no recurring-class fix without its invariant-check\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1108
+  domain: RESILIENT
+  title: Organ-success verifier page or heal on FAILED result not just inactive
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track B sub-gap of RESILIENT-1103. Organ-success verifier: each cycle check every manifest-enabled organ last-run Result/ExecMainStatus, page/heal on FAILED not just inactive. Mine chump-outcome-verify-heal-consumer (exists, dark). Catches CHDIR class in minutes. See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Organ-success verifier page or heal on FAILED result not just inactive\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1109
+  domain: RESILIENT
+  title: Effect-verification for key organs catch exit-0 but no-op
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track B sub-gap of RESILIENT-1103. Effect-verification for key organs: catch exit-0-but-no-op (e.g. farmer ticking empty queue). See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Effect-verification for key organs catch exit-0 but no-op\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
 - id: RESILIENT-111
   domain: RESILIENT
   title: "RESILIENT: durable gap-noise-reaper daemon — drain auto-filer-noise gaps on launchd (no Claude session)"
@@ -96636,6 +96762,62 @@ gaps:
     [2026-06-05T23:17:42Z] CORRECT PATTERN (exemplar ~/.chump/beast-0to1-loop.sh, found via a2a 2026-06-05): launchd plist + shell script calling the chump binary; NO Opus in the loop; flock single-instance; state in jsonl; self-stop at target; install via scripts/setup/install-*-launchd.sh. MUST use 'chump gap close --reason' (RESILIENT-119), NOT the reset-hard/edit-status band-aid. This is the durable replacement for the session-only CronCreate /loop, which dies on restart (CREDIBLE-105 band-aid class).
   opened_date: '2026-07-26'
   outcome_id: RESILIENT-000
+
+- id: RESILIENT-1110
+  domain: RESILIENT
+  title: Redefine done as verified running-and-effective on target node
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track B sub-gap of RESILIENT-1103. Redefine done = verified running-and-effective on the target node; kill proxy-done at root (Gap 1). See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Redefine done as verified running-and-effective on target node\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1111
+  domain: RESILIENT
+  title: Surface verified-working N of M on the cockpit
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Track B sub-gap of RESILIENT-1103. Surface verified-working N/M on the cockpit (real number not a green dot). See docs/design/DESIGN_GAPS_SELF_RUNNING.md.
+  acceptance_criteria:
+    - "The change described by \"Surface verified-working N of M on the cockpit\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1112
+  domain: RESILIENT
+  title: Every control loop ends in a human backstop remove the apex-human catch
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    DESIGN GAP 2: every control loop ends in a human backstop (tonight stall detector = operator; path bug = operators assistant; apex watchdog = a person). A system whose final catch is human cannot run itself. See docs/design/DESIGN_GAPS_SELF_RUNNING.md Gap 2.
+  acceptance_criteria:
+    - "The change described by \"Every control loop ends in a human backstop remove the apex-human catch\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
+
+- id: RESILIENT-1113
+  domain: RESILIENT
+  title: No faithful self-model machine cannot show its own true state
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    DESIGN GAP 5: no faithful self-model. Operator hand-built a Prime Operating State page on claude.ai because the machine cant show its own true state (35 organs, 57 timers, 4 cockpit surfaces, no single honest mirror). See docs/design/DESIGN_GAPS_SELF_RUNNING.md Gap 5.
+  acceptance_criteria:
+    - "The change described by \"No faithful self-model machine cannot show its own true state\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  source_doc: docs/design/DESIGN_GAPS_SELF_RUNNING.md
 
 - id: RESILIENT-112
   domain: RESILIENT
