@@ -4970,7 +4970,7 @@ async fn main() -> Result<()> {
         let sub = args.get(2).map(String::as_str).unwrap_or("");
         if sub.is_empty() || sub == "help" || sub == "--help" {
             println!(
-                "Usage: chump fanout <plan|apply|status> <spec.yaml | name> [--dry-run] [--json] [--reference <commit-sha-or-PR-N>]"
+                "Usage: chump fanout <plans|apply|status> <spec.yaml | name> [--dry-run] [--json] [--reference <commit-sha-or-PR-N>]"
             );
             println!();
             println!("Cross-repo fan-out (INFRA-1484, Marcus M-B). One operator command,");
