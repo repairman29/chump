@@ -28893,7 +28893,7 @@ gaps:
 - id: CREDIBLE-942
   domain: CREDIBLE
   title: "CREDIBLE: Add unit tests for the dispatch utility (CREDIBLE-237 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -28924,6 +28924,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-11T07:53:40Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4701B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-943
   domain: CREDIBLE
