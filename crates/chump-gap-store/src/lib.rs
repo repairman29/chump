@@ -2503,12 +2503,14 @@ impl GapStore {
                 } else {
                     // Clean tree — pull fast-forward silently and emit ambient
                     // event so curators can observe auto-pull frequency.
-                    let _ = std::process::Command::new("git")
+                    let pull_ok = std::process::Command::new("git")
                         .args(["pull", "--ff-only", "origin", "main", "--quiet"])
                         .current_dir(&self.repo_root)
                         .stderr(std::process::Stdio::null())
                         .stdout(std::process::Stdio::null())
-                        .status();
+                        .status()
+                        .map(|s| s.success())
+                        .unwrap_or(false);
                     {
                         use std::io::Write as _;
                         let ts = unix_to_iso_full(unix_now());
@@ -2523,6 +2525,50 @@ impl GapStore {
                             .open(&amb)
                         {
                             let _ = f.write_all(line.as_bytes());
+                        }
+                    }
+
+                    // RESILIENT-492: after a successful pull, build the release
+                    // binary so a stale/broken local build never ships silently.
+                    // Capture full build output to build.log in the repo root and
+                    // abort ship() (returning an error) if the build fails.
+                    if pull_ok {
+                        let build_output = std::process::Command::new("cargo")
+                            .args(["build", "--release"])
+                            .current_dir(&self.repo_root)
+                            .output();
+
+                        match build_output {
+                            Ok(output) => {
+                                use std::io::Write as _;
+                                let log_path = self.repo_root.join("build.log");
+                                if let Ok(mut f) = std::fs::File::create(&log_path) {
+                                    let _ = f.write_all(&output.stdout);
+                                    let _ = f.write_all(&output.stderr);
+                                }
+
+                                if !output.status.success() {
+                                    bail!(
+                                        "RESILIENT-492: `cargo build --release` failed with {:?} \
+                                         after pulling origin/main — see {} for output. \
+                                         Aborting ship() to avoid landing a broken build.",
+                                        output.status.code(),
+                                        log_path.display()
+                                    );
+                                }
+
+                                let exit_code = output.status.code().unwrap_or(0);
+                                // NOTE: exact-string log line required by RESILIENT-492 AC4.
+                                eprintln!(
+                                    "cargo build --release completed with exit code {exit_code}"
+                                );
+                            }
+                            Err(e) => {
+                                bail!(
+                                    "RESILIENT-492: failed to spawn `cargo build --release` \
+                                     after pulling origin/main: {e}"
+                                );
+                            }
                         }
                     }
                 }
