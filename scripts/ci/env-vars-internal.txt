@@ -2783,3 +2783,12 @@ CHUMP_EFFECT_VERIFIER_STATE_DB
 CHUMP_EFFECT_VERIFIER_STATE_DIR
 # detected in: (standard input)
 CHUMP_EFFECT_VERIFIER_WINDOW_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SELF_MODEL_MANIFEST
+# detected in: (standard input)
+CHUMP_SELF_MODEL_OUT
+# detected in: (standard input)
+CHUMP_SELF_MODEL_SYSTEMCTL_BIN

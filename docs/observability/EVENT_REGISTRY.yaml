@@ -12757,3 +12757,16 @@ events:
       train); it pages the board (severity=halt) so a human neuters all but one.
     consumers: [ambient, notify-operator (page), Roll Call]
     fields_required: [ts, kind, node, severity, msg]
+
+  - kind: self_model_tick
+    effect_metric: self
+    emitter: scripts/ops/self-model.sh (RESILIENT-1113, DESIGN GAP 5: no
+      faithful self-model)
+    trigger: every self-model collector pass, after it cross-references
+      organ-manifest.txt's claimed-enabled organs/timers against live
+      systemd state and known cockpit surfaces on disk, and writes
+      ~/.chump/self-model.json. A heartbeat so a dead collector — and a
+      frozen self-model — is itself observable from the ambient stream.
+    consumers: [ops-audit, operator-recall]
+    fields_required: [ts, kind, organs_total, organs_active, timers_total,
+      timers_active, drifted_total, cockpit_total, cockpit_present, out]
