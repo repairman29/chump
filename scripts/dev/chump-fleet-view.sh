@@ -2,17 +2,14 @@
 # chump-fleet-view.sh — INFRA-2176
 #
 # Open the Fleet Scrubber UI in the default browser.
-# The page is served by chump-fleet-server (INFRA-2175) at /scrubber.
+# The page is served by chump-fleet-server at /scrubber (mounted in
+# crates/chump-fleet-server/src/routes.rs, INFRA-2176).
 #
 # Usage:
 #   bash scripts/dev/chump-fleet-view.sh [--fixtures]
 #
 # Options:
 #   --fixtures   Open with ?fixtures=1 query param (dev/demo mode, no server needed)
-#
-# Note for INFRA-2175 author:
-#   The server must mount a static-file route at /scrubber/* serving from
-#   web/fleet-scrubber/ so this URL resolves correctly.
 
 set -euo pipefail
 
