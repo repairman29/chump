@@ -161314,7 +161314,7 @@ gaps:
 - id: INFRA-4971
   domain: INFRA
   title: "INFRA: Short‑circuit --version and --help before any subsystem init (INFRA-1809 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -161338,6 +161338,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-11T10:00:55Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4714B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4972
   domain: INFRA
@@ -161854,7 +161855,7 @@ gaps:
 - id: INFRA-4988
   domain: INFRA
   title: "INFRA: Implement fix_trunk signal detection within poll (INFRA-2342 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -161876,6 +161877,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'polling' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+    [2026-09-11T10:24:15Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=5708B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4989
   domain: INFRA
@@ -168893,7 +168895,7 @@ gaps:
 - id: INFRA-5206
   domain: INFRA
   title: "INFRA: INFRA-3793: Add missing CI gates to chump preflight or create allowlist entries (INFRA-2084 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -168917,6 +168919,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-11T10:04:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=2834B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-5207
   domain: INFRA
