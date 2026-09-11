@@ -64,6 +64,37 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
     }
 }
 
+/// RESILIENT-072 / INFRA-2720: scripts/ci/cargo-test-with-rerun.sh REQUIRES
+/// `-- <cmd> [args...]`. Without the `--` separator + a real command after
+/// it, the wrapper prints `usage: ...` and exits non-zero without running a
+/// single test. This is a standalone fn (rather than inline in `run()`) so
+/// the `--` + cargo-invocation shape is unit-testable.
+fn cargo_test_wrapper_argv(nextest_available: bool) -> &'static [&'static str] {
+    if nextest_available {
+        &[
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "nextest",
+            "run",
+            "--bin",
+            "chump",
+        ]
+    } else {
+        &[
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "test",
+            "--bin",
+            "chump",
+            "--tests",
+        ]
+    }
+}
+
 /// INFRA-3377 (META-070): staged-diff commit-content-guards mirrored from
 /// `scripts/git-hooks/pre-commit-*.sh` into `chump preflight --pre-commit`.
 /// Each of these scripts inspects `git diff --cached` directly (same input
@@ -1702,30 +1733,11 @@ pub fn run(argv: &[String]) -> i32 {
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);
-            let test_argv: &[&str] = if nextest_available {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "nextest",
-                    "run",
-                    "--bin",
-                    "chump",
-                ]
-            } else {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "test",
-                    "--bin",
-                    "chump",
-                    "--tests",
-                ]
-            };
-            steps.push(step("cargo-test", test_argv, GateKind::Rust));
+            steps.push(step(
+                "cargo-test",
+                cargo_test_wrapper_argv(nextest_available),
+                GateKind::Rust,
+            ));
         }
 
         // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
@@ -3281,6 +3293,40 @@ mod tests {
             "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
              always-run allowlist so detector regressions surface locally"
         );
+    }
+
+    // RESILIENT-072: cargo-test-with-rerun.sh exits 2 with a `usage:` error
+    // if invoked without `-- <cmd>`. Assert both nextest and cargo-test
+    // fallback argvs carry the required separator + a real command after it.
+    #[test]
+    fn resilient072_cargo_test_wrapper_argv_has_separator_and_cmd() {
+        for nextest_available in [true, false] {
+            let argv = cargo_test_wrapper_argv(nextest_available);
+            assert_eq!(
+                argv[0], "bash",
+                "wrapper must be invoked via bash, not exec'd directly"
+            );
+            assert!(
+                argv[1].ends_with("cargo-test-with-rerun.sh"),
+                "argv[1] must be the wrapper script"
+            );
+            let sep_pos = argv.iter().position(|a| *a == "--").unwrap_or_else(|| {
+                panic!(
+                    "cargo-test-with-rerun.sh requires a `--` separator; \
+                     without it the wrapper prints usage and exits non-zero \
+                     without running a single test (RESILIENT-072). argv={argv:?}"
+                )
+            });
+            assert!(
+                sep_pos + 1 < argv.len(),
+                "`--` must be followed by a real command, not be the last arg"
+            );
+            assert_eq!(
+                argv[sep_pos + 1],
+                "cargo",
+                "the wrapped command must be `cargo ...`"
+            );
+        }
     }
 
     // RESILIENT-196: disk-floor guard (pure comparison — no env/process races).
