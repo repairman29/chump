@@ -1,0 +1,19 @@
+# RESILIENT-1108 — the reaper-rescuer: revive good PRs a reaper wrongly closed.
+# The systemic counterweight to stale-pr-reaper / rot-reaper / INFRA-3542, which
+# close green-underneath PRs on a fixable red. Paired with
+# chump-pr-reaper-rescuer.timer (every ~15 min — slower than the reapers it
+# undoes on purpose). Detect → classify (green-underneath, gap-still-wanted) →
+# reopen/rebase → re-arm; BOUNDED so it never fights a reaper forever.
+# Path defaults target the primary node (root). Non-root nodes: adjust the two
+# paths + providers.env location per LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump reaper-rescuer — revive reaper-closed green-underneath PRs (RESILIENT-1108)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Source providers.env for GH_TOKEN (export-format, so source it in a shell
+# rather than systemd EnvironmentFile which can't parse `export KEY=val`).
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/pr-reaper-rescuer.sh'

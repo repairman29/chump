@@ -1097,6 +1097,14 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-pr-rescue-noci.sh",
         // RESILIENT-050: trunk-RED hold gate — fast (~2s), no network needed.
         "scripts/ci/test-reaper-trunk-red-hold.sh",
+        // RESILIENT-1108: reaper-rescuer decision core — revives reaper-closed
+        // green-underneath PRs, leaves human/hard-fail/conflict/superseded
+        // alone, and rescue is bounded (escalates after the cap). Pure
+        // `--decide` fixtures + classify-blocked-pr.py integration, no network,
+        // no gh, ~1s. Mirrored (not allowlisted) because it runs locally — this
+        // registration is also what keeps THIS gate from tripping the
+        // preflight-vs-CI parity check (INFRA-1867) when its ci.yml step lands.
+        "scripts/ci/test-pr-reaper-rescuer.sh",
         // REAPER-SPARE (PR #4589 fix): stale-pr-reaper must SPARE recoverable
         // BLOCKED PRs (pending required checks, or a flake-budget-exhausted
         // known flake on an otherwise-green PR) and only bounce genuinely dead
