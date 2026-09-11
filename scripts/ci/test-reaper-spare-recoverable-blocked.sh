@@ -14,10 +14,15 @@
 #
 # Depth tier: EDGE (pure decision-function fixtures across the BLOCKED-reason
 # matrix — pending / flake-exhausted / no-failure / hard-fail / conflict — plus
-# marker-driven flake detection and source-wiring asserts). Gaps: does not spin
-# up a live gh/GitHub PR or drive the full reaper loop end-to-end against a real
-# BLOCKED PR (that path needs network + a real branch); the reaper→classifier
-# glue is covered by source-wiring asserts, not live execution.
+# marker-driven flake detection, current-failing-run discovery fixtures
+# (pr-failing-run-ids.py, completing PR #4606), and source-wiring asserts that
+# the prompt-retry is BOUNDED inside the CHUMP_REAPER_FLAKE_REARM_MAX guard).
+# Gaps: does not spin up a live gh/GitHub PR or drive the full reaper loop
+# end-to-end against a real BLOCKED PR (that path needs network + a real
+# branch); the reaper→classifier and reaper→prompt-retry glue is covered by
+# source-wiring asserts here and by the PATH-stubbed end-to-end execution test
+# in test-pr-stuck-auto-respawn.sh (which drives a fake `gh run rerun` and
+# asserts the CURRENT run-id is retried + bounded), not live execution.
 
 set -euo pipefail
 
@@ -25,13 +30,14 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 REAPER="$REPO_ROOT/scripts/ops/stale-pr-reaper.sh"
 CLASSIFIER="$REPO_ROOT/scripts/ops/lib/classify-blocked-pr.py"
+RUNIDS="$REPO_ROOT/scripts/ops/lib/pr-failing-run-ids.py"
 REGISTRY="$REPO_ROOT/scripts/ci/event-registry-reserved.txt"
 
 pass=0; fail=0
 ok()   { echo "PASS $1"; pass=$((pass+1)); }
 bad()  { echo "FAIL $1"; fail=$((fail+1)); }
 
-for f in "$REAPER" "$CLASSIFIER" "$REGISTRY"; do
+for f in "$REAPER" "$CLASSIFIER" "$RUNIDS" "$REGISTRY"; do
     [[ -f "$f" ]] || { echo "FAIL: required file missing: $f"; exit 1; }
 done
 
@@ -149,13 +155,77 @@ else
 fi
 
 # ── 13. new event kinds registered ───────────────────────────────────────────
-for k in pr_stuck_spared pr_stuck_flake_rearmed pr_stuck_flake_escalated; do
+for k in pr_stuck_spared pr_stuck_flake_rearmed pr_stuck_flake_escalated pr_stuck_flake_rerun_prompted; do
     if grep -q "^$k" "$REGISTRY"; then
         ok "13/$k: registered in event-registry-reserved.txt"
     else
         bad "13/$k: NOT registered in event-registry-reserved.txt"
     fi
 done
+
+# ── 14. PROMPT-RETRY discovery (completes PR #4606) ──────────────────────────
+# Re-arming the flake budget only PERMITS a rerun on the NEXT run-id; the reaper
+# must ALSO rerun the CURRENT failing run. That needs the current failing run-id
+# discovered from the same statusCheckRollup the classifier reads. Exercise the
+# pure discovery helper directly (Receipt Law) — the CURRENT run must surface.
+_runids() { printf '%s' "$1" > "$_tmp/rollup4606.json"; python3 "$RUNIDS" --rollup-file "$_tmp/rollup4606.json" 2>/dev/null; }
+
+CUR_FAIL='[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/424242/job/1"}]'
+v=$(_runids "$CUR_FAIL")
+[[ "$v" == $'424242\t0' ]] && ok "14: current failing run 424242 discovered (rerun --failed mode)" \
+                           || bad "14: expected '424242<tab>0', got '$v'  <-- current run not retryable"
+
+CUR_CANCEL='[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"CANCELLED","detailsUrl":"https://github.com/o/r/actions/runs/909090/job/1"}]'
+v=$(_runids "$CUR_CANCEL")
+[[ "$v" == $'909090\t1' ]] && ok "15: cancelled current run 909090 → cancelled=1 (whole-run rerun)" \
+                           || bad "15: expected '909090<tab>1', got '$v'"
+
+# A green rollup must yield NO run-id (never rerun a passing run).
+CUR_GREEN='[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"SUCCESS","detailsUrl":"https://github.com/o/r/actions/runs/111/job/1"}]'
+v=$(_runids "$CUR_GREEN")
+[[ -z "$v" ]] && ok "16: green run yields no rerun target" \
+              || bad "16: expected empty, got '$v'"
+
+# ── 17-20. reaper source wires the prompt-retry INSIDE the bounded re-arm block ─
+if grep -q 'prompt_flake_retry' "$REAPER"; then
+    ok "17: reaper defines+calls prompt_flake_retry (current-run retry)"
+else
+    bad "17: reaper missing prompt_flake_retry — current run would wait for a new run-id"
+fi
+
+# The prompt-retry call MUST sit between rearm_flake_budget and the
+# flake-rearm escalation guard, i.e. inside the CHUMP_REAPER_FLAKE_REARM_MAX
+# branch — so it can never fire more than CHUMP_REAPER_FLAKE_REARM_MAX times.
+_rearm_line=$(grep -n 'rearm_flake_budget "\$PR_NUM"' "$REAPER" | tail -1 | cut -d: -f1)
+_prompt_line=$(grep -n 'prompt_flake_retry "\$PR_NUM"' "$REAPER" | tail -1 | cut -d: -f1)
+_guard_line=$(grep -n '_rearm_n" -lt "\$_rearm_max' "$REAPER" | head -1 | cut -d: -f1)
+_escal_line=$(grep -n 'pr_stuck_flake_escalated' "$REAPER" | head -1 | cut -d: -f1)
+if [[ -n "$_guard_line" && -n "$_prompt_line" && -n "$_escal_line" \
+   && "$_guard_line" -lt "$_prompt_line" && "$_prompt_line" -lt "$_escal_line" ]]; then
+    ok "18: prompt_flake_retry (L$_prompt_line) is inside the re-arm-max guard (L$_guard_line) before escalation (L$_escal_line) — BOUNDED"
+else
+    bad "18: prompt_flake_retry not bounded by the re-arm-max guard (guard=$_guard_line prompt=$_prompt_line escal=$_escal_line)"
+fi
+
+if [[ -n "$_rearm_line" && -n "$_prompt_line" && "$_rearm_line" -lt "$_prompt_line" ]]; then
+    ok "19: prompt_flake_retry (L$_prompt_line) runs after rearm_flake_budget (L$_rearm_line)"
+else
+    bad "19: prompt_flake_retry does not follow rearm_flake_budget (rearm=$_rearm_line prompt=$_prompt_line)"
+fi
+
+# It must reuse the shared discovery helper, not re-embed the regex.
+if grep -q 'pr-failing-run-ids.py' "$REAPER"; then
+    ok "20: reaper reuses the shared pr-failing-run-ids.py discovery helper"
+else
+    bad "20: reaper does not reference pr-failing-run-ids.py (discovery duplicated?)"
+fi
+
+# Prompt-retry must be disableable (bypass) and use gh run rerun.
+if grep -q 'CHUMP_REAPER_FLAKE_PROMPT_RETRY' "$REAPER" && grep -q 'gh run rerun' "$REAPER"; then
+    ok "21: prompt-retry has a bypass (CHUMP_REAPER_FLAKE_PROMPT_RETRY) and calls gh run rerun"
+else
+    bad "21: missing bypass var or gh run rerun in prompt-retry"
+fi
 
 echo
 if [[ "$fail" -eq 0 ]]; then

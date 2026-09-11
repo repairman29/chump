@@ -1074,6 +1074,9 @@ jobs:
       - name: stale-pr-reaper spares recoverable BLOCKED PRs (PR #4589 fix)
         run: bash scripts/ci/test-reaper-spare-recoverable-blocked.sh
 
+      - name: stale-pr-reaper prompt-retries current failing run on flake re-arm (completes PR #4606)
+        run: bash scripts/ci/test-pr-stuck-auto-respawn.sh
+
       - name: cargo-target-reaper — dry-run, --execute, safety guards, ambient event (INFRA-1250)
         run: bash scripts/ci/test-cargo-target-reaper.sh
 

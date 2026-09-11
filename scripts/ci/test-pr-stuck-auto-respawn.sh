@@ -98,6 +98,10 @@ PR_FIXTURE="$TMP/prs.json"
 echo "[]" > "$PR_FIXTURE"
 PR_CLOSE_LOG="$TMP/pr-close.log"
 : > "$PR_CLOSE_LOG"
+# RERUN_LOG records `gh run rerun <id> [--failed]` invocations so the PR #4606
+# prompt-retry (current-run rerun on flake re-arm) can be asserted.
+RERUN_LOG="$TMP/run-rerun.log"
+: > "$RERUN_LOG"
 # ROLLUP_FIXTURE controls how classify_blocked_pr (REAPER-SPARE / PR #4589)
 # classifies the BLOCKED PR under test. Default: a hard, non-flake CI FAILURE
 # so the PR is genuinely dead and reaches the INFRA-1410 rebase→close path the
@@ -125,6 +129,10 @@ case "\$*" in
         ;;
     "pr diff "*) echo "" ;;
     "pr checks "*) echo "[]" ;;
+    "run rerun "*)
+        # Record the run-id (+ any --failed flag) the prompt-retry invokes.
+        echo "\$*" >> "$RERUN_LOG"
+        ;;
     *) echo "" ;;
 esac
 EOF
@@ -170,6 +178,7 @@ reset_state() {
     : > "$AMBIENT"
     : > "$REBASE_LOG"
     : > "$PR_CLOSE_LOG"
+    : > "$RERUN_LOG"
 }
 
 PASS=0
@@ -283,7 +292,9 @@ fi
 # markers) and spare — NEVER close.
 echo "Test 4c: flake-budget-exhausted PR is re-armed + SPARED (PR #4589 incident)"
 reset_state
-echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
+# Rollup carries the CURRENT failing run's URL so the PR #4606 prompt-retry can
+# discover and rerun it (run 550142) — a plain FAILURE → `--failed` rerun mode.
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/550142/job/7"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
 FLAKE_CD="$TMP/repo/.chump-locks/ci-flake-cooldown"
 mkdir -p "$FLAKE_CD"
 : > "$FLAKE_CD/pr-1042.commented"   # budget-exceeded marker set by ci-flake-rerun
@@ -301,6 +312,70 @@ else
     ambient: $(cat "$AMBIENT")
     close log: $(cat "$PR_CLOSE_LOG")
     markers: $(ls "$FLAKE_CD" 2>/dev/null)"
+fi
+
+# ── Test 4c-retry: the CURRENT failing run is retried NOW (completes PR #4606) ─
+# The exact defect this PR fixes: re-arming alone only permits a rerun on the
+# NEXT run-id, so the current still-failing run (550142) would sit until a
+# re-push. Assert the reaper rerun it in the SAME pass, wrote the per-run
+# cooldown marker (so ci-flake-rerun won't double-rerun), and emitted the event.
+echo "Test 4c-retry: current failing run is rerun immediately on flake re-arm"
+if grep -q '550142' "$RERUN_LOG" \
+   && grep -q -- '--failed' "$RERUN_LOG" \
+   && [[ -f "$FLAKE_CD/run-550142.ts" ]] \
+   && [[ "$(count_kind pr_stuck_flake_rerun_prompted)" -ge 1 ]]; then
+    pass
+else
+    fail "current run 550142 not retried on re-arm (the PR #4606 defect)
+    rerun log: $(cat "$RERUN_LOG")
+    cooldown: $(ls "$FLAKE_CD" 2>/dev/null)
+    ambient: $(cat "$AMBIENT")"
+fi
+
+# ── Test 4d: prompt-retry is BOUNDED by CHUMP_REAPER_FLAKE_REARM_MAX ───────────
+# Once the re-arm budget is spent (flake_rearmed_count == max), the reaper must
+# ESCALATE and NOT rerun the current run again — proving no unbounded rerun loop.
+echo "Test 4d: prompt-retry stops after CHUMP_REAPER_FLAKE_REARM_MAX (escalates, no rerun)"
+reset_state
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/550143/job/7"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
+mkdir -p "$FLAKE_CD"
+echo 3 > "$FLAKE_CD/pr-1043.count"
+# Pre-seed state: already re-armed once, at the max.
+cat > "$STATE_FILE" <<JSON
+{"1043":{"flake_rearmed_count":1}}
+JSON
+mk_pr_json 1043 chump/test-flake2 "INFRA-9043: flake persists after re-arm" BLOCKED "$(old_iso 5)" '[]' > "$PR_FIXTURE"
+env "${COMMON_ENV[@]}" CHUMP_PR_STUCK_SLO_HRS=2 CHUMP_PR_STUCK_RECLOSE_MINS=30 CHUMP_FLAKE_BUDGET=3 CHUMP_REAPER_FLAKE_REARM_MAX=1 "$REAPER" >/dev/null 2>&1 || true
+if [[ "$(count_kind pr_stuck_flake_escalated)" -ge 1 \
+   && "$(count_kind pr_stuck_flake_rerun_prompted)" == "0" \
+   && ! -s "$RERUN_LOG" \
+   && ! -s "$PR_CLOSE_LOG" ]]; then
+    pass
+else
+    fail "at re-arm-max the reaper should escalate and NOT rerun (unbounded-loop guard)
+    ambient: $(cat "$AMBIENT")
+    rerun log: $(cat "$RERUN_LOG")
+    close log: $(cat "$PR_CLOSE_LOG")"
+fi
+
+# ── Test 4e: prompt-retry bypass (CHUMP_REAPER_FLAKE_PROMPT_RETRY=0) ───────────
+# Operators can disable the current-run rerun while keeping the re-arm+spare.
+echo "Test 4e: CHUMP_REAPER_FLAKE_PROMPT_RETRY=0 re-arms+spares but does NOT rerun"
+reset_state
+echo '{"statusCheckRollup":[{"__typename":"CheckRun","name":"required","status":"COMPLETED","conclusion":"FAILURE","detailsUrl":"https://github.com/o/r/actions/runs/550144/job/7"}],"mergeable":"MERGEABLE"}' > "$ROLLUP_FIXTURE"
+mkdir -p "$FLAKE_CD"
+echo 3 > "$FLAKE_CD/pr-1044.count"
+mk_pr_json 1044 chump/test-flake3 "INFRA-9044: flake, prompt-retry disabled" BLOCKED "$(old_iso 5)" '[]' > "$PR_FIXTURE"
+env "${COMMON_ENV[@]}" CHUMP_PR_STUCK_SLO_HRS=2 CHUMP_PR_STUCK_RECLOSE_MINS=30 CHUMP_FLAKE_BUDGET=3 CHUMP_REAPER_FLAKE_REARM_MAX=1 CHUMP_REAPER_FLAKE_PROMPT_RETRY=0 "$REAPER" >/dev/null 2>&1 || true
+if [[ "$(count_kind pr_stuck_flake_rearmed)" -ge 1 \
+   && "$(count_kind pr_stuck_flake_rerun_prompted)" == "0" \
+   && ! -s "$RERUN_LOG" \
+   && ! -s "$PR_CLOSE_LOG" ]]; then
+    pass
+else
+    fail "with prompt-retry disabled: expected re-arm but no rerun
+    ambient: $(cat "$AMBIENT")
+    rerun log: $(cat "$RERUN_LOG")"
 fi
 
 # Restore the default hard-fail rollup for the remaining cases.
