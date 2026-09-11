@@ -1072,6 +1072,13 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // ones (hard non-flake failure / conflict). Pure decision-function
         // fixtures + INFRA-304 markers, no network, ~1s.
         "scripts/ci/test-reaper-spare-recoverable-blocked.sh",
+        // INFRA-1410 (completes PR #4606): stale-pr-reaper prompt-retries the
+        // current failing run on flake re-arm. Network-free — the test stubs
+        // gh / chump / the rebase script via PATH and drives the whole respawn
+        // state machine in a tmpdir — so it runs in local preflight identically
+        // to the ci.yml fast-checks job (registers this gate for preflight-vs-CI
+        // parity, INFRA-1867).
+        "scripts/ci/test-pr-stuck-auto-respawn.sh",
         // RESILIENT-066: fleet-pause autolift + pause-immune choir — Tier A,
         // pure shell, no GitHub API, ~2s.
         "scripts/ci/test-fleet-pause-autolift.sh",
