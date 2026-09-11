@@ -24281,7 +24281,7 @@ gaps:
 - id: CREDIBLE-800
   domain: CREDIBLE
   title: "CREDIBLE: Preserve author‑provided acceptance criteria during gap decomposition (CREDIBLE-284 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -24311,6 +24311,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-11T05:37:25Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=7140B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-801
   domain: CREDIBLE
@@ -39018,7 +39019,7 @@ gaps:
 - id: EFFECTIVE-1109
   domain: EFFECTIVE
   title: "EFFECTIVE: Update intake processing to capture and store who, struggling-moment, and done-signal (EFFECTIVE-443 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   description: |
@@ -39051,6 +39052,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-11T05:49:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=8299B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: EFFECTIVE-111
   domain: EFFECTIVE
