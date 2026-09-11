@@ -2457,6 +2457,16 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-gap-reserve-no-stale-collision.sh"],
             GateKind::Scripts,
         ));
+        // RESILIENT-001: the mirror-converge dirty-tree gate. Hermetic —
+        // builds bare-repo fixtures in a tmpdir with a stubbed `chump`, no
+        // network/root/systemctl — so it runs in local preflight identically
+        // to the ci.yml pr-hygiene job (registers this gate for
+        // preflight-vs-CI parity, INFRA-1867).
+        steps.push(step(
+            "backlog-sync-reader-dirty-tree",
+            &["bash", "scripts/ci/test-backlog-sync-reader-dirty-tree.sh"],
+            GateKind::Scripts,
+        ));
 
         // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
         // gate — mirrors the 41 remaining cli-observability-misc cluster
