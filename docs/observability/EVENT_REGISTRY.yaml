@@ -7781,6 +7781,31 @@ events:
     consumers: [fleet-brief, ops-audit, operator-attention]
     fields_required: [ts, kind, pr, branch, gap]
 
+  - kind: pr_rescued
+    effect_metric: self
+    emitter: scripts/coord/pr-reaper-rescuer.sh (RESILIENT-1108)
+    trigger: >
+      The reaper-rescuer revived a PR that a reaper (stale-pr-reaper /
+      rot-reaper / INFRA-3542) had closed on a FIXABLE red while the branch
+      was green-underneath and its gap still wanted. The PR was reopened
+      (and rebased if BEHIND) + re-armed for auto-merge. The rate of this
+      kind is the reaper false-close-rate signal — a rising count means the
+      reapers' spare-logic (classify-blocked-pr.py) needs tightening.
+    consumers: [fleet-brief, ops-audit, operator-attention]
+    fields_required: [ts, kind, pr, branch, gap, verdict, attempt, action]
+
+  - kind: pr_rescue_escalated
+    effect_metric: self
+    emitter: scripts/coord/pr-reaper-rescuer.sh (RESILIENT-1108)
+    trigger: >
+      A PR hit the per-PR rescue cap (CHUMP_PR_RESCUE_MAX, default 2) or its
+      branch was un-reopenable. The rescuer STOPS resurrecting it and pages
+      the operator instead — a reaper<->rescuer ping-pong means the PR needs
+      a human, not another automatic redo. This is the bound that keeps the
+      rescuer from fighting the reaper forever.
+    consumers: [fleet-brief, ops-audit, operator-attention]
+    fields_required: [ts, kind, pr, branch, gap, attempts, reason]
+
   - kind: pr_reopen_refused
     effect_metric: self
     emitter: scripts/coord/pr-rescue-false-close.sh (INFRA-5349, INFRA-3604 slice)

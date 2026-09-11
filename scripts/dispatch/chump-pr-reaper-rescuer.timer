@@ -1,0 +1,19 @@
+# RESILIENT-1108 — fires the reaper-rescuer every ~15 min on the primary node.
+# Cadence rationale: slower than pr-lander (10m), close to rot-reaper (30m). The
+# rescuer UNDOES a reaper's mistake, so it must run often enough to catch a
+# wrongly-closed PR before its branch is GC'd, but the per-PR rescue cap
+# (CHUMP_PR_RESCUE_MAX) — not the cadence — is what prevents a rescue/reap loop.
+# OnCalendar (wall-clock, self-anchoring) not OnUnitActiveSec, per RESILIENT-413:
+# a self-chaining interval timer can resolve NextElapse to infinity on a
+# daemon-reload and sit 'active' but dark. Enable: systemctl enable --now
+# chump-pr-reaper-rescuer.timer
+[Unit]
+Description=Run the Chump reaper-rescuer every 15 minutes (RESILIENT-1108)
+
+[Timer]
+OnBootSec=7min
+OnCalendar=*:07/15
+Persistent=true
+
+[Install]
+WantedBy=timers.target

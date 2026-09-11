@@ -135,6 +135,16 @@ enabled     chump-farmer.timer  role=brain requires=bin:chump
 # 2026-08-14 hours-long deadlock). Declared here so organ-reconcile re-arms it if
 # it drifts or fails.
 enabled     chump-rot-reaper.timer  role=brain requires=bin:gh
+# chump-pr-reaper-rescuer.timer: the reaper-rescuer (RESILIENT-1108) — the
+# systemic counterweight to the three reapers above. When a reaper closes a PR
+# on a FIXABLE red (a late parity gate, a flake, a CI-cancel) while the branch
+# is green-underneath and its gap is still wanted, this organ reopens/rebases +
+# re-arms it (reusing classify-blocked-pr.py to spare only recoverable ones).
+# BOUNDED (CHUMP_PR_RESCUE_MAX, default 2) then escalates, so it never fights a
+# reaper forever. Without it, correct green-underneath PRs (#4589/#4598/#4615/
+# #4618, 2026-09-11) die and the work churns. Declared here so organ-reconcile
+# re-arms it if it drifts or fails.
+enabled     chump-pr-reaper-rescuer.timer  role=brain requires=bin:gh
 # chump-integrator.timer: the Batched Merge Train (RESILIENT-318 / INFRA-2130).
 # Batches up to 5 ready_to_ship gaps through a preflight gate into ONE
 # integration branch so CI runs once per batch instead of once per gap
