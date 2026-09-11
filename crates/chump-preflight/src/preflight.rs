@@ -2449,8 +2449,26 @@ pub fn run(argv: &[String]) -> i32 {
         // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
         // gate — mirrors the 41 remaining cli-observability-misc cluster
         // scripts from docs/process/AUDIT_JOB_DECOMPOSITION.md.
-        for (name, script) in CLI_OBSERVABILITY_MISC_SCRIPTS {
-            steps.push(step(name, &["bash", script], GateKind::Scripts));
+        // INFRA-4406: skip via CHUMP_PREFLIGHT_SKIP_CLI_MISC=1 with
+        // audit-trail emit, mirroring the SKIP_MDLINKS/SKIP_GAPSINT pattern.
+        if std::env::var("CHUMP_PREFLIGHT_SKIP_CLI_MISC").as_deref() == Ok("1") {
+            eprintln!(
+                "[preflight] skipping cli-observability-misc (CHUMP_PREFLIGHT_SKIP_CLI_MISC=1)"
+            );
+            let _ =
+                chump_ambient_cli::ambient_emit::emit(&chump_ambient_cli::ambient_emit::EmitArgs {
+                    kind: "preflight_climisc_bypassed".to_string(),
+                    source: Some("chump-preflight".to_string()),
+                    fields: vec![(
+                        "reason".to_string(),
+                        "CHUMP_PREFLIGHT_SKIP_CLI_MISC=1".to_string(),
+                    )],
+                    ..Default::default()
+                });
+        } else {
+            for (name, script) in CLI_OBSERVABILITY_MISC_SCRIPTS {
+                steps.push(step(name, &["bash", script], GateKind::Scripts));
+            }
         }
     }
 
