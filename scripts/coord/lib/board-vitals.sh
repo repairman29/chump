@@ -367,6 +367,13 @@ board_vitals_check() {
 
     local incidents=0
 
+    # Check almanac coverage
+    local coverage="${almanac_coverage_summarized_pct:-0}"
+    if [[ "$coverage" =~ ^[0-9]+$ ]] && (( coverage <= 95 )); then
+        echo "ALMANAC_COVERAGE_LOW" >&2
+        ((incidents++))
+    fi
+
     # ── 1 · BOX: disk ────────────────────────────────────────────────────────
     local disk_pct
     disk_pct="$(df -P "$disk_path" 2>/dev/null | awk 'NR==2{gsub(/%/,"",$5); print $5}')"
