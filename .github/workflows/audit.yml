@@ -819,6 +819,14 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-rot-reaper.sh
 
+      # RESILIENT-311 completion: the rot-reaper no longer closes a good PR whose
+      # required `verified` aggregate is red for a recoverable reason (green-
+      # underneath / late-parity / CI-cancel / flake / pending). shard-3: pure
+      # shell, gh/chump stubbed, no binary or live GitHub needed.
+      - name: rot-reaper spares green-underneath verified-red PRs, closes only genuine hard-fails (RESILIENT-311)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-rot-reaper-verified-red-spare.sh
+
       - name: back-pressure breaker can't deadlock — dead-zone escape resumes, 6+ jam still halts (RESILIENT-324)
         if: matrix.shard == 3
         run: bash scripts/ci/test-back-pressure-hysteresis.sh
