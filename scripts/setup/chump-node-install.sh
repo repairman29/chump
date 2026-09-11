@@ -1067,6 +1067,12 @@ render_worker_launcher() {
   local session="${CHUMP_WORKER_SESSION:-$machine}"
   local skills="${CHUMP_WORKER_SKILLS:-}"
   local domain="${CHUMP_WORKER_DOMAIN_FILTER:-}"
+  # INFRA-471: model class + effort band for this launcher. Defaults preserve
+  # the pre-existing single-worker behavior (sonnet; xs,s,m). scripts/dispatch/
+  # spawn-worker-fleet.sh renders ADDITIONAL launchers with different classes
+  # (e.g. a haiku/xs instance that eats the xs backlog a sonnet worker refuses).
+  local model="${CHUMP_WORKER_MODEL:-sonnet}"
+  local effort="${CHUMP_WORKER_EFFORT:-xs,s,m}"
 
   if [ ! -f "$template" ]; then
     info ORGANS "worker-launcher.template.sh not found in checkout — falling back to minimal inline launcher"
@@ -1082,7 +1088,7 @@ WK"
   fi
 
   if [ "$DRY" = 1 ]; then
-    echo "  DRY: render $template -> $ORGAN_DIR/worker.sh (AGENT_ID=$agent_id WORKER_MACHINE=$machine FLEET_SESSION=$session WORKER_SKILLS=$skills FLEET_DOMAIN_FILTER=$domain REPO_ROOT=$repo)"
+    echo "  DRY: render $template -> $ORGAN_DIR/worker.sh (AGENT_ID=$agent_id WORKER_MACHINE=$machine FLEET_SESSION=$session WORKER_SKILLS=$skills FLEET_DOMAIN_FILTER=$domain REPO_ROOT=$repo FLEET_MODEL=$model FLEET_EFFORT_FILTER=$effort)"
     return 0
   fi
 
@@ -1093,9 +1099,11 @@ WK"
     -e "s|__WORKER_SKILLS__|$skills|g" \
     -e "s|__FLEET_DOMAIN_FILTER__|$domain|g" \
     -e "s|__REPO_ROOT__|$repo|g" \
+    -e "s|__FLEET_MODEL__|$model|g" \
+    -e "s|__FLEET_EFFORT_FILTER__|$effort|g" \
     "$template" > "$ORGAN_DIR/worker.sh"
   chmod +x "$ORGAN_DIR/worker.sh"
-  ok "rendered worker launcher (agent_id=$agent_id machine=$machine skills=${skills:-any} domain=${domain:-any})"
+  ok "rendered worker launcher (agent_id=$agent_id machine=$machine skills=${skills:-any} domain=${domain:-any} model=$model effort=$effort)"
 }
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
