@@ -15,8 +15,10 @@ use tower_http::services::ServeDir;
 
 use crate::dashboard;
 use crate::db::{now_ms, FleetStore};
+use crate::gap_pulse;
 use crate::gap_write::{self, GapWriteRequest};
 use crate::mission::{self, MissionRequest};
+use crate::vital_signs;
 
 // ── shared state ──────────────────────────────────────────────────────────────
 
@@ -43,9 +45,17 @@ pub fn build_router(store: SharedStore, repo_root: PathBuf) -> Router {
         .route("/api/sessions/active", get(get_active_sessions))
         .route("/api/trace/pr/{n}", get(get_trace_pr))
         .route("/api/dashboard-summary", get(get_dashboard_summary))
-        .route("/api/mission", post(post_mission))
+        // GET = unauthed north-star (persons-served) read for the cockpit;
+        // POST = fail-closed bat-phone mission intake. Same path, split by
+        // method (RESILIENT-1088).
+        .route("/api/mission", post(post_mission).get(get_mission))
         .route("/api/gap", post(post_gap))
         .route("/api/gaps", get(get_gaps))
+        // RESILIENT-1088 cockpit reads — unauthenticated, count/gauge-only,
+        // tailnet-safe (COCKPIT.md §2). Contents stay Bearer-gated on
+        // `/api/gaps`; these expose only non-sensitive numbers.
+        .route("/api/gap-pulse", get(get_gap_pulse))
+        .route("/api/vital-signs", get(get_vital_signs))
         .route("/api/doc/{name}", get(get_doc))
         .route("/api/sentinel-heartbeat", post(post_sentinel_heartbeat))
         .route("/api/fleet/nodes", get(get_fleet_nodes))
@@ -311,6 +321,72 @@ async fn get_gaps(State(s): State<AppState>, headers: axum::http::HeaderMap) -> 
         }
         Err(e) => {
             tracing::error!("GET /api/gaps task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/gap-pulse (RESILIENT-1088) — unauthenticated, count-only pulse of
+/// the canonical gap store for the cockpit's "pickable vs open" lead tile.
+///
+/// Unlike `/api/gaps` (Bearer-gated, returns gap *contents*), this returns only
+/// non-sensitive counts from one read-only pass over `.chump/state.db`, so the
+/// unauthed cockpit browser can read it on the tailnet. A dark/absent DB yields
+/// `available:false` + null counts (200, so the tile greys) — never a 500.
+async fn get_gap_pulse(State(s): State<AppState>) -> Response {
+    let repo_root = s.repo_root.clone();
+    match tokio::task::spawn_blocking(move || gap_pulse::build_pulse(&repo_root)).await {
+        Ok(pulse) => Json(pulse).into_response(),
+        Err(e) => {
+            tracing::error!("GET /api/gap-pulse task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/vital-signs (RESILIENT-1088) — unauthenticated read of the
+/// vital-signs contract (`~/.chump/vital-signs.json`: p_full_trek + pillar
+/// signs) plus the CONTINUOUS autonomous ship-rate (newest row of
+/// `~/.chump/metrics/autonomous-ship-rate.jsonl`), so the cockpit's zero-touch
+/// and p_full_trek gauges light up between the sparse regression events.
+///
+/// Read-only, gauge-only, tailnet-safe (COCKPIT.md §2). Each sub-source reports
+/// its own `available` flag; an absent file (collector/organ not deployed on
+/// this node) degrades that block to grey without failing the request.
+async fn get_vital_signs(State(s): State<AppState>) -> Response {
+    let repo_root = s.repo_root.clone();
+    match tokio::task::spawn_blocking(move || vital_signs::build_response(&repo_root)).await {
+        Ok(resp) => Json(resp).into_response(),
+        Err(e) => {
+            tracing::error!("GET /api/vital-signs task join error: {e}");
+            (
+                axum::http::StatusCode::INTERNAL_SERVER_ERROR,
+                Json(serde_json::json!({"error": "internal error"})),
+            )
+                .into_response()
+        }
+    }
+}
+
+/// GET /api/mission (RESILIENT-1088) — unauthenticated north-star read for the
+/// cockpit's "persons served" tile. Sourced from the `outcomes_delivered`
+/// vital sign (the contract's "things reaching a person" proxy); `null` until a
+/// real delivery-to-a-person signal is wired, so the tile stays honest-grey
+/// instead of 405-ing. The POST side (mission intake) stays fail-closed.
+async fn get_mission(State(s): State<AppState>) -> Response {
+    let repo_root = s.repo_root.clone();
+    match tokio::task::spawn_blocking(move || vital_signs::read_persons_served(&repo_root)).await {
+        Ok(ps) => Json(ps).into_response(),
+        Err(e) => {
+            tracing::error!("GET /api/mission task join error: {e}");
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,
                 Json(serde_json::json!({"error": "internal error"})),

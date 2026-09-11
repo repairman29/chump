@@ -156,6 +156,10 @@
   .corpus b{color:var(--text-secondary); font-weight:600; text-transform:uppercase; letter-spacing:.04em}
   .err-inline{color:var(--error); font-size:11px; font-family:var(--mono)}
   .muted{color:var(--grey)}
+  .selfmodel-note{font-size:11px; color:var(--text-secondary); line-height:1.35; margin-top:2px}
+  .selfmodel-note b{color:var(--text); font-weight:600}
+  .selfmodel-note .miss{color:var(--grey)}
+  .selfmodel-note .warn{color:var(--warn)}
 </style>
 </head>
 <body>
@@ -219,10 +223,14 @@
           <span class="v unknown" id="nodes-count">? of 3</span>
         </div>
         <div class="nodes" id="nodes-list"><span class="muted">…</span></div>
+        <div class="row"><span class="k"><b>self-model</b> — organs verified-working / enabled</span><span class="v unknown" id="selfmodel">unknown</span></div>
+        <div class="row"><span class="k"><b>failed organs</b> — units failed across fleet</span><span class="v unknown" id="failed">unknown</span></div>
+        <div class="row"><span class="k"><b>p_full_trek</b> — hands-off-from-clean-install odds</span><span class="v unknown" id="pfull">unknown</span></div>
+        <div class="row"><span class="k"><b>hours-unattended</b> — durability gauge (#4604)</span><span class="v unknown" id="unattended">unknown</span></div>
         <div class="row"><span class="k"><b>manage-PRs</b> — casino EV band · Brier</span><span class="v unknown" id="casino">unknown</span></div>
         <div class="row"><span class="k"><b>silence-unless-stalled</b> — stalled PRs &gt;4h</span><span class="v unknown" id="stalled">unknown</span></div>
-        <div class="row"><span class="k"><b>failed organs</b> — units failed across fleet</span><span class="v unknown" id="failed">unknown</span></div>
       </div>
+      <div class="selfmodel-note" id="selfmodel-note"></div>
     </section>
 
     <!-- ───────── WHAT WE'RE BUILDING ───────── -->
@@ -274,14 +282,25 @@
 //                               autonomous_ship_rate_regression→ latest zero-touch curr_rate
 //                               pr_book_odds                   → casino EV/Brier
 //   /api/fleet/nodes        → nodes reporting + failed_units_total
+//   /api/gap-pulse          → RESILIENT-1088: unauthed count-only gap pulse
+//                             (open/blocked/in_flight/pickable + Δcreate−close)
+//                             from .chump/state.db. Lights the "pickable/open" tile.
+//   /api/vital-signs        → RESILIENT-1088: vital-signs.json contract
+//                             (p_full_trek + pillar signs) + the CONTINUOUS
+//                             autonomous ship-rate (autonomy.rate_pct). Lights
+//                             zero-touch + p_full_trek. Each sub-source carries
+//                             its own `available` flag → honest grey when dark.
+//   /api/mission (GET)      → RESILIENT-1088: persons-served north-star read
+//                             (from the outcomes_delivered vital sign). null today.
 //   /api/doc/{mission,roadmap} → covenant + roadmap, rendered from HEAD
+//   /api/events?kind=organ_success_verify_tick → self-model (verified/enabled)
 //   WS /api/live            → live tick + freshness heartbeat
 //
-// Endpoints that DON'T exist yet (tiles stay grey and name the gap, per doctrine):
-//   • continuous zero-touch rate — only regression events emit today (CREDIBLE-047);
-//     needs /api/vital-signs autonomy pillar (COCKPIT.md §3).
-//   • pickable/open gap COUNTS unauthed — /api/gaps is Bearer-gated; needs /api/gap-pulse.
-//   • persons-served — GET /api/mission is POST-only (405); needs the north-star wire.
+// Sources still dark → tiles stay grey and name the gap, per doctrine:
+//   • hours-unattended — durability gauge (#4604) not deployed; /api/vital-signs
+//     carries no field for it yet, so the row stays honest-grey naming #4604.
+//   • persons-served — outcomes_delivered vital sign is uninstrumented (value
+//     null); needs a deploy-to-user / giveaway-told signal keyed to a real human.
 
 const EXPECTED_NODES = ["cuphead", "mugman", "cj"];   // roster; merged≠running honesty
 const REFRESH_MS = 30000;
@@ -356,43 +375,67 @@ async function loadPrimary(){
     rows = await getJSON("/api/events?from="+(now-EVENTS_WINDOW_MS)+"&to="+now+"&limit=50000");
   }catch(_){ rows = null; }
 
-  renderZeroTouch(rows);
+  // RESILIENT-1088: continuous gauges — vital-signs (autonomy + p_full_trek)
+  // and the count-only gap pulse. Independent fetches; each greys on failure.
+  let vitals = null, pulse = null;
+  try{ vitals = await getJSON("/api/vital-signs"); }catch(_){ vitals = null; }
+  try{ pulse  = await getJSON("/api/gap-pulse");   }catch(_){ pulse  = null; }
+
+  renderZeroTouch(rows, vitals);
   renderProduction(rows, summary);
-  renderPickable(rows);
+  renderPickable(pulse, rows);
   renderRun(rows);          // demoted casino/stalled panel reuses the same pull
+  renderSelfModel(rows, vitals);   // organs verified/enabled + p_full_trek + unattended
   renderPersons();          // independent (its own endpoint)
   refreshAttention();
 }
 
 // 1 ── zero-touch ship rate (fewer-humans axis) ──
-function renderZeroTouch(rows){
+// Prefer the CONTINUOUS rate (/api/vital-signs autonomy, newest metrics row);
+// fall back to a regression event; else honest grey.
+function renderZeroTouch(rows, vitals){
   const v = document.getElementById("zt-v"), sub = document.getElementById("zt-sub"), gap = document.getElementById("zt-gap");
-  if (rows == null){
-    v.textContent = "unknown"; bigClass("zt-v","unknown"); tileClass("t-zt","unknown");
-    sub.innerHTML = "human-touches-per-merge · baseline "+AUTONOMY_BASELINE+"%";
-    gap.textContent = "live: /api/events unreachable";
-    setAge("age-zt", null); return;
+  const baseTxt = "human-touches-per-merge · baseline "+AUTONOMY_BASELINE+"%";
+
+  // Preferred: continuous autonomy pulse.
+  const a = vitals && vitals.autonomy;
+  if (a && a.available && a.rate_pct != null){
+    const rv = Number(a.rate_pct);
+    v.textContent = rv.toFixed(1) + "%";
+    const st = rv >= AUTONOMY_BASELINE ? "ok" : (rv > 0 ? "warn" : "err");
+    bigClass("zt-v", st); tileClass("t-zt", st);
+    const denom = (a.fleet_filed_autonomous!=null && a.fleet_filed!=null)
+      ? (" · "+a.fleet_filed_autonomous+"/"+a.fleet_filed+" fleet-filed") : "";
+    sub.innerHTML = "<b>"+rv.toFixed(1)+"%</b> zero-touch"+denom+" · baseline "+AUTONOMY_BASELINE+"%";
+    gap.textContent = a.date ? ("continuous · "+esc(String(a.date))) : "continuous · autonomous-ship-rate ledger";
+    stamp.zt = Date.now(); setAge("age-zt", stamp.zt, true);
+    return;
   }
-  const reg = eventsOfKind(rows, "autonomous_ship_rate_regression");
+
+  // Fallback: last regression event from the ambient stream.
+  const reg = eventsOfKind(rows||[], "autonomous_ship_rate_regression");
   if (reg.length){
     const p = reg[0].p;
     const rate = p.curr_rate ?? p.rate ?? p.pct;
     if (rate != null){
-      const rv = Number(rate);
+      const rv = Number(rate) <= 1 ? Number(rate)*100 : Number(rate);
       v.textContent = rv.toFixed(1) + "%";
       const st = rv >= AUTONOMY_BASELINE ? "ok" : (rv > 0 ? "warn" : "err");
       bigClass("zt-v", st); tileClass("t-zt", st);
       const drop = (p.drop_pp!=null) ? " · last Δ −"+p.drop_pp+"pp" : "";
       sub.innerHTML = "<b>"+rv.toFixed(1)+"%</b> autonomous · baseline "+AUTONOMY_BASELINE+"%"+drop;
-      gap.textContent = "from last autonomous_ship_rate_regression event";
+      gap.textContent = "from last autonomous_ship_rate_regression event (no continuous feed)";
       stamp.zt = reg[0].ts_ms; setAge("age-zt", stamp.zt, true);
       return;
     }
   }
-  // No continuous feed. Honest grey + name the gap (matches COCKPIT.md autonomy pillar).
+
+  // No feed. Honest grey + name the dark source.
   v.textContent = "unknown"; bigClass("zt-v","unknown"); tileClass("t-zt","unknown");
-  sub.innerHTML = "human-touches-per-merge · baseline "+AUTONOMY_BASELINE+"%";
-  gap.textContent = "GAP: no continuous feed — needs /api/vital-signs autonomy pillar";
+  sub.innerHTML = baseTxt;
+  gap.textContent = (a && !a.available)
+    ? "GAP: autonomy ledger dark — "+esc(String(a.note||"run autonomous-ship-rate.sh"))
+    : "live: /api/vital-signs unreachable";
   setAge("age-zt", null);
 }
 
@@ -441,30 +484,54 @@ function renderProduction(rows, summary){
 }
 
 // 3 ── pickable vs open gaps (why it is / isn't moving) ──
-function renderPickable(rows){
+// Exact counts from /api/gap-pulse (unauthed, count-only, .chump/state.db).
+function renderPickable(pulse, rows){
   const v = document.getElementById("pick-v"), sub = document.getElementById("pick-sub"), gap = document.getElementById("pick-gap");
-  // Exact counts require /api/gaps (Bearer-gated → unauthed page can't read) or a
-  // new unauthed /api/gap-pulse. Until then: honest unknown for the numbers, but
-  // DERIVE the pickable-under-active-filter signal from the newest stand_down.
-  v.textContent = "? / ?"; bigClass("pick-v","unknown"); tileClass("t-pick","unknown");
-  if (rows == null){
+
+  if (pulse && pulse.available && pulse.open != null){
+    const pick = Number(pulse.pickable ?? 0), open = Number(pulse.open ?? 0);
+    v.textContent = pick + " / " + open;
+    // Lots open but nothing pickable = the starved story; some pickable = healthy.
+    const st = pick > 0 ? "ok" : (open > 0 ? "err" : "unknown");
+    bigClass("pick-v", st); tileClass("t-pick", st);
+    const dblock = (pulse.deps_blocked_open!=null && pulse.deps_blocked_open>0)
+      ? (pulse.deps_blocked_open+" dep-blocked") : null;
+    const leased = (pulse.leased_open!=null && pulse.leased_open>0)
+      ? (pulse.leased_open+" leased") : null;
+    const why = [dblock, leased].filter(Boolean).join(" · ");
+    sub.innerHTML = "<b>"+pick+" pickable</b> of "+open+" open"
+      + (pulse.blocked!=null ? (" · "+pulse.blocked+" blocked") : "")
+      + (pulse.in_flight!=null ? (" · "+pulse.in_flight+" in-flight") : "")
+      + (why ? (" · "+why) : "");
+    const d = pulse.delta_24h;
+    gap.textContent = (d!=null)
+      ? ("24h: +"+(pulse.created_24h??"?")+" created / −"+(pulse.closed_24h??"?")+" closed · Δ "+(d>=0?"+":"")+d)
+      : "counts from .chump/state.db";
+    stamp.pick = pulse.generated_ms || Date.now(); setAge("age-pick", stamp.pick, true);
+    return;
+  }
+
+  // Endpoint present but source dark → honest grey, name the reason.
+  if (pulse && pulse.available === false){
+    v.textContent = "? / ?"; bigClass("pick-v","unknown"); tileClass("t-pick","unknown");
     sub.textContent = "open ≠ pickable under active filter";
-    gap.textContent = "GAP: counts need unauthed /api/gap-pulse (/api/gaps is Bearer-gated)";
+    gap.textContent = "GAP: gap store dark — "+esc(String(pulse.note||"state.db unavailable"));
     setAge("age-pick", null); return;
   }
-  const standDown = eventsOfKind(rows, "worker_stand_down");
+
+  // Endpoint unreachable → fall back to the stand_down-derived signal.
+  v.textContent = "? / ?"; bigClass("pick-v","unknown"); tileClass("t-pick","unknown");
+  const standDown = eventsOfKind(rows||[], "worker_stand_down");
   if (standDown.length){
     const p = standDown[0].p;
     const filt = p.filters ? esc(String(p.filters)) : "active filter";
-    const reason = p.reason ? esc(String(p.reason)) : "";
-    // A recent stand_down means ~0 pickable under that filter — the real story.
     v.textContent = "≈0 / ?"; bigClass("pick-v","err"); tileClass("t-pick","err");
     sub.innerHTML = "<b>~0 pickable</b> under <b>"+filt+"</b>";
-    gap.textContent = reason ? ("stand_down: "+reason) : "derived from worker_stand_down";
+    gap.textContent = "derived from worker_stand_down (/api/gap-pulse unreachable)";
     stamp.pick = standDown[0].ts_ms; setAge("age-pick", stamp.pick, true);
   } else {
     sub.textContent = "open ≠ pickable under active filter";
-    gap.textContent = "GAP: exact counts need unauthed /api/gap-pulse (/api/gaps is Bearer-gated)";
+    gap.textContent = "live: /api/gap-pulse unreachable";
     setAge("age-pick", null);
   }
 }
@@ -473,22 +540,24 @@ function renderPickable(rows){
 async function renderPersons(){
   const v = document.getElementById("persons-v"), sub = document.getElementById("persons-sub"), gap = document.getElementById("persons-gap");
   try{
-    const m = await getJSON("/api/mission");   // POST-only today → 405 → catch
+    const m = await getJSON("/api/mission");   // GET → persons-served (null today)
     const n = (m && (m.persons_served ?? m.count));
     if (n == null){
       v.textContent = "unknown · 0"; bigClass("persons-v","unknown"); tileClass("t-persons","unknown");
-      gap.textContent = "GAP: north-star signal not wired (GET /api/mission is POST-only)";
+      gap.textContent = m && m.basis
+        ? ("GAP: "+esc(String(m.basis)))
+        : "GAP: outcomes_delivered vital sign uninstrumented (no delivery-to-a-person signal yet)";
     } else {
       v.textContent = String(n);
       bigClass("persons-v", Number(n)>0 ? "ok" : "unknown"); tileClass("t-persons", Number(n)>0 ? "ok" : "unknown");
-      sub.textContent = m.last_session ? String(m.last_session) : "the one real-user signal";
+      sub.textContent = m.last_session ? String(m.last_session) : "things reaching a person (outcomes_delivered)";
       gap.textContent = "";
       stamp.persons = Date.now(); setAge("age-persons", stamp.persons, true);
       return;
     }
   }catch(_){
     v.textContent = "unknown · 0"; bigClass("persons-v","unknown"); tileClass("t-persons","unknown");
-    gap.textContent = "GAP: north-star signal not wired (GET /api/mission is POST-only)";
+    gap.textContent = "live: /api/mission unreachable";
   }
   sub.textContent = "the one real-user signal — reads 0 today";
   setAge("age-persons", null);
@@ -569,6 +638,58 @@ function renderRun(rows){
   const stuck = (rows||[]).filter(e => /stuck|blocked|stall/i.test(e.event_kind||""));
   stalled.textContent = String(stuck.length);
   stalled.className = "v " + (stuck.length>0 ? "warn" : "ok");
+}
+
+// ── SELF-MODEL (the missing muscle): does the OS know its own working state? ──
+// verified-working / enabled from the organ-success verifier's newest tick,
+// p_full_trek from /api/vital-signs, and an honest "merged≠running" line so a
+// merged-but-not-activated organ can't hide (merged-not-running-disease).
+function renderSelfModel(rows, vitals){
+  const sm = document.getElementById("selfmodel");
+  const note = document.getElementById("selfmodel-note");
+  const pfull = document.getElementById("pfull");
+  const unatt = document.getElementById("unattended");
+
+  // verified-working / enabled — newest organ_success_verify_tick.
+  const ticks = eventsOfKind(rows||[], "organ_success_verify_tick");
+  if (ticks.length){
+    const p = ticks[0].p;
+    const ok = Number(p.verified_ok ?? p.verified ?? NaN);
+    const tot = Number(p.enabled_total ?? p.enabled ?? NaN);
+    const failed = Number(p.failed ?? 0);
+    if (!isNaN(ok) && !isNaN(tot)){
+      sm.textContent = ok + " / " + tot;
+      sm.className = "v " + (failed>0 ? "warn" : (ok===tot ? "ok" : "warn"));
+      const failedUnits = p.failed_units ? String(p.failed_units).trim() : "";
+      const failTxt = failed>0
+        ? ('<span class="warn"><b>'+failed+' failed</b>'+(failedUnits?(": "+esc(failedUnits)):"")+'</span>')
+        : '<b>0 failed</b>';
+      note.innerHTML = "merged≠running: <b>"+ok+"</b> organs verified-working of <b>"+tot+"</b> enabled — "
+        + failTxt + ' <span class="miss">· green ≠ activated; a merged organ counts only when its service verifies</span>';
+    } else {
+      sm.textContent = "unknown"; sm.className = "v unknown";
+      note.innerHTML = '<span class="miss">self-model: organ_success_verify_tick present but missing verified/enabled counts</span>';
+    }
+  } else {
+    sm.textContent = "unknown"; sm.className = "v unknown";
+    note.innerHTML = '<span class="miss">self-model dark: no organ_success_verify_tick in 24h — verifier not reporting here</span>';
+  }
+
+  // p_full_trek — from vital-signs contract.
+  const pf = vitals && vitals.available && vitals.vital_signs && vitals.vital_signs.p_full_trek;
+  if (pf != null){
+    const pv = Number(pf);
+    pfull.textContent = pv.toFixed(2) + "×";
+    pfull.className = "v " + (pv>=0.5 ? "ok" : (pv>0 ? "warn" : "err"));
+  } else {
+    pfull.textContent = "unknown"; pfull.className = "v unknown";
+    pfull.title = (vitals && !vitals.available) ? "vital-signs collector not deployed here" : "";
+  }
+
+  // hours-unattended — durability gauge (#4604) not deployed anywhere yet.
+  // No source ⇒ honest grey, named. Never fabricated.
+  unatt.textContent = "unknown"; unatt.className = "v unknown";
+  unatt.title = "durability gauge #4604 not deployed — no hours-unattended source yet";
 }
 
 // ── SECONDARY · WHAT WE'RE BUILDING (demoted): ships/CI/leases + roadmap ──

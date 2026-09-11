@@ -6,7 +6,9 @@
 
 pub mod dashboard;
 pub mod db;
+pub mod gap_pulse;
 pub mod gap_write;
 pub mod mission;
 pub mod routes;
 pub mod segmenter;
+pub mod vital_signs;

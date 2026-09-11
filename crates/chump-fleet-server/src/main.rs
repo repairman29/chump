@@ -10,8 +10,16 @@
 //! - `GET /api/trace/pr/:n`
 //! - `GET /api/dashboard-summary` (INFRA-1883)
 //! - `GET /api/gaps` (RESILIENT-1030, authed) — open-gap queue state.
+//! - `GET /api/gap-pulse` (RESILIENT-1088, unauthed) — count-only gap pulse
+//!   (open/blocked/in-flight/pickable + Δcreate−close) from `.chump/state.db`
+//!   for the cockpit's "pickable vs open" tile. Contents stay on the authed
+//!   `/api/gaps`; this exposes only non-sensitive counts.
+//! - `GET /api/vital-signs` (RESILIENT-1088, unauthed) — vital-signs contract
+//!   (p_full_trek + pillar signs) plus the continuous autonomous ship-rate, so
+//!   the cockpit's zero-touch / p_full_trek gauges stop rendering grey.
 //! - `POST /api/gap` (authed) — reserve/set/ship gap mutation.
-//! - `POST /api/mission` (authed) — external mission intake.
+//! - `POST /api/mission` (authed) — external mission intake;
+//!   `GET /api/mission` (unauthed) — persons-served north-star read.
 //! - `GET /api/doc/{name}` (INFRA-5663) — allow-listed durable doc render
 //!   (`roadmap` → `docs/ROADMAP.md`, `mission` → `docs/MISSION.md`) at HEAD.
 //! - `POST /api/sentinel-heartbeat` (RESILIENT-1055, authed) — per-node
