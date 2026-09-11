@@ -187,19 +187,22 @@ pub fn cost_warn_usd() -> f64 {
 /// The caller is responsible for actually printing the warning so that the
 /// message lands on the right stderr stream.
 pub fn check_ceiling() -> Result<bool, String> {
-    let current = session_cost_usd();
+    let current_micro = SESSION_COST_MICRO_USD.load(Ordering::Relaxed);
     let ceiling = cost_ceiling_usd();
     let warn = cost_warn_usd();
+    let ceiling_micro = (ceiling * 1_000_000.0).ceil() as u64;
+    let warn_micro = (warn * 1_000_000.0).ceil() as u64;
 
-    if current >= ceiling {
+    if current_micro >= ceiling_micro {
+        let current_usd = current_micro as f64 / 1_000_000.0;
         return Err(format!(
             "COST CEILING REACHED: ${:.2} spent this session (hard limit: ${:.2}); \
              raise CHUMP_COST_CEILING_USD to continue",
-            current, ceiling
+            current_usd, ceiling
         ));
     }
 
-    if current >= warn {
+    if current_micro >= warn_micro {
         return Ok(true);
     }
 
