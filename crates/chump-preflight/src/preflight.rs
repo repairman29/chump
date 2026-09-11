@@ -2445,6 +2445,17 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-gap-reserve-no-stale-collision.sh"],
             GateKind::Scripts,
         ));
+        // RESILIENT-1104/1105 (THE RATCHET): the invariant-guard gate.
+        // Hermetic — the test builds a scratch registry in a tmpdir and drives
+        // the guard's evaluate/emit/page logic through override hooks (no live
+        // gh, no Discord, no systemd) — so it runs in local preflight
+        // identically to the ci.yml fast-checks job (registers this gate for
+        // preflight-vs-CI parity, INFRA-1867).
+        steps.push(step(
+            "invariant-guard",
+            &["bash", "scripts/ci/test-invariant-guard.sh"],
+            GateKind::Scripts,
+        ));
 
         // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
         // gate — mirrors the 41 remaining cli-observability-misc cluster
