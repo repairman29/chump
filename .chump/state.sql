@@ -125152,7 +125152,7 @@ gaps:
 - id: INFRA-3766
   domain: INFRA
   title: "INFRA: Implement advisory claim logic in chump claim handler (INFRA-1688 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -125184,6 +125184,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-11T00:49:49Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=6434B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: INFRA-3767
@@ -129776,7 +129777,7 @@ gaps:
 - id: INFRA-3950
   domain: INFRA
   title: "INFRA: Update picker to use effective_priority as primary sort (INFRA-3612 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -129799,6 +129800,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'Picker' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+    [2026-09-11T00:59:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=7755B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-3951
   domain: INFRA
@@ -152501,7 +152503,7 @@ gaps:
 - id: INFRA-4692
   domain: INFRA
   title: "INFRA: Add CI workflow to build and publish the builder image (INFRA-2287 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -152533,6 +152535,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-11T01:02:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1105B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4693
   domain: INFRA
