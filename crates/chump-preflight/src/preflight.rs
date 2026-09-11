@@ -2325,6 +2325,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "recurring-fix-invariant-check-smoke",
+            &["bash", "scripts/ci/test-recurring-fix-invariant-check.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "cross-judge-guard",
             &["bash", "scripts/ci/test-cross-judge-guard.sh"],
             GateKind::Scripts,

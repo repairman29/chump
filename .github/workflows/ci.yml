@@ -1450,6 +1450,9 @@ jobs:
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 
+      - name: recurring-fix invariant meta-rule gate smoke (RESILIENT-1107)
+        run: bash scripts/ci/test-recurring-fix-invariant-check.sh
+
       - name: self-hosted-runner-stats emit smoke (CREDIBLE-069)
         run: bash scripts/ci/test-self-hosted-run-stats-emit.sh
 

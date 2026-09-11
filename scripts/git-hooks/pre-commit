@@ -2020,4 +2020,18 @@ if [ -x "$GREP_C_ECHO0_HOOK" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 21. Recurring-fix invariant meta-rule (RESILIENT-1107)
+# ------------------------------------------------------------------
+# No fix for a RECURRING failure class ships without its invariant-check
+# registered alongside it (scripts/ops/invariant-registry.txt, RESILIENT-
+# 1104/1105). Fires only when the commit message self-flags "recurring".
+# Bypass: 'Invariant-Check-Bypass: <reason>' commit trailer.
+RECURRING_FIX_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-recurring-fix-invariant.sh"
+if [ -x "$RECURRING_FIX_HOOK" ]; then
+    if ! "$RECURRING_FIX_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0
