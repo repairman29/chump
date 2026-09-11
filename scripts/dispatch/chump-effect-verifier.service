@@ -1,0 +1,22 @@
+# RESILIENT-1109 (Outcome-Verification, umbrella RESILIENT-1103) — catches an
+# organ that exits 0 and reports success every tick yet produces NO EFFECT
+# (the farmer ticking against a non-empty pickable queue and claiming
+# nothing). organ-success-verifier.sh (RESILIENT-1108) watches systemd's
+# Result/ExecMainStatus and is structurally blind to this class — a no-op run
+# still reports Result=success. This organ compares heartbeat volume against
+# effect volume directly.
+#
+# No WorkingDirectory (same discipline as chump-organ-success-verifier.service
+# — the CHDIR incident this whole track exists to never repeat): invoke the
+# script by absolute path instead.
+[Unit]
+Description=Chump effect verifier — page on exit-0-but-no-op organs (RESILIENT-1109)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/effect-verifier.sh'

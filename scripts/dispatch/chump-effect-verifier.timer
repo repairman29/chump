@@ -1,0 +1,16 @@
+# RESILIENT-1109 — pairs with chump-effect-verifier.service.
+# 15-minute cadence: the check needs CHUMP_EFFECT_VERIFIER_MIN_TICKS (default
+# 3) farmer_heartbeat events in its trailing window (default 30min) to trust
+# the sample, so running much tighter than the window just re-samples the same
+# ticks. Matches the organ-success-verifier / outcome-verify-heal-consumer
+# "cheap, frequent-enough" cadence philosophy.
+[Unit]
+Description=Run the Chump effect verifier every 15 minutes (RESILIENT-1109)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
