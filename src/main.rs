@@ -9703,9 +9703,12 @@ async fn main() -> Result<()> {
                         Some(r) => r.to_string(),
                         None => continue,
                     };
-                    let delegated = e.get("delegated").and_then(|v| v.as_bool()).unwrap_or_else(
-                        || e.get("model").and_then(|v| v.as_str()) == Some("sonnet"),
-                    );
+                    let delegated =
+                        e.get("delegated")
+                            .and_then(|v| v.as_bool())
+                            .unwrap_or_else(|| {
+                                e.get("model").and_then(|v| v.as_str()) == Some("sonnet")
+                            });
                     let entry = counts.entry(curator_name).or_insert((0, 0));
                     if delegated {
                         entry.1 += 1;
