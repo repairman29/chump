@@ -1,13 +1,13 @@
 #!/usr/bin/env bash
-# vital-signs.sh — the 8 VITAL SIGNS of ChumpOS's journey to the ribbon.
+# vital-signs.sh — the 9 VITAL SIGNS of ChumpOS's journey to the ribbon.
 #
-# Reads eight real endpoints (gh, ~/.chump ledgers, the ambient stream, the
+# Reads real endpoints (gh, ~/.chump ledgers, the ambient stream, the
 # systemd organ roll-call, journey-odds.json) and writes ~/.chump/vital-signs.json
 # in the SHARED CONTRACT shape, plus a `vital_signs` ambient heartbeat to
 # .chump-locks/ambient.jsonl so a dead collector — and a frozen vitals board —
 # is itself observable from the stream instead of silently going stale.
 #
-# THE 8 SIGNS (group / lead_or_lag):
+# THE 9 SIGNS (group / lead_or_lag):
 #   1 merge_throughput    flow/lagging     merges/24h
 #   2 oldest_pr_age       flow/leading     oldest open PR age (minutes)
 #   3 ci_pass_rate        quality/leading  CI pass-rate % (success/decided)
@@ -16,6 +16,14 @@
 #   6 calibration_brier   trust/meta       Brier from pr-book-calibration.log (else null)
 #   7 human_intervention  autonomy/lagging operator pages / 24h
 #   8 outcomes_delivered  mission/lagging  things reaching a person (best real proxy)
+#   9 verified_working    quality/leading  organs verified-ok (last-run success) / enabled %
+#     (RESILIENT-1103 Track B: `merged_not_running` (#4) asks "is it scheduled?"
+#     via systemctl is-active — a .timer stays is-active=true even when the
+#     .service it fires dies at every run (the CHDIR incident). This sign reads
+#     the latest organ_success_verify_tick emitted by organ-success-verifier.sh
+#     (RESILIENT-1108), which checks each enabled organ's LAST-RUN Result /
+#     ExecMainStatus, so the cockpit shows verified-working N/M — a real
+#     success count, not a green dot.)
 #
 # HONESTY RULE: a sign with no real source is status "unknown", basis
 # "uninstrumented" — never a fabricated number. calibration_brier and
@@ -117,6 +125,8 @@ CFG_OLDPR_GREEN=60;   CFG_OLDPR_AMBER=240
 CFG_CI_GREEN=90;      CFG_CI_AMBER=75
 # merged_not_running organs active %      hi   green>95  amber>=80  red<80
 CFG_ORGAN_GREEN=95;   CFG_ORGAN_AMBER=80
+# verified_working  organs verified-ok %   hi   green>95  amber>=80  red<80
+CFG_VERIFIED_GREEN=95; CFG_VERIFIED_AMBER=80
 # conflict_churn    DIRTY open PR count   lo   green<3   amber<=8   red>8
 CFG_DIRTY_GREEN=3;    CFG_DIRTY_AMBER=8
 # calibration_brier Brier score          lo   green<0.1 amber<=0.2 red>0.2
@@ -248,6 +258,42 @@ else
     null "percent-organs-active" "unknown" "roll-call + revive the dead organ" \
     "uninstrumented: organ-manifest.txt or systemctl unavailable on this host" \
     "{\"green\":\">$CFG_ORGAN_GREEN\",\"amber\":\"$CFG_ORGAN_AMBER-$CFG_ORGAN_GREEN\",\"red_desc\":\"<$CFG_ORGAN_AMBER% active\"}")")
+fi
+
+# ════════════════════════════════════════════════════════════════════════════
+# 9 · verified_working  (quality / leading, RESILIENT-1103 Track B) — reads the
+#     LATEST organ_success_verify_tick emitted by organ-success-verifier.sh
+#     (RESILIENT-1108) off the ambient stream and reports verified_ok/enabled_total
+#     as a percent. This is the "did it actually succeed" sibling of
+#     merged_not_running (#4)'s "is it scheduled" — a timer can be is-active=true
+#     while its payload service dies on every single run (the CHDIR incident),
+#     and #4 alone would report 100% while every run failed. unknown/uninstrumented
+#     when no tick has ever been emitted (verifier not installed/run yet on this host).
+# ════════════════════════════════════════════════════════════════════════════
+verified_tick=""
+if [[ -f "$AMBIENT_LOG" ]]; then
+  verified_tick="$(grep '"kind":"organ_success_verify_tick"' "$AMBIENT_LOG" 2>/dev/null | tail -n1)"
+fi
+verified_ok=""
+enabled_total=""
+if [[ -n "$verified_tick" ]]; then
+  verified_ok="$(printf '%s' "$verified_tick" | jq -r '.verified_ok // empty' 2>/dev/null)"
+  enabled_total="$(printf '%s' "$verified_tick" | jq -r '.enabled_total // empty' 2>/dev/null)"
+fi
+if [[ "$verified_ok" =~ ^[0-9]+$ && "$enabled_total" =~ ^[0-9]+$ && "$enabled_total" -gt 0 ]]; then
+  verified_pct="$(awk -v a="$verified_ok" -v t="$enabled_total" 'BEGIN{printf "%.1f", 100*a/t}')"
+  s="$(status_hi "$verified_pct" "$CFG_VERIFIED_GREEN" "$CFG_VERIFIED_AMBER")"
+  SIGNS+=("$(mksign verified_working "Verified Working" quality leading \
+    "$(jnum "$verified_pct")" "percent-organs-verified-ok" "$s" \
+    "diagnose the FAILED organ's last run (organ-success-verifier)" \
+    "$verified_ok/$enabled_total enabled organs verified-ok on last run (latest organ_success_verify_tick)" \
+    "{\"green\":\">$CFG_VERIFIED_GREEN\",\"amber\":\"$CFG_VERIFIED_AMBER-$CFG_VERIFIED_GREEN\",\"red_desc\":\"<$CFG_VERIFIED_AMBER% verified-ok\"}")")
+else
+  SIGNS+=("$(mksign verified_working "Verified Working" quality leading \
+    null "percent-organs-verified-ok" "unknown" \
+    "diagnose the FAILED organ's last run (organ-success-verifier)" \
+    "uninstrumented: no organ_success_verify_tick event found in $AMBIENT_LOG (organ-success-verifier.sh not yet run on this host)" \
+    "{\"green\":\">$CFG_VERIFIED_GREEN\",\"amber\":\"$CFG_VERIFIED_AMBER-$CFG_VERIFIED_GREEN\",\"red_desc\":\"<$CFG_VERIFIED_AMBER% verified-ok\"}")")
 fi
 
 # ════════════════════════════════════════════════════════════════════════════
