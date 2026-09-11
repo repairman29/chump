@@ -210274,6 +210274,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-11T16:46:39Z] rot-reaper: PR #4598 auto-closed (required-check-red, 26h) 2026-09-11; re-attempt on fresh main.
 
 - id: RESILIENT-1105
   domain: RESILIENT
@@ -211715,7 +211716,7 @@ gaps:
 - id: RESILIENT-1148
   domain: RESILIENT
   title: "RESILIENT: Add retry logic for SQLite I/O errors in durable_resume (RESILIENT-171 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -211739,6 +211740,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-11T16:56:14Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2215B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-1149
   domain: RESILIENT
