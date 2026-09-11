@@ -457,6 +457,15 @@ enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
 # on (and so the verifier is itself verified).
 enabled     chump-organ-success-verifier.timer  role=brain
 
+# chump-effect-verifier.timer (RESILIENT-1109, umbrella RESILIENT-1103): the
+# sibling of chump-organ-success-verifier.timer that catches the OTHER
+# blind spot — an organ that exits 0 and reports success every run, yet
+# produces no effect (the farmer ticking a non-empty pickable queue and
+# claiming nothing). Result=success is not "the organ did its job"; this
+# organ compares heartbeat volume against effect volume directly. Declared
+# here so organ-reconcile re-arms it if it drifts or fails.
+enabled     chump-effect-verifier.timer  role=brain
+
 # --- Model routing config (RESILIENT-1009, a RESILIENT-596 slice) -----------
 # The default floor model, cost-tiered escalation ladder, and free-tier
 # provider list (with API-key env-var NAMES, never values) are single-sourced

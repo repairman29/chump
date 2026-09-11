@@ -2360,6 +2360,43 @@ events:
     fields_required: [ts, kind, unit, exec_status]
     status: stable
 
+  - kind: organ_effect_noop
+    effect_metric: resilient
+    emitter: scripts/ops/effect-verifier.sh (RESILIENT-1109)
+    trigger: a manifest-enabled organ heartbeat-ed enough times to trust the
+      sample (CHUMP_EFFECT_VERIFIER_MIN_TICKS, default 3) while the pickable
+      queue stayed above CHUMP_EFFECT_VERIFIER_MIN_PICKABLE (default 1), yet
+      zero of the organ's expected effect events landed in the same window —
+      exit-0-but-no-op (e.g. the farmer claiming 0 of N pickable gaps).
+      organ-success-verifier is blind to this class since Result=success on
+      every no-op run. Pages the duty officer via notify-operator (registered
+      `page` in operator-escalation-registry.txt).
+    consumers: [fleet-brief, operator-recall, watchdog]
+    fields_required: [ts, kind, organ, heartbeat_kind, effect_kind, heartbeats, claimed, pickable, window_s]
+    status: stable
+
+  - kind: effect_verify_tick
+    effect_metric: self
+    emitter: scripts/ops/effect-verifier.sh (RESILIENT-1109)
+    trigger: the verifier's per-cycle summary — how many key organs were
+      checked vs found no-op. Heartbeat so a dead verifier is itself visible
+      via the reaper-heartbeat pattern.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, checked_total, ok_total, noop_total]
+    status: stable
+
+  - kind: organ_effect_noop_dedup_skip
+    effect_metric: self
+    emitter: scripts/ops/effect-verifier.sh (RESILIENT-1109)
+    trigger: a still-stuck no-op organ seen again inside
+      CHUMP_EFFECT_VERIFIER_DEDUP_WINDOW_S (default 3600s) — the first
+      sighting already paged via organ_effect_noop; this is the audited
+      held-not-re-paged trail so one persistently-stuck organ doesn't spam
+      the duty officer every cycle.
+    consumers: [audit-log]
+    fields_required: [ts, kind, organ]
+    status: stable
+
   - kind: pr_stuck_cycle_1_rebase_attempted
     effect_metric: pr_auto_closed_for_respawn_within_30m
     emitter: scripts/ops/stale-pr-reaper.sh (INFRA-1410)
