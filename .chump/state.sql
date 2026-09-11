@@ -89583,7 +89583,7 @@ gaps:
 - id: INFRA-1738
   domain: INFRA
   title: "ZERO-WASTE: webhook mirror generalization to Linear/Stripe/Notion/Slack — offline-first SaaS layer (from 2026-05-22 Ordnance audit, backlog until demand-pull)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -89593,13 +89593,14 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Decomposed into 12 slices: INFRA-5911, INFRA-5912, INFRA-5913, INFRA-5914, INFRA-5915, INFRA-5916, INFRA-5917, INFRA-5918, INFRA-5919, INFRA-5920, INFRA-5921, INFRA-5922
+    [2026-09-11T12:50:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2359B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1739
   domain: INFRA
   title: "RESILIENT: provider cascade re-aim for tier-ranked non-LLM resources — uplink/payment/GPU-rental (from 2026-05-22 audit, backlog until off-grid/multi-rail use-case)"
-  status: open
+  status: blocked
   priority: P2
   effort: l
   acceptance_criteria:
@@ -89609,6 +89610,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Decomposed into 12 slices: INFRA-5923, INFRA-5924, INFRA-5925, INFRA-5926, INFRA-5927, INFRA-5928, INFRA-5929, INFRA-5930, INFRA-5931, INFRA-5932, INFRA-5933, INFRA-5934
+    [2026-09-11T12:56:20Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -97725,7 +97727,7 @@ gaps:
 - id: INFRA-2156
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C5 chump consensus ask subcommand — publish question + return consensus_id + optional block-and-wait"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -97740,24 +97742,28 @@ gaps:
     - "Running `cargo run --bin chump -- consensus ask \"Is X safe?\"` without `--block` publishes a NATS message whose payload decodes to JSON with non-empty `question` and `consensus_id` fields, then prints `consensus_id: <id>` to stdout and exits."
     - "Running `cargo run --bin chump -- consensus ask \"Is X safe?\" --block` blocks after publish until a quorum response is received or the timeout expires; on quorum it prints the resolved consensus result to stdout."
     - The existing round-trip test invokes `chump consensus ask` and asserts a NATS subscriber receives the same `question` text and a `consensus_id` that matches stdout.
+  notes: |
+    [2026-09-11T12:57:40Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2157
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C6 chump consensus vote subcommand — publish curator vote with confidence and rationale"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "`chump consensus vote` publishes a curator vote with confidence and rationale against a consensus_id; the vote appears in the aggregator tally."
+  notes: |
+    [2026-09-11T12:59:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-2158
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C7 chump consensus resolve and status subcommands — aggregator + queryable decision state"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -97773,6 +97779,8 @@ gaps:
     - "`chump consensus resolve --consensus-id test1` prints a JSON object with key `decision` (value `approved` or `rejected`) to stdout and exits 0."
     - "`scripts/ci/test-chump-consensus.sh` contains a test that runs `chump consensus resolve --consensus-id test1` and uses `assert_contains` to verify the output includes `\"decision\":\"approved\"`."
     - "`scripts/ci/test-chump-consensus.sh` contains a test that runs `chump consensus status --consensus-id test1` and uses `assert_contains` to verify the output includes `\"votes\":` and the expected yes/no counts."
+  notes: |
+    [2026-09-11T13:06:11Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -97814,7 +97822,7 @@ gaps:
 - id: INFRA-2162
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C3 9 new ambient event kinds for consensus pipeline — register + scanner anchors"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -97829,6 +97837,8 @@ gaps:
     - "src/pe_suite_status.rs::scan_ambient runs against a test payload containing each of the nine new kinds and produces zero “unknown‑kind” warnings in its output."
     - "scripts/dev/ambient-emit.sh::_kind_registered invoked with each new kind exits with status 0 and prints “registered” (e.g., `./ambient-emit.sh <new_kind>`)."
     - The event‑registry data structure in `src/pe_suite_status.rs` contains entries for all nine new kinds (verified by a unit test that asserts the registry length increased by nine).
+  notes: |
+    [2026-09-11T13:27:00Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -98831,11 +98841,13 @@ gaps:
 - id: INFRA-2222
   domain: INFRA
   title: "EFFECTIVE P1: META-127/C3d curator-opus-incident-commander role — owns trunk-red recovery; cross-curator coordination; runs the rescue playbook"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - voice-lint (scripts/ci/test-voice-lint.sh) passes on the new doc with zero violations
+  notes: |
+    [2026-09-11T13:14:46Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2202B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -101485,7 +101497,7 @@ gaps:
 - id: INFRA-2367
   domain: INFRA
   title: "META-271 follow-up: SessionStart INVENTORY HEALTH digest from chump inventory class-stats"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -101501,6 +101513,8 @@ gaps:
     - The same output includes exactly three lines each starting with a class name and a count, representing the top-3 finding classes by volume, verifiable by comparing with a direct query of the inventory.
     - "The output contains a line 'Unreviewed findings >30d: [0-9]+' whose number matches the count of findings with status unreviewed and last_updated older than 30 days."
     - Setting CHUMP_SESSION_INVENTORY_DIGEST=0 or having DB age >=24h causes the entire INVENTORY HEALTH section to be absent from the SessionStart hook output.
+  notes: |
+    [2026-09-11T13:24:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -101519,7 +101533,7 @@ gaps:
 - id: INFRA-2369
   domain: INFRA
   title: "META-271 follow-up: tier-2 auto-file machinery — gated on operator-promote per finding_class"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -101534,6 +101548,8 @@ gaps:
     - Call `insert_finding` for a finding whose class has `current_tier=0`; verify no gap is created and `auto_fix_filed_gap_id` remains NULL.
     - Set `CHUMP_INVENTORY_AUTO_FILE=0` and insert a tier-2 finding; verify no gap is created and `auto_fix_filed_gap_id` remains NULL.
     - Insert 6 findings for the same tier-2 class within the same calendar day; verify only the first 5 have `auto_fix_filed_gap_id` set, and the 6th remains NULL.
+  notes: |
+    [2026-09-11T13:25:35Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -198325,13 +198341,15 @@ gaps:
 - id: META-250
   domain: META
   title: "META: Synthesize SHIP_ASSIST_PLAYBOOK.md wedge classes into PR_RESCUE_PROCEDURE.md §5 (META-247 slice)"
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - Update `PR_RESCUE_PROCEDURE.md` §5 to include synthesized content from `SHIP_ASSIST_PLAYBOOK.md`.
     - The synthesized content summarizes the 7 wedge classes concisely and actionably.
     - The updated §5 maintains a coherent and readable flow.
+  notes: |
+    [2026-09-11T13:23:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2195B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -198846,22 +198864,26 @@ gaps:
 - id: META-283
   domain: META
   title: main worktree cleanup — 493 untracked yaml + 1 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T13:31:42Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2194B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-284
   domain: META
   title: main worktree cleanup — 500 untracked yaml + 9 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T13:32:42Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2194B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -198911,11 +198933,13 @@ gaps:
 - id: META-288
   domain: META
   title: main worktree cleanup — 573 untracked yaml + 1 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T13:33:39Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2193B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -199003,22 +199027,26 @@ gaps:
 - id: META-294
   domain: META
   title: main worktree cleanup — 108 untracked yaml + 7 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T13:40:08Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2195B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: META-295
   domain: META
   title: main worktree cleanup — 111 untracked yaml + 12 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T13:49:19Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2195B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -199061,7 +199089,7 @@ gaps:
 - id: META-299
   domain: META
   title: main worktree cleanup — 114 untracked yaml + 26 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -199076,6 +199104,8 @@ gaps:
     - After the script completes, executing `git status` in the same repository reports a clean working tree (no staged, unstaged, or untracked changes).
     - After the script completes, `git rev-parse HEAD` equals `git rev-parse @{u}` confirming that HEAD matches `origin/main`.
     - When the repository has no untracked `*.yaml` files, the script performs `git stash -u && git pull --rebase && git stash drop` and leaves the working tree clean, as verified by `git status`.
+  notes: |
+    [2026-09-11T13:50:26Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2195B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
