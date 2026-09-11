@@ -1023,7 +1023,7 @@ fn print_help() {
     println!("USAGE");
     println!("  chump <command> [options]");
     println!("  chump <command> --help        show help for that command");
-    println!("  chump --version               print version + build SHA");
+    println!("  chump --version               print version, build SHA, and build date");
     println!("  chump --build-info [--json]   print baked build metadata (INFRA-2054)");
     println!("  chump self-check-staleness    classify binary FRESH/STALE/CRITICAL (INFRA-2054)");
     println!("  chump --verbose               escalate RUST_LOG to debug");
