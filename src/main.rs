@@ -9669,9 +9669,105 @@ async fn main() -> Result<()> {
                 }
                 return Ok(());
             }
+            "dispatch-hygiene" => {
+                // CREDIBLE-360 (CREDIBLE-074 slice): roll up `kind=sub_agent_dispatched`
+                // ambient events (CREDIBLE-359) per curator into an Opus-vs-Sonnet
+                // delegation ratio so the operator can audit dispatch hygiene without
+                // hand-grepping ambient.jsonl.
+                let want_json = args.iter().any(|a| a == "--json");
+                let locks_dir = {
+                    let main_root = repo_path::main_checkout_root();
+                    let main_locks = main_root.join(".chump-locks");
+                    if main_locks.is_dir() {
+                        main_locks
+                    } else {
+                        repo_root.join(".chump-locks")
+                    }
+                };
+                let ambient_path = locks_dir.join("ambient.jsonl");
+
+                let events: Vec<serde_json::Value> = std::fs::read_to_string(&ambient_path)
+                    .unwrap_or_default()
+                    .lines()
+                    .filter_map(|l| serde_json::from_str(l).ok())
+                    .filter(|e: &serde_json::Value| {
+                        e.get("kind").and_then(|v| v.as_str()) == Some("sub_agent_dispatched")
+                    })
+                    .collect();
+
+                // curator_name -> (opus_only_count, sonnet_delegated_count)
+                let mut counts: std::collections::BTreeMap<String, (u64, u64)> =
+                    std::collections::BTreeMap::new();
+                for e in &events {
+                    let curator_name = match e.get("role").and_then(|v| v.as_str()) {
+                        Some(r) => r.to_string(),
+                        None => continue,
+                    };
+                    let delegated = e.get("delegated").and_then(|v| v.as_bool()).unwrap_or_else(
+                        || e.get("model").and_then(|v| v.as_str()) == Some("sonnet"),
+                    );
+                    let entry = counts.entry(curator_name).or_insert((0, 0));
+                    if delegated {
+                        entry.1 += 1;
+                    } else {
+                        entry.0 += 1;
+                    }
+                }
+
+                if counts.is_empty() {
+                    eprintln!(
+                        "chump fleet dispatch-hygiene: no sub_agent_dispatched events found in {}",
+                        ambient_path.display()
+                    );
+                    std::process::exit(1);
+                }
+
+                if want_json {
+                    let rows: Vec<serde_json::Value> = counts
+                        .iter()
+                        .map(|(curator_name, (opus_only, sonnet_delegated))| {
+                            let total = opus_only + sonnet_delegated;
+                            let ratio = if total > 0 {
+                                *sonnet_delegated as f64 / total as f64
+                            } else {
+                                0.0
+                            };
+                            serde_json::json!({
+                                "curator_name": curator_name,
+                                "opus_only_count": opus_only,
+                                "sonnet_delegated_count": sonnet_delegated,
+                                "ratio": ratio,
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&rows).unwrap_or_else(|_| "[]".to_string())
+                    );
+                } else {
+                    println!(
+                        "{:<20} {:>16} {:>20} {:>8}",
+                        "CURATOR_NAME", "OPUS_ONLY_COUNT", "SONNET_DELEGATED_COUNT", "RATIO"
+                    );
+                    println!("{}", "-".repeat(68));
+                    for (curator_name, (opus_only, sonnet_delegated)) in &counts {
+                        let total = opus_only + sonnet_delegated;
+                        let ratio = if total > 0 {
+                            *sonnet_delegated as f64 / total as f64
+                        } else {
+                            0.0
+                        };
+                        println!(
+                            "{:<20} {:>16} {:>20} {:>8.2}",
+                            curator_name, opus_only, sonnet_delegated, ratio
+                        );
+                    }
+                }
+                return Ok(());
+            }
             _ => {
                 eprintln!(
-                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status>"
+                    "Usage: chump fleet <up|down|status|scale|start|stop|level|snapshot|restore|restart|audit-pids|brief|auto-widen|auto-scale|auto-resize|prune-worktrees|daemon|whoworkson|canary|doctor|autopilot|plan|apply|spec-status|view|curator-status|dispatch-hygiene>"
                 );
                 eprintln!("Kill switch (RESILIENT-073):");
                 eprintln!(
