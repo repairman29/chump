@@ -94258,24 +94258,28 @@ gaps:
 - id: INFRA-1983
   domain: INFRA
   title: "MEDIUM: MCP servers run independent lifecycle; chump-mcp-lifecycle not uniformly used (critique M5)"
-  status: open
-  priority: P3
+  status: blocked
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Failure: crates/mcp-servers/{github,tavily,adb,gaps,eval,coord,memory} are 7 separate MCP processes. chump-mcp-lifecycle crate exists but each server's actual registration with it is unverified."
+  notes: |
+    Decomposed into 7 slices: INFRA-5999, INFRA-6000, INFRA-6001, INFRA-6002, INFRA-6003, INFRA-6004, INFRA-6005
+    [2026-09-11T15:06:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2195B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
 - id: INFRA-1984
   domain: INFRA
   title: "MEDIUM: no shared fleet snapshot; agents re-grep JSONL at session start (critique M6)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "Failure: no shared situational model. Every agent rebuilds its world-view from JSONL grep at session start (saw this in my own re-arm cycles after every context compact today)."
   notes: |
     Decomposed into 8 slices: INFRA-5957, INFRA-5958, INFRA-5959, INFRA-5960, INFRA-5961, INFRA-5962, INFRA-5963, INFRA-5964
+    [2026-09-11T14:48:48Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -97818,13 +97822,14 @@ gaps:
 - id: INFRA-2161
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C10 chump consensus roadmap-pivot — apply decision to gap-store priority + backlog with rationale audit"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - "`chump consensus roadmap-pivot` applies a resolved decision to gap-store priorities with recorded rationale; a test shows target gaps re-prioritized."
   notes: |
     Decomposed into 9 slices: INFRA-5975, INFRA-5976, INFRA-5977, INFRA-5978, INFRA-5979, INFRA-5980, INFRA-5981, INFRA-5982, INFRA-5983
+    [2026-09-11T15:12:22Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -98456,13 +98461,14 @@ gaps:
 - id: INFRA-2199
   domain: INFRA
   title: "EFFECTIVE P2: META-128/C8 NATS routing by disk headroom (chump-coord assign daemon extension, Bet 5 multi-node)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - chump-coord assign daemon routes work to nodes by available disk headroom; a test with two mock nodes routes to the higher-headroom node.
   notes: |
     Decomposed into 10 slices: INFRA-5965, INFRA-5966, INFRA-5967, INFRA-5968, INFRA-5969, INFRA-5970, INFRA-5971, INFRA-5972, INFRA-5973, INFRA-5974
+    [2026-09-11T14:51:48Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -101388,11 +101394,14 @@ gaps:
 - id: INFRA-2358
   domain: INFRA
   title: A2A typed RPC v1 — refile post INFRA-2341 architecture pivot
-  status: open
-  priority: P3
+  status: blocked
+  priority: P2
   effort: m
   acceptance_criteria:
     - A2A typed RPC v1 defines the message schema and a round-trip call between two agents succeeds in an integration test.
+  notes: |
+    Decomposed into 7 slices: INFRA-5984, INFRA-5985, INFRA-5986, INFRA-5987, INFRA-5988, INFRA-5989, INFRA-5990
+    [2026-09-11T15:13:24Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -101610,14 +101619,17 @@ gaps:
 - id: INFRA-2373
   domain: INFRA
   title: chump --help / chump init suggestion when ~/.chump/config.toml missing — user falls into env-var-default state silently
-  status: open
-  priority: P3
+  status: blocked
+  priority: P2
   effort: m
   acceptance_criteria:
     - "src/main.rs print_help(): when ~/.chump/config.toml does not exist (and HOME is set), prepend a one-line banner `tip: run 'chump init' to scaffold ~/.chump/config.toml (one-time setup)` to help output."
     - "src/commands/config.rs: same hint appears at the top of `chump config` output when config.toml absent."
     - Graceful when HOME unset — no panic, no banner, just omit the nudge.
     - Banner does not abort or block any command; it is purely informational.
+  notes: |
+    Decomposed into 8 slices: INFRA-5991, INFRA-5992, INFRA-5993, INFRA-5994, INFRA-5995, INFRA-5996, INFRA-5997, INFRA-5998
+    [2026-09-11T15:14:25Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -193296,7 +193308,7 @@ gaps:
 - id: INFRA-5957
   domain: INFRA
   title: "INFRA: Analyze current agent initialization flow and JSONL grep behavior (INFRA-1984 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -193322,11 +193334,12 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-11T14:57:16Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-5958
   domain: INFRA
   title: "INFRA: Design shared fleet snapshot schema and storage location (INFRA-1984 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -193352,6 +193365,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-11T15:04:34Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2203B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-5959
   domain: INFRA
@@ -194181,6 +194195,855 @@ gaps:
     === cross-pollination briefs mentioning 'EFFECTIVE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5984
+  domain: INFRA
+  title: "INFRA: Define typed RPC message schema (INFRA-2358 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Message schema file (e.g., protobuf) defines RequestMessage with required fields and ResponseMessage with required fields.
+    - Schema passes linting/validation tools without errors.
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5985
+  domain: INFRA
+  title: "INFRA: Generate type‑safe client and server stubs from schema (INFRA-2358 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Generated client and server code compiles without errors.
+    - Generated code reflects the exact field names and types from the schema.
+  depends_on: [INFRA-5984]
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5986
+  domain: INFRA
+  title: "INFRA: Implement server handler for the RPC method (INFRA-2358 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Server handler receives RequestMessage and returns a correctly populated ResponseMessage for a set of test inputs.
+    - Handler is registered with the RPC framework and can be invoked via the generated server stub.
+  depends_on: [INFRA-5985]
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5987
+  domain: INFRA
+  title: "INFRA: Implement client wrapper using generated stub (INFRA-2358 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Client wrapper constructs a RequestMessage, invokes the RPC, and returns a deserialized ResponseMessage.
+    - Client code compiles and runs against a mock or real server.
+  depends_on: [INFRA-5985]
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5988
+  domain: INFRA
+  title: "INFRA: Write integration test for round‑trip RPC call (INFRA-2358 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Integration test starts the server, uses the client wrapper to call the RPC, and asserts that the response matches expected values.
+    - Test passes locally and in a clean environment.
+  depends_on: [INFRA-5986, INFRA-5987]
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5989
+  domain: INFRA
+  title: "INFRA: Add CI pipeline step to run the integration test (INFRA-2358 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - CI pipeline executes the integration test on each push.
+    - Pipeline fails if the integration test fails and logs detailed results.
+  depends_on: [INFRA-5988]
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5990
+  domain: INFRA
+  title: "INFRA: Update documentation with RPC usage example (INFRA-2358 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documentation includes the RPC method signature, schema overview, and a runnable client usage example.
+    - Docs build without errors and the example compiles.
+  depends_on: [INFRA-5988]
+  notes: |
+    [chump harvest check 'typed']
+    === primitives_index match for 'typed' ===
+    
+    === cluster keyword match for 'typed' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'typed' ===
+    
+    === repo-description match for 'typed' ===
+    
+    === HARVEST_ROADMAP.md mention of 'typed' (deep-scan findings) ===
+    
+    === cross-pollination briefs mentioning 'typed' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+
+- id: INFRA-5991
+  domain: INFRA
+  title: "INFRA: Create utility to detect missing config and generate tip banner (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Function returns Some(banner) when HOME is set and ~/.chump/config.toml does not exist
+    - Function returns None when HOME is unset or config file exists
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5992
+  domain: INFRA
+  title: "INFRA: Integrate tip banner into src/main.rs print_help() output (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When utility returns a banner, print_help() prepends the banner line before the regular help text
+    - Banner does not alter the exit code or behavior of the help command
+  depends_on: [INFRA-5991]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5993
+  domain: INFRA
+  title: "INFRA: Add unit test for print_help() with missing config and HOME set (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test sets HOME to a temporary directory without a config.toml
+    - Captured output of print_help() contains the tip banner line
+    - Test passes
+  depends_on: [INFRA-5992]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5994
+  domain: INFRA
+  title: "INFRA: Add unit test for print_help() when HOME is unset (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test clears the HOME environment variable
+    - Captured output of print_help() does not contain the tip banner
+    - No panic occurs during execution
+  depends_on: [INFRA-5992]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5995
+  domain: INFRA
+  title: "INFRA: Integrate tip banner into chump config command output (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When utility returns a banner, the top of the `chump config` output includes the banner line
+    - Banner does not interfere with the normal config display
+  depends_on: [INFRA-5991]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5996
+  domain: INFRA
+  title: "INFRA: Add unit test for chump config output with missing config (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test creates a temporary HOME without a config.toml
+    - Running the config command returns output that starts with the tip banner
+    - Test passes
+  depends_on: [INFRA-5995]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5997
+  domain: INFRA
+  title: "INFRA: Verify banner does not affect command exit status (integration test) (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Execute `chump --help` and `chump config` in a scenario where the banner is shown
+    - Both commands exit with status code 0
+    - Presence of the banner does not cause any command to abort or error
+  depends_on: [INFRA-5992, INFRA-5995]
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5998
+  domain: INFRA
+  title: "INFRA: Update README/CLI help documentation to mention the new tip (INFRA-2373 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documentation includes a note that `chump --help` may display a one‑line tip when config is missing
+    - Documentation builds without errors
+  notes: |
+    [chump harvest check 'chump']
+    === primitives_index match for 'chump' ===
+    
+    === cluster keyword match for 'chump' ===
+      cluster chump-engine (5 repos): chump, homebrew-chump, chump-proprietary, chump-chassis, chump-brain
+    
+    === extracted_primitives (per-file, line-refd) match for 'chump' ===
+    
+    === repo-description match for 'chump' ===
+      homebrew-chump: Homebrew tap for chump — auto-generated formula via cargo-dist (INFRA-172)
+      chump-proprietary: Autonomous swarm coordination system for Chump (Phase-1 simulation complete; not production).
+      chump-chassis: Rust/Axum micro-SaaS boilerplate for Chump SaaS factory
+      chump-brain: Knowledge base for the Chump agent fleet — research notes, portfolio/project context, and self-knowledge docs.
+    
+    === HARVEST_ROADMAP.md mention of 'chump' (deep-scan findings) ===
+      1:# Harvest Roadmap for Chump
+      7:This document maps Chump's **stated current needs** (productization plan + Marcus arc + 50/hr push) onto **primitives that already exist** in the 76-repo arsenal. It is decisive: each row says "harvest this, this way, now" or "shelve" or "skip." No maybes.
+      13:| # | Source primitive | Target Chump initiative | Route | Why now |
+      16:| **2** | `chump-proprietary::crates/coord` (`Executor`, `consensus`, `mesh::MeshTransport`) | INFRA-1763 (predictive collision) + INFRA-1758 file-fallback layer | **Dependency** — extract `chump-coord-mesh` crate consumable from both private and public | Mesh + consensus are already production in proprietary; current public-Chump gaps are re-implementing them piecewise |
+      18:| **4** | `openclaw` memory pattern (SQLite + FTS + LanceDB embeddings cache + `memory-tool` integration into agent tool registry) | INFRA-1765 (cross-agent lesson propagation) + general `memory_db` deepening | **Vendor** the schema & lookup patterns | Openclaw's spawn contract was the production-ready inspiration for Chump's just-shipped INFRA-1720 — the memory layer is the next obvious port |
+      19:| **5** | `neural-farm` OpenAI-compat `/v1` proxy + LiteLLM/InferrLM router | Local-LLM offline mission ([CP-001](cross-pollination/CP-001-neural-farm-into-chump.md)) | **Microservice** | Already drafted; just needs the gap filed and the env var wired |
+      29:The scout found that **`echeo/src/shredder.rs`** already implements tree-sitter AST extraction for TypeScript, Rust, Python, and Go with authorship metadata. Chump just shipped [#2385](https://github.com/repairman29/chump/pull/2385) — `feat(INFRA-1719): tree-sitter AST crawler + decompose integration` — two days ago.
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+      37:### chump-engine (5 repos — the engine itself)
+      40:| `chump` (this repo) | Active | n/a — target of harvests |
+    
+    === cross-pollination briefs mentioning 'chump' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-005-echeo-ship-velocity-score.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-006-openclaw-memory-pattern.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-009-mock-services.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+
+- id: INFRA-5999
+  domain: INFRA
+  title: "INFRA: Catalog MCP server crates (INFRA-1983 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A definitive list of MCP server crates (github, tavily, adb, gaps, eval, coord, memory) is produced.
+    - The list matches the repository structure and is stored in a markdown file.
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-6000
+  domain: INFRA
+  title: "INFRA: Create process enumeration script (INFRA-1983 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - A runnable script enumerates all running MCP processes on a host.
+    - The script outputs each process with its associated crate name.
+  depends_on: [INFRA-5999]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-6001
+  domain: INFRA
+  title: "INFRA: Implement registration detection for each server (INFRA-1983 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Code added to each MCP crate that checks whether it calls the chump-mcp-lifecycle registration API at startup.
+    - Detection logic returns true for crates that register and false otherwise.
+  depends_on: [INFRA-5999, INFRA-6000]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-6002
+  domain: INFRA
+  title: "INFRA: Add startup logging to report registration status (INFRA-1983 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each MCP server logs a clear message on startup indicating success or failure of registration with chump-mcp-lifecycle.
+    - Logs are visible in standard output and can be filtered by a unique tag.
+  depends_on: [INFRA-6001]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-6003
+  domain: INFRA
+  title: "INFRA: Write unit tests for registration detection (INFRA-1983 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Unit tests cover positive cases (crate registers) and negative cases (crate does not register).
+    - All tests pass in the local test suite.
+  depends_on: [INFRA-6001]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-6004
+  domain: INFRA
+  title: "INFRA: Integrate CI check for uniform registration (INFRA-1983 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - CI pipeline runs the registration detection script for all MCP crates.
+    - Pipeline fails if any crate does not register with chump-mcp-lifecycle.
+    - Failure message lists offending crates.
+  depends_on: [INFRA-6003, INFRA-6002]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-6005
+  domain: INFRA
+  title: "INFRA: Update documentation on MCP lifecycle usage (INFRA-1983 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documentation page describes the required registration flow with chump-mcp-lifecycle.
+    - Guidelines include code snippets and troubleshooting steps.
+    - Docs are linked from the project README.
+  depends_on: [INFRA-6004]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
 - id: INFRA-604
@@ -200469,11 +201332,13 @@ gaps:
 - id: META-313
   domain: META
   title: main worktree cleanup — 441 untracked yaml + 1 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T14:50:21Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2194B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
