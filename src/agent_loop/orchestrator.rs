@@ -8,7 +8,9 @@ use axonerai::executor::ToolExecutor;
 use axonerai::file_session_manager::FileSessionManager;
 use axonerai::provider::{Message, Provider};
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::Instant;
+use tokio::time::{Duration, sleep};
 use tracing::instrument;
 
 use crate::agent_loop::state::AgentState;
