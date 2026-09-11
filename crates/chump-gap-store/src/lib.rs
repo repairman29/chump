@@ -2529,31 +2529,37 @@ impl GapStore {
                     // RESILIENT-492: after a successful pull, rebuild the
                     // release binary so a stale binary can never ship silently.
                     // Capture stdout/stderr to build.log in the repo root and
-                    // abort the ship if the build fails.
-                    let build_output = std::process::Command::new("cargo")
-                        .args(["build", "--release"])
-                        .current_dir(&self.repo_root)
-                        .output()
-                        .context("RESILIENT-492: failed to spawn `cargo build --release`")?;
+                    // abort the ship if the build fails. Only applies to a
+                    // real Cargo workspace — auto-fetch/auto-pull test
+                    // fixtures use plain git repos with no Cargo.toml, and
+                    // ship() must stay usable against those without dragging
+                    // in a cargo dependency.
+                    if self.repo_root.join("Cargo.toml").exists() {
+                        let build_output = std::process::Command::new("cargo")
+                            .args(["build", "--release"])
+                            .current_dir(&self.repo_root)
+                            .output()
+                            .context("RESILIENT-492: failed to spawn `cargo build --release`")?;
 
-                    {
-                        use std::io::Write as _;
-                        let build_log = self.repo_root.join("build.log");
-                        if let Ok(mut f) = std::fs::File::create(&build_log) {
-                            let _ = f.write_all(&build_output.stdout);
-                            let _ = f.write_all(&build_output.stderr);
+                        {
+                            use std::io::Write as _;
+                            let build_log = self.repo_root.join("build.log");
+                            if let Ok(mut f) = std::fs::File::create(&build_log) {
+                                let _ = f.write_all(&build_output.stdout);
+                                let _ = f.write_all(&build_output.stderr);
+                            }
                         }
-                    }
 
-                    if !build_output.status.success() {
-                        bail!(
-                            "RESILIENT-492: cargo build --release failed with {:?} after \
-                             auto-pull for {gap_id} — see build.log in repo root for details",
-                            build_output.status.code()
-                        );
-                    }
+                        if !build_output.status.success() {
+                            bail!(
+                                "RESILIENT-492: cargo build --release failed with {:?} after \
+                                 auto-pull for {gap_id} — see build.log in repo root for details",
+                                build_output.status.code()
+                            );
+                        }
 
-                    eprintln!("cargo build --release completed with exit code 0");
+                        eprintln!("cargo build --release completed with exit code 0");
+                    }
                 }
             }
         }
