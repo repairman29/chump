@@ -603,6 +603,9 @@ except Exception:
     # reaper's own dir, not REAPER_REPO_ROOT — the latter is the repo being
     # operated on, which may be a worktree that does not carry scripts/).
     CLASSIFY_HELPER="$REAPER_SCRIPT_DIR/lib/classify-blocked-pr.py"
+    # Single, fixture-tested run-id discovery helper (sibling of the classifier).
+    # Reused instead of re-embedding the targetUrl/detailsUrl regex a third time.
+    RUNIDS_HELPER="$REAPER_SCRIPT_DIR/lib/pr-failing-run-ids.py"
     # Cooldown markers live in the OPERATED repo's .chump-locks (same location
     # ci-flake-rerun.sh writes them: REAPER_REPO_ROOT/.chump-locks/ci-flake-cooldown).
     FLAKE_COOLDOWN_DIR="${REAPER_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)}/.chump-locks/ci-flake-cooldown"
@@ -657,6 +660,107 @@ except Exception:
         local _pr="$1"
         rm -f "$FLAKE_COOLDOWN_DIR/pr-${_pr}.count" \
               "$FLAKE_COOLDOWN_DIR/pr-${_pr}.commented" 2>/dev/null || true
+    }
+
+    # prompt_flake_retry PR_NUM — completes PR #4606. Re-arming the flake budget
+    # (above) only PERMITS a rerun on the next DISTINCT run-id, because
+    # ci-flake-rerun.sh keys its per-run cooldown on the run-id
+    # ($FLAKE_COOLDOWN_DIR/run-<RUN_ID>.ts). So the PR's CURRENT still-failing run
+    # would not be retried until a re-push / fresh CI trigger minted a new run-id
+    # — delaying recovery of a green-but-flake-blocked PR (the #4589 class). This
+    # makes the retry PROMPT: it reruns the PR's current failing run(s) NOW.
+    #
+    # Approach (b) of the two acceptable options: a direct `gh run rerun` (the
+    # sanctioned fleet pattern — see keep-mergeable-organ.sh RESILIENT-342 —
+    # since gh auth is available in the reaper's runtime and the run-id is
+    # discoverable from the statusCheckRollup the classifier already reads). It
+    # writes the same per-run cooldown marker ci-flake-rerun.sh writes, so the
+    # two organs never double-rerun the same run-id.
+    #
+    # BOUNDED: this is only ever called from inside the
+    # CHUMP_REAPER_FLAKE_REARM_MAX-guarded re-arm block below, so a PR's current
+    # run is rerun-prompted at most CHUMP_REAPER_FLAKE_REARM_MAX times total —
+    # after that the flake_exhausted branch ESCALATES instead of re-arming. No
+    # unbounded rerun loop. Bypass: CHUMP_REAPER_FLAKE_PROMPT_RETRY=0.
+    prompt_flake_retry() {
+        local _pr="$1"
+        [[ "${CHUMP_REAPER_FLAKE_PROMPT_RETRY:-1}" == "0" ]] && return 0
+        # Fail-safe: if the discovery helper is missing (partial checkout), do
+        # nothing — ci-flake-rerun.sh remains the (slower) safety net.
+        [[ -f "$RUNIDS_HELPER" ]] || {
+            info "  PR #$_pr: run-id helper missing — skipping prompt-retry (ci-flake-rerun will retry on its next pass)."
+            return 0
+        }
+
+        local _rollup_file _cleanup_rollup=0
+        if [[ -n "${CHUMP_REAPER_ROLLUP_OVERRIDE:-}" ]]; then
+            # Test seam: reuse the same fixture the classifier override reads.
+            _rollup_file="$CHUMP_REAPER_ROLLUP_OVERRIDE"
+        else
+            local _view
+            _view=$(gh pr view "$_pr" --json statusCheckRollup 2>/dev/null || echo '{}')
+            _rollup_file=$(mktemp "${TMPDIR:-/tmp}/reaper-rerun-XXXXXX" 2>/dev/null || echo "")
+            [[ -z "$_rollup_file" ]] && return 0
+            printf '%s' "$_view" > "$_rollup_file"
+            _cleanup_rollup=1
+        fi
+
+        local _rows
+        _rows=$(python3 "$RUNIDS_HELPER" --rollup-file "$_rollup_file" 2>/dev/null || true)
+        [[ "$_cleanup_rollup" -eq 1 ]] && rm -f "$_rollup_file" 2>/dev/null || true
+
+        if [[ -z "$_rows" ]]; then
+            info "  PR #$_pr: no failing run-id discoverable from rollup — ci-flake-rerun will retry on its next pass."
+            return 0
+        fi
+
+        local _rid _cancelled _did=0 _ids=""
+        while IFS=$'\t' read -r _rid _cancelled; do
+            [[ -z "$_rid" ]] && continue
+            _ids="${_ids:+$_ids,}$_rid"
+            if [[ $DRY_RUN -eq 1 ]]; then
+                dry "would rerun current failing run $_rid for PR #$_pr (cancelled=${_cancelled:-0})"
+                _did=1
+                continue
+            fi
+            local _rc=1
+            if [[ "$_cancelled" == "1" ]]; then
+                # CANCELLED/TIMED_OUT jobs are skipped by --failed (RESILIENT-308)
+                # — rerun the whole run.
+                _reaper_gh_run_rerun "$_rid" "" && _rc=0
+            else
+                _reaper_gh_run_rerun "$_rid" "--failed" && _rc=0
+            fi
+            if [[ $_rc -eq 0 ]]; then
+                # Mirror ci-flake-rerun.sh's per-run cooldown so it does not
+                # double-rerun this same run-id on its next pass.
+                mkdir -p "$FLAKE_COOLDOWN_DIR" 2>/dev/null || true
+                date +%s > "$FLAKE_COOLDOWN_DIR/run-${_rid}.ts" 2>/dev/null || true
+                _did=1
+            else
+                warn "  PR #$_pr: gh run rerun $_rid failed — ci-flake-rerun will retry on its next pass."
+            fi
+        done <<< "$_rows"
+
+        if [[ $_did -eq 1 ]]; then
+            info "  PR #$_pr: prompted immediate retry of current failing run(s) [$_ids] — no wait for a new run-id."
+            respawn_emit pr_stuck_flake_rerun_prompted "$_pr" "\"run_ids\":\"$_ids\""
+        fi
+    }
+
+    # _reaper_gh_run_rerun RUN_ID EXTRA_ARGS — thin wrapper so tests can inject a
+    # fake rerun command via CHUMP_REAPER_RERUN_CMD (recording invocations)
+    # instead of hitting the real GitHub API. EXTRA_ARGS is passed UNQUOTED so an
+    # empty value adds no argument and "--failed" passes as a single flag.
+    _reaper_gh_run_rerun() {
+        local _rid="$1" _extra="${2:-}"
+        if [[ -n "${CHUMP_REAPER_RERUN_CMD:-}" ]]; then
+            # shellcheck disable=SC2086
+            $CHUMP_REAPER_RERUN_CMD "$_rid" $_extra >/dev/null 2>&1
+        else
+            # shellcheck disable=SC2086
+            gh run rerun "$_rid" $_extra >/dev/null 2>&1
+        fi
     }
 
     # RESPAWN_PRS_JSON was fetched earlier (before the trunk-RED check) to
@@ -743,6 +847,12 @@ for r in rows:
                     if [[ "$_rearm_n" -lt "$_rearm_max" ]]; then
                         info "  PR #$PR_NUM BLOCKED only by a flake-budget-exhausted known flake — re-arming budget (attempt $((_rearm_n + 1))/$_rearm_max), sparing. NEVER closing a green PR."
                         rearm_flake_budget "$PR_NUM"
+                        # PR #4606 completion: re-arming alone only permits a
+                        # rerun on the NEXT run-id; also PROMPT a retry of the
+                        # CURRENT failing run so recovery is immediate, not
+                        # deferred to a re-push. Bounded by this same
+                        # CHUMP_REAPER_FLAKE_REARM_MAX guard.
+                        prompt_flake_retry "$PR_NUM"
                         # Drop any pending close timer; keep the re-arm counter.
                         respawn_state_clear "$PR_NUM"
                         respawn_state_set "$PR_NUM" "{\"flake_rearmed_count\":$((_rearm_n + 1))}"
