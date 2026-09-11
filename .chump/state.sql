@@ -94219,10 +94219,12 @@ gaps:
   domain: INFRA
   title: "MEDIUM: worktree lifecycle is operator-cleared; reaper missed 20GB stale today (critique M2)"
   status: open
-  priority: P3
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Failure: stale-worktree-reaper daemon (per scripts/setup allowlist) exists but missed 20GB of stale worktrees that I personally cleared on 2026-05-24. Either runs too infrequently or skips done-but-uncommitted state."
+  notes: |
+    Decomposed into 9 slices: INFRA-5948, INFRA-5949, INFRA-5950, INFRA-5951, INFRA-5952, INFRA-5953, INFRA-5954, INFRA-5955, INFRA-5956
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -94265,10 +94267,12 @@ gaps:
   domain: INFRA
   title: "MEDIUM: no shared fleet snapshot; agents re-grep JSONL at session start (critique M6)"
   status: open
-  priority: P3
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Failure: no shared situational model. Every agent rebuilds its world-view from JSONL grep at session start (saw this in my own re-arm cycles after every context compact today)."
+  notes: |
+    Decomposed into 8 slices: INFRA-5957, INFRA-5958, INFRA-5959, INFRA-5960, INFRA-5961, INFRA-5962, INFRA-5963, INFRA-5964
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -192996,6 +193000,538 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-5948
+  domain: INFRA
+  title: "INFRA: Create reproducible stale worktree scenario (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A script or manual steps exist that generate at least 5GB of stale, uncommitted worktrees in a test namespace
+    - The generated worktrees are identifiable by the reaper's allowlist
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5949
+  domain: INFRA
+  title: "INFRA: Review current reaper daemon configuration (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Configuration files (scripts/setup allowlist, systemd timer, cron) are documented
+    - Current run frequency and selection criteria are captured in a markdown file
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5950
+  domain: INFRA
+  title: "INFRA: Add detailed logging to stale-worktree-reaper (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Reaper logs start and end timestamps for each run
+    - Each scanned worktree is logged with its size and deletion decision (deleted / skipped)
+    - Logs are written to the standard infra logging location and are searchable
+  depends_on: [INFRA-5949]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5951
+  domain: INFRA
+  title: "INFRA: Implement automated test harness for reaper behavior (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test suite creates stale worktrees using the script from slice 0
+    - Test asserts that the reaper deletes worktrees older than the configured threshold
+    - Test fails if any stale worktree remains after reaper execution
+  depends_on: [INFRA-5948, INFRA-5950]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5952
+  domain: INFRA
+  title: "INFRA: Adjust reaper execution frequency to hourly (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Systemd timer (or cron) is updated to trigger the reaper every hour
+    - Change is version‑controlled and includes a rollback plan
+    - Verification step shows the timer is active with the new schedule
+  depends_on: [INFRA-5949]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5953
+  domain: INFRA
+  title: "INFRA: Create health‑check alert for excessive stale worktree size (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Monitoring rule triggers when total size of stale worktrees exceeds 5 GB
+    - Alert is routed to the infra on‑call channel with clear remediation steps
+    - Health‑check can be queried via the existing metrics endpoint
+  depends_on: [INFRA-5950]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5954
+  domain: INFRA
+  title: "INFRA: Update documentation on worktree lifecycle and reaper operation (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Docs include sections on how worktrees are created, when they become stale, and how the reaper cleans them
+    - Configuration and alerting details added
+    - Documentation is reviewed and merged
+  depends_on: [INFRA-5952, INFRA-5953]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5955
+  domain: INFRA
+  title: "INFRA: Deploy updated reaper and monitoring to staging (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - New reaper binary with logging is running in staging
+    - Hourly schedule is active
+    - Health‑check alert fires correctly when simulated stale size >5 GB
+    - Automated tests from slice 3 pass in staging
+  depends_on: [INFRA-5950, INFRA-5951, INFRA-5952, INFRA-5953, INFRA-5954]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5956
+  domain: INFRA
+  title: "INFRA: Roll out changes to production and verify no missed stale worktrees (INFRA-1980 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Production reaper runs hourly with new logging
+    - Monitoring shows no alert for stale worktree size >5 GB over a 24‑hour period
+    - Manual verification confirms that any stale worktrees created after deployment are removed within the next run
+    - Rollback plan is documented and tested
+  depends_on: [INFRA-5955]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5957
+  domain: INFRA
+  title: "INFRA: Analyze current agent initialization flow and JSONL grep behavior (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Flow diagram of agent startup showing where JSONL is grepped
+    - List of code locations that read JSONL at session start
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5958
+  domain: INFRA
+  title: "INFRA: Design shared fleet snapshot schema and storage location (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Schema definition (fields, types) for the fleet snapshot
+    - Chosen storage path and format (e.g., JSONL, protobuf) documented
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5959
+  domain: INFRA
+  title: "INFRA: Implement snapshot generation at session end (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Snapshot file is created at the defined location when a session ends
+    - File content conforms to the schema defined in slice 1
+  depends_on: [INFRA-5957, INFRA-5958]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5960
+  domain: INFRA
+  title: "INFRA: Implement snapshot loading in agent startup (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Agent reads the snapshot file during initialization when it exists
+    - If the snapshot is missing or corrupted, agent falls back to JSONL grep
+  depends_on: [INFRA-5957, INFRA-5959]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5961
+  domain: INFRA
+  title: "INFRA: Modify agent initialization to prefer snapshot over JSONL (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Code path selects snapshot first and logs \"Using shared fleet snapshot\""
+    - JSONL grep is only executed when snapshot loading fails
+  depends_on: [INFRA-5960]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5962
+  domain: INFRA
+  title: "INFRA: Add unit tests for snapshot generation (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Test verifies that a snapshot file is produced after a mock session end
+    - Test asserts that the file matches the defined schema
+  depends_on: [INFRA-5959]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5963
+  domain: INFRA
+  title: "INFRA: Add integration test for end-to-end agent startup with snapshot (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test runs a full session, generates a snapshot, restarts an agent, and confirms the agent loads the snapshot
+    - Test confirms no JSONL grep occurs (e.g., by mocking the grep function and asserting it is not called)
+  depends_on: [INFRA-5961, INFRA-5962]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5964
+  domain: INFRA
+  title: "INFRA: Update documentation for shared fleet snapshot usage (INFRA-1984 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Documentation includes steps to generate, store, and load the fleet snapshot
+    - Release notes mention the new shared snapshot feature and its impact on agent startup
+  depends_on: [INFRA-5963]
+  notes: |
+    [chump harvest check 'MEDIUM']
+    === primitives_index match for 'MEDIUM' ===
+    
+    === cluster keyword match for 'MEDIUM' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'MEDIUM' ===
+    
+    === repo-description match for 'MEDIUM' ===
+    
+    === HARVEST_ROADMAP.md mention of 'MEDIUM' (deep-scan findings) ===
+      176:| **4** | `economy-system-service` (smugglers-rpg) | REAL MarketSimulationEngine: elasticity-based pricing, sector-stratified, beginner-mode variant | **MEDIUM** — extends INFRA-1816 ShipVelocityScore substrate options; alternative gap-value scoring algorithm to evaluate |
+      177:| **5** | `ims` (political-strat) | REAL Flask + SQLAlchemy Initiative Tracker with Chart.js dashboard + role-based auth + RESTful API — not the "political-strategy" lump the cluster label implied | **MEDIUM** — reference architecture for Chump's gap-priority operator UI (esp. dashboard schema + REST shape) |
+      178:| **6** | `coderoach` (archived) | Distinct codebase from active `code-roach`; autonomous code-quality + self-learning AI fixer patterns | **LOW-MEDIUM** — mine before final archive; could inform Chump's auto-fix orchestration |
+    
+    === cross-pollination briefs mentioning 'MEDIUM' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: INFRA-604
   domain: INFRA
   title: "EFFECTIVE: chump pillar-balance command — productize the manual iter-cadence pillar check"
@@ -199112,11 +199648,13 @@ gaps:
 - id: META-300
   domain: META
   title: main worktree cleanup — 117 untracked yaml + 26 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T14:11:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2353B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -199195,11 +199733,13 @@ gaps:
 - id: META-307
   domain: META
   title: main worktree cleanup — 120 untracked yaml + 26 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T14:15:58Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2194B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -199230,11 +199770,13 @@ gaps:
 - id: META-310
   domain: META
   title: main worktree cleanup — 384 untracked yaml + 2 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T14:17:04Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2194B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -199253,7 +199795,7 @@ gaps:
 - id: META-312
   domain: META
   title: main worktree cleanup — 431 untracked yaml + 2 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   description: |
@@ -199268,6 +199810,8 @@ gaps:
     - In the same function, when the untracked yaml count is 400 or fewer, it executes `git stash -u && git pull --rebase && git stash drop` and then verifies that `git status --porcelain` produces no output.
     - After the function completes, `git rev-parse HEAD` is equal to `git rev-parse origin/main`, confirming the local HEAD matches the remote.
     - The script exits with status 0 and leaves the working tree clean (`git status --short` shows no changes) for both the stash‑path and the commit‑path scenarios.
+  notes: |
+    [2026-09-11T14:19:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2195B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -199285,11 +199829,13 @@ gaps:
 - id: META-314
   domain: META
   title: main worktree cleanup — 440 untracked yaml + 0 commits behind
-  status: open
+  status: blocked
   priority: P3
   effort: s
   acceptance_criteria:
     - "Run: cd /Users/jeffadkins/Projects/Chump && git stash -u && git pull --rebase && git stash drop. Or if too many untracked files: git add docs/gaps/*.yaml && git commit -m 'chore: import accumulated gap yamls'. Verify: git status shows clean working tree and HEAD matches origin/main."
+  notes: |
+    [2026-09-11T14:29:56Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2194B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
