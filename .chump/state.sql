@@ -83876,8 +83876,8 @@ gaps:
 - id: INFRA-1481
   domain: INFRA
   title: "EFFECTIVE: Growth-tier governance bundle (RBAC + spend caps + repo access control)"
-  status: open
-  priority: P3
+  status: blocked
+  priority: P2
   effort: l
   description: |
     Audit miss from 2026-05-15. The Growth-tier ($149/operator/month) headline features are named in the pricing ladder commitment (PERSONAS_VALIDATION.md, COMMERCIAL_PIVOT_SPARRING.md) but engineering had not been scoped against them. Persona-1 named all three as the trigger to upgrade from Team to Growth: 'RBAC to restrict Fleet Operator status to Senior and Staff engineers,' 'Repo Access Control to completely blacklist the billing and auth repos from the AI's vision,' and 'spend caps so no rogue loop can ever spike our credit card again.' Bundled as one gap because they ship together as the Growth-tier governance surface. P3 because Team-tier launch (INFRA-1454/1455/1456/1462/1473/1475) is the critical path; Growth-tier is downstream.
@@ -83890,6 +83890,9 @@ gaps:
     - "Audit log: every governance check (allow/deny) writes to a tamper-resistant ambient event with operator + resource + decision"
     - "CI test: 3-operator simulation with different roles, verify role-gated claim succeeds for admin, fails for observer; spend cap exhaustion stops next call cleanly"
     - "Documented for procurement reviewers: SOC 2-aligned audit log claims; role hierarchy; spend-cap arithmetic"
+  notes: |
+    Decomposed into 13 slices: INFRA-5935, INFRA-5936, INFRA-5937, INFRA-5938, INFRA-5939, INFRA-5940, INFRA-5941, INFRA-5942, INFRA-5943, INFRA-5944, INFRA-5945, INFRA-5946, INFRA-5947
+    [2026-09-11T12:45:27Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -89581,13 +89584,15 @@ gaps:
   domain: INFRA
   title: "ZERO-WASTE: webhook mirror generalization to Linear/Stripe/Notion/Slack — offline-first SaaS layer (from 2026-05-22 Ordnance audit, backlog until demand-pull)"
   status: open
-  priority: P3
+  priority: P2
   effort: l
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    Decomposed into 12 slices: INFRA-5911, INFRA-5912, INFRA-5913, INFRA-5914, INFRA-5915, INFRA-5916, INFRA-5917, INFRA-5918, INFRA-5919, INFRA-5920, INFRA-5921, INFRA-5922
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -89595,13 +89600,15 @@ gaps:
   domain: INFRA
   title: "RESILIENT: provider cascade re-aim for tier-ranked non-LLM resources — uplink/payment/GPU-rental (from 2026-05-22 audit, backlog until off-grid/multi-rail use-case)"
   status: open
-  priority: P3
+  priority: P2
   effort: l
   acceptance_criteria:
     - "TODO: what events emitted on success/failure/timeout"
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+  notes: |
+    Decomposed into 12 slices: INFRA-5923, INFRA-5924, INFRA-5925, INFRA-5926, INFRA-5927, INFRA-5928, INFRA-5929, INFRA-5930, INFRA-5931, INFRA-5932, INFRA-5933, INFRA-5934
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -111620,13 +111627,14 @@ gaps:
 - id: INFRA-2984
   domain: INFRA
   title: "EFFECTIVE: large-gap"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
   notes: |
     Decomposed into 6 slices: INFRA-5889, INFRA-5890, INFRA-5891, INFRA-5892, INFRA-5893, INFRA-5894
+    [2026-09-11T12:26:18Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2199B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -115830,13 +115838,14 @@ gaps:
 - id: INFRA-3259
   domain: INFRA
   title: "EFFECTIVE: m-effort"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
     - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
   notes: |
     Decomposed into 7 slices: INFRA-5895, INFRA-5896, INFRA-5897, INFRA-5898, INFRA-5899, INFRA-5900, INFRA-5901
+    [2026-09-11T12:38:01Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2200B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -191590,6 +191599,1387 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-5902
+  domain: INFRA
+  title: "INFRA: Add transport option to mcp-servers.json (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - mcp-servers.json schema includes a new optional field `transport` with allowed values `stdio` and `http`
+    - Existing servers default to `stdio` when the field is omitted
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5903
+  domain: INFRA
+  title: "INFRA: Implement HTTP server bootstrap for MCP server (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When `transport` is set to `http`, the MCP server starts an HTTP listener
+    - Listener binds to 127.0.0.1 by default; bind address can be overridden via config
+    - Server logs indicate successful start of HTTP transport
+  depends_on: [INFRA-5902]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5904
+  domain: INFRA
+  title: "INFRA: Add Origin/Host allowlist and bearer‑token authentication middleware (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Requests with an Origin or Host header not in the configured allowlist are rejected with 403
+    - Requests missing a valid Bearer token are rejected with 401
+    - Allowlist and token secret are configurable per server in mcp-servers.json
+  depends_on: [INFRA-5903]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5905
+  domain: INFRA
+  title: "INFRA: Implement SSE endpoint for MCP events (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - HTTP transport exposes `/events` endpoint that streams Server‑Sent Events
+    - Connected clients receive MCP lifecycle events in real time
+    - SSE connection respects the authentication middleware
+  depends_on: [INFRA-5904]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5906
+  domain: INFRA
+  title: "INFRA: Extend chump-mcp-lifecycle to manage HTTP transport servers (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - chump-mcp-lifecycle can spawn, health‑check, and reap HTTP servers the same way it does for stdio servers
+    - Lifecycle logs differentiate between stdio and HTTP transports
+    - Graceful shutdown of HTTP server is verified
+  depends_on: [INFRA-5903]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5907
+  domain: INFRA
+  title: "INFRA: Add remote MCP server address configuration for NATS mesh (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - mcp-servers.json supports an optional `remoteAddresses` array for HTTP transport
+    - When configured, the server registers these addresses with the NATS mesh discovery layer
+    - Existing stdio servers remain unaffected
+  depends_on: [INFRA-5902]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5908
+  domain: INFRA
+  title: "INFRA: Implement DNS‑rebinding mitigation verification (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - During request handling, the server validates that the Host header resolves to an allowed IP (127.0.0.1 or configured allowlist)
+    - Requests failing the check are rejected with 400
+    - Security audit test script confirms mitigation is active
+  depends_on: [INFRA-5904]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5909
+  domain: INFRA
+  title: "INFRA: Write unit and integration tests for new transport option (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Tests cover transport selection, HTTP server start, allowlist/auth enforcement, SSE streaming, and lifecycle management
+    - All new tests pass in CI pipeline
+    - Coverage for new code reaches ≥80%
+  depends_on: [INFRA-5902, INFRA-5903, INFRA-5904, INFRA-5905, INFRA-5906, INFRA-5907, INFRA-5908]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5910
+  domain: INFRA
+  title: "INFRA: Update documentation for HTTP/SSE transport option (INFRA-748 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - README and configuration docs include a section describing the `transport` field, bind address, allowlist, token auth, and SSE endpoint
+    - Documentation examples show how to enable HTTP transport and configure security settings
+  depends_on: [INFRA-5902]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5911
+  domain: INFRA
+  title: "INFRA: Define common event schema (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Event schema defined in a JSON Schema file and versioned
+    - "Schema includes required fields: id, source, type, payload, timestamp"
+    - Schema is validated by an automated unit test
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5912
+  domain: INFRA
+  title: "INFRA: Scaffold generic webhook receiver service (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Repository created with CI pipeline passing
+    - POST /webhook endpoint returns 200 for a valid payload
+    - Invalid payload returns 400
+    - Service can be started locally without errors
+  depends_on: [INFRA-5911]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5913
+  domain: INFRA
+  title: "INFRA: Implement offline‑first queueing layer (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Incoming events are persisted to a durable store (e.g., PostgreSQL) before processing
+    - Persisted events can be retrieved and processed later
+    - Queue can be drained without data loss
+    - Unit test verifies persistence and retrieval of a sample event
+  depends_on: [INFRA-5912]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5914
+  domain: INFRA
+  title: "INFRA: Create failure‑classification taxonomy (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Taxonomy document defines categories: transient, permanent, unknown"
+    - Code enum representing the taxonomy is added
+    - Unit test confirms mapping of sample errors to the correct category
+  depends_on: [INFRA-5911]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5915
+  domain: INFRA
+  title: "INFRA: Implement retry logic using taxonomy (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Transient failures are retried up to 3 attempts with exponential backoff
+    - Permanent failures are logged and moved to a dead‑letter queue
+    - Unit tests cover both retry and dead‑letter paths
+  depends_on: [INFRA-5913, INFRA-5914]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5916
+  domain: INFRA
+  title: "INFRA: Add cost‑tracking module (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Processing time and external API call counts are recorded per event
+    - Aggregated cost metrics are exported to Prometheus
+    - Unit test verifies cost data is recorded for a sample event
+  depends_on: [INFRA-5913]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5917
+  domain: INFRA
+  title: "INFRA: Emit observability metrics (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Prometheus metrics webhook_success_total, webhook_failure_total, webhook_timeout_total are emitted
+    - "Metrics include labels: source, outcome"
+    - Metrics are exposed at /metrics endpoint
+    - Integration test confirms metrics increment on simulated events
+  depends_on: [INFRA-5912, INFRA-5913]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5918
+  domain: INFRA
+  title: "INFRA: Add Linear integration (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Linear webhook payloads are parsed and mapped to the internal event schema
+    - "Supported Linear event types: issue_created, issue_updated"
+    - Unit tests validate correct mapping for each supported type
+  depends_on: [INFRA-5912, INFRA-5913]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5919
+  domain: INFRA
+  title: "INFRA: Add Stripe integration (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Stripe webhook payloads are parsed and mapped to the internal event schema
+    - "Supported Stripe event types: payment_intent.succeeded, payment_intent.failed"
+    - Unit tests validate correct mapping for each supported type
+  depends_on: [INFRA-5912, INFRA-5913]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5920
+  domain: INFRA
+  title: "INFRA: Add Notion integration (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Notion webhook payloads are parsed and mapped to the internal event schema
+    - "Supported Notion event types: page_created, page_updated"
+    - Unit tests validate correct mapping for each supported type
+  depends_on: [INFRA-5912, INFRA-5913]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5921
+  domain: INFRA
+  title: "INFRA: Add Slack integration (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Slack event payloads are parsed and mapped to the internal event schema
+    - "Supported Slack event types: message_posted, reaction_added"
+    - Unit tests validate correct mapping for each supported type
+  depends_on: [INFRA-5912, INFRA-5913]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5922
+  domain: INFRA
+  title: "INFRA: Implement smoke‑test CLI command (INFRA-1738 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Command `webhook-mirror smoke-test` triggers test events for each source (Linear, Stripe, Notion, Slack)
+    - Command outputs a success/failure summary and verifies that observability metrics increased
+    - CLI returns exit code 0 on success and non‑zero on failure
+  depends_on: [INFRA-5917, INFRA-5918, INFRA-5919, INFRA-5920, INFRA-5921]
+  notes: |
+    [chump harvest check 'ZERO-WASTE']
+    === primitives_index match for 'ZERO-WASTE' ===
+    
+    === cluster keyword match for 'ZERO-WASTE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'ZERO-WASTE' ===
+    
+    === repo-description match for 'ZERO-WASTE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'ZERO-WASTE' (deep-scan findings) ===
+      107:| **G6** | `ZERO-WASTE: archive 6 dead echeo-* variants + 3 dead 2029-* + 2 dead project_forge/-forge` | INFRA | ZERO-WASTE | P3 (hygiene) |
+      218:| `ZERO-WASTE: update INFRA-1818 archive list with Wave 3 confirmations (+2 confirmed: services-dashboard, service-frontends; total 13)` | ZERO-WASTE | P3 |
+    
+    === cross-pollination briefs mentioning 'ZERO-WASTE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-5923
+  domain: INFRA
+  title: "INFRA: Define event schema for provider cascade outcomes (success, failure, timeout) (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Event schema documented in OpenAPI/JSON Schema format
+    - "Schema includes fields: event_type, timestamp, resource_id, details"
+    - Schema passes validation against example payloads for each outcome
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5924
+  domain: INFRA
+  title: "INFRA: Implement success‑outcome event emission in provider cascade (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a provider cascade completes successfully, an event matching the success schema is published to the event bus
+    - "Unit test verifies that the emitted event contains correct event_type = \"cascade_success\""
+  depends_on: [INFRA-5923]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5925
+  domain: INFRA
+  title: "INFRA: Implement failure‑outcome event emission in provider cascade (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a provider cascade fails, an event matching the failure schema is published
+    - "Unit test verifies event_type = \"cascade_failure\" and includes failure_code field"
+  depends_on: [INFRA-5923]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5926
+  domain: INFRA
+  title: "INFRA: Implement timeout‑outcome event emission in provider cascade (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When a provider cascade times out, an event matching the timeout schema is published
+    - "Unit test verifies event_type = \"cascade_timeout\" and includes timeout_duration field"
+  depends_on: [INFRA-5923]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5927
+  domain: INFRA
+  title: "INFRA: Define cost‑tracking model for tier‑ranked non‑LLM resources (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Cost model documented with fields: resource_type, tier, usage_quantity, unit_price, total_cost"
+    - Model aligns with existing billing service data contracts
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5928
+  domain: INFRA
+  title: "INFRA: Add cost aggregation hook to provider cascade (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - During cascade execution, cost for each resource is calculated using the defined model
+    - Aggregated cost is attached to the emitted success/failure events
+    - Integration test confirms total_cost matches expected value for a simulated workload
+  depends_on: [INFRA-5927]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5929
+  domain: INFRA
+  title: "INFRA: Expose cost data to operator via reporting endpoint (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - New REST endpoint `/infra/cascade/costs` returns JSON list of recent cascade costs
+    - Endpoint respects RBAC and returns 200 with correct schema
+    - Smoke test validates that cost data from a recent cascade appears in the response
+  depends_on: [INFRA-5928]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5930
+  domain: INFRA
+  title: "INFRA: Draft failure‑class taxonomy (transient vs permanent) (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Taxonomy document lists at least 5 example transient and 5 permanent failure codes
+    - Each code includes description, recommended retry policy, and impact level
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5931
+  domain: INFRA
+  title: "INFRA: Implement failure classification logic using taxonomy (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Provider cascade maps internal error codes to taxonomy categories (transient or permanent)
+    - Unit tests verify correct classification for sample error codes
+    - Classified failure_code is included in failure events emitted by slice 2
+  depends_on: [INFRA-5930]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5932
+  domain: INFRA
+  title: "INFRA: Add observability metrics for failure classifications (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Prometheus counter `cascade_failure_total{type=\"transient\"}` and `cascade_failure_total{type=\"permanent\"}` increments on each failure"
+    - Metrics are exposed on `/metrics` endpoint and can be queried
+    - Integration test confirms counter increments after simulated transient and permanent failures
+  depends_on: [INFRA-5931]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5933
+  domain: INFRA
+  title: "INFRA: Create smoke‑test CLI command to verify cascade observability (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CLI command `infra cascade-smoke --resource <id>` triggers a cascade and waits for completion
+    - Command prints emitted event IDs, total cost, and failure classification (if any)
+    - Exit code 0 on success, non‑zero on failure, and output matches expected schema
+  depends_on: [INFRA-5924, INFRA-5925, INFRA-5926, INFRA-5928, INFRA-5931]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5934
+  domain: INFRA
+  title: "INFRA: Automate verification of smoke‑test command in CI (INFRA-1739 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - CI pipeline runs the smoke‑test command against a test environment
+    - Pipeline asserts that events are present in the event bus, cost endpoint returns a record, and metrics counters are updated
+    - Pipeline fails if any assertion does not hold
+  depends_on: [INFRA-5933]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-5935
+  domain: INFRA
+  title: "INFRA: Define RBAC role model and enums (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Role enum includes ADMIN, FLEET_OPERATOR, OBSERVER
+    - Schema file updated with role definitions
+    - Code compiles with new role types
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5936
+  domain: INFRA
+  title: "INFRA: Implement per‑operator role assignment API (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - API endpoint `/team/{teamId}/operator/{operatorId}/role` accepts POST with role value
+    - Role is persisted in team‑scoped state (via INFRA‑1475 queue)
+    - Invalid role values return 400
+    - Successful assignment returns 200 and updated role in response
+  depends_on: [INFRA-5935]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5937
+  domain: INFRA
+  title: "INFRA: Enforce RBAC in gap‑claim flow (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Claim request checks operator role before proceeding
+    - ADMIN can claim any gap
+    - FLEET_OPERATOR can claim only if role‑gated repo access is allowed
+    - "OBSERVER receives 403 with message \"insufficient permissions\""
+    - Unit tests cover all three role paths
+  depends_on: [INFRA-5935, INFRA-5936]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5938
+  domain: INFRA
+  title: "INFRA: Design repo access control schema (allowlist/blacklist per role) (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Configuration file defines `allowlist` and `blacklist` arrays for each role
+    - Schema validates that paths are valid glob patterns
+    - Default config provides empty lists (no restriction)
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5939
+  domain: INFRA
+  title: "INFRA: Enforce repo access control in claim flow (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - When a claim targets a repo path, system checks role‑specific blacklist/allowlist
+    - "If path is blacklisted, claim fails fast with 403 and message \"repo access denied\""
+    - If allowlist is defined, only paths matching allowlist are permitted
+    - Logs contain reason for denial
+    - Integration tests verify blacklisted and allowed scenarios
+  depends_on: [INFRA-5937, INFRA-5938]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5940
+  domain: INFRA
+  title: "INFRA: Define spend‑cap data model (operator & team caps) (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Configuration includes `operatorCapUsd` and `teamCapUsd` fields (numeric)
+    - Caps are optional; absence means unlimited
+    - Schema enforces non‑negative numbers
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5941
+  domain: INFRA
+  title: "INFRA: Implement real‑time spend tracking and hard‑stop (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Each LLM API call reads cost from `ambient.jsonl` and adds to operator & team totals
+    - "When a cap is reached, subsequent calls are rejected with 429 and message \"spend cap exceeded\""
+    - Spend totals are persisted atomically in team‑scoped state
+    - Unit tests simulate spend accumulation and cap enforcement
+  depends_on: [INFRA-5940]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5942
+  domain: INFRA
+  title: "INFRA: Integrate spend‑cap check into claim flow (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Before executing a claim, system verifies remaining operator and team spend
+    - If either cap would be exceeded by the call cost, claim is aborted with 429
+    - Successful claim deducts cost from totals
+    - Audit log records spend‑cap decision
+  depends_on: [INFRA-5937, INFRA-5941]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5943
+  domain: INFRA
+  title: "INFRA: Persist governance configuration in team‑scoped state (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - RBAC roles, repo access lists, and spend caps are stored via INFRA‑1475 cross‑operator queue
+    - Configuration can be retrieved with a GET `/team/{teamId}/governance` call
+    - Changes are versioned and immutable after write
+  depends_on: [INFRA-5935, INFRA-5938, INFRA-5940]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5944
+  domain: INFRA
+  title: "INFRA: Update Cockpit UI to show role, spend, and repo permissions (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Dashboard displays current operator role
+    - Remaining operator and team spend caps are shown in USD
+    - Repo permissions panel lists blacklisted and allowlisted paths for the role
+    - UI refreshes after any governance config change
+    - Visual regression test passes
+  depends_on: [INFRA-5935, INFRA-5938, INFRA-5940]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5945
+  domain: INFRA
+  title: "INFRA: Add tamper‑resistant audit logging for governance decisions (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Every RBAC, repo‑access, and spend‑cap check writes an event to the ambient audit log
+    - Event includes operator ID, resource (repo/path), decision (allow/deny), and timestamp
+    - Log entries are signed/hash‑chained to ensure tamper resistance
+    - SOC‑2 audit log format is validated by a schema test
+  depends_on: [INFRA-5937, INFRA-5939, INFRA-5942]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5946
+  domain: INFRA
+  title: "INFRA: CI test: 3‑operator simulation verifying governance behavior (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test creates ADMIN, FLEET_OPERATOR, and OBSERVER operators with distinct configs
+    - ADMIN claim succeeds on any repo
+    - FLEET_OPERATOR claim succeeds only on allowed repos and while spend caps remain
+    - OBSERVER claim always fails with 403
+    - Spend‑cap exhaustion stops further calls with 429
+    - All assertions run in CI pipeline and must pass
+  depends_on: [INFRA-5935, INFRA-5936, INFRA-5937, INFRA-5938, INFRA-5939, INFRA-5940, INFRA-5941, INFRA-5942, INFRA-5944, INFRA-5945]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5947
+  domain: INFRA
+  title: "INFRA: Write procurement‑focused documentation (SOC‑2 audit, role hierarchy, spend‑cap arithmetic) (INFRA-1481 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Document explains audit‑log tamper‑resistance and includes sample log entry
+    - Role hierarchy table shows ADMIN > FLEET_OPERATOR > OBSERVER with permissions
+    - Spend‑cap section details per‑operator and per‑team calculations and hard‑stop behavior
+    - Documentation is reviewed and approved by security compliance team
+  depends_on: [INFRA-5945]
+  notes: |
+    [chump harvest check 'EFFECTIVE']
+    === primitives_index match for 'EFFECTIVE' ===
+    
+    === cluster keyword match for 'EFFECTIVE' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'EFFECTIVE' ===
+    
+    === repo-description match for 'EFFECTIVE' ===
+    
+    === HARVEST_ROADMAP.md mention of 'EFFECTIVE' (deep-scan findings) ===
+      102:| **G1** | `EFFECTIVE: investigate INFRA-1719 vs echeo/src/shredder.rs — confirm harvest lineage or file consolidation` | INFRA | EFFECTIVE | P1 |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+      104:| **G3** | `EFFECTIVE: extract chump-coord-mesh crate from chump-proprietary, consumed by both private + public mesh layer` | INFRA | EFFECTIVE | P1 |
+      105:| **G4** | `EFFECTIVE: vendor echeo::ShipVelocityScore as Chump gap-value scorer for routing_outcomes (INFRA-1764)` | INFRA | EFFECTIVE | P1 |
+      214:| `EFFECTIVE: harvest bot-simulation-service synthetic-load generator into Chump fleet test harness (CP-008)` | EFFECTIVE | P2 |
+      215:| `EFFECTIVE: vendor mock-services (Anthropic / OpenAI / Stripe / Supabase containers) into Chump CI fixture layer (CP-009)` | EFFECTIVE | P1 |
+      216:| `EFFECTIVE: compare project-forge OKR schema vs Chump state.db gap schema — extract any superior primitives (CP-010)` | EFFECTIVE | P2 |
+    
+    === cross-pollination briefs mentioning 'EFFECTIVE' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
 - id: INFRA-604
   domain: INFRA
   title: "EFFECTIVE: chump pillar-balance command — productize the manual iter-cadence pillar check"
@@ -191917,8 +193307,8 @@ gaps:
 - id: INFRA-748
   domain: INFRA
   title: "RESILIENT: HTTP/SSE transport option for MCP servers (multi-machine fleet)"
-  status: open
-  priority: P3
+  status: blocked
+  priority: P2
   effort: l
   acceptance_criteria:
     - MCP servers can optionally listen on HTTP/SSE instead of stdio (configurable per-server in mcp-servers.json)
@@ -191926,6 +193316,9 @@ gaps:
     - Remote MCP servers reachable from other machines in the NATS mesh (FLEET-006)
     - chump-mcp-lifecycle manages HTTP-transport servers with the same spawn/health/reap lifecycle as stdio
     - DNS-rebinding mitigations verified by security audit before merge
+  notes: |
+    Decomposed into 9 slices: INFRA-5902, INFRA-5903, INFRA-5904, INFRA-5905, INFRA-5906, INFRA-5907, INFRA-5908, INFRA-5909, INFRA-5910
+    [2026-09-11T12:39:08Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2198B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -206540,7 +207933,7 @@ gaps:
 - id: RESILIENT-1137
   domain: RESILIENT
   title: "RESILIENT: Implement effort‑based model routing (xs/s → flash, m → pro, l/xl → decompose) (RESILIENT-610 slice)"
-  status: open
+  status: blocked
   priority: P2
   effort: s
   acceptance_criteria:
@@ -206581,6 +207974,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-018-smugglers-context-pipeline.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-019-mythseeker2-cascade-convergent.md
+    [2026-09-11T12:30:11Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2213B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-1138
   domain: RESILIENT
