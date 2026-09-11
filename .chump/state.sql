@@ -10973,7 +10973,7 @@ gaps:
 - id: CREDIBLE-353
   domain: CREDIBLE
   title: "CREDIBLE: Implement vital sign checker for summarized_pct >95% (CREDIBLE-300 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -11003,6 +11003,7 @@ gaps:
     === HARVEST_ROADMAP.md mention of 'Almanac' (deep-scan findings) ===
     
     === cross-pollination briefs mentioning 'Almanac' ===
+    [2026-09-11T00:29:45Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=11024B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: CREDIBLE-354
@@ -89594,7 +89595,7 @@ gaps:
 - id: INFRA-1740
   domain: INFRA
   title: "RESILIENT: adversary as continuous resilience drill — launchd-scheduled chaos injection (from 2026-05-22 audit, gate on RESILIENT pillar breach)"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -89604,6 +89605,7 @@ gaps:
     - "TODO: smoke test command to verify observability"
   notes: |
     Decomposed into 8 slices: INFRA-5851, INFRA-5852, INFRA-5853, INFRA-5854, INFRA-5855, INFRA-5856, INFRA-5857, INFRA-5858
+    [2026-09-11T00:10:28Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1419B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -90903,7 +90905,7 @@ gaps:
   domain: INFRA
   title: "EFFECTIVE: investigate possible DRY violation — INFRA-1719 tree-sitter crawler vs echeo/src/shredder.rs prior art"
   status: open
-  priority: P3
+  priority: P2
   effort: m
   acceptance_criteria:
     - Read INFRA-1719 implementation files (find via grep -rln 'tree.sitter' src/) and document tree-sitter call sites + language coverage (TS/Rust/Python/Go/?) + extraction shape (functions/classes/?)
@@ -90912,6 +90914,8 @@ gaps:
     - "Verdict declared in the brief: (a) harvest-without-lineage → add Vendored-from header to Chump file with echeo commit SHA, (b) reinvention → file consolidation gap to merge implementations, (c) genuinely different → close as no-action with rationale"
     - Update docs/arsenal/HARVEST_ROADMAP.md DRY-catch section with the final verdict
     - "If verdict is (b) reinvention: file follow-up INFRA-NEW-CONSOLIDATE-TREESITTER and link from this gap's notes"
+  notes: |
+    Decomposed into 7 slices: INFRA-5869, INFRA-5870, INFRA-5871, INFRA-5872, INFRA-5873, INFRA-5874, INFRA-5875
   opened_date: '2026-07-26'
   outcome_id: MISSION-010
 
@@ -145763,7 +145767,7 @@ gaps:
 - id: INFRA-4494
   domain: INFRA
   title: "INFRA: Implement thread‑safe singleton registry core (INFRA-3842 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -145788,6 +145792,7 @@ gaps:
     === cross-pollination briefs mentioning 'phase' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-013-bot-simulation.md
+    [2026-09-11T00:17:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=7256B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-4495
   domain: INFRA
@@ -189839,7 +189844,7 @@ gaps:
 - id: INFRA-5847
   domain: INFRA
   title: "INFRA: Create Cargo dependency audit script `scripts/dev/dep-audit.sh` (INFRA-1578 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -189862,6 +189867,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'ZERO-WASTE' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+    [2026-09-11T00:08:33Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=4821B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: INFRA-5848
   domain: INFRA
@@ -190520,6 +190526,204 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+
+- id: INFRA-5869
+  domain: INFRA
+  title: "INFRA: Locate INFRA-1719 tree-sitter implementation files (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Run grep -rln 'tree.sitter' src/ and capture all matching file paths
+    - Produce a markdown list of the discovered files in docs/infra/INFRA-1812/locate_files.md
+    - Verify that the list includes at least one file per language (Rust, Python, Go, etc.) if present
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: INFRA-5870
+  domain: INFRA
+  title: "INFRA: Document INFRA-1719 tree-sitter call sites, language coverage, and extraction shape (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - For each file identified in slice 0, extract the tree-sitter call sites (function names, arguments)
+    - Summarize supported languages (e.g., Rust, Python, Go) and the extraction kinds (functions, classes, etc.)
+    - "Create a concise table in docs/infra/INFRA-1812/infra_1719_summary.md with columns: File, Language, Extraction Shape, Call Site Example"
+  depends_on: [INFRA-5869]
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: INFRA-5871
+  domain: INFRA
+  title: "INFRA: Read and document echeo/src/shredder.rs capabilities (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Identify the tree-sitter capabilities implemented in shredder.rs
+    - List supported languages and map them to the Capability struct fields
+    - Document the Capability struct shape, including authorship metadata derived from git blame
+    - Publish the findings in docs/infra/INFRA-1812/shredder_summary.md
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: INFRA-5872
+  domain: INFRA
+  title: "INFRA: Create side‑by‑side overlap matrix (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Combine the summaries from slices 1 and 2 into a matrix comparing:"
+    - Languages, Extraction Kinds, Authorship Metadata, Embedding Hooks, Persistence Mechanisms
+    - Add the matrix to docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+    - Matrix rows/columns are clearly labeled and the document renders correctly in Markdown
+  depends_on: [INFRA-5870, INFRA-5871]
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: INFRA-5873
+  domain: INFRA
+  title: "INFRA: Draft verdict brief and recommendation (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "Based on the overlap matrix, classify the situation as one of:"
+    - (a) harvest‑without‑lineage, (b) reinvention, or (c) genuinely different
+    - Provide a concise rationale for the chosen classification
+    - Specify the concrete action (e.g., add Vendored‑from header, create consolidation task, or close as no‑action)
+    - Save the brief in docs/infra/INFRA-1812/verdict.md
+  depends_on: [INFRA-5870, INFRA-5871, INFRA-5872]
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: INFRA-5874
+  domain: INFRA
+  title: "INFRA: Update HARVEST_ROADMAP.md DRY‑catch section with final verdict (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Insert a new entry under the DRY‑catch section reflecting the verdict from slice 4
+    - Include a link to docs/infra/INFRA-1812/verdict.md
+    - Commit the change with a clear message referencing INFRA-1812
+  depends_on: [INFRA-5873]
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
+
+- id: INFRA-5875
+  domain: INFRA
+  title: "INFRA: Create follow‑up INFRA-NEW-CONSOLIDATE-TREESITTER task if verdict is reinvention (INFRA-1812 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - If the verdict in slice 4 is classification (b) reinvention, open a new issue INFRA-NEW-CONSOLIDATE-TREESITTER
+    - Link the new issue from the notes in docs/infra/INFRA-1812/verdict.md
+    - Ensure the new issue contains a brief description of the consolidation scope
+  depends_on: [INFRA-5873]
+  notes: |
+    [chump harvest check 'INFRA-1812']
+    === primitives_index match for 'INFRA-1812' ===
+    
+    === cluster keyword match for 'INFRA-1812' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1812' ===
+    
+    === repo-description match for 'INFRA-1812' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1812' (deep-scan findings) ===
+      27:**RESOLVED (INFRA-1812, 2026-05-23) — verdict (c) Genuinely different. No lineage header, no consolidation gap.** Full side-by-side matrix: [`CP-002-treesitter-lineage.md`](cross-pollination/CP-002-treesitter-lineage.md).
+      31:**This is exactly the failure mode the Harvester exists to prevent.** The investigation (INFRA-1812) confirmed the catalog *did* have a discovery-failure footprint — echeo was listed as a repo but `shredder.rs` was never indexed as a primitive — but the two implementations turned out to be fit-to-purpose for different consumers (INFRA-1719 feeds `chump gap decompose`'s LLM prompt context; echeo's shredder feeds a vector-embedding bounty matchmaker), with disjoint output schemas, incompatible tree-sitter ABI generations, and no code shared between them. Vendoring or merging would have cost more than it saved. The gap in the catalog itself is tracked as a follow-up: **INFRA-3526** (index per-file primitives, not just per-repo metadata, so this class of question surfaces automatically next time).
+    
+    === cross-pollination briefs mentioning 'INFRA-1812' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-002-treesitter-lineage.md
 
 - id: INFRA-604
   domain: INFRA
@@ -204219,7 +204423,7 @@ gaps:
 - id: RESILIENT-1099
   domain: RESILIENT
   title: "RESILIENT: RESILIENT-385: Wire autopilot daemon to invoke headless fleet restart upon halt detection (RESILIENT-087 slice)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
@@ -204242,6 +204446,10 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+  closed_date: '2026-09-10'
+  closed_pr: 4611
+  evidence: |
+    merged-pr-title closure (EFFECTIVE-1543): PR #4611 titled 'RESILIENT-1099: ...' merged 2026-09-10; canonical gap was left open (closed_pr NULL). Auto-closed by gap-doctor-reconcile --check-merged-pr-titles.
 
 - id: RESILIENT-110
   domain: RESILIENT
@@ -211940,7 +212148,7 @@ gaps:
 - id: RESILIENT-471
   domain: RESILIENT
   title: "RESILIENT: Implement storage access pattern and growth rate observer (RESILIENT-323 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -211972,6 +212180,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-014-analytics-retention.md
+    [2026-09-11T00:34:32Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=3126B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-472
   domain: RESILIENT
@@ -221481,7 +221690,7 @@ gaps:
 - id: RESILIENT-802
   domain: RESILIENT
   title: "RESILIENT: Implement INFRA‑3832 wedge‑kill logic in worker code (RESILIENT-554 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -221509,6 +221718,7 @@ gaps:
     === cross-pollination briefs mentioning 'Pixel' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-011-bicameral-mind.md
+    [2026-09-11T00:38:29Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3625B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-803
   domain: RESILIENT
