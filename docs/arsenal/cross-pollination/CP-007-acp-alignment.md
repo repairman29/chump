@@ -8,7 +8,9 @@ layers, INFRA-1758/1759/1761/1802/1803 in-flight foundation slices)
 narrow exception** (file a follow-up to add an ACP shim *as an inbound
 adapter*, not as the coord layer's wire shape)
 **Status:** shipped/closed (2026-08-13, INFRA-1822) — verdict (c) IGNORE stands, no code
-changes required; this brief is the acceptance-criteria deliverable.
+changes required; this brief is the acceptance-criteria deliverable. Re-verified
+2026-09-11 (INFRA-5876 slice) — see "Re-verification" section below; divergence
+has widened but the verdict is unchanged.
 
 ---
 
@@ -90,6 +92,75 @@ metadata). The registry distributes binaries (`darwin-aarch64`, `linux-x86_64`,
 The two auth methods accepted by the registry (per `AUTHENTICATION.md`) are
 **Agent Auth** (OAuth flow with local HTTP callback) and **Terminal Auth**
 (interactive TUI handshake).
+
+## Re-verification (2026-09-11, INFRA-5876)
+
+Re-ran the upstream compare to confirm the fork status recorded above hasn't
+drifted in an unexpected direction, and expanded the capability-schema
+documentation (registration flow, auth methods, versioning model) per the
+INFRA-5876 acceptance criteria.
+
+- **Fork status, current:** `gh api repos/agentclientprotocol/registry/compare/agentclientprotocol:main...repairman29:main`
+  now returns `status: behind, ahead_by: 0, behind_by: 1051, total_commits: 0`
+  (up from the 276-behind reading at the original 2026-08-13 investigation).
+  Same shape as before — **0 ahead, N behind, zero original commits** — the
+  gap has simply widened over the ~4 weeks between investigations because the
+  fork is untouched while upstream keeps taking hourly agent-version-bump
+  commits. This confirms rather than changes the verdict: there is still no
+  Jeff-authored divergence to harvest, and the fork is further from upstream
+  than it was, not closer.
+
+### Registration flow (upstream `registry` repo, `CONTRIBUTING.md`)
+
+Adding an agent to the registry is a standard PR-based flow, schema-validated
+by CI:
+
+1. Fork the repo, create a directory named for the entry's `id`.
+2. Add `agent.json` with required fields `id`, `name`, `version`,
+   `description`, `license_url`, and `distribution` (at least one method).
+   Optional: `repository`, `website`, `authors`, `license`.
+3. Add a 16×16 monochrome SVG icon at `<id>/icon.svg` using `fill="currentColor"`
+   (hardcoded colors fail validation — enables light/dark theme support).
+4. Open a PR; CI validates `agent.json` against the published JSON Schema.
+
+**Distribution methods** (at least one required per entry):
+- `binary` — archive URL + sha256 + launch `cmd`/`args`, keyed by platform
+  triple (`darwin-aarch64`, `darwin-x86_64`, `linux-aarch64`, `linux-x86_64`,
+  `windows-aarch64`, `windows-x86_64`). Supported archive formats: `.zip`,
+  `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, or a raw binary. Installer formats
+  (`.dmg`, `.pkg`, `.deb`, `.rpm`, `.msi`, `.appimage`) are explicitly
+  unsupported.
+- `npx` — `{package: "@scope/pkg@version", args: [...]}`.
+- `uvx` — `{package: "pkg", args: [...]}`.
+
+### Versioning model (upstream protocol repo, `agent-client-protocol-schema/src/version.rs`)
+
+ACP uses a small integer `ProtocolVersion(u16)`, **bumped only for breaking
+changes** — non-breaking additions ship via capability negotiation
+(`agentCapabilities`/`clientCapabilities` at `initialize` time), not version
+bumps:
+
+- `V0` — pre-release, treated as unsupported.
+- `V1` — current stable (`LATEST` when the crate's `unstable_protocol_v2`
+  feature is off, which is the default).
+- `V2` — unstable draft used for active protocol iteration, gated behind the
+  `unstable_protocol_v2` Cargo feature; must be opted into explicitly (no
+  implicit `LATEST` shorthand once opted in, forcing callers to pick `V1` or
+  `V2` deliberately).
+
+Release cadence (from `CHANGELOG.md`, semantic-release via `release-plz`):
+minor version bumps roughly every 2-4 weeks (`1.4.0` → `1.7.0` spans
+2026-07-06 to 2026-08-20), each driven by stabilizing a previously-`unstable`
+schema field (e.g. `1.7.0` stabilized terminal authentication and
+elicitation) or adding new `unstable`-flagged surface for the v2 draft
+(session compaction, semantic string types, typed config values). This
+confirms the "additive within the same major" characterization in the
+Lineage/Risk section below — v1 has not broken since original investigation,
+and v2 remains opt-in/unstable.
+
+This re-verification changes no conclusion in "The Verdict" — it closes out
+INFRA-5876's acceptance criteria against current upstream state rather than
+the 2026-08-13 snapshot.
 
 ## Side-by-side comparison
 
