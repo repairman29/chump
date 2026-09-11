@@ -8854,6 +8854,21 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, detail]
 
+  - kind: tracked_config_drift
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh (RESILIENT-1106)
+    trigger: >
+      Emitted when check_tracked_config_drift finds a git-untracked, node-local
+      file (e.g. a hand-deployed ~/node1-worker-run.sh launcher or
+      ~/.chump/providers.env) hard-setting a variable to a DIFFERENT literal
+      value than the canonical default declared in a tracked config-as-code
+      file (scripts/setup/*.env, e.g. worker-policy.env from #4593). Closes
+      the "nothing in git could review, reproduce, or heal the policy"
+      failure mode for the OVERRIDDEN case — #4593 already covers the UNSET
+      case via bash `:=` default-assignment.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, detail]
+
   - kind: wedge_detected
     effect_metric: resilient
     emitter: scripts/coord/wizard-daemon.sh step3 (META-107)
