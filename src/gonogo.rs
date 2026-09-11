@@ -41,6 +41,19 @@ pub(crate) fn parse_verdict(line: &str) -> Option<Verdict> {
     }
 }
 
+/// Apply a cost ceiling on top of an existing verdict: if the estimated
+/// cost exceeds the ceiling, the cost axis overrides with `NoGoOnCost`
+/// regardless of the input verdict; otherwise the input verdict passes
+/// through unchanged.
+#[allow(dead_code)] // INFRA-4731 slice: wired into the full gate by later INFRA-3481 slices
+pub(crate) fn cost_axis(estimate_usd: f64, ceiling_usd: f64, input_verdict: Verdict) -> Verdict {
+    if estimate_usd > ceiling_usd {
+        Verdict::NoGoOnCost
+    } else {
+        input_verdict
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -82,5 +95,15 @@ mod tests {
         assert!(Verdict::NoGoOnCost.blocks_build());
         assert!(!Verdict::Go.blocks_build());
         assert!(!Verdict::NeedsNarrowing.blocks_build());
+    }
+
+    #[test]
+    fn test_cost_axis_over_ceiling() {
+        assert_eq!(cost_axis(8.0, 5.0, Verdict::Go), Verdict::NoGoOnCost);
+    }
+
+    #[test]
+    fn test_cost_axis_under_ceiling_passthrough() {
+        assert_eq!(cost_axis(3.0, 5.0, Verdict::Go), Verdict::Go);
     }
 }
