@@ -29,6 +29,13 @@
 #   __WORKER_SKILLS__       comma-separated capability tags (may be empty)
 #   __FLEET_DOMAIN_FILTER__ comma-separated domain filter (may be empty = any)
 #   __REPO_ROOT__           absolute path to this node's chump checkout
+#   __FLEET_MODEL__         model CLASS for the effort gate: haiku|sonnet|opus.
+#                           INFRA-471: a sonnet worker REFUSES effort=xs, a haiku
+#                           worker REFUSES m/l/xl (see _pick_and_claim_gap.py).
+#                           This is how a haiku-class instance eats the xs backlog
+#                           a sonnet-only fleet leaves starved. Rendered per
+#                           instance so one node can run mixed classes.
+#   __FLEET_EFFORT_FILTER__ effort band this instance picks (csv of xs,s,m,l,xl).
 set -a
 [ -f "$HOME/.chump/providers.env" ] && source "$HOME/.chump/providers.env"
 set +a
@@ -44,7 +51,11 @@ export WORKER_SKILLS="__WORKER_SKILLS__"
 export FLEET_DOMAIN_FILTER="__FLEET_DOMAIN_FILTER__"
 export FLEET_BACKEND="${FLEET_BACKEND:-claude}"
 export FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1,P2}"
-export FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
+# INFRA-471 model-class + effort band (rendered per instance). An explicit
+# environment value still wins (":-"), so a one-off run can override without a
+# re-render; the rendered defaults are what systemd starts the instance with.
+export FLEET_MODEL="${FLEET_MODEL:-__FLEET_MODEL__}"
+export FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-__FLEET_EFFORT_FILTER__}"
 
 cd "__REPO_ROOT__" || exit 1
 exec bash scripts/dispatch/worker.sh
