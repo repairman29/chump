@@ -428,14 +428,15 @@ jobs:
           #         AND not all shards cancelled
           #       ⟹ real_failure (unexpected cancel — surface to operator)
           fast="${{ needs.fast-checks.result }}"
+          fast_heavy="${{ needs.fast-checks-heavy.result }}"
           clippy="${{ needs.clippy.result }}"
           test="${{ needs.cargo-test.result }}"
           hygiene="${{ needs.pr-hygiene.result }}"
-          echo "fast-checks=$fast  clippy=$clippy  cargo-test=$test  pr-hygiene=$hygiene"
+          echo "fast-checks=$fast  fast-checks-heavy=$fast_heavy  clippy=$clippy  cargo-test=$test  pr-hygiene=$hygiene"
 
           # Pass 1: detect whether any shard has a real failure (not cancelled).
           any_real_failure=0
-          for r in "$fast" "$clippy" "$test" "$hygiene"; do
+          for r in "$fast" "$fast_heavy" "$clippy" "$test" "$hygiene"; do
             [ "$r" = "failure" ] && any_real_failure=1
           done
 
@@ -443,9 +444,9 @@ jobs:
           # When a NEW workflow run starts on the same SHA, GH Actions
           # cancels ALL in-flight shards.  If every shard is cancelled
           # and none failed, this is a supersedure — not a real failure.
-          total_shards=4
+          total_shards=5
           cancelled_count=0
-          for r in "$fast" "$clippy" "$test" "$hygiene"; do
+          for r in "$fast" "$fast_heavy" "$clippy" "$test" "$hygiene"; do
             [ "$r" = "cancelled" ] && cancelled_count=$((cancelled_count + 1))
           done
           supersedure=0
@@ -472,6 +473,7 @@ jobs:
             esac
           }
           classify "fast-checks" "$fast"
+          classify "fast-checks-heavy" "$fast_heavy"
           classify "clippy"      "$clippy"
           classify "cargo-test"  "$test"
           classify "pr-hygiene"  "$hygiene"
@@ -2104,10 +2106,11 @@ jobs:
             exit 1
           fi
 
-  # ── System integration test (INFRA-849) ──────────────────────────────────────
-  # Non-blocking end-to-end test for the claim→commit→ship pipeline using stubs.
-  # Does not gate merges (continue-on-error: true); provides CREDIBLE signal
-  # that the full pipeline round-trips without requiring real GitHub API calls.
+  # ── fast-checks-heavy-required: parity mirror (INFRA-001, RESILIENT-304) ───
+  # fast-checks-heavy carries two gates split off fast-checks for throughput.
+  # This rollup mirrors fast-checks-required so the heavy lane has the same
+  # named-required-check surface, keeping the -required family in parity with
+  # the shard set it guards.
   integration-test:
     name: System integration test (INFRA-849)
     runs-on: ubuntu-latest
