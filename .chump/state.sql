@@ -119046,7 +119046,7 @@ gaps:
 - id: INFRA-3467
   domain: INFRA
   title: "RESILIENT: add multimodal (image) content to ProviderCascade/Provider so screen_vision can migrate off bespoke /chat/completions"
-  status: open
+  status: blocked
   priority: P2
   effort: m
   acceptance_criteria:
@@ -119055,6 +119055,7 @@ gaps:
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
     Decomposed into 9 slices: INFRA-6022, INFRA-6023, INFRA-6024, INFRA-6025, INFRA-6026, INFRA-6027, INFRA-6028, INFRA-6029, INFRA-6030
+    [2026-09-11T17:02:05Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2201B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
 
 - id: INFRA-3468
@@ -119563,15 +119564,16 @@ gaps:
 - id: INFRA-3501
   domain: INFRA
   title: "RESILIENT: [COTG-4.4] compounding memory (this run makes the next run smarter)"
-  status: open
-  priority: P3
+  status: blocked
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"[COTG-4.4] compounding memory (this run makes the next run smarter)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    [2026-07-29T03:21:24Z] DISCOVERY EXISTS-COMPLETE (richer than described) -> DONE, verify only. capture+inject + per-directive adoption grading (src/lesson_action.rs) + A/B semantic-vs-recency (EVAL-099). Confirm META-040 aggregation runs, then close.
+    Decomposed into 8 slices: INFRA-6042, INFRA-6044, INFRA-6046, INFRA-6048, INFRA-6051, INFRA-6052, INFRA-6053, INFRA-6054
+    [2026-09-11T17:11:02Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2202B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -119630,14 +119632,14 @@ gaps:
   domain: INFRA
   title: "CREDIBLE: [COTG-6.1] the trust panel (what works, what's pending, what it costs)"
   status: open
-  priority: P3
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"[COTG-6.1] the trust panel (what works, what's pending, what it costs)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~35% -> FINISH. project a plain-language USER view over existing operator telemetry (src/dashboard.rs, fleet_status.rs, kpi_report.rs); add honest test-depth.
+    Decomposed into 5 slices: INFRA-6043, INFRA-6045, INFRA-6047, INFRA-6049, INFRA-6050
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -119645,14 +119647,14 @@ gaps:
   domain: INFRA
   title: "RESILIENT: [COTG-6.2] self-maintaining deployed tools (keep it alive without the user)"
   status: open
-  priority: P3
+  priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"[COTG-6.2] self-maintaining deployed tools (keep it alive without the user)\" is implemented in the relevant INFRA code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   notes: |
-    [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~30% WRONG-TARGET -> BUILD external. src/fleet_self_doctor.rs + paramedic.rs heal the INTERNAL fleet only. Build delivered-tool monitoring; reuse the circuit-breaker scaffolding.
+    Decomposed into 9 slices: INFRA-6055, INFRA-6056, INFRA-6057, INFRA-6058, INFRA-6059, INFRA-6060, INFRA-6061, INFRA-6062, INFRA-6063
   opened_date: '2026-08-19'
   outcome_id: COTG
 
@@ -196383,6 +196385,613 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
 
+- id: INFRA-6042
+  domain: INFRA
+  title: "INFRA: Define compounding memory data model and persistence helpers (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A new struct `CompoundingMemory` is added to `src/lesson_action.rs` with fields to track per‑directive adoption counts and timestamps.
+    - Serialization and deserialization functions using `serde_json` are implemented and compile without warnings.
+    - A constant file path for persisting the memory (e.g., `memory.json`) is defined.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6043
+  domain: INFRA
+  title: "INFRA: Define TrustInfo struct (INFRA-3505 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - TrustInfo struct is added to src/dashboard.rs
+    - "Struct has fields: works: Vec<String>, pending: Vec<String>, cost: f64"
+    - Struct derives Debug and PartialEq
+    - Code compiles without errors
+  notes: |
+    [chump harvest check 'trust']
+    === primitives_index match for 'trust' ===
+    
+    === cluster keyword match for 'trust' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'trust' ===
+    
+    === repo-description match for 'trust' ===
+    
+    === HARVEST_ROADMAP.md mention of 'trust' (deep-scan findings) ===
+      15:| **1** | `BEAST-MODE` HITL approval flow (Approve/Reject endpoints + `requiresHumanApproval` flag + `executionMode: DRAFT\|SOVEREIGN`) | [INFRA-1486](../gaps/INFRA-1486.yaml) Marcus trust gate (P0, open, next pickup) | **Vendor** the endpoint shape & state machine | Direct, production-ready, near-perfect fit for per-gap budgets |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'trust' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-6044
+  domain: INFRA
+  title: "INFRA: Integrate memory read into `directive_applied` decision logic (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`directive_applied` now loads `CompoundingMemory` before scoring a directive."
+    - The function adjusts its return value based on historical adoption data (e.g., boosts score if directive was applied in previous run).
+    - All existing unit tests for `directive_applied` still pass.
+  depends_on: [INFRA-6042]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6045
+  domain: INFRA
+  title: "INFRA: Implement compute_trust_info() helper (INFRA-3505 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - Function compute_trust_info() is added to src/dashboard.rs and returns TrustInfo
+    - Function compiles and uses existing telemetry helpers (e.g., fetch_merged_prs) as placeholders
+    - Function is public (pub) for testing
+  depends_on: [INFRA-6043]
+  notes: |
+    [chump harvest check 'trust']
+    === primitives_index match for 'trust' ===
+    
+    === cluster keyword match for 'trust' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'trust' ===
+    
+    === repo-description match for 'trust' ===
+    
+    === HARVEST_ROADMAP.md mention of 'trust' (deep-scan findings) ===
+      15:| **1** | `BEAST-MODE` HITL approval flow (Approve/Reject endpoints + `requiresHumanApproval` flag + `executionMode: DRAFT\|SOVEREIGN`) | [INFRA-1486](../gaps/INFRA-1486.yaml) Marcus trust gate (P0, open, next pickup) | **Vendor** the endpoint shape & state machine | Direct, production-ready, near-perfect fit for per-gap budgets |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'trust' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-6046
+  domain: INFRA
+  title: "INFRA: Capture and store directive outcomes after each run (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - After a lesson is emitted, the code updates the in‑memory `CompoundingMemory` with the directive’s result.
+    - At the end of the process, the updated memory is persisted to the file path defined in slice 0.
+    - No panics occur when the memory file is missing or malformed; a fresh memory is created instead.
+  depends_on: [INFRA-6042]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6047
+  domain: INFRA
+  title: "INFRA: Render Trust Panel in print_dashboard (INFRA-3505 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - print_dashboard calls compute_trust_info()
+    - "Dashboard output includes a \"Trust Panel\" section with headings \"Works:\", \"Pending:\", and \"Cost:\""
+    - Values from TrustInfo are displayed in a human‑readable format
+    - Running the binary with the dashboard flag prints the new section
+  depends_on: [INFRA-6045]
+  notes: |
+    [chump harvest check 'trust']
+    === primitives_index match for 'trust' ===
+    
+    === cluster keyword match for 'trust' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'trust' ===
+    
+    === repo-description match for 'trust' ===
+    
+    === HARVEST_ROADMAP.md mention of 'trust' (deep-scan findings) ===
+      15:| **1** | `BEAST-MODE` HITL approval flow (Approve/Reject endpoints + `requiresHumanApproval` flag + `executionMode: DRAFT\|SOVEREIGN`) | [INFRA-1486](../gaps/INFRA-1486.yaml) Marcus trust gate (P0, open, next pickup) | **Vendor** the endpoint shape & state machine | Direct, production-ready, near-perfect fit for per-gap budgets |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'trust' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-6048
+  domain: INFRA
+  title: "INFRA: Add per‑directive adoption grading using compounding memory (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "`emit_lesson_grade` now includes a grade field derived from the historical adoption count stored in `CompoundingMemory`."
+    - Grades are emitted as part of the `lesson_applied` event JSON and match the expected schema.
+    - Existing tests for `emit_lesson_grade` continue to pass.
+  depends_on: [INFRA-6044, INFRA-6046]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6049
+  domain: INFRA
+  title: "INFRA: Add unit test for compute_trust_info and dashboard rendering (INFRA-3505 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "A test named test_compute_trust_info exists in src/dashboard.rs::tests"
+    - Test constructs a mock telemetry scenario, calls compute_trust_info(), and asserts the expected TrustInfo
+    - "Test also captures print_dashboard output and asserts the presence of \"Trust Panel\""
+    - Test fails before the implementation and passes after
+  depends_on: [INFRA-6047]
+  notes: |
+    [chump harvest check 'trust']
+    === primitives_index match for 'trust' ===
+    
+    === cluster keyword match for 'trust' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'trust' ===
+    
+    === repo-description match for 'trust' ===
+    
+    === HARVEST_ROADMAP.md mention of 'trust' (deep-scan findings) ===
+      15:| **1** | `BEAST-MODE` HITL approval flow (Approve/Reject endpoints + `requiresHumanApproval` flag + `executionMode: DRAFT\|SOVEREIGN`) | [INFRA-1486](../gaps/INFRA-1486.yaml) Marcus trust gate (P0, open, next pickup) | **Vendor** the endpoint shape & state machine | Direct, production-ready, near-perfect fit for per-gap budgets |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'trust' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-6050
+  domain: INFRA
+  title: "INFRA: Add CI script to verify Trust Panel output (INFRA-3505 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - File scripts/ci/test-trust_panel.sh is added
+    - "Script runs the compiled binary with the dashboard command and greps for \"Trust Panel\""
+    - Script exits with status 0 when the panel is present and non‑zero otherwise
+    - CI runs the script as part of cargo test suite
+  depends_on: [INFRA-6049]
+  notes: |
+    [chump harvest check 'trust']
+    === primitives_index match for 'trust' ===
+    
+    === cluster keyword match for 'trust' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'trust' ===
+    
+    === repo-description match for 'trust' ===
+    
+    === HARVEST_ROADMAP.md mention of 'trust' (deep-scan findings) ===
+      15:| **1** | `BEAST-MODE` HITL approval flow (Approve/Reject endpoints + `requiresHumanApproval` flag + `executionMode: DRAFT\|SOVEREIGN`) | [INFRA-1486](../gaps/INFRA-1486.yaml) Marcus trust gate (P0, open, next pickup) | **Vendor** the endpoint shape & state machine | Direct, production-ready, near-perfect fit for per-gap budgets |
+      103:| **G2** | `EFFECTIVE: vendor BEAST-MODE HITL approval flow into chump preflight + bot-merge (Marcus trust gate)` | INFRA | EFFECTIVE | P0 (Marcus blocker) |
+    
+    === cross-pollination briefs mentioning 'trust' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-003-beast-mode-hitl.md
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md
+
+- id: INFRA-6051
+  domain: INFRA
+  title: "INFRA: Implement A/B semantic‑vs‑recency scoring helper (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A new function `score_semantic_vs_recency` is added to `src/lesson_action.rs`.
+    - The function returns a higher score for directives that are both semantically relevant and recently successful, using data from `CompoundingMemory`.
+    - The function is covered by a unit test asserting expected score differences.
+  depends_on: [INFRA-6044]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6052
+  domain: INFRA
+  title: "INFRA: Create integration test verifying compounding memory influences next run (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The test runs the lesson pipeline twice in a temporary directory.
+    - After the first run, a directive is marked as applied; the second run shows an increased score or grade for the same directive.
+    - The test fails when slices 1‑5 are removed, confirming the new behavior is required.
+  depends_on: [INFRA-6042, INFRA-6044, INFRA-6046, INFRA-6048, INFRA-6051]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6053
+  domain: INFRA
+  title: "INFRA: Run `cargo fmt` and `cargo clippy` across the crate (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt --all` completes without changes."
+    - "`cargo clippy --all-targets -- -D warnings` finishes with zero warnings."
+    - The CI script `scripts/ci/test-*.sh` reports success for formatting and linting steps.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6054
+  domain: INFRA
+  title: "INFRA: Verify META‑040 aggregation runs with new memory logic (INFRA-3501 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Running the META‑040 aggregation script completes without errors and includes the new `CompoundingMemory` fields in its output.
+    - The aggregation output is validated against a JSON schema that expects the new fields.
+    - No regression is observed in existing aggregation metrics.
+  depends_on: [INFRA-6052]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6055
+  domain: INFRA
+  title: "INFRA: Add external tool daemon entry to REQUIRED_DAEMONS (INFRA-3506 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - REQUIRED_DAEMONS constant includes a new entry for the delivered‑tool monitor daemon with the correct launchctl label and relative install‑script path.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6056
+  domain: INFRA
+  title: "INFRA: Introduce config knobs for external tool monitoring in HealConfig (INFRA-3506 slice)"
+  status: open
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "HealConfig struct contains new fields `external_tool_enabled: bool` (default true) and `external_tool_budget: u32` (default matches DEFAULT_BUDGET)."
+    - Environment variables can override these fields at runtime.
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6057
+  domain: INFRA
+  title: "INFRA: Implement circuit‑breaker budget handling for external tool heals (INFRA-3506 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Heal cycle respects `external_tool_budget` and never spawns more than the allowed number of external‑tool heal attempts within BUDGET_WINDOW_SECS.
+    - When the budget is exhausted, further external tool heals are skipped and logged.
+  depends_on: [INFRA-6055, INFRA-6056]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6058
+  domain: INFRA
+  title: "INFRA: Create discover_stuck_external_tools function (INFRA-3506 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - New function `discover_stuck_external_tools` returns a list of identifiers for delivered tools that have not reported health for longer than STUCK_PR_THRESHOLD_MINS.
+    - Function is unit‑tested for both healthy and stuck scenarios.
+  depends_on: [INFRA-6056]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6059
+  domain: INFRA
+  title: "INFRA: Extend run_heal_cycle to process external tool daemons (INFRA-3506 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "`run_heal_cycle` now iterates over the external‑tool daemon entry, calls `discover_stuck_external_tools`, and attempts to heal each using `run_install_script`."
+    - Successful and failed heal outcomes are recorded via `append_dispatch_log`.
+  depends_on: [INFRA-6055, INFRA-6057, INFRA-6058]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6060
+  domain: INFRA
+  title: "INFRA: Add emit events for external tool heal actions (INFRA-3506 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - When an external tool is healed, `emit` is called with an `EmitArgs` indicating success; on failure, an error event is emitted.
+    - Emission calls are covered by a mock test that verifies the correct arguments.
+  depends_on: [INFRA-6059]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6061
+  domain: INFRA
+  title: "INFRA: Write unit test for external tool self‑maintenance (INFRA-3506 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Test `test_external_tool_self_maintenance` asserts that a stuck external tool is detected and healed by the new logic.
+    - The test fails when the new healing code is temporarily removed, proving it validates the new behavior.
+  depends_on: [INFRA-6059]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6062
+  domain: INFRA
+  title: "INFRA: Update CI test script to include new test (INFRA-3506 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - scripts/ci/test-*.sh is modified to run the new `test_external_tool_self_maintenance` and fails the CI run if the test fails.
+  depends_on: [INFRA-6061]
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
+- id: INFRA-6063
+  domain: INFRA
+  title: "INFRA: Run cargo fmt and clippy, fix warnings (INFRA-3506 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "`cargo fmt` makes no changes, `cargo clippy --all-targets -D warnings` passes without warnings, and all existing tests plus the new test continue to pass."
+  notes: |
+    [chump harvest check 'RESILIENT']
+    === primitives_index match for 'RESILIENT' ===
+    
+    === cluster keyword match for 'RESILIENT' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'RESILIENT' ===
+    
+    === repo-description match for 'RESILIENT' ===
+    
+    === HARVEST_ROADMAP.md mention of 'RESILIENT' (deep-scan findings) ===
+      106:| **G5** | `RESILIENT: vendor openclaw memory schema (SQLite + FTS + embeddings cache) into Chump memory_db (INFRA-1765 substrate)` | INFRA | RESILIENT | P2 |
+      217:| `RESILIENT: harvest mission-engine-service Supabase+Redis+LLM choreographer pattern for Chump gap-decompose pipeline (CP-011)` | RESILIENT | P2 |
+    
+    === cross-pollination briefs mentioning 'RESILIENT' ===
+      /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+
 - id: INFRA-635
   domain: INFRA
   title: "EFFECTIVE: 'chump gap rebalance' — auto-enforce P0 budget + ranking on every gap-file batch. Productizes the manual 'file batch → check P0 count → demote stale → commit' loop. Today operator/Mission-Driver does this manually after every multi-gap batch (e.g., the 9-gap chump-proprietary REQ batch). After this ships: 'chump gap rebalance' (or auto-trigger after 'chump gap reserve') runs the budget audit + demotion suggestion + (with --apply) does the demotion. Heuristic: P0 count >5 → demote oldest-P0 (or theoretical-only-no-corruption-now P0s like INFRA-538) with rationale logged. Pairs with INFRA-604 chump pillar-balance (already filed) and INFRA-586 chump gap audit-priorities. Composes into a coherent 'gap-store self-curates' loop. AC: src/main.rs subcommand 'chump gap rebalance [--apply]'; reads .chump/state.db, applies P0-budget rules from CLAUDE.md (≤5), pillar-balance rules (no <2, no >50%); outputs suggested actions; --apply executes; demotion notes include 'auto-demoted: P0 budget exceeded by N, oldest stale P0' rationale; test scripts/ci/test-gap-rebalance.sh covers 4 fixture scenarios (over-budget P0, pillar-skew, all-clean, no-action-needed)."
@@ -211688,7 +212297,7 @@ gaps:
 - id: RESILIENT-1147
   domain: RESILIENT
   title: "RESILIENT: Isolate SQLite journal directory in durable_resume json_mode test (RESILIENT-171 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   acceptance_criteria:
@@ -211712,6 +212321,7 @@ gaps:
     
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+    [2026-09-11T17:00:57Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=76, rc=76, cycle_log=2372B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: RESILIENT-1148
   domain: RESILIENT
