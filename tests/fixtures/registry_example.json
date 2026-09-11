@@ -1,0 +1,24 @@
+[
+  {
+    "signal": "disk_critical",
+    "detect": "free_gb < 20 AND shared_target_gb > cap",
+    "tier": 1,
+    "action": "scripts/coord/disk-critical-reactor.sh",
+    "verify": "df shows free_gb recovered",
+    "false_positive_class": "none"
+  },
+  {
+    "signal": "pr_pipeline_wedged",
+    "detect": "0 merges in 2h AND >3 PRs armed-but-blocked",
+    "tier": 2,
+    "action": "diagnose the blocking check; if a gate is unmirrored/phantom, fix at source",
+    "verify": "git log origin/main --since=2h shows new merges"
+  },
+  {
+    "signal": "farmer_auth_dead",
+    "detect": "ambient kind=farmer_auth_dead",
+    "tier": 3,
+    "action": "page operator via quiet gate",
+    "false_positive_class": "known #1 false-positive (CREDIBLE-090); mis-called 4x"
+  }
+]

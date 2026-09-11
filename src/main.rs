@@ -90,6 +90,7 @@ mod env_flags;
 mod episode_db;
 mod episode_extractor;
 mod episode_tool;
+mod playbook_registry; // RESILIENT-443: registry loading from JSON (RESILIENT-274 slice)
 pub use chump_eval_harness::eval_harness;
 mod execute_gap;
 mod failure_catalog;
