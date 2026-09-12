@@ -217535,6 +217535,8 @@ gaps:
     - "FAILURE OF THE TRANSPORT MUST ITSELF BE DETECTABLE: if the primary send fails, fall through to the next rung AND record the failure. A notifier that silently fails over is only marginally better than one that silently dies — the operator must be able to see that Discord was down at 3am"
     - "SCOPE NOTE: this is a DEFAULT-SELECTION and FALLBACK gap. It does not block RESILIENT-266 (gateway daemon) or RESILIENT-265 (approval loop); both proceed on Discord. Do not let this become a blocker for work that is already moving"
   depends_on: [CREDIBLE-266]
+  notes: |
+    [2026-09-12T00:03:18Z] rot-reaper: PR #4614 auto-closed (required-check-red, 24h) 2026-09-12; re-attempt on fresh main.
   opened_date: '2026-08-19'
   outcome_id: CHUMPOS
 
