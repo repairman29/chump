@@ -10377,7 +10377,7 @@ gaps:
 - id: CREDIBLE-486
   domain: CREDIBLE
   title: "CREDIBLE: Combine fan‑in and emission metrics into Value (CREDIBLE-355 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -10414,6 +10414,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-017-mission-engine-choreographer.md
+    [2026-09-12T00:38:01Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=10783B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
 
 - id: CREDIBLE-487
   domain: CREDIBLE
@@ -21590,7 +21591,7 @@ gaps:
 - id: EFFECTIVE-467
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement skip-and-advance loop in pick_gap (EFFECTIVE-289 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -21627,6 +21628,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-12T00:45:49Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=75, rc=75, cycle_log=3740B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: EFFECTIVE-468
@@ -21799,7 +21801,7 @@ gaps:
 - id: EFFECTIVE-472
   domain: EFFECTIVE
   title: "EFFECTIVE: Integrate CSS token lint into design-pass stage (EFFECTIVE-358 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -21836,6 +21838,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-12T00:48:37Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=2898B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: EFFECTIVE-473
@@ -21878,7 +21881,7 @@ gaps:
 - id: EFFECTIVE-474
   domain: EFFECTIVE
   title: "EFFECTIVE: Implement automated screenshot capture for PRs (EFFECTIVE-358 slice)"
-  status: open
+  status: blocked
   priority: P1
   effort: s
   description: |
@@ -21916,6 +21919,7 @@ gaps:
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-001-neural-farm-into-chump.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-016-project-forge-okr.md
+    [2026-09-12T00:53:54Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=3038B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
   opened_date: '2026-08-24'
 
 - id: EFFECTIVE-475
