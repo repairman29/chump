@@ -212045,6 +212045,7 @@ gaps:
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
     [2026-09-12T00:16:19Z] rot-reaper: PR #4612 auto-closed (required-check-red, 24h) 2026-09-12; re-attempt on fresh main.
+    [2026-09-12T01:16:50Z] rot-reaper: PR #4612 auto-closed (required-check-red, 25h) 2026-09-12; re-attempt on fresh main.
 
 - id: RESILIENT-1101
   domain: RESILIENT
@@ -212073,6 +212074,7 @@ gaps:
     === cross-pollination briefs mentioning 'RESILIENT' ===
       /home/jeff/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
     [2026-09-12T00:16:11Z] rot-reaper: PR #4613 auto-closed (required-check-red, 24h) 2026-09-12; re-attempt on fresh main.
+    [2026-09-12T01:16:44Z] rot-reaper: PR #4613 auto-closed (required-check-red, 25h) 2026-09-12; re-attempt on fresh main.
 
 - id: RESILIENT-1102
   domain: RESILIENT
