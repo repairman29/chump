@@ -129,10 +129,16 @@ echo "$out" | grep -q 'spared=3' && ok "exactly three PRs spared (spared=3)" || 
 # nor spared nor reopened — the reaper leaves human-terminal state alone.
 echo "$out" | grep -q '#305' && bad "#305 (human-closed) appeared in reaper output" || ok "#305 human-closed PR never touched (not in open set)"
 
-# ── bypass restores historical close-any-required-red behavior ───────────────
-out_bypass="$(CHUMP_ROT_REAPER_PR_JSON="$FIX" CHUMP_ROT_REAPER_REQUIRED_CHECKS="$REQ" CHUMP_ROT_REAPER_SPARE_RECOVERABLE=0 bash "$REAPER" --dry-run 2>&1)"
-echo "$out_bypass" | grep -q 'closed=4' && ok "bypass (SPARE_RECOVERABLE=0) closes all 4 required-red PRs (historical behavior)" \
-    || bad "bypass did not restore close-all behavior"
+# ── the spare is UNCONDITIONAL: there is NO toggle to restore close-all ───────
+# The old CHUMP_ROT_REAPER_SPARE_RECOVERABLE=0 escape hatch (which restored the
+# close-good-PRs behavior) was removed — a switch to turn the safety fix off is
+# exactly the bypass debt the ceiling forbids. Setting the (now-inert) env var
+# must NOT change behavior: still closed=1 (only the hard-fail), still spared=3.
+out_toggle="$(CHUMP_ROT_REAPER_PR_JSON="$FIX" CHUMP_ROT_REAPER_REQUIRED_CHECKS="$REQ" CHUMP_ROT_REAPER_SPARE_RECOVERABLE=0 bash "$REAPER" --dry-run 2>&1)"
+echo "$out_toggle" | grep -q 'closed=1' && ok "spare is unconditional: inert env var does not restore close-all (closed=1)" \
+    || bad "an env var still alters spare behavior — the toggle was not fully removed"
+echo "$out_toggle" | grep -q 'spared=3' && ok "spare is unconditional: still spared=3 regardless of env" \
+    || bad "spare count changed under the (removed) toggle"
 
 echo ""
 echo "=== reaper end-to-end: $pass passed so far ==="
@@ -156,7 +162,7 @@ v=$(lv '[{"name":"x","status":"COMPLETED","conclusion":"CANCELLED"}]' MERGEABLE)
 v=$(lv "$GU" MERGEABLE); [[ "$v" == "hard_fail" ]] && ok "legacy path: green-underneath rollup → hard_fail (no new verdict without --blocking-check)" || bad "legacy GU drifted to '$v'"
 
 # ── source-wiring asserts ─────────────────────────────────────────────────────
-grep -q 'CHUMP_ROT_REAPER_SPARE_RECOVERABLE' "$REAPER" && ok "reaper: SPARE_RECOVERABLE guard present" || bad "reaper: SPARE_RECOVERABLE guard missing"
+grep -q 'CHUMP_ROT_REAPER_SPARE_RECOVERABLE' "$REAPER" && bad "reaper: SPARE_RECOVERABLE toggle still present (must be removed — a switch that closes good PRs is forbidden bypass debt)" || ok "reaper: no SPARE_RECOVERABLE toggle (spare is unconditional)"
 grep -q 'classify_verified_red' "$REAPER"               && ok "reaper: calls classify_verified_red before close" || bad "reaper: no classify_verified_red call"
 grep -q 'classify-blocked-pr.py' "$REAPER"              && ok "reaper: reuses classify-blocked-pr.py (no second classifier)" || bad "reaper: does not reuse the #4606 classifier"
 grep -q 'rearm_flake_budget' "$REAPER"                  && ok "reaper: re-arms flake budget (recovery path)" || bad "reaper: no flake re-arm path"

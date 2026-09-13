@@ -234,6 +234,7 @@ jobs:
           rc=1
           for attempt in 1 2 3; do
             echo "apt attempt $attempt of 3"
+            # shellcheck disable=SC2086  # $apt_opts and $pkgs are space-separated arg lists — word-splitting is intended
             if timeout -k 15 90 sudo apt-get $apt_opts update \
                && timeout -k 15 180 sudo apt-get $apt_opts install -y $pkgs; then
               rc=0
@@ -335,7 +336,8 @@ jobs:
         # runners redirects build output away from $(pwd)/target).
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-domain-summary.sh
 
@@ -343,7 +345,8 @@ jobs:
         if: matrix.shard == 1
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-done-format.sh
 
@@ -473,7 +476,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-cross-pr-contract.sh
 

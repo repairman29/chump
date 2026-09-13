@@ -155,7 +155,7 @@ info()  { printf '  %s\n' "$*"; }
 warn()  { printf '\033[0;33m  WARN: %s\033[0m\n' "$*"; }
 dry()   { printf '  [dry-run] %s\n' "$*"; }
 
-green "=== rot-reaper / no-abandon janitor (conflict≥${MIN_AGE_HOURS}h, required-red≥${REALFAIL_AGE_HOURS}h, arm≥${ARM_AGE_MIN}m, max=${MAX_CLOSE}, spare-recoverable=${CHUMP_ROT_REAPER_SPARE_RECOVERABLE:-1}) ==="
+green "=== rot-reaper / no-abandon janitor (conflict≥${MIN_AGE_HOURS}h, required-red≥${REALFAIL_AGE_HOURS}h, arm≥${ARM_AGE_MIN}m, max=${MAX_CLOSE}, spare-recoverable=always) ==="
 [[ $DRY_RUN -eq 1 ]] && info "Dry-run mode — no PRs will be closed and no gaps re-queued."
 
 ME="$(gh api user --jq .login 2>/dev/null || echo repairman29)"
@@ -270,15 +270,19 @@ mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
 # operator past a bound rather than fighting forever. Only genuinely-dead PRs
 # (hard_fail / conflict) fall through to the close.
 #
-# Bypass: CHUMP_ROT_REAPER_SPARE_RECOVERABLE=0 restores the historical
-# close-any-required-red behavior (pre-fix; not recommended).
-SPARE_RECOVERABLE="${CHUMP_ROT_REAPER_SPARE_RECOVERABLE:-1}"
+# The green-underneath spare is UNCONDITIONAL: the reaper always spares
+# recoverable/green-underneath PRs. There is no toggle to disable it — a switch
+# that restores close-good-PRs behavior is exactly the safety-fix-off escape
+# hatch the bypass-debt ceiling forbids, so it does not exist.
 # The classifier is a sibling of THIS script (resolved relative to the reaper's
 # own dir, not any operated-repo root).
 CLASSIFY_HELPER="$(cd "$(dirname "$0")" && pwd)/lib/classify-blocked-pr.py"
 # The REAL gate checks the aggregate `verified` is built over. Deliberately does
 # NOT include `^verified$` — verified is the aggregate we are looking underneath.
-BLOCKING_CHECK_RE="${CHUMP_ROT_REAPER_BLOCKING_CHECK_RE:--required\$|^audit-shard|^fast-checks\$}"
+# FIXED POLICY, not operator-tunable: an override of WHICH checks count as
+# "blocking" is a soft-bypass seam (it could make the reaper ignore a real red
+# gate), so there is no env knob — the blocking-check set is hardcoded.
+BLOCKING_CHECK_RE='-required$|^audit-shard|^fast-checks$'
 # INFRA-304 flake-budget markers (same dir ci-flake-rerun.sh writes).
 FLAKE_COOLDOWN_DIR="${CHUMP_ROT_REAPER_FLAKE_COOLDOWN_DIR:-$(dirname "$AMBIENT_LOG")/ci-flake-cooldown}"
 # Bounded spare bookkeeping — never spare-forever. Past the cap the reaper still
@@ -618,26 +622,24 @@ while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQF
         # Reuse the #4606 green-underneath classifier; only hard_fail / conflict
         # fall through to the close. (RESILIENT-311 completion — spares
         # #4598/#4615/#4618-class PRs the reaper was destroying.)
-        if [[ "$SPARE_RECOVERABLE" != "0" ]]; then
-            SPARE_VERDICT="$(classify_verified_red "$PR_NUM")"
-            case "$SPARE_VERDICT" in
-                pending|blocked_no_failure|green_underneath|cancelled|flake_exhausted)
-                    info "PR #$PR_NUM — required(verified)-red ${AGE}h but RECOVERABLE ($SPARE_VERDICT) → SPARE (re-arm / escalate, never close)."
-                    spare_verified_red "$PR_NUM" "$SPARE_VERDICT" "$AGE" "$TITLE"
-                    continue
-                    ;;
-                conflict)
-                    # Shouldn't happen here (CLASS 1 handles CONFLICTING), but if
-                    # the rollup says conflict, let CLASS 1's resolve-first path own
-                    # it next beat rather than reaping from the required-red class.
-                    info "PR #$PR_NUM — required-red classified as conflict; deferring to CLASS 1 resolve-first next beat."
-                    SKIPPED=$((SKIPPED + 1)); continue
-                    ;;
-                hard_fail|*)
-                    : # genuinely dead → fall through to the close below.
-                    ;;
-            esac
-        fi
+        SPARE_VERDICT="$(classify_verified_red "$PR_NUM")"
+        case "$SPARE_VERDICT" in
+            pending|blocked_no_failure|green_underneath|cancelled|flake_exhausted)
+                info "PR #$PR_NUM — required(verified)-red ${AGE}h but RECOVERABLE ($SPARE_VERDICT) → SPARE (re-arm / escalate, never close)."
+                spare_verified_red "$PR_NUM" "$SPARE_VERDICT" "$AGE" "$TITLE"
+                continue
+                ;;
+            conflict)
+                # Shouldn't happen here (CLASS 1 handles CONFLICTING), but if
+                # the rollup says conflict, let CLASS 1's resolve-first path own
+                # it next beat rather than reaping from the required-red class.
+                info "PR #$PR_NUM — required-red classified as conflict; deferring to CLASS 1 resolve-first next beat."
+                SKIPPED=$((SKIPPED + 1)); continue
+                ;;
+            hard_fail|*)
+                : # genuinely dead → fall through to the close below.
+                ;;
+        esac
         if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
             warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
             BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
