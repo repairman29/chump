@@ -95,6 +95,24 @@
 #   CHUMP_ROT_REAPER_REQUIRED_CHECKS  comma-separated override of the required-
 #                                   check set (default: fetched from branch
 #                                   protection, fallback to the known 4).
+#   CHUMP_ROT_REAPER_SYSTEMIC_THRESHOLD  RESILIENT-1188 systemic-red guard: min
+#                                   number of DISTINCT open PRs that must be
+#                                   failing the SAME required check before that
+#                                   redness is treated as SYSTEMIC (a shared /
+#                                   trunk gate broken fleet-wide, not this PR's
+#                                   fault) and ALL affected PRs are HELD, not
+#                                   reaped (default 2). Reuses the W-015
+#                                   definition from scripts/coord/systemic-red-
+#                                   detector.sh. This is a sensitivity knob, NOT
+#                                   a disable — the systemic HOLD is
+#                                   unconditional (mass-closure on a shared break
+#                                   is exactly the self-strangle this guards).
+#   CHUMP_ROT_REAPER_TRUNK_RED_MAX_AGE_MIN  RESILIENT-1188: freshness window (min)
+#                                   for consuming the trunk-sentinel's main-red
+#                                   signal from ambient.jsonl (default 90). A
+#                                   trunk-red event older than this is treated as
+#                                   stale and ignored, so a long-recovered red
+#                                   never holds PRs forever.
 #   CHUMP_ROT_REAPER_CONFLICT_STATE_DIR  RESILIENT-339 resolve-first: dir the
 #                                   conflict-resolution-consumer records per-PR
 #                                   attempt state in (default:
@@ -148,6 +166,18 @@ RESPAWN_CAP="${CHUMP_ROT_REAPER_RESPAWN_CAP:-3}"
 # NO-ABANDON DEADLINE: past this age (hours) an open PR must be terminal; any
 # still non-terminal is counted in the pr_no_abandon_backlog metric (target 0).
 NO_ABANDON_DEADLINE_HOURS="${CHUMP_ROT_REAPER_DEADLINE_HOURS:-$REALFAIL_AGE_HOURS}"
+# RESILIENT-1188 SYSTEMIC-RED guard: the fewest DISTINCT open PRs that must be
+# failing the SAME required check for the redness to count as systemic (a shared
+# gate broken fleet-wide → not this PR's fault → HOLD, never mass-close). Default
+# 2: closing even a PAIR of good PRs for one shared broken gate is the self-
+# strangle we prevent, and two independent PRs failing the IDENTICAL required
+# gate for independent reasons is vanishingly unlikely. Deliberately LOWER than
+# the W-015 detector's alarm threshold (3) because THIS action is destructive
+# (closing PRs) while that detector merely alarms — a destructive step earns the
+# more conservative bar. Reuses the W-015 grouping (systemic-red-detector.sh).
+SYSTEMIC_THRESHOLD="${CHUMP_ROT_REAPER_SYSTEMIC_THRESHOLD:-2}"
+# Freshness window (minutes) for the trunk-sentinel's main-red signal.
+TRUNK_RED_MAX_AGE_MIN="${CHUMP_ROT_REAPER_TRUNK_RED_MAX_AGE_MIN:-90}"
 
 red()   { printf '\033[0;31m%s\033[0m\n' "$*"; }
 green() { printf '\033[0;32m%s\033[0m\n' "$*"; }
@@ -213,15 +243,22 @@ for r in rows:
     draft = "1" if r.get("isDraft") else "0"
     has_am = "1" if r.get("autoMergeRequest") else "0"
     req_fail = "0"
+    fail_checks = []  # RESILIENT-1188: the required checks red on THIS PR, so the
+                      # systemic pre-pass can group failing gates BY NAME across PRs.
     for c in (r.get("statusCheckRollup") or []):
         name = c.get("name") or c.get("context") or ""
         # CheckRun uses conclusion; StatusContext uses state.
         concl = (c.get("conclusion") or c.get("state") or "").upper()
         if name in required and concl in FAIL:
             req_fail = "1"
-            break
+            if name not in fail_checks:
+                fail_checks.append(name)
     head = (r.get("headRefName") or "").replace("\t", " ").replace("\n", " ")
-    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{head}")
+    # req_fail_checks: comma-joined red required gate names (no tabs/commas in
+    # our check names). Emitted LAST so it is safe to append without shifting
+    # any existing field position in the reader.
+    req_fail_checks = ",".join(n.replace("\t", " ").replace(",", " ") for n in fail_checks)
+    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{head}\t{req_fail_checks}")
 ' 2>/dev/null || true)"
 
 # age_hours ISO8601 — whole hours since createdAt (python, bash-free of `date -d`).
@@ -248,6 +285,10 @@ CLOSED=0
 REQUEUED=0
 SKIPPED=0
 ARMED=0
+HELD=0             # RESILIENT-1188: PRs HELD (not closed) because their required-
+                   # red is SYSTEMIC (a shared/trunk gate broken fleet-wide)
+HELD_PRS=""
+SYSTEMIC_ALERTED=0 # one operator page per beat, not per held PR
 BACKLOG=0          # open PRs past the no-abandon deadline still non-terminal
 BACKLOG_PRS=""
 
@@ -433,7 +474,7 @@ emit_respawn_cap_event() {  # <gap_id> <pr_num> <respawn_count>
 if [[ -z "$ROWS" ]]; then
     info "No open PRs found — nothing to reap."
     emit_backlog_metric 0 ""
-    reaper_finish ok '{"closed":0,"requeued":0,"skipped":0,"armed":0,"spared":0,"backlog":0}'
+    reaper_finish ok '{"closed":0,"requeued":0,"skipped":0,"armed":0,"spared":0,"held":0,"backlog":0}'
     exit 0
 fi
 
@@ -558,7 +599,185 @@ hand_off_to_conflict_consumer() {  # <pr_num> <head_branch>
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$head" >> "$AMBIENT_LOG" 2>/dev/null || true
 }
 
-while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL HEAD; do
+# ── RESILIENT-1188 SYSTEMIC-RED GUARD (the BROADER guard past #4637) ──────────
+# #4637 taught CLASS 2 to SPARE a PR whose real gates are green underneath a red
+# `verified` aggregate — the INDIVIDUAL green-underneath case. But when a SHARED
+# / trunk gate breaks (a required job regresses on main, a farmer-flap false-red
+# every PR inherits on rebase, a broken gate common to the whole fleet), the
+# required aggregate goes RED across MANY open PRs at once, each with a genuine
+# COMPLETED failure on that gate — so #4637's per-PR classifier reads each one as
+# hard_fail and the reaper closes them ALL. That is the fleet-wide self-strangle
+# (INFRA-3542 / auto-rescue-reaps-systemic-red): none of those PRs did anything
+# wrong individually; the redness is not theirs.
+#
+# This guard detects that the redness is SYSTEMIC and HOLDS all affected PRs +
+# alerts, so a real trunk-red gets a human instead of mass-closure. Two signals,
+# both computed WITHOUT an extra network call (deterministic + fast on a timer,
+# and exercisable by the CHUMP_ROT_REAPER_PR_JSON fixture):
+#
+#   1. CROSS-PR shared gate — reuses the W-015 definition from
+#      scripts/coord/systemic-red-detector.sh: a required check is systemic-red
+#      if it is FAILED on >= SYSTEMIC_THRESHOLD distinct open PRs. Computed from
+#      the reaper's OWN already-fetched PR_JSON (rather than shelling out to the
+#      detector, which fires its own `gh pr list` and is not fixture-aware), so
+#      it stays deterministic, adds no second network call, and is measured over
+#      exactly the candidate set the reaper is about to act on. This ALSO covers
+#      "origin/main is red on gate G": when main is red on G, every open PR
+#      inherits G's failure, so the cross-PR count crosses the threshold on its
+#      own. (systemic-red-detector.sh already documents that main-red manifests
+#      as a shared-check wedge across open PRs.)
+#   2. TRUNK/main red — CONSUMES the trunk-sentinel-daemon's existing signal
+#      (scripts/coord/trunk-sentinel-daemon.sh) from ambient.jsonl rather than
+#      re-detecting: if the most-recent trunk state event within the freshness
+#      window says main is RED (trunk_red_persistent, or a trunk_state_change
+#      to TRUNK_RED, newer than any trunk_recovered / to-TRUNK_GREEN), the whole
+#      required-red class is systemic → HOLD every CLASS-2 PR this beat.
+#
+# Like #4637's spare, the HOLD is UNCONDITIONAL — there is deliberately NO env
+# toggle to disable it (a switch that restores mass-closing good PRs on a shared
+# break is exactly the safety-off escape hatch the bypass-debt ceiling forbids).
+# Only SYSTEMIC_THRESHOLD (how many PRs make redness "shared") and the trunk-red
+# freshness window are tunable, and lowering the threshold only makes the guard
+# MORE cautious.
+
+# SYSTEMIC scan — group HARD-failing REAL gates (checks matching BLOCKING_CHECK_RE,
+# which deliberately EXCLUDES the `verified` aggregate) by name across all open
+# PRs. A gate red on >= threshold distinct PRs is a shared break. We key on the
+# real gates, NOT the `verified` umbrella: the aggregate goes red per-PR for mixed
+# reasons (parity-late, a solo hard-fail, a flake), so counting it would falsely
+# call one PR's individual hard-fail "systemic" just because other PRs' aggregates
+# are independently red (the #4637 green-underneath cases). Only a SHARED red on
+# the same underlying gate — cargo-test-required regressing fleet-wide, a
+# farmer-flap every PR inherits — is the self-strangle this guards. Emits the
+# systemic GATE names (for the alert) and the exact set of affected PR numbers.
+SYSTEMIC_SCAN="$(printf '%s' "$PR_JSON" | BLOCK_RE="$BLOCKING_CHECK_RE" THRESH="$SYSTEMIC_THRESHOLD" python3 -c '
+import json, os, re, sys
+try:
+    block = re.compile(os.environ.get("BLOCK_RE",""))
+except re.error:
+    block = None
+thresh = int(os.environ.get("THRESH","2") or "2")
+# HARD failures only — a CI-CANCELLED / STALE run is a superseded push, not a
+# shared break, so it must not inflate the systemic count (mirrors the classifier).
+HARD = {"FAILURE", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED", "ERROR"}
+try:
+    rows = json.load(sys.stdin)
+except Exception:
+    rows = []
+by_gate = {}
+for r in rows or []:
+    num = r.get("number")
+    if num is None or block is None:
+        continue
+    seen = set()
+    for c in (r.get("statusCheckRollup") or []):
+        name = c.get("name") or c.get("context") or ""
+        concl = (c.get("conclusion") or c.get("state") or "").upper()
+        if name and name not in seen and block.search(name) and concl in HARD:
+            seen.add(name)
+            by_gate.setdefault(name, set()).add(num)
+gates = sorted(g for g, prs in by_gate.items() if len(prs) >= thresh)
+prs = sorted({p for g in gates for p in by_gate[g]})
+print("GATES\t" + ",".join(gates))
+print("PRS\t" + ",".join(str(p) for p in prs))
+' 2>/dev/null || true)"
+SYSTEMIC_GATES="$(printf '%s\n' "$SYSTEMIC_SCAN" | awk -F'\t' '/^GATES/{print $2; exit}')"
+SYSTEMIC_PRS="$(printf '%s\n' "$SYSTEMIC_SCAN" | awk -F'\t' '/^PRS/{print $2; exit}')"
+
+# MAIN_RED: consume the trunk-sentinel signal from ambient.jsonl. Echoes "1" iff
+# the freshest trunk state event (within TRUNK_RED_MAX_AGE_MIN) says main is red.
+MAIN_RED="$(AMBIENT="$AMBIENT_LOG" MAXAGE="$TRUNK_RED_MAX_AGE_MIN" python3 -c '
+import json, os, sys
+from datetime import datetime, timezone
+path = os.environ.get("AMBIENT","")
+try:
+    maxage = float(os.environ.get("MAXAGE","90") or "90")
+except ValueError:
+    maxage = 90.0
+best_ts = None
+best_red = None  # True=red, False=green, None=unknown
+def parse(ts):
+    try:
+        return datetime.fromisoformat((ts or "").replace("Z","+00:00"))
+    except Exception:
+        return None
+try:
+    fh = open(path)
+except OSError:
+    print("0"); sys.exit(0)
+with fh:
+    for line in fh:
+        line = line.strip()
+        if not line or "trunk" not in line:
+            continue
+        try:
+            e = json.loads(line)
+        except Exception:
+            continue
+        kind = e.get("kind","")
+        red = None
+        if kind == "trunk_red_persistent":
+            red = True
+        elif kind == "trunk_recovered":
+            red = False
+        elif kind == "trunk_state_change":
+            to = (e.get("to") or "").upper()
+            if to == "TRUNK_RED": red = True
+            elif to == "TRUNK_GREEN": red = False
+        else:
+            continue
+        ts = parse(e.get("ts"))
+        if ts is None:
+            continue
+        if best_ts is None or ts >= best_ts:
+            best_ts, best_red = ts, red
+if best_ts is None or best_red is not True:
+    print("0"); sys.exit(0)
+age_min = (datetime.now(timezone.utc) - best_ts).total_seconds() / 60.0
+print("1" if age_min <= maxage else "0")
+' 2>/dev/null || echo 0)"
+[[ "$MAIN_RED" == "1" ]] && red "SYSTEMIC-RED: trunk-sentinel reports main RED (within ${TRUNK_RED_MAX_AGE_MIN}m) — HOLDING all required-red PRs this beat."
+[[ -n "$SYSTEMIC_GATES" ]] && red "SYSTEMIC-RED: real gate(s) hard-failing on >= ${SYSTEMIC_THRESHOLD} open PRs: ${SYSTEMIC_GATES//,/ } (PRs: ${SYSTEMIC_PRS})"
+
+# is_systemic_red PR_NUM — 0 (systemic → HOLD) iff main is red, or this PR is in
+# the set whose real (blocking) gate is shared across >= threshold open PRs.
+is_systemic_red() {  # <pr_num>
+    [[ "$MAIN_RED" == "1" ]] && return 0
+    [[ -z "$SYSTEMIC_PRS" ]] && return 1
+    case ",$SYSTEMIC_PRS," in
+        *,"$1",*) return 0 ;;
+    esac
+    return 1
+}
+
+# emit_systemic_hold_event PR GATES REASON — board-visible HOLD signal. Literal
+# kind (not a %s) so the event-registry coverage scanner can grep it:
+# emits {"kind":"pr_reap_held_systemic"} — registered in EVENT_REGISTRY.yaml.
+emit_systemic_hold_event() {  # <pr> <gates_csv> <reason>
+    printf '{"ts":"%s","kind":"pr_reap_held_systemic","source":"rot-reaper","pr":%s,"gates":"%s","reason":"%s","threshold":%s}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$1" "$2" "$3" "$SYSTEMIC_THRESHOLD" \
+        >> "$AMBIENT_LOG" 2>/dev/null || true
+}
+
+# hold_systemic_red PR REQ_FAIL_CHECKS AGE TITLE — the HOLD action: never close,
+# re-arm the auto-merge backstop so the PR lands once the shared gate recovers,
+# emit the board signal, and page the operator ONCE per beat (a real trunk-red
+# needs a human, not mass-closure). Returns 0 (caller `continue`s).
+hold_systemic_red() {  # <pr> <req_fail_checks> <age_h> <title>
+    local pr="$1" checks="$2" age="$3" title="$4" reason
+    if [[ "$MAIN_RED" == "1" ]]; then reason="main-red"; else reason="shared-gate"; fi
+    if [[ $DRY_RUN -eq 1 ]]; then
+        dry "would HOLD PR #$pr (required-red is SYSTEMIC: $reason [$checks]; never close, re-arm + alert)"
+        HELD=$((HELD + 1)); HELD_PRS+="${pr} "; return 0
+    fi
+    green "  HOLD PR #$pr — required-red is SYSTEMIC ($reason: $checks); NOT closing (shared break, not this PR's fault), re-armed backstop."
+    arm_backstop "$pr"
+    emit_systemic_hold_event "$pr" "$checks" "$reason"
+    HELD=$((HELD + 1)); HELD_PRS+="${pr} "
+    return 0
+}
+
+while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL HEAD REQ_FAIL_CHECKS; do
     [[ -z "$PR_NUM" ]] && continue
 
     # Never self-close a gap-filing PR (belt: also excluded from every class).
@@ -637,9 +856,21 @@ while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQF
                 SKIPPED=$((SKIPPED + 1)); continue
                 ;;
             hard_fail|*)
-                : # genuinely dead → fall through to the close below.
+                : # individually dead → still subject to the SYSTEMIC guard below.
                 ;;
         esac
+        # ── RESILIENT-1188 SYSTEMIC-RED GUARD ────────────────────────────────
+        # The per-PR classifier says this PR is an individual hard_fail. But if
+        # that redness is SYSTEMIC — the same required gate is red across >=
+        # SYSTEMIC_THRESHOLD open PRs, or the trunk-sentinel reports main red —
+        # then it is a shared/trunk break, NOT this PR's fault, and closing it
+        # (along with every sibling in the same beat/loop) is the fleet-wide
+        # self-strangle. HOLD instead: re-arm the backstop, alert, never close.
+        if is_systemic_red "$PR_NUM"; then
+            info "PR #$PR_NUM — required-red is SYSTEMIC (shared gate / main red: ${REQ_FAIL_CHECKS:-<aggregate>}) → HOLD, not reap (RESILIENT-1188)."
+            hold_systemic_red "$PR_NUM" "$REQ_FAIL_CHECKS" "$AGE" "$TITLE"
+            continue
+        fi
         if [[ "$CLOSED" -ge "$MAX_CLOSE" ]]; then
             warn "Reached MAX_CLOSE=$MAX_CLOSE this run; deferring the rest."
             BACKLOG=$((BACKLOG + 1)); BACKLOG_PRS+="${PR_NUM} "; continue
@@ -699,5 +930,17 @@ done <<< "$ROWS"
 # ── NO-ABANDON METRIC ─────────────────────────────────────────────────────────
 emit_backlog_metric "$BACKLOG" "$BACKLOG_PRS"
 
-green "=== rot-reaper done: closed=$CLOSED requeued=$REQUEUED armed=$ARMED spared=$SPARED skipped=$SKIPPED backlog=$BACKLOG ==="
-reaper_finish ok "{\"closed\":$CLOSED,\"requeued\":$REQUEUED,\"armed\":$ARMED,\"spared\":$SPARED,\"skipped\":$SKIPPED,\"backlog\":$BACKLOG}"
+# ── RESILIENT-1188: page the operator ONCE per beat if we HELD any PR for a
+# systemic red. A real trunk-red / shared-gate break needs a human to clear the
+# gate — the reaper deliberately will not mass-close, so nothing else advances
+# these PRs until the shared break is fixed.
+if [[ "$HELD" -gt 0 && $DRY_RUN -eq 0 && "$SYSTEMIC_ALERTED" -eq 0 ]]; then
+    SYSTEMIC_ALERTED=1
+    _reason="required gate(s) failing across >= ${SYSTEMIC_THRESHOLD} open PRs"
+    [[ "$MAIN_RED" == "1" ]] && _reason="main/trunk is RED (per trunk-sentinel)"
+    notify_operator "$(printf '🚨 **SYSTEMIC RED — rot-reaper HELD %s PR(s), did NOT close them.**\n\nThe redness is systemic (%s), so this is a shared/trunk gate break, not any one PR being wrong. Held PRs: %s. Shared gate(s): %s.\n\nMass-closing them would be the fleet-wide self-strangle (INFRA-3542). A human needs to clear the shared gate (fix trunk / rerun the broken required job); the held PRs are re-armed and will land on their own once it goes green.' \
+        "$HELD" "$_reason" "$(printf '%s' "$HELD_PRS" | tr -s ' ')" "$(printf '%s' "$SYSTEMIC_GATES" | tr '\n' ' ' | tr -s ' ')")" || true
+fi
+
+green "=== rot-reaper done: closed=$CLOSED requeued=$REQUEUED armed=$ARMED spared=$SPARED held=$HELD skipped=$SKIPPED backlog=$BACKLOG ==="
+reaper_finish ok "{\"closed\":$CLOSED,\"requeued\":$REQUEUED,\"armed\":$ARMED,\"spared\":$SPARED,\"held\":$HELD,\"skipped\":$SKIPPED,\"backlog\":$BACKLOG}"

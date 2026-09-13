@@ -1423,6 +1423,13 @@ events:
     consumers: [board-cycle, fleet-brief]
     fields_required: [ts, kind, pr, verdict, spare_count]
 
+  - kind: pr_reap_held_systemic
+    effect_metric: self
+    emitter: scripts/ops/rot-reaper.sh (RESILIENT-1188 systemic-red guard)
+    trigger: the rot-reaper's CLASS 2 was about to close a PR for an individual required-red (hard_fail), but the redness is SYSTEMIC — the same required gate is failing across >= threshold distinct open PRs (the W-015 grouping from scripts/coord/systemic-red-detector.sh), or the trunk-sentinel (scripts/coord/trunk-sentinel-daemon.sh) reports main RED — so it is a shared/trunk gate break, not this PR's fault; the reaper HELD the PR (re-armed the backstop, never closed) and pages the operator once per beat, preventing the fleet-wide mass-closure self-strangle (INFRA-3542)
+    consumers: [board-cycle, fleet-brief]
+    fields_required: [ts, kind, pr, gates, reason, threshold]
+
   - kind: reaper_silent
     effect_metric: self
     emitter: scripts/ops/reaper-heartbeat-watchdog.sh (INFRA-120)
