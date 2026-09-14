@@ -38,7 +38,8 @@
 #
 # REVIVE: `gh pr reopen`; on GitHub's "Could not open the pull request" limbo,
 # fall back to opening a FRESH PR for the same branch (the branch still exists);
-# then re-arm `gh pr merge --auto --squash` so it lands once green. Emits
+# then re-arm auto-merge (via the sanctioned auto-merge-armer.sh) so it lands
+# once green. Emits
 # kind=pr_revived_post_trunk_recovery per PR.
 #
 # BOUNDED + IDEMPOTENT: caps revives per run (CHUMP_TRUNK_REVIVE_MAX_PER_RUN,
@@ -459,9 +460,18 @@ sys.exit(0 if '$LABEL' in labels else 1)
             continue
         fi
 
-        # Re-arm auto-merge so the revived PR lands once green.
-        gh pr merge "$num" --repo "$REPO" --auto --squash >/dev/null 2>&1 \
-            || log "  WARN: re-arm auto-merge failed for #$num (left open)"
+        # Re-arm auto-merge so the revived PR lands once green. Route through the
+        # sanctioned single-owner armer (INFRA-1113) — NOT a raw `gh pr merge`
+        # (INFRA-1274 hot-path lint): it enforces arm-spacing against GitHub
+        # secondary rate limits AND picks squash-vs-merge-queue correctly
+        # (INFRA-1377), which a raw `--squash` gets wrong under an active queue.
+        ARMER="$SCRIPT_DIR/auto-merge-armer.sh"
+        if [[ -x "$ARMER" ]]; then
+            bash "$ARMER" --pr "$num" --repo "$REPO" >/dev/null 2>&1 \
+                || log "  WARN: re-arm auto-merge failed for #$num (left open)"
+        else
+            log "  WARN: auto-merge-armer.sh missing — #$num left open (not armed)"
+        fi
 
         emit "pr_revived_post_trunk_recovery" \
             "\"pr\":$num,\"branch\":\"$(printf '%s' "$branch" | python3 -c 'import json,sys;print(json.dumps(sys.stdin.read().strip())[1:-1])')\",\"method\":\"$method\",\"recovered_at\":\"$rec_iso\""
