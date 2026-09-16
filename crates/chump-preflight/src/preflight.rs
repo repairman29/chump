@@ -1187,6 +1187,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // CREDIBLE-1258 (CREDIBLE-268 slice): unit + integration coverage for
+        // scripts/ops/github-webhook-receiver.py:_extract_gap_ids. Pure
+        // python3, no network, <1s.
+        "scripts/ci/test-extract-gap-ids.sh",
     ];
     candidates
         .iter()

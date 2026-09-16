@@ -756,6 +756,13 @@ jobs:
       - name: Publisher-platforms typecheck + unit tests (EFFECTIVE-483)
         run: bash scripts/ci/test-publisher-platforms.sh
 
+      # CREDIBLE-1258 (CREDIBLE-268 slice): unit + integration coverage for
+      # scripts/ops/github-webhook-receiver.py:_extract_gap_ids — confirms
+      # title-scan + Closes:-trailer-body-scan extraction, and that body
+      # prose outside a Closes: trailer is never scanned.
+      - name: Gap-ID extraction unit + integration test (CREDIBLE-1258)
+        run: bash scripts/ci/test-extract-gap-ids.sh
+
       # INFRA-1621: PWA JavaScript parse gate (advisory initially).
       # Runs `node --check` on every web/v2/*.js file. Catches truncation /
       # syntax errors like the 2026-05-14 commit c64ddd676 that lopped off
