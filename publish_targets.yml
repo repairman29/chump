@@ -1,0 +1,20 @@
+# EFFECTIVE-1713 (EFFECTIVE-364 slice): artifact_type -> publish-target registry.
+#
+# Each key is a `gaps.artifact_type` value (chump-gap-store, EFFECTIVE-363).
+# Each value is an ordered array of publish-target identifiers this
+# artifact_type's shipped work should queue publication gaps for. A type
+# with no entry here (or an empty array) has nothing to publish — the
+# EFFECTIVE-364 publication resolver no-ops cleanly rather than erroring.
+#
+# Jeff-facing (external-platform) targets route through the EFFECTIVE-365
+# approval queue rather than auto-posting; that gate lives downstream of
+# this registry, not in it.
+release-note:
+  - changelog-append
+  - docs-site-refresh
+doc:
+  - docs-site-refresh
+copy:
+  - substack-draft
+screenshot:
+  - release-notes-queue
