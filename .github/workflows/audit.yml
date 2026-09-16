@@ -534,6 +534,10 @@ jobs:
         run: bash scripts/ci/test-gap-lifecycle-manager.sh
 
       # ── shard-2: event-registry + observability + webhook/cache ──────────────
+      - name: "gap-ID extraction — webhook receiver title/Closes: trailer regex (CREDIBLE-1258)"
+        if: matrix.shard == 2
+        run: bash scripts/ci/test-gap-id-extraction.sh
+
       - name: EVENT_REGISTRY coverage — no drift in either direction (INFRA-1237/INFRA-1287)
         if: matrix.shard == 2
         # INFRA-1287: flipped to strict mode — all 88 register-without-emit orphans
