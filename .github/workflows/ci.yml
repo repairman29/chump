@@ -2095,6 +2095,14 @@ jobs:
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
+      # INFRA-6926: chump-* component render-sanity harness (INFRA-1587 CSS
+      # migration slice). No chump --web daemon / Ollama needed — serves the
+      # repo statically and mocks each component's fetch() via route().
+      - name: PWA visual snapshot harness (INFRA-6926)
+        if: matrix.suite == 'pwa'
+        run: |
+          cd e2e/pwa-visual && npm ci && npx playwright install chromium && npx playwright test
+
       # ── battle-sim-only: lightweight, no LLM, no cargo ──────────────────────
       - name: Battle sim suite (no web / no LLM)
         if: matrix.suite == 'battle-sim' && matrix.enabled == true
