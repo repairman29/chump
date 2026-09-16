@@ -5,6 +5,7 @@
 
 pub mod backend;
 pub mod cron_expr;
+pub mod health;
 pub mod health_sentinel;
 pub mod ops;
 pub mod spec;
@@ -14,7 +15,7 @@ use backend::{Backend, Schedule};
 use cron_expr::{parse_interval_seconds, CronSchedule};
 use spec::{split_argv, CronSpec, Scope};
 
-const USAGE: &str = r#"Usage: chump cron <install|uninstall|status> [options]
+const USAGE: &str = r#"Usage: chump cron <install|uninstall|status|health> [options]
 
   chump cron install --name NAME (--schedule CRON_EXPR | --interval Ns) --exec COMMAND
                       [--description TEXT] [--working-dir PATH] [--env KEY=VAL]...
@@ -24,6 +25,11 @@ const USAGE: &str = r#"Usage: chump cron <install|uninstall|status> [options]
 
   chump cron status --name NAME [--scope user|system]
 
+  chump cron health [--json] [--stale-after SECS]
+                      Reports health for every chump-managed plist/timer
+                      (last run, exit status, loaded state); flags missing
+                      or stale units with a warning.
+
 Backend is auto-detected from platform (macOS -> launchd, Linux -> systemd);
 override with CHUMP_CRON_BACKEND=launchd|systemd.
 
@@ -32,6 +38,7 @@ Examples:
       --exec "/usr/local/bin/chump gap-gardener --sweep"
   chump cron install --name heartbeat --interval 300s --exec "/bin/true"
   chump cron uninstall --name gap-gardener
+  chump cron health --json
 "#;
 
 pub fn run(args: &[String]) -> i32 {
@@ -55,6 +62,7 @@ fn run_inner(args: &[String]) -> Result<i32> {
         "install" => cmd_install(&args[1..]),
         "uninstall" => cmd_uninstall(&args[1..]),
         "status" => cmd_status(&args[1..]),
+        "health" => health::run_health(&args[1..]),
         other => {
             eprintln!("chump cron: unknown subcommand '{other}'\n\n{USAGE}");
             Ok(1)
