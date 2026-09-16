@@ -2383,6 +2383,27 @@ where
     }
 }
 
+/// Debt Index (CREDIBLE-1240 / CREDIBLE-356 slice): sums Crit × (stages-short)
+/// over `findings` restricted to high-Crit dormant stages — the artifacts
+/// that are both severe and one stage away from running. Any other
+/// severity/activation combination contributes nothing. Returns `0.0` when no
+/// high-Crit dormant stage exists.
+pub fn compute_debt<'a, I>(findings: I) -> f64
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut debt = 0.0_f64;
+    for (severity, activation_state) in findings {
+        if severity != "high" || activation_state != "dormant" {
+            continue;
+        }
+        let crit = live_pct_severity_weight(severity);
+        let stages_short = LIVE_PCT_STAGE_RUNNING - live_pct_activation_stage(activation_state);
+        debt += crit * stages_short as f64;
+    }
+    debt
+}
+
 /// Aggregate counts for rebuild summary.
 pub fn meta_counts(conn: &Connection) -> Result<(i64, i64, i64)> {
     let prs: i64 = conn
@@ -2852,5 +2873,32 @@ mod tests {
         // "dormant" is stage 1, below LIVE_PCT_STAGE_RUNNING (2) — does not count as live.
         let findings = vec![("high", "dormant")];
         assert_eq!(compute_live_pct(findings), 0.0);
+    }
+
+    // ─── compute_debt (CREDIBLE-1240 / CREDIBLE-356 slice) ─────────────────
+
+    #[test]
+    fn debt_empty_input_is_zero() {
+        assert_eq!(compute_debt(std::iter::empty()), 0.0);
+    }
+
+    #[test]
+    fn debt_no_high_crit_dormant_is_zero() {
+        // med-dormant and high-referenced don't match the high+dormant filter.
+        let findings = vec![("med", "dormant"), ("high", "referenced")];
+        assert_eq!(compute_debt(findings), 0.0);
+    }
+
+    #[test]
+    fn debt_high_crit_dormant_sums_crit_times_stages_short() {
+        // high (crit 3.0) dormant (stage 1, 1 stage short of running=2): 3.0 * 1 = 3.0
+        let findings = vec![("high", "dormant"), ("high", "dormant")];
+        assert_eq!(compute_debt(findings), 6.0);
+    }
+
+    #[test]
+    fn debt_ignores_non_high_severity_dormant() {
+        let findings = vec![("low", "dormant"), ("med", "dormant")];
+        assert_eq!(compute_debt(findings), 0.0);
     }
 }
