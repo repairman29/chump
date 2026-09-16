@@ -2070,6 +2070,37 @@ mod tests {
         }
     }
 
+    // EFFECTIVE-1713 (EFFECTIVE-364 slice): direct unit coverage of
+    // get_publish_targets — a known artifact_type resolves the registered
+    // target list, an unknown one returns empty rather than panicking.
+    #[test]
+    #[serial_test::serial(publish_targets_path_env)]
+    fn effective1713_get_publish_targets_known_and_unknown_type() {
+        let dir = tempfile::tempdir().unwrap();
+        let targets_path = dir.path().join("publish_targets.json");
+        std::fs::write(
+            &targets_path,
+            r#"{"blog-post":[{"target_type":"docs-site","platform_id":"github-pages","requires_approval":true}]}"#,
+        )
+        .unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_PUBLISH_TARGETS_PATH", &targets_path);
+        }
+
+        let known = get_publish_targets("blog-post");
+        let unknown = get_publish_targets("no-such-artifact-type");
+
+        unsafe {
+            std::env::remove_var("CHUMP_PUBLISH_TARGETS_PATH");
+        }
+
+        assert_eq!(known.len(), 1);
+        assert_eq!(known[0].platform_id, "github-pages");
+        assert_eq!(known[0].target_type, "docs-site");
+        assert!(known[0].requires_approval);
+        assert!(unknown.is_empty());
+    }
+
     #[test]
     fn credible192_parse_spirit_verdict() {
         assert_eq!(
