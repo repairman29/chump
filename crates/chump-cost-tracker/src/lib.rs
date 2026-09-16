@@ -199,7 +199,7 @@ pub fn check_ceiling() -> Result<bool, String> {
         ));
     }
 
-    if current >= warn {
+    if current > warn {
         return Ok(true);
     }
 
