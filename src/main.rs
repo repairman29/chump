@@ -204,10 +204,12 @@ mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
+mod debt_calc; // CREDIBLE-1276: compute_debt — high-crit dormant stage debt calculation
 mod provider_bandit;
 mod provider_cascade;
 mod provider_probe;
 mod provider_quality;
+mod prune_ledger; // CREDIBLE-1277: prune_ledger — low-crit dormant stage pruning
 mod ratings;
 mod read_url_tool;
 mod reasoning_mode;
