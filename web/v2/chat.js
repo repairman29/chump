@@ -196,7 +196,7 @@ class ChumpChat extends HTMLElement {
       <style>${CHAT_CSS}</style>
       <div id="messages"></div>
       <div id="composer">
-        <textarea id="input" placeholder="Message Chump…" rows="1" aria-label="Chat input"></textarea>
+        <textarea id="input" data-test-id="chat-input" placeholder="Message Chump…" rows="1" aria-label="Chat input"></textarea>
         <button id="stop-btn" title="Stop" aria-label="Stop generation">■</button>
         <button id="send-btn" aria-label="Send">▶</button>
       </div>
