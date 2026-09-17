@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# scripts/ci/test-chump-playbook-freshness.sh — META-418 (META-172 slice)
+# scripts/ci/test-chump-playbook-freshness.sh — META-418, META-645 (META-172 slice)
 #
 # CI gate for docs/process/CHUMP_PLAYBOOK.md — the load-bearing "how Chump
 # works" reference doc. A doc like this that silently drifts from the code
