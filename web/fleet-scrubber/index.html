@@ -15,6 +15,13 @@
       --color-blocked: #ef4444;
       --color-idle:    #9ca3af;
 
+      /* META-129 idle palette v1: idle promoted from one state to five */
+      --color-idle-scheduled-quiet:   #64748b;
+      --color-idle-working-but-quiet: #14b8a6;
+      --color-idle-stalled:           #eab308;
+      --color-idle-dead:              #4b5563;
+      --color-idle-untracked:         #9ca3af;
+
       --bg:        #0f172a;
       --bg2:       #1e293b;
       --bg3:       #334155;
@@ -165,6 +172,18 @@
       height: 10px;
       border-radius: 2px;
       flex-shrink: 0;
+    }
+    /* Confidence flag (META-129 idle palette v1): solid = rich events,
+       dashed = inferred from sparse signal, hatched = only session_start seen */
+    .legend-swatch.confidence-dashed {
+      border: 1px dashed var(--text);
+      background: transparent !important;
+    }
+    .legend-swatch.confidence-hatched {
+      background-image: repeating-linear-gradient(
+        45deg, var(--color-idle-untracked), var(--color-idle-untracked) 2px,
+        transparent 2px, transparent 4px
+      ) !important;
     }
 
     /* ── Main area ───────────────────────────────────────────────────────── */
@@ -399,7 +418,11 @@
     <div class="legend-item"><div class="legend-swatch" style="background:var(--color-push)"></div>push</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--color-merge)"></div>merge</div>
     <div class="legend-item"><div class="legend-swatch" style="background:var(--color-blocked)"></div>blocked</div>
-    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-idle)"></div>idle</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-idle-scheduled-quiet)"></div>scheduled-quiet</div>
+    <div class="legend-item"><div class="legend-swatch confidence-dashed" style="border-color:var(--color-idle-working-but-quiet)"></div>working-but-quiet</div>
+    <div class="legend-item"><div class="legend-swatch confidence-dashed" style="border-color:var(--color-idle-stalled)"></div>stalled</div>
+    <div class="legend-item"><div class="legend-swatch" style="background:var(--color-idle-dead)"></div>dead</div>
+    <div class="legend-item"><div class="legend-swatch confidence-hatched"></div>untracked</div>
   </div>
 </div>
 
@@ -465,6 +488,28 @@ const ACTIVITY_COLOR = {
   merge:   'var(--color-merge)',
   blocked: 'var(--color-blocked)',
   idle:    'var(--color-idle)',
+
+  // META-129 idle palette v1: idle promoted from one state to five. The
+  // idle-detection logic that assigns these sub-states to segments is a
+  // separate gap (META-129 AC "Idle palette signals") — this map only
+  // defines the labels/colors/confidence so the UI renders correctly
+  // whenever that logic starts emitting them.
+  'scheduled-quiet':   'var(--color-idle-scheduled-quiet)',
+  'working-but-quiet': 'var(--color-idle-working-but-quiet)',
+  stalled:             'var(--color-idle-stalled)',
+  dead:                'var(--color-idle-dead)',
+  untracked:           'var(--color-idle-untracked)',
+};
+
+// Confidence flag per idle sub-state (META-129 AC): solid when we have rich
+// events, dashed when inferring from sparse signal, hatched when only a
+// session_start was ever seen.
+const IDLE_STATE_CONFIDENCE = {
+  'scheduled-quiet':   'solid',
+  'working-but-quiet': 'dashed',
+  stalled:             'dashed',
+  dead:                'solid',
+  untracked:           'hatched',
 };
 
 const LANE_H = 30;
@@ -1109,7 +1154,7 @@ function openPanel(seg) {
 
   panelMeta.innerHTML = `
     <div class="meta-row"><span class="meta-key">session</span><span class="meta-val">${seg.session_id}</span></div>
-    <div class="meta-row"><span class="meta-key">activity</span><span class="meta-val" style="color:${ACTIVITY_COLOR[seg.activity]||'inherit'}">${seg.activity}</span></div>
+    <div class="meta-row"><span class="meta-key">activity</span><span class="meta-val" style="color:${ACTIVITY_COLOR[seg.activity]||'inherit'}">${seg.activity}${IDLE_STATE_CONFIDENCE[seg.activity] ? ` (${IDLE_STATE_CONFIDENCE[seg.activity]})` : ''}</span></div>
     <div class="meta-row"><span class="meta-key">gap_id</span><span class="meta-val">${seg.gap_id || '—'}</span></div>
     <div class="meta-row"><span class="meta-key">start</span><span class="meta-val">${seg.start}</span></div>
     <div class="meta-row"><span class="meta-key">end</span><span class="meta-val">${seg.end}</span></div>
