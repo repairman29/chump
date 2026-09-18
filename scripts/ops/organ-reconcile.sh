@@ -30,6 +30,17 @@
 #
 # Runs as root (writes /etc/systemd/system). Under a non-root/--auto-style
 # context it warns and exits 0 rather than hard-failing.
+#
+# INFRA-7328 (INFRA-3648 slice): --check ALSO parses
+# scripts/ops/node-organ-manifest.txt — the sibling manifest for raw
+# background-bash organs that are NOT systemd units at all (the
+# supervisor=nohup fallback path installed by
+# scripts/setup/install-node-housekeeping.sh). Detected via `pgrep` against
+# the resident loop-wrapper launcher; a launcher miss falls back to a
+# heartbeat check — pgrep against the wrapped script itself, which proves
+# the organ ran within its declared cadence even mid-cycle, between one
+# `sleep <heartbeat>` and the next. No systemctl involved for this half of
+# --check (these organs were never systemd units).
 
 set -euo pipefail
 
@@ -52,6 +63,11 @@ VERIFY_DELAY_S="${CHUMP_ORGAN_RECONCILE_VERIFY_DELAY_S:-2}"
 # dual-write (repo-local + $HOME-durable copy).
 FARMER_HEARTBEAT_FILE="${CHUMP_ORGAN_RECONCILE_FARMER_HEARTBEAT:-$REPO_ROOT/.chump/farmer-heartbeat}"
 FARMER_HEARTBEAT_DURABLE="${CHUMP_ORGAN_RECONCILE_FARMER_HEARTBEAT_DURABLE:-${HOME:-/root}/.chump/farmer-heartbeat}"
+
+# INFRA-7328: process-organ (non-systemd) manifest + stubbable pgrep (mirrors
+# SYSTEMCTL_BIN's test-hook pattern above).
+NODE_ORGAN_MANIFEST="${CHUMP_NODE_ORGAN_MANIFEST:-$REPO_ROOT/scripts/ops/node-organ-manifest.txt}"
+PGREP_BIN="${CHUMP_ORGAN_RECONCILE_PGREP_BIN:-pgrep}"
 
 AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
@@ -462,7 +478,59 @@ if [[ "$MODE" == "--check" ]]; then
       fi
     done < <(discover_live_chump_units)
   fi
-  [[ "$fail" == 0 ]] && echo "ok: live systemd state matches organ-manifest.txt"
+
+  # ── INFRA-7328: process-organ (non-systemd) check ──────────────────────────
+  # Sibling of the systemd check above, for scripts/ops/node-organ-manifest.txt
+  # (INFRA-7327) — organs installed as raw looping bash processes, not systemd
+  # units, so systemctl has nothing to say about them. Detector is pgrep
+  # against the resident launcher (primary); if that misses, pgrep against the
+  # wrapped script itself (heartbeat check — proves the organ executed within
+  # its declared cadence, mid-cycle, rather than being dead outright).
+  if [[ -f "$NODE_ORGAN_MANIFEST" ]]; then
+    if ! command -v "$PGREP_BIN" >/dev/null 2>&1; then
+      echo "UNKNOWN: $PGREP_BIN unavailable — cannot detect process-organ liveness this cycle"
+    else
+      while IFS= read -r raw_line; do
+        [[ -z "${raw_line// }" ]] && continue
+        [[ "$raw_line" =~ ^[[:space:]]*# ]] && continue
+        wraps=""
+        if [[ "$raw_line" == *"#"* ]]; then
+          wraps="$(printf '%s' "${raw_line#*#}" | sed -n 's/.*wraps[[:space:]]*//p' | xargs 2>/dev/null)"
+        fi
+        body="${raw_line%%#*}"
+        # shellcheck disable=SC2206
+        tokens=($body)
+        [[ "${#tokens[@]}" -lt 2 ]] && continue
+        p_state="${tokens[0]}" p_name="${tokens[1]}"
+        p_launcher="" p_pgrep="" p_heartbeat=""
+        for tok in "${tokens[@]:2}"; do
+          case "$tok" in
+            launcher=*)   p_launcher="${tok#launcher=}" ;;
+            pgrep=*)      p_pgrep="${tok#pgrep=}" ;;
+            heartbeat=*)  p_heartbeat="${tok#heartbeat=}" ;;
+          esac
+        done
+        [[ "$p_state" != "enabled" ]] && continue
+        if [[ -z "$p_pgrep" ]]; then
+          echo "UNKNOWN: $p_name (manifest line has no pgrep= pattern)"
+          continue
+        fi
+        p_pgrep_expanded="${p_pgrep/#\~/$HOME}"
+        if "$PGREP_BIN" -f "$p_pgrep_expanded" >/dev/null 2>&1; then
+          echo "DETECTED-ALIVE: $p_name (pgrep matched launcher $p_pgrep)"
+          continue
+        fi
+        if [[ -n "$wraps" ]] && "$PGREP_BIN" -f "$wraps" >/dev/null 2>&1; then
+          echo "DETECTED-ALIVE: $p_name (heartbeat check: wrapped script $wraps is mid-cycle, heartbeat=${p_heartbeat:-0}s)"
+          continue
+        fi
+        echo "DEAD: $p_name (no pgrep match for launcher $p_pgrep or wrapped script $wraps)"
+        fail=1
+      done < "$NODE_ORGAN_MANIFEST"
+    fi
+  fi
+
+  [[ "$fail" == 0 ]] && echo "ok: live state matches organ-manifest.txt + node-organ-manifest.txt"
   exit "$fail"
 fi
 
