@@ -27,9 +27,9 @@ command -v git >/dev/null 2>&1 || fail "git not found — install git and re-run
 info "cloning $REPO_URL -> $CLONE_DIR"
 git clone --quiet --depth 1 "$REPO_URL" "$CLONE_DIR" || fail "git clone failed: $REPO_URL -> $CLONE_DIR"
 
-INSTALL_SCRIPT="$CLONE_DIR/scripts/setup/install.sh"
+INSTALL_SCRIPT="$CLONE_DIR/scripts/setup/chump-node-install.sh"
 [ -f "$INSTALL_SCRIPT" ] || fail "clone succeeded but $INSTALL_SCRIPT is missing — repo layout mismatch?"
 chmod +x "$INSTALL_SCRIPT"
 
-info "handing off to scripts/setup/install.sh"
+info "handing off to scripts/setup/chump-node-install.sh"
 CHUMP_NODE_REPO_URL="$REPO_URL" bash "$INSTALL_SCRIPT" "$@"
