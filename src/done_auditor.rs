@@ -95,7 +95,9 @@ struct Cursor {
 }
 
 fn cursor_path(repo_root: &Path) -> PathBuf {
-    repo_root.join(".chump-locks").join("done_auditor_cursor.json")
+    repo_root
+        .join(".chump-locks")
+        .join("done_auditor_cursor.json")
 }
 
 fn load_cursor(repo_root: &Path) -> Option<Cursor> {
