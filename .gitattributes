@@ -124,3 +124,10 @@ scripts/ci/shell-test-allowlist.txt merge=union
 scripts/ops/organ-manifest.txt merge=union
 scripts/setup/optional-installers-allowlist.txt merge=union
 scripts/ci/preflight-ci-parity-exceptions.txt merge=union
+
+# INFRA-7405: union merge for remaining hot append-only docs (INFRA-1419 slice).
+# CLAUDE_GOTCHAS.md and KNOWN_FLAKES.yaml both accept concurrent additive
+# entries from many PRs; git core `union` concatenates unique lines from
+# both sides, same rationale as the registries above.
+docs/process/CLAUDE_GOTCHAS.md merge=union
+docs/process/KNOWN_FLAKES.yaml merge=union
