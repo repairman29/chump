@@ -133,7 +133,7 @@ pub fn run(args: &[String]) -> i32 {
             let high = count_high_severity_alerts();
             if high > 0 {
                 eprintln!(
-                    "chump harvest scan: {high} high-severity alert(s) present — see docs/arsenal/GLOBAL_ARSENAL.json .alerts"
+                    "chump harvest scan: {high} high-severity alert(s) present — see the .alerts in docs/arsenal/GLOBAL_ARSENAL.json"
                 );
                 return 1;
             }
