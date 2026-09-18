@@ -124,3 +124,5 @@ scripts/ci/shell-test-allowlist.txt merge=union
 scripts/ops/organ-manifest.txt merge=union
 scripts/setup/optional-installers-allowlist.txt merge=union
 scripts/ci/preflight-ci-parity-exceptions.txt merge=union
+docs/process/CLAUDE_GOTCHAS.md merge=union
+docs/process/KNOWN_FLAKES.yaml merge=union
