@@ -43,6 +43,8 @@ docs/gaps/*.yaml merge=gap-yaml-add-line
 # Letting git do it once-and-for-all.
 docs/observability/EVENT_REGISTRY.yaml merge=union
 scripts/ci/env-vars-internal.txt merge=union
+docs/process/CLAUDE_GOTCHAS.md merge=union
+docs/process/KNOWN_FLAKES.yaml merge=union
 
 # INFRA-1201: web/v2/index.html is a PWA append-only hot file. Each new PWA
 # feature (PRODUCT-NNN / INFRA-1011/1013-style) adds a <script src="X.js">
