@@ -301,4 +301,74 @@ for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.serv
 done
 pass "8: kill-then-reconcile — worker/coherence-sync/gap-store organs are applicable when their dependency binaries are present and get re-enabled when found inactive (INFRA-3642)"
 
+# ── 9. INFRA-7328: --check parses node-organ-manifest.txt (non-systemd
+#       process organs) — pgrep-alive, heartbeat-fallback-alive, and dead ────
+PGREP_STUB="$TMP/pgrep-stub"
+PGREP_MATCH_FILE="$TMP/pgrep-match.txt"
+cat > "$PGREP_STUB" <<'EOF'
+#!/usr/bin/env bash
+pat="${@: -1}"
+grep -qxF "$pat" "$PGREP_MATCH_FILE" 2>/dev/null && exit 0 || exit 1
+EOF
+chmod +x "$PGREP_STUB"
+
+EMPTY_MANIFEST="$TMP/empty-organ-manifest.txt"
+: > "$EMPTY_MANIFEST"
+
+NODE_MANIFEST="$TMP/node-organ-manifest.txt"
+cat > "$NODE_MANIFEST" <<'EOF'
+enabled  alive-organ  launcher=~/.chump/organs/alive-organ.sh  pgrep=~/.chump/organs/alive-organ.sh  heartbeat=60  # wraps scripts/ops/alive-organ.sh
+enabled  hb-organ     launcher=~/.chump/organs/hb-organ.sh     pgrep=~/.chump/organs/hb-organ.sh     heartbeat=60  # wraps scripts/ops/hb-organ.sh
+enabled  dead-organ   launcher=~/.chump/organs/dead-organ.sh   pgrep=~/.chump/organs/dead-organ.sh   heartbeat=60  # wraps scripts/ops/dead-organ.sh
+EOF
+
+run_check_node_manifest() {
+    CHUMP_ORGAN_MANIFEST="$EMPTY_MANIFEST" \
+    CHUMP_NODE_ORGAN_MANIFEST="$NODE_MANIFEST" \
+    CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN="$STUB" \
+    CHUMP_ORGAN_RECONCILE_ALLOW_NONROOT=1 \
+    CHUMP_ORGAN_RECONCILE_PGREP_BIN="$PGREP_STUB" \
+    PGREP_MATCH_FILE="$PGREP_MATCH_FILE" \
+    STATE_DIR="$STATE_DIR" CALL_LOG="$CALL_LOG" \
+    ACTIVE_FILE="$ACTIVE_FILE" ENABLE_FAIL_FILE="$ENABLE_FAIL_FILE" VERIFY_FAIL_FILE="$VERIFY_FAIL_FILE" \
+    NODE_AMBIENT="$AMBIENT" \
+    bash "$RECONCILE" --check
+}
+
+# launcher matches directly, wrapped-script matches (heartbeat fallback), and
+# neither matches for dead-organ. The reconcile expands a leading "~/" to
+# $HOME before invoking pgrep, so the match fixture must use the expanded form.
+cat > "$PGREP_MATCH_FILE" <<EOF
+$HOME/.chump/organs/alive-organ.sh
+scripts/ops/hb-organ.sh
+EOF
+
+set +e
+out="$(run_check_node_manifest)"
+rc=$?
+set -e
+
+echo "$out" | grep -q "DETECTED-ALIVE: alive-organ" \
+    || fail "expected DETECTED-ALIVE for alive-organ (direct pgrep match); got: $out"
+echo "$out" | grep -q "DETECTED-ALIVE: hb-organ" \
+    || fail "expected DETECTED-ALIVE for hb-organ (heartbeat fallback match on wrapped script); got: $out"
+echo "$out" | grep -q "DEAD: dead-organ" \
+    || fail "expected DEAD for dead-organ (no pgrep match at all); got: $out"
+[[ "$rc" != "0" ]] || fail "--check must exit non-zero when a required process-organ is DEAD; got rc=0"
+pass "9a: --check reports DETECTED-ALIVE (pgrep + heartbeat fallback) and DEAD for node-organ-manifest.txt, non-zero exit on any DEAD"
+
+# all three alive → exit 0
+cat > "$PGREP_MATCH_FILE" <<EOF
+$HOME/.chump/organs/alive-organ.sh
+scripts/ops/hb-organ.sh
+$HOME/.chump/organs/dead-organ.sh
+EOF
+set +e
+out="$(run_check_node_manifest)"
+rc=$?
+set -e
+echo "$out" | grep -q "DEAD" && fail "expected zero DEAD organs; got: $out"
+[[ "$rc" == "0" ]] || fail "--check must exit 0 when every required process-organ is DETECTED-ALIVE; got rc=$rc, out: $out"
+pass "9b: --check exits 0 when every required process-organ is DETECTED-ALIVE"
+
 echo "ALL PASS"
