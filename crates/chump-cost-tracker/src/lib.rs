@@ -142,7 +142,12 @@ pub fn add_session_cost_usd(usd: f64) {
     if usd <= 0.0 {
         return;
     }
-    let micro = (usd * 1_000_000.0) as u64;
+    let micro_f = usd * 1_000_000.0;
+    let micro = if micro_f > u64::MAX as f64 {
+        u64::MAX
+    } else {
+        micro_f as u64
+    };
     SESSION_COST_MICRO_USD.fetch_add(micro, Ordering::Relaxed);
 }
 
