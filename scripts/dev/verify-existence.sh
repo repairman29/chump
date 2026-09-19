@@ -32,6 +32,7 @@ set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 JSON_OUT=0
+EXPLICIT_SOURCE_CHECK=0
 QUERY=""
 
 while [[ $# -gt 0 ]]; do
