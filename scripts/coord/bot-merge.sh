@@ -4582,9 +4582,10 @@ except Exception:
                             chump pr ac-coverage "$TARGET_PR" 2>&1 || true)"
                         if grep -q '"status":"miss"' <<<"$_ac_out"; then
                             _ac_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_out")"
-                            yellow "[CREDIBLE-178] AC-coverage MISS: $_gid closed via PR #$TARGET_PR but the merged diff did not cover all acceptance criteria (${_ac_misses:-misses}). Work may be PARTIAL — verify before trusting 'done'. (ac_coverage_miss emitted to ambient.)"
+                            red "[CREDIBLE-178] AC-coverage BLOCK: $_gid closed via PR #$TARGET_PR but the merged diff did not cover all acceptance criteria (${_ac_misses:-misses}). Work may be PARTIAL — verify before trusting 'done'. (ac_coverage_miss emitted to ambient.)"
                             CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
                                 chump gap set "$_gid" --add-note "CREDIBLE-178: closed via PR #$TARGET_PR with UNCOVERED acceptance criteria ${_ac_misses:-}. Verify the work is complete before trusting status=done." >/dev/null 2>&1 || true
+                            exit 1
                         fi
                         unset _ac_out _ac_misses
                     fi
