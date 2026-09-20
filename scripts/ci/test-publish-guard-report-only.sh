@@ -42,13 +42,10 @@ chmod +x "$SANDBOX/scripts/git-hooks/"*
 cp scripts/publish-guard/publish-guard.py scripts/publish-guard/report_only.py "$SANDBOX/scripts/publish-guard/"
 cp .publish-guard/MIN_PATTERNS_VERSION .publish-guard/overrides.txt "$SANDBOX/.publish-guard/"
 printf '.chump-locks/\n' > "$SANDBOX/.gitignore"
-cat > "$SANDBOX/Cargo.toml" <<'EOF'
-[package]
-name = "sandbox"
-version = "0.0.0"
-edition = "2021"
-EOF
-echo 'pub fn x() {}' > "$SANDBOX/src/lib.rs"
+# No Cargo.toml and no .rs on purpose: the sandbox HOME is fake (so no real pattern file can
+# leak into the test), and a fake HOME hides rustup's toolchain on CI runners. Plain text files
+# keep cargo out of it, and prove the call is reached on a docs-only commit too.
+echo 'notes' > "$SANDBOX/src/notes.md"
 G() { git -C "$SANDBOX" -c user.email=t@t -c user.name=t "$@"; }
 G add -A >/dev/null
 G commit -q --no-verify -m seed
@@ -67,11 +64,11 @@ commit() { # commit <message>  -> exit code of git commit, output in $SANDBOX/.o
 }
 
 # ── 2. no pattern file: generic rules only, says so, commit succeeds ─────────
-echo '// see /Users/realperson/notes for context' >> "$SANDBOX/src/lib.rs"
-G add src/lib.rs
+echo 'see /Users/realperson/notes for context' >> "$SANDBOX/src/notes.md"
+G add src/notes.md
 if commit "INFRA-1: add a note"; then pass "commit with a finding still SUCCEEDS (report-only)"; else fail "report-only guard changed the commit outcome"; cat "$SANDBOX/.out"; fi
 grep -q 'generic rules only' "$SANDBOX/.out" && pass "missing pattern file falls back to builtin-only and says so" || fail "no builtin-only notice"
-grep -q 'src/lib.rs:[0-9]*: home-path' "$SANDBOX/.out" && pass "finding reported as file:line: class" || fail "home-path finding not reported"
+grep -q 'src/notes.md:[0-9]*: home-path' "$SANDBOX/.out" && pass "finding reported as file:line: class" || fail "home-path finding not reported"
 grep -q 'realperson' "$SANDBOX/.out" && fail "output echoed the matched value" || pass "matched value is not echoed"
 if grep -q '"kind":"publish_guard_report"' "$AMBIENT" 2>/dev/null && grep -q '"site":"staged"' "$AMBIENT" \
    && grep -q '"patterns":"builtin-only"' "$AMBIENT" && grep -q 'home-path=1' "$AMBIENT"; then
@@ -79,7 +76,7 @@ if grep -q '"kind":"publish_guard_report"' "$AMBIENT" 2>/dev/null && grep -q '"s
 else
     fail "ambient event missing or incomplete"
 fi
-grep -q 'realperson\|src/lib.rs' "$AMBIENT" && fail "ambient event carries a path or a value" || pass "ambient event carries no path and no value"
+grep -q 'realperson\|src/notes.md' "$AMBIENT" && fail "ambient event carries a path or a value" || pass "ambient event carries no path and no value"
 
 # ── 3. operator pattern file present: term caught in diff and in message ─────
 mkdir -p "$FAKEHOME/.config/chump"
@@ -90,10 +87,10 @@ cat > "$FAKEHOME/.config/chump/publish-guard.patterns" <<'EOF'
 hostname   term   zorkmidbox
 EOF
 : > "$AMBIENT"
-echo '// deployed from zorkmidbox' >> "$SANDBOX/src/lib.rs"
-G add src/lib.rs
+echo 'deployed from zorkmidbox' >> "$SANDBOX/src/notes.md"
+G add src/notes.md
 if commit "INFRA-2: rebuilt on zorkmidbox overnight"; then pass "commit with operator-term findings still succeeds"; else fail "operator-term finding blocked the commit"; cat "$SANDBOX/.out"; fi
-grep -q 'src/lib.rs:[0-9]*: hostname' "$SANDBOX/.out" && pass "operator term found in the staged diff" || fail "operator term in diff not reported"
+grep -q 'src/notes.md:[0-9]*: hostname' "$SANDBOX/.out" && pass "operator term found in the staged diff" || fail "operator term in diff not reported"
 grep -q 'commit-message:1: hostname' "$SANDBOX/.out" && pass "operator term found in the commit MESSAGE (commit-msg stage)" || fail "operator term in message not reported"
 grep -q 'zorkmidbox' "$SANDBOX/.out" && fail "output echoed the operator term" || pass "operator term is not echoed"
 grep -q '"site":"message"' "$AMBIENT" && grep -q '"patterns":"full"' "$AMBIENT" && pass "message-site event written, pattern mode full" || fail "message-site event missing"
@@ -101,8 +98,8 @@ grep -q '"site":"message"' "$AMBIENT" && grep -q '"patterns":"full"' "$AMBIENT" 
 # ── 4. registry paths are skipped in report-only mode ────────────────────────
 : > "$AMBIENT"
 printf 'title: moved the box zorkmidbox\n' > "$SANDBOX/docs/gaps/INFRA-3.yaml"
-echo '// a clean line rides along so the staged scan has something to read' >> "$SANDBOX/src/lib.rs"
-G add docs/gaps/INFRA-3.yaml src/lib.rs
+echo 'a clean line rides along so the staged scan has something to read' >> "$SANDBOX/src/notes.md"
+G add docs/gaps/INFRA-3.yaml src/notes.md
 commit "INFRA-3: registry row" || true
 if grep '"site":"staged"' "$AMBIENT" | grep -q '"status":"clean"'; then
     pass "docs/gaps/ is skipped: no hostname finding from the registry path"
@@ -112,8 +109,8 @@ fi
 
 # ── 5. stale pattern file: engine cannot run, commit still succeeds ──────────
 echo 9 > "$SANDBOX/.publish-guard/MIN_PATTERNS_VERSION"
-echo '// one more line' >> "$SANDBOX/src/lib.rs"
-G add src/lib.rs .publish-guard/MIN_PATTERNS_VERSION
+echo 'one more line' >> "$SANDBOX/src/notes.md"
+G add src/notes.md .publish-guard/MIN_PATTERNS_VERSION
 if commit "INFRA-4: tidy"; then pass "engine exit 2 (stale patterns) does not block the commit"; else fail "engine exit 2 blocked the commit"; cat "$SANDBOX/.out"; fi
 grep -q 'could-not-run' "$SANDBOX/.out" && pass "could-not-run is reported, not swallowed" || fail "could-not-run not reported"
 
