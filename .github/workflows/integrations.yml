@@ -25,6 +25,16 @@ on:
         required: false
         default: 'per-pr'
 
+# Least-privilege default: read-only.
+#   pull-requests: read — REQUIRED by dorny/paths-filter in the `changes` job
+#     (lists PR files via the API on pull_request events; the job is
+#     continue-on-error, so a missing scope fails quietly).
+# Jobs that need more (visual-diff posts a PR comment) carry their own
+# job-level `permissions:` block, which replaces this default for that job.
+permissions:
+  contents: read
+  pull-requests: read
+
 # INFRA-1378: cancel superseded PR runs so re-pushes stop burning runners to
 # completion. integrations had NO concurrency block, so every force-push to a PR
 # branch spawned a fresh ~11min run while the old one kept a self-hosted runner

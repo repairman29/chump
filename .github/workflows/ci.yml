@@ -22,6 +22,21 @@ on:
         required: false
         default: ''
 
+# Least-privilege token scope: read-only. No job in this workflow writes
+# through GITHUB_TOKEN.
+#   pull-requests: read — REQUIRED by dorny/paths-filter in the `changes` job
+#     (it lists PR files via the API on pull_request events). That job is
+#     continue-on-error, so without this scope the filter fails quietly, every
+#     path-gated lane skips, and the aggregators count skips as passes. Also
+#     used by the `gh pr view` calls in pr-hygiene.
+#   checks: read — `verified` polls commits/<sha>/check-runs for the
+#     cross-workflow lanes (scripts/ci/poll-cross-workflow-checks.sh).
+# Do not drop a scope without checking that path-gated lanes still RUN on a PR.
+permissions:
+  contents: read
+  pull-requests: read
+  checks: read
+
 concurrency:
   # Push to main gets a unique group per run (github.run_id) so concurrency never cancels it —
   # we need every main push to complete for the green-main signal (ship_quality grades, bisect, regression diagnosis).

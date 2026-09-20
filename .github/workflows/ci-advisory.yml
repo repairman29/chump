@@ -21,6 +21,11 @@ on:
   push:
     branches: [main, master]
 
+# Least-privilege token scope. Every job here only reads the repository;
+# nothing in this workflow writes through GITHUB_TOKEN.
+permissions:
+  contents: read
+
 concurrency:
   group: ci-advisory-${{ github.run_id }}
   cancel-in-progress: false   # each main push gets its own full advisory run
