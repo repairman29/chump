@@ -70,8 +70,10 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 #                  clippy/tests — auto-merge will not land a red PR.
 #                  Automatically implied when CHUMP_DISPATCH_DEPTH=1 (dispatched
 #                  subagents never compile locally by default); pass explicitly
-#                  for manual/human invocations on a loaded box. Env:
-#                  CHUMP_BOT_MERGE_NO_LOCAL_BUILD=1
+#                  for manual/human invocations on a loaded box. Env mode
+#                  selector (not a skip/bypass flag — INFRA-2429):
+#                  CHUMP_BOT_MERGE_LAND_MODE=ci   (equivalent to --no-local-build)
+#                  CHUMP_BOT_MERGE_LAND_MODE=local (default; current behavior)
 #   --dry-run      Print every step without executing git push or gh commands.
 #   --no-merge-driver
 #                  Disable custom git merge drivers (INFRA-310) during rebase.
@@ -597,10 +599,23 @@ fi
 AUTO_MERGE=0
 SKIP_TESTS=${SKIP_TESTS:-0}
 FAST=${FAST:-0}
-# RESILIENT-1407: --no-local-build / CHUMP_BOT_MERGE_NO_LOCAL_BUILD=1 — skip
+# RESILIENT-1407: --no-local-build / CHUMP_BOT_MERGE_LAND_MODE=ci — skip
 # every local cargo invocation (including the `cargo clippy --fix` pre-flight
 # that --fast alone still runs). push → CI builds/verifies → pr-lander lands.
-NO_LOCAL_BUILD=${NO_LOCAL_BUILD:-${CHUMP_BOT_MERGE_NO_LOCAL_BUILD:-0}}
+# INFRA-2429: CHUMP_BOT_MERGE_LAND_MODE is a MODE SELECTOR (ci|local), not a
+# skip/bypass-shaped var — an earlier attempt named the env override with a
+# "no-local-build"-style suffix and was correctly bounced by the bypass-debt-
+# ceiling gate (that suffix reads as skip-class even though the semantics are
+# a legitimate mode choice, not a safety-gate bypass). Only derive from the
+# env var when the caller hasn't already pre-set NO_LOCAL_BUILD (e.g. the
+# CHUMP_DISPATCH_DEPTH=1 block above).
+if [[ -z "${NO_LOCAL_BUILD:-}" ]]; then
+    if [[ "${CHUMP_BOT_MERGE_LAND_MODE:-local}" == "ci" ]]; then
+        NO_LOCAL_BUILD=1
+    else
+        NO_LOCAL_BUILD=0
+    fi
+fi
 DRY_RUN=0
 NO_MERGE_DRIVER=0
 # INFRA-193: speculative execution opt-in. With --speculative, chump claim

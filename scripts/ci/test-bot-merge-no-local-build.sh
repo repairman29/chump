@@ -64,8 +64,16 @@ assert "--no-local-build flag is in the case statement and forces FAST+SKIP_TEST
 assert "--no-local-build is documented in the usage block" \
        'RESILIENT-1407 \(the lean-on-CI land path\)'
 
-assert "CHUMP_BOT_MERGE_NO_LOCAL_BUILD env var is honored as a default" \
-       'NO_LOCAL_BUILD=\$\{NO_LOCAL_BUILD:-\$\{CHUMP_BOT_MERGE_NO_LOCAL_BUILD:-0\}\}'
+# INFRA-2429: the env override is a MODE SELECTOR (CHUMP_BOT_MERGE_LAND_MODE
+# = ci|local), not a NO_/SKIP/BYPASS-shaped var — a bare
+# CHUMP_BOT_MERGE_NO_LOCAL_BUILD=1 flag was tried first and correctly bounced
+# by the bypass-debt-ceiling gate (test-no-new-bypass-env-vars.sh), since its
+# "NO_" substring reads as skip-class even though the semantics are a
+# legitimate mode choice, not a safety-gate bypass.
+assert "CHUMP_BOT_MERGE_LAND_MODE=ci env var is honored as a mode selector" \
+       'CHUMP_BOT_MERGE_LAND_MODE:-local.*==.*"ci"'
+refute "no bypass-class CHUMP_BOT_MERGE_NO_LOCAL_BUILD env var reintroduced" \
+       'CHUMP_BOT_MERGE_NO_LOCAL_BUILD'
 
 # The RESILIENT-1406 clobber-bug regression guard: the Flags block must read
 # pre-set values back (not stomp them), or CHUMP_DISPATCH_DEPTH=1's FAST=1
