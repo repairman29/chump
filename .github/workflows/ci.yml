@@ -741,6 +741,19 @@ jobs:
       - name: Organ role-roster + host-rewrite gate (RESILIENT-1055/1102)
         run: bash scripts/ci/test-resilient-1055-role-roster.sh
 
+      # INFRA-7757 (docs/strategy/ONE_COMMAND_INSTALL.md section 2, slice B
+      # of the one-command-install keystone): a fresh non-root box previously
+      # converged 3 of ~40 organs because place_role_unit_files() and
+      # svc_install()/svc_up()/svc_down()/svc_status() both hard-required
+      # root. Proves the rootless fix end-to-end: the full role-matched
+      # roster (incl. a brain organ) places as systemd --user units with
+      # linger enabled once, the root-only chump-organ-deploy pair is
+      # skipped-not-blocking on a rootless box, and the pre-existing
+      # root-available path is unaffected. Hermetic: tmp dirs + stubbed
+      # systemctl/loginctl, no network/root.
+      - name: Rootless systemd --user placement gate (INFRA-7757)
+        run: bash scripts/ci/test-node-install-rootless-placement.sh
+
       # INFRA-1810: installer manifest gate — every scripts/setup/install-*.sh
       # must be mapped to REQUIRED_DAEMONS, optional-installers-allowlist.txt,
       # or deprecated-installers-allowlist.txt. Prevents ship-but-never-install.

@@ -171,4 +171,43 @@ grep -q "^WorkingDirectory=${REAL2}\$" "$DESTS" || fail "symlink repo_root: Work
 grep -q "Projects/chump" "$DESTS" && fail "symlink repo_root: the bootstrap symlink path leaked into the unit (still load-bearing): $(grep -n 'Projects/chump' "$DESTS")"
 pass "organ_unit_host_rewrite: a symlinked repo_root collapses to the real checkout — the bootstrap symlink is not baked in and can be retired"
 
+# ── 7. INFRA-7757: user_scope mode strips User=/Group=, swaps WantedBy ──────
+# Rootless placement (systemd --user) needs a unit shape a --user manager
+# accepts: no User=/Group= (a --user unit always runs as the invoking user —
+# some systemd versions reject those keys outright in user-manager scope) and
+# WantedBy=default.target instead of multi-user.target (which doesn't exist
+# in user-manager scope). HOME/WorkingDirectory/PATH injection is UNCHANGED —
+# only the ownership + target lines differ from the system-wide rewrite.
+SRCUS="$TMP/user-scope-src.service"
+cat > "$SRCUS" <<'EOF'
+[Unit]
+Description=x
+[Service]
+User=root
+Group=root
+Environment=HOME=/root
+ExecStart=/root/Projects/chump/scripts/x.sh
+[Install]
+WantedBy=multi-user.target
+EOF
+DESTUS="$TMP/user-scope-out.service"
+organ_unit_host_rewrite "$SRCUS" "$DESTUS" "ubuntu" "/home/ubuntu" 0 "" 1 || fail "host_rewrite(user_scope=1) returned non-zero"
+grep -q '^User=' "$DESTUS" && fail "user_scope=1: User= must be stripped, not rewritten: $(grep -n '^User=' "$DESTUS")"
+grep -q '^Group=' "$DESTUS" && fail "user_scope=1: Group= must be stripped: $(grep -n '^Group=' "$DESTUS")"
+grep -q '^WantedBy=default\.target$' "$DESTUS" || fail "user_scope=1: WantedBy=multi-user.target must become default.target: $(grep -n '^WantedBy=' "$DESTUS")"
+grep -q '^Environment=HOME=/home/ubuntu$' "$DESTUS" || fail "user_scope=1: HOME injection/rewrite must still happen: $(grep -n '^Environment=HOME=' "$DESTUS")"
+grep -q '^WorkingDirectory=' "$DESTUS" || fail "user_scope=1: WorkingDirectory must still be injected"
+grep -q '^Environment=PATH=' "$DESTUS" || fail "user_scope=1: PATH must still be injected"
+pass "organ_unit_host_rewrite(user_scope=1): strips User=/Group=, swaps WantedBy=default.target, keeps HOME/WorkingDirectory/PATH injection"
+
+# keep_root=1 wins over user_scope=1: chump-organ-deploy.* is never placed as
+# a --user unit (place_role_unit_files skips it on a rootless box instead),
+# but the LIB contract itself must not silently drop the keep-root guarantee
+# if ever called with both flags.
+DESTUSK="$TMP/user-scope-keeproot-out.service"
+organ_unit_host_rewrite "$SRCUS" "$DESTUSK" "ubuntu" "/home/ubuntu" 1 "" 1 || fail "host_rewrite(keep_root=1,user_scope=1) returned non-zero"
+grep -q '^User=root$' "$DESTUSK" || fail "keep_root=1 must win over user_scope=1 — User=root must survive: $(grep -n '^User=' "$DESTUSK")"
+grep -q '^WantedBy=multi-user\.target$' "$DESTUSK" || fail "keep_root=1 must win over user_scope=1 — WantedBy must stay multi-user.target: $(grep -n '^WantedBy=' "$DESTUSK")"
+pass "organ_unit_host_rewrite: keep_root=1 overrides user_scope=1 (chump-organ-deploy.* contract holds even if ever called both-set)"
+
 echo "ALL PASS"

@@ -43,9 +43,17 @@
 #     chump-node-install.sh -> $NODE_DIR/repo) so the paths resolve on any node.
 #     Omitting it falls back to the legacy $HOME/Projects/chump assumption, so
 #     pre-existing 5-arg callers keep their exact prior behavior.
+#   user_scope (optional, "1"): this unit is being placed as a systemd --user
+#     unit (INFRA-7757 rootless placement) rather than a system-wide one. A
+#     --user unit always runs as the invoking user, so User=/Group= are
+#     stripped rather than rewritten, and [Install] WantedBy=multi-user.target
+#     (which doesn't exist in user-manager scope) becomes WantedBy=default.target.
+#     Ignored when keep_root="1" (chump-organ-deploy.* is never placed as a
+#     --user unit — place_role_unit_files() skips it entirely on a rootless
+#     box instead, since its job IS the privileged system-wide deploy).
 #   Returns non-zero if <src-file> is missing.
 organ_unit_host_rewrite() {
-  local src="$1" dest="$2" run_user="$3" run_home="$4" keep_root="${5:-0}" repo_root="${6:-}"
+  local src="$1" dest="$2" run_user="$3" run_home="$4" keep_root="${5:-0}" repo_root="${6:-}" user_scope="${7:-0}"
   [[ -f "$src" ]] || { echo "organ_unit_host_rewrite: missing src $src" >&2; return 1; }
 
   local repo_on_host="${repo_root:-${run_home%/}/Projects/chump}"
@@ -106,7 +114,14 @@ organ_unit_host_rewrite() {
   # tools (chump gap, gh repo view) don't run from / and $HOME-based tools (gh,
   # almanac) read the run-user's config, on any host.
   if grep -q "^\[Service\]" "$dest"; then
-    grep -q "^User=" "$dest"             || sed -i "/^\[Service\]/a User=${run_user}" "$dest"
+    if [[ "$user_scope" == "1" && "$keep_root" != "1" ]]; then
+      # INFRA-7757: a systemd --user unit always runs as the invoking user —
+      # User=/Group= are meaningless there (some systemd versions reject
+      # them outright in user-manager scope) — strip rather than rewrite.
+      sed -i '/^User=/d; /^Group=/d' "$dest"
+    else
+      grep -q "^User=" "$dest" || sed -i "/^\[Service\]/a User=${run_user}" "$dest"
+    fi
     grep -q "^Environment=HOME=" "$dest" || sed -i "/^\[Service\]/a Environment=HOME=${run_home%/}" "$dest"
     grep -q "^WorkingDirectory=" "$dest" || sed -i "/^\[Service\]/a WorkingDirectory=${repo_on_host}" "$dest"
     grep -q "^Environment=PATH=" "$dest" || sed -i "/^\[Service\]/a Environment=PATH=${run_home%/}/.cargo/bin:/usr/local/bin:/usr/bin:/bin" "$dest"
@@ -120,6 +135,14 @@ organ_unit_host_rewrite() {
     else
       sed -i "/^\[Service\]/a User=root" "$dest"
     fi
+  fi
+
+  # INFRA-7757: a --user unit manager has no multi-user.target — swap it for
+  # default.target so `systemctl --user enable` doesn't fail on a missing
+  # target. keep_root units are never placed in user scope (see above), so
+  # this never touches chump-organ-deploy.*.
+  if [[ "$user_scope" == "1" && "$keep_root" != "1" ]]; then
+    sed -i 's/^WantedBy=multi-user\.target$/WantedBy=default.target/' "$dest"
   fi
   return 0
 }

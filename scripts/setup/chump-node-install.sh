@@ -61,6 +61,13 @@ while [ $# -gt 0 ]; do
 done
 case "$ROLE" in brain|muscle|all) ;; *) echo "role must be brain|muscle|all" >&2; exit 2;; esac
 
+# INFRA-7757: rootless-first systemd placement. detect_host() sets this to 1
+# when the install is running as non-root (systemd --user + linger, no sudo
+# ever) and 0 when root is available (unchanged system-wide placement). A
+# default here means any code that reads it before detect_host runs (tests,
+# `set -u`) never trips an unbound-variable error.
+SYSTEMD_USER_SCOPE=0
+
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
 # INFRA-3633: pin the canonical gap store here, once, so every phase below
 # (and every organ this script launches) resolves the same state.db instead
@@ -120,18 +127,62 @@ detect_host() {
   elif [ "$OS" = "Darwin" ]; then
     HOST_KIND="macos"; SUPERVISOR="launchd"; BOOT_DIR=""; SVC_DIR="$HOME/Library/LaunchAgents"
   elif command -v systemctl >/dev/null 2>&1; then
-    HOST_KIND="linux-systemd"; SUPERVISOR="systemd"; BOOT_DIR=""; SVC_DIR="/etc/systemd/system"
+    HOST_KIND="linux-systemd"; SUPERVISOR="systemd"; BOOT_DIR=""
+    # INFRA-7757: rootless-first. Root available -> unchanged system-wide unit
+    # dir. No root -> systemd --user (no sudo needed, ever) — the keystone fix
+    # for the fresh non-root box that previously converged 3 of ~40 organs.
+    if [ "$(id -u)" = "0" ]; then
+      SVC_DIR="/etc/systemd/system"; SYSTEMD_USER_SCOPE=0
+    else
+      SVC_DIR="${XDG_CONFIG_HOME:-$HOME/.config}/systemd/user"; SYSTEMD_USER_SCOPE=1
+    fi
   else
     HOST_KIND="linux-nosystemd"; SUPERVISOR="nohup"; BOOT_DIR=""; SVC_DIR="$NODE_DIR/services"
   fi
-  info DETECT "host=$HOST_KIND arch=$ARCH supervisor=$SUPERVISOR"
+  info DETECT "host=$HOST_KIND arch=$ARCH supervisor=$SUPERVISOR${SYSTEMD_USER_SCOPE:+ scope=user}"
+}
+
+# ---------- rootless systemd dispatch + linger (INFRA-7757) ----------
+# _systemctl — dispatch to `systemctl --user` when this install is running
+# rootless (SYSTEMD_USER_SCOPE=1, set by detect_host) or plain `systemctl`
+# when root is available. The ONE chokepoint every systemd caller below goes
+# through, so root-vs-user is decided once, not re-checked at each call site.
+_systemctl() {
+  if [ "${SYSTEMD_USER_SCOPE:-0}" = 1 ]; then systemctl --user "$@"; else systemctl "$@"; fi
+}
+# ensure_user_linger — `loginctl enable-linger` once, idempotently, reusing
+# the exact pattern proven in install-fleet-health-sentinel.sh (lines 76-79):
+# without linger, --user units die the moment this install's login session
+# ends (SSH disconnect, terminal close) — the whole point of the rootless
+# path is a node that keeps running unattended. No-op when root (system-wide
+# units don't need it) or already run once this process.
+_LINGER_ENSURED=0
+ensure_user_linger() {
+  [ "${SYSTEMD_USER_SCOPE:-0}" = 1 ] || return 0
+  [ "$_LINGER_ENSURED" = 1 ] && return 0
+  _LINGER_ENSURED=1
+  if [ "$DRY" = 1 ]; then echo "  DRY: loginctl enable-linger $(whoami)"; return 0; fi
+  if command -v loginctl >/dev/null 2>&1; then
+    if loginctl enable-linger "$(whoami)" 2>/dev/null; then
+      ok "linger enabled for $(whoami) — systemd --user units survive logout/reboot"
+    else
+      no "could not enable linger — run once: sudo loginctl enable-linger $(whoami) (systemd --user units will stop when this session ends until then)"
+    fi
+  else
+    info ORGANS "loginctl not found — cannot enable linger; systemd --user units may stop when this session ends"
+  fi
 }
 
 # ---------- supervisor abstraction (the reusable core) ----------
 # svc_install <name> <exec-command>   — define a supervised, restart-always service
 # svc_up <name> / svc_status <name>   — start / query
+# INFRA-7757: the systemd branch now targets systemd --user (SVC_DIR/WantedBy
+# both root-vs-user aware via detect_host) instead of unconditionally writing
+# /etc/systemd/system with zero root-check — the exact silent-no-op-on-non-root
+# bug this closes (a swallowed `2>/dev/null || true` hid it).
 svc_install() {
-  local name="$1" cmd="$2"
+  local name="$1" cmd="$2" wanted_by="multi-user.target"
+  [ "${SYSTEMD_USER_SCOPE:-0}" = 1 ] && wanted_by="default.target"
   case "$SUPERVISOR" in
     runit)
       run "mkdir -p '$SVC_DIR/$name/log'"
@@ -141,6 +192,8 @@ svc_install() {
       run "chmod +x '$SVC_DIR/$name/log/run'"; run "mkdir -p '$LOG_DIR/$name'"
       ;;
     systemd)
+      ensure_user_linger
+      run "mkdir -p '$SVC_DIR'"
       run "cat > '$SVC_DIR/chump-$name.service' <<EOF
 [Unit]
 Description=ChumpOS organ $name
@@ -152,9 +205,9 @@ ExecStart=/bin/bash -c 'set -a; [ -r "$CREDS" ] && . "$CREDS"; set +a; exec "$cm
 Restart=always
 Environment=CHUMP_NODE_DIR=$NODE_DIR
 [Install]
-WantedBy=multi-user.target
+WantedBy=$wanted_by
 EOF"
-      run "systemctl daemon-reload"
+      run "_systemctl daemon-reload"
       ;;
     *) run "mkdir -p '$SVC_DIR'"; run "echo '$cmd' > '$SVC_DIR/$name.cmd'";;
   esac
@@ -163,7 +216,7 @@ svc_down() {
   local name="$1"
   case "$SUPERVISOR" in
     runit) run "sv down '$SVC_DIR/$name' 2>/dev/null || true";;
-    systemd) run "systemctl disable --now 'chump-$name' 2>/dev/null || true";;
+    systemd) run "_systemctl disable --now 'chump-$name' 2>/dev/null || true";;
     *) :;;
   esac
 }
@@ -174,7 +227,7 @@ svc_up() {
     # compiled default (/var/service) which doesn't exist. runsvdir also auto-starts
     # new dirs within ~5s, so this `sv up` is just a nudge — give runsvdir a moment.
     runit) run "sleep 6; sv up '$SVC_DIR/$name' 2>/dev/null || true";;
-    systemd) run "systemctl enable --now 'chump-$name' 2>/dev/null || true";;
+    systemd) run "_systemctl enable --now 'chump-$name' 2>/dev/null || true";;
     *) :;;
   esac
 }
@@ -182,7 +235,7 @@ svc_status() {  # prints "up" or "down"
   local name="$1"
   case "$SUPERVISOR" in
     runit) sv status "$SVC_DIR/$name" 2>/dev/null | grep -q '^run:' && echo up || echo down;;
-    systemd) systemctl is-active "chump-$name" 2>/dev/null | grep -q '^active' && echo up || echo down;;
+    systemd) _systemctl is-active "chump-$name" 2>/dev/null | grep -q '^active' && echo up || echo down;;
     *) [ -f "$SVC_DIR/$name.cmd" ] && echo up || echo down;;
   esac
 }
@@ -961,43 +1014,15 @@ reconcile_role_organs() {
 # just this one keystone unit via `sudo` (when available) unsticks the
 # whole roster on the very next timer tick — reproducible on any fresh box,
 # no hand-run installer, no full-root re-install required.
-bootstrap_organ_deploy_via_sudo() {
-  local repo="$1" lib_manifest="$2" lib_unit="$3" dispatch="$4"
-  # chump-organ-deploy.timer is role=janitor in the manifest — only brain/all
-  # role-filters include janitor (organ_role_filter), so a muscle-only node
-  # has no business installing it.
-  case "$ROLE" in brain|all) ;; *) return 0;; esac
-  command -v sudo >/dev/null 2>&1 || {
-    info ORGANS "no sudo on PATH — cannot bootstrap chump-organ-deploy.timer, role roster will stay dark until a root install"
-    return 0
-  }
-  if ! sudo -n true 2>/dev/null; then
-    info ORGANS "no passwordless sudo for $(whoami 2>/dev/null || id -un) — cannot bootstrap chump-organ-deploy.timer; grant NOPASSWD sudo for systemctl/install, or run install as root once"
-    return 0
-  fi
-  # shellcheck source=/dev/null
-  . "$lib_manifest"; . "$lib_unit"
-  local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
-  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-/etc/systemd/system}"
-  local tmp; tmp="$(mktemp -d)"
-  local placed=0 f
-  for f in chump-organ-deploy.service chump-organ-deploy.timer; do
-    [ -f "$dispatch/$f" ] || continue
-    if organ_unit_host_rewrite "$dispatch/$f" "$tmp/$f" "$run_user" "$run_home" 1 "$repo" \
-        && sudo mkdir -p "$dest_dir" \
-        && sudo install -m 644 "$tmp/$f" "$dest_dir/$f"; then
-      placed=$((placed + 1))
-    fi
-  done
-  rm -rf "$tmp"
-  if [ "$placed" -gt 0 ]; then
-    sudo systemctl daemon-reload 2>/dev/null || true
-    sudo systemctl enable --now chump-organ-deploy.timer 2>/dev/null || true
-    ok "bootstrapped chump-organ-deploy.timer via sudo ($placed unit file(s) placed) — its own root cycle will place the rest of the role roster"
-  else
-    info ORGANS "chump-organ-deploy unit files not found under $dispatch — cannot bootstrap"
-  fi
-}
+# INFRA-7757: bootstrap_organ_deploy_via_sudo() is RETIRED. It existed to
+# work around place_role_unit_files() needing root — bootstrap just the
+# chump-organ-deploy keystone via sudo so ITS root-run reconcile cycle could
+# place the rest of the roster. Now that place_role_unit_files() places the
+# whole role roster unconditionally (root -> system-wide, non-root -> systemd
+# --user), that chicken-and-egg no longer exists. Kept as a one-line no-op
+# delegator (not deleted outright) so any caller that still references the
+# old name by habit degrades safely instead of hitting `command not found`.
+bootstrap_organ_deploy_via_sudo() { :; }
 place_role_unit_files() {
   [ "${HOST_KIND:-}" = "linux-systemd" ] || { info ORGANS "unit-file placement is systemd-only (host=${HOST_KIND:-unset}) — skipping"; return 0; }
   local repo="$NODE_DIR/repo"
@@ -1009,19 +1034,21 @@ place_role_unit_files() {
     info ORGANS "manifest/libs not found under $repo — skipping unit-file placement"
     return 0
   fi
-  if [ "$(id -u)" != "0" ] && [ "${CHUMP_NODE_INSTALL_ALLOW_NONROOT_PLACE:-0}" != "1" ]; then
-    bootstrap_organ_deploy_via_sudo "$repo" "$lib_manifest" "$lib_unit" "$dispatch"
-    no "unit-file placement needs root to write /etc/systemd/system — skipping (re-run install as root/sudo)"
+  # INFRA-7757: unconditional. Root writes /etc/systemd/system (unchanged);
+  # non-root writes systemd --user units (detect_host sets SVC_DIR/
+  # SYSTEMD_USER_SCOPE) — no sudo, no skip, no chicken-and-egg bootstrap.
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: place role-matched manifest unit files (role=$ROLE) into $SVC_DIR"
     return 0
   fi
-  if [ "$DRY" = 1 ]; then echo "  DRY: place role-matched manifest unit files (role=$ROLE) into /etc/systemd/system"; return 0; fi
 
   # shellcheck source=/dev/null
   . "$lib_manifest"; . "$lib_unit"
   local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
-  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-/etc/systemd/system}"
+  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-$SVC_DIR}"
+  ensure_user_linger
   mkdir -p "$dest_dir"
-  info ORGANS "placing role-matched manifest unit files (role=$ROLE, user=$run_user, home=$run_home)"
+  info ORGANS "placing role-matched manifest unit files (role=$ROLE, user=$run_user, home=$run_home, scope=${SYSTEMD_USER_SCOPE:-0})"
 
   # Make `chump` resolvable on the organs' injected PATH ($RUN_HOME/.cargo/bin).
   if [ -x "$BIN" ]; then
@@ -1051,20 +1078,32 @@ place_role_unit_files() {
   # (self-exclusion), so add it explicitly for EVERY role.
   _want_base["chump-organ-reconcile"]=1
 
+  # RESILIENT-374 / INFRA-7757: chump-organ-deploy.{service,timer} is the ONE
+  # unit whose JOB is the privileged system-wide unit deploy — it legitimately
+  # needs root. Additive-when-root-available, never required: on a rootless
+  # box it is simply not placed (skipped_root_only below), and its absence
+  # does not block any other organ from placing (chump-organ-reconcile.timer,
+  # placed for every role, is the rootless self-heal beat instead).
   declare -A _KEEP_ROOT=( [chump-organ-deploy.service]=1 [chump-organ-deploy.timer]=1 )
-  local placed=() skipped_nofile=() base f keep suffix
+  local placed=() skipped_nofile=() skipped_root_only=() base f keep suffix
   for base in "${!_want_base[@]}"; do
     for suffix in service timer; do
       f="${base}.${suffix}"
       local src="$dispatch/$f" dest="$dest_dir/$f"
       [ -f "$src" ] || continue    # not every base has both a .service and a .timer
       keep=0; [ -n "${_KEEP_ROOT[$f]:-}" ] && keep=1
+      if [ "$keep" = 1 ] && [ "${SYSTEMD_USER_SCOPE:-0}" = 1 ]; then
+        skipped_root_only+=("$f")
+        continue
+      fi
       # RESILIENT-1102: pass this box's ACTUAL repo ($NODE_DIR/repo, where
       # node-install clones — NOT ~/Projects/chump) so the shared rewriter bakes
       # a WorkingDirectory/ExecStart that exists. The repo-path rewrite now lives
       # in organ_unit_host_rewrite itself (single source of truth), so both this
       # placer and install-helsinki-atc.sh converge identically — no post-hoc sed.
-      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep" "$repo"; then
+      # INFRA-7757: the 7th arg tells the rewriter whether this is a --user unit
+      # (strip User=/Group=, WantedBy=default.target) or system-wide (unchanged).
+      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep" "$repo" "${SYSTEMD_USER_SCOPE:-0}"; then
         placed+=("$f")
       fi
     done
@@ -1077,7 +1116,7 @@ place_role_unit_files() {
     fi
   done
 
-  systemctl daemon-reload 2>/dev/null || true
+  _systemctl daemon-reload 2>/dev/null || true
 
   # Scope the recurring organ-reconcile timer to THIS node's role (unless --role
   # all) so the timer-driven self-heal converges to the role roster, not the
@@ -1091,15 +1130,16 @@ place_role_unit_files() {
 [Service]
 Environment=CHUMP_ORGAN_RECONCILE_ROLE=$rf
 EOF
-    systemctl daemon-reload 2>/dev/null || true
+    _systemctl daemon-reload 2>/dev/null || true
   fi
 
   # Arm the reconcile beat itself (not a manifest 'enabled' line, so
   # reconcile_role_organs won't enable it).
-  [ -f "$dest_dir/chump-organ-reconcile.timer" ] && systemctl enable --now chump-organ-reconcile.timer 2>/dev/null || true
+  [ -f "$dest_dir/chump-organ-reconcile.timer" ] && _systemctl enable --now chump-organ-reconcile.timer 2>/dev/null || true
 
   ok "placed ${#placed[@]} role-matched unit file(s): ${placed[*]:-none}"
   [ "${#skipped_nofile[@]}" -gt 0 ] && info ORGANS "role-matched but no tracked file (skipped, guarded by requires=file:): ${skipped_nofile[*]}"
+  [ "${#skipped_root_only[@]}" -gt 0 ] && info ORGANS "root-only unit(s) skipped on this rootless box (additive when root available, never required): ${skipped_root_only[*]}"
   return 0
 }
 # RESILIENT-1099: render the tracked, node-neutral
