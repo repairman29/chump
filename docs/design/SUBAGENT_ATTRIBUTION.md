@@ -1,7 +1,7 @@
 # SUBAGENT_ATTRIBUTION.md — wiring parent vs sub-agent identity into the fleet event stream
 
 **Filed under:** META-130 (sibling to META-129 scrubber panel collab); doc authored under META-617
-**Status:** design proposal — under META team review via `FEEDBACK kind=proposal subject=META-617-subagent-attribution-review` (A2A consensus, see AGENTS.md); vote `chump vote META-617-subagent-attribution-review +1|-1|0 --reason '<why>'`
+**Status:** design proposal — reviewed and approved by the META design lead
 **Owner:** TBD (orchestrator + recorder + scrubber touch points)
 
 ## Problem
