@@ -104,6 +104,7 @@ jobs:
         run: |
           ./target/debug/chump --web &
           CHUMP_PID=$!
+          # shellcheck disable=SC2034  # i is only a retry counter
           for i in $(seq 1 90); do
             if curl -sf http://127.0.0.1:3848/api/health >/dev/null; then
               echo "chump web ready"
