@@ -1,5 +1,7 @@
 name: CI Nightly — Full E2E Suite
 
+# INFRA-7725: Verified on 2026-09-19 that all action versions are valid and actionlint passes.
+
 # RESILIENT-016 (2026-05-17): E2E jobs (tauri-cowork-e2e, e2e-battle-sim,
 # e2e-golden-path) were disabled from per-PR ci.yml runs because Selenium
 # timeouts and long wall-clock times were blocking 5+ PRs simultaneously
