@@ -400,7 +400,9 @@ jobs:
         run: |
           git config user.name  "chump-pr-triage-bot"
           git config user.email "chump-pr-triage-bot@users.noreply.github.com"
-          git add .chump/state.sql docs/gaps.yaml docs/gaps/ 2>/dev/null || true
+          # Registry privacy: CI never stages gap-registry paths. They are
+          # gitignored in this repo; the registry is published from the hub
+          # node to the private registry remote only.
           git diff --cached --quiet || git commit -m "INFRA-624: auto-file P0 fix gap for failing PR CI"
           git push origin HEAD
 
@@ -588,6 +590,8 @@ jobs:
         run: |
           git config user.name  "chump-pr-triage-bot"
           git config user.email "chump-pr-triage-bot@users.noreply.github.com"
-          git add .chump/state.sql docs/gaps.yaml docs/gaps/ 2>/dev/null || true
+          # Registry privacy: CI never stages gap-registry paths. They are
+          # gitignored in this repo; the registry is published from the hub
+          # node to the private registry remote only.
           git diff --cached --quiet || git commit -m "INFRA-671: auto-file completion gap for half-implementation"
           git push origin HEAD
