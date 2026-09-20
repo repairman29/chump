@@ -729,7 +729,11 @@ jobs:
       # `git pull` jams AND that backlog-sync.sh --reader now converges via
       # `git reset --hard` over the same dirty tree while preserving ignored DBs.
       - name: Mirror-converge dirty-tree gate (RESILIENT-001)
-        run: bash scripts/ci/test-backlog-sync-reader-dirty-tree.sh
+        run: |
+          bash scripts/ci/test-backlog-sync-reader-dirty-tree.sh
+          # Registry contract for the same script (same step, no new gate).
+          # Prints its own assertion count.
+          bash scripts/ci/test-backlog-sync-registry-remote.sh
 
       # RESILIENT-1055 / RESILIENT-1102: the shared organ-unit host-rewriter +
       # role-roster placement. Locks the byte-for-byte rewrite contract both
