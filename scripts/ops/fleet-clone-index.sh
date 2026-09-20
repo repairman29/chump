@@ -98,9 +98,12 @@ mkdir -p "$ALMANAC_REPO_CACHE" "$(dirname "$ALMANAC_CLONE_MARKER")" "$(dirname "
 export ALMANAC_HOME
 
 # nice/ionice prefixes so the sweep yields to the coordinator/workers.
-NICE=""; command -v nice   >/dev/null 2>&1 && NICE="nice -n 19"
-IONICE="";command -v ionice >/dev/null 2>&1 && IONICE="ionice -c3"
-LOW="$NICE $IONICE"
+LOW=""
+command -v nice >/dev/null 2>&1 && LOW+="nice -n 19"
+command -v ionice >/dev/null 2>&1 && {
+  [ -n "$LOW" ] && LOW+=" "
+  LOW+="ionice -c3"
+}
 
 emit() {  # kind extra_json
     local kind="$1" extra="${2:-}"
