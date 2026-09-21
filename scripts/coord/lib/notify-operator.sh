@@ -351,7 +351,7 @@ _notify_deliver() {
         _notify_emit "operator_notify_suppressed" \
             ",\"signal\":\"${CHUMP_NOTIFY_KIND:-none}\",\"reason\":\"autoposts-off\""
         echo "[notify-operator] SUPPRESSED (automated operator DMs are off; set CHUMP_OPERATOR_AUTOPOST_DM=1 to re-enable): kind=${CHUMP_NOTIFY_KIND:-<none>}" >&2
-        return 0
+        return 2
     fi
 
     local token uid
