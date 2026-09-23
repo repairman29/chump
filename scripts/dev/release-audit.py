@@ -90,7 +90,8 @@ def load_outcomes(repo_root):
 
 
 def collect(since, repo_root):
-    raw = sh("git", "log", "origin/main", f"--since={since}", "--pretty=format:%H\x1f%s\x1f%b\x1e")
+    raw = sh("git", "log", "origin/main", f"--since={since}",
+             "--date=short", "--pretty=format:%H\x1f%s\x1f%cd\x1f%b\x1e")
     ships, noise = [], 0
     for rec in raw.split("\x1e"):
         rec = rec.strip("\n")
@@ -99,11 +100,13 @@ def collect(since, repo_root):
         parts = rec.split("\x1f")
         if len(parts) < 2:
             continue
-        sha, subj, body = parts[0], parts[1], (parts[2] if len(parts) > 2 else "")
+        sha, subj = parts[0], parts[1]
+        day = parts[2] if len(parts) > 2 else ""
+        body = parts[3] if len(parts) > 3 else ""
         if NOISE_RE.search(subj):
             noise += 1
             continue
-        ships.append({"sha": sha[:9], "subject": subj, "body": body})
+        ships.append({"sha": sha[:9], "subject": subj, "day": day, "body": body})
     return ships, noise
 
 
@@ -253,6 +256,25 @@ def main():
     print(f"   automated no-op : {noise}  ({pct(noise, total_commits)})")
     print(f"   real ships      : {len(ships)}  ({pct(len(ships), total_commits)})")
     print("   (any throughput number counting the no-ops is false)\n")
+
+    print("1b. CADENCE (an aggregate over a window that ends in a collapse lies)")
+    by_day = Counter(s["day"] for s in ships if s["day"])
+    if by_day:
+        days = sorted(by_day)
+        recent = days[-10:]
+        peak = max(by_day[d] for d in days)
+        for d in recent:
+            n = by_day[d]
+            bar = "#" * min(40, n)
+            print(f"   {d}  {n:>3}  {bar}")
+        last, first = by_day[days[-1]], by_day[days[0]]
+        # flag a cliff: last day is <25% of the window peak and the window is long enough
+        if len(days) >= 3 and peak >= 4 and last * 4 < peak:
+            print(f"   !! CLIFF: last day {last} vs window peak {peak}. "
+                  f"The totals above are NOT the current rate.")
+    else:
+        print("   (no dated ships in window)")
+    print()
 
     print("2. MISSION-SHIP RATIO (Goal 3, target >= 2/3)")
     print("   NOT COMPUTED. Axis M requires a grader to read the diff.")
