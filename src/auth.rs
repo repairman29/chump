@@ -52,6 +52,10 @@ pub struct AuthCredentials {
     pub api_key: String,
     /// Value of CLAUDE_CODE_OAUTH_TOKEN (env, refresh file, then config.toml).
     pub oauth_token: String,
+    /// `expires_at` from the OAUTH refresh file, if present (RESILIENT-1105,
+    /// RESILIENT-054 slice). Unix seconds. `None` when the token came from
+    /// env/config.toml (no expiry metadata) or the file lacked the field.
+    pub oauth_expires_at: Option<i64>,
 }
 
 impl AuthCredentials {
@@ -358,8 +362,10 @@ pub fn detect_credentials() -> AuthCredentials {
     //    Only overrides oauth_token when env is empty.
     if creds.oauth_token.is_empty() {
         if let Ok(tok_path) = std::env::var("CHUMP_OAUTH_TOKEN_FILE") {
-            if let Some(tok) = read_oauth_token_file(Path::new(&tok_path)) {
+            let path = Path::new(&tok_path);
+            if let Some(tok) = read_oauth_token_file(path) {
                 creds.oauth_token = tok;
+                creds.oauth_expires_at = token_expires_at(path);
             }
         }
     }
@@ -673,6 +679,27 @@ fn extract_json_string(json: &str, key: &str) -> Option<String> {
     let after = after.strip_prefix('"')?;
     let end = after.find('"')?;
     Some(after[..end].to_string())
+}
+
+/// Minimal JSON number extractor, sibling to [`extract_json_string`]. Finds
+/// `"key":123` (bare integer, no quotes) in a flat JSON object.
+fn extract_json_number(json: &str, key: &str) -> Option<i64> {
+    let needle = format!("\"{}\"", key);
+    let start = json.find(&needle)? + needle.len();
+    let after = json[start..].trim_start();
+    let after = after.strip_prefix(':')?.trim_start();
+    let end = after
+        .find(|c: char| !(c.is_ascii_digit() || c == '-'))
+        .unwrap_or(after.len());
+    after[..end].parse::<i64>().ok()
+}
+
+/// RESILIENT-1105 (RESILIENT-054 slice): parse the `expires_at` field from
+/// an OAUTH refresh-file JSON blob, if present. Unix seconds. Returns `None`
+/// when the file is unreadable or lacks the field.
+pub fn token_expires_at(path: &Path) -> Option<i64> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    extract_json_number(&raw, "expires_at")
 }
 
 /// Parse the subset of ~/.chump/config.toml relevant to auth.
@@ -1051,6 +1078,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            ..Default::default()
         };
         let auth = ActiveAuth {
             mode: ActiveMode::ApiKey,
@@ -1067,6 +1095,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            ..Default::default()
         };
         let auth = ActiveAuth {
             mode: ActiveMode::OAuth,
@@ -1108,6 +1137,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            ..Default::default()
         };
         let auth = ActiveAuth {
             mode: ActiveMode::OAuth,
@@ -1124,6 +1154,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            ..Default::default()
         };
         let auth = ActiveAuth {
             mode: ActiveMode::OAuth,
@@ -1138,6 +1169,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: String::new(),
+            ..Default::default()
         };
         let auth = ActiveAuth {
             mode: ActiveMode::ApiKey,
@@ -1172,6 +1204,47 @@ mod tests {
                 assert_eq!(creds.oauth_token, "sk-ant-oat01-fresh");
             },
         );
+    }
+
+    #[test]
+    fn reads_expires_at_from_refresh_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tok_path = dir.path().join("oauth-token.json");
+        std::fs::write(
+            &tok_path,
+            r#"{"token":"sk-ant-oat01-fresh","expires_at":1780000000,"written_at":"2026-05-06T00:00:00Z"}"#,
+        )
+        .unwrap();
+
+        with_env(
+            &[("CHUMP_OAUTH_TOKEN_FILE", tok_path.to_str().unwrap())],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_AUTH_MODE",
+                "CHUMP_HOME",
+            ],
+            || {
+                let creds = detect_credentials();
+                assert_eq!(creds.oauth_token, "sk-ant-oat01-fresh");
+                assert_eq!(creds.oauth_expires_at, Some(1780000000));
+            },
+        );
+
+        assert_eq!(token_expires_at(&tok_path), Some(1780000000));
+    }
+
+    #[test]
+    fn token_expires_at_none_when_field_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        let tok_path = dir.path().join("oauth-token.json");
+        std::fs::write(
+            &tok_path,
+            r#"{"token":"sk-ant-oat01-fresh","written_at":"2026-05-06T00:00:00Z"}"#,
+        )
+        .unwrap();
+
+        assert_eq!(token_expires_at(&tok_path), None);
     }
 
     #[test]
