@@ -247,6 +247,96 @@ fn check_gap_rate_limit(ip_key: &str) -> bool {
     entry.0 <= max_reqs
 }
 
+// ── RESILIENT-698: /holler/insert rate limiting (RESILIENT-241 slice) ───────
+
+/// Simple per-IP sliding-window rate limiter for POST /holler/insert.
+/// State: ip_str → (request_count, window_start). Window resets after 60s
+/// (AC3); max `CHUMP_HOLLER_INSERT_RATE_LIMIT` (default 100) per window
+/// (AC2).
+static HOLLER_INSERT_RATE_LIMITER: std::sync::OnceLock<
+    std::sync::Mutex<std::collections::HashMap<String, (u32, std::time::Instant)>>,
+> = std::sync::OnceLock::new();
+
+fn holler_insert_rate_limit_state(
+) -> &'static std::sync::Mutex<std::collections::HashMap<String, (u32, std::time::Instant)>> {
+    HOLLER_INSERT_RATE_LIMITER
+        .get_or_init(|| std::sync::Mutex::new(std::collections::HashMap::new()))
+}
+
+/// Returns `(within_limit, count_this_window)` for `ip_key`, bumping the
+/// window's counter as a side effect.
+fn check_holler_insert_rate_limit(ip_key: &str) -> (bool, u32) {
+    let max_reqs: u32 = std::env::var("CHUMP_HOLLER_INSERT_RATE_LIMIT")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(100);
+    let window_secs = 60u64;
+    let mut state = match holler_insert_rate_limit_state().lock() {
+        Ok(g) => g,
+        Err(_) => return (true, 0), // on poison, allow through
+    };
+    let entry = state
+        .entry(ip_key.to_string())
+        .or_insert((0, std::time::Instant::now()));
+    if entry.1.elapsed().as_secs() >= window_secs {
+        *entry = (1, std::time::Instant::now());
+        return (true, 1);
+    }
+    entry.0 += 1;
+    (entry.0 <= max_reqs, entry.0)
+}
+
+/// Extract the caller's IP for rate-limiting purposes: `X-Forwarded-For`
+/// (first hop), falling back to `"local"` for direct/loopback callers.
+fn holler_client_ip(headers: &HeaderMap) -> String {
+    headers
+        .get("x-forwarded-for")
+        .and_then(|v| v.to_str().ok())
+        .and_then(|v| v.split(',').next())
+        .map(|v| v.trim().to_string())
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| "local".to_string())
+}
+
+/// Axum middleware: enforce the per-IP insert rate limit on POST
+/// /holler/insert (AC1). Throttled requests get HTTP 429 (AC2) and are
+/// logged with IP + current window count (AC4); the sliding window itself
+/// gives the "resets after the interval" behaviour (AC3).
+async fn holler_insert_rate_limit_middleware(
+    headers: HeaderMap,
+    req: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let ip_key = holler_client_ip(&headers);
+    let (within_limit, count) = check_holler_insert_rate_limit(&ip_key);
+    if !within_limit {
+        tracing::warn!(
+            "holler-insert: rate limit exceeded for ip={} count={}",
+            ip_key,
+            count
+        );
+        return (
+            StatusCode::TOO_MANY_REQUESTS,
+            Json(serde_json::json!({
+                "error": "rate_limit_exceeded",
+                "ip": ip_key,
+                "count": count,
+            })),
+        )
+            .into_response();
+    }
+    next.run(req).await
+}
+
+/// POST /holler/insert — widget insert endpoint (RESILIENT-241 slice).
+/// Body shape is intentionally permissive (opaque JSON passthrough); the
+/// rate-limit middleware in front of this handler is the control this gap
+/// ships (RESILIENT-698), not payload validation (that's RESILIENT-926's
+/// lane).
+async fn handle_holler_insert(Json(body): Json<serde_json::Value>) -> Json<serde_json::Value> {
+    Json(serde_json::json!({ "status": "accepted", "echo": body }))
+}
+
 /// Validate gap_id format: must match [A-Z][A-Z0-9]*-[0-9]+ (e.g. INFRA-630, FLEET-044).
 fn validate_gap_id(id: &str) -> bool {
     if id.is_empty() || id.len() > 32 {
@@ -9506,6 +9596,14 @@ fn build_api_router() -> Router {
             "/api/ingest/upload",
             post(handle_ingest_upload).layer(RequestBodyLimitLayer::new(11 * 1024 * 1024)),
         )
+        // RESILIENT-698 (RESILIENT-241 slice): server-side rate limiting on
+        // widget inserts — 100/min/IP, HTTP 429 when exceeded.
+        .route(
+            "/holler/insert",
+            post(handle_holler_insert).layer(axum::middleware::from_fn(
+                holler_insert_rate_limit_middleware,
+            )),
+        )
         .route(
             "/api/research",
             get(handle_research_list).post(handle_research_create),
@@ -11213,6 +11311,129 @@ mod api_battle_tests {
             Some(v) => std::env::set_var("HOME", v),
             None => std::env::remove_var("HOME"),
         }
+    }
+}
+
+#[cfg(test)]
+mod holler_insert_rate_limit_tests {
+    //! RESILIENT-698 (RESILIENT-241 slice): server-side rate limiting on
+    //! POST /holler/insert.
+    use super::*;
+    use axum::body::{to_bytes, Body};
+    use axum::http::Request;
+    use serial_test::serial;
+    use tower::Service;
+
+    fn reset_holler_rate_limit_state() {
+        if let Ok(mut g) = holler_insert_rate_limit_state().lock() {
+            g.clear();
+        }
+    }
+
+    fn insert_req(ip: &str) -> Request<Body> {
+        Request::builder()
+            .method("POST")
+            .uri("/holler/insert")
+            .header("content-type", "application/json")
+            .header("x-forwarded-for", ip)
+            .body(Body::from(r#"{"kind":"widget-insert"}"#))
+            .unwrap()
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn under_limit_requests_succeed() {
+        reset_holler_rate_limit_state();
+        std::env::set_var("CHUMP_HOLLER_INSERT_RATE_LIMIT", "100");
+        let mut app = build_api_router();
+
+        let res = Service::call(&mut app, insert_req("203.0.113.5"))
+            .await
+            .unwrap();
+        assert_eq!(res.status(), StatusCode::OK);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(v.get("status").and_then(|x| x.as_str()), Some("accepted"));
+
+        std::env::remove_var("CHUMP_HOLLER_INSERT_RATE_LIMIT");
+        reset_holler_rate_limit_state();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn over_limit_from_same_ip_gets_429_and_logs() {
+        reset_holler_rate_limit_state();
+        std::env::set_var("CHUMP_HOLLER_INSERT_RATE_LIMIT", "3");
+        let mut app = build_api_router();
+        let ip = "198.51.100.9";
+
+        for _ in 0..3 {
+            let res = Service::call(&mut app, insert_req(ip)).await.unwrap();
+            assert_eq!(res.status(), StatusCode::OK);
+        }
+
+        // AC2: the request beyond the configured max gets HTTP 429.
+        let res = Service::call(&mut app, insert_req(ip)).await.unwrap();
+        assert_eq!(res.status(), StatusCode::TOO_MANY_REQUESTS);
+        let body = to_bytes(res.into_body(), usize::MAX).await.unwrap();
+        let v: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        // AC4: the throttled response carries the IP and count that were logged.
+        assert_eq!(v.get("ip").and_then(|x| x.as_str()), Some(ip));
+        assert_eq!(v.get("count").and_then(|x| x.as_u64()), Some(4));
+
+        std::env::remove_var("CHUMP_HOLLER_INSERT_RATE_LIMIT");
+        reset_holler_rate_limit_state();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn different_ips_are_tracked_independently() {
+        reset_holler_rate_limit_state();
+        std::env::set_var("CHUMP_HOLLER_INSERT_RATE_LIMIT", "1");
+        let mut app = build_api_router();
+
+        let res_a = Service::call(&mut app, insert_req("192.0.2.1"))
+            .await
+            .unwrap();
+        assert_eq!(res_a.status(), StatusCode::OK);
+        // A second insert from a different IP is a fresh window, not blocked
+        // by IP 192.0.2.1's usage.
+        let res_b = Service::call(&mut app, insert_req("192.0.2.2"))
+            .await
+            .unwrap();
+        assert_eq!(res_b.status(), StatusCode::OK);
+
+        std::env::remove_var("CHUMP_HOLLER_INSERT_RATE_LIMIT");
+        reset_holler_rate_limit_state();
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn window_resets_after_interval() {
+        reset_holler_rate_limit_state();
+        std::env::set_var("CHUMP_HOLLER_INSERT_RATE_LIMIT", "1");
+        let ip = "192.0.2.50";
+
+        let (ok1, count1) = check_holler_insert_rate_limit(ip);
+        assert!(ok1);
+        assert_eq!(count1, 1);
+        let (ok2, count2) = check_holler_insert_rate_limit(ip);
+        assert!(!ok2, "second request in the same window exceeds max=1");
+        assert_eq!(count2, 2);
+
+        // AC3: simulate window elapsed by rewriting the stored window_start
+        // far enough in the past that the next call sees it expired.
+        {
+            let mut state = holler_insert_rate_limit_state().lock().unwrap();
+            let entry = state.get_mut(ip).unwrap();
+            entry.1 = std::time::Instant::now() - std::time::Duration::from_secs(61);
+        }
+        let (ok3, count3) = check_holler_insert_rate_limit(ip);
+        assert!(ok3, "counter must reset once the window has elapsed");
+        assert_eq!(count3, 1);
+
+        std::env::remove_var("CHUMP_HOLLER_INSERT_RATE_LIMIT");
+        reset_holler_rate_limit_state();
     }
 }
 
