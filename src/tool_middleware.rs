@@ -966,6 +966,93 @@ fn detect_ssrf(input: &Value) -> Result<()> {
     Ok(())
 }
 
+/// GitHub MCP tool names that take a `repo` field and must be checked against
+/// the owned-repo allowlist before any network call fires (EFFECTIVE-1408,
+/// mirrors `check_repo` in `crates/mcp-servers/chump-mcp-github/src/main.rs`).
+const GITHUB_REPO_SCOPED_TOOLS: &[&str] = &[
+    "gh_list_issues",
+    "gh_create_issue",
+    "gh_list_my_prs",
+    "gh_pr_status",
+    "gh_pr_create",
+    "gh_repo_info",
+    "gh_get_issue",
+    "github_clone_or_pull",
+];
+
+/// Minimum star count for a repo to count as the opportunity-library
+/// leverage tier during a portfolio sweep (EFFECTIVE-374 slice).
+pub const SWEEP_LEVERAGE_TIER_MIN_STARS: u64 = 4;
+
+fn owned_repo_allowlist() -> Vec<String> {
+    std::env::var("CHUMP_GITHUB_REPOS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Rejects a repo target that isn't on the owned-repo allowlist, logging a
+/// `NO-GO` line so foreign-surface sweep attempts show up in the trace
+/// (posse outward NO-GO, 2026-08-04 binding — allowlist, never strangers).
+/// An empty allowlist means no restriction has been configured yet.
+fn check_owned_repo(repo: &str) -> Result<()> {
+    let allowed = owned_repo_allowlist();
+    if allowed.is_empty() || allowed.iter().any(|r| r == repo) {
+        return Ok(());
+    }
+    tracing::error!(repo = %repo, "NO-GO: repo not on CHUMP_GITHUB_REPOS owned allowlist");
+    Err(anyhow!(
+        "NO-GO: repo '{}' is not on the owned-repo allowlist (CHUMP_GITHUB_REPOS)",
+        repo
+    ))
+}
+
+/// Filters out sweep targets whose `repo` field isn't on the owned
+/// allowlist (logging `NO-GO` for each) and sorts the rest so 4-star+
+/// (opportunity-library leverage tier) repos are visited before lower
+/// tiers. Entries without a `repo` field or `stars` field pass through
+/// untouched / are treated as 0 stars respectively.
+fn prioritize_sweep_targets(targets: Vec<Value>) -> Vec<Value> {
+    let mut kept: Vec<Value> = targets
+        .into_iter()
+        .filter(|t| match t.get("repo").and_then(|r| r.as_str()) {
+            Some(repo) => check_owned_repo(repo).is_ok(),
+            None => true,
+        })
+        .collect();
+    kept.sort_by(|a, b| {
+        let a_stars = a.get("stars").and_then(|v| v.as_u64()).unwrap_or(0);
+        let b_stars = b.get("stars").and_then(|v| v.as_u64()).unwrap_or(0);
+        let a_tier = a_stars >= SWEEP_LEVERAGE_TIER_MIN_STARS;
+        let b_tier = b_stars >= SWEEP_LEVERAGE_TIER_MIN_STARS;
+        b_tier.cmp(&a_tier).then(b_stars.cmp(&a_stars))
+    });
+    kept
+}
+
+/// EFFECTIVE-1408: validates a github-MCP tool call's repo target(s) against
+/// the owned-repo allowlist before the inner tool fires any network request.
+/// For portfolio-sweep-shaped calls (a `targets` array of `{repo, stars}`),
+/// foreign surfaces are dropped and the remaining targets are reordered by
+/// leverage tier in place.
+fn enforce_github_sweep_policy(name: &str, input: &mut Value) -> Result<()> {
+    if let Some(targets) = input.get("targets").and_then(|v| v.as_array()).cloned() {
+        let filtered = prioritize_sweep_targets(targets);
+        if let Some(obj) = input.as_object_mut() {
+            obj.insert("targets".to_string(), Value::Array(filtered));
+        }
+        return Ok(());
+    }
+    if GITHUB_REPO_SCOPED_TOOLS.contains(&name) {
+        if let Some(repo) = input.get("repo").and_then(|r| r.as_str()) {
+            check_owned_repo(repo)?;
+        }
+    }
+    Ok(())
+}
+
 /// Default timeout for a single tool execution (seconds).
 /// INFRA-321: reduced from 30s → 8s so a wedged tool (e.g. memory_brain
 /// trying a missing path) fails fast instead of blocking a turn for 60s.
@@ -1040,6 +1127,8 @@ impl Tool for ToolTimeoutWrapper {
             };
         detect_ssrf(&input)?;
         enforce_tool_rate_limit(&name)?;
+        let mut input = input;
+        enforce_github_sweep_policy(&name, &mut input)?;
 
         // CREDIBLE-174: review-class dispatch gate. PR-review-intelligence
         // agents (pr_triage / pr_explain / fix_clippy / ac_coverage /
@@ -1390,6 +1479,93 @@ mod tests {
         std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_MAX");
         std::env::remove_var("CHUMP_TOOL_RATE_LIMIT_WINDOW_SECS");
         test_reset_rate_limits();
+    }
+
+    #[test]
+    #[serial]
+    fn eff1408_check_owned_repo_no_go_on_foreign_repo() {
+        std::env::set_var(
+            "CHUMP_GITHUB_REPOS",
+            "repairman29/chump,repairman29/BEAST-MODE",
+        );
+        let err =
+            check_owned_repo("some-stranger/repo").expect_err("foreign repo must be rejected");
+        assert!(
+            err.to_string().contains("NO-GO"),
+            "rejection must log a NO-GO error, got: {}",
+            err
+        );
+        assert!(check_owned_repo("repairman29/chump").is_ok());
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn eff1408_check_owned_repo_empty_allowlist_allows_all() {
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        assert!(check_owned_repo("any/repo").is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn eff1408_prioritize_sweep_targets_drops_foreign_and_orders_by_star_tier() {
+        std::env::set_var(
+            "CHUMP_GITHUB_REPOS",
+            "repairman29/chump,repairman29/BEAST-MODE,repairman29/upshift",
+        );
+        let targets = vec![
+            json!({ "repo": "repairman29/upshift", "stars": 2 }),
+            json!({ "repo": "some-stranger/repo", "stars": 99 }),
+            json!({ "repo": "repairman29/BEAST-MODE", "stars": 3 }),
+            json!({ "repo": "repairman29/chump", "stars": 5 }),
+        ];
+        let result = prioritize_sweep_targets(targets);
+        let repos: Vec<&str> = result.iter().map(|t| t["repo"].as_str().unwrap()).collect();
+        // Foreign surface must be dropped entirely.
+        assert!(!repos.contains(&"some-stranger/repo"));
+        // 4-star+ leverage tier (chump: 5 stars) must be selected before
+        // lower tiers, and lower tiers stay ordered by star count.
+        assert_eq!(
+            repos,
+            vec![
+                "repairman29/chump",
+                "repairman29/BEAST-MODE",
+                "repairman29/upshift"
+            ]
+        );
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn eff1408_enforce_github_sweep_policy_rejects_unowned_repo_field() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "repairman29/chump");
+        let mut input = json!({ "repo": "some-stranger/repo" });
+        let err = enforce_github_sweep_policy("gh_repo_info", &mut input)
+            .expect_err("unowned repo must be rejected before any network call");
+        assert!(err.to_string().contains("NO-GO"));
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn eff1408_enforce_github_sweep_policy_reorders_targets_array() {
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        let mut input = json!({
+            "targets": [
+                { "repo": "repairman29/low-tier", "stars": 1 },
+                { "repo": "repairman29/high-tier", "stars": 10 },
+            ]
+        });
+        enforce_github_sweep_policy("gh_portfolio_sweep_targets", &mut input)
+            .expect("no allowlist configured means nothing is rejected");
+        let repos: Vec<&str> = input["targets"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|t| t["repo"].as_str().unwrap())
+            .collect();
+        assert_eq!(repos, vec!["repairman29/high-tier", "repairman29/low-tier"]);
     }
 
     #[test]

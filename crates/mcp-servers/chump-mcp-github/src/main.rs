@@ -75,11 +75,49 @@ fn check_repo(repo: &str) -> Result<()> {
     if allowed.iter().any(|r| r == repo) {
         Ok(())
     } else {
+        eprintln!(
+            "NO-GO: repo '{}' rejected — not in CHUMP_GITHUB_REPOS owned allowlist",
+            repo
+        );
         Err(anyhow!(
-            "repo '{}' not in CHUMP_GITHUB_REPOS allowlist",
+            "NO-GO: repo '{}' not in CHUMP_GITHUB_REPOS allowlist",
             repo
         ))
     }
+}
+
+/// Minimum star count for a repo to count as the opportunity-library
+/// leverage tier during a portfolio sweep (EFFECTIVE-374 slice).
+const SWEEP_LEVERAGE_TIER_MIN_STARS: u64 = 4;
+
+#[derive(Deserialize)]
+struct SweepTarget {
+    repo: String,
+    #[serde(default)]
+    stars: u64,
+}
+
+/// Filters sweep targets down to the owned-repo allowlist (logging `NO-GO`
+/// for each foreign surface via `check_repo`) and sorts the rest so 4-star+
+/// (opportunity-library leverage tier) repos come before lower tiers.
+fn prioritize_sweep_targets(targets: Vec<SweepTarget>) -> (Vec<SweepTarget>, Vec<String>) {
+    let mut rejected = Vec::new();
+    let mut kept: Vec<SweepTarget> = targets
+        .into_iter()
+        .filter(|t| match check_repo(&t.repo) {
+            Ok(()) => true,
+            Err(e) => {
+                rejected.push(e.to_string());
+                false
+            }
+        })
+        .collect();
+    kept.sort_by(|a, b| {
+        let a_tier = a.stars >= SWEEP_LEVERAGE_TIER_MIN_STARS;
+        let b_tier = b.stars >= SWEEP_LEVERAGE_TIER_MIN_STARS;
+        b_tier.cmp(&a_tier).then(b.stars.cmp(&a.stars))
+    });
+    (kept, rejected)
 }
 
 async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
@@ -348,6 +386,22 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 )
             }
         }
+        "gh_portfolio_sweep_targets" => {
+            let raw_targets = params["targets"]
+                .as_array()
+                .ok_or_else(|| anyhow!("missing targets"))?;
+            let targets: Vec<SweepTarget> = raw_targets
+                .iter()
+                .map(|t| serde_json::from_value(t.clone()))
+                .collect::<Result<Vec<_>, _>>()
+                .map_err(|e| anyhow!("invalid target entry: {}", e))?;
+            let (kept, rejected) = prioritize_sweep_targets(targets);
+            let targets_out: Vec<Value> = kept
+                .into_iter()
+                .map(|t| json!({ "repo": t.repo, "stars": t.stars }))
+                .collect();
+            Ok(json!({ "targets": targets_out, "rejected": rejected }))
+        }
         // MCP protocol: tool listing
         "tools/list" => Ok(json!({
             "tools": [
@@ -363,6 +417,7 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 { "name": "gh_pr_comment", "description": "Add a comment to a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" }, "body": { "type": "string" } }, "required": ["pr_number", "body"] } },
                 { "name": "gh_pr_view_comments", "description": "View PR comments", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
                 { "name": "github_clone_or_pull", "description": "Clone a repo or pull if it already exists locally", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "ref": { "type": "string", "default": "main" } }, "required": ["repo"] } },
+                { "name": "gh_portfolio_sweep_targets", "description": "Filter sweep targets to the owned-repo allowlist (NO-GO on foreign surfaces) and order by opportunity-library leverage tier (4-star+ first)", "inputSchema": { "type": "object", "properties": { "targets": { "type": "array", "items": { "type": "object", "properties": { "repo": { "type": "string" }, "stars": { "type": "integer" } }, "required": ["repo"] } } }, "required": ["targets"] } },
             ]
         })),
         _ => Err(anyhow!("unknown method: {}", method)),
@@ -446,6 +501,7 @@ async fn main() {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     #[test]
     fn parse_valid_request() {
@@ -456,9 +512,48 @@ mod tests {
     }
 
     #[test]
+    #[serial]
     fn check_repo_empty_allowlist() {
         // With no CHUMP_GITHUB_REPOS set, all repos should be allowed
         std::env::remove_var("CHUMP_GITHUB_REPOS");
         assert!(check_repo("any/repo").is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn check_repo_rejects_foreign_with_no_go() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "repairman29/chump");
+        let err = check_repo("some-stranger/repo").unwrap_err();
+        assert!(err.to_string().contains("NO-GO"));
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn prioritize_sweep_targets_drops_foreign_and_sorts_by_star_tier() {
+        std::env::set_var(
+            "CHUMP_GITHUB_REPOS",
+            "repairman29/chump,repairman29/BEAST-MODE,repairman29/upshift",
+        );
+        let targets = vec![
+            SweepTarget {
+                repo: "repairman29/upshift".to_string(),
+                stars: 2,
+            },
+            SweepTarget {
+                repo: "some-stranger/repo".to_string(),
+                stars: 99,
+            },
+            SweepTarget {
+                repo: "repairman29/chump".to_string(),
+                stars: 5,
+            },
+        ];
+        let (kept, rejected) = prioritize_sweep_targets(targets);
+        assert_eq!(rejected.len(), 1);
+        assert!(rejected[0].contains("NO-GO"));
+        let repos: Vec<&str> = kept.iter().map(|t| t.repo.as_str()).collect();
+        assert_eq!(repos, vec!["repairman29/chump", "repairman29/upshift"]);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
     }
 }
