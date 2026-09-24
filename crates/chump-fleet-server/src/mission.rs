@@ -25,9 +25,11 @@
 //! that env var is unset/empty the route refuses every request. The token
 //! comparison is constant-time.
 
+use std::io::{BufRead, Write};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 
 /// Env var holding the shared bearer token. Fail-closed when unset/empty.
@@ -70,6 +72,10 @@ pub struct MissionRequest {
     /// Explicit `a|b|c` acceptance criteria; overrides `outcome`.
     #[serde(default)]
     pub acceptance_criteria: Option<String>,
+    /// Identity of the caller launching this mission (EFFECTIVE-1519); defaults
+    /// to `"unknown"` when the caller omits it.
+    #[serde(default)]
+    pub user_id: Option<String>,
 }
 
 /// Result of a successful intake, serialized back to the caller.
@@ -276,6 +282,17 @@ pub fn create_mission_gap(repo_root: &Path, req: MissionRequest) -> anyhow::Resu
         .map(|_| "spawned".to_string())
         .unwrap_or_else(|e| format!("spawn_failed: {e}"));
 
+    // 4. Launch tracking (EFFECTIVE-1519): every mission gap starts life at
+    //    the "draft" stage. Best-effort — a logging failure must never fail
+    //    the mission intake itself.
+    let user_id = req.user_id.as_deref().unwrap_or("unknown");
+    if let Err(e) = log_launch_stage(repo_root, &domain, user_id, LaunchStage::Draft) {
+        tracing::warn!(gap = %gap_id, "failed to write launch log entry: {e}");
+    }
+    if let Err(e) = prune_launch_log(repo_root) {
+        tracing::warn!("failed to prune launch log: {e}");
+    }
+
     Ok(MissionOutcome {
         gap_id,
         domain,
@@ -354,6 +371,119 @@ exec "$2" gap decompose "$3" --apply
         .map_err(|e| anyhow::anyhow!("failed to spawn decompose login-shell: {e}"))
 }
 
+/// Launch stages tracked by the launch log (EFFECTIVE-1519, EFFECTIVE-365 slice).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LaunchStage {
+    Draft,
+    Approve,
+    Send,
+    Publish,
+}
+
+impl LaunchStage {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            LaunchStage::Draft => "draft",
+            LaunchStage::Approve => "approve",
+            LaunchStage::Send => "send",
+            LaunchStage::Publish => "publish",
+        }
+    }
+}
+
+/// One structured launch-log line: `platform`, ISO-8601 `timestamp`, `user_id`,
+/// and `stage`.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct LaunchLogEntry {
+    platform: String,
+    timestamp: DateTime<Utc>,
+    user_id: String,
+    stage: String,
+}
+
+/// Path to the launch log, relative to the repo root.
+fn launch_log_path(repo_root: &Path) -> PathBuf {
+    repo_root.join("logs").join("launch.log")
+}
+
+/// Append a JSON-line launch-log entry for `stage`. Creates `logs/` if absent.
+fn log_launch_stage(
+    repo_root: &Path,
+    platform: &str,
+    user_id: &str,
+    stage: LaunchStage,
+) -> std::io::Result<()> {
+    let path = launch_log_path(repo_root);
+    if let Some(dir) = path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let entry = LaunchLogEntry {
+        platform: platform.to_string(),
+        timestamp: Utc::now(),
+        user_id: user_id.to_string(),
+        stage: stage.as_str().to_string(),
+    };
+    let line = serde_json::to_string(&entry)
+        .map_err(|e| std::io::Error::new(std::io::ErrorKind::InvalidData, e))?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    writeln!(f, "{line}")
+}
+
+/// Read all launch-log entries, skipping any malformed lines.
+fn read_launch_log(repo_root: &Path) -> std::io::Result<Vec<LaunchLogEntry>> {
+    let path = launch_log_path(repo_root);
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let f = std::fs::File::open(&path)?;
+    Ok(std::io::BufReader::new(f)
+        .lines()
+        .map_while(Result::ok)
+        .filter(|l| !l.trim().is_empty())
+        .filter_map(|l| serde_json::from_str::<LaunchLogEntry>(&l).ok())
+        .collect())
+}
+
+/// Query the launch log by `stage`, printing matching entries (one JSON line
+/// each) to stdout. Backs `--query-logs <stage>` in `main.rs`.
+pub fn handle_log_query(repo_root: &Path, stage: &str) -> std::io::Result<()> {
+    for entry in read_launch_log(repo_root)?
+        .into_iter()
+        .filter(|e| e.stage == stage)
+    {
+        println!("{}", serde_json::to_string(&entry).unwrap_or_default());
+    }
+    Ok(())
+}
+
+/// Retention window for launch-log entries.
+const LAUNCH_LOG_RETENTION_DAYS: i64 = 90;
+
+/// Daily pruning routine: rewrite `logs/launch.log` keeping only entries
+/// newer than [`LAUNCH_LOG_RETENTION_DAYS`]. No-op when the log is absent.
+fn prune_launch_log(repo_root: &Path) -> std::io::Result<()> {
+    let path = launch_log_path(repo_root);
+    if !path.exists() {
+        return Ok(());
+    }
+    let cutoff = Utc::now() - chrono::Duration::days(LAUNCH_LOG_RETENTION_DAYS);
+    let kept: Vec<LaunchLogEntry> = read_launch_log(repo_root)?
+        .into_iter()
+        .filter(|e| e.timestamp >= cutoff)
+        .collect();
+    let mut out = String::new();
+    for entry in &kept {
+        if let Ok(line) = serde_json::to_string(entry) {
+            out.push_str(&line);
+            out.push('\n');
+        }
+    }
+    std::fs::write(&path, out)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -397,5 +527,68 @@ mod tests {
         assert_eq!(sanitize_effort(Some("XL")), "xl");
         assert_eq!(sanitize_effort(Some("huge")), "l");
         assert_eq!(sanitize_effort(None), "l");
+    }
+
+    #[test]
+    fn launch_log_write_and_query_roundtrip() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-test-launch-log-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        log_launch_stage(&dir, "INFRA", "u1", LaunchStage::Draft).unwrap();
+        log_launch_stage(&dir, "INFRA", "u1", LaunchStage::Approve).unwrap();
+        log_launch_stage(&dir, "MISSION", "u2", LaunchStage::Draft).unwrap();
+
+        let all = read_launch_log(&dir).unwrap();
+        assert_eq!(all.len(), 3);
+
+        let drafts: Vec<_> = all.iter().filter(|e| e.stage == "draft").collect();
+        assert_eq!(drafts.len(), 2);
+        assert!(drafts.iter().any(|e| e.platform == "INFRA"));
+        assert!(drafts.iter().any(|e| e.platform == "MISSION"));
+
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn prune_launch_log_removes_entries_older_than_retention() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-test-prune-log-{}-{:?}",
+            std::process::id(),
+            std::thread::current().id()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+
+        let fresh = LaunchLogEntry {
+            platform: "INFRA".into(),
+            timestamp: Utc::now(),
+            user_id: "u1".into(),
+            stage: "draft".into(),
+        };
+        let stale = LaunchLogEntry {
+            platform: "INFRA".into(),
+            timestamp: Utc::now() - chrono::Duration::days(120),
+            user_id: "u1".into(),
+            stage: "publish".into(),
+        };
+        let path = launch_log_path(&dir);
+        std::fs::create_dir_all(path.parent().unwrap()).unwrap();
+        let contents = format!(
+            "{}\n{}\n",
+            serde_json::to_string(&stale).unwrap(),
+            serde_json::to_string(&fresh).unwrap()
+        );
+        std::fs::write(&path, contents).unwrap();
+
+        prune_launch_log(&dir).unwrap();
+
+        let remaining = read_launch_log(&dir).unwrap();
+        assert_eq!(remaining.len(), 1);
+        assert_eq!(remaining[0].stage, "draft");
+
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

@@ -250,6 +250,41 @@ exit 0
     assert_eq!(status, StatusCode::OK);
     assert_eq!(body[0]["id"].as_str(), Some("RESILIENT-1030"));
 
+    // ── EFFECTIVE-1519: POST /api/mission (create_mission_gap) writes a
+    // structured launch-log entry for the "draft" stage. A successful
+    // mission creation must produce exactly one new `logs/launch.log` line
+    // tagged `"stage":"draft"`.
+    std::env::set_var(BATPHONE_TOKEN_ENV, "s3cret-token");
+    std::env::set_var("CHUMP_BIN", &fake_bin);
+    let launch_log_path = dir.join("logs").join("launch.log");
+    let before = std::fs::read_to_string(&launch_log_path).unwrap_or_default();
+    let draft_lines_before = before.matches("\"stage\":\"draft\"").count();
+
+    let mission_req = Request::builder()
+        .method("POST")
+        .uri("/api/mission")
+        .header("content-type", "application/json")
+        .header("authorization", "Bearer s3cret-token")
+        .body(Body::from(
+            json!({"title": "launch tracking test mission"}).to_string(),
+        ))
+        .unwrap();
+    let mission_resp = build_app(&dir).oneshot(mission_req).await.unwrap();
+    assert_eq!(
+        mission_resp.status(),
+        StatusCode::ACCEPTED,
+        "mission creation must succeed against the fake chump bin"
+    );
+
+    let after = std::fs::read_to_string(&launch_log_path)
+        .unwrap_or_else(|e| panic!("expected {} to exist: {e}", launch_log_path.display()));
+    let draft_lines_after = after.matches("\"stage\":\"draft\"").count();
+    assert_eq!(
+        draft_lines_after,
+        draft_lines_before + 1,
+        "expected exactly one new draft-stage launch-log entry, log:\n{after}"
+    );
+
     std::env::remove_var(BATPHONE_TOKEN_ENV);
     std::env::remove_var("CHUMP_BIN");
     let _ = std::fs::remove_dir_all(&dir);

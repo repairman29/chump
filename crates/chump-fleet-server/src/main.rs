@@ -43,7 +43,7 @@
 use std::process::ExitCode;
 use std::sync::Arc;
 
-use chump_fleet_server::{dashboard, db, routes, segmenter};
+use chump_fleet_server::{dashboard, db, mission, routes, segmenter};
 
 fn resolve_repo_root() -> std::path::PathBuf {
     std::process::Command::new("git")
@@ -102,6 +102,23 @@ fn main() -> ExitCode {
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("chump-fleet-server {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
+    }
+    // EFFECTIVE-1519: `--query-logs <stage>` prints launch-log entries for
+    // `stage` (draft|approve|send|publish) from logs/launch.log and exits,
+    // without starting the HTTP server.
+    if let Some(stage) = args
+        .windows(2)
+        .find(|w| w[0] == "--query-logs")
+        .map(|w| w[1].clone())
+    {
+        let repo_root = resolve_repo_root();
+        return match mission::handle_log_query(&repo_root, &stage) {
+            Ok(()) => ExitCode::SUCCESS,
+            Err(e) => {
+                eprintln!("[chump-fleet-server] --query-logs failed: {e}");
+                ExitCode::from(1)
+            }
+        };
     }
     // Optional --port N (alternative to CHUMP_FLEET_SERVER_PORT env var).
     let port_override: Option<u16> = args
