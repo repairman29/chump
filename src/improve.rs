@@ -944,7 +944,7 @@ pub(crate) fn configure_claude_auth_env(cmd: &mut Command) -> bool {
     let token_in_env = std::env::var_os("CLAUDE_CODE_OAUTH_TOKEN").is_some();
 
     // Step 2: if not in env, try reading from the token file.
-    let token_from_file: Option<String> = if token_in_env {
+    let token_from_file: Option<OauthTokenInfo> = if token_in_env {
         None
     } else {
         read_oauth_token_file()
@@ -959,8 +959,8 @@ pub(crate) fn configure_claude_auth_env(cmd: &mut Command) -> bool {
     }
 
     // Inject the file token if the env didn't already carry one.
-    if let Some(tok) = token_from_file {
-        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", tok);
+    if let Some(info) = token_from_file {
+        cmd.env("CLAUDE_CODE_OAUTH_TOKEN", info.token);
     }
 
     // B4: strip conflicting gateway vars so the spawned claude uses OAUTH.
@@ -3748,29 +3748,50 @@ fn resolve_chump_bin() -> String {
     "chump".to_string()
 }
 
+/// RESILIENT-1105: an OAUTH token plus its optional expiry, as read from
+/// `~/.chump/oauth-token.json`.
+struct OauthTokenInfo {
+    token: String,
+    /// The token file's `expires_at` field, unix-epoch seconds, if present.
+    expires_at: Option<i64>,
+}
+
 /// RESILIENT-106: read the OAUTH token from `~/.chump/oauth-token.json`.
 ///
 /// Mirrors the pattern from `scripts/dispatch/worker.sh` (INFRA-620, lines 211-232).
 /// Tries keys "token", "access_token", and "accessToken" in that order.
 ///
+/// RESILIENT-1105: also extracts the sibling `expires_at` field (unix-epoch
+/// seconds) when present, so callers can reason about token freshness
+/// (RESILIENT-054 slice) without re-parsing the file.
+///
 /// Returns `None` silently on any error (missing file, parse failure, empty value)
 /// so the caller degrades gracefully.
 ///
-/// IMPORTANT: callers MUST NOT log or print the returned value — it's a credential.
-fn read_oauth_token_file() -> Option<String> {
+/// IMPORTANT: callers MUST NOT log or print the returned token — it's a credential.
+fn read_oauth_token_file() -> Option<OauthTokenInfo> {
     let home = std::env::var("HOME").ok()?;
     let token_path = PathBuf::from(home).join(".chump/oauth-token.json");
     let content = std::fs::read_to_string(&token_path).ok()?;
     let v: serde_json::Value = serde_json::from_str(&content).ok()?;
     // Try the three key names worker.sh checks, in the same order.
-    for key in ["token", "access_token", "accessToken"] {
-        if let Some(s) = v.get(key).and_then(|x| x.as_str()) {
-            if !s.is_empty() {
-                return Some(s.to_string());
-            }
-        }
-    }
-    None
+    let token = ["token", "access_token", "accessToken"]
+        .iter()
+        .find_map(|key| {
+            v.get(*key)
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+                .map(|s| s.to_string())
+        })?;
+    let expires_at = v.get("expires_at").and_then(|x| x.as_i64());
+    Some(OauthTokenInfo { token, expires_at })
+}
+
+/// RESILIENT-1105: the parsed `expires_at` (unix-epoch seconds) of the OAUTH
+/// token currently on disk at `~/.chump/oauth-token.json`, or `None` if the
+/// file is missing, unparseable, or has no `expires_at` field.
+pub(crate) fn token_expires_at() -> Option<i64> {
+    read_oauth_token_file()?.expires_at
 }
 
 /// Detect the default branch of the cloned repo.
@@ -5044,6 +5065,68 @@ Some prose from the agent.
             tok,
             Some("camel_tok_999"),
             "accessToken camelCase key should be read"
+        );
+    }
+
+    /// RESILIENT-1105: token_expires_at() parses the `expires_at` field
+    /// (unix-epoch seconds) alongside the token.
+    #[test]
+    #[serial_test::serial]
+    fn token_expires_at_reads_expiry_from_file() {
+        let tmp = TempDir::new().unwrap();
+        let orig_home = std::env::var("HOME").unwrap_or_default();
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+        }
+
+        let chump_dir = tmp.path().join(".chump");
+        fs::create_dir_all(&chump_dir).unwrap();
+        fs::write(
+            chump_dir.join("oauth-token.json"),
+            r#"{"token":"tok_abc123","expires_at":1893456000}"#,
+        )
+        .unwrap();
+
+        let result = token_expires_at();
+
+        unsafe {
+            std::env::set_var("HOME", &orig_home);
+        }
+
+        assert_eq!(
+            result,
+            Some(1893456000),
+            "expires_at should be parsed from the token file"
+        );
+    }
+
+    /// RESILIENT-1105: token_expires_at() returns None when the field is absent.
+    #[test]
+    #[serial_test::serial]
+    fn token_expires_at_none_when_field_missing() {
+        let tmp = TempDir::new().unwrap();
+        let orig_home = std::env::var("HOME").unwrap_or_default();
+        unsafe {
+            std::env::set_var("HOME", tmp.path());
+        }
+
+        let chump_dir = tmp.path().join(".chump");
+        fs::create_dir_all(&chump_dir).unwrap();
+        fs::write(
+            chump_dir.join("oauth-token.json"),
+            r#"{"token":"tok_abc123"}"#,
+        )
+        .unwrap();
+
+        let result = token_expires_at();
+
+        unsafe {
+            std::env::set_var("HOME", &orig_home);
+        }
+
+        assert_eq!(
+            result, None,
+            "expires_at should be None when the field is absent from the file"
         );
     }
 
