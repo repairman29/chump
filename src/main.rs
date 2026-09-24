@@ -205,6 +205,7 @@ mod pr_rescue; // INFRA-1714: closed-loop PR rescue (chump pr-rescue)
 mod pr_triage;
 mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
+mod model_index;
 mod provider_bandit;
 mod provider_cascade;
 mod provider_probe;
@@ -298,11 +299,11 @@ mod version;
 mod vision_intake; // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
 mod wasm_calc_tool;
 mod wasm_runner;
-mod wasm_text_tool;
-// EFFECTIVE-411: waste_tally extracted to crates/chump-waste-tally for build
-// speed. Re-exported so every existing `waste_tally::…` / `crate::waste_tally::…`
-// caller resolves unchanged. Per-model pricing is injected at startup (see
-// `main()` → `waste_tally::set_cost_fn`).
+mod wasm_text_tool; // EFFECTIVE-1567 (EFFECTIVE-409 slice): chump model-index refresh
+                    // EFFECTIVE-411: waste_tally extracted to crates/chump-waste-tally for build
+                    // speed. Re-exported so every existing `waste_tally::…` / `crate::waste_tally::…`
+                    // caller resolves unchanged. Per-model pricing is injected at startup (see
+                    // `main()` → `waste_tally::set_cost_fn`).
 pub use chump_waste_tally::waste_tally;
 mod web_brain;
 #[cfg(feature = "web-push")]
@@ -2383,6 +2384,15 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("harvest") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(harvester_cli::run(&sub_args));
+    }
+
+    // `chump model-index refresh [--json]` (EFFECTIVE-1567, EFFECTIVE-409
+    // slice) — fetch live model metadata from OpenRouter's /v1/models and
+    // persist it to .chump/openrouter_models.json, keyed by model id so
+    // reruns overwrite rather than duplicate entries.
+    if args.get(1).map(String::as_str) == Some("model-index") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(model_index::run(&sub_args).await);
     }
 
     // `chump systematize <target-repo-path> [--json]` (INFRA-1783, phase 4 of

@@ -67,6 +67,10 @@ ChumpMenu/ChumpMenu.app/
 .chump/github_cache.db-shm
 .chump/github_cache.db-wal
 
+# EFFECTIVE-1567 — regenerable OpenRouter model-metadata index, refreshed via
+# `chump model-index refresh`. Same treatment as state.db / github_cache.db.
+.chump/openrouter_models.json
+
 # META-271 inventory DB — regenerable via `chump inventory rebuild`
 # (RESILIENT-220 wires this into a weekly cadence). Same treatment as
 # state.db / github_cache.db: tracking it would make the working tree
