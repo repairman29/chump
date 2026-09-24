@@ -67,12 +67,13 @@ fn allowed_repos() -> Vec<String> {
         .collect()
 }
 
+fn is_repo_owned(repo: &str, allowed: &[String]) -> bool {
+    allowed.is_empty() || allowed.iter().any(|r| r == repo)
+}
+
 fn check_repo(repo: &str) -> Result<()> {
     let allowed = allowed_repos();
-    if allowed.is_empty() {
-        return Ok(()); // No allowlist = all repos allowed
-    }
-    if allowed.iter().any(|r| r == repo) {
+    if is_repo_owned(repo, &allowed) {
         Ok(())
     } else {
         Err(anyhow!(
@@ -80,6 +81,45 @@ fn check_repo(repo: &str) -> Result<()> {
             repo
         ))
     }
+}
+
+/// A single portfolio-sweep target: a repo name plus its star count, used to
+/// rank opportunity-library leverage tiers (EFFECTIVE-1408).
+#[derive(Deserialize, Debug, Clone)]
+struct SweepTarget {
+    repo: String,
+    #[serde(default)]
+    stars: i64,
+}
+
+/// Stars at/above this count put a repo in the "leverage tier" that gets
+/// swept first.
+const LEVERAGE_TIER_STARS: i64 = 4;
+
+/// Drop any sweep target outside the owned-repo allowlist (logging a `NO-GO`
+/// for each rejection) and sort survivors so 4-star+ leverage-tier repos are
+/// scanned before lower-tier ones.
+fn filter_and_prioritize_sweep_targets(
+    targets: Vec<SweepTarget>,
+    allowed: &[String],
+) -> Vec<SweepTarget> {
+    let mut accepted: Vec<SweepTarget> = Vec::new();
+    for target in targets {
+        if is_repo_owned(&target.repo, allowed) {
+            accepted.push(target);
+        } else {
+            eprintln!(
+                "NO-GO: sweep target '{}' rejected — repo not in owned allowlist",
+                target.repo
+            );
+        }
+    }
+    accepted.sort_by(|a, b| {
+        let a_tier = a.stars >= LEVERAGE_TIER_STARS;
+        let b_tier = b.stars >= LEVERAGE_TIER_STARS;
+        b_tier.cmp(&a_tier).then(b.stars.cmp(&a.stars))
+    });
+    accepted
 }
 
 async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
@@ -286,6 +326,28 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             let (ok, out) = run_gh(&["pr", "view", &num_str, "--comments"]).await?;
             Ok(json!({ "success": ok, "output": out }))
         }
+        "gh_portfolio_sweep" => {
+            let targets_raw = params["targets"]
+                .as_array()
+                .ok_or_else(|| anyhow!("missing targets"))?;
+            let targets: Vec<SweepTarget> = targets_raw
+                .iter()
+                .filter_map(|v| serde_json::from_value(v.clone()).ok())
+                .collect();
+            let requested = targets.len();
+            let allowed = allowed_repos();
+            let prioritized = filter_and_prioritize_sweep_targets(targets, &allowed);
+            let accepted = prioritized.len();
+            Ok(json!({
+                "success": true,
+                "targets": prioritized
+                    .iter()
+                    .map(|t| json!({ "repo": t.repo, "stars": t.stars }))
+                    .collect::<Vec<_>>(),
+                "accepted": accepted,
+                "rejected": requested - accepted,
+            }))
+        }
         "github_clone_or_pull" => {
             let repo = params["repo"]
                 .as_str()
@@ -363,6 +425,7 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 { "name": "gh_pr_comment", "description": "Add a comment to a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" }, "body": { "type": "string" } }, "required": ["pr_number", "body"] } },
                 { "name": "gh_pr_view_comments", "description": "View PR comments", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
                 { "name": "github_clone_or_pull", "description": "Clone a repo or pull if it already exists locally", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "ref": { "type": "string", "default": "main" } }, "required": ["repo"] } },
+                { "name": "gh_portfolio_sweep", "description": "Filter sweep targets to the owned-repo allowlist (NO-GO on rejects) and prioritize 4-star+ leverage-tier repos", "inputSchema": { "type": "object", "properties": { "targets": { "type": "array", "items": { "type": "object", "properties": { "repo": { "type": "string" }, "stars": { "type": "integer" } }, "required": ["repo"] } } }, "required": ["targets"] } },
             ]
         })),
         _ => Err(anyhow!("unknown method: {}", method)),
@@ -460,5 +523,45 @@ mod tests {
         // With no CHUMP_GITHUB_REPOS set, all repos should be allowed
         std::env::remove_var("CHUMP_GITHUB_REPOS");
         assert!(check_repo("any/repo").is_ok());
+    }
+
+    #[test]
+    fn sweep_rejects_unowned_repos_and_logs_no_go() {
+        let allowed = vec!["owner/keep".to_string()];
+        let targets = vec![
+            SweepTarget {
+                repo: "owner/keep".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "owner/foreign".to_string(),
+                stars: 10,
+            },
+        ];
+        let result = filter_and_prioritize_sweep_targets(targets, &allowed);
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].repo, "owner/keep");
+    }
+
+    #[test]
+    fn sweep_prioritizes_four_star_plus_leverage_tier() {
+        let allowed: Vec<String> = vec![]; // empty allowlist = all owned
+        let targets = vec![
+            SweepTarget {
+                repo: "owner/low".to_string(),
+                stars: 2,
+            },
+            SweepTarget {
+                repo: "owner/high".to_string(),
+                stars: 5,
+            },
+            SweepTarget {
+                repo: "owner/mid".to_string(),
+                stars: 4,
+            },
+        ];
+        let result = filter_and_prioritize_sweep_targets(targets, &allowed);
+        let repos: Vec<&str> = result.iter().map(|t| t.repo.as_str()).collect();
+        assert_eq!(repos, vec!["owner/high", "owner/mid", "owner/low"]);
     }
 }
