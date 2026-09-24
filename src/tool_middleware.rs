@@ -1355,6 +1355,54 @@ pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sy
     Box::new(ToolTimeoutWrapper::new(with_preproc))
 }
 
+/// Minimum star count for the opportunity-library "leverage tier" that must
+/// be selected ahead of lower-starred repos during a portfolio sweep
+/// (EFFECTIVE-374 slice).
+pub const PORTFOLIO_SWEEP_LEVERAGE_STAR_THRESHOLD: u32 = 4;
+
+/// One candidate repo in a portfolio sweep request.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SweepTarget {
+    pub repo: String,
+    pub stars: u32,
+}
+
+/// A sweep target rejected because it falls outside the owned-repo allowlist.
+#[derive(Debug, Clone, PartialEq)]
+pub struct SweepRejection {
+    pub repo: String,
+    pub reason: String,
+}
+
+/// Validate portfolio-sweep targets against the owned-repo allowlist
+/// (`is_owned`), logging a `NO-GO` error and excluding any foreign repo,
+/// then order the accepted set so 4-star+ leverage-tier repos are selected
+/// before lower tiers. Sort is stable, so relative order within a tier is
+/// preserved.
+pub fn filter_and_prioritize_sweep_targets(
+    targets: &[SweepTarget],
+    is_owned: impl Fn(&str) -> bool,
+) -> (Vec<SweepTarget>, Vec<SweepRejection>) {
+    let mut accepted = Vec::new();
+    let mut rejected = Vec::new();
+    for target in targets {
+        if is_owned(&target.repo) {
+            accepted.push(target.clone());
+        } else {
+            tracing::error!(
+                repo = %target.repo,
+                "NO-GO: repo outside owned allowlist, rejecting from portfolio sweep"
+            );
+            rejected.push(SweepRejection {
+                repo: target.repo.clone(),
+                reason: format!("NO-GO: repo '{}' not in owned allowlist", target.repo),
+            });
+        }
+    }
+    accepted.sort_by_key(|t| std::cmp::Reverse(t.stars >= PORTFOLIO_SWEEP_LEVERAGE_STAR_THRESHOLD));
+    (accepted, rejected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2079,5 +2127,61 @@ mod tests {
             "non-review dispatch must retain write access: {result:?}"
         );
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn sweep_rejects_unowned_repos_with_no_go() {
+        let targets = vec![
+            SweepTarget {
+                repo: "owner/owned-repo".to_string(),
+                stars: 2,
+            },
+            SweepTarget {
+                repo: "stranger/foreign-repo".to_string(),
+                stars: 10,
+            },
+        ];
+        let (accepted, rejected) =
+            filter_and_prioritize_sweep_targets(&targets, |repo| repo == "owner/owned-repo");
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].repo, "owner/owned-repo");
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].repo, "stranger/foreign-repo");
+        assert!(rejected[0].reason.starts_with("NO-GO"));
+    }
+
+    #[test]
+    fn sweep_prioritizes_four_star_plus_leverage_tier() {
+        let targets = vec![
+            SweepTarget {
+                repo: "owner/low-star".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "owner/high-star".to_string(),
+                stars: 5,
+            },
+            SweepTarget {
+                repo: "owner/exactly-four".to_string(),
+                stars: 4,
+            },
+            SweepTarget {
+                repo: "owner/three-star".to_string(),
+                stars: 3,
+            },
+        ];
+        let (accepted, rejected) = filter_and_prioritize_sweep_targets(&targets, |_| true);
+        assert!(rejected.is_empty());
+        // 4-star+ repos must all sort ahead of sub-4-star repos, preserving
+        // relative order within each tier (stable sort).
+        assert_eq!(
+            accepted.iter().map(|t| t.repo.as_str()).collect::<Vec<_>>(),
+            vec![
+                "owner/high-star",
+                "owner/exactly-four",
+                "owner/low-star",
+                "owner/three-star",
+            ]
+        );
     }
 }
