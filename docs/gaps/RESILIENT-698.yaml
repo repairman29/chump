@@ -1,0 +1,30 @@
+- id: RESILIENT-698
+  domain: RESILIENT
+  title: "RESILIENT: Implement server‑side rate limiting for widget inserts (RESILIENT-241 slice)"
+  status: closed
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    1. Rate‑limit middleware is applied to the /holler/insert endpoint
+    2. When more than 100 inserts per minute are received from the same IP, the server responds with HTTP 429 Too Many Requests
+    3. Rate counters reset after the configured interval
+    4. Each throttled request is logged with IP address and count
+  notes: |
+    [chump harvest check 'holler']
+    === primitives_index match for 'holler' ===
+
+    === cluster keyword match for 'holler' ===
+      cluster misc (28 repos): workspace-docs, almanac, games-workspace, machine-substrate, grave-dancer, jeffadkins-dev, holler, privateer, opportunity-library, posse, realm-of-shadows, upshift-cli, space-shooter, crystal-rush, inversion, roblox-game-manager, kosmos, fulcrum, okr, project-2026-case, pixi-game, jeffadkins-me, bulwark, choose, derelict, registry, project-forge, project_forge
+
+    === extracted_primitives (per-file, line-refd) match for 'holler' ===
+
+    === repo-description match for 'holler' ===
+
+    === HARVEST_ROADMAP.md mention of 'holler' (deep-scan findings) ===
+
+    === cross-pollination briefs mentioning 'holler' ===
+
+    [2026-09-24] Closed as duplicate of RESILIENT-925 (same RESILIENT-241 slice, same AC shape: server-side rate limit on holler inserts, configurable threshold, HTTP 429 on breach, sliding-window reset, logged block events). RESILIENT-925 already shipped and merged as repairman29/holler PR #1 (2026-09-05): https://github.com/repairman29/holler/pull/1 — adds holler_rate_limit_config (default 100 inserts/5min, replacing a hardcoded 15/10min), a BEFORE INSERT trigger enforcing the limit per IP+session via the holler_insert_activity sliding-window ledger, `raise sqlstate 'PT429'` (PostgREST maps this to a real HTTP 429), and holler_rate_limit_log (ip_address, session_id, project, created_at) recording every blocked request. Verified via `gh pr view 1 --repo repairman29/holler` and schema.sql on that repo's main. No new code lands in chump: holler has no /holler/insert route inside this repo — holler is a standalone external repo (one JS file + Postgres/PostgREST) and its parent RESILIENT-241 carries skills_required=external_repo:repairman29/holler, which this gap was filed without. `find . -iname '*holler*'` in this worktree returns nothing. Closing via `chump gap set --status closed --closed-pr 1` (1 = the external repairman29/holler PR number, same convention as RESILIENT-926) rather than re-implementing a duplicate control (Zero-Waste doctrine).
+  closed_pr: 1
+  skills_required: "external_repo:repairman29/holler"
+  outcome_id: RESILIENT-000
