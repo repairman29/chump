@@ -15,8 +15,14 @@ After=network-online.target
 [Service]
 Type=oneshot
 Environment=HOME=/root
-# Wrapper sets env, sources providers.env, sweeps stale leases, refreshes oauth
-# mtime, then execs one farmer tick. Kept short so it always completes well
-# inside the 30s timer cadence.
-ExecStart=/bin/bash -lc 'exec /root/Projects/chump/scripts/dispatch/chump-farmer-run.sh'
+# Source providers.env (export-format creds) in the unit's ExecStart — the same
+# pattern chump-pr-lander.service uses — BEFORE handing off to the wrapper, so the
+# organ's env is loaded even if the wrapper's own source path ever regresses. The
+# wrapper then sets HOME/PATH, sweeps stale leases, refreshes oauth mtime, and
+# execs one farmer tick (which writes ~/.chump/farmer-heartbeat unconditionally at
+# tick start — the file the worker gate reads). Non-login shell (-c) so the
+# host-rewriter's injected Environment=PATH (run-user's ~/.cargo/bin) is
+# authoritative on every host, not reset by a login profile. Kept short so it
+# always completes well inside the 30s timer cadence.
+ExecStart=/bin/bash -c 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/dispatch/chump-farmer-run.sh'
 TimeoutStartSec=120
