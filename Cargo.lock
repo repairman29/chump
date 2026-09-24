@@ -1377,6 +1377,7 @@ dependencies = [
  "chump-handoff",
  "chump-inventory",
  "chump-kpi-report",
+ "chump-launch-draft",
  "chump-mcp-lifecycle",
  "chump-memory-db",
  "chump-messaging",
@@ -1810,6 +1811,15 @@ dependencies = [
  "chump-waste-tally",
  "rusqlite",
  "serde_json",
+]
+
+[[package]]
+name = "chump-launch-draft"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusqlite",
+ "tempfile",
 ]
 
 [[package]]

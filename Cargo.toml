@@ -41,6 +41,7 @@ members = [
     "crates/chumpd",
     "crates/chump-curator-supervisor",
     "crates/chump-inventory",
+    "crates/chump-launch-draft",
     "crates/chump-eval-harness",
     "crates/chump-db-pool",
     "crates/chump-memory-db",
@@ -158,6 +159,7 @@ chump-team = { path = "crates/chump-team", version = "0.1.0" }
 chump-ast-crawler = { path = "crates/ast-crawler", version = "0.1.0" }
 chump-handoff = { path = "crates/chump-handoff", version = "0.1.0" } # INFRA-2108: external-repo schema
 chump-inventory = { path = "crates/chump-inventory", version = "0.1.0" } # EFFECTIVE-401: fleet inventory + tech-debt audit DB
+chump-launch-draft = { path = "crates/chump-launch-draft", version = "0.1.0" } # EFFECTIVE-1508: launch draft data model + persistence (EFFECTIVE-365 slice)
 chump-eval-harness = { path = "crates/chump-eval-harness", version = "0.1.0" }
 chump-db-pool = { path = "crates/chump-db-pool", version = "0.1.0" }
 chump-memory-db = { path = "crates/chump-memory-db", version = "0.1.0" } # EFFECTIVE-410: memory store extracted from bin (build-speed)
