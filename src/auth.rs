@@ -52,6 +52,11 @@ pub struct AuthCredentials {
     pub api_key: String,
     /// Value of CLAUDE_CODE_OAUTH_TOKEN (env, refresh file, then config.toml).
     pub oauth_token: String,
+    /// `expires_at` (unix seconds) captured from the OAUTH refresh file
+    /// alongside `oauth_token`, when available (RESILIENT-1105 slice of
+    /// RESILIENT-054). `None` when the token came from env/config.toml
+    /// (neither carries an expiry) or the refresh file omitted the field.
+    pub oauth_expires_at: Option<i64>,
 }
 
 impl AuthCredentials {
@@ -358,8 +363,10 @@ pub fn detect_credentials() -> AuthCredentials {
     //    Only overrides oauth_token when env is empty.
     if creds.oauth_token.is_empty() {
         if let Ok(tok_path) = std::env::var("CHUMP_OAUTH_TOKEN_FILE") {
-            if let Some(tok) = read_oauth_token_file(Path::new(&tok_path)) {
+            let tok_path = Path::new(&tok_path);
+            if let Some(tok) = read_oauth_token_file(tok_path) {
                 creds.oauth_token = tok;
+                creds.oauth_expires_at = token_expires_at(tok_path);
             }
         }
     }
@@ -661,6 +668,18 @@ fn read_oauth_token_file(path: &Path) -> Option<String> {
         }
     }
     None
+}
+
+/// RESILIENT-1105 (slice of RESILIENT-054): read `expires_at` from the OAUTH
+/// refresh file written by `scripts/coord/oauth-token-refresh.sh`
+/// (RESILIENT-056 wrote the field; this is the reader side). The field is
+/// written as a JSON string of unix seconds — `"expires_at":"1735000000"` —
+/// so it's extracted the same way as the token, then parsed to `i64`.
+/// Returns `None` if the file is missing, the field is absent, or it isn't
+/// a valid integer (e.g. empty string when the keychain blob had no expiry).
+fn token_expires_at(path: &Path) -> Option<i64> {
+    let raw = std::fs::read_to_string(path).ok()?;
+    extract_json_string(&raw, "expires_at")?.parse::<i64>().ok()
 }
 
 /// Extremely minimal JSON string extractor — avoids pulling in serde just for auth.
@@ -1172,6 +1191,44 @@ mod tests {
                 assert_eq!(creds.oauth_token, "sk-ant-oat01-fresh");
             },
         );
+    }
+
+    /// RESILIENT-1105: `expires_at` (written by RESILIENT-056's refresher as a
+    /// quoted unix-seconds string) is parsed and stored alongside the token.
+    #[test]
+    fn reads_expires_at_from_refresh_file() {
+        let dir = tempfile::tempdir().unwrap();
+        let tok_path = dir.path().join("oauth-token.json");
+        std::fs::write(
+            &tok_path,
+            r#"{"token":"sk-ant-oat01-fresh","written_at":"2026-05-06T00:00:00Z","source":"launchd-refresher","expires_at":"1735000000"}"#,
+        )
+        .unwrap();
+
+        with_env(
+            &[("CHUMP_OAUTH_TOKEN_FILE", tok_path.to_str().unwrap())],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_AUTH_MODE",
+                "CHUMP_HOME",
+            ],
+            || {
+                let creds = detect_credentials();
+                assert_eq!(creds.oauth_token, "sk-ant-oat01-fresh");
+                assert_eq!(creds.oauth_expires_at, Some(1735000000));
+            },
+        );
+    }
+
+    /// `token_expires_at` returns `None` when the field is absent, rather than
+    /// erroring — old refresh-file writers predate RESILIENT-056.
+    #[test]
+    fn token_expires_at_missing_field_returns_none() {
+        let dir = tempfile::tempdir().unwrap();
+        let tok_path = dir.path().join("oauth-token.json");
+        std::fs::write(&tok_path, r#"{"token":"sk-ant-oat01-fresh"}"#).unwrap();
+        assert_eq!(token_expires_at(&tok_path), None);
     }
 
     #[test]
