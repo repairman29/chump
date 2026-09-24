@@ -52,6 +52,12 @@ pub struct AuthCredentials {
     pub api_key: String,
     /// Value of CLAUDE_CODE_OAUTH_TOKEN (env, refresh file, then config.toml).
     pub oauth_token: String,
+    /// Expiry of `oauth_token`, in unix milliseconds, when known.
+    /// RESILIENT-054 slice: only populated from the CHUMP_OAUTH_TOKEN_FILE
+    /// path today (oauth-token-refresh.sh writes `expires_at` alongside the
+    /// token, RESILIENT-056); env-sourced and config.toml-sourced tokens
+    /// carry no expiry, so this stays `None` for them.
+    pub oauth_expires_at: Option<i64>,
 }
 
 impl AuthCredentials {
@@ -61,6 +67,13 @@ impl AuthCredentials {
 
     pub fn has_oauth(&self) -> bool {
         !self.oauth_token.trim().is_empty()
+    }
+
+    /// Parsed `expires_at` (unix milliseconds) for the current OAUTH token,
+    /// or `None` if unavailable (no OAUTH token, or its source doesn't carry
+    /// an expiry).
+    pub fn token_expires_at(&self) -> Option<i64> {
+        self.oauth_expires_at
     }
 }
 
@@ -359,7 +372,8 @@ pub fn detect_credentials() -> AuthCredentials {
     if creds.oauth_token.is_empty() {
         if let Ok(tok_path) = std::env::var("CHUMP_OAUTH_TOKEN_FILE") {
             if let Some(tok) = read_oauth_token_file(Path::new(&tok_path)) {
-                creds.oauth_token = tok;
+                creds.oauth_token = tok.token;
+                creds.oauth_expires_at = tok.expires_at;
             }
         }
     }
@@ -647,16 +661,33 @@ pub fn fleet_doctor_validate_all() -> MultiProviderReport {
 
 // ── Internal helpers ───────────────────────────────────────────────────────
 
+/// A token extracted from the OAUTH refresh file, plus its expiry when the
+/// file carries one.
+struct OAuthTokenFile {
+    token: String,
+    /// Unix milliseconds, when the file's `expires_at` field parses cleanly.
+    expires_at: Option<i64>,
+}
+
 /// Parse a JSON token file written by control.sh:
-/// `{"token":"sk-ant-oat01-...","written_at":"...","source":"..."}` or
+/// `{"token":"sk-ant-oat01-...","written_at":"...","source":"...","expires_at":"..."}` or
 /// `{"access_token":"..."}` (Claude Code's own format).
-fn read_oauth_token_file(path: &Path) -> Option<String> {
+///
+/// `expires_at` (RESILIENT-056/RESILIENT-054) is written as a JSON string of
+/// unix-millisecond digits by oauth-token-refresh.sh, sourced from
+/// `claudeAiOauth.expiresAt` in the Keychain blob.
+fn read_oauth_token_file(path: &Path) -> Option<OAuthTokenFile> {
     let raw = std::fs::read_to_string(path).ok()?;
     // Try the fields we know about.
     for key in &["token", "access_token", "claudeAiOauthToken"] {
         if let Some(tok) = extract_json_string(&raw, key) {
             if !tok.is_empty() {
-                return Some(tok);
+                let expires_at = extract_json_string(&raw, "expires_at")
+                    .and_then(|s| s.trim().parse::<i64>().ok());
+                return Some(OAuthTokenFile {
+                    token: tok,
+                    expires_at,
+                });
             }
         }
     }
@@ -1051,6 +1082,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            oauth_expires_at: None,
         };
         let auth = ActiveAuth {
             mode: ActiveMode::ApiKey,
@@ -1067,6 +1099,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            oauth_expires_at: None,
         };
         let auth = ActiveAuth {
             mode: ActiveMode::OAuth,
@@ -1108,6 +1141,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            oauth_expires_at: None,
         };
         let auth = ActiveAuth {
             mode: ActiveMode::OAuth,
@@ -1124,6 +1158,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: "sk-ant-oat01-tok".into(),
+            oauth_expires_at: None,
         };
         let auth = ActiveAuth {
             mode: ActiveMode::OAuth,
@@ -1138,6 +1173,7 @@ mod tests {
         let creds = AuthCredentials {
             api_key: "sk-ant-key".into(),
             oauth_token: String::new(),
+            oauth_expires_at: None,
         };
         let auth = ActiveAuth {
             mode: ActiveMode::ApiKey,
@@ -1170,6 +1206,64 @@ mod tests {
             || {
                 let creds = detect_credentials();
                 assert_eq!(creds.oauth_token, "sk-ant-oat01-fresh");
+            },
+        );
+    }
+
+    #[test]
+    fn reads_expires_at_from_refresh_file() {
+        // RESILIENT-1105 (RESILIENT-054 slice): oauth-token-refresh.sh writes
+        // `expires_at` as a JSON string of unix-millisecond digits alongside
+        // the token (RESILIENT-056). Confirm detect_credentials() extracts
+        // and parses it, and that token_expires_at() surfaces it.
+        let dir = tempfile::tempdir().unwrap();
+        let tok_path = dir.path().join("oauth-token.json");
+        std::fs::write(
+            &tok_path,
+            r#"{"token":"sk-ant-oat01-fresh","written_at":"2026-05-06T00:00:00Z","source":"launchd-refresher","expires_at":"1780000000000"}"#,
+        )
+        .unwrap();
+
+        with_env(
+            &[("CHUMP_OAUTH_TOKEN_FILE", tok_path.to_str().unwrap())],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_AUTH_MODE",
+                "CHUMP_HOME",
+            ],
+            || {
+                let creds = detect_credentials();
+                assert_eq!(creds.oauth_token, "sk-ant-oat01-fresh");
+                assert_eq!(creds.token_expires_at(), Some(1_780_000_000_000));
+            },
+        );
+    }
+
+    #[test]
+    fn token_expires_at_none_when_absent() {
+        // A token file with no expires_at field (e.g. control.sh's bare
+        // `{"token":...,"written_at":...}` shape) must yield None, not a
+        // spurious value or a panic.
+        let dir = tempfile::tempdir().unwrap();
+        let tok_path = dir.path().join("oauth-token.json");
+        std::fs::write(
+            &tok_path,
+            r#"{"token":"sk-ant-oat01-fresh","written_at":"2026-05-06T00:00:00Z"}"#,
+        )
+        .unwrap();
+
+        with_env(
+            &[("CHUMP_OAUTH_TOKEN_FILE", tok_path.to_str().unwrap())],
+            &[
+                "ANTHROPIC_API_KEY",
+                "CLAUDE_CODE_OAUTH_TOKEN",
+                "CHUMP_AUTH_MODE",
+                "CHUMP_HOME",
+            ],
+            || {
+                let creds = detect_credentials();
+                assert_eq!(creds.token_expires_at(), None);
             },
         );
     }
