@@ -51,8 +51,15 @@ members = [
     "crates/chump-cron",
     "crates/chump-storage",
     "crates/chump-comprehension-organ",
+    "crates/workspace-hack",
 ]
 resolver = "2"
+
+[workspace.metadata.hakari]
+hakari-package = "workspace-hack"
+dep-format-version = "4"
+resolver = "2"
+platforms = []
 
 [package]
 name = "chump"

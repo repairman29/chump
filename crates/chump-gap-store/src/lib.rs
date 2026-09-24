@@ -2700,6 +2700,30 @@ impl GapStore {
             });
         }
 
+        // RESILIENT-469: re-run cargo-hakari's workspace-hack generation so
+        // the dedup crate stays in sync with whatever deps this ship just
+        // landed. Best-effort: hakari may not be installed on every
+        // machine, and a stale workspace-hack crate is a warning, not a
+        // reason to fail an otherwise-successful ship.
+        if self.repo_root.join(".git").exists() {
+            eprintln!("Running cargo hakari generate");
+            match std::process::Command::new("cargo")
+                .args(["hakari", "generate"])
+                .current_dir(&self.repo_root)
+                .stdout(std::process::Stdio::null())
+                .stderr(std::process::Stdio::null())
+                .status()
+            {
+                Ok(status) if status.success() => {}
+                Ok(status) => {
+                    eprintln!("WARN: RESILIENT-469: cargo hakari generate exited with {status}")
+                }
+                Err(e) => {
+                    eprintln!("WARN: RESILIENT-469: cargo hakari generate failed to run: {e:#}")
+                }
+            }
+        }
+
         Ok(())
     }
 
