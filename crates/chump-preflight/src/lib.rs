@@ -6,3 +6,4 @@
 
 pub mod artifact_gates;
 pub mod preflight;
+pub mod publish_targets;
