@@ -1,0 +1,16 @@
+[package]
+name = "chump-degradation"
+version = "0.1.0"
+edition = "2021"
+description = "Generic honest-degradation handler (EFFECTIVE-370 slice): turns a bucket-failure signal into a truthful card instead of a dead endpoint. Never panics, never maps to HTTP 5xx."
+repository = "https://github.com/repairman29/chump"
+homepage = "https://github.com/repairman29/chump/tree/main/crates/chump-degradation"
+license = "AGPL-3.0-only"
+keywords = ["degradation", "resilience", "honest", "fallback"]
+categories = ["development-tools"]
+
+[dependencies]
+serde = { version = "1.0", features = ["derive"] }
+
+[lints]
+workspace = true
