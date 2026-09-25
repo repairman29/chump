@@ -1418,11 +1418,91 @@ mod llm_complete_tests {
     }
 }
 
+// INFRA-3784 (INFRA-1809 slice): wallclock budget for the whole startup
+// sequence. `main()` parses argv, then hands off to `run_startup` inside a
+// `tokio::time::timeout`. A startup that hangs (wedged store init, blocked
+// subsystem, etc.) trips the timeout instead of hanging the process forever
+// with no diagnostic trail.
+const DEFAULT_STARTUP_TIMEOUT_MS: u64 = 5000;
+const STARTUP_TIMEOUT_EXIT_CODE: i32 = 4;
+
+fn startup_timeout_ms() -> u64 {
+    env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse::<u64>().ok())
+        .unwrap_or(DEFAULT_STARTUP_TIMEOUT_MS)
+}
+
+/// Best-effort snapshot of what the process was doing when startup timed
+/// out — dumped to stderr so an operator staring at a hung `chump` process
+/// has something to go on besides "it's stuck."
+fn dump_startup_timeout_diagnostics(args: &[String], elapsed_ms: u128) -> String {
+    let rt_alive = tokio::runtime::Handle::try_current().is_ok();
+    let memory_db_state = if std::path::Path::new(".chump/memory.db").exists() {
+        "file_present"
+    } else {
+        "file_absent"
+    };
+    let suspected_subsystem = args
+        .get(1)
+        .map(String::as_str)
+        .unwrap_or("(none — bare invocation)");
+
+    eprintln!("[chump_startup_timeout] startup exceeded budget");
+    eprintln!("  elapsed_ms: {}", elapsed_ms);
+    eprintln!("  cmd: chump");
+    eprintln!("  args: {:?}", &args[1..]);
+    eprintln!("  tokio_runtime_handle_alive: {}", rt_alive);
+    eprintln!("  memory_db_state: {}", memory_db_state);
+    eprintln!("  suspected_subsystem: {}", suspected_subsystem);
+
+    suspected_subsystem.to_string()
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
+
+    let timeout_ms = startup_timeout_ms();
+    let start = std::time::Instant::now();
+    let cmd_args = args.clone();
+    match tokio::time::timeout(
+        std::time::Duration::from_millis(timeout_ms),
+        run_startup(args),
+    )
+    .await
+    {
+        Ok(result) => result,
+        Err(_) => {
+            let elapsed_ms = start.elapsed().as_millis();
+            let suspected_subsystem = dump_startup_timeout_diagnostics(&cmd_args, elapsed_ms);
+            let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                kind: "chump_startup_timeout".to_string(),
+                source: Some("main".to_string()),
+                fields: vec![
+                    ("cmd".to_string(), "chump".to_string()),
+                    ("args".to_string(), format!("{:?}", &cmd_args[1..])),
+                    ("elapsed_ms".to_string(), elapsed_ms.to_string()),
+                    ("suspected_subsystem".to_string(), suspected_subsystem),
+                ],
+                ..Default::default()
+            });
+            std::process::exit(STARTUP_TIMEOUT_EXIT_CODE);
+        }
+    }
+}
+
+async fn run_startup(args: Vec<String>) -> Result<()> {
+    // INFRA-3784: real async checkpoint so the enclosing `tokio::time::timeout`
+    // in `main()` actually gets a chance to race against the startup budget.
+    // Without an `.await` point this early, fast paths like `--version`
+    // resolve synchronously on the timeout combinator's first poll and the
+    // deadline is never consulted, even for a 1ms budget. 2ms is negligible
+    // against the 5000ms default budget but is enough wall-clock headroom
+    // for the tokio timer driver to observe an aggressively small budget.
+    tokio::time::sleep(std::time::Duration::from_millis(2)).await;
 
     // SIGPIPE handling for CLI tools (Broken Pipe panics).
     #[cfg(unix)]
