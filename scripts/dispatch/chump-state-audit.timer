@@ -1,0 +1,16 @@
+# META-1030 — pairs with chump-state-audit.service.
+# 12-minute cadence: tight enough that the CJ-21h-dark / merged-not-running /
+# false-AUTH_DEAD classes are caught within minutes, loose enough that the
+# recency windows (default 3h) resample meaningfully and the one gated auth
+# probe stays cheap. Matches the effect-verifier / organ-success-verifier
+# "cheap, frequent-enough" cadence philosophy.
+[Unit]
+Description=Run the Chump state-audit reconciliation every 12 minutes (META-1030)
+
+[Timer]
+OnBootSec=4min
+OnUnitActiveSec=12min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
