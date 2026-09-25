@@ -9,6 +9,16 @@ pub fn expected_probability(rating_a: f64, rating_b: f64) -> f64 {
     1.0 / (1.0 + 10.0_f64.powf((rating_b - rating_a) / 400.0))
 }
 
+/// JSON summary of A's win probability against B, keyed `p_win` rather than a
+/// bare `p`/`ev` — the fleet's ambient stream also carries `pr_book_ev`
+/// (scripts/coord/pr-book.sh) and `nba_ev`/`nba_p`
+/// (scripts/coord/next-best-action.sh); a bare `p` here would collide with
+/// those under any consumer that reads ambient fields by name across kinds
+/// (INFRA-3850, parent INFRA-3841).
+pub fn rating_summary_json(rating_a: f64, rating_b: f64) -> serde_json::Value {
+    serde_json::json!({ "p_win": expected_probability(rating_a, rating_b) })
+}
+
 /// Updates Bradley-Terry / Elo ratings based on the outcome of a contest between A and B.
 ///
 /// `outcome_a`: 1.0 if A wins, 0.5 for a draw, 0.0 if B wins (A loses).
@@ -53,5 +63,22 @@ mod tests {
         let (new_a, new_b) = update_ratings(1500.0, 1500.0, 0.5, 32.0);
         assert_eq!(new_a, 1500.0);
         assert_eq!(new_b, 1500.0);
+    }
+
+    #[test]
+    fn test_rating_summary_json_uses_namespaced_p_win_key() {
+        let summary = rating_summary_json(1900.0, 1500.0);
+        let obj = summary.as_object().expect("summary must be a JSON object");
+
+        // Namespaced key present and matches the underlying probability.
+        let p_win = obj.get("p_win").and_then(|v| v.as_f64());
+        assert_eq!(p_win, Some(expected_probability(1900.0, 1500.0)));
+
+        // No bare "p" or "ev" key — those names are reserved for
+        // scripts/coord/pr-book.sh (pr_book_ev) and
+        // scripts/coord/next-best-action.sh (nba_ev/nba_p) in the shared
+        // ambient stream.
+        assert!(!obj.contains_key("p"), "rating summary must not emit a bare 'p' key");
+        assert!(!obj.contains_key("ev"), "rating summary must not emit a bare 'ev' key");
     }
 }
