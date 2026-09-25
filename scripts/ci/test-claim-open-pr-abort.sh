@@ -168,7 +168,7 @@ OUT="$(PATH="$SHIMDIR:$PATH" \
        CHUMP_WORKTREE_BASE="$WORK/wts" \
        CHUMP_REPO="$REPO" \
        "$CHUMP_BIN" claim INFRA-OPEN-PR-TEST \
-           --skip-doctor --skip-import 2>&1)"
+           --role test --skip-doctor --skip-import 2>&1)"
 RC=$?
 set -e
 
@@ -217,7 +217,7 @@ OUT2="$(PATH="$SHIMDIR:$PATH" \
         CHUMP_REPO="$REPO" \
         CHUMP_CLAIM_ALLOW_OPEN_PR=1 \
         "$CHUMP_BIN" claim INFRA-OPEN-PR-TEST \
-            --skip-doctor --skip-import 2>&1)"
+            --role test --skip-doctor --skip-import 2>&1)"
 RC2=$?
 set -e
 

@@ -259,7 +259,7 @@ if ! command -v chump >/dev/null 2>&1; then
   exit 0
 fi
 
-claim_out="$(chump claim "$candidate_id" 2>&1)"
+claim_out="$(chump claim "$candidate_id" --role fix-trunk-dispatcher 2>&1)"
 claim_rc=$?
 if [[ $claim_rc -ne 0 ]]; then
   log "chump claim $candidate_id failed (rc=$claim_rc): $claim_out"

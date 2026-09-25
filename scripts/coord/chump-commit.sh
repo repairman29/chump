@@ -558,7 +558,7 @@ if [[ "${CHUMP_AUTO_LEASE_FROM_MSG:-1}" != "0" ]]; then
                 # gracefully via CHUMP_ALLOW_UNREGISTERED_GAP, so we
                 # just call it and let it decide. Output goes to /dev/null
                 # — this is best-effort, not load-bearing.
-                chump claim "$_gid" >/dev/null 2>&1 || true
+                chump claim "$_gid" --role chump-commit-auto-lease >/dev/null 2>&1 || true
             done
             echo "[chump-commit] auto-leased gap(s) from commit message: $(echo "$_gap_ids" | tr '\n' ' ')" >&2
         fi

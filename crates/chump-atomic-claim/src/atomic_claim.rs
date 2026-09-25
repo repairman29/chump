@@ -26,6 +26,12 @@ use std::time::{SystemTime, UNIX_EPOCH};
 #[path = "worktree_build_cache.rs"]
 pub mod worktree_build_cache;
 
+/// INFRA-5486: sentinel substring `main.rs` matches on to map a missing
+/// `--role` specifically to exit code 1 (AC2), distinct from other
+/// argument-parsing errors (exit code 2).
+pub const MISSING_ROLE_ERR: &str =
+    "missing required --role flag (e.g. --role shepherd, --role target)";
+
 /// Args to atomic claim.
 #[derive(Debug, Clone)]
 pub struct ClaimArgs {
@@ -83,10 +89,11 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
-    /// INFRA-5162 (INFRA-1863 slice): optional role hint for the claiming
-    /// session (e.g. "shepherd", "target"). Stored for later validation;
-    /// not yet enforced against a role registry.
-    pub role: Option<String>,
+    /// INFRA-5162 (INFRA-1863 slice), made mandatory by INFRA-5486: role
+    /// hint for the claiming session (e.g. "shepherd", "target"). Required —
+    /// `from_argv` rejects a claim with no `--role`. Stored for later
+    /// validation; not yet enforced against a role registry.
+    pub role: String,
     /// INFRA-6624 (INFRA-1863 slice): optional scope hint for the claiming
     /// session (e.g. a module or concern name). Stored for later validation;
     /// not yet enforced against a scope registry.
@@ -100,10 +107,12 @@ impl ClaimArgs {
         for a in args.iter().skip(1) {
             if a == "--help" || a == "-h" {
                 println!(
-                    "Usage: chump claim <GAP-ID> [--paths CSV] [--session ID] [--no-doctor] [--no-import] [--force-recover]\n\n\
+                    "Usage: chump claim <GAP-ID> --role ROLE [--scope SCOPE] [--paths CSV] [--session ID] [--no-doctor] [--no-import] [--force-recover]\n\n\
                      Atomic claim: fetch + verify + (doctor) + worktree + lease for <GAP-ID>.\n\n\
                      Options:\n  \
-                       --paths CSV      Record path scope (comma-separated globs); enables overlap detection\n  \
+                       --role ROLE      REQUIRED. Role hint for the claiming session (e.g. shepherd, target)\n  \
+                       --scope SCOPE    Optional scope hint for the claiming session (e.g. a module or concern)\n  \
+                       --paths CSV      Optional/advisory: comma-separated globs; enables overlap detection\n  \
                        --session ID     Explicit session ID (default derived from env / pid)\n  \
                        --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
@@ -115,9 +124,7 @@ impl ClaimArgs {
                        --allow-duplicate-pr  Bypass open-PR-in-flight abort (INFRA-1503; rescue scenarios)\n  \
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
-                       --json        Output JSON format (use with --check-only)\n  \
-                       --role ROLE   Role hint for the claiming session (e.g. shepherd, target)\n  \
-                       --scope SCOPE Scope hint for the claiming session (e.g. a module or concern)"
+                       --json        Output JSON format (use with --check-only)"
                 );
                 std::process::exit(0);
             }
@@ -247,6 +254,11 @@ impl ClaimArgs {
                 other => bail!("unknown flag: {other}"),
             }
         }
+
+        // INFRA-5486 (INFRA-1863 slice): --role is mandatory. Checked after
+        // the flag-parsing loop so a missing-value error on --role itself
+        // (`--role needs a value`) is reported first when both apply.
+        let role = role.ok_or_else(|| anyhow!(MISSING_ROLE_ERR))?;
 
         let worktree_base = std::env::var("CHUMP_WORKTREE_BASE")
             .map(PathBuf::from)
@@ -6361,7 +6373,12 @@ mod tests {
 
     #[test]
     fn from_argv_minimal() {
-        let argv: Vec<String> = vec!["claim".into(), "INFRA-123".into()];
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-123".into(),
+            "--role".into(),
+            "shepherd".into(),
+        ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-123");
         assert!(args.paths.is_none());
@@ -6379,6 +6396,8 @@ mod tests {
             "--session".into(),
             "test-session".into(),
             "--skip-doctor".into(),
+            "--role".into(),
+            "shepherd".into(),
         ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-200");
@@ -6400,9 +6419,9 @@ mod tests {
         ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-6624");
-        assert_eq!(args.role.as_deref(), Some("shepherd"));
+        assert_eq!(args.role, "shepherd");
         assert_eq!(args.scope.as_deref(), Some("atomic_claim"));
-        // --paths is optional and can be omitted without error (AC2).
+        // --paths is optional and can be omitted without error (AC3).
         assert!(args.paths.is_none());
     }
 
@@ -6411,6 +6430,29 @@ mod tests {
         let argv: Vec<String> = vec!["claim".into(), "INFRA-6624".into(), "--role".into()];
         let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
         assert!(format!("{err:#}").contains("--role needs a value"));
+    }
+
+    // INFRA-5486 (AC1+AC2): --role is now mandatory. Omitting it must error,
+    // and the error must be distinguishable (MISSING_ROLE_ERR) so main.rs can
+    // map it to exit code 1 with a usage message.
+    #[test]
+    fn from_argv_missing_role_errors() {
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-6624".into()];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert_eq!(format!("{err:#}"), MISSING_ROLE_ERR);
+    }
+
+    #[test]
+    fn from_argv_missing_role_with_scope_still_errors() {
+        // --scope alone does not satisfy the mandatory --role requirement.
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-6624".into(),
+            "--scope".into(),
+            "atomic_claim".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert_eq!(format!("{err:#}"), MISSING_ROLE_ERR);
     }
 
     #[test]
@@ -6429,7 +6471,13 @@ mod tests {
 
     #[test]
     fn from_argv_resume_flag() {
-        let argv: Vec<String> = vec!["claim".into(), "INFRA-300".into(), "--resume".into()];
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-300".into(),
+            "--resume".into(),
+            "--role".into(),
+            "shepherd".into(),
+        ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-300");
         assert!(args.resume);
@@ -6467,7 +6515,12 @@ mod tests {
     #[test]
     fn from_argv_accepts_canonical_gap_ids() {
         for good in ["INFRA-1234", "ZERO-WASTE-015", "SMOKE-001", "CREDIBLE-166"] {
-            let argv: Vec<String> = vec!["claim".into(), good.into()];
+            let argv: Vec<String> = vec![
+                "claim".into(),
+                good.into(),
+                "--role".into(),
+                "shepherd".into(),
+            ];
             assert!(
                 ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_ok(),
                 "{good} should parse"

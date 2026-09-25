@@ -2217,15 +2217,22 @@ async fn main() -> Result<()> {
         let claim_args = match atomic_claim::ClaimArgs::from_argv(&claim_argv, repo_root.clone()) {
             Ok(a) => a,
             Err(e) => {
-                eprintln!("chump claim: {e:#}");
+                let msg = format!("{e:#}");
+                eprintln!("chump claim: {msg}");
                 eprintln!();
-                eprintln!("Usage: chump claim <GAP-ID> [--paths CSV] [--session ID]");
+                eprintln!("Usage: chump claim <GAP-ID> --role ROLE [--scope SCOPE] [--paths CSV]");
+                eprintln!("                          [--session ID]");
                 eprintln!("                          [--skip-doctor] [--skip-import]");
-                eprintln!("                          [--role ROLE] [--scope SCOPE]");
                 eprintln!();
                 eprintln!("Atomically: fetch origin/main, verify the gap, run chump-doctor,");
                 eprintln!("create a linked worktree, write the lease. Replaces the 6-step");
                 eprintln!("shell dance in CLAUDE.md mandatory pre-flight (INFRA-468).");
+                // INFRA-5486: a missing --role is a distinct usage-contract
+                // violation (AC2) — exit code 1, not the generic exit code 2
+                // used for other malformed-argument errors.
+                if msg == atomic_claim::MISSING_ROLE_ERR {
+                    std::process::exit(1);
+                }
                 std::process::exit(2);
             }
         };
