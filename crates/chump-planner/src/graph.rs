@@ -458,6 +458,36 @@ mod tests {
     }
 
     #[test]
+    fn effective_priority_with_direct_higher_priority_dependent() {
+        // INFRA-2 (P3) directly blocks INFRA-1 (P0). INFRA-2's effective
+        // priority should jump straight to P0 from its one direct dependent.
+        let mut gaps = vec![mk("INFRA-1", vec!["INFRA-2"]), mk("INFRA-2", vec![])];
+        gaps[0].priority = Priority::P0;
+        gaps[1].priority = Priority::P3;
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let gap2 = gaps.iter().find(|g| g.id.0 == "INFRA-2").unwrap();
+        assert_eq!(g.effective_priority(gap2, &gaps, &open), Priority::P0);
+    }
+
+    #[test]
+    fn effective_priority_on_cycle_returns_own_priority_safely() {
+        // INFRA-A -> INFRA-B -> INFRA-C -> INFRA-A is a cycle. unblocks()
+        // walks with a `seen` guard so it terminates instead of looping
+        // forever; effective_priority must not panic and must return a
+        // valid Priority (here, all three share P1 so the min is P1).
+        let gaps = vec![
+            mk("INFRA-A", vec!["INFRA-C"]),
+            mk("INFRA-B", vec!["INFRA-A"]),
+            mk("INFRA-C", vec!["INFRA-B"]),
+        ];
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let gap_a = gaps.iter().find(|g| g.id.0 == "INFRA-A").unwrap();
+        assert_eq!(g.effective_priority(gap_a, &gaps, &open), Priority::P1);
+    }
+
+    #[test]
     fn dangling_depends_on_does_not_crash() {
         let gaps = vec![mk("INFRA-1", vec!["INFRA-DOES-NOT-EXIST"])];
         let g = DependencyGraph::build(&gaps);
