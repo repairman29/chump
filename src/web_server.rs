@@ -7,7 +7,7 @@ use axum::{
     http::{header, HeaderMap, Method, StatusCode},
     response::{
         sse::{Event, Sse},
-        IntoResponse, Redirect, Response,
+        Html, IntoResponse, Redirect, Response,
     },
     routing::{delete, get, patch, post, put},
     Json, Router,
@@ -4333,6 +4333,129 @@ async fn handle_brain_graph_stats(
     let stats =
         crate::memory_graph_viz::graph_stats().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(stats))
+}
+
+/// GET /api/brain/node/{id} — full record (node + incident edges) for the
+/// /brain PWA renderer's click-to-focus right-pane (INFRA-1558).
+async fn handle_brain_node(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match crate::memory_graph_viz::node_record(&id) {
+        Ok(Some(rec)) => Ok(Json(rec).into_response()),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// GET /api/brain/graph/stream — SSE feed of incremental node/edge changes
+/// (INFRA-1558). Polls the memory graph every 5s, diffs against the last
+/// snapshot sent to THIS client, and emits `graph_add`/`graph_remove` events
+/// carrying only the delta — the /brain renderer calls cytoscape add/remove
+/// on each event instead of reloading the whole graph.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        let mut prev_edges: std::collections::HashSet<(String, String, String)> =
+            std::collections::HashSet::new();
+        let mut first = true;
+        loop {
+            let snapshot = crate::memory_graph_viz::export_graph_json().unwrap_or_default();
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&snapshot) {
+                let cur_edges: std::collections::HashSet<(String, String, String)> = parsed
+                    .get("edges")
+                    .and_then(|e| e.as_array())
+                    .map(|arr| {
+                        arr.iter()
+                            .filter_map(|e| {
+                                Some((
+                                    e.get("source")?.as_str()?.to_string(),
+                                    e.get("relation")?.as_str()?.to_string(),
+                                    e.get("target")?.as_str()?.to_string(),
+                                ))
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                if first {
+                    // Initial event carries the full graph so the client can seed cytoscape.
+                    if tx
+                        .send(Ok(Event::default()
+                            .event("graph_init")
+                            .data(snapshot.clone())))
+                        .is_err()
+                    {
+                        break;
+                    }
+                    first = false;
+                } else {
+                    let added: Vec<&(String, String, String)> =
+                        cur_edges.difference(&prev_edges).collect();
+                    let removed: Vec<&(String, String, String)> =
+                        prev_edges.difference(&cur_edges).collect();
+                    if !added.is_empty() {
+                        let payload = serde_json::json!(added
+                            .iter()
+                            .map(|(s, r, t)| serde_json::json!({"source": s, "relation": r, "target": t}))
+                            .collect::<Vec<_>>());
+                        if tx
+                            .send(Ok(Event::default()
+                                .event("graph_add")
+                                .data(payload.to_string())))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                    if !removed.is_empty() {
+                        let payload = serde_json::json!(removed
+                            .iter()
+                            .map(|(s, r, t)| serde_json::json!({"source": s, "relation": r, "target": t}))
+                            .collect::<Vec<_>>());
+                        if tx
+                            .send(Ok(Event::default()
+                                .event("graph_remove")
+                                .data(payload.to_string())))
+                            .is_err()
+                        {
+                            break;
+                        }
+                    }
+                }
+                prev_edges = cur_edges;
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
+/// GET /brain — the PWA's Cytoscape.js brain-graph renderer (INFRA-1558).
+/// Served directly (not via the SPA router) since this is a standalone
+/// dev-debugging tool, not a customer-facing cadence view. Unauthenticated
+/// like the other static PWA shells (web/v2/index.html) — the /api/brain/*
+/// calls it makes carry the Bearer token check, not the page load itself.
+async fn handle_brain_page() -> Response {
+    Html(include_str!("../web/v2/brain.html")).into_response()
 }
 
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
@@ -9548,6 +9671,9 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
+        .route("/brain", get(handle_brain_page))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),

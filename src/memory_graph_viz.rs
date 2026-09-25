@@ -36,7 +36,7 @@ struct JsonNode {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct JsonEdge {
+pub struct JsonEdge {
     source: String,
     target: String,
     relation: String,
@@ -281,6 +281,44 @@ pub fn export_subgraph_json(seed_entities: &[String], max_hops: usize) -> Result
         .collect();
     let graph = build_json_graph(&kept);
     Ok(serde_json::to_string(&graph)?)
+}
+
+/// Single record for the /api/brain/node/{id} detail endpoint (INFRA-1558):
+/// the node itself plus every incident edge (as subject/relation/object),
+/// so the PWA renderer's right-pane can show "what does this node touch".
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeRecord {
+    pub id: String,
+    pub degree: usize,
+    pub edges: Vec<JsonEdge>,
+}
+
+/// Look up a single node by id (case-insensitive) plus its incident edges.
+/// Returns `Ok(None)` if the id has no edges in the graph.
+pub fn node_record(id: &str) -> Result<Option<NodeRecord>> {
+    let edges = load_all_edges()?;
+    let needle = id.to_lowercase();
+    let incident: Vec<&Edge> = edges
+        .iter()
+        .filter(|e| e.subject.to_lowercase() == needle || e.object.to_lowercase() == needle)
+        .collect();
+    if incident.is_empty() {
+        return Ok(None);
+    }
+    let json_edges: Vec<JsonEdge> = incident
+        .iter()
+        .map(|e| JsonEdge {
+            source: e.subject.clone(),
+            target: e.object.clone(),
+            relation: e.relation.clone(),
+            weight: e.weight,
+        })
+        .collect();
+    Ok(Some(NodeRecord {
+        id: id.to_string(),
+        degree: json_edges.len(),
+        edges: json_edges,
+    }))
 }
 
 #[cfg(test)]
