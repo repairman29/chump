@@ -144,6 +144,7 @@ mod harvester_cli; // INFRA-1823: chump harvest <scan|check|brief|deep-scan|list
 mod health;
 mod health_server;
 mod hitl_escalation;
+mod honest_degradation; // EFFECTIVE-1681: reusable bucket-failure -> truthful-card handler (EFFECTIVE-370 slice)
 mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
 mod inference_router; // INFRA-1843: two-tier LLM dispatch (Reflexive on-device + Neocortex cloud), CP-011
