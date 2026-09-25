@@ -79,6 +79,7 @@ test-pwa-workflow-observability.sh # reason: PWA workflow; requires running serv
 
 # ── CI-structure / meta-checks (checks the CI pipeline itself) ───────────────
 test-preflight-ci-parity.sh       # reason: this script itself; self-reference via the ci.yml step added in INFRA-1867
+test-preflight-parity.sh          # reason: nightly wrapper that RUNS chump preflight itself (INFRA-5432); can't mirror a script that invokes the mirror-checker without recursing
 test-observability-coverage.sh    # reason: diff-aware PR gate (BASE_REF=origin/main); Tier-D
 test-obs-coverage-guard.sh        # reason: CI meta — audits new src/ files for tracing hooks; CI-structural
 # INFRA-2350: check-path-filter-coverage.sh now mirrored as Scripts-scope

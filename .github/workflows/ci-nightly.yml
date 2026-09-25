@@ -236,6 +236,31 @@ jobs:
             coverage-summary.txt
           retention-days: 30
 
+  # ── Shard E: preflight/CI parity smoke (INFRA-5432, INFRA-1861 slice) ──────
+  # Runs `chump preflight` for real (not just a static source parse) and
+  # then the gate-by-gate CI-vs-preflight diff. Nightly cadence: this is a
+  # drift detector, not a merge gate — ci.yml's fast-checks job already runs
+  # the diff-only variant (test-preflight-ci-parity.sh) per-PR.
+  preflight-parity:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo
+        uses: Swatinem/rust-cache@v2
+        with:
+          shared-key: ci-nightly-preflight-parity
+
+      - name: Build chump binary
+        run: cargo build --bin chump
+
+      - name: Preflight/CI parity smoke
+        run: PATH="$(pwd)/target/debug:$PATH" bash scripts/ci/test-preflight-parity.sh
+
   # ── Aggregator ────────────────────────────────────────────────────────────
   nightly-e2e-status:
     needs: [tauri-cowork-e2e, e2e-battle-sim, e2e-golden-path]
