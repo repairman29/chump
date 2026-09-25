@@ -1418,12 +1418,111 @@ mod llm_complete_tests {
     }
 }
 
-#[tokio::main]
-async fn main() -> Result<()> {
+// INFRA-3784 (INFRA-1809 slice): startup wallclock budget with timeout
+// enforcement. A hang anywhere in the startup sequence (runtime spin-up,
+// store init, config load, network probes) used to just sit there with no
+// operator signal beyond "the process didn't come back". This wraps
+// everything after arg parsing in a `tokio::time::timeout` so a wedged
+// startup fails loud — dumped diagnostics on stderr, an ambient event for
+// the fleet's detectors, and a distinct exit code (4) instead of an
+// indefinite hang.
+//
+// Deliberately NOT `#[tokio::main]`: the budget must cover runtime
+// construction itself (worker-thread spin-up is real wallclock cost), so
+// `startup_start` is captured before the `Runtime` is built and the
+// `Runtime::block_on` call is made explicitly below.
+fn main() -> Result<()> {
+    let startup_start = std::time::Instant::now();
     let args: Vec<String> = env::args().collect();
     // EFFECTIVE-011: expand short aliases (g, c, s, f, d, h, cs) before routing.
     let args = expand_aliases(args);
 
+    let startup_timeout_ms: u64 = std::env::var("CHUMP_STARTUP_TIMEOUT_MS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(5000);
+    let dump_cmd = args.first().cloned().unwrap_or_else(|| "chump".to_string());
+    let dump_args = args.clone();
+
+    let rt = tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .expect("failed to build tokio runtime");
+
+    let budget = std::time::Duration::from_millis(startup_timeout_ms);
+
+    rt.block_on(async move {
+        // Budget already blown by the time we reach here (runtime spin-up +
+        // arg parsing are inside the wallclock budget too) — don't even
+        // bother polling `run_startup`, go straight to timeout handling.
+        // Otherwise race `run_startup` against the *remaining* budget: a
+        // future that resolves synchronously (e.g. `--version`) can win a
+        // `tokio::time::timeout` race regardless of duration, since nothing
+        // ever yields for the timer to preempt — so the total elapsed is
+        // re-checked against the full budget after the race resolves and
+        // overrides to the timeout path if it's already exceeded.
+        let already_over = startup_start.elapsed() >= budget;
+        let outcome = if already_over {
+            None
+        } else {
+            let remaining = budget - startup_start.elapsed();
+            tokio::time::timeout(remaining, run_startup(args))
+                .await
+                .ok()
+        };
+
+        let elapsed = startup_start.elapsed();
+        match outcome {
+            Some(result) if elapsed < budget => result,
+            _ => {
+                let elapsed_ms = elapsed.as_millis() as u64;
+                let rt_handle = tokio::runtime::Handle::current();
+                let rt_metrics = rt_handle.metrics();
+                let mem_db_available = memory_db::db_available();
+                let mem_db_count = memory_db::count().unwrap_or(-1);
+                let suspected_subsystem = if !mem_db_available {
+                    "memory_db"
+                } else {
+                    "unknown"
+                };
+                eprintln!(
+                    "[chump_startup_timeout] startup exceeded {}ms budget (elapsed={}ms)",
+                    startup_timeout_ms, elapsed_ms
+                );
+                eprintln!(
+                    "  tokio runtime: workers={} alive_tasks={}",
+                    rt_metrics.num_workers(),
+                    rt_metrics.num_alive_tasks(),
+                );
+                eprintln!(
+                    "  memory_db: available={} row_count={}",
+                    mem_db_available, mem_db_count
+                );
+                eprintln!("  suspected_subsystem: {}", suspected_subsystem);
+                eprintln!("  cmd: {} args: {:?}", dump_cmd, &dump_args[1..]);
+
+                let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                    kind: "chump_startup_timeout".to_string(),
+                    source: Some("main".to_string()),
+                    fields: vec![
+                        ("cmd".to_string(), dump_cmd),
+                        ("args".to_string(), format!("{:?}", &dump_args[1..])),
+                        ("elapsed_ms".to_string(), elapsed_ms.to_string()),
+                        (
+                            "suspected_subsystem".to_string(),
+                            suspected_subsystem.to_string(),
+                        ),
+                    ],
+                    ..Default::default()
+                });
+
+                std::process::exit(4);
+            }
+        }
+    })
+}
+
+async fn run_startup(args: Vec<String>) -> Result<()> {
     // SIGPIPE handling for CLI tools (Broken Pipe panics).
     #[cfg(unix)]
     unsafe {

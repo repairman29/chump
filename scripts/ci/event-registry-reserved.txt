@@ -259,6 +259,7 @@ self_doctor_budget_exceeded    # reason: INFRA-1595 only fires under stress (>3 
 self_doctor_failed             # reason: INFRA-1595 only fires on action failure (install error / execute-gap spawn error); rare path not exercised in PROD_PATHS smoke
 self_doctor_healed             # reason: INFRA-1595 same struct-init pattern as self_doctor_tick; emit-site not grep-scannable
 self_doctor_tick               # reason: INFRA-1595 emitted from src/fleet_self_doctor.rs via EmitArgs{kind: "..".to_string()} struct-init form; grep pattern `kind = "X"` does not match `kind: "X".to_string()`
+chump_startup_timeout          # reason: INFRA-3784 emitted from src/main.rs via EmitArgs{kind: "..".to_string()} struct-init form, same not-grep-scannable shape as self_doctor_tick; formal EVENT_REGISTRY.yaml entry added in same commit
 self_hosted_runner_run          # reason: INFRA-1534 per-run completion (planned)
 skill  # reason: INFRA-1729 — JSON enum value for primitive.kind in build-capabilities-registry.sh, not an ambient kind
 stale_branch_auto_rebased  # reason: INFRA-1429 #2356 emitted from src/paramedic.rs action_rebase_dirty; allowlist while EVENT_REGISTRY entry catches up

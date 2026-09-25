@@ -13055,3 +13055,14 @@ events:
     consumers: [ops-audit, operator-recall]
     fields_required: [ts, kind, organs_total, organs_active, timers_total,
       timers_active, drifted_total, cockpit_total, cockpit_present, out]
+
+  - kind: chump_startup_timeout
+    effect_metric: self
+    emitter: src/main.rs::main (INFRA-3784, INFRA-1809 slice)
+    trigger: the process's startup wallclock budget (CHUMP_STARTUP_TIMEOUT_MS,
+      default 5000ms) was exceeded before the startup sequence (runtime
+      spin-up through subcommand dispatch) completed. The process dumps
+      tokio runtime status + memory_db connection state to stderr, emits
+      this event, then exits with code 4.
+    consumers: [ambient.jsonl audit trail, fleet-doctor]
+    fields_required: [ts, kind, cmd, args, elapsed_ms, suspected_subsystem]
