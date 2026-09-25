@@ -744,7 +744,7 @@ async fn handle_broadcast(
         ));
     }
 
-    let mut cmd = std::process::Command::new("bash");
+    let mut cmd = tokio::process::Command::new("bash");
     cmd.arg(&script);
     // Optional --to flag honored by broadcast.sh for any event.
     if let Some(recipient) = body
@@ -797,6 +797,7 @@ async fn handle_broadcast(
 
     let output = cmd
         .output()
+        .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")))?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
