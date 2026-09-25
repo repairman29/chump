@@ -162,6 +162,11 @@ pub struct ObjectiveDependency {
 pub struct PersistentMission {
     pub mission: Mission,
     pub checkpoints: Vec<MissionCheckpoint>,
+    /// Pointer to what this mission actually produced once it reaches a
+    /// terminal state — a PR URL, a result identifier, or similar.
+    /// `None` while the mission is still in flight.
+    #[serde(default)]
+    pub outcome_pointer: Option<String>,
 }
 
 impl PersistentMission {
@@ -173,7 +178,14 @@ impl PersistentMission {
         Self {
             mission,
             checkpoints: Vec::new(),
+            outcome_pointer: None,
         }
+    }
+
+    /// Record the outcome pointer (PR URL, result id, etc.) once the
+    /// mission has landed something concrete.
+    pub fn set_outcome_pointer(&mut self, pointer: impl Into<String>) {
+        self.outcome_pointer = Some(pointer.into());
     }
 
     /// Append a checkpoint, validating the state transition first.

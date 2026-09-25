@@ -17,6 +17,10 @@
 //! the gap registry.
 
 use crate::front_door::{self, FrontDoorMode, RouteResult};
+use chump_coord::mission::{
+    FallbackMode, FileBackedMissionStore, Mission, MissionStore, Objective, ObjectiveState,
+    PersistentMission,
+};
 use std::path::Path;
 
 /// Exit code trek uses when a route was classified but nothing was landed —
@@ -92,6 +96,58 @@ fn emit_trek_event(repo_root: &Path, kind: &str, fields: serde_json::Value) {
     }
 }
 
+/// Persist a `PersistentMission` record for a landed trek run (INFRA-7357,
+/// INFRA-3658 slice). Only the `Landed` outcome reaches here — that's the
+/// only case where an engine actually ran, so it's the only case with a
+/// meaningful Pending -> InProgress -> Completed/Failed sequence to record.
+///
+/// Best-effort: a persistence failure must never fail the trek run itself,
+/// so errors are swallowed (mirrors `emit_trek_event`'s posture).
+fn persist_trek_mission(job: &str, mode: &str, exit_code: i32) {
+    let mission_id = format!("trek-{}", uuid::Uuid::new_v4());
+    let objective_id = "run".to_string();
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let mission = Mission {
+        id: mission_id,
+        name: format!("trek {mode}: {job}"),
+        objectives: vec![Objective {
+            id: objective_id.clone(),
+            description: job.to_string(),
+            resource_cost: 0,
+            duration_secs: 0,
+            target: None,
+            sequence: 0,
+        }],
+        fallback_behavior: FallbackMode::SafeShutdown,
+        timestamp_issued: ts.clone(),
+        ttl_seconds: 0,
+        version: 1,
+    };
+
+    let mut pm = PersistentMission::new(mission);
+    // Pending is the implicit initial state (no checkpoint yet); the first
+    // checkpoint moves it to InProgress, matching the documented sequence.
+    if pm
+        .checkpoint(&objective_id, ObjectiveState::InProgress, &ts)
+        .is_err()
+    {
+        return;
+    }
+    let terminal = if exit_code == 0 {
+        ObjectiveState::Completed
+    } else {
+        ObjectiveState::Failed
+    };
+    if pm.checkpoint(&objective_id, terminal, &ts).is_err() {
+        return;
+    }
+    pm.set_outcome_pointer(format!("trek:{mode}:exit={exit_code}"));
+
+    let store = FileBackedMissionStore::default_root();
+    let _ = store.save(&pm);
+}
+
 /// Result of a `chump trek` run — mirrors the exit-code contract but keeps
 /// the reason machine-readable for `--json` / tests.
 #[derive(Debug, PartialEq, Eq)]
@@ -163,6 +219,7 @@ pub fn run_trek(
         },
         RouteResult::Confident { mode, .. } => {
             let exit_code = spawner.spawn(*mode, job);
+            persist_trek_mission(job, mode.label(), exit_code);
             TrekOutcome::Landed {
                 mode: mode.label(),
                 exit_code,
