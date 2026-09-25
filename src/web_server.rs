@@ -744,7 +744,7 @@ async fn handle_broadcast(
         ));
     }
 
-    let mut cmd = std::process::Command::new("bash");
+    let mut cmd = tokio::process::Command::new("bash");
     cmd.arg(&script);
     // Optional --to flag honored by broadcast.sh for any event.
     if let Some(recipient) = body
@@ -795,9 +795,18 @@ async fn handle_broadcast(
         _ => unreachable!(),
     }
 
-    let output = cmd
-        .output()
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")))?;
+    // INFRA-1496: tokio::process::Command + 5s timeout so a hung broadcast.sh
+    // (e.g. slow NATS publish) can't block the tokio worker pool and starve
+    // unrelated endpoints like /api/health (INFRA-1485 audited this pattern).
+    let output = match tokio::time::timeout(std::time::Duration::from_secs(5), cmd.output()).await {
+        Ok(res) => res.map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("spawn: {e}")))?,
+        Err(_) => {
+            return Err((
+                StatusCode::GATEWAY_TIMEOUT,
+                "broadcast.sh timeout >5s".to_string(),
+            ));
+        }
+    };
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr).to_string();
         return Err((
