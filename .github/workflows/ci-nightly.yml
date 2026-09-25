@@ -26,6 +26,24 @@ env:
   CARGO_TERM_COLOR: always
 
 jobs:
+  # ── Shard 0: preflight/CI parity (INFRA-5432, INFRA-1861 slice) ────────────
+  # test-preflight-ci-parity.sh already gates every PR via ci.yml — this
+  # nightly shard is a belated-drift smoke check (AC4): if a same-day PR
+  # merge and a same-day workflow/preflight edit race each other, the
+  # per-PR gate can pass on a stale diff. Nightly re-run on main catches
+  # that within 24h even if no PR touches ci.yml again.
+  preflight-ci-parity-nightly:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Preflight/CI parity smoke
+        run: bash scripts/ci/test-preflight-ci-parity.sh
+
+      - name: Preflight/CI parity self-test (INFRA-2084 AC7)
+        run: bash scripts/ci/test-preflight-ci-parity-smoke.sh
+
   # ── Shard A: Tauri cowork E2E ─────────────────────────────────────────────
   tauri-cowork-e2e:
     runs-on: ${{ vars.RUNNER_TAURI_COWORK_E2E != '' && fromJSON(vars.RUNNER_TAURI_COWORK_E2E) || 'ubuntu-latest' }}
