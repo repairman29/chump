@@ -2324,6 +2324,98 @@ impl GapStore {
         behind_origin_main_count(&self.repo_root)
     }
 
+    /// Atomically hand a gap's active lease off from whichever session
+    /// currently holds it to `to_session` — INFRA-5769 (INFRA-1862 slice).
+    ///
+    /// The claim-record lookup, the lease-row swap, and the worktree-pointer
+    /// update all happen inside one `BEGIN IMMEDIATE` / `COMMIT` transaction
+    /// so a mid-handoff failure (bad gap id, no active lease, db error) rolls
+    /// back cleanly instead of leaving an orphaned or double-claimed lease.
+    /// The target session needs no follow-up `chump gap claim` — the lease
+    /// row already carries its session_id once this returns `Ok`.
+    pub fn handoff(
+        &self,
+        gap_id: &str,
+        to_session: &str,
+        worktree: Option<&str>,
+        ttl_secs: i64,
+    ) -> Result<HandoffResult> {
+        let expires_at = unix_now() + ttl_secs;
+
+        self.conn
+            .execute_batch("BEGIN IMMEDIATE")
+            .context("chump gap handoff: failed to open transaction")?;
+
+        let result = (|| -> Result<HandoffResult> {
+            let status: String = self
+                .conn
+                .query_row(
+                    "SELECT status FROM gaps WHERE id=?1",
+                    params![gap_id],
+                    |r| r.get(0),
+                )
+                .with_context(|| format!("gap {} not found in state.db", gap_id))?;
+            if status == "done" {
+                bail!("gap {} is already done", gap_id);
+            }
+
+            let live: Option<(String, String)> = self
+                .conn
+                .query_row(
+                    "SELECT session_id, worktree FROM leases WHERE gap_id=?1 AND expires_at>?2",
+                    params![gap_id, unix_now()],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .optional()?;
+            let (from_session, existing_worktree) = live
+                .ok_or_else(|| anyhow::anyhow!("gap {} has no active lease to hand off", gap_id))?;
+
+            if from_session == to_session {
+                bail!(
+                    "gap {} is already claimed by session {} — nothing to hand off",
+                    gap_id,
+                    to_session
+                );
+            }
+
+            let new_worktree = worktree.map(str::to_string).unwrap_or(existing_worktree);
+
+            self.conn.execute(
+                "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+                params![from_session, gap_id],
+            )?;
+            self.conn.execute(
+                "INSERT INTO leases(session_id,gap_id,worktree,expires_at)
+                 VALUES(?1,?2,?3,?4)
+                 ON CONFLICT(session_id) DO UPDATE SET gap_id=excluded.gap_id,
+                     worktree=excluded.worktree, expires_at=excluded.expires_at",
+                params![to_session, gap_id, new_worktree, expires_at],
+            )?;
+
+            Ok(HandoffResult {
+                from_session,
+                to_session: to_session.to_string(),
+                worktree: new_worktree,
+                expires_at,
+            })
+        })();
+
+        match result {
+            Ok(r) => {
+                self.conn
+                    .execute_batch("COMMIT")
+                    .context("chump gap handoff: failed to commit transaction")?;
+                Ok(r)
+            }
+            Err(e) => {
+                self.conn
+                    .execute_batch("ROLLBACK")
+                    .context("chump gap handoff: failed to roll back transaction")?;
+                Err(e)
+            }
+        }
+    }
+
     /// Claim a gap for a session (write lease row).
     pub fn claim(
         &self,
@@ -4504,6 +4596,15 @@ pub enum PreflightResult {
     NotFound,
     Done,
     Claimed(String),
+}
+
+/// Outcome of a successful `GapStore::handoff` — INFRA-5769.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HandoffResult {
+    pub from_session: String,
+    pub to_session: String,
+    pub worktree: String,
+    pub expires_at: i64,
 }
 
 fn unix_now() -> i64 {
@@ -7502,6 +7603,73 @@ mod tests {
             PreflightResult::Claimed(s) => assert_eq!(s, "session-abc"),
             other => panic!("expected Claimed, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_handoff_transfers_lease_and_worktree() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+        store.claim(&id, "session-a", "/worktrees/a", 3600).unwrap();
+
+        let result = store
+            .handoff(&id, "session-b", Some("/worktrees/b"), 1800)
+            .unwrap();
+        assert_eq!(result.from_session, "session-a");
+        assert_eq!(result.to_session, "session-b");
+        assert_eq!(result.worktree, "/worktrees/b");
+
+        match store.preflight(&id).unwrap() {
+            PreflightResult::Claimed(s) => assert_eq!(s, "session-b"),
+            other => panic!("expected Claimed(session-b), got {:?}", other),
+        }
+
+        // The old session's lease must be gone, not merely superseded.
+        let stray: Option<String> = store
+            .conn_for_test()
+            .query_row(
+                "SELECT session_id FROM leases WHERE session_id='session-a'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert!(
+            stray.is_none(),
+            "handoff left an orphaned lease row for session-a"
+        );
+    }
+
+    #[test]
+    fn test_handoff_without_worktree_carries_over_existing() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+        store.claim(&id, "session-a", "/worktrees/a", 3600).unwrap();
+
+        let result = store.handoff(&id, "session-b", None, 1800).unwrap();
+        assert_eq!(result.worktree, "/worktrees/a");
+    }
+
+    #[test]
+    fn test_handoff_fails_without_active_lease_and_leaves_no_orphan() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+
+        let err = store.handoff(&id, "session-b", None, 1800).unwrap_err();
+        assert!(err.to_string().contains("no active lease"));
+
+        match store.preflight(&id).unwrap() {
+            PreflightResult::Available => {}
+            other => panic!("expected Available after failed handoff, got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_handoff_unknown_gap_errors() {
+        let (store, _dir) = test_store();
+        let err = store
+            .handoff("EVAL-99999", "session-b", None, 1800)
+            .unwrap_err();
+        assert!(err.to_string().contains("not found in state.db"));
     }
 
     #[test]

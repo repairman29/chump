@@ -11932,6 +11932,49 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-5769 (INFRA-1862 slice): atomically hand a gap's active
+            // lease off to another session in one transaction (claim record,
+            // lease lock, worktree pointer) — the target session needs no
+            // follow-up `chump gap claim`.
+            "handoff" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap handoff <GAP-ID> --to <SESSION-ID> [--worktree <path>] [--ttl <secs>]");
+                    std::process::exit(2);
+                });
+                let to_session = flag("--to").unwrap_or_else(|| {
+                    eprintln!("chump gap handoff: --to <SESSION-ID> is required");
+                    std::process::exit(2);
+                });
+                let worktree = flag("--worktree").filter(|s| !s.is_empty());
+                let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
+
+                match store.handoff(&gap_id, &to_session, worktree.as_deref(), ttl) {
+                    Ok(result) => {
+                        if json_out {
+                            println!(
+                                "{}",
+                                serde_json::json!({
+                                    "gap_id": gap_id,
+                                    "from_session": result.from_session,
+                                    "to_session": result.to_session,
+                                    "worktree": result.worktree,
+                                    "expires_at": result.expires_at,
+                                })
+                            );
+                        } else {
+                            println!(
+                                "handed off {} from session {} to session {} (worktree={}, expires_at={})",
+                                gap_id, result.from_session, result.to_session, result.worktree, result.expires_at
+                            );
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap handoff: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "preflight" => {
                 // INFRA-1238: trap --help before positional validation.
                 if args
