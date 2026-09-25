@@ -8,6 +8,8 @@
 //! INFRA-2405: contract-scan — detect cross-PR state-file/IPC schema mismatch (anti-Bug-1).
 //! RESILIENT-059: durable-execution — SQLite-journaled activity wrapper + resume CLI.
 //! INFRA-2265: bootstrap — net-new product bootstrap entrypoint (empty dir → first commit + gap).
+//! INFRA-5754: registry — inventory-crate-backed self-registration interface for
+//!             CLI subcommands (INFRA-1748 slice, main.rs decomposition pilot).
 
 pub mod add_env_var;
 pub mod add_path_filter;
@@ -29,6 +31,7 @@ pub mod emit_event;
 pub mod install_daemon;
 pub mod inventory;
 pub mod reachability;
+pub mod registry;
 pub mod roadmap_from_vision;
 pub mod sibling_status;
 pub mod source_resolve;
