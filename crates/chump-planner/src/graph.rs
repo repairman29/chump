@@ -458,6 +458,52 @@ mod tests {
     }
 
     #[test]
+    fn effective_priority_direct_dependent_wins() {
+        // INFRA-2 (P3) directly blocks INFRA-1 (P0) — no transitive hop
+        // needed. effective_priority(INFRA-2) should be P0.
+        let mut gaps = vec![mk("INFRA-1", vec!["INFRA-2"]), mk("INFRA-2", vec![])];
+        gaps[0].priority = Priority::P0;
+        gaps[1].priority = Priority::P3;
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let gap2 = gaps.iter().find(|g| g.id.0 == "INFRA-2").unwrap();
+        assert_eq!(g.effective_priority(gap2, &gaps, &open), Priority::P0);
+    }
+
+    #[test]
+    fn effective_priority_no_dependents_keeps_own_priority() {
+        let mut gaps = vec![mk("INFRA-1", vec![])];
+        gaps[0].priority = Priority::P2;
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let gap1 = &gaps[0];
+        assert_eq!(g.effective_priority(gap1, &gaps, &open), Priority::P2);
+    }
+
+    #[test]
+    fn effective_priority_cycle_does_not_panic() {
+        // INFRA-A <-> INFRA-B form a cycle via depends_on. `unblocks` walks
+        // outgoing Blocks edges with a `seen` set, so a cycle terminates
+        // instead of looping forever or panicking; effective_priority must
+        // still return a value (its own priority at minimum, since the
+        // cycle partner may report a lower-urgency band).
+        let mut gaps = vec![
+            mk("INFRA-A", vec!["INFRA-B"]),
+            mk("INFRA-B", vec!["INFRA-A"]),
+        ];
+        gaps[0].priority = Priority::P1;
+        gaps[1].priority = Priority::P2;
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let gap_a = gaps.iter().find(|g| g.id.0 == "INFRA-A").unwrap();
+        let result = g.effective_priority(gap_a, &gaps, &open);
+        assert!(
+            result <= Priority::P2,
+            "effective_priority must return a value, not panic, on a cycle"
+        );
+    }
+
+    #[test]
     fn dangling_depends_on_does_not_crash() {
         let gaps = vec![mk("INFRA-1", vec!["INFRA-DOES-NOT-EXIST"])];
         let g = DependencyGraph::build(&gaps);
