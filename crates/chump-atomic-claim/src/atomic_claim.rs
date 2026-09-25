@@ -811,12 +811,21 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         if let Some((pr_num, other_gap, overlap_paths)) =
             check_paths_overlap_open_prs(&args.repo_root, paths_csv)
         {
-            bail!(
-                "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
-                pr_num,
-                other_gap,
-                overlap_paths.join(", "),
-            );
+            if claim_mode() == ClaimMode::Advisory {
+                eprintln!(
+                    "[claim] WARNING (advisory mode): paths overlap with open PR #{} (gap {}, paths: {}) — proceeding anyway",
+                    pr_num,
+                    other_gap,
+                    overlap_paths.join(", "),
+                );
+            } else {
+                bail!(
+                    "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
+                    pr_num,
+                    other_gap,
+                    overlap_paths.join(", "),
+                );
+            }
         }
     }
 
@@ -2263,6 +2272,25 @@ pub fn check_open_pr_for_gap(repo_root: &Path, gap_id: &str) -> Option<(u64, Str
         }
     }
     None
+}
+
+/// INFRA-3765 (INFRA-1688 slice): claim-time path-overlap enforcement mode.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimMode {
+    /// Default: path overlap with an open PR blocks the claim (exit 1).
+    Blocking,
+    /// Path overlap with an open PR emits a structured warning but the
+    /// claim proceeds (exit 0).
+    Advisory,
+}
+
+/// Reads `CHUMP_CLAIM_MODE` (default `blocking`). Any value other than the
+/// exact string `advisory` is treated as `blocking`.
+pub fn claim_mode() -> ClaimMode {
+    match std::env::var("CHUMP_CLAIM_MODE") {
+        Ok(v) if v.trim() == "advisory" => ClaimMode::Advisory,
+        _ => ClaimMode::Blocking,
+    }
 }
 
 /// INFRA-4996 (INFRA-2434 slice): check whether any file in `paths_csv`
@@ -5966,6 +5994,44 @@ mod tests {
         assert!(s.starts_with("claim-infra-123-"));
         // claim-infra-123-<pid>-<epoch> = 4 dash-separated segments
         assert_eq!(s.matches('-').count(), 4);
+    }
+
+    // INFRA-3765: CHUMP_CLAIM_MODE default + explicit values. Single test
+    // (not split across #[test] fns) because cargo test runs fns in
+    // parallel threads and they'd race on the shared env var.
+    #[test]
+    fn claim_mode_env_semantics() {
+        let key = "CHUMP_CLAIM_MODE";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        assert_eq!(
+            claim_mode(),
+            ClaimMode::Blocking,
+            "unset -> blocking default (AC1)"
+        );
+
+        unsafe {
+            std::env::set_var(key, "advisory");
+        }
+        assert_eq!(
+            claim_mode(),
+            ClaimMode::Advisory,
+            "advisory -> advisory (AC3)"
+        );
+
+        unsafe {
+            std::env::set_var(key, "garbage");
+        }
+        assert_eq!(
+            claim_mode(),
+            ClaimMode::Blocking,
+            "unknown value -> blocking fallback (AC2)"
+        );
+
+        unsafe {
+            std::env::remove_var(key);
+        }
     }
 
     // INFRA-1328: gh_owner_repo URL parser — pure logic, no network.
