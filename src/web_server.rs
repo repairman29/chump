@@ -5290,6 +5290,26 @@ async fn handle_pr_detail(
         })
         .collect();
 
+    // INFRA-4539: surface cascade-cancellation info (INFRA-1002 classify logic,
+    // mirrored from ci.yml) so the PWA doesn't need to dig through workflow run
+    // logs to see which jobs were collateral damage of a real failure.
+    let any_real_failure = checks
+        .iter()
+        .any(|c| c.get("conclusion").and_then(|v| v.as_str()) == Some("FAILURE"));
+    let cancelled_jobs: Vec<String> = if any_real_failure {
+        checks
+            .iter()
+            .filter(|c| c.get("conclusion").and_then(|v| v.as_str()) == Some("CANCELLED"))
+            .filter_map(|c| {
+                c.get("name")
+                    .and_then(|v| v.as_str())
+                    .map(|s| s.to_string())
+            })
+            .collect()
+    } else {
+        Vec::new()
+    };
+
     let payload = serde_json::json!({
         "number": raw.get("number"),
         "title": raw.get("title"),
@@ -5306,6 +5326,7 @@ async fn handle_pr_detail(
         "base_branch": raw.get("baseRefName"),
         "merged_at": raw.get("mergedAt"),
         "checks": checks,
+        "cancelled_jobs": cancelled_jobs,
     });
     Ok(Json(payload))
 }
