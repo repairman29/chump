@@ -2226,7 +2226,15 @@ async fn main() -> Result<()> {
                 eprintln!("Atomically: fetch origin/main, verify the gap, run chump-doctor,");
                 eprintln!("create a linked worktree, write the lease. Replaces the 6-step");
                 eprintln!("shell dance in CLAUDE.md mandatory pre-flight (INFRA-468).");
-                std::process::exit(2);
+                // INFRA-5486 (INFRA-1863 slice, AC2): a missing mandatory
+                // --role (CHUMP_CLAIM_REQUIRE_ROLE=1) exits 1, distinct from
+                // the generic exit(2) used for other malformed-argv errors.
+                let code = if format!("{e:#}").contains(atomic_claim::MISSING_ROLE_SENTINEL) {
+                    1
+                } else {
+                    2
+                };
+                std::process::exit(code);
             }
         };
 

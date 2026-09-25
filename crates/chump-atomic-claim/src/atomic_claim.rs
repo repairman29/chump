@@ -83,14 +83,32 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
-    /// INFRA-5162 (INFRA-1863 slice): optional role hint for the claiming
-    /// session (e.g. "shepherd", "target"). Stored for later validation;
-    /// not yet enforced against a role registry.
+    /// INFRA-5162 (INFRA-1863 slice): role hint for the claiming session
+    /// (e.g. "shepherd", "target"). Stored for later validation; not yet
+    /// enforced against a role registry. INFRA-5486: becomes mandatory
+    /// when `CHUMP_CLAIM_REQUIRE_ROLE=1` is set (opt-in rollout gate —
+    /// the fleet has hundreds of `chump claim <GAP-ID>` call sites that
+    /// predate this flag; flipping the default fleet-wide is tracked as
+    /// a follow-up once those call sites pass `--role`).
     pub role: Option<String>,
     /// INFRA-6624 (INFRA-1863 slice): optional scope hint for the claiming
     /// session (e.g. a module or concern name). Stored for later validation;
     /// not yet enforced against a scope registry.
     pub scope: Option<String>,
+}
+
+/// INFRA-5486: sentinel bail! message for a missing mandatory `--role`.
+/// Exported so src/main.rs can detect this specific case and exit(1) with
+/// a usage message (AC2), instead of the generic exit(2) used for other
+/// `chump claim` argument errors.
+pub const MISSING_ROLE_SENTINEL: &str = "missing required --role flag";
+
+/// INFRA-5486: whether `--role` is mandatory for this invocation. Opt-in via
+/// `CHUMP_CLAIM_REQUIRE_ROLE=1` — see the comment at the call site.
+fn role_required_by_env() -> bool {
+    std::env::var("CHUMP_CLAIM_REQUIRE_ROLE")
+        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+        .unwrap_or(false)
 }
 
 impl ClaimArgs {
@@ -116,7 +134,8 @@ impl ClaimArgs {
                        -h, --help       Show this help
                        --check-only  Run all preflight gates without creating worktree or lease\n  \
                        --json        Output JSON format (use with --check-only)\n  \
-                       --role ROLE   Role hint for the claiming session (e.g. shepherd, target)\n  \
+                       --role ROLE   Role hint for the claiming session (e.g. shepherd, target).\n                \
+                                     Mandatory when CHUMP_CLAIM_REQUIRE_ROLE=1 (INFRA-5486)\n  \
                        --scope SCOPE Scope hint for the claiming session (e.g. a module or concern)"
                 );
                 std::process::exit(0);
@@ -246,6 +265,19 @@ impl ClaimArgs {
                 }
                 other => bail!("unknown flag: {other}"),
             }
+        }
+
+        // INFRA-5486 (INFRA-1863 slice): --role becomes mandatory once
+        // CHUMP_CLAIM_REQUIRE_ROLE=1 is set. Opt-in rather than unconditional
+        // because hundreds of `chump claim <GAP-ID>` call sites across the
+        // fleet (scripts/, docs/, CLAUDE.md's own mandatory pre-flight)
+        // predate this flag; flipping the default is a fleet-wide migration,
+        // not a single-slice change. Uses the sentinel error message
+        // `MISSING_ROLE_SENTINEL` so the CLI layer (src/main.rs) can map it
+        // to exit code 1 with a usage message per AC2, distinct from the
+        // generic exit(2) used for other parse errors.
+        if role.is_none() && role_required_by_env() {
+            bail!(MISSING_ROLE_SENTINEL);
         }
 
         let worktree_base = std::env::var("CHUMP_WORKTREE_BASE")
@@ -6404,6 +6436,42 @@ mod tests {
         assert_eq!(args.scope.as_deref(), Some("atomic_claim"));
         // --paths is optional and can be omitted without error (AC2).
         assert!(args.paths.is_none());
+    }
+
+    #[test]
+    fn from_argv_role_optional_by_default() {
+        // INFRA-5486 AC1/AC2: without CHUMP_CLAIM_REQUIRE_ROLE set, --role
+        // stays optional (back-compat for existing fleet call sites).
+        std::env::remove_var("CHUMP_CLAIM_REQUIRE_ROLE");
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-5486".into()];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.role.is_none());
+    }
+
+    #[test]
+    fn from_argv_role_mandatory_when_env_gate_set() {
+        // INFRA-5486 AC2: with the gate on, omitting --role exits with the
+        // MISSING_ROLE_SENTINEL error (mapped to exit code 1 in main.rs).
+        std::env::set_var("CHUMP_CLAIM_REQUIRE_ROLE", "1");
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-5486".into()];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains(MISSING_ROLE_SENTINEL));
+        std::env::remove_var("CHUMP_CLAIM_REQUIRE_ROLE");
+    }
+
+    #[test]
+    fn from_argv_role_provided_satisfies_env_gate() {
+        // INFRA-5486 AC1: passing --role satisfies the gate even when it's on.
+        std::env::set_var("CHUMP_CLAIM_REQUIRE_ROLE", "1");
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5486".into(),
+            "--role".into(),
+            "shepherd".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert_eq!(args.role.as_deref(), Some("shepherd"));
+        std::env::remove_var("CHUMP_CLAIM_REQUIRE_ROLE");
     }
 
     #[test]
