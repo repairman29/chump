@@ -35,6 +35,17 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 pass() { printf '[PASS] %s\n' "$*"; }
 fail() { printf '[FAIL] %s\n' "$*" >&2; exit 1; }
 
+# CREDIBLE-1079 (CREDIBLE-237 slice): guard so a negative-assertion grep
+# against a missing target can't silently pass — call this before any
+# `grep -v` / `! test -e` style check against a file that must exist.
+ensure_target_exists() {
+    local target="$1"
+    if [[ ! -e "$target" ]]; then
+        printf 'ERROR : target %s not found\n' "$target" >&2
+        return 1
+    fi
+}
+
 cd "$REPO_ROOT"
 
 # ── Test 1: src/version.rs unit tests cover #1444's failure mode ────────────
@@ -89,14 +100,18 @@ pass "$gap_site wires the hard-fail into the remaining destructive path (gap dum
 # CREDIBLE-274: scan both main.rs and commands/gap.rs so the negative
 # assertion doesn't vacuous-pass when the target file is absent.
 found_ship_guard=false
+guard_target_checked=false
 for f in "${GAP_GUARD_FILES[@]}"; do
-    if [[ -f "$f" ]] \
-        && grep -q 'fail_if_stale_for_destructive(&repo_root,$' "$f" \
+    ensure_target_exists "$f" || continue
+    guard_target_checked=true
+    if grep -q 'fail_if_stale_for_destructive(&repo_root,$' "$f" \
         && grep -A1 'fail_if_stale_for_destructive(&repo_root,$' "$f" | grep -q '"gap ship --update-yaml"'; then
         found_ship_guard=true
         break
     fi
 done
+$guard_target_checked \
+    || fail "none of ${GAP_GUARD_FILES[*]} exist — cannot assert absence of guard against a target that isn't there"
 if $found_ship_guard; then
     fail "gap ship --update-yaml is still wired to fail_if_stale_for_destructive — ZERO-WASTE-020 removed the write this guarded; if a real write came back, it needs the guard back too"
 fi

@@ -24,7 +24,18 @@ ok()   { printf '\033[0;32mPASS\033[0m %s\n' "$*"; }
 fail() { printf '\033[0;31mFAIL\033[0m %s\n' "$*"; exit 1; }
 hdr()  { printf '\n--- %s ---\n' "$*"; }
 
-[[ -f "$SRC" ]] || fail "atomic_claim.rs missing: $SRC"
+# CREDIBLE-1079 (CREDIBLE-237 slice): guard so a negative-assertion grep
+# against a missing target can't silently pass — call this before any
+# `grep -v` / `! test -e` style check against a file that must exist.
+ensure_target_exists() {
+    local target="$1"
+    if [[ ! -e "$target" ]]; then
+        printf 'ERROR : target %s not found\n' "$target" >&2
+        return 1
+    fi
+}
+
+ensure_target_exists "$SRC" || fail "atomic_claim.rs missing: $SRC"
 
 hdr "Round 1: source-level shape"
 
@@ -65,6 +76,7 @@ ok "ambient emit precedes bail (waste signal captured on refusal)"
 
 # 6. Event is registered in EVENT_REGISTRY.yaml so the watchdogs know it.
 REG="$REPO_ROOT/docs/observability/EVENT_REGISTRY.yaml"
+ensure_target_exists "$REG" || fail "EVENT_REGISTRY.yaml missing: $REG"
 grep -q "kind: claim_aborted_pr_in_flight" "$REG" \
     || fail "claim_aborted_pr_in_flight not registered in EVENT_REGISTRY.yaml"
 ok "event kind registered in EVENT_REGISTRY.yaml"
@@ -167,7 +179,7 @@ grep -q "CHUMP_CLAIM_ALLOW_OPEN_PR" <<<"$OUT" \
 ok "diagnostic includes gap-id + PR number + author + override hint"
 
 AMBIENT="$REPO/.chump-locks/ambient.jsonl"
-[[ -f "$AMBIENT" ]] || fail "ambient.jsonl was not created: $AMBIENT"
+ensure_target_exists "$AMBIENT" || fail "ambient.jsonl was not created: $AMBIENT"
 grep -q '"kind":"claim_aborted_pr_in_flight"' "$AMBIENT" \
     || { cat "$AMBIENT"; fail "ambient.jsonl missing claim_aborted_pr_in_flight event"; }
 grep -q '"existing_pr":9999' "$AMBIENT" \
