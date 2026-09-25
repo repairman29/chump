@@ -9,16 +9,6 @@
 
 FROM rust:1.82-bookworm
 
-# rustc's cranelift codegen backend ships as a rustup component on nightly;
-# add nightly alongside the default 1.82 toolchain so `-Zcodegen-backend=cranelift`
-# is available without disturbing the stable default.
-RUN rustup toolchain install nightly \
-    && rustup component add rustc-codegen-cranelift-preview --toolchain nightly
-
-RUN cargo install --locked cargo-binstall \
-    && cargo binstall -y --no-confirm sccache cargo-nextest \
-        || cargo install --locked sccache cargo-nextest
-
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git curl jq sqlite3 ca-certificates gnupg \
         build-essential pkg-config libssl-dev \
@@ -31,6 +21,23 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get update && apt-get install -y --no-install-recommends gh \
     && rm -rf /var/lib/apt/lists/*
 
+# rustc's cranelift codegen backend ships as a rustup component on nightly;
+# add nightly alongside the default 1.82 toolchain so `-Zcodegen-backend=cranelift`
+# is available without disturbing the stable default.
+RUN rustup toolchain install nightly \
+    && rustup component add rustc-codegen-cranelift-preview --toolchain nightly
+
+# Install cargo-binstall from its precompiled-binary release rather than
+# `cargo install` — the crate's own build now requires a newer cargo
+# (edition2024) than the pinned rustc:1.82 toolchain provides, and a
+# `cargo install` fallback for sccache/cargo-nextest hits the same
+# "requires newer rustc" wall since their latest releases target current
+# rustc. Binstall sidesteps both by fetching prebuilt binaries.
+RUN curl -L --proto '=https' --tlsv1.2 -sSf \
+        https://raw.githubusercontent.com/cargo-bins/cargo-binstall/main/install-from-binstall-release.sh \
+        | bash \
+    && cargo binstall -y sccache cargo-nextest
+
 ENV CARGO_HOME=/usr/local/cargo \
     PATH=/usr/local/cargo/bin:$PATH \
     RUSTC_WRAPPER=sccache \
@@ -40,7 +47,7 @@ RUN rustc --version && cargo --version \
     && cargo nextest --version && sccache --version \
     && jq --version && git --version && gh --version && python3 --version \
     && mold --version \
-    && rustup component list --toolchain nightly | grep rustc-codegen-cranelift-preview
+    && rustup component list --toolchain nightly | grep -i 'cranelift.*(installed)'
 
 LABEL org.opencontainers.image.source="https://github.com/repairman29/chump"
 LABEL org.opencontainers.image.description="Chump Rust builder image (Rust 1.82 + sccache + mold + cranelift + cargo-nextest + jq + gh + python3)"
