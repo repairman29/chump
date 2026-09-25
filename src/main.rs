@@ -184,6 +184,7 @@ mod neuromodulation;
 mod notify_tool;
 mod onboard; // INFRA-2108: chump onboard <repo-url-or-path>
 mod onboard_repo_tool;
+mod openrouter_model_index; // EFFECTIVE-1567 (EFFECTIVE-409 slice): OpenRouter catalog fetch + local index
 mod operator_presence;
 mod orchestrate;
 pub use chump_paramedic::paramedic;
@@ -2559,6 +2560,14 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("roadmap-from-vision") {
         let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
         std::process::exit(commands::roadmap_from_vision::run(&sub_args).await);
+    }
+
+    // `chump model-index <refresh|show> [--json]` (EFFECTIVE-1567, EFFECTIVE-409
+    // slice) — fetch the live OpenRouter model catalog and upsert into a local
+    // deterministic JSON index. See commands::model_index.
+    if args.get(1).map(String::as_str) == Some("model-index") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::model_index::run(&sub_args).await);
     }
 
     // INFRA-2399 author-time helper commands (add-env-var / emit-event /
