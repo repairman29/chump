@@ -1,0 +1,29 @@
+- id: INFRA-5876
+  domain: INFRA
+  title: "INFRA: Audit ACP fork status and document spec surface in CP-007 (INFRA-1822 slice)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - Verify repairman29/registry status vs agentclientprotocol/registry upstream HEAD, recording 0 ahead / 276 behind status in docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+    - Document upstream ACP capability schema, registration flows, auth methods, and versioning models in CP-007
+  notes: |
+    [chump harvest check 'INFRA-1822']
+    === primitives_index match for 'INFRA-1822' ===
+    
+    === cluster keyword match for 'INFRA-1822' ===
+    
+    === extracted_primitives (per-file, line-refd) match for 'INFRA-1822' ===
+    
+    === repo-description match for 'INFRA-1822' ===
+    
+    === HARVEST_ROADMAP.md mention of 'INFRA-1822' (deep-scan findings) ===
+      134:**Verdict from INFRA-1822 CP-007:** option (c) — Chump coord continues independent path. ACP is NOT a sequencing trap for the A2A layer work (INFRA-1118-1121). Narrow follow-up only if editor-side demand appears: an inbound shim that lets Zed/editor users drive Chump *as* an ACP agent.
+      142:| `registry` ACP fork (276 commits ahead of upstream, active 2026-05-23) | Architectural alignment decision — broader-ecosystem interop or stay independent | Investigation first | [INFRA-1822](../gaps/INFRA-1822.yaml) |
+    
+    === cross-pollination briefs mentioning 'INFRA-1822' ===
+      $HOME/Projects/chump/docs/arsenal/cross-pollination/CP-007-acp-alignment.md
+      $HOME/Projects/chump/docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md
+  closed_date: '2026-09-25'
+  closed_pr: 4841
+
