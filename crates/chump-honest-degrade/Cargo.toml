@@ -1,0 +1,12 @@
+[package]
+name = "chump-honest-degrade"
+version = "0.1.0"
+edition = "2021"
+description = "Generic honest-degradation handler (EFFECTIVE-370 slice): turns a bucket-failure signal into a truthful card instead of a dead endpoint. Dependency-free so lighthouse surfaces (arcade, upshift, olive) can vendor it without pulling in the chump binary."
+repository = "https://github.com/repairman29/chump"
+license = "AGPL-3.0-only"
+
+[dependencies]
+
+[lints]
+workspace = true

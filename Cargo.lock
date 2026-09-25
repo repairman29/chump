@@ -1770,6 +1770,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-honest-degrade"
+version = "0.1.0"
+
+[[package]]
 name = "chump-integrator"
 version = "0.1.0"
 dependencies = [
