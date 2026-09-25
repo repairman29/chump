@@ -1,6 +1,6 @@
 //! SQLite-backed gap store — INFRA-023.
 //!
-//! Wraps `gaps`, `leases`, and `intents` tables in `.chump/state.db`.
+//! Wraps `gaps` and `leases` tables in `.chump/state.db`.
 //! All mutations are single-transaction so concurrent agents get atomic IDs.
 //!
 //! DATABASE: `<repo_root>/.chump/state.db`
@@ -438,12 +438,13 @@ impl GapStore {
                 expires_at  INTEGER NOT NULL
             );
 
-            CREATE TABLE IF NOT EXISTS intents (
-                ts          INTEGER NOT NULL,
-                session_id  TEXT NOT NULL,
-                gap_id      TEXT NOT NULL,
-                files       TEXT NOT NULL DEFAULT ''
-            );
+            -- INFRA-1551: the `intents` table (ts, session_id, gap_id, files)
+            -- was schema'd but never written — live intent tracking reads
+            -- `intent_announced` events from ambient.jsonl instead (see
+            -- read_live_intents in crates/chump-atomic-claim/src/atomic_claim.rs).
+            -- Dropped here rather than left as dead schema. Reversal: re-add
+            -- the CREATE TABLE block above (git history has the exact DDL).
+            DROP TABLE IF EXISTS intents;
 
             CREATE INDEX IF NOT EXISTS leases_gap ON leases(gap_id);
             CREATE INDEX IF NOT EXISTS gaps_status ON gaps(status);
