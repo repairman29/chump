@@ -811,12 +811,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         if let Some((pr_num, other_gap, overlap_paths)) =
             check_paths_overlap_open_prs(&args.repo_root, paths_csv)
         {
-            bail!(
-                "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
-                pr_num,
-                other_gap,
-                overlap_paths.join(", "),
-            );
+            handle_path_overlap(pr_num, &other_gap, &overlap_paths)?;
         }
     }
 
@@ -2263,6 +2258,40 @@ pub fn check_open_pr_for_gap(repo_root: &Path, gap_id: &str) -> Option<(u64, Str
         }
     }
     None
+}
+
+/// INFRA-3765 (INFRA-1688 slice): resolve the active claim mode from
+/// `CHUMP_CLAIM_MODE`. Defaults to "blocking" (existing exit-1 behavior on
+/// path overlap) when unset or empty. "advisory" downgrades a path-overlap
+/// hit to a warning that lets the claim proceed.
+pub(crate) fn resolve_claim_mode() -> String {
+    std::env::var("CHUMP_CLAIM_MODE")
+        .ok()
+        .filter(|v| !v.trim().is_empty())
+        .unwrap_or_else(|| "blocking".to_string())
+}
+
+/// Handle a detected `--paths` overlap against an open PR. In the default
+/// "blocking" mode this preserves the original exit-1 behavior (returns
+/// Err, which the caller bubbles up via `?`). In "advisory" mode it emits a
+/// structured warning to stderr and returns Ok(()) so the claim proceeds.
+pub(crate) fn handle_path_overlap(
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) -> Result<()> {
+    let detail = format!(
+        "paths overlap with open PR #{} (gap {}, paths: {})",
+        pr_num,
+        other_gap,
+        overlap_paths.join(", "),
+    );
+    if resolve_claim_mode() == "advisory" {
+        eprintln!("[claim] WARN (CHUMP_CLAIM_MODE=advisory): {detail} — proceeding");
+        Ok(())
+    } else {
+        bail!("[claim] {detail}");
+    }
 }
 
 /// INFRA-4996 (INFRA-2434 slice): check whether any file in `paths_csv`
@@ -5777,6 +5806,68 @@ mod fuzzy_match_tests {
             std::env::set_var(key, "garbage");
         }
         assert!((fuzzy_threshold() - 0.5).abs() < 1e-9);
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    // INFRA-3765: CHUMP_CLAIM_MODE — blocking (default) preserves exit-1-via-Err
+    // on path overlap; advisory downgrades to a warning and returns Ok(()).
+    #[test]
+    fn claim_mode_defaults_to_blocking() {
+        let key = "CHUMP_CLAIM_MODE";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        assert_eq!(resolve_claim_mode(), "blocking");
+    }
+
+    #[test]
+    fn claim_mode_reads_advisory_override() {
+        let key = "CHUMP_CLAIM_MODE";
+        unsafe {
+            std::env::set_var(key, "advisory");
+        }
+        assert_eq!(resolve_claim_mode(), "advisory");
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn claim_mode_blank_falls_back_to_blocking() {
+        let key = "CHUMP_CLAIM_MODE";
+        unsafe {
+            std::env::set_var(key, "");
+        }
+        assert_eq!(resolve_claim_mode(), "blocking");
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+
+    #[test]
+    fn handle_path_overlap_blocking_returns_err() {
+        let key = "CHUMP_CLAIM_MODE";
+        unsafe {
+            std::env::remove_var(key);
+        }
+        let result = handle_path_overlap(42, "INFRA-999", &["src/foo.rs".to_string()]);
+        assert!(result.is_err());
+        let msg = format!("{:#}", result.unwrap_err());
+        assert!(msg.contains("paths overlap"));
+        assert!(msg.contains("INFRA-999"));
+        assert!(msg.contains("#42"));
+    }
+
+    #[test]
+    fn handle_path_overlap_advisory_returns_ok() {
+        let key = "CHUMP_CLAIM_MODE";
+        unsafe {
+            std::env::set_var(key, "advisory");
+        }
+        let result = handle_path_overlap(42, "INFRA-999", &["src/foo.rs".to_string()]);
+        assert!(result.is_ok());
         unsafe {
             std::env::remove_var(key);
         }
