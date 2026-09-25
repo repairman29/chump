@@ -369,6 +369,22 @@ fn run_step(s: &Step) -> Outcome {
     }
 }
 
+/// INFRA-4116 (INFRA-3381 slice): generic script-execution helper — spawns
+/// `name` with no args, captures its exit status, and maps a non-zero exit
+/// (or a spawn failure) to `Err(ExitCode::FAILURE)`.
+///
+/// Not yet wired into a call site (that's a follow-up INFRA-3381 slice) —
+/// allow dead_code so clippy `-D warnings` doesn't block landing the helper
+/// + its unit tests ahead of the caller.
+#[allow(dead_code)]
+fn run_preflight_script(name: &str) -> Result<(), std::process::ExitCode> {
+    match Command::new(name).stdin(Stdio::null()).status() {
+        Ok(status) if status.success() => Ok(()),
+        Ok(_) => Err(std::process::ExitCode::FAILURE),
+        Err(_) => Err(std::process::ExitCode::FAILURE),
+    }
+}
+
 /// Resolved scope after parsing `--scope` and (if auto) reading the diff.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct Scope {
@@ -3562,6 +3578,19 @@ mod tests {
         let out = run_step(&s);
         assert_eq!(out.status, Status::Fail);
         assert!(out.captured.is_some());
+    }
+
+    // INFRA-4116: run_preflight_script wraps an exit-status check in
+    // Result<(), ExitCode> — "true"/"false" are the same success/failure
+    // probes used above for run_step.
+    #[test]
+    fn run_preflight_script_ok_on_success() {
+        assert!(run_preflight_script("true").is_ok());
+    }
+
+    #[test]
+    fn run_preflight_script_err_on_failure() {
+        assert!(run_preflight_script("false").is_err());
     }
 
     // META-208: "flake-ingest" arm runs in-process (no subprocess spawn) —
