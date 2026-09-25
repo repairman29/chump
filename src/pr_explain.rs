@@ -30,11 +30,22 @@ pub struct CheckRow {
     pub next_action: String,
 }
 
+/// A job cancelled as a side effect of another required check failing
+/// (fail-fast / cancel-in-progress). Surfaced separately from `rows` so
+/// the cause is legible without opening the workflow run logs
+/// (INFRA-5430 / INFRA-1861 slice).
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CancelledJob {
+    pub name: String,
+    pub reason: String,
+}
+
 #[derive(Debug, Clone, Serialize, PartialEq, Eq)]
 pub struct ExplainReport {
     pub pr_number: u64,
     pub overall: String, // local | sibling_blocked | fleet_wide | green
     pub rows: Vec<CheckRow>,
+    pub cancelled_jobs: Vec<CancelledJob>,
     pub summary: String,
 }
 
@@ -58,6 +69,7 @@ pub fn build_report(
 ) -> ExplainReport {
     let mut rows: Vec<CheckRow> = Vec::new();
     let mut worst_scope: Option<String> = None;
+    let cancelled_jobs = build_cancelled_jobs(&rollup);
 
     for entry in &rollup {
         let name = entry
@@ -111,8 +123,48 @@ pub fn build_report(
         pr_number,
         overall,
         rows,
+        cancelled_jobs,
         summary,
     }
+}
+
+/// Build the human-readable cancelled-jobs list (INFRA-5430). For each
+/// CANCELLED entry in the rollup, cross-reference the other entries in
+/// the *same* rollup to name which sibling job(s) actually failed and
+/// triggered the cascade-cancel — so the reason is legible without
+/// opening the workflow run logs.
+fn build_cancelled_jobs(rollup: &[Value]) -> Vec<CancelledJob> {
+    let failing_names: Vec<String> = rollup
+        .iter()
+        .filter(|e| e.get("conclusion").and_then(|v| v.as_str()) == Some("FAILURE"))
+        .filter_map(|e| e.get("name").and_then(|v| v.as_str()).map(str::to_string))
+        .collect();
+
+    rollup
+        .iter()
+        .filter(|e| e.get("conclusion").and_then(|v| v.as_str()) == Some("CANCELLED"))
+        .map(|e| {
+            let name = e
+                .get("name")
+                .and_then(|v| v.as_str())
+                .unwrap_or("?")
+                .to_string();
+            let reason = if failing_names.is_empty() {
+                "cancelled — no sibling failure found in this rollup; likely an external cancel (concurrency group or manual dispatch cancel). Inspect: gh run view --log-failed".to_string()
+            } else if failing_names.len() == 1 {
+                format!(
+                    "cascade-cancelled — required check '{}' failed, triggering fail-fast cancellation",
+                    failing_names[0]
+                )
+            } else {
+                format!(
+                    "cascade-cancelled — required checks failed: {}",
+                    failing_names.join(", ")
+                )
+            };
+            CancelledJob { name, reason }
+        })
+        .collect()
 }
 
 fn update_worst_scope(current: &mut Option<String>, candidate: &str) {
@@ -326,6 +378,12 @@ pub fn render_text(r: &ExplainReport) -> String {
             s.push_str(&format!("      also failing on: {}\n", preview.join(", ")));
         }
     }
+    if !r.cancelled_jobs.is_empty() {
+        s.push_str("\n  cancelled jobs (cascade-cancellation):\n");
+        for cj in &r.cancelled_jobs {
+            s.push_str(&format!("    - {}: {}\n", cj.name, cj.reason));
+        }
+    }
     s
 }
 
@@ -416,6 +474,41 @@ mod tests {
         assert!(out.contains("[local]"));
         assert!(out.contains("fast-checks"));
         assert!(out.contains("→"));
+    }
+
+    #[test]
+    fn cancelled_job_names_the_failing_sibling() {
+        let rollup = vec![
+            json!({"name": "cargo-test-shard-1", "conclusion": "FAILURE", "status": "COMPLETED"}),
+            json!({"name": "cargo-test-shard-2", "conclusion": "CANCELLED", "status": "COMPLETED"}),
+        ];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+        assert_eq!(r.cancelled_jobs.len(), 1);
+        assert_eq!(r.cancelled_jobs[0].name, "cargo-test-shard-2");
+        assert!(r.cancelled_jobs[0].reason.contains("cargo-test-shard-1"));
+        assert!(r.cancelled_jobs[0].reason.contains("cascade-cancelled"));
+    }
+
+    #[test]
+    fn cancelled_job_with_no_sibling_failure_gets_generic_reason() {
+        let rollup =
+            vec![json!({"name": "audit", "conclusion": "CANCELLED", "status": "COMPLETED"})];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+        assert_eq!(r.cancelled_jobs.len(), 1);
+        assert!(r.cancelled_jobs[0].reason.contains("no sibling failure"));
+    }
+
+    #[test]
+    fn render_text_includes_cancelled_jobs_section() {
+        let rollup = vec![
+            json!({"name": "clippy", "conclusion": "FAILURE", "status": "COMPLETED"}),
+            json!({"name": "cargo-test", "conclusion": "CANCELLED", "status": "COMPLETED"}),
+        ];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+        let out = render_text(&r);
+        assert!(out.contains("cancelled jobs (cascade-cancellation)"));
+        assert!(out.contains("cargo-test"));
+        assert!(out.contains("clippy"));
     }
 
     #[test]
