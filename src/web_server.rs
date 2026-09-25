@@ -5290,12 +5290,27 @@ async fn handle_pr_detail(
         })
         .collect();
 
+    // INFRA-4539: cascade-cancellation visibility — when a required check
+    // cancels sibling jobs (concurrency-group cancel-in-progress), GH
+    // reports those siblings' conclusion as CANCELLED in the rollup. Surface
+    // their names here so the reason isn't buried in a workflow run log.
+    let cancelled_jobs: Vec<String> = checks
+        .iter()
+        .filter(|c| c.get("conclusion").and_then(|v| v.as_str()) == Some("CANCELLED"))
+        .filter_map(|c| {
+            c.get("name")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string())
+        })
+        .collect();
+
     let payload = serde_json::json!({
         "number": raw.get("number"),
         "title": raw.get("title"),
         "url": raw.get("url"),
         "state": raw.get("state"),
         "merge_state_status": raw.get("mergeStateStatus"),
+        "cancelled_jobs": cancelled_jobs,
         "auto_merge": raw.get("autoMergeRequest").is_some()
             && !raw.get("autoMergeRequest").map(|v| v.is_null()).unwrap_or(true),
         "auto_merge_method": raw
