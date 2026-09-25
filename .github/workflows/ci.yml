@@ -420,6 +420,9 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5  # rollup only — quick aggregator check
+    permissions:
+      contents: read
+      statuses: write  # INFRA-5430: post cascade-cancellation commit status
     steps:
       - name: Verify all parallel CI shards passed
         run: |
@@ -526,12 +529,35 @@ jobs:
             printf 'Fix the real failure(s) and push to re-run.\n' >> "$GITHUB_STEP_SUMMARY"
           fi
 
+          # INFRA-5430: export classification for the cascade-status step
+          # below. Must happen before any `exit`, since that step runs
+          # `if: always()` and needs these even when real_failures is set.
+          if [ -n "${GITHUB_ENV:-}" ]; then
+            {
+              echo "CASCADE_CANCELS=${cascade_cancels:-}"
+              echo "SUPERSEDURE_CANCELS=${supersedure_cancels:-}"
+              echo "REAL_FAILURES=${real_failures:-}"
+            } >> "$GITHUB_ENV"
+          fi
+
           # Decision: fail only on real failures.
           if [ -n "$real_failures" ]; then
             echo "::error::Real CI failures: [${real_failures}]${cascade_cancels:+ (cascade-cancelled: [${cascade_cancels}])}"
             exit 1
           fi
           echo "All shards green (or appropriately skipped / cascade-cancelled)."
+
+      - name: Post cascade-cancellation PR status (INFRA-5430)
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          bash scripts/ci/post-cascade-status.sh \
+            --sha "${{ github.sha }}" \
+            --repo "${{ github.repository }}" \
+            --cascade-cancels "${CASCADE_CANCELS:-}" \
+            --supersedure-cancels "${SUPERSEDURE_CANCELS:-}" \
+            --real-failures "${REAL_FAILURES:-}"
 
   # ── verified: single legible aggregator (CREDIBLE-269, SHIP-INFRA 1/7) ────
   # The ONE required check: one job that classifies every ci.yml-local lane's

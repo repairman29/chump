@@ -26,10 +26,20 @@
 > CHUMP_GENERATE_INVENTORY=docs/process/CI_GATES_GENERATED_INVENTORY.md \
 >   bash scripts/ci/test-preflight-ci-parity.sh
 > ```
-> As of the last regeneration: **339 gate steps scanned, 0 MISSING** (all
+> As of the last regeneration: **369 gate steps scanned, 0 MISSING** (all
 > have a mirror, a Tier-D reason, or an allowlist entry) — see that file's
 > "MISSING preflight equivalents" section for the live AC-2 list. When that
 > section is non-empty, file a gap per entry and add it to Tier C below.
+>
+> **INFRA-5428 verification (2026-09-25).** Re-ran the regeneration command
+> above to confirm the 3 acceptance criteria this gap tracks are still true:
+> `chump preflight --scope all` runs and enumerates every gate (AC1); the
+> generated inventory above cross-references each CI gate step against its
+> preflight mirror, Tier-D entry, or exceptions-file allowlist (AC2); and
+> `scripts/ci/test-preflight-ci-parity.sh` is wired into `ci.yml`'s
+> `fast-checks` job as a strict-fail step, so drift fails CI (AC3). The
+> checked-in generated inventory had drifted (339 → 369 gate steps) since
+> the last regeneration — refreshed in this same change.
 
 ## Reading guide
 
@@ -119,6 +129,7 @@ Documented for completeness; do **not** file follow-ups.
 | `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
 | `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
 | `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
+| `post-cascade-status.sh` (non-dry-run path) | INFRA-5430 — the live path POSTs a GitHub commit status via `gh api repos/.../statuses/<sha>`; needs a real PR SHA + repo-scoped GitHub auth not available in a local preflight run. The description-building logic itself IS mirrored via `--dry-run` in `scripts/ci/test-cascade-status-pr.sh`, which preflight runs. |
 
 ## Required-vs-advisory disposition decisions
 

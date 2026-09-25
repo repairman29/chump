@@ -185,6 +185,7 @@ const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
         "cascade-rebase-observability",
         "scripts/ci/test-cascade-rebase-observability.sh",
     ),
+    ("cascade-status-pr", "scripts/ci/test-cascade-status-pr.sh"),
     ("chump-fleet-cli", "scripts/ci/test-chump-fleet-cli.sh"),
     ("chump-skill-cli", "scripts/ci/test-chump-skill-cli.sh"),
     ("cli-aliases", "scripts/ci/test-cli-aliases.sh"),

@@ -2671,6 +2671,19 @@ events:
     trigger: rerun cap (3 attempts) hit
     consumers: [operator-recall]
 
+  - kind: cascade_status_posted
+    effect_metric: self
+    emitter: scripts/ci/post-cascade-status.sh (INFRA-5430 / parent INFRA-1861 slice), called from ci.yml's `test` rollup job
+    trigger: >
+      the `test` rollup's INFRA-1002 shard classification found at least one
+      cascade-cancelled or supersedure-cancelled shard for this SHA. A
+      GitHub commit status (context=cascade-cancellation) carrying the
+      human-readable job list + cause is posted so the cancellation is
+      visible directly in the PR's checks list without opening the
+      workflow run's logs.
+    consumers: [PR checks list (GitHub UI), audit-log]
+    fields_required: [ts, kind, sha, description]
+
   - kind: cascade_rebase_triggered
     effect_metric: self
     emitter: .github/workflows/post-merge-cascade-rebase.yml (INFRA-670), scripts/coord/queue-driver.sh::cascade_rebase_if_hot (INFRA-1648 added duration_s/timeout_count)
