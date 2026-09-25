@@ -563,6 +563,7 @@ enabled     chump-organ-success-verifier.timer  role=brain
 # organ compares heartbeat volume against effect volume directly. Declared
 # here so organ-reconcile re-arms it if it drifts or fails.
 enabled     chump-effect-verifier.timer  role=brain
+enabled     chump-state-audit.timer  role=brain requires=bin:git platforms=systemd  # META-1030: deterministic state-audit/reconciliation organ. Diffs fleet self-reports (cycle-kind, gap=done, organ is-active, node last-seen, auth gauge) against ground truth (state.db, git origin/main, ambient heartbeats, tailscale, a live auth probe) and pages via operator-recall on divergence. ZERO inference — the deterministic backstop to the LLM fresh-eyes curator that missed all of this.
 
 # --- Model routing config (RESILIENT-1009, a RESILIENT-596 slice) -----------
 # The default floor model, cost-tiered escalation ladder, and free-tier

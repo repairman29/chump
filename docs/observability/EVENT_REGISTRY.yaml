@@ -13101,3 +13101,38 @@ events:
     consumers: [ops-audit, operator-recall]
     fields_required: [ts, kind, organs_total, organs_active, timers_total,
       timers_active, drifted_total, cockpit_total, cockpit_present, out]
+
+  - kind: state_audit_tick
+    effect_metric: credible
+    emitter: scripts/coord/state-audit-reconcile.sh _cmd_tick (META-1030)
+    trigger: >
+      Emitted once per state-audit cycle (tick/audit) regardless of outcome,
+      recording AGREE/DIVERGE/UNKNOWN counts across the deterministic
+      self-report-vs-ground-truth checks. Distinguishes "ran and found nothing"
+      from "did not run" and tracks cadence of the reconciliation backstop.
+    consumers: [ops-audit, observability]
+    fields_required: [ts, kind, agree, diverge, unknown]
+
+  - kind: state_audit_divergence
+    effect_metric: credible
+    emitter: scripts/coord/state-audit-reconcile.sh _record (META-1030)
+    trigger: >
+      Emitted per diverging check when a fleet self-report contradicts ground
+      truth: a worker cycle labeled failure for a shipped/merged gap
+      (cycle_kind_vs_pr), a worker running code older than the merged worker.sh
+      (done_vs_running), an is-active organ that emitted no heartbeat
+      (organ_active_vs_work), a node dark beyond threshold (node_last_seen), or a
+      false AUTH_DEAD contradicted by a live probe (auth_gauge_vs_probe). Pages
+      the operator via operator-recall (condition=STATE_DIVERGENCE).
+    consumers: [ops-audit, operator-recall, operator]
+    fields_required: [ts, kind, check, self_report, ground_truth, detail]
+
+  - kind: state_audit_heartbeat
+    effect_metric: credible
+    emitter: scripts/coord/state-audit-reconcile.sh heartbeat (META-1030)
+    trigger: >
+      Emitted on each cron-driven state-audit heartbeat to prove the
+      deterministic reconciliation organ is alive, so a stalled backstop is
+      itself observable from the ambient stream.
+    consumers: [heartbeat-shepherd, ops-audit]
+    fields_required: [ts, kind]
