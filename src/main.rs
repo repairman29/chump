@@ -136,6 +136,7 @@ mod gap_route; // INFRA-3689: route gap mutations to the fleet-server when local
 mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764
 mod gen;
 mod genai_conv;
+mod gh_token_bucket; // INFRA-4246: central token-bucket rate limiter for CHUMP_GH_MAX_CALLS_PER_MIN
 mod git_safety; // RESILIENT-256: destructive-git guard + object-store WIP snapshot
 mod git_tools;
 mod github_rate_limit;
@@ -5356,6 +5357,41 @@ async fn main() -> Result<()> {
             } else {
                 print!("{}", report.render_text());
             }
+        }
+        return Ok(());
+    }
+
+    // `chump ratelimit check-gh [--json]` (INFRA-4246)
+    // Central token-bucket rate limiter: consults/consumes the shared
+    // `.chump-locks/gh-token-bucket.json` bucket (capacity = AC1's
+    // CHUMP_GH_MAX_CALLS_PER_MIN, default 60/min) and prints an allow/deny
+    // decision with retry_after_ms (AC2). Any process — Rust or shell via
+    // this CLI — hitting the same repo root shares one bucket.
+    if args.get(1).map(String::as_str) == Some("ratelimit") {
+        if args.get(2).map(String::as_str) != Some("check-gh") {
+            eprintln!("Usage: chump ratelimit check-gh [--json]");
+            std::process::exit(2);
+        }
+        let want_json = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let state_path = gh_token_bucket::default_state_path(&repo_root);
+        let capacity = gh_token_bucket::default_capacity();
+        let decision = gh_token_bucket::check_now(&state_path, capacity)?;
+        if want_json {
+            println!(
+                "{}",
+                serde_json::json!({
+                    "allow": decision.allow,
+                    "retry_after_ms": decision.retry_after_ms,
+                })
+            );
+        } else if decision.allow {
+            println!("allow");
+        } else {
+            println!("deny retry_after_ms={}", decision.retry_after_ms);
+        }
+        if !decision.allow {
+            std::process::exit(1);
         }
         return Ok(());
     }
