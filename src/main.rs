@@ -11932,6 +11932,65 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-5769 (INFRA-1862 slice): atomic claim + lease handoff to
+            // another session — moves the state.db claim record and the
+            // .chump-locks/<session>.json lease sidecar in one operation so
+            // the target session can resume without a manual re-claim.
+            "handoff" => {
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap handoff <GAP-ID> --to <SESSION> [--from <SESSION>] [--force]");
+                    std::process::exit(2);
+                });
+                if gap_id.starts_with("--") {
+                    eprintln!("Usage: chump gap handoff <GAP-ID> --to <SESSION> [--from <SESSION>] [--force]");
+                    std::process::exit(2);
+                }
+                let to_session = flag("--to").unwrap_or_else(|| {
+                    eprintln!("chump gap handoff: --to <SESSION> is required");
+                    std::process::exit(2);
+                });
+                let from_session = flag("--from");
+                let force = args.iter().any(|a| a == "--force");
+
+                match store.handoff(&gap_id, from_session.as_deref(), &to_session, force) {
+                    Ok(outcome) => {
+                        println!(
+                            "handed off {} from {} to {} (worktree: {})",
+                            outcome.gap_id,
+                            outcome.from_session,
+                            outcome.to_session,
+                            outcome.worktree
+                        );
+                        let ts =
+                            chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+                        let event = serde_json::json!({
+                            "ts": ts,
+                            "kind": "gap_handoff",
+                            "gap_id": outcome.gap_id,
+                            "from_session": outcome.from_session,
+                            "to_session": outcome.to_session,
+                            "worktree": outcome.worktree,
+                        });
+                        if let Ok(line) = serde_json::to_string(&event) {
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .create(true)
+                                .append(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write;
+                                let _ = writeln!(f, "{line}");
+                            }
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap handoff: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "preflight" => {
                 // INFRA-1238: trap --help before positional validation.
                 if args

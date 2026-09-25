@@ -164,6 +164,16 @@ pub struct LeaseRow {
     pub expires_at: i64,
 }
 
+/// Result of [`GapStore::handoff`] — the gap, who held it, who holds it
+/// now, and the worktree pointer that carried over unchanged.
+#[derive(Debug, Clone)]
+pub struct LeaseHandoffOutcome {
+    pub gap_id: String,
+    pub from_session: String,
+    pub to_session: String,
+    pub worktree: String,
+}
+
 // ────────────────────────── DB open/migrate ──────────────────────────
 
 pub struct GapStore {
@@ -2385,6 +2395,192 @@ impl GapStore {
             params![session_id, gap_id, worktree, expires_at],
         )?;
         Ok(())
+    }
+
+    /// INFRA-5769: atomically move a live claim (state.db lease row + the
+    /// `.chump-locks/<session>.json` lease sidecar) from whichever session
+    /// currently holds `gap_id` to `to_session`. The `worktree` pointer
+    /// carries over unchanged — the target session inherits the same
+    /// worktree the original claim already created.
+    ///
+    /// Ordering matters for the rollback guarantee (AC3, "no orphaned
+    /// leases"): the new sidecar is written FIRST (additive — a failure here
+    /// leaves the original lease fully intact), then the state.db row is
+    /// swapped inside a single transaction (the atomic step — on failure the
+    /// new sidecar is deleted and nothing else changed), and only once that
+    /// commits does the old sidecar get removed (destructive, last).
+    pub fn handoff(
+        &self,
+        gap_id: &str,
+        from_session: Option<&str>,
+        to_session: &str,
+        force: bool,
+    ) -> Result<LeaseHandoffOutcome> {
+        if to_session.trim().is_empty() {
+            bail!("--to session id is required");
+        }
+
+        let from_session: String = match from_session {
+            Some(s) if !s.trim().is_empty() => s.to_string(),
+            _ => {
+                let mut stmt = self
+                    .conn
+                    .prepare("SELECT session_id FROM leases WHERE gap_id=?1")?;
+                let holders: Vec<String> = stmt
+                    .query_map(params![gap_id], |r| r.get(0))?
+                    .collect::<rusqlite::Result<Vec<String>>>()?;
+                match holders.len() {
+                    0 => bail!("no active lease found for {} — nothing to hand off", gap_id),
+                    1 => holders.into_iter().next().unwrap(),
+                    _ => bail!(
+                        "multiple sessions hold a lease for {} ({}) — pass --from to disambiguate",
+                        gap_id,
+                        holders.join(", ")
+                    ),
+                }
+            }
+        };
+
+        if from_session == to_session {
+            bail!(
+                "--to session ({}) already holds the lease for {}",
+                to_session,
+                gap_id
+            );
+        }
+
+        let (db_gap_id, worktree, expires_at): (String, String, i64) = self
+            .conn
+            .query_row(
+                "SELECT gap_id, worktree, expires_at FROM leases WHERE session_id=?1",
+                params![from_session],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+            )
+            .with_context(|| format!("session {} holds no lease in state.db", from_session))?;
+        if db_gap_id != gap_id {
+            bail!(
+                "session {} holds a lease for {}, not {}",
+                from_session,
+                db_gap_id,
+                gap_id
+            );
+        }
+
+        if !force {
+            let existing: Option<String> = self
+                .conn
+                .query_row(
+                    "SELECT gap_id FROM leases WHERE session_id=?1",
+                    params![to_session],
+                    |r| r.get(0),
+                )
+                .optional()?;
+            if let Some(existing_gap) = existing {
+                if existing_gap != gap_id {
+                    bail!(
+                        "target session {} already holds a lease for {} — pass --force to overwrite",
+                        to_session,
+                        existing_gap
+                    );
+                }
+            }
+        }
+
+        let locks_dir = self.repo_root.join(".chump-locks");
+        std::fs::create_dir_all(&locks_dir)
+            .with_context(|| format!("create {}", locks_dir.display()))?;
+        let old_lease_path = locks_dir.join(format!("{}.json", from_session));
+        let new_lease_path = locks_dir.join(format!("{}.json", to_session));
+        let old_lease_body = std::fs::read_to_string(&old_lease_path).ok();
+
+        // Step 1 (additive, reversible): write the new lease sidecar.
+        match &old_lease_body {
+            Some(body) => {
+                let mut val: serde_json::Value = serde_json::from_str(body)
+                    .with_context(|| format!("{} is not valid JSON", old_lease_path.display()))?;
+                match val.as_object_mut() {
+                    Some(map) => {
+                        map.insert(
+                            "session_id".to_string(),
+                            serde_json::Value::String(to_session.to_string()),
+                        );
+                    }
+                    None => bail!("{} is not a JSON object", old_lease_path.display()),
+                }
+                let rewritten =
+                    serde_json::to_string_pretty(&val).context("serialize handoff lease")?;
+                std::fs::write(&new_lease_path, rewritten)
+                    .with_context(|| format!("write handoff lease {}", new_lease_path.display()))?;
+            }
+            None => {
+                // No JSON sidecar existed (DB-only state) — synthesize a
+                // minimal one so the handoff leaves a consistent lease lock.
+                let now = unix_now();
+                let lease_json = serde_json::json!({
+                    "session_id": to_session,
+                    "gap_id": gap_id,
+                    "paths": [],
+                    "heartbeat_at": unix_to_iso_full(now),
+                    "expires_at": unix_to_iso_full(expires_at),
+                });
+                let txt = serde_json::to_string_pretty(&lease_json)
+                    .context("serialize synthesized handoff lease")?;
+                std::fs::write(&new_lease_path, txt)
+                    .with_context(|| format!("write handoff lease {}", new_lease_path.display()))?;
+            }
+        }
+
+        // Step 2 (risky, atomic): swap the claim record in state.db.
+        let db_swap = (|| -> Result<()> {
+            self.conn.execute_batch("BEGIN IMMEDIATE")?;
+            let result = (|| -> Result<()> {
+                self.conn.execute(
+                    "DELETE FROM leases WHERE session_id=?1",
+                    params![from_session],
+                )?;
+                self.conn.execute(
+                    "INSERT INTO leases(session_id,gap_id,worktree,expires_at)
+                     VALUES(?1,?2,?3,?4)
+                     ON CONFLICT(session_id) DO UPDATE SET gap_id=excluded.gap_id,
+                         worktree=excluded.worktree, expires_at=excluded.expires_at",
+                    params![to_session, gap_id, worktree, expires_at],
+                )?;
+                Ok(())
+            })();
+            match result {
+                Ok(()) => {
+                    self.conn.execute_batch("COMMIT")?;
+                    Ok(())
+                }
+                Err(e) => {
+                    let _ = self.conn.execute_batch("ROLLBACK");
+                    Err(e)
+                }
+            }
+        })();
+
+        if let Err(e) = db_swap {
+            // Roll back step 1: remove the new sidecar, leave the original
+            // (still holding the lease) untouched — no orphaned lease.
+            let _ = std::fs::remove_file(&new_lease_path);
+            return Err(e.context(format!(
+                "handoff of {} from {} to {}: state.db swap failed, rolled back",
+                gap_id, from_session, to_session
+            )));
+        }
+
+        // Step 3 (destructive, only once the DB swap has committed): drop
+        // the old sidecar so exactly one lease file exists per gap.
+        if old_lease_body.is_some() {
+            let _ = std::fs::remove_file(&old_lease_path);
+        }
+
+        Ok(LeaseHandoffOutcome {
+            gap_id: gap_id.to_string(),
+            from_session,
+            to_session: to_session.to_string(),
+            worktree,
+        })
     }
 
     /// Preflight check: is the gap open and unclaimed?

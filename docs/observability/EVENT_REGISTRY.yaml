@@ -695,6 +695,15 @@ events:
     # INFRA-1240: mirrors the event previously emitted only by gap-claim.sh.
     # Without this, silent_agent and lease_overlap watchdogs missed Rust-path claims.
 
+  - kind: gap_handoff
+    effect_metric: gap_shipped_within_deadline_for_same_id
+    emitter: src/main.rs 'chump gap handoff' arm (INFRA-5769)
+    trigger: "chump gap handoff <GAP-ID> --to <SESSION> succeeded — the state.db
+      lease row and .chump-locks/<session>.json sidecar moved from from_session
+      to to_session; worktree pointer carried over unchanged"
+    consumers: [fleet-brief, silent_agent-watchdog, lease-overlap-watchdog]
+    fields_required: [ts, kind, gap_id, from_session, to_session, worktree]
+
   - kind: chump_claim_force_recover
     effect_metric: self
     emitter: src/atomic_claim.rs emit_force_recover_event (INFRA-1439)
