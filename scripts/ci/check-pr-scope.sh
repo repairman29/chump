@@ -142,6 +142,7 @@ if echo "$PR_PREFIX" | grep -qE "^(chore|docs)\(gaps\)$"; then
         report_violation "Rule A (chore/docs gaps purity): title claims gap-only change but modifies source files:"
         for f in "${src_touched[@]}"; do fail "  $f"; done
         fail "  → If intentional, use 'feat:' or 'fix:' prefix, not 'chore(gaps):'"
+        fail "  How to bypass cleanly: retitle the PR with a 'feat:' or 'fix:' prefix instead of 'chore(gaps):'/'docs(gaps):' — those prefixes assert a gap-registry-only diff."
     else
         pass "Rule A: chore(gaps) prefix matches gap-only changes"
     fi
@@ -157,12 +158,44 @@ _revert_count="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null \
 has_revert_commit=0
 [[ "$_revert_count" -gt 0 ]] && has_revert_commit=1
 
+# INFRA-5429: resolve PR_BODY with the same override → env → gh priority as
+# PR_TITLE above, so Rule B can recognize an *explained* deletion (filename
+# mentioned via markdown link or plain text in the PR body) instead of only
+# an explicit "Revert" commit. Without this, a legitimate cleanup PR that
+# deletes a recently-touched file and explains why in the description still
+# gets flagged — a false positive.
+_pr_body_from_env="${PR_BODY:-}"
+PR_BODY=""
+if [[ -n "${PR_BODY_OVERRIDE:-}" ]]; then
+    PR_BODY="$PR_BODY_OVERRIDE"
+elif [[ -n "$_pr_body_from_env" ]]; then
+    PR_BODY="$_pr_body_from_env"
+elif command -v gh &>/dev/null; then
+    PR_BODY="$(gh pr view --json body --jq '.body' 2>/dev/null || true)"
+fi
+unset _pr_body_from_env
+
+# body_mentions_file <path> — true if the PR body references the file via a
+# markdown link ("[text](path)" or "[text](basename)") or as a plain
+# filename/basename substring anywhere in the body text.
+body_mentions_file() {
+    local f="$1" base
+    base="$(basename "$f")"
+    [[ -z "$PR_BODY" ]] && return 1
+    grep -qF "]($f)" <<< "$PR_BODY" && return 0
+    grep -qF "]($base)" <<< "$PR_BODY" && return 0
+    grep -qF "$f" <<< "$PR_BODY" && return 0
+    grep -qF "$base" <<< "$PR_BODY" && return 0
+    return 1
+}
+
 if [[ "$has_revert_commit" -eq 1 ]]; then
     pass "Rule B: explicit Revert commit detected — silent-revert check N/A"
 elif [[ -n "$deleted_files" ]] && command -v gh &>/dev/null; then
     # For each deleted file, check if it appeared in a recently merged PR
     # We use git log on origin/main to find when the file was last modified
     silent_reverts=()
+    explained_in_body=()
     CUTOFF_SECS=259200  # 72 hours
     now_secs="$(date +%s)"
     while IFS= read -r f; do
@@ -174,15 +207,26 @@ elif [[ -n "$deleted_files" ]] && command -v gh &>/dev/null; then
         [[ -z "$last_ts" ]] && continue
         age_secs=$(( now_secs - last_ts ))
         if [[ "$age_secs" -lt "$CUTOFF_SECS" ]]; then
+            if body_mentions_file "$f"; then
+                explained_in_body+=("$f")
+                continue
+            fi
             last_msg="$(git log -1 --pretty=format:%s "$last_sha" 2>/dev/null || true)"
             silent_reverts+=("$f (last touched ${age_secs}s ago: '$last_msg')")
         fi
     done <<< "$deleted_files"
 
+    if [[ ${#explained_in_body[@]} -gt 0 ]]; then
+        for e in "${explained_in_body[@]}"; do
+            info "Rule B: $e deletion explained in PR body — not flagged"
+        done
+    fi
+
     if [[ ${#silent_reverts[@]} -gt 0 ]]; then
         report_violation "Rule B (silent revert): PR deletes recently-modified files without 'Revert' commit:"
         for r in "${silent_reverts[@]}"; do fail "  $r"; done
         fail "  → If intentional, add a commit titled 'Revert: <reason>' or mention files in PR body"
+        fail "  How to bypass cleanly: mention the deleted filename in the PR body (plain text or a markdown link), or add a commit titled 'Revert: <reason>'."
     else
         pass "Rule B: no silent reverts of recent files detected"
     fi
@@ -235,7 +279,7 @@ if [[ "${#_gap_ids_in_title[@]}" -ge 2 ]]; then
         if [[ "$_linked" -eq 0 ]]; then
             report_violation "CREDIBLE-041 Rule C (no-bundle-PR): title lists ${#_gap_ids_in_title[@]} gap IDs (${_gap_ids_in_title[*]}) but none are depends_on-linked in state.db"
             fail "  → Bundle PRs obscure scope. One gap per PR. If gaps are linked, set depends_on in state.db."
-            fail "  → To bypass: add PR label 'intentional-bundle' with a comment explaining why."
+            fail "  How to bypass cleanly: add PR label 'intentional-bundle' with a comment explaining why, or set depends_on linkage between the gap IDs in state.db."
             # Emit ambient event
             _lock_dir="${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}"
             _amb_dir="$(dirname "${CHUMP_AMBIENT_LOG:-.chump-locks/ambient.jsonl}")"

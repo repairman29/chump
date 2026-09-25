@@ -1,0 +1,12 @@
+# bypass-line-exceptions.txt — INFRA-5429
+#
+# check-bypass-line-presence.sh audits scripts/ci/check-*.sh for a
+# "How to bypass cleanly: <instructions>" line adjacent to every `exit 1`
+# FAIL path. A script listed here is exempt because it is a local-developer
+# preflight (not a CI-blocking gate) whose FAIL path has no bypass — the only
+# way past it is to actually fix the underlying precondition it's probing.
+#
+# Format: one basename per line, then whitespace, then a reason.
+
+check-discord-preflight.sh      # reason: local Discord-bot preflight (env/process/model-server reachability) — not a CI gate; the only "bypass" is fixing the actual precondition
+check-heartbeat-preflight.sh    # reason: local model-server-port preflight for the heartbeat daemon — not a CI gate; same rationale as check-discord-preflight.sh

@@ -367,6 +367,12 @@ jobs:
         # the chump binary when it is missing.
         run: bash scripts/ci/test-outcome-gate.sh
 
+      - name: bypass-line requirement — every CI gate FAIL path documents its bypass (INFRA-5429)
+        if: matrix.shard == 1
+        # Pure shell, no chump binary needed. Single-line run so the
+        # preflight-CI-parity parser (INFRA-1867) sees the mirrored script.
+        run: bash scripts/ci/test-bypass-line-requirement.sh
+
       - name: gap-store single source of truth — sqlite canonical, postgrest dormant, no silent 2nd store (RESILIENT-1057)
         if: matrix.shard == 1
         # Pure shell source-inspection; guards against reintroducing the gap-store

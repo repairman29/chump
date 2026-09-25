@@ -153,6 +153,7 @@ case "$VERDICT" in
             "age_days=$AGE_DAYS threshold=$MAX_AGE_DAYS" 2>/dev/null || true
         if [[ "$STRICT" == "1" ]]; then
             echo "Results: 0 passed, 1 failed (strict mode)"
+            echo "How to bypass cleanly: regenerate the registry (bash scripts/dev/build-capabilities-registry.sh) so generated_at is fresh, or drop --strict / unset CHUMP_CAPABILITIES_STRICT to run in advisory mode."
             exit 1
         fi
         echo "Results: 1 passed (advisory warning), 0 failed — --strict to block"

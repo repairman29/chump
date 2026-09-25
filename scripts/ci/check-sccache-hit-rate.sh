@@ -139,6 +139,7 @@ if [[ "$HIT_RATE_INT" -lt "$THRESHOLD" ]]; then
         >> "$AMBIENT_LOG" 2>/dev/null || true
 
     if [[ "$ENFORCE" = "1" ]]; then
+        echo "[sccache-hit-rate] How to bypass cleanly: CHUMP_SCCACHE_HIT_RATE_CHECK=0 to skip the gate (cold cache / new branch), or fix R2 credentials / SCCACHE_BUCKET / SCCACHE_ENDPOINT." >&2
         exit 1
     fi
     # WARN-only mode: event emitted, build continues.

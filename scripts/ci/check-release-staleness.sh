@@ -61,6 +61,7 @@ if [[ -z "$REPO_SLUG" || "$REPO_SLUG" == "$REMOTE_URL" ]]; then
     gate_emit_result "INFRA-1373" "fail" "remote-parse-error" "$REMOTE_URL" 2>/dev/null || true
     echo ""
     echo "Results: 0 passed, 1 failed"
+    echo "How to bypass cleanly: CHUMP_RELEASE_STALENESS_STRICT=0 (or unset it) to run in advisory mode, or fix the 'origin' remote URL so it parses as a github.com owner/repo."
     exit 1
 fi
 
@@ -72,6 +73,7 @@ if [[ -z "$RELEASE_JSON" ]]; then
     gate_emit_result "INFRA-1373" "fail" "no-release" "repo=$REPO_SLUG" 2>/dev/null || true
     echo ""
     echo "Results: 0 passed, 1 failed"
+    echo "How to bypass cleanly: cut a release (git tag vX.Y.Z && git push origin vX.Y.Z), or set CHUMP_RELEASE_STALENESS_STRICT=0 to run in advisory mode."
     exit 1
 fi
 
@@ -83,6 +85,7 @@ if [[ -z "$RELEASE_DATE" ]]; then
     gate_emit_result "INFRA-1373" "fail" "json-parse-error" "" 2>/dev/null || true
     echo ""
     echo "Results: 0 passed, 1 failed"
+    echo "How to bypass cleanly: CHUMP_RELEASE_STALENESS_STRICT=0 (or unset it) to run in advisory mode while the release JSON parsing is investigated."
     exit 1
 fi
 
@@ -121,6 +124,7 @@ else
         gate_emit_result "INFRA-1373" "fail" "release-stale" "tag=$RELEASE_TAG gap_days=$GAP_DAYS threshold=$STALENESS_DAYS" 2>/dev/null || true
         echo ""
         echo "Results: 0 passed, 1 failed"
+        echo "How to bypass cleanly: git tag vX.Y.Z && git push origin vX.Y.Z to cut a fresh release, or set CHUMP_RELEASE_STALENESS_STRICT=0 to run in advisory mode."
         exit 1
     else
         printf '[WARN] release is STALE — gap %dd > threshold %dd (advisory; CHUMP_RELEASE_STALENESS_STRICT=1 to block)\n' \

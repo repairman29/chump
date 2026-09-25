@@ -103,4 +103,5 @@ done
 echo "" >&2
 echo "Fix: add the missing path(s) to the 'code:' section in .github/workflows/ci.yml" >&2
 echo "     (each entry: \"- 'path/**'\").  See INFRA-272 / INFRA-682." >&2
+echo "How to bypass cleanly: add the missing top-level path(s) to the 'code:' filter block in .github/workflows/ci.yml — there is no env-var bypass because an uncovered path silently skips required checks (INFRA-272)." >&2
 exit 1

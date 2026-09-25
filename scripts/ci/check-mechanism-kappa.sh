@@ -78,6 +78,7 @@ fi
     echo "[mechanism-kappa]   Background: EVAL-074 retraction (PR #549 → #551) — Llama-only −30pp claim → Sonnet cross-rescore −0.4pp p=1.0, κ=0.40."
     echo "[mechanism-kappa]   Bypass: CHUMP_KAPPA_GATE=0 git commit ... (silence)"
     echo "[mechanism-kappa]   Enforce: CHUMP_KAPPA_GATE=enforce git commit ... (block instead of warn)"
+    echo "[mechanism-kappa]   How to bypass cleanly: CHUMP_KAPPA_GATE=0 git commit ... to silence this advisory, or add the κ citation to the commit body/result doc."
     echo ""
 } >&2
 

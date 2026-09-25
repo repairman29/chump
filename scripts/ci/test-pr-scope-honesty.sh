@@ -189,5 +189,50 @@ else
     pass "Test 9: single gap ID in title passes Rule C"
 fi
 
+# ── Tests 10-13: Rule B PR-body-mention recognition (INFRA-5429) ────────────
+# These need refs/remotes/origin/main to exist locally so the "last touched
+# on origin/main" lookup in check-pr-scope.sh resolves without a real remote.
+make_deleted_file_repo() {
+    local dir="$1"
+    make_repo "$dir"
+    printf 'x\n' > "$dir/a.txt"
+    git -C "$dir" add a.txt
+    git -C "$dir" commit -q -m "chore: init"
+    git -C "$dir" update-ref refs/remotes/origin/main main
+    git -C "$dir" checkout -q -b feature
+    rm "$dir/a.txt"
+    git -C "$dir" add a.txt
+    git -C "$dir" commit -q -m "chore: remove a.txt"
+}
+
+# Test 10: no Revert commit, no body mention — Rule B flags it
+REPO10="$TMP/repo10"
+make_deleted_file_repo "$REPO10"
+out="$(cd "$REPO10" && GITHUB_BASE_REF=main bash "$GUARD" --warn-only 2>&1 || true)"
+echo "$out" | grep -q "Rule B (silent revert)" || fail "Test 10: undocumented deletion should trigger Rule B: $out"
+pass "Test 10: silent deletion with no explanation triggers Rule B"
+
+# Test 11: PR body mentions the filename via a markdown link — Rule B passes
+REPO11="$TMP/repo11"
+make_deleted_file_repo "$REPO11"
+out="$(cd "$REPO11" && GITHUB_BASE_REF=main PR_BODY='cleanup, see [a.txt](a.txt)' bash "$GUARD" --warn-only 2>&1 || true)"
+echo "$out" | grep -q "Rule B (silent revert)" && fail "Test 11: markdown-link body mention should skip Rule B: $out"
+echo "$out" | grep -q "deletion explained in PR body" || fail "Test 11: expected 'explained in PR body' info line: $out"
+pass "Test 11: PR body markdown-link mention of deleted file skips Rule B"
+
+# Test 12: PR body mentions the filename as plain text — Rule B passes
+REPO12="$TMP/repo12"
+make_deleted_file_repo "$REPO12"
+out="$(cd "$REPO12" && GITHUB_BASE_REF=main PR_BODY='removed a.txt because it was stale' bash "$GUARD" --warn-only 2>&1 || true)"
+echo "$out" | grep -q "Rule B (silent revert)" && fail "Test 12: plain-filename body mention should skip Rule B: $out"
+pass "Test 12: PR body plain-filename mention of deleted file skips Rule B"
+
+# Test 13: every FAIL line in strict-mode output carries the bypass contract (INFRA-5429 AC1)
+REPO13="$TMP/repo13"
+make_deleted_file_repo "$REPO13"
+out="$(cd "$REPO13" && GITHUB_BASE_REF=main bash "$GUARD" 2>&1 || true)"
+echo "$out" | grep -q "How to bypass cleanly:" || fail "Test 13: FAIL output must include a 'How to bypass cleanly:' line: $out"
+pass "Test 13: strict-mode FAIL output includes a 'How to bypass cleanly:' line"
+
 echo ""
 echo "All CREDIBLE-026/CREDIBLE-041 PR scope-honesty checks passed."

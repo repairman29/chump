@@ -235,6 +235,7 @@ elif [[ "$WARN_ONLY" -eq 1 ]]; then
     exit 0
 else
     fail "CREDIBLE-027/CREDIBLE-038: $VIOLATIONS violation(s) found. Fix before pushing."
+    fail "How to bypass cleanly: if the mass deletion / cross-cutting rename is intentional, add PR label 'cross-cutting-acknowledged' with a comment explaining why, or re-run with --warn-only for a local dry-run."
     gate_emit_result "CREDIBLE-027" "fail" "mass-deletion" "$VIOLATIONS mass-deletion violation(s)"
     exit 1
 fi
