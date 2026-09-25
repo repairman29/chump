@@ -909,3 +909,4 @@ worker_restarted_on_code_change  # reason: RESILIENT-1453 — emitted by scripts
 
 # ── INFRA-1563: /api/decisions operator-decision queue — consumer ships before emitters ──
 operator_decision_needed  # reason: INFRA-1563 — GET /api/decisions (src/routes/decisions.rs) is a real, tested consumer of this kind (scans ambient.jsonl, drives the PWA decisions queue). No emitter ships in this PR: wiring orchestrator/picker/bot-merge to actually raise operator_decision_needed is follow-up work tracked in INFRA-7896. Remove this line once that gap lands an emit site.
+worker_restart_deferred_claude_active  # reason: RESILIENT-1454 — same emit() helper as worker_restarted_on_code_change above, in the same script; dynamic `kind` argument, not a grep-scannable "kind":"X" literal in PROD_PATHS.

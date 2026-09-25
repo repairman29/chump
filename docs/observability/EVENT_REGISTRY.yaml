@@ -5481,6 +5481,14 @@ events:
     consumers: [fleet-brief, watchdog]
     fields_required: [ts, kind, disk_hash, started_hash, trigger, units]
 
+  # ── RESILIENT-1454: restart deferred while a claude -p child is active ──
+  - kind: worker_restart_deferred_claude_active
+    effect_metric: self
+    emitter: scripts/ops/node-converge.sh (RESILIENT-1454)
+    trigger: worker.sh changed under a running chump-node*-worker.service, but the unit's cgroup shows an active `claude -p` descendant (in-flight gap) — restarting now would race the INFRA-686 SIGTERM/WIP checkpoint against that live child and risk blowing past systemd TimeoutStopSec=90s into a SIGKILL that loses the WIP. Restart is deferred to the next converge tick instead of firing immediately.
+    consumers: [fleet-brief, watchdog]
+    fields_required: [ts, kind, unit, disk_hash]
+
   - kind: stale_binary_destructive_override
     effect_metric: self
     emitter: src/version.rs (chump fleet version-check)

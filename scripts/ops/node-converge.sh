@@ -129,6 +129,37 @@ WORKER_SH="$REPO_ROOT/scripts/dispatch/worker.sh"
 WORKER_STAMP="$REPO_ROOT/.chump-locks/worker-code.stamp"
 WORKER_RESTART_MARKER="$REPO_ROOT/.chump-locks/worker-restart.marker"
 _worker_code_hash() { sha256sum "$WORKER_SH" 2>/dev/null | cut -d' ' -f1; }
+
+# RESILIENT-1454: does $1 (a chump-node*-worker.service unit) currently have an
+# in-flight `claude -p` child? A SIGTERM landing while worker.sh is blocked deep
+# in that child races the INFRA-686 WIP checkpoint against a still-running
+# process that can itself hold git locks / be mid tool-call — the checkpoint can
+# run long enough to blow past systemd's TimeoutStopSec=90s and get SIGKILLed
+# before the WIP commit/push finishes, losing the in-flight gap. Detect via the
+# unit's cgroup (covers every descendant the unit ever spawned, not just its
+# direct child) so we can defer the restart to a cycle boundary instead.
+# Test hook: CHUMP_NODE_CONVERGE_CLAUDE_CHECK_OVERRIDE names a function/command
+# that takes the unit name and returns 0 (active) / 1 (idle) — a real systemd
+# cgroup is not available in a CI sandbox.
+_worker_has_active_claude_child() {
+    local unit="$1"
+    if [[ -n "${CHUMP_NODE_CONVERGE_CLAUDE_CHECK_OVERRIDE:-}" ]]; then
+        "$CHUMP_NODE_CONVERGE_CLAUDE_CHECK_OVERRIDE" "$unit"
+        return $?
+    fi
+    local cgroup cgfile p cmd
+    cgroup="$(systemctl show -p ControlGroup --value "$unit" 2>/dev/null)"
+    [[ -z "$cgroup" ]] && return 1
+    cgfile="/sys/fs/cgroup${cgroup}/cgroup.procs"
+    [[ -r "$cgfile" ]] || return 1
+    while read -r p; do
+        [[ -z "$p" ]] && continue
+        cmd="$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)"
+        [[ "$cmd" == *"claude -p"* ]] && return 0
+    done < "$cgfile"
+    return 1
+}
+
 _maybe_restart_stale_workers() {
     # $1: "reset_changed" when THIS converge's reset just changed worker.sh (a
     #     definitive signal that needs no cooperation from the worker). Otherwise
@@ -156,13 +187,19 @@ _maybe_restart_stale_workers() {
             return 0
         fi
     fi
-    local units u restarted=0
+    local units u restarted=0 deferred=0
     units="$(systemctl list-units --type=service --state=running --no-legend 'chump-node*-worker.service' 2>/dev/null | awk '{print $1}')"
     if [[ -z "$units" ]]; then
         log "worker.sh changed (disk ${disk:0:12}) but no running chump-node*-worker.service found — nothing to restart"
         return 0
     fi
     for u in $units; do
+        if _worker_has_active_claude_child "$u"; then
+            log "RESILIENT-1454: worker.sh changed under running $u but it has an active claude -p child (in-flight gap) — deferring restart to the next converge tick instead of racing the INFRA-686 SIGTERM/WIP checkpoint past systemd TimeoutStopSec"
+            emit worker_restart_deferred_claude_active "\"unit\":\"$u\",\"disk_hash\":\"$disk\""
+            deferred=1
+            continue
+        fi
         if sudo -n systemctl restart "$u" >>"$LOG" 2>&1; then
             log "RESILIENT-1453: worker.sh changed under running $u (disk=${disk:0:12} started=${started:0:12} trigger=${definitive:-stamp_stale}) — restarted it (graceful SIGTERM/WIP checkpoint)"
             restarted=1
@@ -170,7 +207,10 @@ _maybe_restart_stale_workers() {
             log "WARN: sudo -n systemctl restart $u failed (converge user needs passwordless sudo)"
         fi
     done
-    if [[ "$restarted" -eq 1 ]]; then
+    # Only arm the loop-guard marker when nothing was deferred — a deferred
+    # unit must be re-checked next tick, not suppressed for 25min alongside a
+    # sibling unit that DID restart cleanly this tick.
+    if [[ "$restarted" -eq 1 && "$deferred" -eq 0 ]]; then
         printf '%s\n%s\n' "$disk" "$(date -u +%s)" > "$WORKER_RESTART_MARKER" 2>/dev/null || true
         emit worker_restarted_on_code_change "\"disk_hash\":\"$disk\",\"started_hash\":\"${started:-none}\",\"trigger\":\"${definitive:-stamp_stale}\",\"units\":\"$(echo $units | tr '\n' ' ' | sed 's/ *$//')\""
     fi
