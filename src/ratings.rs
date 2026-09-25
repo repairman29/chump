@@ -3,10 +3,30 @@
 //! Exposes Elo and Bradley-Terry functions for shifting variant scores based on outcome.
 //! Expected base rating is 1500.0.
 
+use serde::Serialize;
+
 /// Computes the expected probability of A winning against B in a Bradley-Terry model.
 /// `rating_a` and `rating_b` are absolute ratings (e.g., 1500.0).
 pub fn expected_probability(rating_a: f64, rating_b: f64) -> f64 {
     1.0 / (1.0 + 10.0_f64.powf((rating_b - rating_a) / 400.0))
+}
+
+/// A single win-probability prediction, namespaced for cross-table
+/// reconciliation (INFRA-3850, parent INFRA-3841): the field is `p_win`,
+/// never a bare `p`, so joining rating predictions against the pr_book
+/// (`p_merge`) and nba (`p`) tables in a shared log can't collide on a bare
+/// `ev`/`p` column name.
+#[derive(Debug, Serialize, PartialEq)]
+pub struct MatchPrediction {
+    pub p_win: f64,
+}
+
+/// Same computation as `expected_probability`, returned as the namespaced
+/// `p_win` column instead of a bare `f64`.
+pub fn predict_win(rating_a: f64, rating_b: f64) -> MatchPrediction {
+    MatchPrediction {
+        p_win: expected_probability(rating_a, rating_b),
+    }
 }
 
 /// Updates Bradley-Terry / Elo ratings based on the outcome of a contest between A and B.
@@ -53,5 +73,23 @@ mod tests {
         let (new_a, new_b) = update_ratings(1500.0, 1500.0, 0.5, 32.0);
         assert_eq!(new_a, 1500.0);
         assert_eq!(new_b, 1500.0);
+    }
+
+    #[test]
+    fn test_predict_win_uses_namespaced_p_win_column() {
+        let pred = predict_win(1500.0, 1500.0);
+        assert!((pred.p_win - 0.5).abs() < 1e-6);
+
+        // Serialized column must be the namespaced `p_win`, never a bare `p`
+        // that could collide with pr_book/nba tables sharing the same log.
+        let json = serde_json::to_string(&pred).unwrap();
+        assert!(
+            json.contains("\"p_win\""),
+            "expected namespaced p_win field, got: {json}"
+        );
+        assert!(
+            !json.contains("\"p\":"),
+            "must not emit a bare `p` column, got: {json}"
+        );
     }
 }

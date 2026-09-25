@@ -33,9 +33,9 @@ grep -q '"bands":{"lock"' "$TMP/amb.jsonl" 2>/dev/null && pass "ambient: bands p
 # rows: pr1 price .9 (MERGED->1) err .01 ; pr2 price .2 (CLOSED->0) err .04 ;
 #       pr3 price .5 (OPEN->skip).  Brier=(.01+.04)/2 = 0.025
 cat > "$TMP/led2.jsonl" <<'J'
-{"ts":"t","pr":1,"sha":"x","price":0.9,"state":"CLEAN"}
-{"ts":"t","pr":2,"sha":"y","price":0.2,"state":"DIRTY"}
-{"ts":"t","pr":3,"sha":"z","price":0.5,"state":"BLOCKED"}
+{"ts":"t","pr":1,"sha":"x","p_merge":0.9,"state":"CLEAN"}
+{"ts":"t","pr":2,"sha":"y","p_merge":0.2,"state":"DIRTY"}
+{"ts":"t","pr":3,"sha":"z","p_merge":0.5,"state":"BLOCKED"}
 J
 cat > "$TMP/out.json" <<'J'
 [{"number":1,"state":"MERGED"},{"number":2,"state":"CLOSED"},{"number":3,"state":"OPEN"}]

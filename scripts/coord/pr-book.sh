@@ -80,7 +80,7 @@ if [[ "$MODE" == "settle" ]]; then
   # generic calibration component (RESILIENT-974), and rewrite the calibration
   # log — same shape as before this refactor: one {predicted,outcome} row per
   # resolved PR plus a trailing {kind:pr_book_calibration,brier} summary row.
-  RES="$(calibration_settle "$LEDGER" "$OMAP" "$CALIB" pr price pr_book_prediction pr_book_calibration)"
+  RES="$(calibration_settle "$LEDGER" "$OMAP" "$CALIB" pr p_merge pr_book_prediction pr_book_calibration)"
   BRIER="$(echo "$RES" | jq -r '.brier // "n/a"')"
   RESOLVED="$(echo "$RES" | jq -r '.resolved')"
   PREDS="$(echo "$RES" | jq -r '.predictions')"
@@ -114,8 +114,11 @@ FLIP="$(echo "$RAW" | jq "$M"' [.[]|select(price>=0.40 and price<0.70)]|length' 
 LONG="$(echo "$RAW" | jq "$M"' [.[]|select(price<0.40)]|length' 2>/dev/null)"; [[ -z "$LONG" ]] && LONG=0
 printf "  -- EV %.1f of %s open  |  lock>=70:%s flip:%s long<40:%s\n" "$EV" "$N" "$LOCK" "$FLIP" "$LONG"
 
-# append predictions to the ledger (fuel for --settle)
-echo "$RAW" | jq -c "$M"' .[]|{ts:"'"$TS"'",pr:.number,sha:.headRefOid,price:(price),state:.mergeStateStatus}' 2>/dev/null >> "$LEDGER"
+# append predictions to the ledger (fuel for --settle). Field is namespaced
+# p_merge (not a bare "price"/"p") so the ledger can be joined against the
+# nba (p) and rating (p_win) tables without a column-name collision
+# (INFRA-3850, parent INFRA-3841).
+echo "$RAW" | jq -c "$M"' .[]|{ts:"'"$TS"'",pr:.number,sha:.headRefOid,p_merge:(price),state:.mergeStateStatus}' 2>/dev/null >> "$LEDGER"
 
 # emit odds onto the shared ambient board so the OS can consume the score.
 # Brier: read the SAME canonical trailing {kind:pr_book_calibration,brier}
@@ -126,10 +129,14 @@ CAL_BRIER="$(tail -n1 "$CALIB" 2>/dev/null | jq -r 'select(.kind=="pr_book_calib
 
 # emit odds onto the shared ambient board so the OS can consume the score
 # scanner-anchor: "kind":"pr_book_odds"
+# Field is pr_book_ev (not a bare "ev") — ambient.jsonl is a single shared
+# stream where next-best-action.sh also logs its own per-action "ev"; a bare
+# "ev" key would collide across the two kinds when read flat (INFRA-3850,
+# parent INFRA-3841).
 ODDS="$(jq -cn --arg ts "$TS" --argjson ev "$(printf %.1f "$EV")" --argjson open "$N" \
   --argjson lock "$LOCK" --argjson flip "$FLIP" --argjson long "$LONG" \
   --argjson brier "$CAL_BRIER" \
-  '{ts:$ts,kind:"pr_book_odds",ev:$ev,open:$open,bands:{lock:$lock,flip:$flip,long:$long},brier:$brier}')"
+  '{ts:$ts,kind:"pr_book_odds",pr_book_ev:$ev,open:$open,bands:{lock:$lock,flip:$flip,long:$long},brier:$brier}')"
 if [[ -n "$ODDS" ]]; then
   mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
   echo "$ODDS" >> "$AMBIENT" 2>/dev/null || true

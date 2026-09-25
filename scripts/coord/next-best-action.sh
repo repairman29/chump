@@ -210,6 +210,10 @@ printf '%s' "$RANKED" | jq -r --argjson k "$TOPN" '
 echo "   -> $OUT"
 
 # ── 8. Emit the top pick to the nervous system (ambient) ────────────────────
+# Fields are nba_ev/nba_p (not bare "ev"/"p") — ambient.jsonl is a single
+# shared stream where pr-book.sh also logs its own pr_book_ev; a bare "ev"/"p"
+# key would collide across kinds when read flat (INFRA-3850, parent
+# INFRA-3841).
 if [[ "$NO_EMIT" != "1" && "$N" -gt 0 ]]; then
   EMIT="$DIR/../dev/ambient-emit.sh"
   TOP="$(printf '%s' "$RANKED" | jq -c '.[0]')"
@@ -218,8 +222,8 @@ if [[ "$NO_EMIT" != "1" && "$N" -gt 0 ]]; then
     "$EMIT" next_best_action \
       "action=$(printf '%s' "$TOP" | jq -r .action)" \
       "target=$(printf '%s' "$TOP" | jq -r .target)" \
-      "ev=$(printf '%s' "$TOP" | jq -r .expected_value)" \
-      "p=$(printf '%s' "$TOP" | jq -r .p_success)" \
+      "nba_ev=$(printf '%s' "$TOP" | jq -r .expected_value)" \
+      "nba_p=$(printf '%s' "$TOP" | jq -r .p_success)" \
       "who=$(printf '%s' "$TOP" | jq -r .who_should_do_it)" \
       "candidates=$N" "advisory=true" 2>/dev/null || true
   fi
