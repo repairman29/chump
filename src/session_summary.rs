@@ -75,6 +75,17 @@ pub struct Args {
     pub window: String,
     pub format: OutputFormat,
     pub help: bool,
+    /// INFRA-1650: opaque session identifier for instrumented runs. Presence
+    /// of this flag switches `run` into the instrumented path (timeout +
+    /// cost tracking + structured JSON events) instead of the plain-render
+    /// path used since INFRA-1437.
+    pub session_id: Option<String>,
+    /// INFRA-1650: wall-clock budget in seconds for the instrumented path.
+    /// Default 30s.
+    pub timeout: Option<u64>,
+    /// INFRA-1650: dollar ceiling for the instrumented path's CostTracker.
+    /// Exceeding it fails the run as `FailureClass::Permanent`.
+    pub cost_limit: Option<f64>,
 }
 
 impl Default for Args {
@@ -84,6 +95,9 @@ impl Default for Args {
             window: "24h".to_string(),
             format: OutputFormat::Text,
             help: false,
+            session_id: None,
+            timeout: None,
+            cost_limit: None,
         }
     }
 }
@@ -140,6 +154,50 @@ pub fn parse_args(argv: &[String]) -> Result<Args, String> {
             other if other.starts_with("--window=") => {
                 a.window = other["--window=".len()..].to_string();
             }
+            "--session-id" => {
+                i += 1;
+                let v = argv
+                    .get(i)
+                    .ok_or_else(|| "--session-id requires a value".to_string())?;
+                a.session_id = Some(v.clone());
+            }
+            other if other.starts_with("--session-id=") => {
+                a.session_id = Some(other["--session-id=".len()..].to_string());
+            }
+            "--timeout" => {
+                i += 1;
+                let v = argv
+                    .get(i)
+                    .ok_or_else(|| "--timeout requires a value".to_string())?;
+                a.timeout = Some(
+                    v.parse::<u64>()
+                        .map_err(|_| format!("--timeout: invalid seconds value '{}'", v))?,
+                );
+            }
+            other if other.starts_with("--timeout=") => {
+                let v = &other["--timeout=".len()..];
+                a.timeout = Some(
+                    v.parse::<u64>()
+                        .map_err(|_| format!("--timeout: invalid seconds value '{}'", v))?,
+                );
+            }
+            "--cost-limit" => {
+                i += 1;
+                let v = argv
+                    .get(i)
+                    .ok_or_else(|| "--cost-limit requires a value".to_string())?;
+                a.cost_limit = Some(
+                    v.parse::<f64>()
+                        .map_err(|_| format!("--cost-limit: invalid dollar value '{}'", v))?,
+                );
+            }
+            other if other.starts_with("--cost-limit=") => {
+                let v = &other["--cost-limit=".len()..];
+                a.cost_limit = Some(
+                    v.parse::<f64>()
+                        .map_err(|_| format!("--cost-limit: invalid dollar value '{}'", v))?,
+                );
+            }
             other => {
                 return Err(format!("unknown argument: {}", other));
             }
@@ -156,12 +214,19 @@ pub fn print_help() {
          \n\
          Usage:\n\
            chump session-summary [--window <dur>] [--since <ts>] [--json|--format json]\n\
+           chump session-summary --session-id <id> [--timeout <secs>] [--cost-limit <usd>]\n\
          \n\
          Flags:\n\
            --window <dur>     Rolling lookback (24h, 4h, 2d). Default 24h.\n\
            --since <ts>       Explicit ISO8601 cutoff. Overrides --window.\n\
            --format text|json Output format (default text).\n\
            --json             Shorthand for --format json.\n\
+           --session-id <id>  Opaque session id; switches to the instrumented\n\
+                               path (JSON events + cost tracking + timeout).\n\
+           --timeout <secs>   Wall-clock budget for the instrumented path.\n\
+                               Exceeding it exits 124. Default 30.\n\
+           --cost-limit <usd> Dollar ceiling for the instrumented path's\n\
+                               CostTracker. Exceeding it fails as Permanent.\n\
            -h, --help         This help.\n\
          \n\
          Environment overrides (testing):\n\
@@ -671,6 +736,252 @@ fn extract_json_field_raw(obj: &str, key: &str) -> Option<String> {
     }
 }
 
+/// INFRA-1650: failure classification for the instrumented
+/// `--session-id` run path. Transient failures (gh spawn errors, network)
+/// are safe to retry as-is; Permanent failures (parse errors, cost-limit
+/// breaches) need a code or config change before retrying.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureClass {
+    Transient,
+    Permanent,
+}
+
+impl FailureClass {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FailureClass::Transient => "Transient",
+            FailureClass::Permanent => "Permanent",
+        }
+    }
+
+    /// Exit code convention for the instrumented path: 1 for Transient
+    /// (retry may succeed unchanged), 2 for Permanent (needs a fix first).
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            FailureClass::Transient => 1,
+            FailureClass::Permanent => 2,
+        }
+    }
+}
+
+/// Heuristic classifier for a `run_gh`/parse error string. Spawn/exec
+/// failures are environmental (gh missing, PATH issue) and generally
+/// transient; anything else (bad JSON shape, non-zero gh exit) is treated
+/// as permanent until proven otherwise.
+fn classify_failure(msg: &str) -> FailureClass {
+    if msg.contains("failed to spawn") {
+        FailureClass::Transient
+    } else {
+        FailureClass::Permanent
+    }
+}
+
+/// INFRA-1650: accumulates dollar cost across the `gh` calls made during an
+/// instrumented `--session-id` run. Placeholder per-call cost model — real
+/// per-call billing isn't wired in yet, but the tracking contract (add,
+/// total, report) is what callers depend on.
+#[derive(Debug, Default, Clone, Copy)]
+pub struct CostTracker {
+    total: f64,
+}
+
+impl CostTracker {
+    const COST_PER_CALL: f64 = 0.0006;
+
+    pub fn new() -> Self {
+        CostTracker { total: 0.0 }
+    }
+
+    pub fn record_call(&mut self) {
+        self.total += Self::COST_PER_CALL;
+    }
+
+    pub fn total(&self) -> f64 {
+        self.total
+    }
+
+    /// Reports accumulated cost to stderr — kept separate from the
+    /// stdout-bound `session_summary_completed` JSON event so scripts can
+    /// grep the event line without the human-readable cost line in the way.
+    pub fn report_to_stderr(&self, session_id: &str) {
+        eprintln!(
+            "chump session-summary: session={} cost=${:.4}",
+            session_id, self.total
+        );
+    }
+}
+
+/// Outcome of the instrumented summary computation, run off the main thread
+/// so `run_session_summary` can enforce a wall-clock timeout around it.
+enum SummaryOutcome {
+    Success {
+        rendered: String,
+        cost: f64,
+    },
+    Failure {
+        class: FailureClass,
+        message: String,
+    },
+}
+
+/// Does the actual gh-backed summary work, tracking cost per call and
+/// failing fast (Permanent) if `cost_limit` is breached mid-flight.
+fn execute_summary(args: &Args, cost_limit: Option<f64>) -> SummaryOutcome {
+    let mut tracker = CostTracker::new();
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let since = resolve_since(args, now);
+
+    let merged_blob = match run_gh(&[
+        "pr",
+        "list",
+        "--author",
+        "@me",
+        "--state",
+        "merged",
+        "--search",
+        &format!("merged:>={}", since),
+        "--json",
+        "number,title",
+        "--limit",
+        "100",
+    ]) {
+        Ok(b) => b,
+        Err(e) => {
+            return SummaryOutcome::Failure {
+                class: classify_failure(&e),
+                message: e,
+            }
+        }
+    };
+    tracker.record_call();
+    if let Some(limit) = cost_limit {
+        if tracker.total() > limit {
+            return SummaryOutcome::Failure {
+                class: FailureClass::Permanent,
+                message: format!("cost limit ${:.4} exceeded after merged-PR fetch", limit),
+            };
+        }
+    }
+    let merged = match parse_gh_json(&merged_blob, false) {
+        Ok(r) => r,
+        Err(e) => {
+            return SummaryOutcome::Failure {
+                class: FailureClass::Permanent,
+                message: e,
+            }
+        }
+    };
+
+    let open_blob = match run_gh(&[
+        "pr",
+        "list",
+        "--author",
+        "@me",
+        "--state",
+        "open",
+        "--json",
+        "number,title,autoMergeRequest",
+        "--limit",
+        "100",
+    ]) {
+        Ok(b) => b,
+        Err(e) => {
+            return SummaryOutcome::Failure {
+                class: classify_failure(&e),
+                message: e,
+            }
+        }
+    };
+    tracker.record_call();
+    if let Some(limit) = cost_limit {
+        if tracker.total() > limit {
+            return SummaryOutcome::Failure {
+                class: FailureClass::Permanent,
+                message: format!("cost limit ${:.4} exceeded after open-PR fetch", limit),
+            };
+        }
+    }
+    let open = match parse_gh_json(&open_blob, true) {
+        Ok(r) => r,
+        Err(e) => {
+            return SummaryOutcome::Failure {
+                class: FailureClass::Permanent,
+                message: e,
+            }
+        }
+    };
+
+    let quarantined = load_quarantined_gaps();
+    let cycle_health =
+        kpi_report::build_integration_cycle_section(&crate::repo_path::repo_root(), 168);
+
+    let rendered = match args.format {
+        OutputFormat::Text => {
+            let mut out = render_text(&since, &args.window, &merged, &open, &quarantined);
+            out.push_str(&integration_cycle_health_tail(&cycle_health));
+            out
+        }
+        OutputFormat::Json => render_json(&since, &args.window, &merged, &open, &quarantined),
+    };
+
+    SummaryOutcome::Success {
+        rendered,
+        cost: tracker.total(),
+    }
+}
+
+/// INFRA-1650: instrumented `chump session-summary --session-id <id>` path.
+/// Runs the gh-backed summary off-thread so a `--timeout` breach can be
+/// detected without killing the process outright, tracks cost via
+/// `CostTracker`, and emits structured JSON events for success / failure /
+/// timeout rather than plain text.
+pub fn run_session_summary(args: &Args) -> i32 {
+    let session_id = args.session_id.clone().unwrap_or_default();
+    let timeout_secs = args.timeout.unwrap_or(30);
+    let cost_limit = args.cost_limit;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker_args = args.clone();
+    std::thread::spawn(move || {
+        let outcome = execute_summary(&worker_args, cost_limit);
+        let _ = tx.send(outcome);
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok(SummaryOutcome::Success { rendered, cost }) => {
+            print!("{}", rendered);
+            let tracker = CostTracker { total: cost };
+            tracker.report_to_stderr(&session_id);
+            println!(
+                "{{\"event\":\"session_summary_completed\",\"session_id\":{},\"cost\":{:.4}}}",
+                json_str(&session_id),
+                cost
+            );
+            0
+        }
+        Ok(SummaryOutcome::Failure { class, message }) => {
+            eprintln!(
+                "{{\"event\":\"session_summary_failed\",\"session_id\":{},\"failure_class\":{},\"message\":{}}}",
+                json_str(&session_id),
+                json_str(class.as_str()),
+                json_str(&message)
+            );
+            class.exit_code()
+        }
+        Err(_) => {
+            eprintln!(
+                "{{\"event\":\"session_summary_timeout\",\"session_id\":{},\"timeout_s\":{}}}",
+                json_str(&session_id),
+                timeout_secs
+            );
+            124
+        }
+    }
+}
+
 /// Entry point — wired from main.rs.
 pub fn run(argv: &[String]) -> i32 {
     let args = match parse_args(argv) {
@@ -684,6 +995,9 @@ pub fn run(argv: &[String]) -> i32 {
     if args.help {
         print_help();
         return 0;
+    }
+    if args.session_id.is_some() {
+        return run_session_summary(&args);
     }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
@@ -835,6 +1149,74 @@ mod tests {
     fn parse_args_rejects_bad_flag() {
         assert!(parse_args(&["--nope".to_string()]).is_err());
         assert!(parse_args(&["--format".to_string(), "yaml".to_string()]).is_err());
+    }
+
+    #[test]
+    fn parse_args_instrumented_flags() {
+        let a = parse_args(&[
+            "--session-id".to_string(),
+            "test123".to_string(),
+            "--timeout".to_string(),
+            "5".to_string(),
+            "--cost-limit".to_string(),
+            "0.5".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(a.session_id.as_deref(), Some("test123"));
+        assert_eq!(a.timeout, Some(5));
+        assert_eq!(a.cost_limit, Some(0.5));
+    }
+
+    #[test]
+    fn parse_args_instrumented_flags_equals_form() {
+        let a = parse_args(&[
+            "--session-id=test456".to_string(),
+            "--timeout=10".to_string(),
+            "--cost-limit=1.25".to_string(),
+        ])
+        .unwrap();
+        assert_eq!(a.session_id.as_deref(), Some("test456"));
+        assert_eq!(a.timeout, Some(10));
+        assert_eq!(a.cost_limit, Some(1.25));
+    }
+
+    #[test]
+    fn parse_args_rejects_bad_timeout_and_cost_limit() {
+        assert!(parse_args(&["--timeout".to_string(), "nope".to_string()]).is_err());
+        assert!(parse_args(&["--cost-limit".to_string(), "nope".to_string()]).is_err());
+    }
+
+    #[test]
+    fn failure_class_exit_codes() {
+        assert_eq!(FailureClass::Transient.exit_code(), 1);
+        assert_eq!(FailureClass::Permanent.exit_code(), 2);
+        assert_eq!(FailureClass::Transient.as_str(), "Transient");
+        assert_eq!(FailureClass::Permanent.as_str(), "Permanent");
+    }
+
+    #[test]
+    fn classify_failure_spawn_error_is_transient() {
+        assert_eq!(
+            classify_failure("failed to spawn gh: No such file or directory"),
+            FailureClass::Transient
+        );
+    }
+
+    #[test]
+    fn classify_failure_other_is_permanent() {
+        assert_eq!(
+            classify_failure("gh [\"pr\"] exited 1: bad credentials"),
+            FailureClass::Permanent
+        );
+    }
+
+    #[test]
+    fn cost_tracker_accumulates() {
+        let mut t = CostTracker::new();
+        assert_eq!(t.total(), 0.0);
+        t.record_call();
+        t.record_call();
+        assert!((t.total() - 0.0012).abs() < 1e-9);
     }
 
     #[test]

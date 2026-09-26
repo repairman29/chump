@@ -147,4 +147,57 @@ grep -q '"filed":\[' "$OUTJ" || fail "json missing filed array"
 grep -q '"number":9100' "$OUTJ" || fail "json missing armed PR #9100"
 
 echo "[3/3] json output: shape matches"
+
+# ── 4. INFRA-1650 instrumented path (--session-id/--timeout/--cost-limit) ──
+"$CHUMP_BIN" session-summary --help | grep -q -- '--session-id' \
+    || fail "--help missing --session-id"
+"$CHUMP_BIN" session-summary --help | grep -q -- '--timeout' \
+    || fail "--help missing --timeout"
+"$CHUMP_BIN" session-summary --help | grep -q -- '--cost-limit' \
+    || fail "--help missing --cost-limit"
+
+# Success path: exits 0, emits session_summary_completed with a cost field.
+OUT_OK="$TMP/instrumented-ok.txt"
+RC_OK=0
+CHUMP_SESSION_SUMMARY_GH_STUB="$TMP/gh-stub.sh" \
+    "$CHUMP_BIN" session-summary --session-id test123 --since 2026-05-21 \
+    > "$OUT_OK" 2>&1 || RC_OK=$?
+[[ "$RC_OK" -eq 0 ]] || fail "instrumented success path exited $RC_OK (output: $(cat "$OUT_OK"))"
+grep -q '"event":"session_summary_completed"' "$OUT_OK" \
+    || fail "instrumented success path missing session_summary_completed event"
+grep -qE '"cost":[0-9]' "$OUT_OK" \
+    || fail "session_summary_completed missing numeric cost field"
+
+# Failure path: unresolvable stub -> nonzero exit, session_summary_failed with a failure_class.
+OUT_FAIL="$TMP/instrumented-fail.txt"
+RC_FAIL=0
+CHUMP_SESSION_SUMMARY_GH_STUB="$TMP/does-not-exist.sh" \
+    "$CHUMP_BIN" session-summary --session-id test-fail --since 2026-05-21 \
+    > "$OUT_FAIL" 2>&1 || RC_FAIL=$?
+[[ "$RC_FAIL" -eq 1 || "$RC_FAIL" -eq 2 ]] \
+    || fail "instrumented failure path exited $RC_FAIL, expected 1 or 2 (output: $(cat "$OUT_FAIL"))"
+grep -q '"event":"session_summary_failed"' "$OUT_FAIL" \
+    || fail "instrumented failure path missing session_summary_failed event"
+grep -qE '"failure_class":"(Transient|Permanent)"' "$OUT_FAIL" \
+    || fail "session_summary_failed missing failure_class field"
+
+# Timeout path: stub sleeps past the budget -> exits 124, session_summary_timeout to stderr.
+cat > "$TMP/gh-stub-slow.sh" <<'STUB'
+#!/usr/bin/env bash
+sleep 3
+echo "[]"
+STUB
+chmod +x "$TMP/gh-stub-slow.sh"
+
+OUT_TIMEOUT="$TMP/instrumented-timeout.txt"
+RC_TIMEOUT=0
+CHUMP_SESSION_SUMMARY_GH_STUB="$TMP/gh-stub-slow.sh" \
+    "$CHUMP_BIN" session-summary --session-id test-timeout --timeout 1 --since 2026-05-21 \
+    > "$OUT_TIMEOUT" 2>&1 || RC_TIMEOUT=$?
+[[ "$RC_TIMEOUT" -eq 124 ]] \
+    || fail "instrumented timeout path exited $RC_TIMEOUT, expected 124 (output: $(cat "$OUT_TIMEOUT"))"
+grep -q '"event":"session_summary_timeout"' "$OUT_TIMEOUT" \
+    || fail "instrumented timeout path missing session_summary_timeout event"
+
+echo "[4/4] instrumented --session-id path: events + exit codes correct"
 echo "OK: scripts/ci/test-session-summary.sh"
