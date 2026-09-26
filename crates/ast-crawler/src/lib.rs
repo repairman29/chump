@@ -997,6 +997,24 @@ bye() {
     }
 
     #[test]
+    fn bash_fixture_extracts_all_function_styles() {
+        // INFRA-1821: covers `foo() {}` one-liner, `bar() { ... }` multi-line,
+        // and `function baz { ... }` keyword-style fn defs in one file.
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.sh");
+        let shape = crawl_file(&fixture).unwrap();
+        assert_eq!(shape.language, "bash");
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(shape.top_level_symbols.len(), 3, "got {names:?}");
+        assert!(names.contains(&"foo"), "got {names:?}");
+        assert!(names.contains(&"bar"), "got {names:?}");
+        assert!(names.contains(&"baz"), "got {names:?}");
+    }
+
+    #[test]
     fn yaml_top_level_keys() {
         let td = tempfile::tempdir().unwrap();
         let body = r#"
