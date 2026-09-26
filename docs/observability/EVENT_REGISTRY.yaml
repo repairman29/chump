@@ -1889,6 +1889,17 @@ events:
     trigger: YAML file without state.db row
     consumers: [fleet-brief]
 
+  - kind: state_db_yaml_orphan
+    effect_metric: self
+    emitter: scripts/coord/state-db-yaml-sync.sh
+    trigger: >
+      an OPEN gap in state.db has no docs/gaps/<ID>.yaml mirror. Emitted in
+      both --dry-run and --apply mode (INFRA-1495) so fleet-brief can trend
+      the drift even before an orphan is backfilled. Never emitted for
+      done/superseded/terminal gaps (CREDIBLE-012 hygiene rule).
+    fields_required: [gap_id, mode]
+    consumers: [fleet-brief]
+
   - kind: yaml_orphan_pruned
     effect_metric: self
     emitter: scripts/coord/gap-doctor.py (safe-sweep --prune-orphans)
