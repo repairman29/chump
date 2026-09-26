@@ -183,6 +183,13 @@ events:
     consumers: [fleet-brief]
     fields_required: [agent_id, gap_id, elapsed_s, rc, cycle_kind]
 
+  - kind: mission_cost_report
+    effect_metric: self
+    emitter: crates/chump-coord/src/mission/cost.rs (MissionCostTracker::report_to_telemetry)
+    trigger: mission orchestrator reaches a terminal state (all objectives completed or one fails and the mission aborts)
+    consumers: [fleet-brief, kpi-report]
+    fields_required: [ts, mission_id, outcome, step_count, total_input_tokens, total_output_tokens, total_tokens, total_duration_secs, estimated_cost_usd]
+
   - kind: fleet_starved
     effect_metric: fleet_auto_widen_applied_within_5min
     emitter: scripts/dispatch/worker.sh

@@ -67,9 +67,11 @@
 //! let _ids = store.list().unwrap();
 //! ```
 
+pub mod cost;
 pub mod persistence;
 pub mod replanning;
 
+pub use cost::{MissionCostTracker, StepCost};
 pub use persistence::{
     DependencyCondition, FallbackMode, FileBackedMissionStore, Mission, MissionCheckpoint,
     MissionStore, Objective, ObjectiveDependency, ObjectiveState, PersistentMission,
