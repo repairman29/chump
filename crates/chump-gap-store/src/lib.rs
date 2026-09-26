@@ -1825,10 +1825,23 @@ impl GapStore {
                      CHUMP_RESERVE_GIT_HISTORY_CHECK or the domain counter."
                 );
             }
+            // INFRA-1611: stamp opened_date at original-reservation time (not
+            // import time) so the P0 aging census in `chump gap
+            // audit-priorities` has real age data instead of showing every
+            // gap as "0d old" after a fresh state.db import.
+            let opened_date = unix_to_iso_full(now)[..10].to_string();
             self.conn.execute(
-                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
-                 VALUES(?1,?2,?3,?4,?5,'open',?6)",
-                params![new_id, domain_upper, title, priority, effort, now],
+                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at,opened_date)
+                 VALUES(?1,?2,?3,?4,?5,'open',?6,?7)",
+                params![
+                    new_id,
+                    domain_upper,
+                    title,
+                    priority,
+                    effort,
+                    now,
+                    opened_date
+                ],
             )?;
             Ok(new_id)
         })();
