@@ -54,6 +54,44 @@ pub fn target_worker_count(
     raw.clamp(min_workers, max_workers)
 }
 
+/// MISSION-070 (MISSION-065 slice): scaling formula used by `ResizeDecision`
+/// to pick a target worker count from current load.
+///
+/// Linearly interpolates between `min_workers` (at zero load) and
+/// `max_workers` (at or above `max_capacity`), clamped to that range.
+pub fn calculate_worker_target(
+    current_load: f64,
+    max_capacity: f64,
+    min_workers: u32,
+    max_workers: u32,
+) -> u32 {
+    if current_load <= 0.0 || max_capacity <= 0.0 {
+        return min_workers;
+    }
+    if current_load >= max_capacity {
+        return max_workers;
+    }
+
+    let fraction = current_load / max_capacity;
+    let raw = min_workers as f64 + fraction * (max_workers - min_workers) as f64;
+    (raw.round() as u32).clamp(min_workers, max_workers)
+}
+
+impl ResizeDecision {
+    /// Recompute `recommended_size` from current load via `calculate_worker_target`.
+    pub fn with_calculated_target(
+        mut self,
+        current_load: f64,
+        max_capacity: f64,
+        min_workers: u32,
+        max_workers: u32,
+    ) -> Self {
+        self.recommended_size =
+            calculate_worker_target(current_load, max_capacity, min_workers, max_workers);
+        self
+    }
+}
+
 /// Check condition A: queue empty for > 30 min.
 /// Returns `Some(decision)` if the fleet should shrink.
 pub fn check_queue_empty(repo_root: &Path, current_size: u32) -> Option<ResizeDecision> {
@@ -406,5 +444,15 @@ mod tests {
     #[test]
     fn test_target_worker_count_zero_capacity() {
         assert_eq!(target_worker_count(10.0, 0.0, 2, 10), 2);
+    }
+
+    #[test]
+    fn test_worker_scaling_zero_load() {
+        assert_eq!(calculate_worker_target(0.0, 100.0, 1, 10), 1);
+    }
+
+    #[test]
+    fn test_worker_scaling_max_load() {
+        assert_eq!(calculate_worker_target(100.0, 100.0, 1, 10), 10);
     }
 }
