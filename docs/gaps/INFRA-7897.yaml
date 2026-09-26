@@ -1,0 +1,16 @@
+- id: INFRA-7897
+  domain: INFRA
+  title: chump-ship BotMergePath stubbed + CHUMP_SHIP_RUST soak never started — blocks INFRA-2064 cutover
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - crates/chump-ship/src/bot_merge.rs BotMergePath is implemented (no longer returns the Phase-1 stub error) and itself uses the PID-locked Unix-socket single-instance guarantee (INFRA-1532), matching ManualShipPath
+    - scripts/coord/bot-merge.sh CHUMP_SHIP_RUST flag flipped from default 0 to default 1 for --mode manual (or an equivalent default-on soak mechanism), so INFRA-2064 AC1's 7-day zero-divergence clock can actually start
+    - kind=ship_divergence_detected is emitted and monitored across the soak window with a real ambient trail (not zero events) before INFRA-2064's cutover is re-attempted
+    - INFRA-2064 cutover re-attempted only during a fleet-quiet window (<=3 PRs in flight) per its own AC6
+  depends_on: [INFRA-2001]
+  notes: |
+    [2026-09-26T03:27:28Z] Verified while claimed on INFRA-2064 (2026-09-26): AC1 precondition never started. scripts/coord/bot-merge.sh:8 still reads CHUMP_SHIP_RUST:-0 (default off) — no evidence the flag was ever flipped default-on for a 7-day soak. Zero ambient kind=ship_divergence_detected or kind=rust_migration_landed gap=INFRA-2001 events exist. Worse: crates/chump-ship/src/bot_merge.rs BotMergePath (the mode bot-merge.sh actually needs for --mode bot-merge / fleet auto-ship) is explicitly STUBBED in Phase 1 — ship() always returns BotMergeDoubleInstance 'not yet implemented'. Only ManualShipPath has the real PID-locked-socket single-instance guarantee (INFRA-1532); BotMergePath does not. Removing the 3044-LOC bash body now would delete the ONLY working bot-merge/auto-ship path in the fleet, since the Rust replacement for that mode cannot ship a single PR. Separately, AC6 (cutover must not happen during fleet-busy window, >3 PRs in flight) is also violated right now: 7 open PRs. Do not re-attempt INFRA-2064 until (a) BotMergePath is implemented and passes its own parallel-run soak for --mode bot-merge specifically, (b) CHUMP_SHIP_RUST is flipped default-on for --mode manual and a real 7-day zero-divergence soak elapses, and (c) the fleet is in a quiet window. Same pattern as sibling INFRA-2065 (precursor INFRA-3838).
+  outcome_id: MISSION-010
+
