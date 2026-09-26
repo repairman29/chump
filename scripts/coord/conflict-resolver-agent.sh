@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/conflict-resolver-agent.sh — INFRA-1488 (Marcus M-C).
 #
 # Auto-rebase + merge-conflict-resolution agent for fleet PRs.

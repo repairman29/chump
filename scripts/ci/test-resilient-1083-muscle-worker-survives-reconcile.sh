@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-resilient-1083-muscle-worker-survives-reconcile.sh — RESILIENT-1083
 #
 # Proves the PERMANENT fix for the "CJ-shaped manifest" worker-orphan class:

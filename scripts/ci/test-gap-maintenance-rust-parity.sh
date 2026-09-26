@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-gap-maintenance-rust-parity.sh — INFRA-2000 Phase 1
 #
 # Smoke test for the four Rust binaries that port the Python gap-tools:

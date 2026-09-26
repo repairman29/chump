@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # opus-slot-tracker.sh — META-093
 #
 # Parallel sub-fleet slot tracker for the Opus shepherd /loop. Manages up to 3

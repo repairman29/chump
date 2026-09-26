@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/farmer.sh — RESILIENT-068
 #
 # dev.chump.farmer — un-killable control-plane tender.

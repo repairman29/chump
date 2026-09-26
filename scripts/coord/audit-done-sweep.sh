@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # audit-done-sweep.sh — CREDIBLE-1369 (CREDIBLE-279 slice)
 #
 # `chump gap audit-done` (src/done_auditor.rs, INFRA-3495) re-checks closed

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # node-deploy-lag-watchdog.sh (RESILIENT-523) — Linux/systemd counterpart of
 # scripts/coord/merge-deploy-lag-watchdog.sh (INFRA-3454, macOS/launchd only).
 #

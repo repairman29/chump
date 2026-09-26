@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-stale-binary-ship-blocked.sh — INFRA-825 CI gate
 #
 # Asserts that the remaining destructive bulk-YAML operation

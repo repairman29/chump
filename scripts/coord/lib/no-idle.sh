@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/no-idle.sh — shared anti-idle helpers (INFRA-2210)
 #
 # Operator directive: "no idle curators, ship aggressively for 12h, conserve

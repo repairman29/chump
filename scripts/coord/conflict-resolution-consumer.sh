@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # conflict-resolution-consumer.sh — RESILIENT-301.
 #
 # armed-pr-rebaser.sh (INFRA-3473) EMITS armed_pr_needs_conflict_resolution

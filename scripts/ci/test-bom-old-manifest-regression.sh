@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-bom-old-manifest-regression.sh — INFRA-7769
 #
 # docs/strategy/ONE_COMMAND_INSTALL.md section 1 (INFRA-7756, one-command-

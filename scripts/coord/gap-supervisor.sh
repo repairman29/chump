@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # gap-supervisor.sh — RESILIENT-058 (A2A L6a per-gap supervision tree)
 #
 # Tracks restart attempts per gap-id in a rolling window. When a gap exceeds

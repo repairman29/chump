@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # INFRA-3687: regression lock for the stale-checkout gap-ID collision class.
 #
 # Bug: `GapStore::reserve_with_external()` used to compute its allocation

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/main-preflight-watchdog-daemon.sh — INFRA-2397
 #
 # Main-Preflight Watchdog daemon: runs `chump preflight` against a fresh

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/recovery-queue-service.sh — INFRA-1993 (THE FLOOR Phase 3)
 #
 # Consumes operator_recovery_requested events from ambient.jsonl,

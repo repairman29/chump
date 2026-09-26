@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # a2a-dead-letter-reaper.sh — INFRA-1946 (INFRA-1862 slice C of E)
 #
 # Background: a message sent to a dormant inbox (recipient session not

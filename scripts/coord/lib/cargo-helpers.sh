@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/cargo-helpers.sh — INFRA-2086 loud-fail cargo build wrapper.
 #
 # Wraps `cargo build` to detect today's silent-failure class (INFRA-2082):

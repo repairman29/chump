@@ -14,7 +14,7 @@
 #
 # Run from repo root: bash scripts/ci/test-publish-guard-report-only.sh
 
-set -u
+set -euo pipefail
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT" || exit 2
 

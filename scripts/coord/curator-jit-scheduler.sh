@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # curator-jit-scheduler.sh — INFRA-1892
 #
 # Bash daemon that tails .chump-locks/ambient.jsonl, watches for curator

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-required-checks-non-empty.sh — INFRA-2201
 #
 # Asserts the resilience invariant from INFRA-2201:

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # notify-operator.sh — RESILIENT-263: reach the operator's PHONE when a
 # production line stops.
 #

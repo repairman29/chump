@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/cascade-unblock-detector.sh — INFRA-2070 (META-118 sub-gap 4)
 #
 # Cascade-unblock detector: when a wedge_auto_fix PR merges, identify all open PRs

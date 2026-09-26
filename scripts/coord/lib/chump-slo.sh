@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # chump-slo.sh — SLO-breach consumer registry (INFRA-2424)
 #
 # This file documents every place in the codebase that reads or acts on the

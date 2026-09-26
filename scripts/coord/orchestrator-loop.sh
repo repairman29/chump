@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/orchestrator-loop.sh — Chump orchestrator-opus (wizard) role CLI (harness-neutral)
 #
 # Productizes the orchestrator/wizard role per INFRA-1917 + META-097, mirroring

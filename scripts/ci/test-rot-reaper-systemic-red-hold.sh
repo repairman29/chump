@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-rot-reaper-systemic-red-hold.sh — RESILIENT-1188 (systemic-red guard)
 #
 # #4637 taught the rot-reaper's CLASS 2 to SPARE an INDIVIDUAL PR whose real

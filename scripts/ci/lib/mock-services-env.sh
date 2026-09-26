@@ -1,3 +1,4 @@
+set -euo pipefail
 # Source this to redirect Anthropic/OpenAI/Stripe/Supabase API calls to the
 # local mock-services fixtures (tests/fixtures/mock-services, CP-009,
 # INFRA-1841). Only valid while the mocks are up — see

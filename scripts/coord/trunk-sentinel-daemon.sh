@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/trunk-sentinel-daemon.sh — Trunk Health Sentinel daemon
 #
 # Detects when main's ci.yml conclusion has been non-success for >N minutes

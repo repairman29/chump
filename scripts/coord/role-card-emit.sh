@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/role-card-emit.sh — INFRA-2017 (RCA Change 2 follow-up)
 #
 # Emits kind=role_card to ambient.jsonl so peers can dedupe by physical

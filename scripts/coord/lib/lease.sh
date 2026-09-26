@@ -1,4 +1,5 @@
 #!/bin/sh
+set -euo pipefail
 # scripts/coord/lib/lease.sh
 #
 # Shared logic for locating and parsing chump lease/claim files

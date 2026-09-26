@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/md-links-loop.sh — Chump curator-opus-md-links role CLI (harness-neutral)
 #
 # Productizes the curator-opus-md-links role per INFRA-1925 + META-097.

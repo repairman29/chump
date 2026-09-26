@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # META-163: curator-sentinel — producer side for META-158 fan-out-to-inbox.
 #
 # Every curator loop sources this lib and calls `_create_curator_sentinel

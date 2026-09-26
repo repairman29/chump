@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/shared-target-cache-reaper.sh — RESILIENT-1045
 #
 # Proactive, cap-based reaper for the shared cargo build cache

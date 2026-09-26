@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/cluster-detector.sh — INFRA-1987 (THE FLOOR Phase 1)
 #
 # Detects CI-failure CLUSTERS: when N≥3 OPEN PRs share the IDENTICAL set

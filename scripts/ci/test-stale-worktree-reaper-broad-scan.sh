@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-stale-worktree-reaper-broad-scan.sh — INFRA-2339 smoke test
 #
 # Verifies that stale-worktree-reaper.sh broadened scan correctly classifies

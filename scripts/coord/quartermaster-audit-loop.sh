@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/quartermaster-audit-loop.sh — META-205 (curator-opus-quartermaster).
 #
 # Harness-neutral CLI for the quartermaster shelfware-audit daemon. Ticks every

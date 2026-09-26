@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # outcome-verify-heal-consumer.sh — INFRA-3654 (PEER-VERI-07, MISSION-010).
 #
 # WHY THIS EXISTS. crates/chump-verify/src/external_verify_merge.rs emits

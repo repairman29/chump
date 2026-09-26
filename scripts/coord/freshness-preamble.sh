@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # freshness-preamble.sh — META-115 (sub-gap of META-114 freshness discipline cluster)
 #
 # Per-session source-freshness preamble. Runs at curator session-start and

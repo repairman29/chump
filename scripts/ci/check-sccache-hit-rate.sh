@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/check-sccache-hit-rate.sh — CREDIBLE-085 (2026-06-04)
 #
 # Post-build gate: parses `sccache --show-stats` and fails the build when

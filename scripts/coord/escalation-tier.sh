@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # escalation-tier.sh — INFRA-1890
 #
 # Detector escalation tier: when the same ambient signature fires N times

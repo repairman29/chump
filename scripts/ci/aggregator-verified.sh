@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # aggregator-verified.sh — CREDIBLE-269 (SHIP-INFRA 1/7)
 #
 # Decision-logic core for the `verified` aggregator described in

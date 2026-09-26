@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-rot-reaper-verified-red-spare.sh — RESILIENT-311 completion (verified-red spare)
 #
 # PR #4606 taught the stale-pr-reaper to spare green-underneath BLOCKED PRs. But

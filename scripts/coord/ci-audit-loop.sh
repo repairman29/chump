@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/ci-audit-loop.sh — Chump curator-opus-ci-audit role CLI (harness-neutral)
 #
 # Productizes the curator-opus-ci-audit role per INFRA-1923 + META-097.

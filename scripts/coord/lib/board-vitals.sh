@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # board-vitals.sh — RESILIENT-371: the resident board's NON-merge watch.
 #
 # WHY THIS EXISTS. The board-cycle beat (INFRA-3590) + its escalate organ

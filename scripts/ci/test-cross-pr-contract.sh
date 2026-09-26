@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-cross-pr-contract.sh — INFRA-2406
 #
 # CI gate: refuse merge when open PRs introduce cross-PR contract mismatches

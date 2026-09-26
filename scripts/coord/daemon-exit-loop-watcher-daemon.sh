@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/daemon-exit-loop-watcher-daemon.sh — INFRA-2417
 #
 # Daemon-exit-loop watcher: queries launchd for each known daemon label and

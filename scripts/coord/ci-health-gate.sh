@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ci-health-gate.sh — INFRA-1607
 #
 # CI health gate daemon. Runs every 5 min via launchd.

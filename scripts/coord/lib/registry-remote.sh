@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # registry-remote.sh — where the gap registry (.chump/state.sql) is published.
 #
 # The gap registry is private data. It is published to a separate private git

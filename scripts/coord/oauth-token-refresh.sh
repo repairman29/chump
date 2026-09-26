@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/oauth-token-refresh.sh — INFRA-2124
 #
 # Standalone OAuth refresh daemon: extracts the current Claude Code OAuth

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/converge-mirror.sh — RESILIENT-001
 #
 # Canonical "make this pure BUILD-MIRROR working tree current with a ref"

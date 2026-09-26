@@ -12,7 +12,7 @@
 #
 # Run from repo root: bash scripts/ci/test-resilient-1009-model-ladder-single-source.sh
 
-set -u
+set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 

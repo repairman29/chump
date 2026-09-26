@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scratch.sh — Bash-callable interface to the A2A scratchpad (INFRA-1121).
 #
 # Wraps the file-backed chump_coord::scratchpad get/set/cas API so

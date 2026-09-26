@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # race-control.sh — CREDIBLE-296: live merge-mix board + waste-over-threshold alarm
 #
 # "Nobody watches the tape" — this is the tape. Reads the last N merged PRs to

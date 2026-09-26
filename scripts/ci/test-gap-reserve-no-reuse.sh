@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-gap-reserve-no-reuse.sh — INFRA-1954 regression test.
 #
 # During the 2026-05-25 Cold Water cycle, `chump gap reserve` handed out four

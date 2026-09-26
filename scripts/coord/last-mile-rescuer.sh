@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # last-mile-rescuer.sh — INFRA-2629
 #
 # The CONSUMER side of orphan-worktree-watchdog (RESILIENT-026), plus two

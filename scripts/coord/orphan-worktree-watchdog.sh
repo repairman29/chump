@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # orphan-worktree-watchdog.sh — RESILIENT-026
 #
 # Detects abandoned /tmp/chump-* worktrees: those that have uncommitted or

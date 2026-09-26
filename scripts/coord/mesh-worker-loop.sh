@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/mesh-worker-loop.sh — INFRA-2545 (FLEET-034 Phase 2 / INFRA-2476)
 #
 # The persistent CONSUMER half of the NATS work-routing mesh. The publisher half

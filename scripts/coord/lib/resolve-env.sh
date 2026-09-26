@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # resolve-env.sh — RESILIENT-266: find the repo's .env from ANY checkout,
 # including a claim worktree.
 #

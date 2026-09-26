@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/post-push-integrity-watch.sh — INFRA-2026
 #
 # Daemon: detect "post-push PR auto-close" incidents where a stale-base force-push

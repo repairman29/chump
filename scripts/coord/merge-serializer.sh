@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # merge-serializer.sh — RESILIENT-372. Native-merge-queue substitute.
 #
 # WHY THIS EXISTS

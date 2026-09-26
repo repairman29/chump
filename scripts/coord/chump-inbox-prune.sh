@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # chump-inbox-prune.sh — Size and age rotation for .chump-locks/inbox/*.jsonl files.
 #
 # INFRA-1979: broadcast.sh appends to inbox files without any rotation cap.

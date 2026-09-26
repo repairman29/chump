@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-atomic-claim-collision.sh — INFRA-1608
 #
 # Regression test for the atomic-claim integrity bug: two simultaneous live

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-liaison-webhook-cache.sh — INFRA-1877
 #
 # End-to-end smoke test for GitHub Liaison Phase 2 (INFRA-1318 sub-gap 5/5).

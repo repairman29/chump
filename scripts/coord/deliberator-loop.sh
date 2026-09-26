@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/deliberator-loop.sh — Chump curator-opus-deliberator role CLI (harness-neutral)
 #
 # Productizes the curator-opus-deliberator role per META-162.

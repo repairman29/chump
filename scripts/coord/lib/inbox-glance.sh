@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # inbox-glance.sh — the mandatory "Glance" phase (INFRA-1798).
 #
 # A2A_MASTER_PLAN_2026-06-03 Tier-0 step 0.3: `chump-inbox.sh read` must be

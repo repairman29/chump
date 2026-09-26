@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/handoff-loop.sh — Chump curator-opus-handoff role CLI (harness-neutral)
 #
 # Productizes the curator-opus-handoff role per INFRA-1922 + META-097.

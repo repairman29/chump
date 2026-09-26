@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/inbox-check-urgent.sh — INFRA-2016 (the real keystone) + INFRA-2341
 #
 # Reads the GLOBAL urgent inbox (.chump-locks/URGENT-INBOX.jsonl) that
