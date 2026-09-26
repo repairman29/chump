@@ -422,6 +422,15 @@ def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
 
 
 def main() -> int:
+    # INFRA-1737: loop-stop sentinel — checked at the top of every invocation
+    # so an operator can halt the dispatch loop within one cycle by touching
+    # this file, without needing to kill the worker process.
+    repo_root_for_stop = os.environ.get("CHUMP_REPO", os.getcwd())
+    stop_sentinel = os.path.join(repo_root_for_stop, ".chump-locks", "loop-stop-requested")
+    if os.path.exists(stop_sentinel):
+        print("stop requested: .chump-locks/loop-stop-requested exists, exiting", file=sys.stderr)
+        return 0
+
     gap_file = os.environ.get("GAP_JSON_FILE")
     if not gap_file or not os.path.exists(gap_file):
         return 0
