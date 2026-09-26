@@ -198,6 +198,7 @@ mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
+mod pr_blame_file; // INFRA-1445: chump pr blame-file <path>
 mod pr_coupling_cost;
 mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
@@ -5491,6 +5492,45 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump pr blame-file <path> [--json] [--db <path>]` (INFRA-1445) —
+    // CREDIBLE: combines git log on the path with GitHub squash-merge
+    // history (via .chump/github_cache.db) so the operator sees fixes
+    // that landed via a squash-merged/cherry-picked PR that plain
+    // `git log -- <path>` alone missed.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("blame-file")
+    {
+        let path = match args.get(3) {
+            Some(p) if !p.starts_with("--") => p.clone(),
+            _ => {
+                eprintln!("Usage: chump pr blame-file <path> [--json] [--db <path>]");
+                std::process::exit(2);
+            }
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let db_path = args
+            .iter()
+            .position(|a| a == "--db")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| repo_root.join(".chump").join("github_cache.db"));
+        match pr_blame_file::run(&repo_root, &db_path, &path) {
+            Ok(rows) => {
+                if json_out {
+                    println!("{}", pr_blame_file::render_json(&path, &rows)?);
+                } else {
+                    print!("{}", pr_blame_file::render_text(&path, &rows));
+                }
+            }
+            Err(e) => {
+                eprintln!("chump pr blame-file: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
     }
 
     // `chump pr fix-clippy <PR#> [--dry-run]`
