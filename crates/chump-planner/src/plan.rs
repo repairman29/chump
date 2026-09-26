@@ -97,7 +97,7 @@ pub fn build_plan(
         .iter()
         .enumerate()
         .map(|(i, (g, prereqs))| {
-            let s = score(g, graph, &open_set, telemetry, today, weights);
+            let s = score(g, gaps, graph, &open_set, telemetry, today, weights);
             (i, s, prereqs.clone())
         })
         .collect();
