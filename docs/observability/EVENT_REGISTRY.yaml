@@ -10930,6 +10930,20 @@ events:
     # payload: {finding_id: int, finding_class: str, severity: str, tier: int (0|1|2),
     #           detail: str, artifact_path?: str, pr_number?: int, gap_id?: str}
 
+  - kind: unreferenced_strategy_doc
+    effect_metric: credible
+    emitter: crates/chump-inventory/src/inventory.rs detect_unreferenced_strategy_docs (INFRA-1772)
+    trigger: >
+      Emitted once per docs/strategy/*.md doc whose mtime is >90 days old
+      AND which zero gaps reference (docs/gaps/*.yaml body scan). Fires
+      alongside the archive-move attempt (src file relocated into
+      docs/strategy/archive/) — failure_class is present only when that
+      move failed: Transient for a retryable error (e.g. permission
+      denied), Permanent when the source file was already gone.
+    consumers: [ops-audit, inventory-cli]
+    fields_required: [ts, kind, path, staleness_days]
+    # payload: {path: str, staleness_days: int, failure_class?: "Transient"|"Permanent"}
+
   # ── INFRA-2397: main-preflight-watchdog daemon ───────────────────────────────
   - kind: main_preflight_red
     effect_metric: main_preflight_recovered_within_60min
