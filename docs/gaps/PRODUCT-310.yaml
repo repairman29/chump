@@ -1,0 +1,37 @@
+- id: PRODUCT-310
+  domain: PRODUCT
+  title: "[gcp-exit] Complete Firestore document export + Storage bucket copy for PRODUCT-303 projects once billing reopens"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Remainder of PRODUCT-303: with the Firebase/GCP billing account closed (ASK-021), the 2026-09-26
+    cuphead session confirmed the no-billing ceiling covers Auth export + Firestore/Storage *metadata*
+    listing only — actual Firestore document export (`gcloud firestore export`) AND Storage object
+    download (`gcloud storage cp` / `gsutil cp`) both fail with 403 BILLING_DISABLED even though bucket
+    listing works. Once Jeff reopens billing: (1) `gcloud firestore export gs://<bucket>/firestore-export
+    --project=<p>` then `gsutil cp -r` down to /srv/gcp-export/<p>/firestore/ for trove-web, echeo-vid,
+    fulcrum-41e50 (peakvinyl has no Firestore database; playsmuggler-b1cda has Firestore API disabled —
+    nothing to export for either); (2) `gcloud storage cp -r gs://<bucket>/* /srv/gcp-export/<p>/storage/`
+    for trove-web (trove-web.firebasestorage.app, 305 objects) and echeo-vid (echeo-vid.firebasestorage.app,
+    888 objects); (3) record real per-collection document counts (today's ledger only has collection
+    *names*, not counts) and confirm object counts on disk match today's `gcloud storage ls` counts;
+    (4) re-verify one sample doc per collection re-parses. Separately (console-only, not gated on
+    billing): pull "Password hash parameters" (signer_key, salt_separator, rounds, mem_cost) from
+    Firebase Console > Authentication > Users > (⋮ menu) for peakvinyl, echeo-vid, fulcrum-41e50,
+    workbench-tam-app — the only 4 projects with password-auth users — since that's not exposed by any
+    API and today's auth:export JSON has passwordHash+salt but no algorithm params to verify them with.
+  acceptance_criteria:
+    1. Firestore document export exists on owned storage for trove-web, echeo-vid, fulcrum-41e50 with per-collection document counts recorded in workspace-docs/GCP_EXIT.md
+    2. Storage bucket copy exists on owned storage for trove-web (305 objects) and echeo-vid (889 objects across 2 buckets), object counts on disk verified to match
+    3. Password hash parameters recorded (or the exact operator ask restated if still missing) for peakvinyl, echeo-vid, fulcrum-41e50, workbench-tam-app
+    4. Exports verified readable (one sample doc per collection re-parsed); no project deleted, no data mutated
+  depends_on: []
+  notes: |
+    FILED 2026-09-26 (PRODUCT-303 follow-up, cuphead session): everything in this gap is blocked on
+    Jeff reopening the Firebase/GCP billing account (ASK-021) — do not pick this up until that's
+    confirmed. Password hash params are a separate, non-billing-gated Jeff-only browser step and can
+    be done independently. See workspace-docs/GCP_EXIT.md "2026-09-26 — PRODUCT-303 export ledger" for
+    full context (exact bucket names, object counts, what's already exported). Read-only gap: never
+    delete or mutate a project. preferred_machine: cuphead (same auth/CLI setup as PRODUCT-303).
+  preferred_machine: cuphead
