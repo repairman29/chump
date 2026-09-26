@@ -1,0 +1,28 @@
+# META-1030 (State-Audit / Reconciliation organ) — the DETERMINISTIC backstop to
+# the LLM fresh-eyes curator. Diffs the fleet's self-reports (cycle-kind, gap=done,
+# organ is-active, node last-seen, auth gauge) against ground truth (state.db,
+# git origin/main, ambient heartbeats, tailscale, a live auth probe) and PAGES via
+# operator-recall.sh on any DIVERGENCE. Uses ZERO inference (no LLM) — reliable,
+# fast, cheap enough to run on a tight cadence, which is exactly what let the LLM
+# curator miss all of this.
+#
+# No WorkingDirectory (same discipline as chump-effect-verifier.service — the
+# CHDIR incident that track exists to never repeat): invoke by absolute path.
+# Paths below are primary-node(root)-shaped and are host-rewritten per node by
+# scripts/ops/lib/organ-unit-install-lib.sh when place_role_unit_files installs
+# them — no hardcoded per-host path survives.
+[Unit]
+Description=Chump state-audit — deterministic self-report vs ground-truth reconciliation, pages on divergence (META-1030)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+# Source providers.env (export-format creds) then exec the organ — same pattern
+# as chump-effect-verifier.service / chump-pr-lander.service. Non-login shell so
+# the host-rewriter's injected Environment=PATH stays authoritative.
+ExecStart=/bin/bash -c 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/state-audit-reconcile.sh tick'
+TimeoutStartSec=300
