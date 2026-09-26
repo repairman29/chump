@@ -149,6 +149,23 @@ pub fn run_init(repo_root: &Path, args: &InitArgs) -> Result<()> {
         println!("  [e] wrote ~/.chump/state.db scaffold");
     }
 
+    // (e2) INFRA-1615: seed curriculum — tap skills-bundle/* into
+    // $CHUMP_BRAIN_PATH/skills/ so a fresh install doesn't start with an
+    // empty brain. Idempotent: skips names that already exist.
+    match crate::skills::install_bundle(repo_root) {
+        Ok(installed) if installed.is_empty() => {
+            println!(
+                "  [e2] skill bundle ... nothing to install (already present or no bundle found)"
+            );
+        }
+        Ok(installed) => {
+            println!("  [e2] skill bundle ... installed {}", installed.join(", "));
+        }
+        Err(e) => {
+            println!("  [e2] skill bundle ... failed: {e:#}");
+        }
+    }
+
     // UX-001: detect model, write .env (repo-local), start server, open browser
     let model_cfg = detect_model();
     println!("  [*] model detection ... {}", model_cfg.summary());
