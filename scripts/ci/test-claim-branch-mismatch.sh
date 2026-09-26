@@ -84,6 +84,27 @@ else
     fail "branch mismatch -> expected exit 1 + verdict=mismatch, got rc=$rc out=$out"
 fi
 
+# --- Test 3b: mismatch also emits an observability event (INFRA-1649) -----
+if grep -q '"status":"failure"' <<<"$out" && grep -q '"failure_class":"permanent"' <<<"$out"; then
+    pass "branch mismatch -> observability event status=failure failure_class=permanent"
+else
+    fail "branch mismatch -> expected observability event, got out=$out"
+fi
+
+# --- Test 3c: CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT=1 -> status=timeout,
+# failure_class=transient, exit 124 (INFRA-1649 AC#1/#3) -------------------
+rc=0
+out=$(cd "$SANDBOX" && CHUMP_SESSION_ID="claim-infra-1649-claim" CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT=1 "$CHUMP" verify-claim-branch) || rc=$?
+if [[ "$rc" -eq 124 ]] \
+    && grep -q '"status":"timeout"' <<<"$out" \
+    && grep -q '"failure_class":"transient"' <<<"$out" \
+    && grep -q '"duration_ms"' <<<"$out" \
+    && grep -q '"cost_estimate"' <<<"$out"; then
+    pass "simulated timeout -> exit 124, status=timeout, failure_class=transient"
+else
+    fail "simulated timeout -> expected exit 124 + status=timeout, got rc=$rc out=$out"
+fi
+
 # --- Test 4: only a peer session's lease -> exit 0 (not blocking) ----------
 rm -f "$SANDBOX/.chump-locks/claim-infra-1649-claim.json"
 write_lease "claim-infra-9999-claim.json" "claim-infra-9999-claim" "INFRA-9999"
@@ -93,6 +114,43 @@ if [[ "$rc" -eq 0 ]] && grep -q '"verdict":"peer_leases_only"' <<<"$out"; then
     pass "peer-only lease -> exit 0, not blocking"
 else
     fail "peer-only lease -> expected exit 0 + verdict=peer_leases_only, got rc=$rc out=$out"
+fi
+
+# --- Test 5: pre-push Guard 0's run_guard() classifies transient vs
+# permanent and prints the "guard: ok" / "guard: fail class=<...>" summary
+# contract (INFRA-1649 AC#2) -------------------------------------------
+run_guard_src() {
+    # Extract just the run_guard() function body from the real hook so this
+    # test exercises the shipped implementation, not a re-typed copy.
+    awk '/^run_guard\(\) \{/,/^}/' "$REPO_ROOT/scripts/git-hooks/pre-push"
+}
+
+rc=0
+out=$(cd "$SANDBOX" && CHUMP_SESSION_ID="claim-infra-1649-claim" bash -c "
+    chump() { command '$CHUMP' \"\$@\"; }
+    export -f chump
+    $(run_guard_src)
+    run_guard
+") || rc=$?
+if [[ "$rc" -eq 0 ]] && grep -q '^guard: ok$' <<<"$out"; then
+    pass "run_guard(): matching branch -> 'guard: ok', exit 0"
+else
+    fail "run_guard(): expected 'guard: ok' + exit 0, got rc=$rc out=$out"
+fi
+
+write_lease "claim-infra-1649-claim.json" "claim-infra-1649-claim" "INFRA-1649"
+git -C "$SANDBOX" checkout -q -b chump/run-guard-wrong-branch
+rc=0
+out=$(cd "$SANDBOX" && CHUMP_SESSION_ID="claim-infra-1649-claim" bash -c "
+    chump() { command '$CHUMP' \"\$@\"; }
+    export -f chump
+    $(run_guard_src)
+    run_guard
+" 2>&1) || rc=$?
+if [[ "$rc" -eq 1 ]] && grep -q '^guard: fail class=permanent$' <<<"$out"; then
+    pass "run_guard(): branch mismatch -> 'guard: fail class=permanent', exit 1"
+else
+    fail "run_guard(): expected 'guard: fail class=permanent' + exit 1, got rc=$rc out=$out"
 fi
 
 echo

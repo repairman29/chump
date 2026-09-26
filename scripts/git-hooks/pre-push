@@ -291,18 +291,44 @@ trap _silent_alarm_check_and_emit EXIT
 #
 # Bypass: same trailer as Guard 5 — 'Off-Rails-Bypass: <reason>' on HEAD,
 # or CHUMP_OFF_RAILS_CHECK=0 git push.
+#
+# run_guard (INFRA-1649 hardening): wraps the `chump verify-claim-branch`
+# invocation so callers get a one-line transient/permanent verdict instead
+# of a bare exit code. A mismatch (rc=1) is a real off-rails misconfig —
+# permanent, the push should stop. Any other non-zero rc (missing binary
+# race, signal, timeout) is transient — don't block on it, just surface it.
 # -----------------------------------------------------------------------
+run_guard() {
+    local out rc
+    out="$(chump verify-claim-branch 2>&1)"
+    rc=$?
+    if [[ "$rc" -eq 0 ]]; then
+        echo "guard: ok"
+        return 0
+    elif [[ "$rc" -eq 1 ]]; then
+        echo "$out" >&2
+        echo "guard: fail class=permanent" >&2
+        return 1
+    else
+        echo "$out" >&2
+        echo "guard: fail class=transient" >&2
+        return 1
+    fi
+}
+
 if command -v chump &>/dev/null && [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
-    if ! chump verify-claim-branch >/dev/null 2>&1; then
+    if ! run_guard >/tmp/chump-pre-push-guard0.out 2>/tmp/chump-pre-push-guard0.err; then
         _pp_head_msg="$(git -C "$REPO_ROOT" log -1 --pretty=%B 2>/dev/null || true)"
         if grep -qE '^Off-Rails-Bypass:' <<<"$_pp_head_msg"; then
             : # bypass trailer present — Guard 5 below will audit-log it
         else
-            chump verify-claim-branch >&2 || true
+            cat /tmp/chump-pre-push-guard0.err >&2 || true
             echo "[pre-push] Bypass: add 'Off-Rails-Bypass: <reason>' trailer to HEAD commit, or CHUMP_OFF_RAILS_CHECK=0 git push" >&2
+            rm -f /tmp/chump-pre-push-guard0.out /tmp/chump-pre-push-guard0.err
             exit 1
         fi
     fi
+    rm -f /tmp/chump-pre-push-guard0.out /tmp/chump-pre-push-guard0.err
 fi
 
 # -----------------------------------------------------------------------

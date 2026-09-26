@@ -158,12 +158,32 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
     Verdict::PeerLeasesOnly
 }
 
+/// `--branch <name>` override, mainly for tests: skip the `git rev-parse`
+/// subprocess and check this exact name against the live leases instead.
+fn branch_override(args: &[String]) -> Option<String> {
+    args.iter()
+        .position(|a| a == "--branch")
+        .and_then(|i| args.get(i + 1))
+        .map(|s| s.to_lowercase())
+}
+
 pub fn run_cli(args: &[String]) -> i32 {
+    let start = std::time::Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let Some(branch) = current_branch(&repo_root) else {
+    let Some(branch) = branch_override(args).or_else(|| current_branch(&repo_root)) else {
         eprintln!("chump verify-claim-branch: could not resolve current git branch");
+        // INFRA-1649: `git rev-parse` failing (missing binary, corrupt repo,
+        // detached HEAD race) is an environment hiccup, not a real
+        // off-rails misconfiguration — classify as transient so callers
+        // don't treat it the same as a confirmed branch mismatch.
+        let event = chump_verify::observability::build_event(
+            "failure",
+            start.elapsed().as_millis(),
+            "transient",
+        );
+        chump_verify::observability::emit(&event);
         return 1;
     };
 
@@ -198,12 +218,25 @@ pub fn run_cli(args: &[String]) -> i32 {
     let leases = list_active();
     let verdict = verify(&branch, &session_id, &leases);
 
-    match verdict {
+    // Test-only escape hatch (INFRA-1649 AC#3): simulate a subprocess
+    // timeout without actually blocking for CHUMP_VERIFY_CI_WAIT_SECS.
+    if std::env::var("CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT").as_deref() == Ok("1") {
+        eprintln!("chump verify-claim-branch: SIMULATED timeout (CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT=1)");
+        let event = chump_verify::observability::build_event(
+            "timeout",
+            start.elapsed().as_millis(),
+            "transient",
+        );
+        chump_verify::observability::emit(&event);
+        return 124;
+    }
+
+    let (rc, status, failure_class) = match verdict {
         Verdict::NoLeases => {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
             }
-            0
+            (0, "success", "none")
         }
         Verdict::PeerLeasesOnly => {
             eprintln!(
@@ -213,7 +246,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"peer_leases_only\",\"branch\":\"{branch}\"}}");
             }
-            0
+            (0, "success", "none")
         }
         Verdict::Ok { gap_id } => {
             // scanner-anchor: "kind":"claim_branch_verified"
@@ -227,7 +260,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             } else {
                 println!("chump verify-claim-branch: OK — branch '{branch}' matches claimed gap {gap_id}");
             }
-            0
+            (0, "success", "none")
         }
         Verdict::Mismatch {
             gap_id,
@@ -255,9 +288,20 @@ pub fn run_cli(args: &[String]) -> i32 {
                 eprintln!("Use: cd to your claim worktree OR run `chump --release` if abandoning this claim.");
                 eprintln!();
             }
-            1
+            // A confirmed branch/lease mismatch is a real misconfiguration
+            // (wrong worktree), not an environment hiccup — permanent until
+            // the operator fixes the checkout.
+            (1, "failure", "permanent")
         }
-    }
+    };
+
+    let event = chump_verify::observability::build_event(
+        status,
+        start.elapsed().as_millis(),
+        failure_class,
+    );
+    chump_verify::observability::emit(&event);
+    rc
 }
 
 #[cfg(test)]

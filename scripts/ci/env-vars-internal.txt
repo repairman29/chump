@@ -3047,3 +3047,10 @@ CHUMP_WEB_PORT
 CHUMP_STATE_DB_YAML_SYNC_INTERVAL_S
 # detected in: (standard input)
 CHUMP_STATE_DB_YAML_SYNC_MODE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_COST_PER_SECOND
+# detected in: (standard input)
+CHUMP_VERIFY_CLAIM_BRANCH_SIMULATE_TIMEOUT
