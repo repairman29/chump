@@ -806,6 +806,41 @@ bash scripts/ci/test-atomic-claim-collision.sh            # full regression scri
 
 ---
 
+<a id="deep-claim-collision"></a>
+### deep-claim-collision — declared lease paths[] intersect a sibling's (INFRA-1604)
+
+**Symptom:** `chump claim <GAP-ID> --paths <CSV>` exits 15 with
+`[claim] INFRA-1604: LEASE PATH COLLISION with sibling session … (gap …) —
+overlapping paths: …`.
+
+**Root cause:** INFRA-1394 only blocks when a gap's AC *text* mentions one of
+5 hardcoded hot files. Real collisions happen across dozens of files that
+never get named in AC text, but ARE declared in each lease's `paths[]` field
+(INFRA-1240) — that's what the lease system's `--paths` flag exists for.
+INFRA-1604 computes the actual set intersection of this claim's declared
+paths against every sibling lease's declared paths, with glob (`src/foo/*.rs`
+overlaps `src/foo/bar.rs`) and directory-prefix (`docs/` overlaps
+`docs/gaps/X.yaml`) matching — structural, not heuristic. The INFRA-1394
+AC-text scan still runs too, as a secondary defense-in-depth check for leases
+whose `paths[]` is incomplete or omitted.
+
+**Recovery:**
+```bash
+# See exactly which paths collide and with whom (printed to stderr, and in
+# ambient.jsonl as kind=lease_path_collision):
+grep '"kind":"lease_path_collision"' .chump-locks/ambient.jsonl | tail -5
+# If the overlap is real and you still need to proceed (e.g. the sibling's
+# work is stale, or you've coordinated a merge-driver split):
+chump claim <GAP-ID> --role <role> --paths <CSV> --force-overlap
+```
+
+**Test command:**
+```bash
+bash scripts/ci/test-deep-claim-collision.sh
+```
+
+---
+
 <a id="worktree-path-confusion"></a>
 ### worktree-path-confusion — macOS /tmp → /private/tmp symlink corrupts gitdir (INFRA-779)
 
