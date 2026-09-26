@@ -14,6 +14,8 @@ metadata: {}
 **I want to predict the CI verdict using local checks + current queue-jam state + recent required-check failure history**,
 **so that I don't add my PR to an already-jammed queue and trigger an hour of operator firefighting that 7 sibling workers ALREADY caused** (precedent: 2026-05-17 03:00 UTC — 10/10 open PRs BLOCKED, fleet-paused doctrine ignored).
 
+## When to Use
+
 ## When this skill applies
 
 Trigger this skill whenever you are about to:
@@ -21,6 +23,12 @@ Trigger this skill whenever you are about to:
 - Push to a feature branch with intent to PR
 - Open a PR via `gh pr create`
 - Arm auto-merge on an existing PR via `gh pr merge --auto`
+
+## Quick Reference
+
+Before pushing/arming auto-merge: check queue-jam state and recent
+required-check failure history to predict green/yellow/red before you add
+to an already-jammed queue.
 
 ## Procedure
 

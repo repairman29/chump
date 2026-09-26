@@ -3412,6 +3412,9 @@ async fn main() -> Result<()> {
             println!("  record-outcome NAME true|false");
             println!("                             Record a success/failure outcome");
             println!("  tap-add URL                Install skills from a GitHub repo");
+            println!(
+                "  bundle install             Tap skills-bundle/* into the brain (INFRA-1615)"
+            );
             println!();
             println!("Skills live in: chump-brain/skills/<name>/SKILL.md");
             println!("Override: CHUMP_BRAIN_PATH env var");
@@ -3419,6 +3422,33 @@ async fn main() -> Result<()> {
         }
 
         match subcmd {
+            "bundle" => {
+                let bundle_subcmd = args.get(3).map(String::as_str).unwrap_or("");
+                if bundle_subcmd != "install" {
+                    eprintln!("Usage: chump skill bundle install");
+                    std::process::exit(2);
+                }
+                let repo_root = repo_path::repo_root();
+                match crate::skills::install_bundle(&repo_root) {
+                    Ok(installed) if installed.is_empty() => {
+                        println!(
+                            "chump skill bundle install: nothing to install (already present or no skills-bundle/ found)"
+                        );
+                    }
+                    Ok(installed) => {
+                        println!(
+                            "Installed {} seed skill(s): {}",
+                            installed.len(),
+                            installed.join(", ")
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("chump skill bundle install: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
             "list" => {
                 match crate::skills::list_skills() {
                     Ok(skills) if skills.is_empty() => {
@@ -3655,7 +3685,7 @@ async fn main() -> Result<()> {
             }
             other => {
                 eprintln!("chump skill: unknown subcommand '{other}'");
-                eprintln!("Valid: list, view, health, record-outcome, tap-add");
+                eprintln!("Valid: list, view, health, record-outcome, tap-add, bundle install");
                 eprintln!("Run 'chump skill --help' for usage.");
                 std::process::exit(2);
             }
