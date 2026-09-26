@@ -1,0 +1,13 @@
+- id: INFRA-7898
+  domain: INFRA
+  title: "port BotMergePath in chump-ship (currently hard-stubbed error) — prerequisite for INFRA-2064 cutover"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "chump-ship crates/chump-ship/src/bot_merge.rs::BotMergePath::ship() no longer unconditionally returns ShipError::BotMergeDoubleInstance stub"
+    - "implements the actual bot-merge flow (rebase, push, PR create/update, arm auto-merge) currently in scripts/coord/bot-merge.sh bot-merge mode branch, reusing the PID-locked single-instance pattern already proven in ManualShipPath"
+    - "scripts/ci/test-chump-ship-manual.sh-equivalent bot-merge test added and green"
+    - "CHUMP_SHIP_RUST=1 --mode bot-merge routes to the new path with feature-flag fallback to bash on error"
+  notes: |
+    Discovered while working INFRA-2064 (cutover gate for bot-merge.sh removal). crates/chump-ship/src/bot_merge.rs ship() is a hard stub: unconditionally returns Err(ShipError::BotMergeDoubleInstance) with a 'Phase 1: not implemented' detail message (see ship.rs:36, bot_merge.rs:70-73). INFRA-2064 cannot proceed until this exists — its AC requires removing 2900+ LOC of the bash body including the bot-merge branch, which today has no working Rust replacement. Blocks INFRA-2064.
