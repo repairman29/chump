@@ -68,12 +68,17 @@ pass "real organ-manifest.txt declares chump-conflict-resolution-consumer.timer 
 
 # ── 2d. INFRA-3642 (TREK-16): owned-node factory organs (worker,
 # coherence-sync, self-hosted gap-store/postgrest) are peer-supervised ─────
-# These ran only as hand-installed units on CJ (chump-worker@1.service,
-# chump-cj-sync.timer, chump-postgrest.service) with no organ-manifest.txt
+# These ran only as hand-installed units on CJ with no organ-manifest.txt
 # line — the same "designed/installed but never wired into the revivable
 # gate" blind spot RESILIENT-366 closed above; without a manifest line a dead
 # unit stays dead forever since organ-reconcile only acts on lines here.
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+# Unit names corrected 2026-08-22 (RESILIENT-1490): the manifest previously
+# declared chump-worker@1.service / chump-cj-sync.timer, neither of which was
+# ever installed on CJ (the real units are chump-cj-worker.service and
+# chump-cj-sync.service, a Type=simple .service not a .timer) — a name
+# mismatch that made merged-not-running read a false red. This test now
+# checks the names that are actually declared in the manifest.
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
     line="$(grep -E "^enabled +${unit//./\\.}" "$REAL_MANIFEST")"
     [[ -n "$line" ]] || fail "real manifest missing enabled line for $unit (INFRA-3642)"
     echo "$line" | grep -q 'role=' || fail "real manifest line for $unit has no role="
@@ -272,7 +277,7 @@ pass "7: expired backoff cooldown retries the organ (not a permanent disable)"
 #       re-enables each one when found inactive ("killed").
 MANIFEST="$TMP/manifest-owned-node.txt"
 : > "$MANIFEST"
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
     grep -E "^enabled +${unit//./\\.}" "$REAL_MANIFEST" >> "$MANIFEST"
 done
 [[ -s "$MANIFEST" ]] || fail "could not extract owned-node organ lines from real manifest for kill-then-reconcile"
@@ -286,12 +291,20 @@ EOF
     chmod +x "$TMP/bins/$bin"
 done
 
+# chump-cj-worker.service / chump-cj-sync.service declare file:~/cj-worker-run.sh
+# and file:~/cj-sync-run.sh requires= (RESILIENT-1490) — organ_is_applicable
+# expands ~/ against the effective HOME, so a fake HOME with those assets
+# present is what makes this node "CJ-shaped" for the applicability check.
+FAKE_HOME="$TMP/fake-home"
+mkdir -p "$FAKE_HOME"
+touch "$FAKE_HOME/cj-worker-run.sh" "$FAKE_HOME/cj-sync-run.sh"
+
 : > "$ACTIVE_FILE"; : > "$ENABLE_FAIL_FILE"; : > "$VERIFY_FAIL_FILE"   # all three start "killed" (inactive)
 rm -rf "$BACKOFF_DIR"
 : > "$AMBIENT"
 
-run_reconcile --apply >/dev/null
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+HOME="$FAKE_HOME" run_reconcile --apply >/dev/null
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
     grep -q "enable --now $unit" "$CALL_LOG" \
         || fail "kill-then-reconcile: $unit's requires= are satisfied but reconcile never attempted to enable it"
     grep -qxF "$unit" "$ACTIVE_FILE" \
