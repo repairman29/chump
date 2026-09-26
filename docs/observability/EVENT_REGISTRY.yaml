@@ -1807,6 +1807,18 @@ events:
       would otherwise re-assign. skipped_id is the avoided candidate; the reserve
       retries with the next number.
 
+  - kind: gap_handoff_completed
+    effect_metric: self
+    emitter: src/main.rs — `chump gap handoff` (INFRA-5769, INFRA-1862 slice)
+    trigger: chump gap handoff <GAP-ID> --to <SESSION-ID> committed its
+      transaction — the claim record, lease lock, and worktree pointer for
+      the gap all moved to the target session atomically.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, gap, to_session]
+    docs: |
+      A failed handoff (no live lease, gap already done, bad target) rolls
+      back the whole transaction and never emits this event.
+
   - kind: gap_cooldown_cleared
     effect_metric: self
     emitter: scripts/coord/lib/gap-cooldown.sh via gap_cooldown_clear() (INFRA-1220)

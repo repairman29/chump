@@ -11932,6 +11932,65 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // INFRA-5769 (INFRA-1862 slice): atomic claim/lease/worktree
+            // handoff to another session. Usage:
+            //   chump gap handoff <GAP-ID> --to <session-id> [--ttl 3600] [--worktree PATH]
+            "handoff" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap handoff <GAP-ID> --to <SESSION-ID> [--ttl SECS] [--worktree PATH]\n\n\
+                         Atomically move the live claim, lease lock, and worktree pointer for\n\
+                         <GAP-ID> from whichever session currently holds it to <SESSION-ID>, in\n\
+                         one transaction. Fails closed (no state change) if there is no live\n\
+                         lease to hand off, or if the gap is already done."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap handoff <GAP-ID> --to <SESSION-ID>");
+                    std::process::exit(2);
+                });
+                let to_session = flag("--to").unwrap_or_else(|| {
+                    eprintln!("chump gap handoff: --to <SESSION-ID> is required");
+                    std::process::exit(2);
+                });
+                let ttl: i64 = flag("--ttl").and_then(|s| s.parse().ok()).unwrap_or(3600);
+                let worktree_override = flag("--worktree");
+
+                match store.handoff(&gap_id, &to_session, ttl, worktree_override.as_deref()) {
+                    Ok(()) => {
+                        println!("handed off {} to session {}", gap_id, to_session);
+                        // scanner-anchor: "kind":"gap_handoff_completed" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-5769)
+                        let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let line = format!(
+                            "{{\"ts\":\"{ts}\",\"kind\":\"gap_handoff_completed\",\"gap\":\"{}\",\"to_session\":\"{}\"}}\n",
+                            gap_id.replace('"', ""),
+                            to_session.replace('"', "")
+                        );
+                        use std::io::Write as _;
+                        if let Some(parent) = ambient_path.parent() {
+                            let _ = std::fs::create_dir_all(parent);
+                        }
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .create(true)
+                            .append(true)
+                            .open(&ambient_path)
+                        {
+                            let _ = f.write_all(line.as_bytes());
+                        }
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap handoff: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "preflight" => {
                 // INFRA-1238: trap --help before positional validation.
                 if args

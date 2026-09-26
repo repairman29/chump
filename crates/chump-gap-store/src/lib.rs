@@ -2387,6 +2387,105 @@ impl GapStore {
         Ok(())
     }
 
+    /// INFRA-5769 (INFRA-1862 slice): atomically hand off a live claim on
+    /// `gap_id` from whichever session currently holds it to `to_session`.
+    ///
+    /// The claim record, lease lock, and worktree pointer are all the same
+    /// `leases` row in the canonical store (see
+    /// `docs/architecture/CANONICAL_GAP_STORE.md`), so "atomic across all
+    /// three" reduces to one transaction that deletes the old session's row
+    /// and inserts/merges the new one. If any step fails the whole
+    /// transaction rolls back, so a failed handoff can never leave an
+    /// orphaned lease (neither a dangling old-session row nor a half-written
+    /// new-session row).
+    ///
+    /// `worktree_override`, when set, replaces the worktree pointer carried
+    /// over from the old lease (the new session may run out of a different
+    /// worktree than the one that originated the claim).
+    pub fn handoff(
+        &self,
+        gap_id: &str,
+        to_session: &str,
+        ttl_secs: i64,
+        worktree_override: Option<&str>,
+    ) -> Result<()> {
+        if to_session.is_empty() {
+            bail!("handoff({gap_id}): target session id must not be empty");
+        }
+        let expires_at = unix_now() + ttl_secs;
+
+        self.conn.execute_batch("BEGIN IMMEDIATE")?;
+        let result = (|| -> Result<()> {
+            let status: String = self
+                .conn
+                .query_row(
+                    "SELECT status FROM gaps WHERE id=?1",
+                    params![gap_id],
+                    |r| r.get(0),
+                )
+                .with_context(|| format!("gap {} not found in state.db", gap_id))?;
+            if status == "done" {
+                bail!("gap {} is already done", gap_id);
+            }
+
+            // The live lease is the handoff source of truth — no live lease,
+            // nothing to hand off (this is a claim, not a handoff).
+            let (from_session, existing_worktree): (String, String) = self
+                .conn
+                .query_row(
+                    "SELECT session_id, worktree FROM leases WHERE gap_id=?1 AND expires_at>?2",
+                    params![gap_id, unix_now()],
+                    |r| Ok((r.get(0)?, r.get(1)?)),
+                )
+                .with_context(|| format!("gap {} has no live lease to hand off", gap_id))?;
+
+            if from_session == to_session {
+                // Re-entrant handoff to self: just refresh the TTL/worktree.
+                self.conn.execute(
+                    "UPDATE leases SET expires_at=?1, worktree=?2 WHERE session_id=?3",
+                    params![
+                        expires_at,
+                        worktree_override.unwrap_or(&existing_worktree),
+                        to_session
+                    ],
+                )?;
+                return Ok(());
+            }
+
+            let worktree = worktree_override.unwrap_or(&existing_worktree);
+
+            // session_id is the leases table's primary key, so moving a claim
+            // to a session that already holds an unrelated lease would
+            // collide on INSERT. Drop the old-session row first, then upsert
+            // the new-session row — both inside this one transaction, so a
+            // failure between the two never leaves the old row deleted with
+            // no replacement (orphaned lease).
+            self.conn.execute(
+                "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+                params![from_session, gap_id],
+            )?;
+            self.conn.execute(
+                "INSERT INTO leases(session_id,gap_id,worktree,expires_at)
+                 VALUES(?1,?2,?3,?4)
+                 ON CONFLICT(session_id) DO UPDATE SET gap_id=excluded.gap_id,
+                     worktree=excluded.worktree, expires_at=excluded.expires_at",
+                params![to_session, gap_id, worktree, expires_at],
+            )?;
+            Ok(())
+        })();
+
+        match result {
+            Ok(()) => {
+                self.conn.execute_batch("COMMIT")?;
+                Ok(())
+            }
+            Err(e) => {
+                let _ = self.conn.execute_batch("ROLLBACK");
+                Err(e)
+            }
+        }
+    }
+
     /// Preflight check: is the gap open and unclaimed?
     ///
     /// INFRA-630: accepts 8-char hex short-prefix (UUID short form) via the
@@ -7502,6 +7601,82 @@ mod tests {
             PreflightResult::Claimed(s) => assert_eq!(s, "session-abc"),
             other => panic!("expected Claimed, got {:?}", other),
         }
+    }
+
+    #[test]
+    fn test_handoff_moves_lease_to_target_session() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+        store.claim(&id, "session-a", "/worktrees/a", 3600).unwrap();
+
+        store.handoff(&id, "session-b", 3600, None).unwrap();
+
+        match store.preflight(&id).unwrap() {
+            PreflightResult::Claimed(s) => assert_eq!(s, "session-b"),
+            other => panic!("expected Claimed(session-b), got {:?}", other),
+        }
+        // The old session's lease row must be gone — no orphaned lease left
+        // behind by a successful handoff.
+        let row: Option<String> = store
+            .conn
+            .query_row(
+                "SELECT session_id FROM leases WHERE session_id='session-a'",
+                [],
+                |r| r.get(0),
+            )
+            .optional()
+            .unwrap();
+        assert!(row.is_none(), "expected no leftover lease for session-a");
+    }
+
+    #[test]
+    fn test_handoff_worktree_override() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+        store.claim(&id, "session-a", "/worktrees/a", 3600).unwrap();
+
+        store
+            .handoff(&id, "session-b", 3600, Some("/worktrees/b"))
+            .unwrap();
+
+        let worktree: String = store
+            .conn
+            .query_row(
+                "SELECT worktree FROM leases WHERE session_id='session-b'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(worktree, "/worktrees/b");
+    }
+
+    #[test]
+    fn test_handoff_no_live_lease_fails_without_state_change() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+
+        let result = store.handoff(&id, "session-b", 3600, None);
+        assert!(result.is_err(), "handoff with no live lease should fail");
+
+        // No leases should have been created by the failed attempt.
+        let count: i64 = store
+            .conn
+            .query_row("SELECT COUNT(*) FROM leases WHERE gap_id=?1", [&id], |r| {
+                r.get(0)
+            })
+            .unwrap();
+        assert_eq!(count, 0);
+    }
+
+    #[test]
+    fn test_handoff_done_gap_fails() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EVAL", "Test gap", "P1", "s").unwrap();
+        store.claim(&id, "session-a", "/worktrees/a", 3600).unwrap();
+        store.ship(&id, "session-a", None).unwrap();
+
+        let result = store.handoff(&id, "session-b", 3600, None);
+        assert!(result.is_err(), "handoff on a done gap should fail");
     }
 
     #[test]
