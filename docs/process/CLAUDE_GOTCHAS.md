@@ -2261,3 +2261,38 @@ bypasses that mask CI state.
 **Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
 
 **Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
+
+## Decisions queue — `/api/decisions` contract (INFRA-1563, 2026-09-25)
+
+Sibling to `/api/roadmap` (INFRA-1338): `web/v2/app.js`'s `<chump-view-decisions>`
+component calls `GET /api/decisions` to render the operator-decision queue —
+the human-in-loop surface for the Phase 3 Orchestrator MVP (operator confirms
+decisions the orchestrator/picker/bot-merge can't make unilaterally).
+
+**Source of truth**: `.chump-locks/ambient.jsonl`, not a database table. Any
+fleet code that needs an operator call — demoting/promoting a gap's priority,
+approving a merge, clarifying scope — emits:
+
+```json
+{"ts":"...","kind":"operator_decision_needed","id":"dec-<unique>","decision_kind":"gap_demote|gap_promote|merge_approval|scope_clarify","gap_id":"INFRA-1234","pr_number":4821,"summary":"...","priority":"P1"}
+```
+
+`GET /api/decisions` (`src/routes/decisions.rs`) scans the ambient stream for
+`operator_decision_needed` events and excludes any whose `id` already has a
+matching `operator_decision_resolved` event later in the stream. It does
+**not** cache — reads the whole file per request, same cost model as
+`operator_recall`'s ambient scans.
+
+**Resolving a decision**: `POST /api/decisions/{id}/resolve` with any JSON
+body appends `{"kind":"operator_decision_resolved","id":"<id>","response":<body>}`
+to ambient.jsonl. There is no mutation of the original `operator_decision_needed`
+line — resolution is purely additive, same append-only discipline as the rest
+of the ambient stream.
+
+**Both event kinds are registered** in `docs/observability/EVENT_REGISTRY.yaml`
+— an emitter that fires `operator_decision_needed` without registering it
+trips the emit-without-register CI gate (`scripts/ci/test-event-registry-coverage.sh`).
+
+**Smoke test**: `scripts/ci/test-decisions-endpoint.sh` — emits a synthetic
+`operator_decision_needed` line, asserts it's in the GET response, resolves
+it, asserts it disappears.

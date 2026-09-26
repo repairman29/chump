@@ -13111,3 +13111,26 @@ events:
       operators actually use.
     consumers: [fleet-brief, observability]
     fields_required: [ts, kind, filter_spec, results_count]
+
+  # ── INFRA-1563: /api/decisions operator-decision queue ───────────────────────
+  - kind: operator_decision_needed
+    effect_metric: operator
+    emitter: orchestrator/picker/bot-merge (INFRA-1563)
+    trigger: fleet code needs operator input before proceeding — demoting or
+      promoting a gap's priority, approving a merge, or clarifying an
+      ambiguous scope. GET /api/decisions (src/routes/decisions.rs) scans
+      for this kind and surfaces it in the PWA decisions queue
+      (web/v2/app.js chump-view-decisions) until a matching
+      operator_decision_resolved event with the same id appears.
+    consumers: [web-pwa, orchestrator]
+    fields_required: [ts, kind, id, decision_kind, summary, priority]
+
+  - kind: operator_decision_resolved
+    effect_metric: operator
+    emitter: POST /api/decisions/{id}/resolve (src/routes/decisions.rs, INFRA-1563)
+    trigger: operator resolves a pending decision from the PWA decisions
+      queue. Written back to ambient.jsonl with the same id as the
+      originating operator_decision_needed event so GET /api/decisions can
+      exclude it from the pending list.
+    consumers: [web-pwa, orchestrator]
+    fields_required: [ts, kind, id, response]
