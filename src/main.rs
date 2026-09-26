@@ -13420,9 +13420,36 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: CREDIBLE pillar-balance analysis — shells out to
+                // scripts/ops/pillar-balance-check.sh (see AC 5) and folds its
+                // JSON result into this report. Runs the *fixture* binary
+                // (this same `chump` process) via CHUMP_BIN so the script
+                // never silently falls back to a stale PATH `chump`.
+                let pillar_balance: serde_json::Value = {
+                    let script_path =
+                        repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    let mut cmd = std::process::Command::new("bash");
+                    cmd.arg(&script_path).arg("--json");
+                    if let Ok(self_bin) = std::env::current_exe() {
+                        cmd.env("CHUMP_BIN", self_bin);
+                    }
+                    match cmd.output() {
+                        Ok(out) => {
+                            let stdout = String::from_utf8_lossy(&out.stdout);
+                            serde_json::from_str(stdout.trim()).unwrap_or_else(|_| {
+                                serde_json::json!({"error": "pillar-balance-check.sh produced no parseable output"})
+                            })
+                        }
+                        Err(e) => {
+                            serde_json::json!({"error": format!("failed to run pillar-balance-check.sh: {e}")})
+                        }
+                    }
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
+                        "pillar_balance": pillar_balance,
                         "p0_manual_count": p0_manual_count,
                         "p0_auto_filed_count": p0_auto_filed.len(),
                         "p0_stuck_7d": p0_stuck.len(),
@@ -13634,6 +13661,36 @@ async fn main() -> Result<()> {
                             println!(
                                 "  Backfill with: chump gap set <ID> --evidence \"COMMAND: ...\""
                             );
+                        }
+                    }
+                    // INFRA-902: pillar-balance-check.sh result.
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    if let Some(err) = pillar_balance.get("error").and_then(|v| v.as_str()) {
+                        println!("  (unavailable: {})", err);
+                    } else {
+                        let total = pillar_balance
+                            .get("total_pickable")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
+                        println!("  total pickable: {}", total);
+                        if let Some(counts) =
+                            pillar_balance.get("counts").and_then(|v| v.as_object())
+                        {
+                            for (pillar, count) in counts {
+                                println!("    {:<12} {}", pillar, count);
+                            }
+                        }
+                        if let Some(alerts) =
+                            pillar_balance.get("alerts").and_then(|v| v.as_array())
+                        {
+                            if alerts.is_empty() {
+                                println!("  (pillars balanced — no alerts)");
+                            } else {
+                                for a in alerts {
+                                    println!("  ALERT: {}", a);
+                                }
+                            }
                         }
                     }
                     // MISSION-008: outcome-aware P0 budget view (advisory alongside per-gap checks).
