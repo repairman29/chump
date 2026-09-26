@@ -1357,6 +1357,12 @@ jobs:
       - name: run-fleet.sh cross-repo --repo/--locks-dir/--tmux-session flags (INFRA-634)
         run: bash scripts/ci/test-run-fleet-cross-repo.sh
 
+      - name: run-fleet.sh core-count clamp (INFRA-3659)
+        run: bash scripts/ci/test-run-fleet-core-cap.sh
+
+      - name: worker-run.sh node-aware, no hardcoded root (INFRA-3659)
+        run: bash scripts/ci/test-worker-run-node-aware.sh
+
       - name: raw-YAML-edit guard (INFRA-200, blocking since 2026-05-02)
         run: bash scripts/ci/test-raw-yaml-guard.sh
 
