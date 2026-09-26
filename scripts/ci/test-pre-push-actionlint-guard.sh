@@ -171,4 +171,15 @@ done
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="
-[[ "$FAIL" -eq 0 ]]
+# INFRA-1649 (re-do of INFRA-1598): a single-line, machine-greppable verdict
+# on top of the PASS/FAIL tally above — "guard: ok" on success, or
+# "guard: fail class=<transient|permanent>" to stderr on any failure. A test
+# assertion failing here means the guard script's own behavior regressed
+# (permanent — fixing the guard, not retrying, is the remedy).
+if [[ "$FAIL" -eq 0 ]]; then
+    echo "guard: ok"
+    exit 0
+else
+    echo "guard: fail class=permanent" >&2
+    exit 1
+fi

@@ -3,4 +3,5 @@
 //! `crate::pr_ac_coverage` / `crate::confidence` paths stay valid unchanged.
 pub mod confidence;
 pub mod external_verify_merge;
+pub mod observability;
 pub mod pr_ac_coverage;
