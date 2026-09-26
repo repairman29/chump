@@ -24,6 +24,24 @@ tests+clippy were skipped as a result).
 
 Source: `scripts/coord/bot-merge.sh` (search `bot_merge_doc_only_fastpath`).
 
+### `kind=bot_merge_skip_tests_applied`
+
+Emitted immediately after the event above, via the `chump ambient emit` CLI
+(rather than a raw `_ambient_write` printf) so the ambient_emit crate's
+round-trip is exercised for this specific gap's AC. Distinct from
+`bot_merge_doc_only_fastpath`: this one confirms the CLI call itself
+succeeded, not just that detection fired.
+
+```json
+{"ts":"...", "kind":"bot_merge_skip_tests_applied", "gap_id":"...", "branch":"..."}
+```
+
+`pr_number` is not included — the PR doesn't exist yet at this point in the
+flow (detection runs before `gh pr create`). Join on `gap_id`/`branch` to a
+later `bot_merge_completed` event if the PR number is needed.
+
+Source: `scripts/coord/bot-merge.sh` (search `bot_merge_skip_tests_applied`).
+
 ### No failure or timeout event exists — by design
 
 Detection is a synchronous, local `git diff --name-only` classification
