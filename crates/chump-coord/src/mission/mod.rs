@@ -68,10 +68,12 @@
 //! ```
 
 pub mod cost_tracking;
+pub mod failure;
 pub mod persistence;
 pub mod replanning;
 
 pub use cost_tracking::{MissionCostTracker, MissionOutcome, StepCost};
+pub use failure::{classify_error_message, classify_status_code, FailureClass};
 pub use persistence::{
     DependencyCondition, FallbackMode, FileBackedMissionStore, Mission, MissionCheckpoint,
     MissionStore, Objective, ObjectiveDependency, ObjectiveState, PersistentMission,
