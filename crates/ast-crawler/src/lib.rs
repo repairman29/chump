@@ -719,12 +719,7 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
     let root = tree.root_node();
     let mut symbols = Vec::new();
     let imports: Vec<String> = Vec::new(); // bash has no formal imports
-    let mut cursor = root.walk();
-    for child in root.named_children(&mut cursor) {
-        if child.kind() == "function_definition" {
-            push_named(child, src, "fn", &mut symbols, "#");
-        }
-    }
+    collect_bash_functions(root, src, &mut symbols);
     Ok(FileShape {
         path: path.to_string(),
         language: "bash".into(),
@@ -732,6 +727,24 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
         top_level_symbols: symbols,
         imports,
     })
+}
+
+// tree-sitter-bash 0.25 does not guarantee `function_definition` nodes are
+// direct children of `program`: shell constructs like `if`/`case`/subshell
+// wrappers (or parser error-recovery around unsupported syntax, e.g.
+// extglob patterns) nest them deeper. Walk the whole tree looking for
+// `function_definition` at any depth, but don't descend into a function's
+// own body — nested/local fn defs aren't file-scope-visible "top level"
+// symbols.
+fn collect_bash_functions(node: Node, src: &str, out: &mut Vec<Symbol>) {
+    let mut cursor = node.walk();
+    for child in node.children(&mut cursor) {
+        if child.kind() == "function_definition" {
+            push_named(child, src, "fn", out, "#");
+        } else {
+            collect_bash_functions(child, src, out);
+        }
+    }
 }
 
 // ── YAML ──────────────────────────────────────────────────────────────────
@@ -994,6 +1007,47 @@ bye() {
             .collect();
         assert!(names.contains(&"hello"), "got {names:?}");
         assert!(names.contains(&"bye"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_fixture_extracts_three_functions() {
+        // INFRA-1821: tree-sitter-bash 0.25 doesn't guarantee
+        // `function_definition` nodes are direct children of `program`
+        // (conditional wrappers, parser error-recovery around unsupported
+        // syntax elsewhere in a file can nest them deeper). Cover the three
+        // common fn-def syntaxes via a real fixture file.
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.sh");
+        let shape = crawl_file(&fixture).unwrap();
+        assert_eq!(shape.language, "bash");
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(names.len(), 3, "got {names:?}");
+        assert!(names.contains(&"foo"), "got {names:?}");
+        assert!(names.contains(&"bar"), "got {names:?}");
+        assert!(names.contains(&"baz"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_finds_function_nested_inside_conditional() {
+        let td = tempfile::tempdir().unwrap();
+        let body = r#"#!/bin/bash
+if [[ -n "${FOO:-}" ]]; then
+  guarded() {
+    echo guarded
+  }
+fi
+"#;
+        let p = write_tmp(td.path(), "tool.sh", body);
+        let shape = crawl_file(&p).unwrap();
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(names.contains(&"guarded"), "got {names:?}");
     }
 
     #[test]
