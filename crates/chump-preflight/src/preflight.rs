@@ -2196,6 +2196,16 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "run-fleet-core-cap",
+            &["bash", "scripts/ci/test-run-fleet-core-cap.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "worker-run-node-aware",
+            &["bash", "scripts/ci/test-worker-run-node-aware.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "docs-delta-guard",
             &["bash", "scripts/ci/test-docs-delta-guard.sh"],
             GateKind::Scripts,
