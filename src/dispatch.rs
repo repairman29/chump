@@ -393,6 +393,25 @@ pub fn subagent_token_budget() -> u64 {
         .unwrap_or(CHOMP_SUBAGENT_TOKEN_BUDGET)
 }
 
+/// INFRA-2090 slice: default per-subagent dollar budget (USD) used by the
+/// fleet dispatch cost-accounting path. Sub-agents spawned via
+/// [`WorkBackend::Headless`] / `Agent`-tool dispatch are expected to stay
+/// under this ceiling absent an explicit `subagent_dollar_budget` override.
+/// This constant is the *default*; [`subagent_dollar_budget`] is the
+/// resolved value once the `CHUMP_SUBAGENT_DOLLAR_BUDGET` config key is
+/// taken into account.
+pub const CHOMP_SUBAGENT_DOLLAR_BUDGET: f64 = 5.0;
+
+/// Resolve the effective per-subagent dollar budget: `subagent_dollar_budget`
+/// config key (via `CHUMP_SUBAGENT_DOLLAR_BUDGET` env var) if set and
+/// parseable, else [`CHOMP_SUBAGENT_DOLLAR_BUDGET`].
+pub fn subagent_dollar_budget() -> f64 {
+    std::env::var("CHUMP_SUBAGENT_DOLLAR_BUDGET")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(CHOMP_SUBAGENT_DOLLAR_BUDGET)
+}
+
 /// Count tracked files in `working_dir` and bail if the count exceeds the
 /// threshold where opencode is known to hang at init. Returns `Ok(())`
 /// (does not block) when the file count can't be determined — e.g. `git`
