@@ -719,12 +719,7 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
     let root = tree.root_node();
     let mut symbols = Vec::new();
     let imports: Vec<String> = Vec::new(); // bash has no formal imports
-    let mut cursor = root.walk();
-    for child in root.named_children(&mut cursor) {
-        if child.kind() == "function_definition" {
-            push_named(child, src, "fn", &mut symbols, "#");
-        }
-    }
+    walk_bash_top_level(root, src, &mut symbols);
     Ok(FileShape {
         path: path.to_string(),
         language: "bash".into(),
@@ -732,6 +727,22 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
         top_level_symbols: symbols,
         imports,
     })
+}
+
+/// Recursively finds `function_definition` nodes at any depth (the bash
+/// grammar nests them inside `program > list > pipeline > command`-shaped
+/// wrappers, not as direct children of the root), while treating a found
+/// definition as a leaf — its body is never descended into, so nested
+/// function definitions stay out of the top-level (file-scope) symbol set.
+fn walk_bash_top_level(node: Node, src: &str, symbols: &mut Vec<Symbol>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "function_definition" {
+            push_named(child, src, "fn", symbols, "#");
+        } else {
+            walk_bash_top_level(child, src, symbols);
+        }
+    }
 }
 
 // ── YAML ──────────────────────────────────────────────────────────────────
@@ -994,6 +1005,35 @@ bye() {
             .collect();
         assert!(names.contains(&"hello"), "got {names:?}");
         assert!(names.contains(&"bye"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_extracts_functions_across_definition_styles() {
+        // INFRA-1821: tree-sitter-bash 0.25 nests function_definition nodes
+        // below the root (e.g. program > list > ...), so a shallow
+        // named_children() scan on the root found 0 symbols. This fixture
+        // mixes all 3 common definition styles to guard the recursive fix.
+        let fixture = std::fs::read_to_string(
+            Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.sh"),
+        )
+        .unwrap();
+        let td = tempfile::tempdir().unwrap();
+        let p = write_tmp(td.path(), "sample.sh", &fixture);
+        let shape = crawl_file(&p).unwrap();
+        assert_eq!(shape.language, "bash");
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(
+            shape.top_level_symbols.len(),
+            3,
+            "expected 3 top-level fns, got {names:?}"
+        );
+        assert!(names.contains(&"foo"), "got {names:?}");
+        assert!(names.contains(&"bar"), "got {names:?}");
+        assert!(names.contains(&"baz"), "got {names:?}");
     }
 
     #[test]
