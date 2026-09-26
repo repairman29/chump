@@ -141,6 +141,12 @@ DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/in
 # watchdog's door instead of the installer's.
 BACKOFF_DIR="${CHUMP_ORGAN_RECONCILE_BACKOFF_DIR:-$REPO_ROOT/.chump-locks/organ-backoff}"
 
+# INFRA-1737: loop-stop sentinel — checked at the top of every per-unit
+# iteration below so an operator can halt this watchdog's backoff scan mid-
+# cycle by touching the file, without waiting for the whole 5-minute cycle
+# to finish or killing the process.
+STOP_SENTINEL="$REPO_ROOT/.chump-locks/loop-stop-requested"
+
 mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
 
 emit() {  # kind, extra-json (no leading/trailing comma)
@@ -311,6 +317,10 @@ FAILED_SERVICES="$("$SYSTEMCTL_BIN" list-units --all --type=service --state=fail
 if [[ -n "$FAILED_SERVICES" ]]; then
     while IFS= read -r unit; do
         [[ -z "$unit" ]] && continue
+        if [[ -f "$STOP_SENTINEL" ]]; then
+            echo "[organ-watchdog] stop requested: $STOP_SENTINEL exists, exiting" >&2
+            exit 0
+        fi
         if organ_watchdog_in_backoff "$unit"; then
             echo "[organ-watchdog] SKIP (backed off by organ-reconcile): $unit"
             # scanner-anchor: "kind":"organ_watchdog_backoff_skip"  (RESILIENT-347;
@@ -450,6 +460,10 @@ if [[ -n "$ALL_TIMERS" ]]; then
     _did_daemon_reload=0   # daemon-reload at most once per cycle, lazily
     while IFS= read -r timer; do
         [[ -z "$timer" ]] && continue
+        if [[ -f "$STOP_SENTINEL" ]]; then
+            echo "[organ-watchdog] stop requested: $STOP_SENTINEL exists, exiting" >&2
+            exit 0
+        fi
         # Only ACTIVE timers here — an inactive one was already handled by §2.
         "$SYSTEMCTL_BIN" is-active --quiet "$timer" 2>/dev/null || continue
         # Skip-list (superseded/decommissioned timers we deliberately leave dark).
