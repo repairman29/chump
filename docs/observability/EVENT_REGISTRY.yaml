@@ -2810,6 +2810,20 @@ events:
     trigger: per-cycle pillar grade computed
     consumers: [fleet-brief]
 
+  - kind: pillar_balance_alert
+    effect_metric: gap_filed_in_starved_pillar_within_24h
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: a pillar's pickable-gap count drops below floor=2
+    consumers: [fleet-brief, chump gap audit-priorities]
+    fields_required: [ts, kind, pillar, count, floor]
+
+  - kind: pillar_balance_overweight
+    effect_metric: pillar_mix_rebalanced_within_24h
+    emitter: scripts/ops/pillar-balance-check.sh (INFRA-902)
+    trigger: a pillar's pickable-gap count exceeds 50% of the total pickable pool
+    consumers: [fleet-brief, chump gap audit-priorities]
+    fields_required: [ts, kind, pillar, count, pct]
+
   - kind: mission_binary_check
     effect_metric: mission_binary_repeatability_streak
     emitter: scripts/dev/mission-scoreboard.sh (MISSION-066)
