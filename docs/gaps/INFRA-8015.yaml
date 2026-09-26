@@ -1,0 +1,20 @@
+- id: INFRA-8015
+  domain: INFRA
+  title: "INFRA: INFRA-7792: Implement effective priority calculation in picker (INFRA-3612 slice)"
+  status: open
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "1. Add a function `effective_priority(gap)` that returns the minimum priority band among the gap's own priority and the priorities of all gaps it transitively unblocks via `chump-planner.unblocks()`.\n2. The calculation correctly traverses cross‑band dependencies (e.g., a P3 gap that blocks a P0 contributes a P0 effective priority).\n3. Existing picker behavior for gaps without dependents remains unchanged."
+  notes: |
+    Closed as duplicate of INFRA-5037 (PR #4489, "implement effective_priority
+    cross-band propagation (INFRA-3612 slice)"), already merged to main and an
+    ancestor of this branch. `DependencyGraph::effective_priority(gap, gaps,
+    open_set)` in crates/chump-planner/src/graph.rs already implements exactly
+    this signature: minimum priority band over the gap's own priority plus
+    every gap it transitively unblocks via `unblocks()`, with cross-band
+    propagation tests (`effective_priority_propagates_cross_band_minimum`) and
+    a no-dependents-unchanged case, plus follow-up hardening in INFRA-3949
+    (direct-dependent + cycle unit tests). All 3 AC items are satisfied
+    verbatim by existing code — no new implementation required.
+  outcome_id: MISSION-010
