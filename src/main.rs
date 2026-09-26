@@ -503,6 +503,23 @@ fn unix_ts() -> u64 {
         .as_secs()
 }
 
+/// INFRA-1611: age-in-days for a gap, preferring `opened_date` (the
+/// original-reservation date, stamped by `gap reserve` / the backfill
+/// script) over `created_at` (state.db import time). Without this, a
+/// fresh `chump gap import` zeroes every gap's age — the P0 aging census
+/// in `chump gap audit-priorities` and the "P0 budget = 5 max" enforcement
+/// mechanism both depend on real age, not import recency.
+fn gap_age_days(opened_date: &str, created_at: i64, now_secs: i64) -> i64 {
+    if !opened_date.is_empty() {
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(opened_date, "%Y-%m-%d") {
+            if let Some(opened_secs) = d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc().timestamp()) {
+                return (now_secs - opened_secs) / 86400;
+            }
+        }
+    }
+    (now_secs - created_at) / 86400
+}
+
 /// INFRA-1886: `chump gap preflight <ID>` advisory hint. When the target
 /// gap is open + unclaimed, surface up to 3 higher-priority unclaimed gaps
 /// so the picker is nudged toward what's actually starved without enforcing
@@ -13188,12 +13205,29 @@ async fn main() -> Result<()> {
                 let p0_stuck: Vec<(&gap_store::GapRow, i64)> = p0_open
                     .iter()
                     .filter_map(|g| {
-                        let age_days = (now_secs - g.created_at) / 86400;
+                        let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                         if age_days > 7 {
                             Some((*g, age_days))
                         } else {
                             None
                         }
+                    })
+                    .collect();
+
+                // INFRA-1611: open P0/P1 gaps with no (or placeholder) opened_date
+                // are invisible to the aging census above — flag them so the
+                // fleet can see coverage gaps instead of silently treating them
+                // as "0d old".
+                let is_placeholder_opened_date = |d: &str| {
+                    let d = d.trim();
+                    d.is_empty() || d == "0000-00-00" || d == "1970-01-01" || d == "TODO"
+                };
+                let missing_opened_date_p0p1: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        g.status == "open"
+                            && (g.priority == "P0" || g.priority == "P1")
+                            && is_placeholder_opened_date(&g.opened_date)
                     })
                     .collect();
 
@@ -13361,7 +13395,7 @@ async fn main() -> Result<()> {
                         "race_test_pollution": race_pollution.len(),
                         "placeholder_title_pollution": placeholder_pollution.len(),
                         "p0_gaps": p0_open.iter().map(|g| {
-                            let age_days = (now_secs - g.created_at) / 86400;
+                            let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                             let auto_filed = g.notes.contains(auto_filed_marker);
                             serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days, "auto_filed": auto_filed})
                         }).collect::<Vec<_>>(),
@@ -13374,6 +13408,11 @@ async fn main() -> Result<()> {
                         "missing_evidence_count": missing_evidence.len(),
                         "missing_evidence": missing_evidence.iter().take(5).map(|g| {
                             serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
+                        }).collect::<Vec<_>>(),
+                        // INFRA-1611: opened_date coverage on open P0/P1 gaps
+                        "missing_opened_date_p0p1_count": missing_opened_date_p0p1.len(),
+                        "missing_opened_date_p0p1": missing_opened_date_p0p1.iter().map(|g| {
+                            serde_json::json!({"id": g.id, "priority": g.priority, "title": g.title})
                         }).collect::<Vec<_>>(),
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
@@ -13449,7 +13488,7 @@ async fn main() -> Result<()> {
                         p0_auto_filed.len()
                     );
                     for g in &p0_open {
-                        let age_days = (now_secs - g.created_at) / 86400;
+                        let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                         let stuck = if age_days > 7 { " *** STUCK" } else { "" };
                         let marker = if g.notes.contains(auto_filed_marker) {
                             " [auto-filed]"
@@ -13460,6 +13499,14 @@ async fn main() -> Result<()> {
                             "  {} — {} ({}d old{}{})",
                             g.id, g.title, age_days, stuck, marker
                         );
+                    }
+                    println!();
+                    println!(
+                        "Missing/placeholder opened_date on open P0/P1: {}",
+                        missing_opened_date_p0p1.len()
+                    );
+                    for g in &missing_opened_date_p0p1 {
+                        println!("  {} — {} ({})", g.id, g.title, g.priority);
                     }
                     println!();
                     println!("Vague (no AC) pickable: {}", vague_pickable.len());
