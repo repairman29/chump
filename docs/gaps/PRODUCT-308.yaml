@@ -2,7 +2,7 @@
   domain: PRODUCT
   title: "[pov-video][external_repo:repairman29/pov-video][gcp-exit] Move POV (sendpov.xyz) off Firebase (echeo-vid) to Vercel + cuphead Supabase (video in cuphead Storage)"
   status: open
-  priority: P2
+  priority: P1
   effort: l
   description: |
     sendpov.xyz is a Vite SPA on Firebase Hosting with Firestore (~65 files: videos, comments, users, leads, videoViews, auditLogs, workspaces, webhooks…), Auth (~17 files), Storage for recorded video (~17 files), Cloud Functions, Speech-to-Text transcription, Secret Manager. Decide storage by egress: Supabase Storage vs Cloudflare R2 (record the choice + cost estimate in the PR). Speech-to-Text moves to Whisper (Groq/OpenAI) via the existing provider path. Target (Jeff 2026-09-26, workspace-docs/GCP_EXIT.md): Vercel for hosting + API routes, and the self-hosted Supabase stack on cuphead (RESILIENT-314) for Postgres (own schema), Auth, Storage. Code talks only to supabase-js / standard Supabase APIs so the app can move to hosted Supabase later by changing URL + keys. Keep Sign in with Google (GoTrue Google provider; OAuth client stays in its GCP project, no billing). Firebase email/password users keep working: import from the PRODUCT-303 auth:export and verify Firebase scrypt hashes on first sign-in, or document why a reset flow was needed. Secrets move from GCP Secret Manager to Vercel env vars.
@@ -12,5 +12,7 @@
     - Transcription works without @google-cloud/speech
     - sendpov.xyz DNS points at Vercel; no firebase, firebase-admin or @google-cloud deps remain
   depends_on: [PRODUCT-303, RESILIENT-314]
+  notes: |
+    DISPATCH (Jeff 2026-09-26): P1, queued behind its depends_on. Do not start until every dependency is done: the PRODUCT-303 export ledger must exist in workspace-docs/GCP_EXIT.md, because migration row counts are verified against it. Also needs RESILIENT-314 done (the cuphead Supabase stack is live, with its URL + keys in ~/.chump/providers.env on cuphead). Any node may do the code work; the app points at the cuphead stack by env vars (Vercel env), never with hard-coded hosts. The DNS cutover of the public domain happens only after a green preview deploy.
   skills_required: "external_repo:repairman29/pov-video"
 
