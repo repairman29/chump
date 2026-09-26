@@ -1,0 +1,16 @@
+- id: PRODUCT-307
+  domain: PRODUCT
+  title: "[trove-web][external_repo:repairman29/trove-web][gcp-exit] Move MyTrove off Firebase App Hosting + GCP (Vision, Secret Manager) to Vercel + Supabase"
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    mytrove.app is Next.js on Firebase App Hosting (apphosting.yaml, frameworksBackend) and has served a stale build since July because the billing account is closed. Uses Firestore (collections, items, usage, usage_events, usage_summaries, subscriptions, users), Firebase Auth (~38 files), Storage (item photos, ~10 files), Cloud Vision for item recognition, Secret Manager (~31 files). Vision replaced by an LLM vision call through the existing multi-provider path. Also revoke the firebase-admin@trove-web SA key (SECURITY_REMEDIATION.md). Fixes the missing title/meta (SITES.md) as a side effect of redeploying current main. Target stack per workspace-docs/GCP_EXIT.md: Vercel (hosting + API routes/functions) + Supabase Pro (dedicated project per app: Postgres, Auth, Storage). Keep Sign in with Google (Supabase Google provider; OAuth client stays in its GCP project, no billing needed). Depends on PRODUCT-303 export. Firebase email/password users must keep working: import users from the auth:export JSON and verify Firebase scrypt hashes on first sign-in (Supabase firebase-to-supabase pattern), or document why a reset flow was required. Secrets move from GCP Secret Manager to Vercel env vars.
+  acceptance_criteria:
+    - App deploys on Vercel from main; mytrove.app DNS points at Vercel and shows the current title/meta
+    - Row counts and Storage object counts match the export ledger
+    - Item recognition works through the LLM vision path with no @google-cloud/vision dependency
+    - No @google-cloud/* or firebase deps and no Secret Manager calls remain; trove-web SA key revoked
+  depends_on: [PRODUCT-303]
+  skills_required: "external_repo:repairman29/trove-web"
+

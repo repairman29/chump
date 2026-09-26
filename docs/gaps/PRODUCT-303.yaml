@@ -1,0 +1,14 @@
+- id: PRODUCT-303
+  domain: PRODUCT
+  title: "[gcp-exit] Export all live Firebase/GCP data (peakvinyl, trove-web, echeo-vid, fulcrum-41e50, smuggler) to owned storage before billing wind-down"
+  status: open
+  priority: P1
+  effort: s
+  description: |
+    Step 0 of the GCP exit (workspace-docs/GCP_EXIT.md). The Firebase/GCP billing account is closed (ASK-021); Blaze projects cannot deploy and risk suspension while holding live data. Export everything to owned storage BEFORE any migration or project deletion. Firestore managed export (gcloud firestore export) requires billing enabled: operator reopens billing on the account first (see GCP_EXIT.md Sequence). Needs gcloud/firebase CLI logged in as jeffadkins1 (Mac/owned node; cannot run from a cloud session). Projects: peakvinyl (pvc members), trove-web (+Storage bucket), echeo-vid (+Storage: videos), fulcrum-41e50 (postsub), playsmuggler-b1cda / smuggler-d1b4a (smuggler sessions), workbench-tam-app, lifeos-dev, mythseekers-rpg. Per project: firestore export to a GCS bucket then gsutil cp to owned disk; firebase auth:export --format=json (keeps scrypt hashes + the project's hash config from Firebase console > Auth > password hash params); gsutil -m cp -r of Storage buckets.
+  acceptance_criteria:
+    - Firestore export + Auth export (with hash params) + Storage copy exist on owned storage for peakvinyl, trove-web, echeo-vid, fulcrum-41e50 and both smuggler projects
+    - Per-collection document counts and auth user counts recorded in workspace-docs/GCP_EXIT.md (export ledger table)
+    - Exports verified readable (one sample doc per collection re-parsed)
+    - No project deleted and no data mutated by this gap
+
