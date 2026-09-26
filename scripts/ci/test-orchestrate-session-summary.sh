@@ -198,6 +198,84 @@ else
     echo "  SKIP: chump binary not found at $CHUMP_BIN — skipping integration smoke"
 fi
 
+# ── INFRA-1650: `chump session-summary --session-id ...` contract ─────────────
+echo ""
+echo "=== INFRA-1650 session-summary --session-id tests ==="
+
+if grep -q "pub fn run_session_summary" "$REPO_ROOT/src/session_summary.rs" 2>/dev/null; then
+    ok "src/session_summary.rs defines run_session_summary"
+else
+    fail "src/session_summary.rs missing run_session_summary function"
+fi
+
+if grep -q "pub struct CostTracker" "$REPO_ROOT/src/session_summary.rs" 2>/dev/null; then
+    ok "src/session_summary.rs defines CostTracker"
+else
+    fail "src/session_summary.rs missing CostTracker"
+fi
+
+if grep -q "pub enum FailureClass" "$REPO_ROOT/src/session_summary.rs" 2>/dev/null; then
+    ok "src/session_summary.rs defines FailureClass"
+else
+    fail "src/session_summary.rs missing FailureClass"
+fi
+
+if [[ -x "$CHUMP_BIN" ]]; then
+    HELP_OUT="$("$CHUMP_BIN" session-summary --help 2>&1)"
+    if echo "$HELP_OUT" | grep -q -- "--session-id" \
+        && echo "$HELP_OUT" | grep -q -- "--timeout" \
+        && echo "$HELP_OUT" | grep -q -- "--cost-limit"; then
+        ok "session-summary --help documents --session-id/--timeout/--cost-limit"
+    else
+        fail "session-summary --help missing one of --session-id/--timeout/--cost-limit"
+    fi
+
+    COMPLETED_OUT="$("$CHUMP_BIN" session-summary --session-id test123 2>&1)"
+    COMPLETED_STATUS=$?
+    if [[ "$COMPLETED_STATUS" -eq 0 ]]; then
+        ok "session-summary --session-id test123 exits 0"
+    else
+        fail "session-summary --session-id test123 exited $COMPLETED_STATUS (expected 0)"
+    fi
+    if echo "$COMPLETED_OUT" | grep -q '"event":"session_summary_completed"' \
+        && echo "$COMPLETED_OUT" | grep -qE '"cost":[0-9]'; then
+        ok "session_summary_completed event has a numeric cost field"
+    else
+        fail "session_summary_completed event missing or malformed (output: $COMPLETED_OUT)"
+    fi
+
+    TIMEOUT_OUT="$(CHUMP_SESSION_SUMMARY_FORCE_TIMEOUT=1 "$CHUMP_BIN" session-summary --session-id test123 2>&1 1>/dev/null)"
+    TIMEOUT_STATUS=$?
+    if [[ "$TIMEOUT_STATUS" -eq 124 ]]; then
+        ok "forced timeout exits 124"
+    else
+        fail "forced timeout exited $TIMEOUT_STATUS (expected 124)"
+    fi
+    if echo "$TIMEOUT_OUT" | grep -q '"event":"session_summary_timeout"'; then
+        ok "session_summary_timeout event emitted to stderr"
+    else
+        fail "session_summary_timeout event missing from stderr (output: $TIMEOUT_OUT)"
+    fi
+
+    TRANSIENT_OUT="$(CHUMP_SESSION_SUMMARY_FORCE_FAILURE=transient "$CHUMP_BIN" session-summary --session-id test123 2>&1)"
+    TRANSIENT_STATUS=$?
+    if [[ "$TRANSIENT_STATUS" -eq 1 ]] && echo "$TRANSIENT_OUT" | grep -q '"failure_class":"Transient"'; then
+        ok "forced transient failure exits 1 with failure_class=Transient"
+    else
+        fail "forced transient failure mismatch (status=$TRANSIENT_STATUS, output: $TRANSIENT_OUT)"
+    fi
+
+    PERMANENT_OUT="$(CHUMP_SESSION_SUMMARY_FORCE_FAILURE=permanent "$CHUMP_BIN" session-summary --session-id test123 2>&1)"
+    PERMANENT_STATUS=$?
+    if [[ "$PERMANENT_STATUS" -eq 2 ]] && echo "$PERMANENT_OUT" | grep -q '"failure_class":"Permanent"'; then
+        ok "forced permanent failure exits 2 with failure_class=Permanent"
+    else
+        fail "forced permanent failure mismatch (status=$PERMANENT_STATUS, output: $PERMANENT_OUT)"
+    fi
+else
+    echo "  SKIP: chump binary not found at $CHUMP_BIN — skipping session-summary --session-id smoke"
+fi
+
 echo ""
 echo "=== Summary: $PASS passed, $FAIL failed ==="
 if (( FAIL > 0 )); then

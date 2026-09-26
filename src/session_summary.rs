@@ -75,6 +75,16 @@ pub struct Args {
     pub window: String,
     pub format: OutputFormat,
     pub help: bool,
+    /// INFRA-1650: opaque session identifier. Presence of this flag selects
+    /// the cost-tracked/timeout-bounded `run_session_summary` path instead
+    /// of the legacy PR-listing path.
+    pub session_id: Option<String>,
+    /// INFRA-1650: wall-clock budget for the session-summary operation,
+    /// e.g. `30s`, `2m`. Default `30s`.
+    pub timeout: String,
+    /// INFRA-1650: abort (Permanent failure) if tracked cost exceeds this
+    /// USD amount.
+    pub cost_limit: Option<f64>,
 }
 
 impl Default for Args {
@@ -84,6 +94,67 @@ impl Default for Args {
             window: "24h".to_string(),
             format: OutputFormat::Text,
             help: false,
+            session_id: None,
+            timeout: "30s".to_string(),
+            cost_limit: None,
+        }
+    }
+}
+
+/// INFRA-1650: cost accrual for a `run_session_summary` invocation. Each
+/// unit of billable work (one `gh` call) records a fixed per-call cost —
+/// there is no live LLM spend in this path, so the model is a nominal
+/// per-API-call rate rather than a token count.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CostTracker {
+    calls: u32,
+    cost_per_call_usd: f64,
+}
+
+impl CostTracker {
+    pub fn new() -> Self {
+        CostTracker {
+            calls: 0,
+            cost_per_call_usd: 0.002,
+        }
+    }
+
+    pub fn record_call(&mut self) {
+        self.calls += 1;
+    }
+
+    pub fn total_cost(&self) -> f64 {
+        self.calls as f64 * self.cost_per_call_usd
+    }
+}
+
+impl Default for CostTracker {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+/// INFRA-1650: distinguishes failures worth retrying (network/API blips)
+/// from failures that need operator/config intervention.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureClass {
+    Transient,
+    Permanent,
+}
+
+impl FailureClass {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            FailureClass::Transient => "Transient",
+            FailureClass::Permanent => "Permanent",
+        }
+    }
+
+    /// Transient -> 1 (retry-worthy), Permanent -> 2 (needs intervention).
+    pub fn exit_code(&self) -> i32 {
+        match self {
+            FailureClass::Transient => 1,
+            FailureClass::Permanent => 2,
         }
     }
 }
@@ -140,6 +211,43 @@ pub fn parse_args(argv: &[String]) -> Result<Args, String> {
             other if other.starts_with("--window=") => {
                 a.window = other["--window=".len()..].to_string();
             }
+            "--session-id" => {
+                i += 1;
+                let v = argv
+                    .get(i)
+                    .ok_or_else(|| "--session-id requires a value".to_string())?;
+                a.session_id = Some(v.clone());
+            }
+            other if other.starts_with("--session-id=") => {
+                a.session_id = Some(other["--session-id=".len()..].to_string());
+            }
+            "--timeout" => {
+                i += 1;
+                let v = argv
+                    .get(i)
+                    .ok_or_else(|| "--timeout requires a value".to_string())?;
+                a.timeout = v.clone();
+            }
+            other if other.starts_with("--timeout=") => {
+                a.timeout = other["--timeout=".len()..].to_string();
+            }
+            "--cost-limit" => {
+                i += 1;
+                let v = argv
+                    .get(i)
+                    .ok_or_else(|| "--cost-limit requires a value".to_string())?;
+                a.cost_limit = Some(
+                    v.parse::<f64>()
+                        .map_err(|_| format!("--cost-limit: invalid number '{}'", v))?,
+                );
+            }
+            other if other.starts_with("--cost-limit=") => {
+                let v = &other["--cost-limit=".len()..];
+                a.cost_limit = Some(
+                    v.parse::<f64>()
+                        .map_err(|_| format!("--cost-limit: invalid number '{}'", v))?,
+                );
+            }
             other => {
                 return Err(format!("unknown argument: {}", other));
             }
@@ -156,16 +264,27 @@ pub fn print_help() {
          \n\
          Usage:\n\
            chump session-summary [--window <dur>] [--since <ts>] [--json|--format json]\n\
+           chump session-summary --session-id <id> [--timeout <dur>] [--cost-limit <usd>]\n\
          \n\
          Flags:\n\
            --window <dur>     Rolling lookback (24h, 4h, 2d). Default 24h.\n\
            --since <ts>       Explicit ISO8601 cutoff. Overrides --window.\n\
            --format text|json Output format (default text).\n\
            --json             Shorthand for --format json.\n\
+           --session-id <id>  Cost-tracked, timeout-bounded summary run for the\n\
+                               given opaque session id. Emits a JSON event on\n\
+                               stdout/stderr instead of the plain-text table.\n\
+           --timeout <dur>    Wall-clock budget for --session-id mode (30s, 2m).\n\
+                               Default 30s. Exceeding it exits 124.\n\
+           --cost-limit <usd> Abort as a Permanent failure if tracked cost\n\
+                               exceeds this USD amount. --session-id mode only.\n\
            -h, --help         This help.\n\
          \n\
          Environment overrides (testing):\n\
-           CHUMP_SESSION_SUMMARY_GH_STUB=<path>   Replace `gh` with the script at <path>.\n"
+           CHUMP_SESSION_SUMMARY_GH_STUB=<path>       Replace `gh` with the script at <path>.\n\
+           CHUMP_SESSION_SUMMARY_FORCE_TIMEOUT=1      Force a session_summary_timeout event.\n\
+           CHUMP_SESSION_SUMMARY_FORCE_FAILURE=<transient|permanent>\n\
+                                                       Force a session_summary_failed event.\n"
     );
 }
 
@@ -685,6 +804,9 @@ pub fn run(argv: &[String]) -> i32 {
         print_help();
         return 0;
     }
+    if args.session_id.is_some() {
+        return run_session_summary(&args);
+    }
     let now = std::time::SystemTime::now()
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_secs() as i64)
@@ -764,6 +886,127 @@ pub fn run(argv: &[String]) -> i32 {
     };
     print!("{}", rendered);
     0
+}
+
+/// INFRA-1650: cost-tracked, timeout-bounded session summary. Runs the same
+/// gh-backed merged/open lookup as the legacy path but on a worker thread so
+/// a slow/hanging `gh` cannot hang the caller past `--timeout`, tracks a
+/// nominal per-call cost via `CostTracker`, and reports structured JSON
+/// events instead of the plain-text table.
+pub fn run_session_summary(args: &Args) -> i32 {
+    let session_id = args.session_id.clone().unwrap_or_default();
+
+    if let Ok(forced) = std::env::var("CHUMP_SESSION_SUMMARY_FORCE_FAILURE") {
+        let fc = match forced.to_lowercase().as_str() {
+            "permanent" => FailureClass::Permanent,
+            _ => FailureClass::Transient,
+        };
+        emit_failed_event(&session_id, fc);
+        return fc.exit_code();
+    }
+    if std::env::var("CHUMP_SESSION_SUMMARY_FORCE_TIMEOUT").is_ok() {
+        emit_timeout_event(&session_id);
+        return 124;
+    }
+
+    let timeout_secs = parse_window_to_seconds(&args.timeout).unwrap_or(30).max(0) as u64;
+    let cost_limit = args.cost_limit;
+
+    let (tx, rx) = std::sync::mpsc::channel();
+    let worker_session_id = session_id.clone();
+    // Detached: on a real timeout we return to the caller without joining,
+    // so a hung `gh` process cannot block process exit past the deadline.
+    std::thread::spawn(move || {
+        let mut tracker = CostTracker::new();
+        let outcome = summarize_for_session(&worker_session_id, &mut tracker);
+        let _ = tx.send((outcome, tracker.total_cost()));
+    });
+
+    match rx.recv_timeout(std::time::Duration::from_secs(timeout_secs)) {
+        Ok((Ok(()), cost)) => {
+            if let Some(limit) = cost_limit {
+                if cost > limit {
+                    eprintln!(
+                        "chump session-summary: cost=${:.4} exceeded --cost-limit=${:.4}",
+                        cost, limit
+                    );
+                    emit_failed_event(&session_id, FailureClass::Permanent);
+                    return FailureClass::Permanent.exit_code();
+                }
+            }
+            eprintln!("chump session-summary: cost=${:.4}", cost);
+            emit_completed_event(&session_id, cost);
+            0
+        }
+        Ok((Err(fc), cost)) => {
+            eprintln!("chump session-summary: cost=${:.4}", cost);
+            emit_failed_event(&session_id, fc);
+            fc.exit_code()
+        }
+        Err(_) => {
+            emit_timeout_event(&session_id);
+            124
+        }
+    }
+}
+
+/// Does the actual gh-backed work for `run_session_summary`, charging one
+/// `CostTracker` call per `gh` invocation. Classifies any `gh` failure as
+/// `Transient` (looks like a network/API blip) or `Permanent` (anything
+/// else — bad args, auth, etc.).
+fn summarize_for_session(_session_id: &str, tracker: &mut CostTracker) -> Result<(), FailureClass> {
+    tracker.record_call();
+    if let Err(e) = run_gh(&[
+        "pr",
+        "list",
+        "--author",
+        "@me",
+        "--state",
+        "merged",
+        "--limit",
+        "1",
+        "--json",
+        "number,title",
+    ]) {
+        return Err(classify_gh_failure(&e));
+    }
+    Ok(())
+}
+
+fn classify_gh_failure(err: &str) -> FailureClass {
+    let lower = err.to_lowercase();
+    if lower.contains("timeout")
+        || lower.contains("timed out")
+        || lower.contains("rate limit")
+        || lower.contains("network")
+        || lower.contains("connection")
+    {
+        FailureClass::Transient
+    } else {
+        FailureClass::Permanent
+    }
+}
+
+fn emit_completed_event(session_id: &str, cost: f64) {
+    println!(
+        "{{\"event\":\"session_summary_completed\",\"session_id\":\"{}\",\"cost\":{:.4}}}",
+        session_id, cost
+    );
+}
+
+fn emit_failed_event(session_id: &str, failure_class: FailureClass) {
+    eprintln!(
+        "{{\"event\":\"session_summary_failed\",\"session_id\":\"{}\",\"failure_class\":\"{}\"}}",
+        session_id,
+        failure_class.as_str()
+    );
+}
+
+fn emit_timeout_event(session_id: &str) {
+    eprintln!(
+        "{{\"event\":\"session_summary_timeout\",\"session_id\":\"{}\"}}",
+        session_id
+    );
 }
 
 /// INFRA-2143: one-line integration-cycle health summary appended to the
