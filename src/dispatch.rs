@@ -374,6 +374,25 @@ fn do_work(ws: &Workspace) -> Result<()> {
 /// scoped to the worktree, not a repo-wide scan).
 const OPENCODE_MAX_TRACKED_FILES: u64 = 5_000;
 
+/// INFRA-2090 slice: default per-subagent token budget (in tokens) used by
+/// the fleet dispatch cost-accounting path. Sub-agents spawned via
+/// [`WorkBackend::Headless`] / `Agent`-tool dispatch are expected to stay
+/// under this ceiling absent an explicit `subagent_token_budget` override.
+/// This constant is the *default*; [`subagent_token_budget`] is the
+/// resolved value once the `CHUMP_SUBAGENT_TOKEN_BUDGET` config key is
+/// taken into account.
+pub const CHOMP_SUBAGENT_TOKEN_BUDGET: u64 = 100_000;
+
+/// Resolve the effective per-subagent token budget: `subagent_token_budget`
+/// config key (via `CHUMP_SUBAGENT_TOKEN_BUDGET` env var) if set and
+/// parseable, else [`CHOMP_SUBAGENT_TOKEN_BUDGET`].
+pub fn subagent_token_budget() -> u64 {
+    std::env::var("CHUMP_SUBAGENT_TOKEN_BUDGET")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(CHOMP_SUBAGENT_TOKEN_BUDGET)
+}
+
 /// Count tracked files in `working_dir` and bail if the count exceeds the
 /// threshold where opencode is known to hang at init. Returns `Ok(())`
 /// (does not block) when the file count can't be determined — e.g. `git`
