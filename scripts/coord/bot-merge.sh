@@ -2719,6 +2719,7 @@ if [[ -n "$_changed_files" ]]; then
             SKIP_TESTS=1
             info "[bot-merge] auto-skip: shell/doc-only diff — skipping cargo test (INFRA-920)"
         fi
+        info "[bot-merge] Auto-applied --skip-tests (shell/doc-only diff, INFRA-920)"
         info "[bot-merge] DOC_ONLY=1 — clippy will be skipped (INFRA-1042/INFRA-1061)"
         # Emit so fleet-brief / waste-tally credit the saved cycles.
         _doc_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
@@ -2728,6 +2729,19 @@ if [[ -n "$_changed_files" ]]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH:-unknown}" \
             "${_doc_filecount:-0}" \
             >> "$_doc_amb" 2>/dev/null || true
+        # INFRA-920 AC#2: dedicated success event (distinct from the
+        # generic fastpath event above) via the ambient_emit CLI wrapper —
+        # `pr_number` isn't known yet at this point in the flow (PR create
+        # happens later), so the gap id is the identifier available here;
+        # consumers join on branch/gap to a later `bot_merge_completed`
+        # event if the PR number is needed.
+        # scanner-anchor: "kind":"bot_merge_skip_tests_applied"
+        if command -v chump >/dev/null 2>&1; then
+            chump ambient emit bot_merge_skip_tests_applied \
+                --gap "${GAP_IDS[*]:-unknown}" \
+                --field "branch=${BRANCH:-unknown}" \
+                >/dev/null 2>&1 || true
+        fi
     fi
 fi
 

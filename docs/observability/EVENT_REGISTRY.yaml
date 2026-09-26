@@ -4867,6 +4867,17 @@ events:
     consumers: [waste-tally, fleet-brief]
     fields_required: [ts, kind, branch, files_changed, saved_steps]
 
+  # ── INFRA-920: dedicated skip-tests-applied success event ──────────────────
+  - kind: bot_merge_skip_tests_applied
+    effect_metric: self
+    emitter: scripts/coord/bot-merge.sh (INFRA-920, via `chump ambient emit`)
+    trigger: bot-merge auto-applies --skip-tests because the diff is
+      shell/doc-only. Distinct from bot_merge_doc_only_fastpath (which fires
+      unconditionally on doc-only detection) — this one confirms the
+      ambient_emit CLI round-trip succeeded, per gap AC#2.
+    consumers: [waste-tally, fleet-brief]
+    fields_required: [ts, kind, gap_id, branch]
+
   # ── META-059: gap-closure drift detector ──────────────────────────────────
   - kind: gap_closure_drift
     effect_metric: self
