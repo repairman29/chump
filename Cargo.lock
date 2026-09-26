@@ -1542,6 +1542,7 @@ dependencies = [
  "chump-ambient-cli",
  "chump-gap-store",
  "futures",
+ "libc",
  "serde",
  "serde_json",
  "serial_test",
