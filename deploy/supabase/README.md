@@ -16,38 +16,29 @@ trove-web, pov-video). Part of the GCP exit (`workspace-docs/GCP_EXIT.md`).
 ## Deploy on a fresh cuphead
 
 ```bash
-# prereqs (done once, see GCP_EXIT.md): 50GB volume at /srv/supabase-data, 4GB swap +
-# systemd-oomd + supabase.slice (MemoryMax=4G), ports 80/443 open (VCN + host iptables),
-# api.* DNS -> cuphead. docker + docker compose installed.
-bash scripts/gen-secrets.sh                 # writes /srv/supabase-data/.env (chmod 600)
-# edit /srv/supabase-data/.env -> paste GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET
-bash scripts/start-supabase.sh              # brings the stack up under supabase.slice
-sudo cp Caddyfile ~/caddy-config/Caddyfile && sudo systemctl restart caddy-reverse-proxy
+# prereqs (see workspace-docs GCP_EXIT.md): 50GB volume at /srv/supabase-data, 4GB swapfile,
+# ports 80/443 open (VCN + host iptables), api.* DNS -> cuphead, docker + compose plugin,
+# earlyoom, and Caddy from the official apt repo (arm64! an amd64 /usr/bin/caddy was the
+# reason HTTPS silently never came up the first time).
+sudo rsync -a deploy/supabase/ /opt/supabase/        # stable path, NOT a worktree (reapers)
+bash /opt/supabase/scripts/gen-secrets.sh            # writes /srv/supabase-data/.env (chmod 600)
+sudo cp /opt/supabase/systemd/* /etc/systemd/system/ && sudo systemctl daemon-reload
+sudo systemctl enable --now supabase-stack caddy-supabase supabase-backup.timer
+/opt/supabase/scripts/smoke-test.sh                  # 17 end-to-end checks through public TLS
+sudo systemctl start supabase-backup && /opt/supabase/scripts/restore-test.sh
 ```
 
 ## What runs
 
-| Service | Host port (bind) | Notes |
+| Unit / service | Where | Notes |
 |---|---|---|
-| Postgres | 127.0.0.1:54322 | local only, never public |
-| PostgREST (REST) | 127.0.0.1:54321 | |
-| GoTrue (auth) | 127.0.0.1:9999 | Google provider kept |
-| Storage | 127.0.0.1:5000 | |
-| Studio | **tailnet** :8000 | tailnet-only, never public |
-| postgres-meta / imgproxy | internal | |
-
-Public access is via **Caddy** (auto-TLS) on the four `api.*` hosts, routing
-`/rest/v1` -> PostgREST, `/auth/v1` -> GoTrue, `/storage/v1` -> Storage.
-
-## Memory guards
-
-4 GB swapfile + `systemd-oomd` + `supabase.slice` (`MemoryMax=4G`) keep the stack from
-starving the fleet worker on this shared box.
-
-## Status / follow-ups (be honest)
-
-- ✅ Stack comes up healthy; Postgres accepts connections; PostgREST responds.
-- ⏳ **Caddy live + per-app API-gateway routing** is committed as config but not yet
-  load-verified end-to-end (no migrated app consumes it yet).
-- ⏳ App migrations (PRODUCT-304..309) + a live anon-key RLS parity test come with each app.
-- Backups: `supabase-backup.{service,timer}` (nightly to OCI Object Storage `cuphead-backups` + CJ).
+| `supabase.slice` | MemoryHigh 3.5G, **MemoryMax 4G**, swap max 1G | containers join via `cgroup_parent` in compose (systemd-run around compose does NOT move containers) |
+| `supabase-stack.service` | `docker compose up -d` from `/opt/supabase` | secrets from `/srv/supabase-data/.env` |
+| Postgres | 127.0.0.1:54322, data `/srv/supabase-data/postgres` | never public |
+| PostgREST | 127.0.0.1:54321 | schemas public, smuggler, postsub, trove_web, pov_video |
+| GoTrue | 127.0.0.1:9999 | DB URL needs `search_path=auth`, or it migrates into `public` and breaks `auth` |
+| Storage | 127.0.0.1:5000, files `/srv/supabase-data/storage` | |
+| Studio | **tailnet IP**:8000 | never public |
+| `caddy-supabase.service` | :80/:443, Let's Encrypt | `/rest/v1` `/auth/v1` `/storage/v1` on the four `api.*` hosts; REST/Storage refuse requests with no apikey (Kong parity) |
+| `supabase-backup.timer` | 09:30 UTC nightly | `scripts/backup.sh`: pg_dump as `supabase_admin` (`postgres` is not a real superuser in this image) + storage tar; off-box targets in `/srv/supabase-data/backup.env` |
+| `earlyoom` | host | prefers killing cargo/rustc/node, avoids postgres/dockerd/sshd |

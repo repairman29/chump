@@ -17,6 +17,7 @@ services:
   postgres:
     image: supabase/postgres:15.1.1.51
     container_name: supabase_postgres
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     # max_connections is a SERVER runtime flag (-c), NOT an initdb flag.
     # Passing it via POSTGRES_INITDB_ARGS is the bug that produced
@@ -50,6 +51,7 @@ services:
   auth:
     image: supabase/gotrue:v2.119.0
     container_name: supabase_auth
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     depends_on:
       postgres:
@@ -59,7 +61,7 @@ services:
       GOTRUE_API_PORT: "9999"
       API_EXTERNAL_URL: "https://api.playsmuggler.com"
       GOTRUE_DB_DRIVER: "postgres"
-      GOTRUE_DB_DATABASE_URL: "postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable"
+      GOTRUE_DB_DATABASE_URL: "postgres://postgres:${POSTGRES_PASSWORD}@postgres:5432/postgres?sslmode=disable&search_path=auth"
       GOTRUE_SITE_URL: "https://api.playsmuggler.com"
       GOTRUE_URI_ALLOW_LIST: "https://api.playsmuggler.com,https://api.postsub.io,https://api.mytrove.app,https://api.sendpov.xyz"
       GOTRUE_DISABLE_SIGNUP: "false"
@@ -69,6 +71,8 @@ services:
       GOTRUE_JWT_DEFAULT_GROUP_NAME: "authenticated"
       GOTRUE_JWT_ADMIN_ROLES: "service_role"
       GOTRUE_PASSWORD_MIN_LENGTH: "8"
+      # No SMTP on this box yet: auto-confirm email signups (dev data; revisit before real users).
+      GOTRUE_MAILER_AUTOCONFIRM: "${GOTRUE_MAILER_AUTOCONFIRM:-true}"
       GOTRUE_EXTERNAL_GOOGLE_ENABLED: "true"
       GOTRUE_EXTERNAL_GOOGLE_CLIENT_ID: "${GOOGLE_CLIENT_ID}"
       GOTRUE_EXTERNAL_GOOGLE_SECRET: "${GOOGLE_CLIENT_SECRET}"
@@ -85,6 +89,7 @@ services:
   rest:
     image: postgrest/postgrest:v11.2.0
     container_name: supabase_rest
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     depends_on:
       postgres:
@@ -102,6 +107,7 @@ services:
   storage:
     image: supabase/storage-api:v0.46.4
     container_name: supabase_storage
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     depends_on:
       postgres:
@@ -128,6 +134,7 @@ services:
   studio:
     image: supabase/studio:latest
     container_name: supabase_studio
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     depends_on:
       postgres:
@@ -157,6 +164,7 @@ services:
   meta:
     image: supabase/postgres-meta:v0.68.0
     container_name: supabase_meta
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     depends_on:
       postgres:
@@ -172,6 +180,7 @@ services:
   imgproxy:
     image: darthsim/imgproxy:v3.8.0
     container_name: supabase_imgproxy
+    cgroup_parent: supabase.slice  # MemoryMax=4G guard; systemd-run on compose does NOT reach containers
     restart: unless-stopped
     volumes:
       - /srv/supabase-data/storage:/var/lib/storage:ro
