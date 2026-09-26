@@ -1,0 +1,16 @@
+- id: PRODUCT-304
+  domain: PRODUCT
+  title: "[pvc][external_repo:repairman29/pvc][gcp-exit] Move Peak Vinyl Club members DB + auth from Firebase (peakvinyl) to Supabase"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    peakvinyl.club already hosts on Vercel; only data + auth move. Firestore collections: members, posts, settings, events, supportingMembers, transactions, filings, community_events, applications, outreach_leads, inviteCodes, admin_users. Firebase Auth in ~30 files (website/lib/firebase-client.ts, firebase-admin.ts, admin pages, member APIs) plus functions/src/index.ts. Real 501(c)(7) member data: do first, verify counts. Rough shape: (a) Postgres schema + RLS mirroring firestore.rules, (b) import script from export, (c) swap firebase-client/admin libs for supabase-js, (d) port the Cloud Function to a Vercel route/cron, (e) admin custom-claim to Supabase role. Target stack per workspace-docs/GCP_EXIT.md: Vercel (hosting + API routes/functions) + Supabase Pro (dedicated project per app: Postgres, Auth, Storage). Keep Sign in with Google (Supabase Google provider; OAuth client stays in its GCP project, no billing needed). Depends on PRODUCT-303 export. Firebase email/password users must keep working: import users from the auth:export JSON and verify Firebase scrypt hashes on first sign-in (Supabase firebase-to-supabase pattern), or document why a reset flow was required. Secrets move from GCP Secret Manager to Vercel env vars.
+  acceptance_criteria:
+    - Every Firestore collection has a Postgres table; row counts match the PRODUCT-303 export ledger
+    - Existing members sign in with their current password and with Google on a preview deploy
+    - RLS enforces the same member/admin access as firestore.rules (tests for member, admin, anon)
+    - No firebase or firebase-admin import remains in website/ or functions/; production peakvinyl.club runs on Supabase
+  depends_on: [PRODUCT-303]
+  skills_required: "external_repo:repairman29/pvc"
+
