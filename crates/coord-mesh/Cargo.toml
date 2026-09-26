@@ -1,0 +1,19 @@
+[package]
+name = "coord-mesh"
+version = "0.1.0"
+edition = "2021"
+
+# INFRA-2264 (INFRA-1815-sideA): local stand-in for the coord-mesh crate.
+#
+# The gap as filed asked for a git dependency on `mesh-bridge` at
+# https://github.com/infra/mesh-bridge.git — that repo does not exist
+# (verified: GitHub returns 404). The real consumption mechanism, per
+# docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md and the existing
+# scaffold in crates/chump-coord/Cargo.toml, is a git dependency on the
+# *private* sibling repo `repairman29/chump-proprietary` once its
+# `crates/coord-mesh/` ships and is SHA-pinned — that work happens in the
+# sibling repo, not here (see gap notes: "does not touch the public Chump
+# git tree"). Until that SHA exists, this crate is a local, dependency-free
+# placeholder so `use coord_mesh::MeshBridge` resolves in-tree today.
+
+[dependencies]

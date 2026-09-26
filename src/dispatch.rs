@@ -298,6 +298,9 @@ impl<'a> Workspace<'a> {
 /// visibility — INFRA-274 covers cross-host), so the only legitimate
 /// pre-existing worktree at that path is detritus.
 fn create_dispatch_worktree(repo_root: &Path, gap_id: &str) -> Result<PathBuf> {
+    use coord_mesh::MeshBridge;
+    let _bridge = MeshBridge::new();
+
     let (worktree_path, branch_name) = dispatch_paths(repo_root, gap_id);
 
     // Idempotent cleanup of any leftover worktree at the target path.
