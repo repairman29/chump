@@ -11955,10 +11955,20 @@ events:
 
   - kind: chumpd_stopped
     effect_metric: self
-    emitter: crates/chumpd/src/main.rs (MISSION-051)
-    trigger: SIGTERM/SIGINT — children stopped with the supervisor
+    emitter: crates/chumpd/src/main.rs (MISSION-051, MISSION-073)
+    trigger: SIGTERM/SIGINT — children stopped with the supervisor; process
+      then exits with 128+signum (MISSION-073 AC3)
     consumers: [fleet-brief, audit-log]
-    fields_required: [ts, kind, note]
+    fields_required: [ts, kind, signal, note]
+
+  - kind: chumpd_disk_floor_gate_changed
+    effect_metric: self
+    emitter: crates/chumpd/src/main.rs (MISSION-073)
+    trigger: repo filesystem free space crosses the disk-floor threshold
+      (chump_disk_inventory::resolve_threshold_gb) — gate closing blocks new
+      worker spawns until it reopens; scale-down/drain is never gated
+    consumers: [fleet-brief, audit-log, infra-watcher]
+    fields_required: [ts, kind, open, free_gb, threshold_gb]
 
   - kind: chumpd_mode_change
     effect_metric: self
