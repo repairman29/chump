@@ -5621,10 +5621,6 @@ events:
     trigger: nightly curation run (04:00 local) completes rebalance + consolidate + retention-sweep
     consumers: [fleet-brief, opus-curator, kpi-report]
     fields_required: [ts, kind, session, rebalanced, consolidated, retained, errors]
-    trigger: operator runs fleet metrics snapshot; reads ambient.jsonl + state.db
-      to compute ship_rate, waste_rate, cycle_time_p50, active_gaps, p0_count
-    consumers: [fleet-brief, kpi-report, opus-curator, velocity-trending.sh]
-    fields_required: [ts, kind, ship_rate_24h, waste_rate_24h, cycle_time_p50_h, active_gaps, p0_count]
 
   - kind: velocity_trend_computed
     effect_metric: self
