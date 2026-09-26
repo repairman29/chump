@@ -1,8 +1,8 @@
 - id: RESILIENT-314
   domain: RESILIENT
   title: "RESILIENT: self-host Supabase OSS stack on cuphead for the tiny product apps (smuggler, postsub, trove-web, pov-video) — Auth+Storage+PostgREST+Postgres+RLS, TLS, nightly backups"
-  status: blocked
-  priority: P2
+  status: open
+  priority: P1
   effort: l
   description: |
     Re-homed 2026-09-26 (Jeff): CJ is ruled out (i5-4670K, 7 GB RAM, ~1 GB free, swap full, already hosts the gap-store Postgres). cuphead is the host: Oracle Always Free VM.Standard.A1.Flex (us-phoenix-1), arm64, 4 OCPU / 23 GB RAM (22 GB free at the 2026-09-22 inventory), 146 GB boot (116 GB free), public IP 161.153.42.x, Docker present, SSH tailnet-only. It is the account's ENTIRE free A1 allowance and is slated to become the fleet hub (workspace-docs/proposals/2026-09-22-move-hub-to-cuphead), so memory must be budgeted, not assumed. mugman is retired/idle-reclaimed and is NOT a backup target. Scope: PRODUCTION for the tiny, no-user-base apps leaving Firebase (PRODUCT-305..308, workspace-docs/GCP_EXIT.md); Olive/Upshift stay on hosted Supabase. Rough shape: (a) MEMORY SETUP FIRST: add a 4-8 GB swapfile (Oracle Ubuntu images ship with none), enable systemd-oomd or earlyoom, run the Supabase stack in its own systemd slice with MemoryMax ~4 GB and give its Postgres a protective OOMScoreAdjust, cap concurrent cargo builds on this node so a build spike cannot OOM the product DB; budget line: hub fleet-server + gap-store Postgres ~2 GB, Supabase <=4 GB, workers the rest; (b) data on a separate block volume carved from the unused Always Free block allowance (~54 GB left of 200 GB; confirm in console) so boot-disk trouble never takes product data; (c) supabase docker-compose trimmed (analytics/logflare+vector off), one schema per app, shared GoTrue with per-app redirect URLs; (d) Caddy with Let's Encrypt TLS on per-app API hostnames (DNS at Porkbun), open 443 in the Oracle security list, Studio tailnet-only; (e) nightly pg_dump + storage sync to OCI Object Storage in the same account (Always Free ~20 GB) AND a second copy off Oracle to CJ, 14-day retention, restore drill documented; (f) systemd-supervised and added to the node organ manifest so converge keeps it up; (g) secrets in ~/.chump/providers.env, never in git.
@@ -15,5 +15,8 @@
     - Studio and Postgres ports are not reachable from the public internet (probe from outside the tailnet)
   notes: |
     [2026-09-10T16:32:50Z] INFRA-3832 auto-block: 3 consecutive non-ship cycles (last kind=rc=1, rc=1, cycle_log=1107B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing.
+    [2026-09-26] Un-blocked: spec rewritten (retargeted CJ -> cuphead, scope + memory budget + AC fixed; see description). Decompose at claim time if the worker needs smaller slices (chump gap decompose RESILIENT-314).
+    DISPATCH (Jeff 2026-09-26): execute ON cuphead only (ubuntu@cuphead, tailnet). The pull picker does not enforce preferred_machine yet, so a worker on any other node that picks this must release it (chump claim --discard-wip) rather than attempt it remotely. Operator-only prerequisites (Oracle console / registrar; a worker cannot do these, so stop and page with the exact ask if missing): (1) create + attach an Always Free block volume (~50 GB) to cuphead; (2) add TCP 443 (and 80 for ACME) ingress to cuphead's security list; (3) Porkbun A records for the per-app API hostnames -> cuphead's public IP. Everything else (swap, oomd, systemd slice, docker compose, Caddy, backups, restore drill) is worker work on the node. Order: memory guards first, then the stack. Doc: workspace-docs/GCP_EXIT.md.
   opened_date: '2026-08-19'
+  preferred_machine: cuphead
 
