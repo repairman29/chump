@@ -191,3 +191,9 @@ install-postgrest.sh
 # cleanly (no-op) on any node where those run-scripts don't exist, so it is
 # situational/opt-in, not a universal fresh-bootstrap requirement.
 install-cj-core-organs.sh
+
+# INFRA-1495 — hourly state-db-yaml-sync.sh cadence. Defaults to --dry-run
+# (report-only); the operator opts into --apply once the sweep has run clean
+# for a while (CHUMP_STATE_DB_YAML_SYNC_MODE). Not a universal fresh-bootstrap
+# requirement — YAML mirrors are optional post-INFRA-760.
+install-state-db-yaml-sync-launchd.sh
