@@ -230,6 +230,9 @@ pub fn load_apps_config(path: &Path) -> Result<HashMap<Lane, AppCredentials>> {
 
 #[cfg(test)]
 mod tests {
+    // Naming convention: assert_* tests are static preflight tests (fast, no
+    // external dependencies); behavior_* tests are runtime CI-only tests
+    // (require CI environment).
     use super::*;
     use std::io::Write;
 
@@ -274,7 +277,7 @@ mod tests {
     }
 
     #[test]
-    fn load_apps_config_with_missing_file_returns_empty_map() {
+    fn assert_load_apps_config_with_missing_file_returns_empty_map() {
         let result = load_apps_config(Path::new("/tmp/__nonexistent_chump_test_config.toml"));
         assert!(result.is_ok());
         assert!(result.unwrap().is_empty());
