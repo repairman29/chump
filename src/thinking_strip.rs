@@ -310,6 +310,18 @@ mod tests {
     }
 
     #[test]
+    fn gemini_think_block_stripped_before_agent_loop_sees_it() {
+        // INFRA-790: Gemini thinking-token responses arrive as <think>...</think>
+        // (same shape as Qwen3). Verify the agent-loop-facing strip removes it
+        // entirely so raw thinking blocks never reach conversation history.
+        let s = "<think>\nreasoning about the gemini budget\n</think>\n\nFinal answer.";
+        let cleaned = strip_for_public_reply(s);
+        assert!(!cleaned.contains("<think>"));
+        assert!(!cleaned.contains("</think>"));
+        assert_eq!(cleaned, "Final answer.");
+    }
+
+    #[test]
     fn prefers_longer_thinking_tag_over_think() {
         // When text has <thinking>, don't mis-match on <think> prefix.
         let s = "<thinking>\nlong form\n</thinking>\ntail";

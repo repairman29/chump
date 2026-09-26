@@ -177,22 +177,42 @@ fn build_openai_reasoning_params() -> Value {
     json!({ "reasoning_effort": effort })
 }
 
+/// Resolve the Gemini thinking-token budget (INFRA-790).
+///
+/// `GEMINI_THINKING_BUDGET_TOKENS` takes precedence when set (including `0`,
+/// which disables thinking output entirely — the safe default). Falls back
+/// to `CHUMP_REASONING_BUDGET_TOKENS` for backward compatibility with the
+/// shared Claude/Gemini budget knob, then to `0` if neither is set.
+fn gemini_thinking_budget_tokens() -> u32 {
+    std::env::var("GEMINI_THINKING_BUDGET_TOKENS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .or_else(|| {
+            std::env::var("CHUMP_REASONING_BUDGET_TOKENS")
+                .ok()
+                .and_then(|s| s.trim().parse::<u32>().ok())
+        })
+        .unwrap_or(0)
+        .clamp(0, 32_768)
+}
+
 /// Build Gemini thinking-mode parameter.
 ///
 /// For `gemini-2.x-flash-thinking` and `gemini-2.5-pro` the field is
 /// `thinkingConfig` inside the generation config.  We return it as a
 /// top-level key that callers can merge; the cascade can wrap it in
 /// `generationConfig` if needed.
+///
+/// `GEMINI_THINKING_BUDGET_TOKENS` (default `0`) caps `thinkingBudget`; a
+/// budget of `0` also sets `includeThoughts: false` so the Gemini API omits
+/// thought summaries from the response entirely, in addition to the
+/// text-level `<think>` stripping done in `thinking_strip.rs`.
 fn build_gemini_reasoning_params() -> Value {
-    let budget: u32 = std::env::var("CHUMP_REASONING_BUDGET_TOKENS")
-        .ok()
-        .and_then(|s| s.trim().parse().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(10_000)
-        .clamp(1_024, 32_768);
+    let budget = gemini_thinking_budget_tokens();
     json!({
         "thinkingConfig": {
-            "thinkingBudget": budget
+            "thinkingBudget": budget,
+            "includeThoughts": budget > 0
         }
     })
 }
@@ -382,10 +402,46 @@ mod tests {
 
     #[test]
     #[serial]
-    fn build_gemini_params_default_budget() {
+    fn build_gemini_params_default_budget_is_zero() {
+        // INFRA-790: default is 0 (strip/disable all thinking) when neither
+        // GEMINI_THINKING_BUDGET_TOKENS nor CHUMP_REASONING_BUDGET_TOKENS is set.
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
         std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
         let p = build_reasoning_params("gemini-2.0-flash-thinking-exp").unwrap();
-        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 10_000);
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 0);
+        assert_eq!(p["thinkingConfig"]["includeThoughts"], false);
+    }
+
+    #[test]
+    #[serial]
+    fn build_gemini_params_honors_gemini_specific_budget() {
+        std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "4096");
+        let p = build_reasoning_params("gemini-2.5-pro-preview").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 4096);
+        assert_eq!(p["thinkingConfig"]["includeThoughts"], true);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn build_gemini_params_falls_back_to_shared_reasoning_budget() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        std::env::set_var("CHUMP_REASONING_BUDGET_TOKENS", "2048");
+        let p = build_reasoning_params("gemini-2.5-pro").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 2048);
+        std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn build_gemini_params_gemini_specific_takes_precedence() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "0");
+        std::env::set_var("CHUMP_REASONING_BUDGET_TOKENS", "9999");
+        let p = build_reasoning_params("gemini-2.5-pro").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 0);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
     }
 
     #[test]
