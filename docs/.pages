@@ -1,0 +1,63 @@
+# Curated top-level navigation for the Chump doctrine site.
+# Managed by the mkdocs-awesome-pages-plugin.
+#   - Explicit entries below group the loose top-level docs by theme.
+#   - The "..." token then folds in every remaining folder (architecture,
+#     process, strategy, design, audits, eval, research, rfcs, ...) as its
+#     own browsable section, so nothing is lost.
+title: Chump Doctrine
+nav:
+  - Home: README.md
+
+  - Start Here:
+      - USER_GUIDE.md
+      - QUICKSTART_OFFLINE.md
+      - OFFLINE_FIRST_WORKFLOW.md
+      - PWA_STARTUP.md
+      - PWA_USER_GUIDE.md
+      - CHUMPOS_FIRST_BOOT.md
+
+  - Mission & Vision:
+      - MISSION.md
+      - FACTORY_VISION.md
+      - PITCH.md
+      - DEMO_5MIN.md
+      - HIDDEN_GEMS.md
+
+  - Doctrine:
+      - doctrine
+
+  - Roadmaps:
+      - ROADMAP.md
+      - ROADMAP_12_18.md
+      - ROADMAP_OPUS_SEQUENCING.md
+
+  - Operating the Fleet:
+      - CHUMPOS_OPERATIONAL_PLAN.md
+      - DISCORD_OPERATOR_CONSOLE.md
+      - CONTINUAL_LEARNING.md
+
+  - Reference:
+      - ALMANAC.md
+      - CLI_FLAGS.md
+      - CLI_EXIT_CODES.md
+      - CODEBASE_REALITY_MAP.md
+      - ASSERTIONS.md
+      - VENDOR_LEDGER.md
+
+  - Working Notes:
+      - RED_LETTER.md
+      - CREDIBLE_222_DRIFT_TRIAGE.md
+      - RESILIENT-274_design.md
+      - RESILIENT-314-NOTES.md
+      - SOAK_72H_LOG.md
+      - FEEDBACK_GAPS_ALWAYS_HAVE_AC.md
+      - FLEET-011-decomposition-heuristics.md
+      - FLEET-013-tailscale-setup.md
+      - design-pass-stage.md
+      - ship_velocity_score.md
+      - echeo_ship_velocity_score.md
+
+  # Every remaining theme folder (architecture, process, strategy, design,
+  # audits, operations, eval, research, rfcs, security, api, howto, ...)
+  # is folded in here automatically as its own section.
+  - ...

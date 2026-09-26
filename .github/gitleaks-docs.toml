@@ -1,0 +1,21 @@
+# gitleaks config for the docs-site secret guard (.github/workflows/docs.yml).
+#
+# Uses the full default ruleset, plus a narrow allowlist for false-positives
+# that the generic-api-key rule flags in the published doctrine. Each entry
+# below was manually verified to be public, non-secret text, NOT a credential.
+# Any real key/token (sk-, ghp_, AWS, JWT, private keys, ...) still fails CI.
+title = "chump docs-site secret guard"
+
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Verified non-secret documentation strings (public model IDs, metric fields)"
+regexTarget = "match"
+regexes = [
+  # Public LLM model identifiers in provider comparison tables
+  # (docs/operations/OPERATIONS.md free-tier provider table).
+  '''llama-3\.3-70b(-versatile)?''',
+  # Internal metric field in gap YAML (a duration count, not a key).
+  '''minutes_lost=\d+''',
+]
