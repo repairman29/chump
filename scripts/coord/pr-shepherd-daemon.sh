@@ -76,6 +76,9 @@ WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedge
 # not on every 60s tick.
 VOTE_REQUEST_SIGNAL_FILE="${CHUMP_VOTE_REQUEST_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-vote-request-signaled.json}"
 SAFE_MODE_STATE_FILE="${CHUMP_SAFE_MODE_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-shepherd-safe-mode.json}"
+# META-141: local sqlite db that tags tests as flakes once the SAME error
+# fingerprint recurs on 3+ consecutive check runs for that test.
+FLAKE_DB="${CHUMP_FLAKE_DB:-$REPO_ROOT/.chump/flake.db}"
 # INFRA-2349: trunk-sentinel's own state file (red_since_epoch) — authoritative
 # source for how long trunk has actually been red, so the cascade gate can be
 # time-bounded instead of holding forever off a single stale RED transition.
@@ -631,6 +634,102 @@ _is_blocked_flake() {
   return 0
 }
 
+# _sql_escape — escape single quotes for inline sqlite3 string literals.
+_sql_escape() {
+  printf '%s' "$1" | sed "s/'/''/g"
+}
+
+# _flake_db_init — create flake.db tables if missing (META-141).
+_flake_db_init() {
+  mkdir -p "$(dirname "$FLAKE_DB")"
+  sqlite3 "$FLAKE_DB" <<'SQL'
+CREATE TABLE IF NOT EXISTS flake_runs (
+  test_name TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  consecutive_count INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS flakes (
+  test_name TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  status TEXT NOT NULL,
+  first_flagged_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+SQL
+}
+
+# _flake_fingerprint — error fingerprint for a check/test name (META-141 AC #4).
+# Reuses extract_job() from scripts/ci/test-half-impl-detector.sh (sourced by
+# extracting just that function's body — the rest of that script runs a full
+# smoke-test suite on load, which we don't want here) to pull the check's job
+# YAML section out of .github/workflows/*.yml, then hashes it. Falls back to
+# hashing the raw check name when no workflow job section matches it (e.g. a
+# dynamic/matrix job name).
+_flake_fingerprint() {
+  local check_name="$1"
+  eval "$(sed -n '/^extract_job()/,/^}/p' "$REPO_ROOT/scripts/ci/test-half-impl-detector.sh")"
+  local wf job_section=""
+  for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+    [[ -f "$wf" ]] || continue
+    WF="$wf"
+    job_section="$(extract_job "$check_name" 2>/dev/null)" || job_section=""
+    [[ -n "$job_section" ]] && break
+  done
+  [[ -z "$job_section" ]] && job_section="$check_name"
+  printf '%s' "$job_section" | sha256sum | awk '{print $1}'
+}
+
+# _flake_track — record one observed (test_name, fingerprint) run. Tags the
+# test as a flake in the `flakes` table once the SAME fingerprint has recurred
+# on 3+ consecutive runs; a differing fingerprint resets the streak to 1.
+# Args: $1=test_name $2=fingerprint
+_flake_track() {
+  local test_name="$1" fingerprint="$2"
+  local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _flake_db_init
+  local esc_name esc_fp prev_fp prev_count new_count
+  esc_name="$(_sql_escape "$test_name")"
+  esc_fp="$(_sql_escape "$fingerprint")"
+  prev_fp=$(sqlite3 "$FLAKE_DB" "SELECT fingerprint FROM flake_runs WHERE test_name = '${esc_name}';" 2>/dev/null || echo "")
+  prev_count=$(sqlite3 "$FLAKE_DB" "SELECT consecutive_count FROM flake_runs WHERE test_name = '${esc_name}';" 2>/dev/null || echo "")
+  new_count=1
+  if [[ -n "$prev_fp" && "$prev_fp" = "$fingerprint" ]]; then
+    new_count=$(( ${prev_count:-0} + 1 ))
+  fi
+  sqlite3 "$FLAKE_DB" "INSERT INTO flake_runs (test_name, fingerprint, consecutive_count, updated_at)
+    VALUES ('${esc_name}', '${esc_fp}', ${new_count}, '${ts}')
+    ON CONFLICT(test_name) DO UPDATE SET fingerprint=excluded.fingerprint, consecutive_count=excluded.consecutive_count, updated_at=excluded.updated_at;"
+  if [[ "$new_count" -ge 3 ]]; then
+    sqlite3 "$FLAKE_DB" "INSERT INTO flakes (test_name, fingerprint, status, first_flagged_at, last_seen_at)
+      VALUES ('${esc_name}', '${esc_fp}', 'flake', '${ts}', '${ts}')
+      ON CONFLICT(test_name) DO UPDATE SET fingerprint=excluded.fingerprint, status='flake', last_seen_at=excluded.last_seen_at;"
+  fi
+}
+
+# _flake_track_check_names — split a CSV of failing check names (as produced
+# by the BLOCKED_REAL_FAIL classifier) and track each one's fingerprint.
+# Args: $1=fail_check_names_csv
+_flake_track_check_names() {
+  local fail_names="$1"
+  [[ -z "$fail_names" ]] && return 0
+  local IFS=','
+  local name
+  for name in $fail_names; do
+    name="${name# }"; name="${name% }"
+    [[ -z "$name" ]] && continue
+    _flake_track "$name" "$(_flake_fingerprint "$name")"
+  done
+}
+
+# cmd_query_flakes — print each currently-tagged flake's test name and error
+# fingerprint, one per line, tab-separated (META-141 AC #2).
+cmd_query_flakes() {
+  _flake_db_init
+  sqlite3 -separator "$(printf '\t')" "$FLAKE_DB" \
+    "SELECT test_name, fingerprint FROM flakes WHERE status = 'flake' ORDER BY test_name;" 2>/dev/null
+}
+
 # _flake_rerun_count — get/inc per-PR rerun counter
 # Args: $1=pr_num [$2=inc|read]  — default read
 # Outputs: integer count to stdout. Initializes file on first use.
@@ -1026,6 +1125,12 @@ for p in prs:
       fail_check_names=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('fail_check_names',''))" 2>/dev/null || echo "")
       _emit_pr_classified "$pr_num" "$c" "$gap_id" "$age"
 
+      # META-141: flake detection — track consecutive identical-fingerprint
+      # failures per test/check name; tags 'flake' in flake.db after 3+ in a row.
+      if [ "$c" = "BLOCKED_REAL_FAIL" ]; then
+        _flake_track_check_names "$fail_check_names"
+      fi
+
       # ─── INFRA-2346 tier A: CLEAN_GREEN → auto-admin-merge ──────────────────
       # Independent of META-184/186 paths: a PR can be MERGEABLE or BLOCKED_GREEN
       # AND also be a trusted-author admin-merge target. Run this BEFORE the
@@ -1337,12 +1442,13 @@ print(m.group(0) if m else '')
 
 case "${1:-}" in
   tick) cmd_tick ;;
+  query-flakes) cmd_query_flakes ;;
   --help|-h)
     sed -n '1,40p' "$0"
     exit 0
     ;;
   *)
-    echo "Usage: $0 tick | --help" >&2
+    echo "Usage: $0 tick | query-flakes | --help" >&2
     exit 2
     ;;
 esac
