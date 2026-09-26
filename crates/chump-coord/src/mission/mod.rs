@@ -67,9 +67,11 @@
 //! let _ids = store.list().unwrap();
 //! ```
 
+pub mod failure;
 pub mod persistence;
 pub mod replanning;
 
+pub use failure::{classify_error_message, classify_status_code, FailureClass};
 pub use persistence::{
     DependencyCondition, FallbackMode, FileBackedMissionStore, Mission, MissionCheckpoint,
     MissionStore, Objective, ObjectiveDependency, ObjectiveState, PersistentMission,
