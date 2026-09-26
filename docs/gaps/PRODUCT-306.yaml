@@ -1,0 +1,16 @@
+- id: PRODUCT-306
+  domain: PRODUCT
+  title: "[postsub][external_repo:repairman29/postsub][gcp-exit] Move PostSub from Firebase (fulcrum-41e50) to Vercel + Supabase"
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    postsub.io is a React SPA on Firebase Hosting (build/) with Firestore (~60 files: users, subscriptions, subscribers, posts, email_queue, email_opens, analytics, revenue_analytics…), ~25 files of Cloud Functions (Stripe webhooks, email queue/tracking), Auth, Storage. Rough shape: (a) schema + import, (b) supabase-js swap in src/, (c) functions to Vercel API routes + Vercel cron for the email queue, (d) Storage to Supabase Storage, (e) DNS cutover of postsub.io at Porkbun (currently Firebase A + www CNAME). Target stack per workspace-docs/GCP_EXIT.md: Vercel (hosting + API routes/functions) + Supabase Pro (dedicated project per app: Postgres, Auth, Storage). Keep Sign in with Google (Supabase Google provider; OAuth client stays in its GCP project, no billing needed). Depends on PRODUCT-303 export. Firebase email/password users must keep working: import users from the auth:export JSON and verify Firebase scrypt hashes on first sign-in (Supabase firebase-to-supabase pattern), or document why a reset flow was required. Secrets move from GCP Secret Manager to Vercel env vars.
+  acceptance_criteria:
+    - Row counts match the export ledger for every collection
+    - Stripe checkout + webhook flow passes end-to-end in Stripe test mode against the Vercel deployment
+    - Email queue processes on a Vercel cron with no Cloud Function
+    - postsub.io DNS points at Vercel and serves the migrated app; firebase deps removed
+  depends_on: [PRODUCT-303]
+  skills_required: "external_repo:repairman29/postsub"
+

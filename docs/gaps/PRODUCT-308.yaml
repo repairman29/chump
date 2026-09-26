@@ -1,0 +1,16 @@
+- id: PRODUCT-308
+  domain: PRODUCT
+  title: "[pov-video][external_repo:repairman29/pov-video][gcp-exit] Move POV (sendpov.xyz) off Firebase (echeo-vid) to Vercel + Supabase, videos to Supabase Storage or R2"
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    sendpov.xyz is a Vite SPA on Firebase Hosting with Firestore (~65 files: videos, comments, users, leads, videoViews, auditLogs, workspaces, webhooks…), Auth (~17 files), Storage for recorded video (~17 files), Cloud Functions, Speech-to-Text transcription, Secret Manager. Decide storage by egress: Supabase Storage vs Cloudflare R2 (record the choice + cost estimate in the PR). Speech-to-Text moves to Whisper (Groq/OpenAI) via the existing provider path. Target stack per workspace-docs/GCP_EXIT.md: Vercel (hosting + API routes/functions) + Supabase Pro (dedicated project per app: Postgres, Auth, Storage). Keep Sign in with Google (Supabase Google provider; OAuth client stays in its GCP project, no billing needed). Depends on PRODUCT-303 export. Firebase email/password users must keep working: import users from the auth:export JSON and verify Firebase scrypt hashes on first sign-in (Supabase firebase-to-supabase pattern), or document why a reset flow was required. Secrets move from GCP Secret Manager to Vercel env vars.
+  acceptance_criteria:
+    - Storage choice + egress cost estimate recorded in the PR
+    - All videos copied with object counts and total bytes matching the export ledger; playback verified on a sample
+    - Transcription works without @google-cloud/speech
+    - sendpov.xyz DNS points at Vercel; no firebase, firebase-admin or @google-cloud deps remain
+  depends_on: [PRODUCT-303]
+  skills_required: "external_repo:repairman29/pov-video"
+
