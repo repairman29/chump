@@ -85,6 +85,48 @@ else
     fail "Voice-Lint-Bypass bypass trailer missing from banlist script"
 fi
 
+# ── Test 7: product-marketing ban-list rejects a fixture doc file ────────────
+# INFRA-1736: banned words like "user journey" must actually trip the gate
+# end-to-end, not just appear in the script source. Build a scratch git repo
+# so the run is independent of this repo's own history.
+echo "Test 7: product-marketing words (e.g. 'user journey') are rejected"
+SCRATCH_DIR=$(mktemp -d)
+trap 'rm -rf "$SCRATCH_DIR"' EXIT
+
+(
+    cd "$SCRATCH_DIR"
+    git init -q
+    git config user.email "fixture@chump.local"
+    git config user.name "fixture"
+
+    mkdir -p docs/process
+    echo "# Base doc" > docs/process/BASE.md
+    git add docs/process/BASE.md
+    git commit -q -m "base commit"
+
+    cat > docs/process/VOICE_BANLIST_FIXTURE.md <<'EOF'
+# Fixture doc
+
+This describes the user journey for our platform.
+EOF
+    git add docs/process/VOICE_BANLIST_FIXTURE.md
+    git commit -q -m "add fixture with banned words"
+)
+
+FIXTURE_EXIT=0
+FIXTURE_OUT=$(REPO_ROOT="$SCRATCH_DIR" CHUMP_AMBIENT_LOG="$SCRATCH_DIR/ambient.jsonl" \
+    bash "$BANLIST" 2>&1) || FIXTURE_EXIT=$?
+
+if [[ "$FIXTURE_EXIT" -eq 1 ]] && echo "$FIXTURE_OUT" | grep -q "user journey"; then
+    ok "fixture doc with 'user journey' is rejected (exit 1)"
+else
+    fail "fixture doc with banned word was not rejected as expected (exit=$FIXTURE_EXIT)"
+    echo "$FIXTURE_OUT"
+fi
+
+rm -rf "$SCRATCH_DIR"
+trap - EXIT
+
 echo ""
 echo "Results: $PASS passed, $FAIL failed"
 if [[ "$FAIL" -gt 0 ]]; then
