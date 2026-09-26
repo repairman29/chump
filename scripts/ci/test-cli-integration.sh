@@ -151,6 +151,12 @@ check_any() {
 # isolation — merging stderr with 2>&1 (as the other check_* helpers do)
 # would falsely fail whenever the CI checkout is behind origin/main, which
 # is the steady state on a busy trunk (deterministic trunk-red).
+#
+# INFRA-1789: `--format json` invocations (including `--help --format json`,
+# once a subcommand supports it) get an extra structural check beyond "is
+# this valid JSON" — the top-level value must decode to an object or array,
+# not a bare scalar/string, since every JSON-format command output in this
+# codebase is a mapping or a list of entries.
 check_json() {
     local desc="$1"; shift
     local output err rc=0
@@ -159,10 +165,29 @@ check_json() {
     output=$("$CHUMP" "$@" 2>"$err") || rc=$?
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
+        rm -f "$err"
+        return
+    fi
+    if ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
+        rm -f "$err"
+        return
+    fi
+    local wants_format_json=0 i
+    for ((i = 1; i <= $#; i++)); do
+        if [[ "${!i}" == "--format" ]]; then
+            local next=$((i + 1))
+            [[ "${!next:-}" == "json" ]] && wants_format_json=1
+        fi
+    done
+    if [[ $wants_format_json -eq 1 ]]; then
+        if echo "$output" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d, (dict, list)) else 1)' 2>/dev/null; then
+            ok "$desc"
+        else
+            fail "$desc → --format json output is valid JSON but not an object/array (got a bare scalar)"
+        fi
+    else
+        ok "$desc"
     fi
     rm -f "$err"
 }
@@ -181,6 +206,7 @@ check_success "gap list exits 0"                       gap list
 check_json    "gap list --json returns valid JSON"     gap list --json
 check_success "gap list --status open exits 0"         gap list --status open
 check_success "gap list --status done exits 0"         gap list --status done
+check_json    "gap list --format json returns valid structured JSON" gap list --format json
 
 # gap show: requires GAP-ID (--help exits non-zero from raw binary)
 check_any     "gap show --help shows Usage"            "Usage|GAP-ID|gap show"   gap show --help

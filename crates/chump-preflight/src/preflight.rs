@@ -1212,6 +1212,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: `chump preflight --help` golden-file regression —
+        // catches stale/drifted CLI help text that coverage checks (which
+        // only assert --help exits 0 and mentions a keyword) miss entirely.
+        // Pure local diff against crates/chump-preflight/tests/help-golden.txt,
+        // no network, <1s.
+        "scripts/ci/test-cli-help-regression.sh",
     ];
     candidates
         .iter()
@@ -3375,6 +3381,22 @@ mod tests {
                 .any(|p| p.ends_with("scripts/ci/test-pr-stuck-cluster-detection.sh")),
             "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
              always-run allowlist so detector regressions surface locally"
+        );
+    }
+
+    // INFRA-1789: the `chump preflight --help` golden-file regression script
+    // must be wired into the always-run allowlist so stale/drifted CLI help
+    // text is caught locally instead of only in CI.
+    #[test]
+    fn infra1789_cli_help_regression_test_is_wired() {
+        let repo_root = find_repo_root().expect("repo root");
+        let scripts = discover_test_scripts(&repo_root);
+        assert!(
+            scripts
+                .iter()
+                .any(|p| p.ends_with("scripts/ci/test-cli-help-regression.sh")),
+            "test-cli-help-regression.sh must be wired into preflight's \
+             always-run allowlist so --help drift surfaces locally"
         );
     }
 
