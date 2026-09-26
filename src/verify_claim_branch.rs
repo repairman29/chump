@@ -158,12 +158,37 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
     Verdict::PeerLeasesOnly
 }
 
+/// AC1 (INFRA-1649): computed cost of one `verify-claim-branch` invocation.
+/// `duration_seconds * CHUMP_COST_PER_SECOND` (default 0.0 — this command
+/// makes no LLM/API calls, so cost is zero unless an operator overrides the
+/// rate for uniform cost rollups across commands).
+fn cost_estimate(duration_ms: u64) -> f64 {
+    let cost_per_second: f64 = std::env::var("CHUMP_COST_PER_SECOND")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.0);
+    (duration_ms as f64 / 1000.0) * cost_per_second
+}
+
+/// AC1 (INFRA-1649): emit the single closing observability JSON line + the
+/// AC4 `cost reported:` stderr log. `status` is one of
+/// success/failure/timeout; `failure_class` is one of transient/permanent/none.
+fn emit_observability_summary(status: &str, duration_ms: u64, failure_class: &str) {
+    let cost = cost_estimate(duration_ms);
+    println!(
+        "{{\"status\":\"{status}\",\"duration_ms\":{duration_ms},\"cost_estimate\":{cost},\"failure_class\":\"{failure_class}\"}}"
+    );
+    eprintln!("cost reported: ${cost}");
+}
+
 pub fn run_cli(args: &[String]) -> i32 {
+    let started = std::time::Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
     let Some(branch) = current_branch(&repo_root) else {
         eprintln!("chump verify-claim-branch: could not resolve current git branch");
+        emit_observability_summary("failure", started.elapsed().as_millis() as u64, "permanent");
         return 1;
     };
 
@@ -198,12 +223,12 @@ pub fn run_cli(args: &[String]) -> i32 {
     let leases = list_active();
     let verdict = verify(&branch, &session_id, &leases);
 
-    match verdict {
+    let (exit_code, failure_class) = match verdict {
         Verdict::NoLeases => {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
             }
-            0
+            (0, "none")
         }
         Verdict::PeerLeasesOnly => {
             eprintln!(
@@ -213,7 +238,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"peer_leases_only\",\"branch\":\"{branch}\"}}");
             }
-            0
+            (0, "none")
         }
         Verdict::Ok { gap_id } => {
             // scanner-anchor: "kind":"claim_branch_verified"
@@ -227,7 +252,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             } else {
                 println!("chump verify-claim-branch: OK — branch '{branch}' matches claimed gap {gap_id}");
             }
-            0
+            (0, "none")
         }
         Verdict::Mismatch {
             gap_id,
@@ -255,14 +280,37 @@ pub fn run_cli(args: &[String]) -> i32 {
                 eprintln!("Use: cd to your claim worktree OR run `chump --release` if abandoning this claim.");
                 eprintln!();
             }
-            1
+            // Mismatch is a logic error (wrong worktree, not a flaky
+            // dependency) — retrying the identical invocation fails the
+            // same way, so this is permanent, not transient.
+            (1, "permanent")
         }
-    }
+    };
+
+    // AC1/AC4 (INFRA-1649): single closing JSON observability line +
+    // cost-tracking log, emitted on every exit path regardless of --json.
+    let status = if exit_code == 0 { "success" } else { "failure" };
+    emit_observability_summary(status, started.elapsed().as_millis() as u64, failure_class);
+    exit_code
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn cost_estimate_defaults_to_zero() {
+        std::env::remove_var("CHUMP_COST_PER_SECOND");
+        assert_eq!(cost_estimate(5_000), 0.0);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cost_estimate_honors_env_override() {
+        std::env::set_var("CHUMP_COST_PER_SECOND", "0.02");
+        assert!((cost_estimate(2_000) - 0.04).abs() < f64::EPSILON);
+        std::env::remove_var("CHUMP_COST_PER_SECOND");
+    }
 
     fn lease(session_id: &str, gap_id: Option<&str>) -> Lease {
         Lease {

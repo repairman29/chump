@@ -12469,6 +12469,16 @@ events:
     consumers: [ambient]
     fields_required: [cwd, resolved_toplevel, branch]
 
+  - kind: external_verify_merge_observability
+    effect_metric: self
+    emitter: crates/chump-verify/src/external_verify_merge.rs (`chump
+      external verify-merge`)
+    trigger: emitted once per verify-merge run outcome (CI wait-cap timeout
+      or a MERGE verdict) — carries the status/cost/failure-class summary
+      also logged to stderr as `cost reported: $X` (INFRA-1649).
+    consumers: [ambient]
+    fields_required: [status, duration_ms, cost_estimate, failure_class]
+
   - kind: curator_no_op_avoided
     effect_metric: self
     emitter: scripts/coord/lib/no-idle.sh (sourced by ci-audit-loop.sh,

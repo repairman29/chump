@@ -100,6 +100,8 @@ pub fn run(args: &[String]) -> i32 {
 // ── Core logic ────────────────────────────────────────────────────────────
 
 fn run_inner(args: &[String]) -> anyhow::Result<i32> {
+    let run_started_at = std::time::Instant::now();
+
     if args.is_empty() || args.iter().any(|a| a == "--help" || a == "-h") {
         print_usage();
         return Ok(0);
@@ -160,6 +162,15 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
             );
             println!("  FAIL: {reason}");
             emit_held(&opts, &reason);
+            // INFRA-1649: a CI wait-cap timeout is transient by definition —
+            // the checks are still running, a later re-run of verify-merge
+            // (or a longer CHUMP_VERIFY_CI_WAIT_SECS) can still resolve to
+            // Green without any code change.
+            emit_observability(
+                "timeout",
+                run_started_at.elapsed().as_millis() as u64,
+                "transient",
+            );
             println!("\nVerdict: HELD(ci_pending)");
             println!("  {reason}");
             return Ok(1);
@@ -396,6 +407,11 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
     };
 
     emit_verified(&opts, &proof);
+    emit_observability(
+        "success",
+        run_started_at.elapsed().as_millis() as u64,
+        "none",
+    );
 
     println!("\nVerdict: MERGE");
     println!("  All 3 gates passed.");
@@ -2115,6 +2131,40 @@ fn ext_git() -> Command {
     c
 }
 
+/// AC1/AC4 (INFRA-1649): cost of one `verify-merge` invocation, computed as
+/// `duration_seconds * CHUMP_COST_PER_SECOND` (default 0.0 — this command's
+/// real cost is the `gh`/`git`/test-runner subprocesses it spawns, which
+/// aren't metered in dollars today; the env override lets an operator apply
+/// a uniform per-second rate for cross-command cost rollups).
+fn cost_estimate_for(duration_ms: u64) -> f64 {
+    let cost_per_second: f64 = std::env::var("CHUMP_COST_PER_SECOND")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(0.0);
+    (duration_ms as f64 / 1000.0) * cost_per_second
+}
+
+/// AC1/AC3/AC4 (INFRA-1649): emit `kind=external_verify_merge_observability`
+/// with `status` (success/failure/timeout), `duration_ms`, `cost_estimate`,
+/// and `failure_class` (transient/permanent/none), plus the AC4 `cost
+/// reported:` stderr log.
+// scanner-anchor: "kind":"external_verify_merge_observability"
+fn emit_observability(status: &str, duration_ms: u64, failure_class: &str) {
+    let cost = cost_estimate_for(duration_ms);
+    let cost_str = cost.to_string();
+    let duration_str = duration_ms.to_string();
+    emit_ambient_event(
+        "external_verify_merge_observability",
+        &[
+            ("status", status),
+            ("duration_ms", &duration_str),
+            ("cost_estimate", &cost_str),
+            ("failure_class", failure_class),
+        ],
+    );
+    eprintln!("cost reported: ${cost}");
+}
+
 fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
     // Mirror the pattern from src/orchestrate.rs::emit_ambient_event.
     let ambient = if let Ok(path) = std::env::var("CHUMP_AMBIENT_IN_PROMPT") {
@@ -2166,7 +2216,47 @@ fn emit_ambient_event(kind: &str, fields: &[(&str, &str)]) {
 
 #[cfg(test)]
 mod tests {
-    use super::select_gate_bullets;
+    use super::{cost_estimate_for, emit_observability, select_gate_bullets};
+
+    // INFRA-1649 AC3: a simulated timeout must produce an observability
+    // event with status=timeout and failure_class=transient.
+    #[test]
+    #[serial_test::serial]
+    fn smoke_observability() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        let ambient_path = tmp.path().join("ambient.jsonl");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            ambient_path.to_string_lossy().as_ref(),
+        );
+        std::env::remove_var("CHUMP_COST_PER_SECOND");
+
+        emit_observability("timeout", 1_234, "transient");
+
+        let contents = std::fs::read_to_string(&ambient_path).expect("ambient.jsonl written");
+        let last_line = contents.lines().last().expect("at least one event");
+        let event: serde_json::Value = serde_json::from_str(last_line).expect("valid json");
+        assert_eq!(event["kind"], "external_verify_merge_observability");
+        assert_eq!(event["status"], "timeout");
+        assert_eq!(event["failure_class"], "transient");
+        assert_eq!(event["duration_ms"], "1234");
+
+        std::env::remove_var("CHUMP_AMBIENT_IN_PROMPT");
+    }
+
+    #[test]
+    fn cost_estimate_for_defaults_to_zero() {
+        std::env::remove_var("CHUMP_COST_PER_SECOND");
+        assert_eq!(cost_estimate_for(5_000), 0.0);
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn cost_estimate_for_honors_env_override() {
+        std::env::set_var("CHUMP_COST_PER_SECOND", "0.02");
+        assert!((cost_estimate_for(2_000) - 0.04).abs() < f64::EPSILON);
+        std::env::remove_var("CHUMP_COST_PER_SECOND");
+    }
 
     #[test]
     fn effective387_select_gate_bullets_prefers_stored_then_synth_then_none() {

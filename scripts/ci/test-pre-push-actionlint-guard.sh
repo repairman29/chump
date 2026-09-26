@@ -68,6 +68,9 @@ if run_guard >/tmp/actionlint-guard-test.out 2>&1; then
 else
     fail "guard should exit 0 when no workflow files changed"
 fi
+grep -q "^guard: ok$" /tmp/actionlint-guard-test.out \
+    && ok "no-op run prints 'guard: ok' summary line (INFRA-1649)" \
+    || fail "expected 'guard: ok' summary line on no-op run"
 git -C "$TMP" checkout -q main
 git -C "$TMP" branch -q -D feat-no-workflow
 
@@ -123,6 +126,9 @@ EOF
     grep -q '"kind":"actionlint_guard_blocked"' "$AMB" 2>/dev/null \
         && ok "kind=actionlint_guard_blocked emitted" \
         || fail "kind=actionlint_guard_blocked not found in ambient.jsonl"
+    grep -q "^guard: fail class=permanent$" /tmp/actionlint-guard-test.out \
+        && ok "blocked run prints 'guard: fail class=permanent' summary line (INFRA-1649)" \
+        || fail "expected 'guard: fail class=permanent' summary line on blocked run"
 else
     if run_guard >/tmp/actionlint-guard-test.out 2>&1; then
         ok "actionlint absent → guard exits 0 (transient, non-blocking)"
@@ -133,6 +139,9 @@ else
     grep -q '"kind":"actionlint_guard_skipped"' "$AMB" 2>/dev/null \
         && ok "kind=actionlint_guard_skipped emitted" \
         || fail "kind=actionlint_guard_skipped not found in ambient.jsonl"
+    grep -q "^guard: ok$" /tmp/actionlint-guard-test.out \
+        && ok "transient-skip run prints 'guard: ok' summary line (INFRA-1649)" \
+        || fail "expected 'guard: ok' summary line on transient-skip run"
 fi
 
 git -C "$TMP" checkout -q main

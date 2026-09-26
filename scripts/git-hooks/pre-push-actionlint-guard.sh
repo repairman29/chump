@@ -27,6 +27,11 @@
 # Observability: emits one ambient event per run (pass/fail/skip), each
 # carrying duration_ms so the cost of the gate is visible in
 # api-cost/waste-tally style rollups without a separate cost-tracking path.
+# INFRA-1649: `run_guard` (below) additionally prints a one-line summary —
+# `guard: ok` on stdout for any non-blocking outcome (pass or transient
+# skip), or `guard: fail class=<transient|permanent>` on stderr + exit 1
+# for a blocking outcome — so callers can grep a single line instead of
+# re-deriving pass/fail from ambient.jsonl.
 #
 # Bypass: CHUMP_ACTIONLINT_GUARD=0 git push
 #
@@ -49,63 +54,100 @@ emit_ambient() {
         "$ts" "$kind" "$note" "$dur" >> "$AMBIENT" 2>/dev/null || true
 }
 
-if [[ "${CHUMP_ACTIONLINT_GUARD:-1}" == "0" ]]; then
-    echo "[actionlint-guard] CHUMP_ACTIONLINT_GUARD=0 — guard disabled." >&2
-    exit 0
-fi
+# INFRA-1649: the hardened guard body, split into a function so the
+# permanent/transient failure class it settles on can be reported in a
+# single summary line by the caller below, instead of being buried in
+# per-file stderr output. Sets the global GUARD_FAILURE_CLASS on any
+# non-zero return (transient|permanent); leaves it unset on success.
+GUARD_FAILURE_CLASS=""
 
-# scanner-anchor: "kind":"actionlint_guard_skipped"
-# scanner-anchor: "kind":"actionlint_guard_blocked"
-# scanner-anchor: "kind":"actionlint_guard_passed"
-BASE_REF="origin/main"
-if ! git rev-parse "$BASE_REF" &>/dev/null; then
-    echo "[actionlint-guard] WARN: cannot resolve $BASE_REF; skipping guard." >&2
-    emit_ambient "actionlint_guard_skipped" "no-base-ref"
-    exit 0
-fi
-
-mapfile -t CHANGED_WORKFLOWS < <(git diff --name-only "${BASE_REF}...HEAD" 2>/dev/null \
-    | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
-
-if [[ "${#CHANGED_WORKFLOWS[@]}" -eq 0 ]]; then
-    exit 0
-fi
-
-if ! command -v actionlint &>/dev/null; then
-    echo "[actionlint-guard] WARN: actionlint binary not found — skipping local gate (transient class)." >&2
-    echo "[actionlint-guard] Install: brew install actionlint (or go install github.com/rhysd/actionlint/cmd/actionlint@latest)" >&2
-    echo "[actionlint-guard] The CI-side actionlint step (META-199) still gates this PR on GitHub." >&2
-    emit_ambient "actionlint_guard_skipped" "binary-not-installed"
-    exit 0
-fi
-
-echo "[actionlint-guard] Checking ${#CHANGED_WORKFLOWS[@]} changed workflow file(s) with actionlint..." >&2
-
-FAILED=0
-FINDINGS=""
-for wf in "${CHANGED_WORKFLOWS[@]}"; do
-    [[ -f "$REPO_ROOT/$wf" ]] || continue
-    if ! out="$(actionlint "$REPO_ROOT/$wf" 2>&1)"; then
-        FAILED=1
-        echo "[actionlint-guard]   ✗ $wf" >&2
-        echo "$out" | sed 's/^/[actionlint-guard]     /' >&2
-        FINDINGS="${FINDINGS}${wf}: $(echo "$out" | head -1);"
-    else
-        echo "[actionlint-guard]   ✓ $wf" >&2
+run_guard() {
+    if [[ "${CHUMP_ACTIONLINT_GUARD:-1}" == "0" ]]; then
+        echo "[actionlint-guard] CHUMP_ACTIONLINT_GUARD=0 — guard disabled." >&2
+        return 0
     fi
-done
 
-if [[ "$FAILED" -ne 0 ]]; then
-    echo "" >&2
-    echo "[actionlint-guard] BLOCKED (INFRA-2322): actionlint reported findings in changed workflow file(s)." >&2
-    echo "[actionlint-guard] Common classes: matrix-in-if (matrix.* referenced in a job-level if:)," >&2
-    echo "[actionlint-guard] and version-typo (malformed uses: owner/repo@ref pin)." >&2
-    echo "[actionlint-guard] Bypass (rare, document why): CHUMP_ACTIONLINT_GUARD=0 git push" >&2
-    echo "" >&2
-    emit_ambient "actionlint_guard_blocked" "$FINDINGS"
+    # scanner-anchor: "kind":"actionlint_guard_skipped"
+    # scanner-anchor: "kind":"actionlint_guard_blocked"
+    # scanner-anchor: "kind":"actionlint_guard_passed"
+    local base_ref="origin/main"
+    if ! git rev-parse "$base_ref" &>/dev/null; then
+        echo "[actionlint-guard] WARN: cannot resolve $base_ref; skipping guard." >&2
+        emit_ambient "actionlint_guard_skipped" "no-base-ref"
+        return 0
+    fi
+
+    local changed_workflows
+    mapfile -t changed_workflows < <(git diff --name-only "${base_ref}...HEAD" 2>/dev/null \
+        | grep -E '^\.github/workflows/.*\.ya?ml$' || true)
+
+    if [[ "${#changed_workflows[@]}" -eq 0 ]]; then
+        return 0
+    fi
+
+    if ! command -v actionlint &>/dev/null; then
+        echo "[actionlint-guard] WARN: actionlint binary not found — skipping local gate (transient class)." >&2
+        echo "[actionlint-guard] Install: brew install actionlint (or go install github.com/rhysd/actionlint/cmd/actionlint@latest)" >&2
+        echo "[actionlint-guard] The CI-side actionlint step (META-199) still gates this PR on GitHub." >&2
+        emit_ambient "actionlint_guard_skipped" "binary-not-installed"
+        return 0
+    fi
+
+    echo "[actionlint-guard] Checking ${#changed_workflows[@]} changed workflow file(s) with actionlint..." >&2
+
+    local findings="" real_findings=0 tool_errors=0 out rc
+    for wf in "${changed_workflows[@]}"; do
+        [[ -f "$REPO_ROOT/$wf" ]] || continue
+        out="$(actionlint "$REPO_ROOT/$wf" 2>&1)"
+        rc=$?
+        if [[ "$rc" -eq 0 ]]; then
+            echo "[actionlint-guard]   ✓ $wf" >&2
+        elif [[ "$rc" -eq 1 ]]; then
+            # INFRA-1649: exit 1 is actionlint's documented "ran fine, found
+            # >=1 real finding" code — a permanent (blocking) class, since
+            # retrying the identical push fails the same way until the
+            # workflow file is fixed.
+            real_findings=1
+            echo "[actionlint-guard]   ✗ $wf" >&2
+            echo "$out" | sed 's/^/[actionlint-guard]     /' >&2
+            findings="${findings}${wf}: $(echo "$out" | head -1);"
+        else
+            # INFRA-1649: any other exit code (crash, bad invocation, OOM,
+            # signal) is a transient tool error, not a workflow finding —
+            # never block a push on the linter itself misbehaving.
+            tool_errors=1
+            echo "[actionlint-guard]   ⚠ $wf — actionlint exited $rc (tool error, non-blocking):" >&2
+            echo "$out" | sed 's/^/[actionlint-guard]     /' >&2
+        fi
+    done
+
+    if [[ "$real_findings" -ne 0 ]]; then
+        echo "" >&2
+        echo "[actionlint-guard] BLOCKED (INFRA-2322): actionlint reported findings in changed workflow file(s)." >&2
+        echo "[actionlint-guard] Common classes: matrix-in-if (matrix.* referenced in a job-level if:)," >&2
+        echo "[actionlint-guard] and version-typo (malformed uses: owner/repo@ref pin)." >&2
+        echo "[actionlint-guard] Bypass (rare, document why): CHUMP_ACTIONLINT_GUARD=0 git push" >&2
+        echo "" >&2
+        emit_ambient "actionlint_guard_blocked" "$findings"
+        GUARD_FAILURE_CLASS="permanent"
+        return 1
+    fi
+
+    if [[ "$tool_errors" -ne 0 ]]; then
+        echo "[actionlint-guard] WARN: actionlint tool error(s) on this run — treated as transient, not blocking." >&2
+        emit_ambient "actionlint_guard_skipped" "tool-error"
+        return 0
+    fi
+
+    echo "[actionlint-guard] ✓ all changed workflow file(s) clean." >&2
+    emit_ambient "actionlint_guard_passed" "${#changed_workflows[@]} file(s) checked"
+    return 0
+}
+
+if run_guard; then
+    echo "guard: ok"
+    exit 0
+else
+    echo "guard: fail class=${GUARD_FAILURE_CLASS:-permanent}" >&2
     exit 1
 fi
-
-echo "[actionlint-guard] ✓ all changed workflow file(s) clean." >&2
-emit_ambient "actionlint_guard_passed" "${#CHANGED_WORKFLOWS[@]} file(s) checked"
-exit 0
