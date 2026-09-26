@@ -26,7 +26,9 @@
 //! can unconditionally call it and skip the merge when `None`.
 //!
 //! `CHUMP_REASONING_BUDGET_TOKENS` overrides the default budget (10 000) for
-//! Claude-style models.
+//! Claude-style models. `GEMINI_THINKING_BUDGET_TOKENS` (default `0`, i.e.
+//! thinking disabled) is the Gemini-specific override; see
+//! [`build_reasoning_params`] (INFRA-790).
 
 use serde_json::{json, Value};
 
@@ -183,13 +185,24 @@ fn build_openai_reasoning_params() -> Value {
 /// `thinkingConfig` inside the generation config.  We return it as a
 /// top-level key that callers can merge; the cascade can wrap it in
 /// `generationConfig` if needed.
+///
+/// `GEMINI_THINKING_BUDGET_TOKENS` (INFRA-790) caps how many thinking tokens
+/// Gemini is allowed to spend, if set. Default is `0`, which tells the
+/// Gemini API to disable thinking entirely — the agent loop never has to
+/// strip think blocks it never asked for. Falls back to
+/// `CHUMP_REASONING_BUDGET_TOKENS` for backward compatibility with the
+/// shared cross-provider budget knob, then to `0`.
 fn build_gemini_reasoning_params() -> Value {
-    let budget: u32 = std::env::var("CHUMP_REASONING_BUDGET_TOKENS")
+    let budget: u32 = std::env::var("GEMINI_THINKING_BUDGET_TOKENS")
         .ok()
         .and_then(|s| s.trim().parse().ok())
-        .filter(|&n| n > 0)
-        .unwrap_or(10_000)
-        .clamp(1_024, 32_768);
+        .or_else(|| {
+            std::env::var("CHUMP_REASONING_BUDGET_TOKENS")
+                .ok()
+                .and_then(|s| s.trim().parse().ok())
+        })
+        .unwrap_or(0)
+        .clamp(0, 32_768);
     json!({
         "thinkingConfig": {
             "thinkingBudget": budget
@@ -382,10 +395,41 @@ mod tests {
 
     #[test]
     #[serial]
-    fn build_gemini_params_default_budget() {
+    fn build_gemini_params_default_budget_is_zero() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
         std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
         let p = build_reasoning_params("gemini-2.0-flash-thinking-exp").unwrap();
-        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 10_000);
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 0);
+    }
+
+    #[test]
+    #[serial]
+    fn build_gemini_params_honors_gemini_specific_budget() {
+        std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "4096");
+        let p = build_reasoning_params("gemini-2.5-flash-thinking").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 4096);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn build_gemini_params_falls_back_to_shared_budget() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        std::env::set_var("CHUMP_REASONING_BUDGET_TOKENS", "20000");
+        let p = build_reasoning_params("gemini-2.0-flash-thinking-exp").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 20_000);
+        std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn build_gemini_params_budget_clamped_to_ceiling() {
+        std::env::remove_var("CHUMP_REASONING_BUDGET_TOKENS");
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "999999");
+        let p = build_reasoning_params("gemini-2.5-flash-thinking").unwrap();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 32_768);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
     }
 
     #[test]
