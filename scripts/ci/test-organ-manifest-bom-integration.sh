@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-organ-manifest-bom-integration.sh — INFRA-7768
 #
 # docs/strategy/ONE_COMMAND_INSTALL.md section 1 (INFRA-7756, one-command-

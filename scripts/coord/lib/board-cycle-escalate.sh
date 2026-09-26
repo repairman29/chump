@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # board-cycle-escalate.sh — RESILIENT-373: severity-gated, deduped escalation
 # for the board-cycle beat, so a routine board report NEVER pages the phone.
 #

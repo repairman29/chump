@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/duty-officer-loop.sh — RESILIENT-274
 #
 # The standing loop that makes docs/design/DUTY_OFFICER.md real: reads

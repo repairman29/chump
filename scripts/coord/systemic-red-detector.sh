@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/systemic-red-detector.sh — RESILIENT-337 (W-015)
 #
 # Detects the "SYSTEMIC-RED" wedge class: N>=3 open code PRs failing the

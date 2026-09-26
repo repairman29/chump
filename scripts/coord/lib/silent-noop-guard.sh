@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/silent-noop-guard.sh — INFRA-2009 (THE FLOOR Phase 2)
 #
 # Sourceable guard that generalizes the INFRA-1988 sentinel + EXIT trap

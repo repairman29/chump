@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # fleet-supervisor.sh — RESILIENT-058 (A2A L6a fleet-aggregate supervision tree)
 #
 # Aggregates per-gap escalation events from ambient.jsonl. When the count of

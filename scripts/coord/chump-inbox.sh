@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # chump-inbox.sh — Read targeted messages from a session's inbox (INFRA-1115).
 #
 # The inbox is .chump-locks/inbox/<session>.jsonl, a JSONL file written by

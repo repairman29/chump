@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # discover-chump-bin.sh — shared CI test helper, INFRA-1437 follow-up.
 #
 # Set $CHUMP_BIN to the path of a built chump binary. Resolution order:

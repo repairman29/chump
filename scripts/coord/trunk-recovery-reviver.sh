@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/trunk-recovery-reviver.sh — RESILIENT-1190
 #
 # The RECOVERY counterpart to RESILIENT-1188 (rot-reaper systemic-red HOLD).

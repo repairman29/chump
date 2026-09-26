@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/chump-strict-mode.sh — INFRA-1836 phase 1
 #
 # Shared helper for CHUMP_NO_BYPASS=1 strict mode. Disables ALL bypass

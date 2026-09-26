@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-infra-3832-nonship-cooldown.sh — INFRA-3832
 #
 # "worker infinite-loops on a problematic gap". The board hand-blocked 3 gaps in

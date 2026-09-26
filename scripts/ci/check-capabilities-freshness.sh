@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # check-capabilities-freshness.sh — CREDIBLE-240
 #
 # docs/CAPABILITIES_REGISTRY.json is now INDEXED by almanac. That means an

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-wizard-daemon.sh — META-109 Phase 1 + META-107 Phase 2
 #
 # Smoke tests for wizard-daemon.sh (all phases).

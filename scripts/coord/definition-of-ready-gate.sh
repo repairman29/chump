@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/definition-of-ready-gate.sh — CREDIBLE-270 (SHIP-INFRA 2/7)
 #
 # Definition-of-ready gate: run BEFORE `gh pr create`. Refuses to open a new

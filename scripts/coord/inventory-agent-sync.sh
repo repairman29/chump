@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/inventory-agent-sync.sh — INFRA-2366 (META-271 follow-up)
 #
 # Agent-awareness sync: cross-references shipped artifacts (introducing_pr IS NOT NULL,

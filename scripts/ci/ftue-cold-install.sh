@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/ftue-cold-install.sh — RESILIENT-1050 (COTG Node Fabric #3: `chump node up`)
 #
 # STANDING end-to-end cold-install FTUE harness: prove a BARE node becomes a

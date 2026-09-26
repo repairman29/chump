@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/external-collab-loop.sh — META-104
 #
 # Harness-neutral CLI for the curator-opus-external-collab role.

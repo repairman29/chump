@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/pr-auto-rebase.sh — INFRA-1777
 #
 # Auto-rebase any open PR whose ONLY blocker is "behind on main" and which

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # INFRA-2099: shared helper for scripts/ci/test-*.sh to resolve the canonical
 # cargo target dir without hardcoding $ROOT/target.
 #

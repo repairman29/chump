@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/calibration.sh — RESILIENT-974 (RESILIENT-422 slice)
 #
 # Generic Brier-score calibration component, extracted from the PR-merge-bet

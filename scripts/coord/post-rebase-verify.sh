@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/post-rebase-verify.sh — INFRA-1526
 #
 # Post-rebase hunk-drop detector. Call immediately after a successful

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # shellcheck disable=SC1091,SC2034  # SC1091: lib/ dynamic sources; SC2034: vars used via printf/emission patterns
 # scripts/coord/pr-stuck-cluster-detector.sh — INFRA-1133
 #

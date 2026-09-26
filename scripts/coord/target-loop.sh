@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/target-loop.sh — Chump curator-opus-target role CLI (harness-neutral)
 #
 # Productizes the curator-opus-target role per INFRA-1917 + META-097, mirroring

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # gate-signal-audit.sh — CREDIBLE-271 (SHIP-INFRA 4/7 [RELIABILITY])
 #
 # Audits whether our CI/fleet "gates" (reapers, halt-class detectors, grace

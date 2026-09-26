@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/wedge-state-machine.sh — INFRA-1994 (THE FLOOR Phase 3)
 #
 # Converts the wedge catalog (docs/process/WEDGE_CLASS_CATALOG.md, 13

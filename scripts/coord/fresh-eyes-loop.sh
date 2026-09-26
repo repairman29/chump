@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/fresh-eyes-loop.sh — Chump curator-opus-fresh-eyes role CLI (harness-neutral)
 #
 # Productizes the curator-opus-fresh-eyes ("mirror") role per META-132.

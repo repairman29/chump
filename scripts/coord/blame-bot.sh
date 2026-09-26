@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/blame-bot.sh — INFRA-1989 (THE FLOOR Phase 1 finisher)
 # CREDIBLE-080: stale green_sha fix (advance baseline, dedupe, stale-warning)
 #

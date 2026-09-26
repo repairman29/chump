@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/fleet-autopilot.sh — META-090
 #
 # Single command that runs the full operator playbook as one daemon set.

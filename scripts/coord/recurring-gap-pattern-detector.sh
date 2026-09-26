@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # recurring-gap-pattern-detector.sh — INFRA-249 / RESILIENT-365
 #
 # Surfaces clusters of recently-filed gaps that share significant title

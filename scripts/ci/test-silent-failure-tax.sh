@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-silent-failure-tax.sh — INFRA-1996 (THE FLOOR Phase 2)
 #
 # Audits silent-failure surfaces (places where code silently does nothing

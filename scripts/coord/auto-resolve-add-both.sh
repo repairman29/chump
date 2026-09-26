@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/auto-resolve-add-both.sh — INFRA-2255
 #
 # Auto-resolve add-both / append-only conflicts on a fixed allowlist of file

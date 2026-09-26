@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/wizard-daemon.sh — META-109/META-107 (THE FLOOR DRIVE primitive)
 #
 # Autonomous orchestrator that drives PRs toward merge without requiring a

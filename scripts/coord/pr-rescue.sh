@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # shellcheck disable=SC1091  # lib/ sources use dynamic $SCRIPT_DIR — resolved at runtime
 # RESILIENT-006: PR-stale auto-rebase.
 #

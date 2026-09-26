@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/worktree-reaper-safety.sh — INFRA-1074
 #
 # Shared "is this worktree actively in use?" guard for the worktree / cargo

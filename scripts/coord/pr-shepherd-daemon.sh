@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/pr-shepherd-daemon.sh — META-181 / META-180 slice 1
 # META-182: background-criticality-tagged tick (CHUMP_GH_CALL_CRITICALITY=background)
 #           so the queue-wide gh pr list yields the GH bucket under quota pressure.

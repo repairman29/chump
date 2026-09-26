@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/stale-pr-rebase-bot.sh — INFRA-2295
 #
 # Rebase-before-reap safety net (SCALE-C). Finds open PRs with auto-merge

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-trunk-loop-e2e.sh — INFRA-2337 + INFRA-2341
 #
 # End-to-end smoke test for the trunk-health autonomous loop:

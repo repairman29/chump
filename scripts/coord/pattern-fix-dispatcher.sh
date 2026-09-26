@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/pattern-fix-dispatcher.sh — INFRA-2355 (META-269 sub-6)
 #
 # Matches a CI-failure log against scripts/coord/known-failure-patterns.yaml

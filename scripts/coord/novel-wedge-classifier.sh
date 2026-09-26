@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/novel-wedge-classifier.sh — INFRA-2067 (META-118 sub-gap 1)
 #
 # Novel-wedge classifier daemon: scans ambient.jsonl for kind=pr_failed

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # inbox-routing.sh — A2A inbox alias resolution helpers (INFRA-2006).
 #
 # Provides:

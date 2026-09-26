@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # shellcheck disable=SC1091  # lib/ dynamic sources
 # scripts/coord/merge-sla-scorecard.sh — RESILIENT-302
 #

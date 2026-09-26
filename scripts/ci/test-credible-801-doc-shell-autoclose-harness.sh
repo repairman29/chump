@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-credible-801-doc-shell-autoclose-harness.sh — CREDIBLE-801 (CREDIBLE-295 slice)
 #
 # Unit test harness that simulates scripts/coord/bot-merge.sh's auto-close

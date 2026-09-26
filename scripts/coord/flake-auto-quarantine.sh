@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # flake-auto-quarantine.sh — INFRA-2361
 #
 # Closes the loop the INFRA-2346 BLOCKED_FLAKE tier left open: when a check

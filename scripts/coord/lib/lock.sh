@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/lock.sh — INFRA-7946 (INFRA-1966 slice): coord-lane
 # entrypoint for the acquire_lock/release_lock primitive.
 #

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # subprocess-auth-smoke.sh — INFRA-2354 (META-269 sub-5): subprocess-auth smoke.
 #
 # WHY THIS EXISTS: fix-trunk-dispatcher.sh's subprocess mode (INFRA-2340/2341)

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # transient-retrigger.sh — INFRA-1899
 #
 # Auto-recognizes KNOWN-TRANSIENT CI failure patterns on open PRs and

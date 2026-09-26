@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/toolchain-ratchet-detector.sh — INFRA-2036 (RESILIENT)
 #
 # Detects the "toolchain-ratchet" wedge class (W-014 in

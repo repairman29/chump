@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/lib/run-cache.sh — INFRA-2464
 #
 # The webhook receiver (scripts/ops/github-webhook-receiver.py) populates

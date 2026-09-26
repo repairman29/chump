@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-plist-no-tmp-paths.sh — INFRA-2419
 #
 # CI gate: ensure no plist template bakes ephemeral temp paths into

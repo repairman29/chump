@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ghost-gap-reaper.sh — two independent reconciliation passes over ghost gaps.
 #
 # Phase 1 (INFRA-556): roll back gaps that are status=done but whose

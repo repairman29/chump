@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ensure-cargo-on-path.sh — shared CI test helper, INFRA-1600 follow-up.
 #
 # Ensure `cargo` and `rustc` are on PATH for the current shell. On

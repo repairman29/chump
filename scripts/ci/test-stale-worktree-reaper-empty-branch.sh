@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # test-stale-worktree-reaper-empty-branch.sh — RESILIENT-267
 #
 # Proves the reaper does not mistake "never started" for "already merged".

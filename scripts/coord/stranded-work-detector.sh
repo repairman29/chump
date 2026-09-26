@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # stranded-work-detector.sh — ZERO-WASTE-039
 #
 # Work done ON the factory (operator/Claude sessions editing main checkouts

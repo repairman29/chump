@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/ci/test-merge-group-coverage.sh — INFRA-2095
 #
 # Verifies that EVERY workflow producing a required status check on main

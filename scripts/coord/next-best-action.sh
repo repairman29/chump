@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # next-best-action.sh — the ADVISORY next-best-action router (v0).
 #
 # The shape of the thing that will one day replace the human ATC/dispatcher:

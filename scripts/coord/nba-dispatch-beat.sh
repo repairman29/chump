@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # nba-dispatch-beat.sh — the AUTO-DISPATCH CONSUMER for the next-best-action router.
 #
 # EFFECTIVE-509 (+ a conservative first cut of EFFECTIVE-510): the piece that

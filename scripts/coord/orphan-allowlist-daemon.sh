@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # orphan-allowlist-daemon.sh — INFRA-5426 (INFRA-1861 slice: extends INFRA-1714)
 #
 # Extends the pr-rescue closed loop (INFRA-1714) with a new arm: when a new

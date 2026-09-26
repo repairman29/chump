@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # chump-runner-autoscale.sh — INFRA-1535 (slice 1)
 #
 # Polls GitHub Actions queue depth + online self-hosted runner count and

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/decompose-loop.sh — INFRA-1924 (curator-opus-decompose).
 #
 # Harness-neutral CLI for the decompose curator role. Any harness (Claude

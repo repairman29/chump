@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # ci-fleet-health-sweep.sh — CREDIBLE-220
 #
 # Nothing was watching default-branch CI health on the fleet's OTHER repos

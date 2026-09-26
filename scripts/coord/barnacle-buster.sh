@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/barnacle-buster.sh — RESILIENT-359
 #
 # Preventive-maintenance twin of the Roll Call (RESILIENT-358): where the

@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/keep-mergeable-organ.sh — RESILIENT-342
 #
 # Keep-mergeable organ: continuously rebase EVERY open fleet PR onto green

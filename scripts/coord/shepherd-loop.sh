@@ -1,4 +1,5 @@
 #!/usr/bin/env bash
+set -euo pipefail
 # scripts/coord/shepherd-loop.sh — Chump curator-opus-shepherd role CLI (harness-neutral)
 #
 # Productizes the curator-opus-shepherd role per INFRA-1917 + META-097, mirroring
