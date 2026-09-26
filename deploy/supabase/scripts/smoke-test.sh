@@ -25,6 +25,14 @@ chk "no-apikey REST refused" "$(curl "${R[@]}" -o /dev/null -w '%{http_code}' "$
 chk "anon write refused" "$(curl "${R[@]}" -o /dev/null -w '%{http_code}' -X POST "$B/rest/v1/items" "${AK[@]}" -H "Content-Profile: postsub" -d '{"title":"anon-write"}')" 401
 chk "auth schema not exposed via REST" "$(curl "${R[@]}" -o /dev/null -w '%{http_code}' "$B/rest/v1/users" -H "apikey: $SUPABASE_ANON_KEY" -H "Accept-Profile: auth")" 406
 chk "Postgres not public" "$(timeout 5 bash -c "</dev/tcp/$IP/54322" 2>/dev/null && echo open || echo closed)" closed
+# Storage round trip over public HTTPS: private bucket, user uploads, anon cannot read, owner can.
+SK=(-H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY")
+curl "${R[@]}" -o /dev/null -X POST $B/storage/v1/bucket "${SK[@]}" -H "Content-Type: application/json" -d '{"id":"smoke","name":"smoke","public":false}'
+OBJ="probe-$(date +%s).txt"; BODY="r314 storage probe $OBJ"
+chk "storage upload (service)" "$(printf %s "$BODY" | curl "${R[@]}" -o /dev/null -w '%{http_code}' -X POST "$B/storage/v1/object/smoke/$OBJ" "${SK[@]}" -H 'Content-Type: text/plain' --data-binary @-)" 200
+chk "storage download (service)" "$(curl "${R[@]}" "$B/storage/v1/object/smoke/$OBJ" "${SK[@]}")" "$BODY"
+chk "storage anon read refused" "$(curl "${R[@]}" -o /dev/null -w '%{http_code}' "$B/storage/v1/object/smoke/$OBJ" -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $SUPABASE_ANON_KEY")" 400
+curl "${R[@]}" -o /dev/null -X DELETE "$B/storage/v1/object/smoke/$OBJ" "${SK[@]}"
 # clean up the probe user
 UID_=$(curl "${R[@]}" $B/auth/v1/user -H "apikey: $SUPABASE_ANON_KEY" -H "Authorization: Bearer $TOK" | J 'd.get("id")')
 curl "${R[@]}" -o /dev/null -X DELETE "$B/auth/v1/admin/users/$UID_" -H "apikey: $SUPABASE_SERVICE_ROLE_KEY" -H "Authorization: Bearer $SUPABASE_SERVICE_ROLE_KEY"
