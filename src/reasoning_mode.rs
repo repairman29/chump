@@ -197,6 +197,39 @@ fn build_gemini_reasoning_params() -> Value {
     })
 }
 
+/// Build the `thinkingConfig` param to merge into every Gemini request
+/// (INFRA-790), independent of [`CHUMP_REASONING_MODE`].
+///
+/// `GEMINI_THINKING_BUDGET_TOKENS` controls the cap:
+/// - unset or `0` (default): `thinkingBudget: 0` — Gemini's native "disable
+///   thinking" signal, so the model never emits `<think>` / thought-summary
+///   content and the agent loop has nothing to strip.
+/// - positive integer: honored verbatim (clamped to Gemini's documented
+///   `[1, 32768]` range) as an explicit token budget for thinking.
+///
+/// Only applies when `model_id` looks like a Gemini model — callers should
+/// gate on `model_id.contains("gemini")` before merging.
+pub fn build_gemini_thinking_budget_params() -> Value {
+    let budget: u32 = std::env::var("GEMINI_THINKING_BUDGET_TOKENS")
+        .ok()
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    let budget = if budget == 0 { 0 } else { budget.clamp(1, 32_768) };
+    json!({
+        "thinkingConfig": {
+            "thinkingBudget": budget
+        }
+    })
+}
+
+/// Strip any `<think>...</think>` / `<thinking>...</thinking>` blocks a
+/// Gemini response might still contain before the content reaches the agent
+/// loop (INFRA-790 AC1/AC3). Safe to call unconditionally on any provider's
+/// output — it is a no-op when no thinking blocks are present (AC5).
+pub fn strip_gemini_thinking(content: &str) -> String {
+    crate::thinking_strip::strip_for_public_reply(content)
+}
+
 /// Lightweight task complexity probe for `auto` mode.
 ///
 /// Returns `true` when the task looks like it warrants extended reasoning.
@@ -393,6 +426,55 @@ mod tests {
         assert!(build_reasoning_params("gpt-4o").is_none());
         assert!(build_reasoning_params("llama-3-8b-instruct").is_none());
         assert!(build_reasoning_params("mistral-nemo").is_none());
+    }
+
+    // ── GEMINI_THINKING_BUDGET_TOKENS (INFRA-790) ───────────────────────────
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_defaults_to_zero() {
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+        let p = build_gemini_thinking_budget_params();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 0);
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_explicit_zero() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "0");
+        let p = build_gemini_thinking_budget_params();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 0);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_honors_positive_value() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "4096");
+        let p = build_gemini_thinking_budget_params();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 4096);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    #[serial]
+    fn gemini_thinking_budget_clamps_above_max() {
+        std::env::set_var("GEMINI_THINKING_BUDGET_TOKENS", "999999");
+        let p = build_gemini_thinking_budget_params();
+        assert_eq!(p["thinkingConfig"]["thinkingBudget"], 32_768);
+        std::env::remove_var("GEMINI_THINKING_BUDGET_TOKENS");
+    }
+
+    #[test]
+    fn strip_gemini_thinking_removes_think_blocks() {
+        let raw = "<think>\nsecret plan\n</think>\n\nHere is the answer.";
+        assert_eq!(strip_gemini_thinking(raw), "Here is the answer.");
+    }
+
+    #[test]
+    fn strip_gemini_thinking_is_noop_without_think_blocks() {
+        let raw = "Here is the answer, no thinking involved.";
+        assert_eq!(strip_gemini_thinking(raw), raw);
     }
 
     #[test]
