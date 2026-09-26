@@ -178,6 +178,13 @@ pub fn adapt(raw: &str) -> AdapterOutput {
     }
 }
 
+/// Public entry point used by the inference response-processing pipeline
+/// (see `src/provider_cascade.rs`). Alias for [`adapt`] under the name the
+/// integration call sites expect.
+pub fn extract_tool_calls(raw: &str) -> AdapterOutput {
+    adapt(raw)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -264,6 +271,28 @@ mod tests {
             out.text.contains("not json"),
             "raw content should remain in text"
         );
+    }
+
+    /// 8b. Mixed synthetic LLM response: one `<tool_call>` block, one
+    /// `<function_call>` block, and plain untagged text all in the same
+    /// response — asserts both tags convert and the untagged prose survives.
+    #[test]
+    fn test_extract_tool_calls_mixed_tagged_and_untagged() {
+        let raw = concat!(
+            "Sure, I'll check both things.\n",
+            r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#,
+            "\nand then\n",
+            r#"<function_call name="bash">{"cmd":"ls -la"}</function_call>"#,
+            "\nLet me know if you need more.",
+        );
+        let out = extract_tool_calls(raw);
+        assert_eq!(out.tool_calls.len(), 2);
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(out.tool_calls[0].input["path"], "src/main.rs");
+        assert_eq!(out.tool_calls[1].name, "bash");
+        assert_eq!(out.tool_calls[1].input["cmd"], "ls -la");
+        assert!(out.text.contains("Sure, I'll check both things."));
+        assert!(out.text.contains("Let me know if you need more."));
     }
 
     /// 8. Round-trip: ToolCall can be serialized and fields are preserved.

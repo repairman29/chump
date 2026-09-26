@@ -289,6 +289,27 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 ---
 
+## 2c. XML-tool-tag-emitting models (`xml_tool_tags`, INFRA-1565)
+
+**What it is:** Some locally-served models — certain Ollama-served checkpoints and older Mistral models in particular — don't emit tool calls in the provider's native `tool_calls` field. Instead they write a `<tool_call>{"name": ..., "arguments": {...}}</tool_call>` or `<function_call name="...">{...}</function_call>` block directly into the text content. Left alone, `ProviderCascade` sees an empty native `tool_calls` list, treats the turn as a failed/empty response, and fails over to the next slot — even though the model actually tried to call a tool.
+
+**When you need this:** the model's response text visibly contains `<tool_call>` or `<function_call>` tags instead of populating the OpenAI `tool_calls` array. Check with a raw probe against the model's `/v1/chat/completions` endpoint if unsure.
+
+**Per-slot config:** set `CHUMP_PROVIDER_{N}_XML_TOOL_TAGS=1` for a numbered cascade slot (`CHUMP_PROVIDER_1_*`, `CHUMP_PROVIDER_2_*`, ...), or `CHUMP_LOCAL_XML_TOOL_TAGS=1` for the primary `OPENAI_API_BASE` slot. **Defaults to `false`/unset** — native tool-call parsing is unaffected unless you opt a slot in.
+
+```bash
+# Example: a local Ollama slot serving an older Mistral checkpoint that
+# emits XML tool calls instead of native ones.
+CHUMP_PROVIDER_2_ENABLED=1
+CHUMP_PROVIDER_2_BASE=http://127.0.0.1:11434/v1
+CHUMP_PROVIDER_2_MODEL=mistral:7b-instruct
+CHUMP_PROVIDER_2_XML_TOOL_TAGS=1
+```
+
+**How it works:** when a slot has `xml_tool_tags` enabled and the provider response comes back with an empty native `tool_calls` list, `ProviderCascade::complete` (`src/provider_cascade.rs`) routes the response text through `chump_xml_adapter::extract_tool_calls` (`crates/chump-xml-adapter`) before the empty/malformed-response quality gate runs. Extracted tool calls replace the empty list and the matched XML blocks are stripped from the remaining text; a response with no XML tool-call tags passes through unchanged.
+
+---
+
 ## 3. Switching profiles (checklist)
 
 1. **Stop** the Discord bot: **`./scripts/setup/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.
