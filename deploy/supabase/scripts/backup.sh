@@ -4,10 +4,11 @@
 #    so no DB password ever touches the host shell.
 # 2. tar of /srv/supabase-data/storage (file-backed Storage objects).
 # 3. Off-box copies: OCI Object Storage bucket `cuphead-backups` via a write-only
-#    pre-authenticated request URL, and closetjunky (CJ) via scp. Both optional,
+#    pre-authenticated request URL, and closetjunky (CJ) via rsync to a write-only rrsync key. Both optional,
 #    both configured in /srv/supabase-data/backup.env (chmod 600, never committed):
 #      OCI_BACKUP_PAR_URL=https://objectstorage.../p/<token>/n/<ns>/b/cuphead-backups/o/
-#      CJ_BACKUP_TARGET=jeff@closetjunky:/mnt/cjdata1/backups/cuphead-supabase
+#      CJ_BACKUP_TARGET=jeff@100.90.52.126   (key ~/.ssh/cj_backup; CJ authorized_keys:
+#        command="/usr/bin/rrsync -wo /mnt/cjdata1/backups/cuphead-supabase",restrict,from="100.113.181.18")
 # Exit non-zero if the local dump fails OR any configured off-box copy fails.
 set -euo pipefail
 CONF=/srv/supabase-data/backup.env
@@ -45,8 +46,10 @@ for f in "${FILES[@]}" "$ST" "$DIR/SHA256SUMS_$TS"; do
     [[ $code == 200 ]] && log "oci ok $(basename "$f")" || { log "ERROR oci $code $(basename "$f")"; fail=1; }
   fi
   if [[ -n ${CJ_BACKUP_TARGET:-} ]]; then
-    ssh -o BatchMode=yes -o ConnectTimeout=15 "${CJ_BACKUP_TARGET%%:*}" "mkdir -p '${CJ_BACKUP_TARGET#*:}/$TS'" \
-      && scp -q -o BatchMode=yes "$f" "$CJ_BACKUP_TARGET/$TS/" \
+    # CJ side pins this key to `rrsync -wo <backup dir>` (write-only, no shell), so paths are
+    # relative to that dir and rsync creates the per-run folder.
+    rsync -a -e "ssh -i ${CJ_BACKUP_KEY:-$HOME/.ssh/cj_backup} -o BatchMode=yes -o ConnectTimeout=15" \
+      "$f" "$CJ_BACKUP_TARGET:$TS/" \
       && log "cj ok $(basename "$f")" || { log "ERROR cj $(basename "$f")"; fail=1; }
   fi
 done
