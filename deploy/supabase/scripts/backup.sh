@@ -7,8 +7,8 @@
 #    pre-authenticated request URL, and closetjunky (CJ) via rsync to a write-only rrsync key. Both optional,
 #    both configured in /srv/supabase-data/backup.env (chmod 600, never committed):
 #      OCI_BACKUP_PAR_URL=https://objectstorage.../p/<token>/n/<ns>/b/cuphead-backups/o/
-#      CJ_BACKUP_TARGET=jeff@100.90.52.126   (key ~/.ssh/cj_backup; CJ authorized_keys:
-#        command="/usr/bin/rrsync -wo /mnt/cjdata1/backups/cuphead-supabase",restrict,from="100.113.181.18")
+#      CJ_BACKUP_TARGET=jeff@<closetjunky tailnet IP>   (key ~/.ssh/cj_backup; CJ authorized_keys:
+#        command="/usr/bin/rrsync -wo /mnt/cjdata1/backups/cuphead-supabase",restrict,from="<cuphead tailnet IP>")
 # Exit non-zero if the local dump fails OR any configured off-box copy fails.
 set -euo pipefail
 CONF=/srv/supabase-data/backup.env
