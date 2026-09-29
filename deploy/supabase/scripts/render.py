@@ -103,7 +103,7 @@ APP = """
     depends_on: {{ postgres: {{ condition: service_healthy }} }}
     environment:
       PGRST_DB_URI: "postgres://authenticator:${{POSTGRES_PASSWORD}}@postgres:5432/{app}"
-      PGRST_DB_SCHEMAS: "public,storage,graphql_public"
+      PGRST_DB_SCHEMAS: "public,graphql_public"  # hosted parity: never expose storage/auth via REST
       PGRST_DB_ANON_ROLE: anon
       PGRST_JWT_SECRET: "${{JWT_SECRET_{U}}}"
       PGRST_DB_USE_LEGACY_GUCS: "false"

@@ -27,5 +27,10 @@ GRANT SELECT ON public.items TO anon;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.items TO authenticated;
 GRANT ALL ON public.items TO service_role;
 INSERT INTO public.items (title, is_private) VALUES ('public seed row', false), ('PRIVATE seed row', true);
+-- Storage fixture for smoke-test.sh: a private `smoke` bucket where each user reads/writes only their own files.
+INSERT INTO storage.buckets (id, name, public) VALUES ('smoke', 'smoke', false) ON CONFLICT (id) DO NOTHING;
+CREATE POLICY smoke_insert_own ON storage.objects FOR INSERT TO authenticated WITH CHECK (bucket_id = 'smoke' AND owner = auth.uid());
+CREATE POLICY smoke_select_own ON storage.objects FOR SELECT TO authenticated USING (bucket_id = 'smoke' AND owner = auth.uid());
+CREATE POLICY smoke_delete_own ON storage.objects FOR DELETE TO authenticated USING (bucket_id = 'smoke' AND owner = auth.uid());
 SQL
 done
