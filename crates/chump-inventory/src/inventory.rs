@@ -2471,6 +2471,31 @@ pub struct ClassStats {
     pub real_positive_count: i64,
     pub real_positive_ratio: f64,
     pub eligible_for_promotion: bool,
+    pub debt: f64,
+}
+
+/// Debt Index (CREDIBLE-1048 / CREDIBLE-356 slice): Crit-weighted shortfall
+/// for findings that are both high-Crit (`severity == "high"`, matching
+/// `live_pct_severity_weight`'s top tier) and stuck at the dormant stage.
+/// Each qualifying `(severity, activation_state)` pair contributes
+/// `crit * (stages - short)`, where `stages` is the target "running" stage
+/// and `short` is the stage the artifact actually reached — reusing the
+/// same stage model as `compute_live_pct`. Findings that are zero-Crit or
+/// not dormant contribute nothing; an empty input yields `0.0`.
+pub fn compute_debt<'a, I>(findings: I) -> f64
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut debt = 0.0_f64;
+    for (severity, activation_state) in findings {
+        let crit = live_pct_severity_weight(severity);
+        if crit < 3.0 || activation_state != "dormant" {
+            continue;
+        }
+        let short = live_pct_activation_stage(activation_state);
+        debt += crit * (LIVE_PCT_STAGE_RUNNING - short) as f64;
+    }
+    debt
 }
 
 pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
@@ -2488,13 +2513,42 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
         let reviewed: i64 = r.get(2)?;
         let rp: i64 = r.get(3)?;
         let total: i64 = r.get(4)?;
+        Ok((class, tier, reviewed, rp, total))
+    })?;
+    let mut rows = Vec::new();
+    for r in mapped {
+        rows.push(r?);
+    }
+    drop(stmt);
+
+    let mut debt_stmt = conn.prepare(
+        "SELECT tdf.severity, ai.activation_state
+         FROM tech_debt_findings tdf
+         JOIN artifact_index ai ON ai.path = tdf.artifact_path
+         WHERE tdf.finding_class = ?1",
+    )?;
+
+    let mut out = Vec::new();
+    for (class, tier, reviewed, rp, total) in rows {
         let ratio = if reviewed == 0 {
             0.0
         } else {
             rp as f64 / reviewed as f64
         };
         let eligible = reviewed >= PROMOTE_MIN_REVIEWED && ratio >= PROMOTE_MIN_REAL_POSITIVE_RATIO;
-        Ok(ClassStats {
+
+        let pair_mapped = debt_stmt.query_map(params![class], |r| {
+            let severity: String = r.get(0)?;
+            let activation_state: String = r.get(1)?;
+            Ok((severity, activation_state))
+        })?;
+        let mut pairs = Vec::new();
+        for p in pair_mapped {
+            pairs.push(p?);
+        }
+        let debt = compute_debt(pairs.iter().map(|(s, a)| (s.as_str(), a.as_str())));
+
+        out.push(ClassStats {
             finding_class: class,
             current_tier: tier,
             total_findings: total,
@@ -2502,11 +2556,8 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
             real_positive_count: rp,
             real_positive_ratio: ratio,
             eligible_for_promotion: eligible,
-        })
-    })?;
-    let mut out = Vec::new();
-    for r in mapped {
-        out.push(r?);
+            debt,
+        });
     }
     Ok(out)
 }
@@ -3159,5 +3210,39 @@ mod tests {
         fs::set_permissions(&strategy_dir, restore).unwrap();
 
         assert_eq!(failure, Some(FailureClass::Transient));
+    }
+
+    #[test]
+    fn test_debt_computation() {
+        // Mixed set: high-Crit dormant (counts), high-Crit non-dormant
+        // (excluded), low-Crit dormant (excluded — not high-Crit).
+        let findings = [
+            ("high", "dormant"),
+            ("high", "referenced"),
+            ("low", "dormant"),
+        ];
+        // Only ("high", "dormant") qualifies: crit(3.0) * (stages(2) - short(1)) = 3.0
+        let debt = compute_debt(findings.iter().map(|(s, a)| (*s, *a)));
+        assert!((debt - 3.0).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn test_debt_computation_zero_stages_is_zero() {
+        let findings: Vec<(&str, &str)> = vec![];
+        assert_eq!(compute_debt(findings), 0.0);
+    }
+
+    #[test]
+    fn test_debt_computation_zero_crit_contributes_nothing() {
+        let findings = vec![("info", "dormant"), ("low", "dormant"), ("med", "dormant")];
+        assert_eq!(compute_debt(findings), 0.0);
+    }
+
+    #[test]
+    fn test_debt_computation_sums_multiple_high_crit_dormant() {
+        let findings = vec![("high", "dormant"), ("high", "dormant")];
+        // Two qualifying findings: 3.0 * 1 + 3.0 * 1 = 6.0
+        let debt = compute_debt(findings);
+        assert!((debt - 6.0).abs() < f64::EPSILON);
     }
 }
