@@ -2567,6 +2567,114 @@ where
     }
 }
 
+// ─── ledger live_pct (CREDIBLE-1341 / CREDIBLE-356 slice) ──────────────────
+//
+// Sibling signal to `compute_live_pct` above, keyed on an explicit
+// Ledger/StageStatus shape (mirrors chump-kpi-report::live_pct) for callers
+// that already hold a `Ledger` rather than a `(severity, activation_state)`
+// iterator. Namespaced under `ledger` to avoid colliding with the
+// finding-based `compute_live_pct` already defined in this module.
+pub mod ledger {
+    /// Lifecycle status of a single ledger stage. `>=` ordering makes
+    /// `StageStatus::Running` the "is this stage live" threshold.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+    pub enum StageStatus {
+        Pending,
+        Running,
+        Healthy,
+        Complete,
+        Failed,
+    }
+
+    /// Relative importance of a stage; backs the Crit-weighted average.
+    #[derive(Debug, Clone, Copy, PartialEq, Eq)]
+    pub enum Criticality {
+        Info,
+        Warn,
+        Crit,
+    }
+
+    impl Criticality {
+        fn weight(self) -> f64 {
+            match self {
+                Criticality::Info => 1.0,
+                Criticality::Warn => 2.0,
+                Criticality::Crit => 4.0,
+            }
+        }
+    }
+
+    /// A single stage tracked by a `Ledger`.
+    #[derive(Debug, Clone, Copy)]
+    pub struct Stage {
+        pub status: StageStatus,
+        pub criticality: Criticality,
+    }
+
+    /// Ordered sequence of stages a pipeline/demo run has recorded.
+    #[derive(Debug, Clone, Default)]
+    pub struct Ledger {
+        pub stages: Vec<Stage>,
+    }
+
+    /// Crit-weighted fraction of `ledger.stages` whose status is
+    /// `>= StageStatus::Running`. Each stage contributes its
+    /// [`Criticality::weight`] to the denominator, and that same weight to
+    /// the numerator only if it has reached `Running` or later. Returns
+    /// `0.0` (never `NaN`) for an empty ledger.
+    pub fn compute_live_pct(ledger: &Ledger) -> f64 {
+        let mut total_weight = 0.0_f64;
+        let mut live_weight = 0.0_f64;
+        for stage in &ledger.stages {
+            let w = stage.criticality.weight();
+            total_weight += w;
+            if stage.status >= StageStatus::Running {
+                live_weight += w;
+            }
+        }
+        if total_weight == 0.0 {
+            0.0
+        } else {
+            live_weight / total_weight
+        }
+    }
+
+    #[cfg(test)]
+    mod tests {
+        use super::*;
+
+        #[test]
+        fn test_compute_live_pct() {
+            let ledger = Ledger {
+                stages: vec![
+                    Stage {
+                        status: StageStatus::Healthy,
+                        criticality: Criticality::Warn,
+                    },
+                    Stage {
+                        status: StageStatus::Complete,
+                        criticality: Criticality::Info,
+                    },
+                    Stage {
+                        status: StageStatus::Pending,
+                        criticality: Criticality::Info,
+                    },
+                ],
+            };
+            // live weight = 2.0 (Warn/Healthy) + 1.0 (Info/Complete) = 3.0
+            // total weight = 2.0 + 1.0 + 1.0 (Info/Pending) = 4.0
+            // 3.0 / 4.0 = 0.75
+            assert!((compute_live_pct(&ledger) - 0.75).abs() < f64::EPSILON);
+        }
+
+        #[test]
+        fn empty_ledger_returns_zero() {
+            let ledger = Ledger::default();
+            assert_eq!(compute_live_pct(&ledger), 0.0);
+        }
+    }
+}
+
 /// Aggregate counts for rebuild summary.
 pub fn meta_counts(conn: &Connection) -> Result<(i64, i64, i64)> {
     let prs: i64 = conn
