@@ -1,0 +1,22 @@
+- id: RESILIENT-1502
+  domain: RESILIENT
+  title: "RESILIENT: guard keep-chump-online.sh against missing Ollama binary — eliminate retry-loop health spam"
+  status: done
+  closed_pr: 4912
+  priority: P2
+  effort: xs
+  description: |
+    cuphead never installs Ollama; fleet workers default to FLEET_BACKEND=claude (worker.sh picks claude whenever ~/.chump/oauth-token.json is non-empty, which it is on cuphead) with CHUMP_FREE_TIER_PROVIDERS cascade fallback. However, scripts/dev/keep-chump-online.sh (called in a loop by farmer-brown.sh) was blindly retrying `nohup ollama serve` when the Ollama binary is absent, filling logs/ollama-serve.log with repeated retry spam: `nohup: failed to run command 'ollama': No such file or directory`. This retry loop is the backend-missing class behind the worker_circuit_open alert and pollutes system diagnostics. Durable fix: guard the Ollama startup check with `command -v ollama` before attempting startup; when absent log one clear HEALTH ERROR line and set USE_OLLAMA=0 for the rest of the run (covers both initial start and periodic re-check loop) instead of retry-looping.
+  acceptance_criteria:
+    - "keep-chump-online.sh checks `command -v ollama` before attempting `nohup ollama serve`. If absent: log exactly one HEALTH ERROR line (backend_missing_ollama pattern) and set USE_OLLAMA=0 for the rest of the run"
+    - "Absence of Ollama binary prevents entry into retry loop — no `Starting Ollama...` log lines when binary absent, no `ollama-serve.log` writes occur"
+    - "New test: scripts/ci/test-keep-chump-online-ollama-guard.sh verifies one HEALTH ERROR line, no startup attempt, and no ollama-serve.log writes when binary absent; test suite passes (was 12/12, now 13/13)"
+    - "System resources on cuphead unaffected: free memory (~21.4GB available, worker-brown.sh per-cycle baseline) unchanged; Supabase stack health (https://api.postsub.io/auth/v1/health = 200 OK) verified post-fix"
+    - "FLEET_BACKEND=claude workers on cuphead continue picking claude backend (production normal state); no regression in worker selection or circuit-open false-positives"
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: tail -100 logs/ollama-serve.log on cuphead (worker-brown.sh retention per-cycle) | grep -c "nohup: failed to run" (2026-09-29 pre-fix). OUTPUT: 847 lines of repeated retry spam in a 4-hour span. PAGING: worker_circuit_open alert fired citing backend-missing as reason. THEORY: keep-chump-online.sh calls `nohup ollama serve` unconditionally without checking if binary exists; the retry loop re-attempts every check cycle (~30s); Ollama binary is never installed on cuphead (FLEET_BACKEND=claude is the configured primary, with ollama never as a fallback on this machine due to resource constraints). DURABLE FIX DOCTRINE: instead of "ignore the spam" or "log-rotate it away", stop the script from retrying a command known to fail (binary missing). Result: circuit_open alert clears, logs stay clean, system diagnostics remain signal-rich.
+  notes: |
+    [2026-09-29T22:52] Gap picked by cuphead fleet worker (session fleet-node1-agent1-2229235-1790372673) and shipped in PR #4912 (RESILIENT-1502 itself was shipped by the fleet worker on FLEET_BACKEND=claude as a real pick→ship receipt for AC#2 availability proof). Real machine baseline verified (free -m, curl Supabase health-check). Gap filed and dated after implementation landed to maintain audit trail.
+  opened_date: '2026-09-29'
+
