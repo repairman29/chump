@@ -1777,6 +1777,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-idea-drop"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusqlite",
+ "tempfile",
+]
+
+[[package]]
 name = "chump-integrator"
 version = "0.1.0"
 dependencies = [

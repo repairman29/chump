@@ -101,7 +101,7 @@ CURL_BIN="${CHUMP_APEX_WATCHDOG_CURL_BIN:-curl}"
 SSH_BIN="${CHUMP_APEX_WATCHDOG_SSH_BIN:-ssh}"
 STATE_DIR="${CHUMP_APEX_WATCHDOG_STATE_DIR:-$REPO_ROOT/.chump-locks/apex-watchdog-state}"
 MISS_THRESHOLD="${CHUMP_APEX_WATCHDOG_MISS_THRESHOLD:-3}"
-HEALTH_PORT="${CHUMP_APEX_WATCHDOG_HEALTH_PORT:-8080}"
+HEALTH_PORT="${CHUMP_APEX_WATCHDOG_HEALTH_PORT:-${CHUMP_FLEET_SERVER_PORT:-7070}}"
 TIMEOUT_S="${CHUMP_APEX_WATCHDOG_TIMEOUT_S:-5}"
 REMOTE_HEAL="${CHUMP_APEX_WATCHDOG_REMOTE_HEAL:-1}"
 HEAL_ESCALATE="${CHUMP_APEX_WATCHDOG_HEAL_ESCALATE:-2}"
@@ -170,8 +170,15 @@ for f in "${NODE_FILES[@]}"; do
     [[ -z "$node_id" ]] && node_id="$(basename "$f" .json)"
     [[ "$node_id" == "$SELF_NODE" ]] && continue
 
+    # Best-effort nodes must NEVER escalate to a fleet-halting operator-recall.
+    # A node marked always_on=false (phone/laptop) or with no resolved tailnet IP
+    # is EXPECTED to be offline; probe/use it elsewhere, but do not watch it here.
+    always_on="$(node_field "$f" always_on)"
+    [[ -z "$always_on" ]] && always_on="$(python3 -c 'import json,sys;print(json.load(open(sys.argv[1])).get("hardware",{}).get("always_on",""))' "$f" 2>/dev/null)"
+    case "$always_on" in false|False|FALSE) continue;; esac
+
     tailnet_ip="$(node_field "$f" tailnet_ip)"
-    if [[ -z "$tailnet_ip" ]]; then
+    if [[ -z "$tailnet_ip" || "$tailnet_ip" == "unknown" || "$tailnet_ip" == "null" ]]; then
         continue
     fi
 
@@ -183,7 +190,7 @@ for f in "${NODE_FILES[@]}"; do
 
     healfail_file="$STATE_DIR/${node_id}.healfail"
 
-    if "$CURL_BIN" -sf -m "$TIMEOUT_S" "http://${tailnet_ip}:${HEALTH_PORT}/health" >/dev/null 2>&1; then
+    if "$CURL_BIN" -sf -m "$TIMEOUT_S" "http://${tailnet_ip}:${HEALTH_PORT}/healthz" >/dev/null 2>&1; then
         # ── peer reachable ──────────────────────────────────────────────
         if [[ "$prev_misses" -ge "$MISS_THRESHOLD" ]]; then
             # scanner-anchor: "kind":"node_reachable_again"  (RESILIENT-1098;
