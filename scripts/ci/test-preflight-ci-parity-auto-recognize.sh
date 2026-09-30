@@ -10,10 +10,16 @@
 # fired and #4814 had to be Tier-D-registered by hand. The fix diffs the
 # merge-base with origin/main instead.
 #
-# This test builds a real local clone + a real committed "PR" (a new commit
-# on top of main adding a new job with an unmirrored gate script), then
-# asserts the parity script auto-recognizes it and PASSES without any
-# manual Tier-D/allowlist registration.
+# This test builds a deterministic local "origin" (a bare repo whose 'main'
+# branch is forced to point at the current HEAD, i.e. this repo's state
+# including this very fix) and a real committed "PR" on top of it (a new
+# commit adding a new job with an unmirrored gate script), then asserts the
+# parity script auto-recognizes it and PASSES without any manual
+# Tier-D/allowlist registration.
+#
+# Basing "origin/main" on HEAD (rather than the repo's local `main` branch,
+# which may not have this fix merged yet) keeps the test meaningful both
+# pre-merge (this PR) and post-merge (once origin/main == this commit).
 #
 # Exit: 0 = assertions pass; 1 = any assertion fails.
 
@@ -30,22 +36,22 @@ bad()  { echo "  FAIL: $1"; FAIL=$((FAIL + 1)); }
 TMPDIR_TEST="$(mktemp -d -t test-pf-ci-parity-auto-recognize.XXXXXX)"
 trap 'rm -rf "$TMPDIR_TEST"' EXIT
 
+HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse HEAD)"
+
+ORIGIN_BARE="$TMPDIR_TEST/origin-bare.git"
+git clone -q --bare --no-hardlinks "$REPO_ROOT" "$ORIGIN_BARE" >"$TMPDIR_TEST/bare-clone.log" 2>&1
+git --git-dir="$ORIGIN_BARE" update-ref refs/heads/main "$HEAD_SHA"
+
 CLONE_DIR="$TMPDIR_TEST/pr-clone"
 
-if ! git clone -q --no-hardlinks "$REPO_ROOT" "$CLONE_DIR" >"$TMPDIR_TEST/clone.log" 2>&1; then
-    echo "SKIP: could not local-clone $REPO_ROOT (no local 'main' branch available?)"
+if ! git clone -q "$ORIGIN_BARE" "$CLONE_DIR" >"$TMPDIR_TEST/clone.log" 2>&1; then
+    echo "SKIP: could not clone synthetic origin $ORIGIN_BARE"
     cat "$TMPDIR_TEST/clone.log"
     exit 0
 fi
 
 cd "$CLONE_DIR"
-
-if ! git checkout -q main 2>"$TMPDIR_TEST/checkout.log"; then
-    echo "SKIP: clone has no local 'main' branch to build the synthetic PR on top of"
-    cat "$TMPDIR_TEST/checkout.log"
-    exit 0
-fi
-
+git checkout -q main
 git checkout -q -b synthetic-pr-RESILIENT-1495
 
 SYNTH_GATE_SCRIPT="scripts/ci/test-synth-added-gate-RESILIENT-1495.sh"
@@ -79,7 +85,7 @@ else
     cat "$TMPDIR_TEST/out.log"
 fi
 
-if grep -q "RESILIENT-586: Jobs added in-diff for ci.yml: synthetic-added-gate-resilient-1495" "$TMPDIR_TEST/out.log"; then
+if grep -q "RESILIENT-586: Auto-recognized gate in ci.yml job='synthetic-added-gate-resilient-1495'" "$TMPDIR_TEST/out.log"; then
     ok "parity script's own log shows the new job was recognized via merge-base diff"
 else
     bad "parity script did not report the new job as recognized via in-diff detection"
