@@ -1,0 +1,65 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.ci-qa-accuracy-score — INFRA-5753 (parent INFRA-1861) LaunchAgent.
+
+  Runs scripts/ops/ci-qa-accuracy-score.sh once an hour, which computes the
+  rolling-24h CI/QA accuracy score (accurate / (accurate + false_positive +
+  missed_locally + flake) * 100, per the INFRA-1861 AC) and emits
+  kind=ci_qa_accuracy_score to ambient.jsonl.
+
+  INSTALLATION:
+    1. Edit this file: replace /path/to/Chump with your repo path,
+       and /path/to/HOME with your $HOME.
+    2. cp launchd/com.chump.ci-qa-accuracy-score.plist ~/Library/LaunchAgents/
+    3. launchctl load ~/Library/LaunchAgents/com.chump.ci-qa-accuracy-score.plist
+    4. Verify: launchctl list | grep com.chump.ci-qa-accuracy-score
+    5. Manual run: launchctl start com.chump.ci-qa-accuracy-score
+       Logs: tail /tmp/chump-ci-qa-accuracy-score.out.log
+             tail .chump-locks/ambient.jsonl | grep ci_qa_accuracy_score
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.ci-qa-accuracy-score.plist
+    rm ~/Library/LaunchAgents/com.chump.ci-qa-accuracy-score.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.ci-qa-accuracy-score</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>/path/to/Chump/scripts/ops/ci-qa-accuracy-score.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Once an hour (3600 seconds), per the AC's "hourly" requirement. -->
+  <key>StartInterval</key>
+  <integer>3600</integer>
+
+  <!-- Don't start at load — wait for the first tick. -->
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-ci-qa-accuracy-score.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-ci-qa-accuracy-score.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+    <!-- python3, chump must be on PATH. -->
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+</dict>
+</plist>

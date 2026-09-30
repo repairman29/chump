@@ -2700,6 +2700,28 @@ events:
     trigger: CHUMP_CI_QA_SCORE=0 silences the daily score
     consumers: [audit-log]
 
+  - kind: ci_qa_accuracy_score
+    effect_metric: self
+    emitter: scripts/ops/ci-qa-accuracy-score.sh (INFRA-5753 / parent INFRA-1861)
+    trigger: hourly rolling-24h aggregate of kind=ci_triage_verdict,
+      kind=ci_flake_rerun, kind=duty_officer_action (verdict=refuted), and
+      kind=ci_parity_drift events into accurate/false_positive/
+      missed_locally/flake buckets. score = accurate / (accurate +
+      false_positive + missed_locally + flake) * 100.
+      # Deliberately NOT named ci_qa_score — that kind (INFRA-1872, above)
+      # already has a different schema (pct/sample_size/bypassed/window)
+      # consumed by dashboard.rs; reusing it here would silently break
+      # those readers (INFRA-3847).
+    consumers: [audit-log, fleet-brief]
+    fields_required: [ts, kind, window_h, accurate_failures,
+      false_positives, missed_locally, flake_count, score]
+
+  - kind: ci_qa_accuracy_score_bypassed
+    effect_metric: self
+    emitter: scripts/ops/ci-qa-accuracy-score.sh (INFRA-5753)
+    trigger: CHUMP_CI_QA_ACCURACY_SCORE=0 silences the hourly score
+    consumers: [audit-log]
+
   - kind: flake_rerun
     effect_metric: self
     emitter: pr-triage-bot
