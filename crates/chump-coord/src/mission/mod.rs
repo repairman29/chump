@@ -67,9 +67,11 @@
 //! let _ids = store.list().unwrap();
 //! ```
 
+pub mod merge_request;
 pub mod persistence;
 pub mod replanning;
 
+pub use merge_request::{MergeQueueStore, MergeRequest};
 pub use persistence::{
     DependencyCondition, FallbackMode, FileBackedMissionStore, Mission, MissionCheckpoint,
     MissionStore, Objective, ObjectiveDependency, ObjectiveState, PersistentMission,
