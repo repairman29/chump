@@ -1396,6 +1396,29 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
     }
 }
 
+/// CREDIBLE-1485: resolve a done gap's close timestamp. Most ship paths
+/// (raw-SQL `ship()`, kpi test helpers) stamp both `closed_at` (unix ts) and
+/// `closed_date` (ISO yyyy-mm-dd), but the YAML→DB sync path
+/// (`sync::update_gap_row`) only ever writes `closed_date` — `closed_at`
+/// stays NULL for any gap whose done-status was reconciled from
+/// `docs/gaps.yaml` rather than shipped through `ship()` directly. Reading
+/// `closed_at` alone therefore missed the vast majority of real ships
+/// (observed: closed_at set on 4/2481 done gaps vs. closed_date on 1731).
+/// Fall back to parsing `closed_date` as midnight UTC when `closed_at` is
+/// absent.
+fn gap_closed_unix(g: &chump_gap_store::GapRow) -> Option<i64> {
+    if let Some(ts) = g.closed_at {
+        return Some(ts);
+    }
+    if g.closed_date.is_empty() {
+        return None;
+    }
+    chrono::NaiveDate::parse_from_str(&g.closed_date, "%Y-%m-%d")
+        .ok()
+        .and_then(|d| d.and_hms_opt(0, 0, 0))
+        .map(|dt| dt.and_utc().timestamp())
+}
+
 fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
     let store = match chump_gap_store::GapStore::open(repo_root) {
         Ok(s) => s,
@@ -1443,7 +1466,7 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
         let mut untagged = 0;
 
         for g in &done_gaps {
-            if let Some(closed) = g.closed_at {
+            if let Some(closed) = gap_closed_unix(g) {
                 if (closed as u64) >= cutoff {
                     total += 1;
                     match pillar_of(&g.title, &g.domain) {
@@ -2656,6 +2679,31 @@ mod tests {
         }
     }
 
+    /// CREDIBLE-1485: seed a done gap with `closed_date` set but `closed_at`
+    /// left NULL — reproduces the state produced by `sync::update_gap_row`
+    /// (the YAML→DB reconcile path), which never writes `closed_at`.
+    fn seed_gap_store_closed_date_only(dir: &Path, entries: &[(&str, i64)]) {
+        let chump_dir = dir.join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir)
+            .output();
+
+        let store = chump_gap_store::GapStore::open(dir).unwrap();
+        for (title, closed_ts) in entries {
+            let reserved = store.reserve("INFRA", title, "P1", "s").unwrap();
+            let iso = unix_to_iso_date(*closed_ts);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_date=?1, closed_pr=999 WHERE id=?2",
+                rusqlite::params![iso, reserved],
+            )
+            .unwrap();
+        }
+    }
+
     fn unix_to_iso_date(ts: i64) -> String {
         let d = (ts / 86_400) + 2_440_588;
         let f = d + 1401 + ((((4 * d + 274_277) / 146_097) * 3) / 4) - 38;
@@ -2891,6 +2939,24 @@ mod tests {
         assert!(
             section.windows[0].total >= 1,
             "1d window should have at least 1"
+        );
+        assert_eq!(section.windows[0].effective, 1);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1485_ship_rate_counts_closed_date_only_gaps() {
+        // CREDIBLE-1485: the YAML->DB sync path only ever writes closed_date
+        // (never closed_at). Before the fix, build_ship_rate_section read
+        // g.closed_at exclusively and silently dropped every gap shipped via
+        // that path from the ship-rate windows.
+        let tmp = tempdir();
+        let now = current_unix() as i64;
+        seed_gap_store_closed_date_only(&tmp, &[("EFFECTIVE: ship faster", now)]);
+        let section = build_ship_rate_section(&tmp);
+        assert_eq!(
+            section.windows[0].total, 1,
+            "gap with closed_date but no closed_at must still count in the 1d window"
         );
         assert_eq!(section.windows[0].effective, 1);
         let _ = std::fs::remove_dir_all(&tmp);
