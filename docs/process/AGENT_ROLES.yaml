@@ -1,0 +1,81 @@
+version: 1
+# AGENT_ROLES.yaml — registry of role hints accepted by `chump claim --role <role>`.
+#
+# INFRA-1863 slice (INFRA-5773): `--role` became mandatory on `chump claim`
+# (INFRA-5486) but was not yet validated against a known set — any string was
+# accepted. This file is that known set. `chump claim --role <role>` rejects
+# any role not listed below with a clear error (see src/agent_roles.rs).
+#
+# To add a role: append an entry here in the same PR that introduces the
+# role's usage (curator doc, dispatch script, etc.) — do not pre-register
+# speculative roles.
+roles:
+  - name: curator
+    description: >
+      General lane-curator role (e.g. curator-opus-* sessions in .claude/agents/)
+      that owns a specific concern (architecture, historian, roadmap, scout,
+      velocity, context-keeper, incident-commander) and files/reviews gaps in
+      its lane rather than picking arbitrary work.
+    skills:
+      - fleet-coordination
+      - gap-triage
+
+  - name: fleet-worker
+    description: >
+      A tmux/headless worker (scripts/dispatch/worker.sh) that pulls an open
+      gap from state.db, claims it, implements, and ships via bot-merge.sh.
+      The default picker role for most gaps.
+    skills:
+      - rust
+      - shell
+      - git
+
+  - name: paramedic
+    description: >
+      Resilience/recovery role (crates/chump-paramedic) that revives wedged
+      or crashed fleet processes rather than implementing feature gaps.
+    skills:
+      - process-supervision
+      - incident-recovery
+
+  - name: ci-audit
+    description: >
+      CI/test-gate curator (.claude/agents/ci-audit.md) that decomposes CI
+      failure clusters into flake/logic-bug/missing-gate buckets and dispatches
+      sub-agents on the flake-rerun-able ones.
+    skills:
+      - ci-triage
+      - test-flake-diagnosis
+
+  - name: handoff
+    description: >
+      Typed-handoff routing curator (.claude/agents/handoff.md) that routes
+      sub-agent dispatch through typed contracts and manages collision-safe
+      file edits via lease scanning.
+    skills:
+      - dispatch-routing
+      - lease-management
+
+  - name: target
+    description: >
+      Demo-target curator (.claude/agents/target.md) that owns the primary
+      demo repo, Liaison Phase 2 slices, and parallel sub-fleet dispatch.
+    skills:
+      - demo-curation
+      - sub-fleet-dispatch
+
+  - name: decompose
+    description: >
+      Gap-slicing curator (.claude/agents/decompose.md) that slices umbrella
+      gaps into concrete sub-gaps against current-codebase context.
+    skills:
+      - gap-decomposition
+
+  - name: shepherd
+    description: >
+      PR-rescue curator (.claude/agents/shepherd.md) that unwedges stuck PRs
+      (BEHIND rebases, BLOCKED re-arms, DIRTY conflict triage) and diagnoses
+      cross-PR failure clusters.
+    skills:
+      - pr-rescue
+      - fleet-triage

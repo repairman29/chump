@@ -84,8 +84,8 @@ pub struct ClaimArgs {
     /// to remote tip).
     pub rename: bool,
     /// INFRA-5162 (INFRA-1863 slice): optional role hint for the claiming
-    /// session (e.g. "shepherd", "target"). Stored for later validation;
-    /// not yet enforced against a role registry.
+    /// session (e.g. "shepherd", "target"). Validated against
+    /// docs/process/AGENT_ROLES.yaml (INFRA-5773) — see `role_registry`.
     pub role: Option<String>,
     /// INFRA-6624 (INFRA-1863 slice): optional scope hint for the claiming
     /// session (e.g. a module or concern name). Stored for later validation;
@@ -261,6 +261,15 @@ impl ClaimArgs {
                  --scope is optional: a module or concern name.\n  \
                  --paths remains optional and advisory (no path validation if omitted)."
             );
+        }
+        // INFRA-5773 (INFRA-1863 slice): validate the role against
+        // docs/process/AGENT_ROLES.yaml. Fails open (see role_registry docs)
+        // when the registry itself can't be loaded, so a doc typo can't wedge
+        // every claim in the fleet.
+        if let Some(r) = role.as_deref() {
+            if let Err(msg) = crate::role_registry::validate_role(&repo_root, r) {
+                bail!("{msg}");
+            }
         }
 
         let worktree_base = std::env::var("CHUMP_WORKTREE_BASE")
@@ -6689,6 +6698,44 @@ mod tests {
         assert_eq!(args.scope.as_deref(), Some("atomic_claim"));
         // --paths is optional and can be omitted without error (AC2).
         assert!(args.paths.is_none());
+    }
+
+    #[test]
+    fn from_argv_rejects_unregistered_role_against_real_registry() {
+        // INFRA-5773: docs/process/AGENT_ROLES.yaml lives at the workspace
+        // root, two levels up from this crate's manifest dir.
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-6624".into(),
+            "--role".into(),
+            "definitely-not-a-registered-role".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, workspace_root).unwrap_err();
+        assert!(format!("{err:#}").contains("unregistered role"));
+    }
+
+    #[test]
+    fn from_argv_accepts_registered_role_against_real_registry() {
+        let workspace_root = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .unwrap()
+            .parent()
+            .unwrap()
+            .to_path_buf();
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-6624".into(),
+            "--role".into(),
+            "shepherd".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, workspace_root).unwrap();
+        assert_eq!(args.role.as_deref(), Some("shepherd"));
     }
 
     #[test]
