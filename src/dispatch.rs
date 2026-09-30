@@ -926,6 +926,15 @@ fn preflight(ws: &Workspace) -> Result<()> {
         // INFRA-302 blocker (3): run from the worktree so any worktree-scoped
         // state (lease files at `<wt>/.chump-locks/`) is visible to the check.
         .current_dir(ws.working_dir())
+        // RESILIENT-1491: `repo_path::repo_root()` falls back to CWD when
+        // CHUMP_REPO/CHUMP_HOME are unset and chumpd isn't running. That CWD
+        // is the FRESH worktree we just created — its repo-relative
+        // `.chump/state.db` is empty (gitignored, never populated), so the
+        // child WARNs "not found in state.db" even though the gap is right
+        // there in the main checkout's canonical store. Pin CHUMP_REPO to
+        // the canonical repo_root explicitly so the child resolves the same
+        // state.db regardless of what the caller's shell had set.
+        .env("CHUMP_REPO", &opts.repo_root)
         .status()
         .context("invoke chump gap preflight")?;
     if !status.success() {
