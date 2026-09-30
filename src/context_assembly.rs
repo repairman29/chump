@@ -202,6 +202,11 @@ fn almanac_directive(enabled: bool) -> Option<&'static str> {
          KNOWN SHAPE was found, never \"unprotected\".\n\
          - almanac_search_fleet finds which repo across the fleet does X; almanac_neighbors gives a \
          file's imports/callers; almanac_status reports index freshness.\n\
+         - You do not need to know or pass a `repo` arg (RESILIENT-1504): almanac_search / \
+         almanac_status / almanac_refresh resolve it for you (explicit arg > default repo for this \
+         session > the sole registered repo), and if none of those resolve, they answer at \
+         FLEET scope instead of opening a nonexistent single-repo index and reporting a misleading \
+         empty/unindexed result. Pass repo=<slug> only when you deliberately want one specific repo.\n\
          - CAVEAT for Rust (CREDIBLE-223): almanac_impact/almanac_neighbors resolve `use` imports \
          only — inline `crate::`/`self::`/`super::` path references (the dominant intra-crate call \
          style in this codebase) are NOT walked, so a non-empty result can still silently omit real \
@@ -1075,6 +1080,31 @@ mod cos_weekly_tests {
         assert!(
             d.to_lowercase().contains("grep"),
             "names grep as the authoritative cross-check for Rust coupling"
+        );
+    }
+
+    // RESILIENT-1504: the almanac-mcp server now defaults ambiguous
+    // single-repo tool calls (almanac_search/almanac_status/almanac_refresh)
+    // to fleet scope instead of opening a nonexistent single-repo index and
+    // reporting a misleading blind result. The directive must tell the agent
+    // this explicitly so it stops assuming it must pass `repo=<slug>` before
+    // every call.
+    #[test]
+    fn almanac_directive_documents_repo_arg_is_optional() {
+        let d = almanac_directive(true).unwrap();
+        assert!(
+            d.contains("RESILIENT-1504"),
+            "directive should cite the no-repo-context fallback fix"
+        );
+        assert!(
+            d.to_lowercase()
+                .contains("do not need to know or pass a `repo` arg")
+                || d.to_lowercase().contains("do not need to know or pass a"),
+            "directive should tell the agent it need not name the repo"
+        );
+        assert!(
+            d.contains("almanac_status") && d.contains("almanac_refresh"),
+            "directive should name all three single-repo tools this fix covers"
         );
     }
 
