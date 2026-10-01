@@ -1290,6 +1290,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // renamed/removed without the help text being updated. Pure local
         // (one subprocess + a string diff), ~0.1s, no network.
         "scripts/ci/test-cli-help-regression.sh",
+        // INFRA-3481 (AC5): `chump gonogo` + bootstrap gate wiring — exit
+        // codes via CHUMP_GONOGO_FORCE_VERDICT, and CHUMP_GONOGO_SKIP=1
+        // leaves `chump bootstrap` unchanged. Pure local, no network.
+        "scripts/ci/test-gonogo.sh",
     ];
     candidates
         .iter()
