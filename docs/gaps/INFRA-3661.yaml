@@ -1,0 +1,32 @@
+- id: INFRA-3661
+  domain: INFRA
+  title: "EFFECTIVE: THRU-03 —  Adapt install-sccache.sh for Linux/Ubuntu nodes"
+  status: already_satisfied
+  priority: P2
+  effort: m
+  description: |
+    install-sccache.sh hard-depends on brew + enables cranelift/mold. Make it host-agnostic so it runs on Ubuntu CJ and future owned nodes. Mines scripts/setup/install-sccache.sh.
+  acceptance_criteria:
+    1. Detects non-macOS and uses cargo install sccache --locked; cranelift/mold blocks skipped unless the components/binaries are present
+    2. SCCACHE_DIR defaults to a USB path when /home free < 25G; idempotent re-run is safe
+  notes: |
+    Decomposed into 4 slices: INFRA-7865, INFRA-7866, INFRA-7867, INFRA-7868
+
+    [2026-10-01] Already satisfied: scripts/setup/install-sccache.sh already matches
+    both ACs on main, shipped under this same gap ID in PR #4124 (commit faf4d733b,
+    "generalize sccache USB-cache fallback past cjdata3 pin"), with a prior health-probe
+    hardening in PR #4171 (commit 314a832dd, INFRA-3660). AC1: OS_KIND switch installs
+    via `cargo install sccache --locked` on Linux vs `brew install sccache` on Darwin
+    (lines 124-141); MOLD_BLOCK/CRANELIFT_BLOCK are only written when `mold` is on PATH
+    / rustc-codegen-cranelift is an installed rustup component (lines 154-188), so a
+    host missing either gets no broken-build section. AC2: detect_sccache_dir() defaults
+    to $HOME/.cache/sccache when /home free space >= SCCACHE_HOME_FREE_THRESHOLD_KB
+    (25G, line 49) and passes a real write probe, else falls back to the mounted
+    ext4/xfs/btrfs disk under /mnt or /media with the most free space (also write-probed,
+    never name-pinned); re-running the script is idempotent (installs are skip-if-present
+    checks, config.toml is fully regenerated each run, cache dir creation is `mkdir -p`).
+    The gap's own state.db/docs/gaps record was missing at claim time (likely lost in a
+    prior sync) despite the code already being shipped under this ID; this closure just
+    reconciles the registry with reality, no code change needed.
+  closed_date: '2026-10-01'
+  outcome_id: MISSION-010
