@@ -17,7 +17,12 @@
 //! the gap registry.
 
 use crate::front_door::{self, FrontDoorMode, RouteResult};
+use chump_coord::mission::{
+    FallbackMode, Mission, MissionStore, Objective, ObjectiveState, PersistentMission,
+};
+use serde::{Deserialize, Serialize};
 use std::path::Path;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 /// Exit code trek uses when a route was classified but nothing was landed —
 /// ambiguous asks, diagnosis-only routes, and refused (no `--yes`) confident
@@ -92,6 +97,114 @@ fn emit_trek_event(repo_root: &Path, kind: &str, fields: serde_json::Value) {
     }
 }
 
+/// Monotonic counter mixed into generated mission ids so two treks issued
+/// within the same process in the same microsecond (parallel tests, or a
+/// tight dispatch loop) still get distinct `FileBackedMissionStore` keys.
+static TREK_MISSION_SEQ: AtomicU64 = AtomicU64::new(0);
+
+/// Small struct encoded into the synthetic `"run"` objective's
+/// `description` field — the only free-form string slot on [`Objective`].
+/// `chump trek --list` / `status <id>` decode it back out to print mode +
+/// outcome pointer without needing a schema change to the shared
+/// `chump-coord` mission types.
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+struct TrekMeta {
+    mode: String,
+    outcome_pointer: String,
+}
+
+fn now_rfc3339() -> String {
+    chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string()
+}
+
+/// Build the initial `Pending` [`PersistentMission`] for a trek run — one
+/// mission per invocation, one synthetic objective (`"run"`) representing
+/// "classify -> spawn the routed engine".
+fn build_mission(job: &str) -> PersistentMission {
+    let seq = TREK_MISSION_SEQ.fetch_add(1, Ordering::Relaxed);
+    let id = format!(
+        "trek-{}-{}-{}",
+        chrono::Utc::now().format("%Y%m%dT%H%M%S%.6f"),
+        std::process::id(),
+        seq
+    );
+    let objective = Objective {
+        id: "run".to_string(),
+        description: serde_json::to_string(&TrekMeta::default()).unwrap_or_default(),
+        resource_cost: 0,
+        duration_secs: 0,
+        target: None,
+        sequence: 0,
+    };
+    let mission = Mission {
+        id,
+        name: job.to_string(),
+        objectives: vec![objective],
+        fallback_behavior: FallbackMode::SafeShutdown,
+        timestamp_issued: now_rfc3339(),
+        ttl_seconds: 0,
+        version: 1,
+    };
+    PersistentMission::new(mission)
+}
+
+fn set_objective_meta(pm: &mut PersistentMission, mode: &str, outcome_pointer: &str) {
+    if let Some(obj) = pm.mission.objectives.get_mut(0) {
+        let meta = TrekMeta {
+            mode: mode.to_string(),
+            outcome_pointer: outcome_pointer.to_string(),
+        };
+        obj.description = serde_json::to_string(&meta).unwrap_or_default();
+    }
+}
+
+/// Decode the mode + outcome pointer previously written by [`set_objective_meta`].
+/// Falls back to an empty/`"unknown"` struct rather than failing — `--list`
+/// and `status` are read paths and must not die on a malformed record.
+fn decode_meta(pm: &PersistentMission) -> TrekMeta {
+    pm.mission
+        .objectives
+        .first()
+        .and_then(|o| serde_json::from_str::<TrekMeta>(&o.description).ok())
+        .unwrap_or_default()
+}
+
+/// One-line summary for `chump trek --list`.
+pub fn format_mission_summary(pm: &PersistentMission) -> String {
+    let meta = decode_meta(pm);
+    let state = pm
+        .current_state("run")
+        .map(|s| format!("{s:?}"))
+        .unwrap_or_else(|| "Unknown".to_string());
+    let outcome = if meta.outcome_pointer.is_empty() {
+        "-".to_string()
+    } else {
+        meta.outcome_pointer
+    };
+    format!(
+        "{}  job={:?}  mode={}  state={}  outcome={}",
+        pm.mission.id, pm.mission.name, meta.mode, state, outcome
+    )
+}
+
+/// Multi-line detail for `chump trek status <id>`.
+pub fn format_mission_detail(pm: &PersistentMission) -> String {
+    let meta = decode_meta(pm);
+    let state = pm
+        .current_state("run")
+        .map(|s| format!("{s:?}"))
+        .unwrap_or_else(|| "Unknown".to_string());
+    let outcome = if meta.outcome_pointer.is_empty() {
+        "-".to_string()
+    } else {
+        meta.outcome_pointer
+    };
+    format!(
+        "id: {}\njob: {}\nmode: {}\nstate: {}\noutcome: {}\nissued: {}",
+        pm.mission.id, pm.mission.name, meta.mode, state, outcome, pm.mission.timestamp_issued
+    )
+}
+
 /// Result of a `chump trek` run — mirrors the exit-code contract but keeps
 /// the reason machine-readable for `--json` / tests.
 #[derive(Debug, PartialEq, Eq)]
@@ -127,6 +240,7 @@ pub fn run_trek(
     job: &str,
     yes: bool,
     spawner: &dyn EngineSpawner,
+    mission_store: &dyn MissionStore,
 ) -> TrekOutcome {
     let route = front_door::classify(job);
     emit_trek_event(
@@ -135,9 +249,20 @@ pub fn run_trek(
         serde_json::json!({ "input_len": job.len(), "route": front_door::ambient_kind(&route) }),
     );
 
+    // INFRA-3658 (RIBBON-03): persist one Mission record per trek run so a
+    // walked-away operator can see what the run produced via `chump trek
+    // --list` / `status <id>`. Pending is written before we know the route
+    // outcome; every branch below transitions it to a terminal state.
+    let mut pm = build_mission(job);
+    let _ = pm.checkpoint("run", ObjectiveState::Pending, &now_rfc3339());
+    let _ = mission_store.save(&pm);
+
     let outcome = match &route {
         RouteResult::Ambiguous { .. } => {
             let question = front_door::confirm_line(&route);
+            set_objective_meta(&mut pm, "AMBIGUOUS", &question);
+            let _ = pm.checkpoint("run", ObjectiveState::Skipped, &now_rfc3339());
+            let _ = mission_store.save(&pm);
             TrekOutcome::Ambiguous {
                 question: question.clone(),
             }
@@ -145,24 +270,47 @@ pub fn run_trek(
         RouteResult::Confident { mode, .. }
             if matches!(mode, FrontDoorMode::Rescue | FrontDoorMode::Comprehend) =>
         {
+            let message = format!(
+                "{} is diagnosis-only — trek has no engine that lands an outcome for it. \
+                 Run `{}` yourself; there is no Trek outcome to report.",
+                mode.label(),
+                mode.engine_command()
+            );
+            set_objective_meta(&mut pm, mode.label(), &message);
+            let _ = pm.checkpoint("run", ObjectiveState::Skipped, &now_rfc3339());
+            let _ = mission_store.save(&pm);
             TrekOutcome::DiagnosisOnly {
                 mode: mode.label(),
-                message: format!(
-                    "{} is diagnosis-only — trek has no engine that lands an outcome for it. \
-                     Run `{}` yourself; there is no Trek outcome to report.",
-                    mode.label(),
-                    mode.engine_command()
-                ),
+                message,
             }
         }
-        RouteResult::Confident { mode, .. } if !yes => TrekOutcome::NeedsConfirmation {
-            question: format!(
+        RouteResult::Confident { mode, .. } if !yes => {
+            let question = format!(
                 "{} Re-run with --yes to have trek dispatch it.",
                 front_door::confirm_line(&route)
-            ),
-        },
+            );
+            set_objective_meta(&mut pm, mode.label(), &question);
+            let _ = pm.checkpoint("run", ObjectiveState::Skipped, &now_rfc3339());
+            let _ = mission_store.save(&pm);
+            TrekOutcome::NeedsConfirmation { question }
+        }
         RouteResult::Confident { mode, .. } => {
+            set_objective_meta(&mut pm, mode.label(), "running");
+            let _ = pm.checkpoint("run", ObjectiveState::InProgress, &now_rfc3339());
+            let _ = mission_store.save(&pm);
+
             let exit_code = spawner.spawn(*mode, job);
+
+            let outcome_pointer = format!("{} engine exit_code={}", mode.label(), exit_code);
+            set_objective_meta(&mut pm, mode.label(), &outcome_pointer);
+            let next_state = if exit_code == 0 {
+                ObjectiveState::Completed
+            } else {
+                ObjectiveState::Failed
+            };
+            let _ = pm.checkpoint("run", next_state, &now_rfc3339());
+            let _ = mission_store.save(&pm);
+
             TrekOutcome::Landed {
                 mode: mode.label(),
                 exit_code,
@@ -230,15 +378,29 @@ mod tests {
         std::env::temp_dir().join("chump-trek-test-nonexistent")
     }
 
+    fn scratch_mission_store() -> chump_coord::mission::FileBackedMissionStore {
+        // Unique root per call -> tests running concurrently in the same
+        // process never see each other's records.
+        static SCRATCH_SEQ: AtomicU64 = AtomicU64::new(0);
+        let seq = SCRATCH_SEQ.fetch_add(1, Ordering::Relaxed);
+        chump_coord::mission::FileBackedMissionStore::new(std::env::temp_dir().join(format!(
+            "chump-trek-test-missions-{}-{}",
+            std::process::id(),
+            seq
+        )))
+    }
+
     #[test]
     fn confident_improve_with_yes_spawns_the_engine() {
         let spawner = FakeSpawner::new(0);
         let root = scratch_repo_root();
+        let store = scratch_mission_store();
         let outcome = run_trek(
             &root,
             "can you fix the login bug and improve the error message",
             true,
             &spawner,
+            &store,
         );
         assert_eq!(
             outcome,
@@ -256,11 +418,13 @@ mod tests {
     fn confident_without_yes_refuses_and_does_not_spawn() {
         let spawner = FakeSpawner::new(0);
         let root = scratch_repo_root();
+        let store = scratch_mission_store();
         let outcome = run_trek(
             &root,
             "can you fix the login bug and improve the error message",
             false,
             &spawner,
+            &store,
         );
         assert!(matches!(outcome, TrekOutcome::NeedsConfirmation { .. }));
         assert_eq!(outcome.exit_code(), NO_OUTCOME_EXIT);
@@ -271,7 +435,8 @@ mod tests {
     fn ambiguous_job_asks_and_does_not_spawn() {
         let spawner = FakeSpawner::new(0);
         let root = scratch_repo_root();
-        let outcome = run_trek(&root, "hello there", true, &spawner);
+        let store = scratch_mission_store();
+        let outcome = run_trek(&root, "hello there", true, &spawner, &store);
         assert!(matches!(outcome, TrekOutcome::Ambiguous { .. }));
         assert_eq!(outcome.exit_code(), NO_OUTCOME_EXIT);
         assert!(spawner.calls.borrow().is_empty());
@@ -281,11 +446,13 @@ mod tests {
     fn diagnosis_only_route_exits_nonzero_without_spawning() {
         let spawner = FakeSpawner::new(0);
         let root = scratch_repo_root();
+        let store = scratch_mission_store();
         let outcome = run_trek(
             &root,
             "help me, my app is broken and won't start",
             true,
             &spawner,
+            &store,
         );
         match &outcome {
             TrekOutcome::DiagnosisOnly { mode, .. } => assert_eq!(*mode, "RESCUE"),
@@ -299,11 +466,13 @@ mod tests {
     fn engine_failure_exit_code_propagates_honestly() {
         let spawner = FakeSpawner::new(1);
         let root = scratch_repo_root();
+        let store = scratch_mission_store();
         let outcome = run_trek(
             &root,
             "I have a new idea for a tool that renames photos by date",
             true,
             &spawner,
+            &store,
         );
         assert_eq!(
             outcome,
@@ -313,5 +482,65 @@ mod tests {
             }
         );
         assert_eq!(outcome.exit_code(), 1);
+    }
+
+    #[test]
+    fn completed_run_persists_mission_with_outcome_pointer_that_reloads_identically() {
+        let spawner = FakeSpawner::new(0);
+        let root = scratch_repo_root();
+        let store = scratch_mission_store();
+
+        let outcome = run_trek(
+            &root,
+            "can you fix the login bug and improve the error message",
+            true,
+            &spawner,
+            &store,
+        );
+        assert_eq!(
+            outcome,
+            TrekOutcome::Landed {
+                mode: "IMPROVE",
+                exit_code: 0
+            }
+        );
+
+        let ids = store.list().unwrap_or_default();
+        assert_eq!(ids.len(), 1, "expected exactly one mission record");
+        let mission_id = ids[0].clone();
+
+        let pm = store.load(&mission_id).expect("load persisted mission");
+        assert_eq!(pm.current_state("run"), Some(ObjectiveState::Completed));
+        let meta = decode_meta(&pm);
+        assert_eq!(meta.mode, "IMPROVE");
+        assert!(
+            !meta.outcome_pointer.is_empty(),
+            "outcome pointer must be non-empty on a completed run"
+        );
+
+        // Reloads identically.
+        let reloaded = store.load(&mission_id).expect("reload persisted mission");
+        assert_eq!(pm, reloaded);
+    }
+
+    #[test]
+    fn failed_run_transitions_to_failed_state() {
+        let spawner = FakeSpawner::new(1);
+        let root = scratch_repo_root();
+        let store = scratch_mission_store();
+
+        let outcome = run_trek(
+            &root,
+            "I have a new idea for a tool that renames photos by date",
+            true,
+            &spawner,
+            &store,
+        );
+        assert_eq!(outcome.exit_code(), 1);
+
+        let ids = store.list().unwrap_or_default();
+        assert_eq!(ids.len(), 1, "expected exactly one mission record");
+        let pm = store.load(&ids[0]).expect("load persisted mission");
+        assert_eq!(pm.current_state("run"), Some(ObjectiveState::Failed));
     }
 }
