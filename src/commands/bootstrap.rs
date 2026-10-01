@@ -193,6 +193,7 @@ enum FailureClass {
     ScaffoldingBuildCheck,
     GapReserveFailed,
     GitInitFailed,
+    GoNoGoBlocked,
 }
 
 impl FailureClass {
@@ -203,6 +204,7 @@ impl FailureClass {
             FailureClass::ScaffoldingBuildCheck => "scaffolding_build_check",
             FailureClass::GapReserveFailed => "gap_reserve_failed",
             FailureClass::GitInitFailed => "git_init_failed",
+            FailureClass::GoNoGoBlocked => "go_no_go_blocked",
         }
     }
 }
@@ -357,6 +359,24 @@ fn run_bootstrap(args: BootstrapArgs) -> Result<(), ()> {
             emit_failure(
                 "bootstrap_failed",
                 FailureClass::ScaffoldingWriteFailed,
+                intent,
+                target_dir,
+            );
+            return Err(());
+        }
+    }
+
+    // ── Go/no-go gate (INFRA-3481, AC4) ───────────────────────────────────────
+    // Honest evidence-before-build check on the vision before anything is
+    // written to disk. CHUMP_GONOGO_SKIP=1 scaffolds exactly as before this
+    // gate existed (operator/test bypass). Otherwise `gonogo::gate` fails open
+    // (Go) when the judge is unreachable — see src/gonogo.rs module docs.
+    if std::env::var("CHUMP_GONOGO_SKIP").as_deref() != Ok("1") {
+        if let Err(reason) = crate::gonogo::gate(intent) {
+            eprintln!("chump bootstrap: NO-GO — {reason}");
+            emit_failure(
+                "bootstrap_failed",
+                FailureClass::GoNoGoBlocked,
                 intent,
                 target_dir,
             );

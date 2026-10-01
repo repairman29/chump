@@ -2578,6 +2578,16 @@ async fn main() -> Result<()> {
         std::process::exit(commands::bootstrap::run(&sub_args));
     }
 
+    // `chump gonogo "<vision>" [--json] [--cost-estimate-usd <N>]` (INFRA-3481) —
+    // honest go/no-go gate on a user's vision (evidence-before-build). Clones the
+    // `chump llm-complete` judge rail from pr_ac_coverage::llm_judge_ac. Exits
+    // non-zero for NO-GO / NO-GO-ON-COST, 0 for GO / NEEDS-NARROWING. Also the
+    // gate consumed by `chump bootstrap` (see src/gonogo.rs::gate).
+    if args.get(1).map(String::as_str) == Some("gonogo") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(gonogo::run(&sub_args));
+    }
+
     // `chump swe <prompt> [--budget-secs N] [--budget-tokens N]
     //   [--budget-dollars N] [--paths CSV] [--dry-run-diff]` (INFRA-2089) —
     // one-shot bounded SWE-agent wrapper: reserve+claim a synthetic gap from

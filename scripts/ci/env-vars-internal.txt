@@ -3160,3 +3160,14 @@ CHUMP_IMPROVE_GH_IDENTITY
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_DIVERGENCE_WINDOW_HOURS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GONOGO_COST_ESTIMATE_USD
+# detected in: (standard input)
+CHUMP_GONOGO_FORCE_VERDICT
+# detected in: (standard input)
+CHUMP_GONOGO_MODEL
+# detected in: (standard input)
+CHUMP_GONOGO_SKIP

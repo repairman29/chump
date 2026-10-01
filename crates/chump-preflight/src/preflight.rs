@@ -1212,6 +1212,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-3481 (AC5): `chump gonogo` + bootstrap gate wiring — exit
+        // codes via CHUMP_GONOGO_FORCE_VERDICT, and CHUMP_GONOGO_SKIP=1
+        // leaves `chump bootstrap` unchanged. Pure local, no network.
+        "scripts/ci/test-gonogo.sh",
     ];
     candidates
         .iter()
