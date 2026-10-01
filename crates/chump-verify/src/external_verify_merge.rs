@@ -6,6 +6,12 @@
 //!
 //! ## Gates (ALL must pass to merge)
 //!
+//! 0. **Comprehension organs (opt-in, INFRA-3470)** — when
+//!    `CHUMP_VERIFY_COMPREHEND_GATE=1`, runs the comprehend organs
+//!    (`crate::comprehend_gate`) against the PR head and HELDs on any
+//!    high-severity structured finding (DRIFT / MISSING / zero-coverage
+//!    organ). Fails open when the comprehend binary isn't installed.
+//!
 //! 1. **Repo CI green** — polls the PR head SHA's check-runs until ALL
 //!    non-advisory checks reach a **terminal** conclusion, then judges:
 //!    - All SUCCESS / SKIPPED / NEUTRAL → PASS.
@@ -176,6 +182,25 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
 
     ensure_clone(&clone_dir, &opts.repo, &opts.gh_bin)?;
     fetch_refs(&clone_dir, &base_sha, &head_sha)?;
+
+    // ── Gate 0 (opt-in): comprehension organs ────────────────────────────
+    // INFRA-3470: structured findings from the comprehend organs can HELD a
+    // merge before the expensive test gates run. Opt-in
+    // (CHUMP_VERIFY_COMPREHEND_GATE=1) and fails open when the comprehend
+    // binary isn't installed — an absent organ is a coverage gap, not a
+    // reason to block every external_repo PR.
+    if crate::comprehend_gate::gate_enabled() {
+        println!("\n[verify-merge] Gate 0: comprehension organs (opt-in) ...");
+        git_checkout_detach(&clone_dir, &head_sha)?;
+        if let Some(reason) = crate::comprehend_gate::run_gate(&clone_dir)? {
+            println!("  FAIL: {reason}");
+            emit_held(&opts, &reason);
+            println!("\nVerdict: HELD(comprehend)");
+            println!("  {reason}");
+            return Ok(1);
+        }
+        println!("  PASS: no high-severity organ findings");
+    }
 
     // ── Gate 2: Anti-cosmetic test gate ──────────────────────────────────
     println!("\n[verify-merge] Gate 2: Anti-cosmetic test gate ...");
