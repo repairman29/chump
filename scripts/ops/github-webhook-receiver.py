@@ -110,6 +110,27 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS check_runs_sha
             ON check_runs(head_sha);
+
+        -- INFRA-3833: append-only log of every pr_state write, tagged by
+        -- which receiver wrote it. The Rust chump-webhook-receiver writes
+        -- the same table (source='rust') from
+        -- crates/chump-github-cache/src/webhook.rs. Both receivers write
+        -- the SAME pr_state row during the 14-day parallel-run validation
+        -- window (INFRA-2062 AC1), so only this log preserves each
+        -- receiver's independent view for
+        -- scripts/ops/github-cache-divergence-audit.sh to diff.
+        CREATE TABLE IF NOT EXISTS pr_state_write_log (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            number              INTEGER NOT NULL,
+            source              TEXT NOT NULL,
+            mergeable_state     TEXT,
+            auto_merge_enabled  INTEGER NOT NULL DEFAULT 0,
+            draft               INTEGER NOT NULL DEFAULT 0,
+            title               TEXT,
+            written_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS pr_state_write_log_lookup
+            ON pr_state_write_log(number, source, written_at);
         """
     )
     conn.commit()
@@ -721,6 +742,25 @@ def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
             now,
             json.dumps(payload),
             merge_state_status,
+        ),
+    )
+    # INFRA-3833: record this receiver's view separately from the
+    # canonical row so github-cache-divergence-audit.sh can diff it
+    # against the Rust receiver's writes during the parallel-run
+    # validation window.
+    conn.execute(
+        """
+        INSERT INTO pr_state_write_log
+            (number, source, mergeable_state, auto_merge_enabled, draft, title, written_at)
+        VALUES (?, 'python', ?, ?, ?, ?, ?)
+        """,
+        (
+            pr.get("number"),
+            merge_state_status,
+            1 if pr.get("auto_merge") else 0,
+            1 if pr.get("draft") else 0,
+            pr.get("title"),
+            now,
         ),
     )
     conn.commit()

@@ -17,6 +17,10 @@ axum = { version = "0.8", features = ["macros", "json"] }
 clap = { version = "4", features = ["derive"] }
 hex = "0.4"
 hmac = "0.13"
+# INFRA-3833: real bulk REST refill in refresh-open-prs (replaces the
+# Phase 1 stub). rustls-tls matches the workspace-root reqwest config —
+# no new native-tls build dependency.
+reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 rusqlite = { version = "0.32", features = ["bundled"] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

@@ -109,6 +109,14 @@ async fn receive_webhook(
                 tracing::warn!(%err, "upsert_pr failed");
                 return (StatusCode::INTERNAL_SERVER_ERROR, "db error");
             }
+            // INFRA-3833: record this receiver's view separately from the
+            // canonical row so github-cache-divergence-audit.sh can diff
+            // it against the Python receiver's writes during the
+            // parallel-run validation window. Best-effort — a log-write
+            // failure must not fail the webhook delivery.
+            if let Err(err) = state.cache.log_pr_write(&pr, "rust", &now) {
+                tracing::warn!(%err, "log_pr_write failed (non-fatal)");
+            }
             (StatusCode::OK, "pr upserted")
         }
         "check_run" => {
@@ -228,8 +236,9 @@ fn pr_payload_to_pr_state(
 /// `chrono`-free ISO-8601 UTC stamp generator.
 ///
 /// We avoid pulling a chrono dependency just for this one timestamp;
-/// `std::time::SystemTime` + arithmetic is enough.
-fn chrono_like_now() -> String {
+/// `std::time::SystemTime` + arithmetic is enough. `pub(crate)` so
+/// [`crate::refill`] can stamp REST-sourced rows with the same format.
+pub(crate) fn chrono_like_now() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
     let dur = SystemTime::now()
         .duration_since(UNIX_EPOCH)

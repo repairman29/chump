@@ -5147,6 +5147,21 @@ events:
     consumers: [fleet-brief, operator-recall, watchdogs]
     fields_required: [ts, kind, reason, source_ip]
 
+  - kind: cache_divergence_detected
+    effect_metric: self
+    emitter: scripts/ops/github-cache-divergence-audit.sh (INFRA-3833)
+    # scanner-anchor: "kind":"cache_divergence_detected"
+    trigger: nightly audit found a PR number with divergent
+      mergeable_state/auto_merge_enabled/draft/title between the Python
+      webhook receiver's latest write and the Rust webhook receiver's
+      latest write (both tagged into pr_state_write_log). Distinct from
+      cache_drift (cache-vs-REST-ground-truth) — this is
+      receiver-vs-receiver, the measurement INFRA-2062 AC1's 14-day
+      parallel-run window needs before the Python receiver can be
+      decommissioned.
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, pr_number, python, rust]
+
   - kind: cache_drift
     effect_metric: self
     emitter: scripts/ops/github-cache-reconcile.sh (INFRA-1081)

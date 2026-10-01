@@ -37,7 +37,7 @@ validation window.
    chump-github-cache-cli lookup-checks <HEAD_SHA>
    chump-github-cache-cli query-open-prs
    chump-github-cache-cli query-behind-prs
-   chump-github-cache-cli refresh-open-prs   # Phase 1 stub (no REST refill)
+   chump-github-cache-cli refresh-open-prs [--repo OWNER/REPO]   # real REST bulk refill (INFRA-3833)
    ```
 4. **`chump-webhook-receiver` binary** — axum HTTP server with HMAC-SHA256
    signature verification (`X-Hub-Signature-256` matching the Python
@@ -62,14 +62,34 @@ validation window.
 - Migrating `scripts/coord/queue-driver.sh` + other bash callsites away
   from the shim — they keep using `cache_lookup_pr` etc; the feature
   flag routes them transparently.
-- The REST bulk-refill loop in `refresh-open-prs`. The CLI command
-  returns immediately in Phase 1.
 - Auth/HMAC-secret rotation infrastructure. Single static
   `CHUMP_WEBHOOK_SECRET` is enough.
-- **No new ambient event kinds.** This crate does not write to
-  `.chump-locks/ambient.jsonl` at all — the bash legacy body still
-  emits the existing `cache_hit` / `cache_miss` / `cache_refilled`
-  events when the feature flag is OFF.
+- **No new ambient event kinds emitted from this crate.** This crate
+  does not write to `.chump-locks/ambient.jsonl` at all — the bash
+  legacy body still emits the existing `cache_hit` / `cache_miss` /
+  `cache_refilled` events when the feature flag is OFF. (The INFRA-3833
+  divergence audit, `scripts/ops/github-cache-divergence-audit.sh`, is a
+  separate bash script that reads this crate's `pr_state_write_log`
+  table and emits `kind=cache_divergence_detected` — the Rust crate
+  itself still emits nothing.)
+
+## INFRA-3833: real refill + divergence audit
+
+- `refresh-open-prs` is no longer a stub — it performs a real
+  `GET /repos/{owner}/{repo}/pulls?state=open` REST call via `reqwest`
+  (see [`src/refill.rs`](./src/refill.rs)) and upserts the results into
+  `pr_state`. Any resolution/auth/network failure gracefully degrades to
+  `Ok(0)` rather than an error — see that module's doc comment for why.
+- `pr_state_write_log` (migration 002) is an append-only log of every
+  `pr_state` write, tagged `source='python'` or `source='rust'`. Both
+  receivers write the same `pr_state` row during the 14-day
+  parallel-run validation window, so this log is what lets
+  `scripts/ops/github-cache-divergence-audit.sh` diff what each
+  receiver independently observed and emit
+  `kind=cache_divergence_detected` on mismatch — the measurement
+  INFRA-2062 AC1's 14-day zero-divergence window needs before the
+  Python receiver can be decommissioned. INFRA-2062 itself is **not**
+  closed by this gap.
 
 ## Feature flag
 

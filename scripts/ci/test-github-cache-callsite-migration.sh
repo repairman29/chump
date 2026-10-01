@@ -5,23 +5,28 @@
 # correctly across three distinct call-sites (three distinct repository
 # cache DBs, standing in for three real repositories).
 #
-# Phase 1 of `refresh-open-prs` is a documented stub (see
-# crates/chump-github-cache/src/lib.rs "NO bulk-refill REST loop") — it
-# takes no repo argument, makes no network calls, and always prints "0".
-# So this test does NOT assert that the stub populates a cold DB from
-# thin air; it asserts the two things that are actually true today and
-# that any future non-stub implementation must preserve:
+# INFRA-3833 made `refresh-open-prs` a real REST bulk refill (see
+# crates/chump-github-cache/src/refill.rs) instead of the old Phase 1
+# stub that always printed "0". This test deliberately points each
+# call-site at a `--repo` that cannot resolve to a real open-PR set
+# (`chump-ci-smoke/does-not-exist-<i>`) so the REST call either 404s or
+# fails outright in a network-less sandbox — either way the
+# graceful-degradation path in refill.rs fires ("any failure returns
+# Ok(0), not an error"). That keeps this test deterministic and
+# network-independent while still exercising the real CLI argv path
+# end-to-end:
 #
-#   1. Invoking `refresh-open-prs --db <call-site-db>` against three
-#      independent, pre-seeded call-site DBs (one per repository) exits
-#      0 for each.
+#   1. Invoking `refresh-open-prs --db <call-site-db> --repo <bogus>`
+#      against three independent, pre-seeded call-site DBs (one per
+#      repository) exits 0 for each (graceful-degradation contract).
 #   2. Each call-site DB still contains its repository's PR entries
-#      after the run (the refresh is non-destructive).
+#      after the run (the refresh is non-destructive when the REST call
+#      cannot succeed).
 #
-# This gives CI a regression net for the eventual non-stub refill: once
-# it lands, this script's row-count assertions start exercising real
-# refill behavior instead of just no-op-preservation, with no changes
-# required here.
+# A real (non-bogus) `--repo` + valid `gh` auth exercises the actual
+# refill path — that's a manual-verification concern, not this CI smoke
+# test, since CI runners don't carry live GitHub credentials scoped to
+# arbitrary target repos.
 
 set -uo pipefail
 
@@ -104,7 +109,7 @@ SQL
     done
 }
 
-declare -a REPOS=("org/repo-alpha" "org/repo-bravo" "org/repo-charlie")
+declare -a REPOS=("chump-ci-smoke/does-not-exist-0" "chump-ci-smoke/does-not-exist-1" "chump-ci-smoke/does-not-exist-2")
 declare -a DBS=()
 declare -a PR_COUNTS=(3 5 2)
 
@@ -127,7 +132,7 @@ for i in 0 1 2; do
 
     before_count="$(sqlite3 "$db" "SELECT COUNT(*) FROM pr_state;")"
 
-    if OUT="$("$CLI" --db "$db" refresh-open-prs 2>"$TMP/stderr-$i.log")"; then
+    if OUT="$("$CLI" --db "$db" refresh-open-prs --repo "$repo" 2>"$TMP/stderr-$i.log")"; then
         rc=0
     else
         rc=$?
