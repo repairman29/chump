@@ -4,4 +4,5 @@
 pub mod comprehend_gate;
 pub mod confidence;
 pub mod external_verify_merge;
+pub mod organ_muster;
 pub mod pr_ac_coverage;

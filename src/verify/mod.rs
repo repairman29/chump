@@ -160,6 +160,14 @@ pub fn run(argv: &[String]) -> i32 {
         return crate::pr_ac_coverage::run_live(&argv[1..]);
     }
 
+    // `chump verify --roll-call <registry-path>` (RESILIENT-358, "THE ROLL
+    // CALL"): a distinct mode from the --stage diff-policy engine above —
+    // runs the BUILT/WIRED/DETECTABLE/REVIVABLE muster over the organ
+    // registry and prints one authoritative GREEN/ATTENTION/DOWN verdict.
+    if argv.first().map(String::as_str) == Some("--roll-call") {
+        return run_roll_call(&argv[1..]);
+    }
+
     let mut stage: Option<Stage> = None;
     let mut msg_file: Option<String> = None;
     let mut base = "origin/main".to_string();
@@ -244,6 +252,107 @@ pub fn run(argv: &[String]) -> i32 {
     }
 
     if failures > 0 && (stage.is_binding() || strict) {
+        1
+    } else {
+        0
+    }
+}
+
+/// `chump verify --roll-call <registry-path> [--heartbeat-dir <dir>] [--json]`
+/// (RESILIENT-358). Parses the organ registry, runs the muster, and prints
+/// the authoritative GREEN/ATTENTION/DOWN verdict. Exits 0 iff the muster
+/// is GREEN or ATTENTION; 1 if DOWN (any organ exhausted its heals); 2 on a
+/// bad invocation (missing/unparseable registry).
+fn run_roll_call(argv: &[String]) -> i32 {
+    use crate::organ_muster::{
+        muster_verdict, parse_organ_registry, run_muster, LiveProbe, OrganStatus,
+    };
+    use std::collections::HashMap;
+
+    let mut registry_path: Option<String> = None;
+    let mut heartbeat_dir = std::env::temp_dir();
+    let mut json = false;
+    let mut it = argv.iter();
+    while let Some(a) = it.next() {
+        match a.as_str() {
+            "--heartbeat-dir" => {
+                if let Some(d) = it.next() {
+                    heartbeat_dir = std::path::PathBuf::from(d);
+                }
+            }
+            "--json" => json = true,
+            "-h" | "--help" => {
+                println!(
+                    "Usage: chump verify --roll-call <registry-path> [--heartbeat-dir <dir>] [--json]\n\n\
+                     Runs the BUILT/WIRED/DETECTABLE/REVIVABLE muster over every organ\n\
+                     declared in the registry and prints one authoritative\n\
+                     GREEN/ATTENTION/DOWN verdict. Exits 0 (GREEN/ATTENTION) or 1 (DOWN)."
+                );
+                return 0;
+            }
+            other if registry_path.is_none() => registry_path = Some(other.to_string()),
+            other => {
+                eprintln!("chump verify --roll-call: unexpected argument '{other}'");
+                return 2;
+            }
+        }
+    }
+
+    let Some(registry_path) = registry_path else {
+        eprintln!("chump verify --roll-call: a <registry-path> argument is required");
+        return 2;
+    };
+
+    let text = match std::fs::read_to_string(&registry_path) {
+        Ok(t) => t,
+        Err(e) => {
+            eprintln!("chump verify --roll-call: cannot read {registry_path}: {e}");
+            return 2;
+        }
+    };
+
+    let organs = match parse_organ_registry(&text) {
+        Ok(o) => o,
+        Err(e) => {
+            eprintln!("chump verify --roll-call: {e}");
+            return 2;
+        }
+    };
+
+    let probe = LiveProbe { heartbeat_dir };
+    let mut failure_counts: HashMap<String, u32> = HashMap::new();
+    let reports = run_muster(&organs, &probe, &mut failure_counts);
+    let overall = muster_verdict(&reports);
+
+    if json {
+        let organs_json: Vec<String> = reports
+            .iter()
+            .map(|r| {
+                format!(
+                    "{{\"organ\":\"{}\",\"status\":\"{}\",\"paged\":{}}}",
+                    r.organ.name,
+                    r.status.label(),
+                    r.paged
+                )
+            })
+            .collect();
+        println!(
+            "{{\"verdict\":\"{}\",\"organs\":[{}]}}",
+            overall.label(),
+            organs_json.join(",")
+        );
+    } else {
+        println!("THE ROLL CALL");
+        for r in &reports {
+            println!("  [{}] {}", r.status.label(), r.organ.name);
+            for d in &r.gate_details {
+                println!("      {d}");
+            }
+        }
+        println!("MUSTER: {}", overall.label());
+    }
+
+    if overall == OrganStatus::Down {
         1
     } else {
         0
