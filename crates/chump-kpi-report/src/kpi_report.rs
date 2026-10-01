@@ -1396,6 +1396,32 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
     }
 }
 
+/// Parse a `YYYY-MM-DD` close date (the TEXT `closed_date` the ship path writes)
+/// to a unix timestamp at midnight UTC, dependency-free (days-from-civil). Lets
+/// the ship gauge count closes recorded without the INTEGER `closed_at`
+/// (CREDIBLE-1485/1486 — the split-brain where the writer sets `closed_date` but
+/// the reader read `closed_at`).
+fn parse_closed_date(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.len() < 10 {
+        return None;
+    }
+    let y: i64 = s.get(0..4)?.parse().ok()?;
+    let m: i64 = s.get(5..7)?.parse().ok()?;
+    let d: i64 = s.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil: days since 1970-01-01.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400)
+}
+
 fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
     let store = match chump_gap_store::GapStore::open(repo_root) {
         Ok(s) => s,
@@ -1443,8 +1469,14 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
         let mut untagged = 0;
 
         for g in &done_gaps {
-            if let Some(closed) = g.closed_at {
-                if (closed as u64) >= cutoff {
+            // CREDIBLE-1485/1486: the ship path reliably sets closed_date (TEXT
+            // YYYY-MM-DD) but historically NOT closed_at (INTEGER unix ts) — only
+            // 4 of 2481 done gaps had closed_at vs 1731 with closed_date — so
+            // reading closed_at alone undercounted ships ~10-40x (kpi said 3/1d
+            // while git showed 30 closes/24h). Prefer closed_at; fall back to
+            // parsing closed_date so the gauge counts every real close.
+            if let Some(closed) = g.closed_at.or_else(|| parse_closed_date(&g.closed_date)) {
+                if closed >= cutoff as i64 {
                     total += 1;
                     match pillar_of(&g.title, &g.domain) {
                         Some("effective") => effective += 1,
@@ -2894,6 +2926,56 @@ mod tests {
         );
         assert_eq!(section.windows[0].effective, 1);
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1485_ship_rate_counts_closed_date_without_closed_at() {
+        // The split-brain: the ship path writes closed_date (TEXT) but historically
+        // NOT closed_at (INTEGER), so a gauge reading closed_at alone undercounted
+        // ~10-40x. Seed a done gap with closed_date=today and closed_at=NULL — the
+        // real-world shape — and assert the 1d window counts it.
+        let tmp = tempdir();
+        std::fs::create_dir_all(tmp.join(".chump")).unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(&tmp)
+            .output();
+        let reserved = {
+            let store = chump_gap_store::GapStore::open(&tmp).unwrap();
+            let id = store
+                .reserve("INFRA", "closed_date only", "P1", "s")
+                .unwrap();
+            let today = unix_to_iso_date(current_unix() as i64);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_at=NULL, closed_date=?1, closed_pr=999 WHERE id=?2",
+                rusqlite::params![today, id],
+            )
+            .unwrap();
+            id
+        };
+        let _ = reserved;
+        let section = build_ship_rate_section(&tmp);
+        assert!(
+            section.windows[0].total >= 1,
+            "1d window must count a gap closed with closed_date but no closed_at (CREDIBLE-1485): {:?}",
+            section.windows[0]
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1485_parse_closed_date() {
+        assert_eq!(parse_closed_date("1970-01-01"), Some(0));
+        assert_eq!(parse_closed_date("1970-01-02"), Some(86_400));
+        let t = parse_closed_date("2026-10-01").unwrap();
+        assert!(
+            t > 1_700_000_000 && t % 86_400 == 0,
+            "midnight-aligned, got {t}"
+        );
+        assert_eq!(parse_closed_date(""), None);
+        assert_eq!(parse_closed_date("2026-13-01"), None);
+        assert_eq!(parse_closed_date("not-a-date"), None);
     }
 
     #[test]
