@@ -37,7 +37,41 @@
 #   CHUMP_JOURNEY_ODDS  journey-odds json (default ~/.chump/journey-odds.json)
 #   CHUMP_FACULTY_OUT   faculty-status json (default ~/.chump/faculty-status.json)
 #   CHUMP_AMBIENT_LOG   ambient jsonl (default REPO/.chump-locks/ambient.jsonl)
+#   CHUMP_FLEET_TARGET_SIZE  expected worker-pane count (default 2; mirrors
+#                            fleet-autopilot.sh's ensure_worker_pool target)
 set -uo pipefail
+
+# RESILIENT-422: pane coverage pct — the fraction of the EXPECTED chump-fleet
+# worker panes that are actually alive right now (0..100). This is the one
+# operational signal pr-book/journey-odds don't carry: a worker-pool that's
+# down doesn't fail a PR-merge bet, it silently starves dispatch_worker_p0/p1
+# bets of the capacity to ever execute. Without it, "dispatch the top P0 gap"
+# scores the SAME EV whether 0 or 2 workers are alive to pick it up — vibes,
+# not a calibratable prediction. Wired in as a multiplicative discount on the
+# dispatch_worker_* p_success below (step 4) so a starved pool measurably
+# drags those bets' EV down, and the raw pct is also written into the output
+# board so it can be joined against outcomes later (same "price now, settle
+# later" discipline as pr-book.sh / calibration.sh).
+pane_coverage_pct() {
+  local target="${CHUMP_FLEET_TARGET_SIZE:-2}"
+  local live=0
+  if tmux has-session -t chump-fleet 2>/dev/null; then
+    live="$(tmux list-panes -t chump-fleet -F '#{pane_dead}' 2>/dev/null | grep -c '^0$' || true)"
+  fi
+  [[ "$live" =~ ^[0-9]+$ ]] || live=0
+  # list-panes includes the control pane (fleet.0) — subtract it so we count
+  # WORKER panes only, same accounting ensure_worker_pool uses (live >= target+1).
+  local workers=$(( live > 0 ? live - 1 : 0 ))
+  local pct=0
+  if [[ "$target" =~ ^[0-9]+$ ]] && (( target > 0 )); then
+    pct=$(( (workers * 100) / target ))
+  else
+    pct=100
+  fi
+  (( pct > 100 )) && pct=100
+  (( pct < 0 )) && pct=0
+  echo "$pct"
+}
 
 DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # Anchor to the git toplevel of the WORKING DIR, not the script's own tree (the
@@ -149,13 +183,22 @@ if [[ -f "$JOURNEY" ]]; then
   JODDS="$(jq -c '(.median_p // .avg_p // (.journeys? // [] | map(.p_success // .p // empty) | (add / (length|if .==0 then 1 else . end)))) // null' "$JOURNEY" 2>/dev/null || echo null)"
   [[ -z "$JODDS" ]] && JODDS="null"
 fi
-GAP_CAND="$(jq -n -c --argjson p0 "$P0_OPEN" --argjson p1 "$P1_OPEN" --argjson jo "$JODDS" '
+# RESILIENT-422: pane coverage discounts dispatch_worker_* p_success ALWAYS
+# (not just when journey-odds is present) — a starved pool is a real drag on
+# "will this gap actually get picked up", independent of merge-side odds.
+PANE_COVERAGE_PCT="$(pane_coverage_pct)"
+PANE_FRAC="$(awk -v p="$PANE_COVERAGE_PCT" 'BEGIN{printf "%.4f", p/100}')"
+GAP_CAND="$(jq -n -c \
+  --argjson p0 "$P0_OPEN" --argjson p1 "$P1_OPEN" --argjson jo "$JODDS" \
+  --argjson tbl "$ACTION_TABLE" --argjson pane_frac "$PANE_FRAC" '
   ( if $p0>0 then [ { source:"gap", action:"dispatch_worker_p0",
        target:("top of \($p0) open P0 gaps"),
-       label:("\($p0) open P0 gaps waiting for a worker"), p_success:$jo } ] else [] end )
+       label:("\($p0) open P0 gaps waiting for a worker"),
+       p_success:(( (if $jo != null then $jo else $tbl.dispatch_worker_p0.p_default end) * $pane_frac )) } ] else [] end )
   + ( if $p1>0 then [ { source:"gap", action:"dispatch_worker_p1",
        target:("top of \($p1) open P1 gaps"),
-       label:("\($p1) open P1 gaps waiting for a worker"), p_success:$jo } ] else [] end )' \
+       label:("\($p1) open P1 gaps waiting for a worker"),
+       p_success:(( (if $jo != null then $jo else $tbl.dispatch_worker_p1.p_default end) * $pane_frac )) } ] else [] end )' \
   2>/dev/null || echo '[]')"
 [[ -z "$GAP_CAND" ]] && GAP_CAND='[]'
 
@@ -192,8 +235,8 @@ RANKED="$(jq -n -c \
 N="$(printf '%s' "$RANKED" | jq 'length')"
 
 # ── 6. Write the machine-readable board ─────────────────────────────────────
-printf '%s' "$RANKED" | jq -c --arg ts "$TS" --argjson n "$N" '
-  { generated_at:$ts, advisory:true, count:$n,
+printf '%s' "$RANKED" | jq -c --arg ts "$TS" --argjson n "$N" --argjson pane_pct "$PANE_COVERAGE_PCT" '
+  { generated_at:$ts, advisory:true, count:$n, pane_coverage_pct:$pane_pct,
     note:"ADVISORY ONLY — recommends + logs, does not dispatch/merge/heal. EV = value x P(success).",
     recommendations:. }' > "$OUT"
 
@@ -221,7 +264,7 @@ if [[ "$NO_EMIT" != "1" && "$N" -gt 0 ]]; then
       "ev=$(printf '%s' "$TOP" | jq -r .expected_value)" \
       "p=$(printf '%s' "$TOP" | jq -r .p_success)" \
       "who=$(printf '%s' "$TOP" | jq -r .who_should_do_it)" \
-      "candidates=$N" "advisory=true" 2>/dev/null || true
+      "candidates=$N" "advisory=true" "pane_coverage_pct=$PANE_COVERAGE_PCT" 2>/dev/null || true
   fi
 fi
 exit 0
