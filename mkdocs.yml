@@ -1,0 +1,105 @@
+site_name: Chump Doctrine
+site_description: >-
+  The Chump / ChumpOS doctrine corpus — the accumulated design, strategy,
+  process, and operations docs behind a self-driving, verify-before-believe
+  autonomous engineering fleet.
+site_url: https://repairman29.github.io/chump/
+repo_url: https://github.com/repairman29/chump
+repo_name: repairman29/chump
+edit_uri: edit/main/docs/
+copyright: >-
+  Chump doctrine corpus. Code is dual-licensed AGPL-3.0 / Apache-2.0
+  (see LICENSE-AGPL and LICENSE-APACHE in the repository).
+
+docs_dir: docs
+
+# --- Keep the public site to browsable doctrine (Markdown) only. ---
+# The docs/ tree also holds ~4,200 machine-generated data files (the gap
+# store under docs/gaps/, YAML/JSON fixtures, CSV inventories, raw HTML).
+# Those are data, not doctrine — they are excluded from the build so they
+# are neither rendered nor copied into the published site. This also keeps
+# the public secret-exposure surface to reviewed prose.
+exclude_docs: |
+  gaps/
+  *.yaml
+  *.yml
+  *.json
+  *.jsonl
+  *.csv
+  *.txt
+  *.last-run
+  *.html
+  # Contains a malformed (non-UTF-8) byte that breaks the build.
+  # Left untouched in the repo; excluded from the site pending an author fix.
+  eval/gate-fpr-baseline-2026-05.md
+
+# Non-Markdown links inside docs are informational; do not fail the build on them.
+not_in_nav: |
+  *.yaml
+  *.yml
+  *.json
+  *.jsonl
+  *.csv
+  *.txt
+  *.html
+
+theme:
+  name: material
+  features:
+    - navigation.instant
+    - navigation.prune  # only emit nav around the current page (big corpus)
+    - navigation.tracking
+    - navigation.top
+    - navigation.indexes
+    - navigation.sections
+    - navigation.footer
+    - toc.follow
+    - search.suggest
+    - search.highlight
+    - content.code.copy
+    - content.action.view
+  palette:
+    - media: "(prefers-color-scheme: light)"
+      scheme: default
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-night
+        name: Switch to dark mode
+    - media: "(prefers-color-scheme: dark)"
+      scheme: slate
+      primary: teal
+      accent: teal
+      toggle:
+        icon: material/weather-sunny
+        name: Switch to light mode
+  icon:
+    repo: fontawesome/brands/github
+
+plugins:
+  - search
+  - awesome-pages
+
+markdown_extensions:
+  - toc:
+      permalink: true
+  - tables
+  - attr_list
+  - md_in_html
+  - def_list
+  - footnotes
+  - admonition
+  - pymdownx.details
+  - pymdownx.superfences
+  - pymdownx.highlight:
+      anchor_linenums: true
+  - pymdownx.inlinehilite
+  - pymdownx.tabbed:
+      alternate_style: true
+  - pymdownx.tasklist:
+      custom_checkbox: true
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/repairman29/chump

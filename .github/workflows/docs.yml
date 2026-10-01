@@ -1,0 +1,89 @@
+name: Docs site (GitHub Pages)
+
+# Builds the Chump doctrine corpus (docs/**, plus the root doctrine files
+# surfaced under docs/doctrine/) into a mkdocs-material site and deploys it
+# to GitHub Pages.
+#
+# ONE-TIME REPO SETTING REQUIRED (Jeff): Settings -> Pages -> "Build and
+# deployment" -> Source = "GitHub Actions". Until that is set, the build
+# job still runs and validates on every push, but the deploy step has
+# nowhere to publish.
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "docs/**"
+      - "mkdocs.yml"
+      - "docs-requirements.txt"
+      - "CLAUDE.md"
+      - "AGENTS.md"
+      - "CONTRIBUTING.md"
+      - "SECURITY.md"
+      - "CODE_OF_CONDUCT.md"
+      - "CHANGELOG.md"
+      - "adversary.md"
+      - ".github/workflows/docs.yml"
+  # Allow manual runs from the Actions tab.
+  workflow_dispatch:
+
+# Least-privilege: only what Pages deployment needs.
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# One deploy at a time; don't cancel an in-flight production deploy.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install docs dependencies
+        run: pip install -r docs-requirements.txt
+
+      - name: Build site (strict-fail on config/theme errors)
+        # --strict fails on broken *config*; the corpus has many legacy
+        # cross-file links that surface as warnings — those must not fail
+        # the build, so we do not pass --strict here. A separate guard below
+        # keeps secrets out of the output.
+        run: mkdocs build --site-dir ./site
+
+      - name: Secret-scan the built output (fail if any leak)
+        run: |
+          set -euo pipefail
+          # Fail the build if a live-looking credential ends up in the
+          # published HTML/JS/JSON. gitleaks exits non-zero on findings.
+          curl -sSfL https://github.com/gitleaks/gitleaks/releases/download/v8.21.2/gitleaks_8.21.2_linux_x64.tar.gz \
+            | tar -xz gitleaks
+          ./gitleaks detect --source ./site --no-git --redact --exit-code 1 \
+            --config .github/gitleaks-docs.toml \
+            --report-format sarif --report-path gitleaks-site.sarif
+          echo "No secrets found in built site."
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: ./site
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
