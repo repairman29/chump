@@ -12099,8 +12099,56 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     Ok(gap_store::PreflightResult::NotFound) => {
-                        eprintln!("[preflight] WARN {} — not found in state.db (run `chump gap import` first).", gap_id);
-                        return Ok(());
+                        // CREDIBLE-1486: a worktree's local state.db is a snapshot
+                        // taken at worktree-creation time (same INFRA-3002 class as
+                        // `chump claim`'s self-heal) — a gap reserved/imported on
+                        // origin/main afterward is invisible here until someone
+                        // manually runs `chump gap restore --from-sql`. Before this
+                        // fix, NotFound still printed a WARN but returned `Ok(())`
+                        // (exit 0), so callers that gate on exit code alone — like
+                        // `chump dispatch`'s preflight step — treated a MISSING gap
+                        // as "pickable", proceeded to claim, and failed hard there
+                        // instead of at the check meant to catch exactly this.
+                        // Self-heal by syncing just this gap's row from
+                        // `.chump/state.sql` (the tracked YAML mirror) and retrying
+                        // once; only exit non-zero if the gap is genuinely absent
+                        // from both the live store and the tracked mirror.
+                        let sql_path = repo_root.join(".chump").join("state.sql");
+                        let healed = store
+                            .sync_gap_from_state_sql(&sql_path, &gap_id)
+                            .unwrap_or(false);
+                        if healed {
+                            eprintln!(
+                                "[preflight] {} was missing from local state.db — synced from state.sql (CREDIBLE-1486)",
+                                gap_id
+                            );
+                            match store.preflight(&gap_id) {
+                                Ok(gap_store::PreflightResult::Available) => {
+                                    println!("[preflight] OK {} — open and unclaimed.", gap_id);
+                                    return Ok(());
+                                }
+                                Ok(gap_store::PreflightResult::Done) => {
+                                    eprintln!("[preflight] FAIL {} — already done.", gap_id);
+                                    std::process::exit(1);
+                                }
+                                Ok(gap_store::PreflightResult::Claimed(s)) => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — live-claimed by session {}.",
+                                        gap_id, s
+                                    );
+                                    std::process::exit(1);
+                                }
+                                _ => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — not found in state.db (run `chump gap import` first).",
+                                        gap_id
+                                    );
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        eprintln!("[preflight] FAIL {} — not found in state.db (run `chump gap import` first).", gap_id);
+                        std::process::exit(1);
                     }
                     Err(e) => {
                         eprintln!("chump gap preflight: {e:#}");
