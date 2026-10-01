@@ -3165,3 +3165,18 @@ CHUMP_DIVERGENCE_WINDOW_HOURS
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_VERIFY_COMPREHEND_GATE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_COST_CAP_PARK_FILE
+# detected in: (standard input)
+CHUMP_COST_CAP_PROBE_CMD
+# detected in: (standard input)
+CHUMP_COST_CAP_WATCH_DEBOUNCE_SECS
+# detected in: (standard input)
+CHUMP_COST_CAP_WATCH_LOOKBACK
+# detected in: (standard input)
+CHUMP_COST_CAP_WATCH_POLL_S
+# detected in: (standard input)
+CHUMP_FAKE_COST_CAP_PROBE

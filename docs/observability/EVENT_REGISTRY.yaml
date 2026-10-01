@@ -6803,6 +6803,34 @@ events:
     consumers: [fleet-brief, disk-health-monitor, ops-audit]
     fields_required: [ts, kind, restored_level, reason]
 
+  # ── RESILIENT-415: cost-cap-watch park/auto-resume governance (2026-10-01) ─
+  # Prior to this fix, a weekly sub-cap exhaustion with no live free-tier
+  # floor (fleet_backend_no_live_floor) just sat there — nothing watched for
+  # the cap resetting, so the fleet halted silently for ~2 days until Jeff
+  # noticed and restarted it by hand. These two kinds mirror the
+  # disk-critical-reactor governance (RESILIENT-326): every halt this organ
+  # causes is paired with a loud page (parked) and a guaranteed restore once
+  # the cap-reset probe succeeds (resumed) — never a permanent halt.
+  - kind: cost_cap_watch_parked
+    effect_metric: fleet_autonomy_level
+    emitter: scripts/coord/cost-cap-watch.sh (RESILIENT-415)
+    trigger: >
+      park() set AUTONOMY_LEVEL=0 after observing a cap-exhaustion signal
+      (fleet_backend_no_live_floor or cost_cap_exceeded) with no live
+      free-tier floor. Paired 1:1 with an operator-recall.sh COST_CAP page
+      in the same code path.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, prior_level, reason]
+  - kind: cost_cap_watch_resumed
+    effect_metric: fleet_autonomy_level
+    emitter: scripts/coord/cost-cap-watch.sh (RESILIENT-415)
+    trigger: >
+      resume() restored AUTONOMY_LEVEL to its pre-halt value after a
+      cap-reset probe succeeded — the halt this organ causes is always
+      scoped to the cap-exhaustion window, never permanent.
+    consumers: [fleet-brief, disk-health-monitor, ops-audit]
+    fields_required: [ts, kind, restored_level, reason]
+
   # ── CREDIBLE-365/CREDIBLE-108: halt-class emit wrapper ───────────────────
   # halt_class_emit() in scripts/lib/halt-class-emit.sh emits one event per
   # call, carrying the caller-supplied name/status/reason plus a derived
