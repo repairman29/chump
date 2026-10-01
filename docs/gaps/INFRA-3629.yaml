@@ -1,0 +1,18 @@
+- id: INFRA-3629
+  domain: INFRA
+  title: "MISSION: TREK-05 —  Zero-touch creds bootstrap from a single passed secret source (bot/curl|sh path)"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    [RESILIENT/s] Part of the install-a-Trek-from-0 epic (outcome MISSION-010). Mines: scripts/setup/chump-node-install.sh:116-124 (check_creds); scripts/setup/provision-chumpd-host.sh:440-480 (TODO_ template writer); docs/CHUMPOS_FIRST_BOOT.md (Act 1). Depends on: Turn install CREDS phase from check-only into acquire: interactive `chump setup-creds`.
+  acceptance_criteria:
+    - Install accepts creds non-interactively from one source (CHUMP_BOOTSTRAP_CREDS env or --creds-file path) and materializes ~/.chump/providers.env with no human editing a file
+    - Secret values never appear in `ps` args, logs, or the repo; missing-but-required keys after materialization produce a single clear error listing exactly what to supply
+    - Documented in node-install help so a bot can be told to run one command (the FIRST_BOOT 'a bot told to do it' path)
+  notes: |
+    Decomposed into 4 slices: INFRA-7813, INFRA-7814, INFRA-7815, INFRA-7816
+  opened_date: '2026-08-21'
+  closed_date: '2026-10-01'
+  closed_pr: 4952
+
