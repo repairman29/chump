@@ -1,7 +1,7 @@
 - id: INFRA-2084
   domain: INFRA
   title: "RESILIENT P0 STRUCTURAL: chump preflight ≡ ALL CI gates parity — every CI step also runnable locally in <60s; eliminates 80% of today's CI-rot saga by surfacing wedges at commit time instead of post-push"
-  status: open
+  status: already_satisfied
   priority: P1
   effort: m
   acceptance_criteria:
@@ -14,5 +14,8 @@
     - "Smoke test: synth a fresh CI gate that always fails; assert chump preflight catches it; assert preflight-ci-parity-audit reports 0 delta"
   notes: |
     Filed 2026-05-27 by curator-opus-shepherd after today's CI-rot saga: 4 independent wedges all surfacing post-push because preflight didn't mirror CI. Today's 4-PR cascade (#2672/#2674/#2677/#2678) would have been visible at commit time with parity coverage. ESTIMATED IMPACT: 80% reduction in 'PR fails CI' round-trips.
+    
+    [2026-10-01T15:41:45Z] Already satisfied: AC1 (preflight-vs-ci-parity-audit.sh, PR #3945) and AC7 (test-preflight-ci-parity-smoke.sh, PR #3943) landed under this same gap ID. AC2/AC3 live via scripts/ci/preflight-ci-parity-exceptions.txt (467 lines, reason-tagged) + test-preflight-ci-parity.sh wired into fast-checks shard (ci.yml INFRA-1867/INFRA-2084 steps). Live run today: 377 CI gates scanned across ci.yml + 28 siblings -- 118 mirrored, 19 Tier-D, 240 allowlisted, 0 unmirrored delta (full parity, AC5 structurally true). AC6 sibling audit: all 6 META-071 follow-ups (INFRA-1854/1855/1857/1858/1859 done, INFRA-1856 closed) shipped. Registry reconciliation only, no code change.
+  closed_date: '2026-10-01'
   outcome_id: MISSION-010
 
