@@ -2097,6 +2097,7 @@ dependencies = [
  "anyhow",
  "chrono",
  "chump-ambient-cli",
+ "chump-comprehension-organ",
  "chump-coord",
  "serde_json",
  "serial_test",
