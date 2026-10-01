@@ -29,6 +29,12 @@ path = "src/bin/chump-fleet.rs"
 name = "chump-curator-subscriber"
 path = "src/bin/chump-curator-subscriber.rs"
 
+# MISSION-054: persistent NATS subscriber that applies gap lifecycle
+# transitions (reserve/claim/ship/close) to this node's local state.db.
+[[bin]]
+name = "chump-gap-sync-subscriber"
+path = "src/bin/chump-gap-sync-subscriber.rs"
+
 [lib]
 path = "src/lib.rs"
 

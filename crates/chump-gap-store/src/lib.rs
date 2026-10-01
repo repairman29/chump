@@ -1978,6 +1978,16 @@ impl GapStore {
         match result {
             Ok(id) => {
                 self.conn.execute_batch("COMMIT")?;
+                emit_lifecycle_nats(
+                    &id,
+                    "gap_reserved",
+                    &serde_json::json!({
+                        "domain": domain_upper,
+                        "title": title,
+                        "priority": priority,
+                        "effort": effort,
+                    }),
+                );
                 Ok(id)
             }
             Err(e) => {
@@ -2527,6 +2537,13 @@ impl GapStore {
                  worktree=excluded.worktree, expires_at=excluded.expires_at",
             params![session_id, gap_id, worktree, expires_at],
         )?;
+        emit_lifecycle_nats(
+            gap_id,
+            "gap_claimed",
+            &serde_json::json!({
+                "session_id": session_id,
+            }),
+        );
         Ok(())
     }
 
@@ -2850,6 +2867,15 @@ impl GapStore {
             });
         }
 
+        emit_lifecycle_nats(
+            gap_id,
+            "gap_shipped",
+            &serde_json::json!({
+                "session_id": session_id,
+                "closed_pr": closed_pr,
+            }),
+        );
+
         Ok(())
     }
 
@@ -3013,6 +3039,106 @@ impl GapStore {
             {
                 let _ = f.write_all(line.as_bytes());
             }
+        }
+        emit_lifecycle_nats(
+            gap_id,
+            "gap_triage_closed",
+            &serde_json::json!({
+                "session_id": session_id,
+                "reason": reason,
+            }),
+        );
+        Ok(())
+    }
+
+    /// MISSION-054: apply a gap lifecycle transition received from a remote
+    /// node's NATS publish (see `emit_lifecycle_nats` above) directly to this
+    /// node's local state.db, WITHOUT re-running the full reserve/claim/ship
+    /// business logic (ID allocation, proof-of-merge, lease-conflict checks —
+    /// all of that already happened on the publishing node; re-running it
+    /// here would race the local ID counter and could reject a transition
+    /// that's already true elsewhere).
+    ///
+    /// Idempotent by construction: `INSERT OR IGNORE` for reserve (never
+    /// clobbers a row this node already knows about), `ON CONFLICT` upsert
+    /// for claim, and a terminal-status-excluding `UPDATE` for ship/close —
+    /// so replaying the same event twice, or racing with the equivalent
+    /// local mutation, converges to the same row either way.
+    pub fn apply_remote_lifecycle_event(
+        &self,
+        kind: &str,
+        gap_id: &str,
+        detail: &serde_json::Value,
+    ) -> Result<()> {
+        match kind {
+            "gap_reserved" => {
+                let domain = detail
+                    .get("domain")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("INFRA");
+                let title = detail.get("title").and_then(|v| v.as_str()).unwrap_or("");
+                let priority = detail
+                    .get("priority")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("P2");
+                let effort = detail.get("effort").and_then(|v| v.as_str()).unwrap_or("m");
+                let now = unix_now();
+                let opened_date = unix_to_iso_full(now)[..10].to_string();
+                self.conn.execute(
+                    "INSERT OR IGNORE INTO gaps(id,domain,title,priority,effort,status,created_at,opened_date)
+                     VALUES(?1,?2,?3,?4,?5,'open',?6,?7)",
+                    params![gap_id, domain, title, priority, effort, now, opened_date],
+                )?;
+            }
+            "gap_claimed" => {
+                let session_id = detail
+                    .get("session_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("remote");
+                let expires_at = unix_now() + 14_400; // mirrors DEFAULT_GAP_TTL_SECS (chump-coord)
+                self.conn.execute(
+                    "INSERT INTO leases(session_id,gap_id,worktree,expires_at)
+                     VALUES(?1,?2,'',?3)
+                     ON CONFLICT(session_id) DO UPDATE SET gap_id=excluded.gap_id,
+                         expires_at=excluded.expires_at",
+                    params![session_id, gap_id, expires_at],
+                )?;
+            }
+            "gap_shipped" => {
+                let now = unix_now();
+                let iso = unix_to_iso_date(now);
+                let closed_pr = detail.get("closed_pr").and_then(|v| v.as_i64());
+                if let Some(pr) = closed_pr {
+                    self.conn.execute(
+                        "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=?3
+                         WHERE id=?4 AND status NOT IN
+                           ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
+                        params![now, iso, pr, gap_id],
+                    )?;
+                } else {
+                    self.conn.execute(
+                        "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
+                         WHERE id=?3 AND status NOT IN
+                           ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
+                        params![now, iso, gap_id],
+                    )?;
+                }
+            }
+            "gap_triage_closed" => {
+                let status = detail
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("superseded");
+                let now = unix_now();
+                let iso = unix_to_iso_date(now);
+                self.conn.execute(
+                    "UPDATE gaps SET status=?1, closed_at=?2, closed_date=?3
+                     WHERE id=?4 AND status NOT IN
+                       ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate')",
+                    params![status, now, iso, gap_id],
+                )?;
+            }
+            _ => {}
         }
         Ok(())
     }
@@ -4654,6 +4780,34 @@ fn unix_now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+/// MISSION-054: best-effort dual-emit of a gap lifecycle transition onto
+/// `chump.events.<kind>` via the `chump-coord` CLI, mirroring the FLEET-006
+/// pattern already used by `src/adversary.rs` / `src/dispatch.rs`. Reuses the
+/// SAME `kind` values already registered in EVENT_REGISTRY.yaml
+/// (gap_reserved / gap_claimed / gap_shipped / gap_triage_closed) so this is
+/// additive fanout of an existing event, not a new one.
+///
+/// `detail` is JSON-encoded into the `reason=` field of `chump-coord emit`
+/// (an opaque string slot on the wire `CoordEvent`) since the publish-side
+/// event shape has no generic payload field. A remote subscriber
+/// (`chump-gap-sync-subscriber`) parses it back out.
+///
+/// No-op when `chump-coord` isn't on PATH or NATS is unreachable — never
+/// blocks or fails the caller. Disable with `CHUMP_AMBIENT_NATS=0`.
+fn emit_lifecycle_nats(gap_id: &str, kind: &str, detail: &serde_json::Value) {
+    if std::env::var("CHUMP_AMBIENT_NATS").as_deref() == Ok("0") {
+        return;
+    }
+    let _ = std::process::Command::new("chump-coord")
+        .arg("emit")
+        .arg(kind)
+        .arg(format!("gap={gap_id}"))
+        .arg(format!("reason={detail}"))
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn();
 }
 
 /// INFRA-2053 sync-module shim around the private `unix_now()` — keeps
@@ -11339,5 +11493,201 @@ mod meta555_effect_verify_tests {
     #[test]
     fn empty_verify_command_is_ignored() {
         assert!(extract_verify_commands(r#"["verify:   "]"#).is_empty());
+    }
+}
+
+// MISSION-054: real-time backlog coherence — a remote node's gap lifecycle
+// transition (reserve/claim/ship/close), replayed via
+// `GapStore::apply_remote_lifecycle_event`, must land on a SECOND node's
+// local state.db with the same end state the originating node reached
+// locally — and replaying the same event twice (burst / redelivery) must
+// never double-apply or diverge.
+#[cfg(test)]
+mod mission054_lifecycle_sync_tests {
+    use super::*;
+    use tempfile::TempDir;
+
+    fn store() -> (GapStore, TempDir) {
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
+        let dir = TempDir::new().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn remote_reserve_creates_matching_row() {
+        let (node_b, _dir) = store();
+        let detail = serde_json::json!({
+            "domain": "INFRA",
+            "title": "example gap",
+            "priority": "P1",
+            "effort": "s",
+        });
+        node_b
+            .apply_remote_lifecycle_event("gap_reserved", "INFRA-999", &detail)
+            .unwrap();
+
+        let row = node_b.get("INFRA-999").unwrap().expect("row applied");
+        assert_eq!(row.domain, "INFRA");
+        assert_eq!(row.title, "example gap");
+        assert_eq!(row.priority, "P1");
+        assert_eq!(row.effort, "s");
+        assert_eq!(row.status, "open");
+    }
+
+    #[test]
+    fn remote_reserve_is_idempotent_and_never_clobbers_local_row() {
+        let (node_b, _dir) = store();
+        // Node B independently reserved the same ID locally first (e.g. it
+        // raced node A, or already applied this event once).
+        let local_id = node_b
+            .reserve("INFRA", "node-b's own title", "P2", "m")
+            .unwrap();
+
+        let detail = serde_json::json!({
+            "domain": "INFRA",
+            "title": "node-a's conflicting title",
+            "priority": "P0",
+            "effort": "xs",
+        });
+        // Applying a remote reserve for the SAME id must not overwrite the
+        // row node B already has an opinion about.
+        node_b
+            .apply_remote_lifecycle_event("gap_reserved", &local_id, &detail)
+            .unwrap();
+
+        let row = node_b.get(&local_id).unwrap().unwrap();
+        assert_eq!(row.title, "node-b's own title");
+    }
+
+    #[test]
+    fn two_nodes_converge_after_a_burst_of_transitions() {
+        // Node A performs the real lifecycle locally (this is what
+        // `emit_lifecycle_nats` fires events FROM).
+        let (node_a, _dir_a) = store();
+        let id = node_a
+            .reserve("INFRA", "burst test gap", "P1", "s")
+            .unwrap();
+        node_a.claim(&id, "session-a", "/tmp/wt-a", 14_400).unwrap();
+        node_a.close(&id, "session-a", "superseded").unwrap();
+
+        // Node B never saw any of node A's direct DB writes — it only
+        // receives the three lifecycle events over NATS (simulated here by
+        // replaying the same (kind, gap_id, detail) tuples a sync
+        // subscriber would have decoded from the wire).
+        let (node_b, _dir_b) = store();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_reserved",
+                &id,
+                &serde_json::json!({
+                    "domain": "INFRA", "title": "burst test gap",
+                    "priority": "P1", "effort": "s",
+                }),
+            )
+            .unwrap();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_claimed",
+                &id,
+                &serde_json::json!({ "session_id": "session-a" }),
+            )
+            .unwrap();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_triage_closed",
+                &id,
+                &serde_json::json!({ "session_id": "session-a", "reason": "superseded" }),
+            )
+            .unwrap();
+
+        let a_row = node_a.get(&id).unwrap().unwrap();
+        let b_row = node_b.get(&id).unwrap().unwrap();
+        assert_eq!(a_row.status, b_row.status);
+        assert_eq!(a_row.status, "superseded");
+        assert_eq!(a_row.domain, b_row.domain);
+        assert_eq!(a_row.title, b_row.title);
+
+        // Redelivery (NATS at-least-once semantics) must not change the
+        // converged outcome.
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_triage_closed",
+                &id,
+                &serde_json::json!({ "session_id": "session-a", "reason": "superseded" }),
+            )
+            .unwrap();
+        let b_row_again = node_b.get(&id).unwrap().unwrap();
+        assert_eq!(b_row_again.status, "superseded");
+    }
+
+    #[test]
+    fn remote_ship_flips_status_done_and_sets_closed_pr() {
+        let (node_b, _dir) = store();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_reserved",
+                "INFRA-998",
+                &serde_json::json!({
+                    "domain": "INFRA", "title": "ship test", "priority": "P2", "effort": "m",
+                }),
+            )
+            .unwrap();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_shipped",
+                "INFRA-998",
+                &serde_json::json!({ "session_id": "session-a", "closed_pr": 4321 }),
+            )
+            .unwrap();
+
+        let row = node_b.get("INFRA-998").unwrap().unwrap();
+        assert_eq!(row.status, "done");
+        assert_eq!(row.closed_pr, Some(4321));
+    }
+
+    #[test]
+    fn remote_claim_inserts_a_lease() {
+        let (node_b, _dir) = store();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_reserved",
+                "INFRA-997",
+                &serde_json::json!({
+                    "domain": "INFRA", "title": "claim test", "priority": "P2", "effort": "m",
+                }),
+            )
+            .unwrap();
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_claimed",
+                "INFRA-997",
+                &serde_json::json!({ "session_id": "remote-session" }),
+            )
+            .unwrap();
+
+        let leases = node_b.active_leases().unwrap();
+        assert_eq!(
+            leases.get("INFRA-997").map(String::as_str),
+            Some("remote-session")
+        );
+    }
+
+    #[test]
+    fn remote_event_applied_to_unknown_gap_is_a_safe_no_op() {
+        let (node_b, _dir) = store();
+        // A claim/ship/close event can legitimately arrive for a gap this
+        // node hasn't seen the reserve for yet (ordering isn't guaranteed
+        // across subjects) — must not error.
+        node_b
+            .apply_remote_lifecycle_event(
+                "gap_shipped",
+                "INFRA-123456",
+                &serde_json::json!({ "closed_pr": 1 }),
+            )
+            .unwrap();
+        assert!(node_b.get("INFRA-123456").unwrap().is_none());
     }
 }

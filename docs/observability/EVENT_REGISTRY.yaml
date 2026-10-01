@@ -12895,6 +12895,41 @@ events:
     consumers: [ambient, fleet-brief, api-cost-leaderboard (future)]
     fields_required: [ts, kind, role, processed_total, succeeded_total,
       failed_total, timeout_total, cost_proxy_ms_total]
+
+  - kind: gap_sync_subscriber_started
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-gap-sync-subscriber.rs
+    trigger: chump-gap-sync-subscriber process starts and begins listening
+      for gap_reserved/gap_claimed/gap_shipped/gap_triage_closed events
+      (MISSION-054 real-time backlog coherence)
+    consumers: [ambient]
+    fields_required: [ts, kind, mode]
+
+  - kind: gap_sync_subscriber_applied
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-gap-sync-subscriber.rs
+    trigger: a gap lifecycle event from a remote node was applied to this
+      node's local state.db via GapStore::apply_remote_lifecycle_event
+    consumers: [ambient]
+    fields_required: [ts, kind, gap_id, event_kind]
+
+  - kind: gap_sync_subscriber_apply_failed
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-gap-sync-subscriber.rs
+    trigger: applying a remote gap lifecycle event to local state.db errored
+      (e.g. the local gaps table is locked or the row is in an unexpected
+      state) — never fatal, the subscriber keeps consuming the stream
+    consumers: [ambient]
+    fields_required: [ts, kind, gap_id, event_kind, error]
+
+  - kind: gap_sync_subscriber_heartbeat
+    effect_metric: self
+    emitter: crates/chump-coord/src/bin/chump-gap-sync-subscriber.rs
+    trigger: periodic (--heartbeat-interval-s, default 300s) liveness +
+      cumulative applied/failed counts
+    consumers: [ambient, fleet-brief (future)]
+    fields_required: [ts, kind, applied_total, failed_total]
+
   - kind: pr_merged_to_main
     effect_metric: self
     emitter: scripts/coord/main-merge-listener.sh (INFRA-2185, META-125 ring-the-bell)
