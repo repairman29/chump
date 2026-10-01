@@ -1592,6 +1592,12 @@ pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
     // the main checkout's cache was warm.
     nugget_prefetch::link_github_cache(&args.repo_root, &worktree_path);
 
+    // 6c-pre4. INFRA-3834: symlink the worktree's .chump/state.db to the
+    // main checkout's copy so `chump gap reserve` run inside the worktree
+    // allocates IDs against the canonical counter instead of a
+    // worktree-local one that can silently collide with main.
+    nugget_prefetch::link_state_db(&args.repo_root, &worktree_path);
+
     // 6c-pre2. INFRA-1730: orphan-branch auto-rename. By this point the
     // 5b stomp-check has already run (above) and would have bailed if an
     // OPEN PR covers this exact branch — so if the remote still has the
@@ -5492,6 +5498,80 @@ mod nugget_prefetch {
         }
     }
 
+    /// INFRA-3834: link a freshly-created worktree's `.chump/state.db` to
+    /// the main checkout's copy, mirroring the INFRA-1733 `github_cache.db`
+    /// symlink above. Without this, `chump gap reserve` run inside the
+    /// worktree allocates IDs against a worktree-local `gap_counters` row
+    /// that starts from the same baseline as main's — producing IDs that
+    /// silently collide with gaps already assigned in the canonical,
+    /// shared `state.db`. Symlinking makes the worktree read/write the
+    /// same file (and the same SQLite locking/WAL machinery already used
+    /// by concurrent fleet workers against the main checkout), so an ID
+    /// allocated from a worktree can never collide with one allocated
+    /// from main or from a sibling worktree.
+    ///
+    /// Creates a symlink `<worktree>/.chump/state.db` -> the main
+    /// checkout's `.chump/state.db`, using an absolute, canonicalized
+    /// target. Deliberately NOT a fixed `../../...` relative hop like the
+    /// github_cache.db symlink above: this repo's actual worktree layout
+    /// nests worktrees under `<repo>/.claude/worktrees/<name>`, three
+    /// levels below repo_root, not two — a hardcoded `../../` resolves to
+    /// the wrong directory and silently produces a dangling/misplaced
+    /// symlink. Canonicalizing avoids re-encoding a depth assumption that
+    /// can drift again if the worktree layout changes.
+    /// Best-effort: any failure is logged and swallowed so the claim
+    /// proceeds regardless (the worktree falls back to an independent,
+    /// locally-initialized state.db, reproducing the pre-fix collision
+    /// risk — but never blocks the claim).
+    pub fn link_state_db(repo_root: &Path, worktree_path: &Path) {
+        let main_db = repo_root.join(".chump/state.db");
+        let worktree_chump_dir = worktree_path.join(".chump");
+        let worktree_db = worktree_chump_dir.join("state.db");
+
+        if let Err(e) = std::fs::create_dir_all(&worktree_chump_dir) {
+            log::warn!(
+                "INFRA-3834: failed to create {} for state.db linking: {}",
+                worktree_chump_dir.display(),
+                e
+            );
+            return;
+        }
+
+        if !main_db.exists() {
+            log::warn!(
+                "INFRA-3834: main checkout has no {} — leaving worktree state.db to be initialized independently",
+                main_db.display()
+            );
+            return;
+        }
+
+        if worktree_db.exists() || worktree_db.symlink_metadata().is_ok() {
+            // Already linked (e.g. --resume on an existing worktree) or a
+            // real file was initialized before this ran — don't clobber it.
+            return;
+        }
+
+        let target = match std::fs::canonicalize(&main_db) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!(
+                    "INFRA-3834: failed to canonicalize {}: {}",
+                    main_db.display(),
+                    e
+                );
+                return;
+            }
+        };
+        if let Err(e) = std::os::unix::fs::symlink(&target, &worktree_db) {
+            log::warn!(
+                "INFRA-3834: failed to symlink {} -> {}: {}",
+                worktree_db.display(),
+                target.display(),
+                e
+            );
+        }
+    }
+
     /// Read (title, description) from the gap registry. Description is read
     /// from the `description` column if present; otherwise we fall back to
     /// acceptance_criteria (still richer than title alone).
@@ -5617,6 +5697,82 @@ mod nugget_prefetch {
             std::env::remove_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH");
             // Must not panic or hang, even with no env / no DB.
             prefetch_and_print(Path::new("/nonexistent"), "INFRA-NOPE", "test-session");
+        }
+
+        /// INFRA-3834: a fresh worktree's `.chump/state.db` must become a
+        /// symlink to the main checkout's copy, not an independent file —
+        /// otherwise a gap_counters row in the worktree starts from the
+        /// same baseline as main's and can allocate a colliding ID.
+        #[test]
+        fn link_state_db_symlinks_to_main_checkout() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(repo_root.join(".chump")).unwrap();
+            std::fs::create_dir_all(&worktree_path).unwrap();
+            std::fs::write(repo_root.join(".chump/state.db"), b"canonical").unwrap();
+
+            link_state_db(&repo_root, &worktree_path);
+
+            let worktree_db = worktree_path.join(".chump/state.db");
+            let meta = std::fs::symlink_metadata(&worktree_db)
+                .expect("worktree state.db should exist after linking");
+            assert!(
+                meta.file_type().is_symlink(),
+                "worktree .chump/state.db should be a symlink, not a real file"
+            );
+            // Content resolves through the symlink to the main checkout's db,
+            // i.e. a gap_counters allocation in the worktree is the SAME
+            // allocation as one in main — collision is structurally impossible.
+            let content = std::fs::read(&worktree_db).unwrap();
+            assert_eq!(content, b"canonical");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+
+        #[test]
+        fn link_state_db_does_not_clobber_existing_file() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-noclobber-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(repo_root.join(".chump")).unwrap();
+            std::fs::create_dir_all(worktree_path.join(".chump")).unwrap();
+            std::fs::write(repo_root.join(".chump/state.db"), b"canonical").unwrap();
+            std::fs::write(worktree_path.join(".chump/state.db"), b"already-here").unwrap();
+
+            link_state_db(&repo_root, &worktree_path);
+
+            let content = std::fs::read(worktree_path.join(".chump/state.db")).unwrap();
+            assert_eq!(content, b"already-here");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+
+        #[test]
+        fn link_state_db_noop_when_main_has_none() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-nomaindb-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(&repo_root).unwrap();
+            std::fs::create_dir_all(&worktree_path).unwrap();
+
+            // Must not panic even though main has no .chump/state.db.
+            link_state_db(&repo_root, &worktree_path);
+            assert!(!worktree_path.join(".chump/state.db").exists());
+
+            let _ = std::fs::remove_dir_all(&tmp);
         }
     }
 }
