@@ -22,7 +22,7 @@ mod scaffold_holes;
 // (18+ across the binary) keep working without churn.
 pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream};
 // EFFECTIVE-394: verify cluster extracted to crates/chump-verify; re-export so existing crate::pr_ac_coverage / crate::external_verify_merge / crate::confidence references keep resolving unchanged.
-pub use chump_verify::{confidence, external_verify_merge, pr_ac_coverage};
+pub use chump_verify::{confidence, external_verify_merge, organ_muster, pr_ac_coverage};
 mod almanac_tool;
 mod approval_resolver;
 mod asi_telemetry;
