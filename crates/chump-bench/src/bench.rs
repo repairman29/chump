@@ -1403,8 +1403,16 @@ pub fn get_publish_targets(artifact_type: &str) -> Vec<PublishTarget> {
     let Ok(raw) = std::fs::read_to_string(&path) else {
         return Vec::new();
     };
+    publish_targets_from_registry_json(&raw, artifact_type)
+}
+
+/// Pure lookup over an already-read registry JSON blob (EFFECTIVE-1380). Split out of
+/// `get_publish_targets` so the ordered-list / empty-list behavior can be unit-tested
+/// without touching the filesystem or `CHUMP_PUBLISH_TARGETS_PATH` (both of which are
+/// process-global and unsafe to mutate from parallel test threads).
+fn publish_targets_from_registry_json(raw: &str, artifact_type: &str) -> Vec<PublishTarget> {
     let Ok(registry) =
-        serde_json::from_str::<std::collections::HashMap<String, Vec<PublishTarget>>>(&raw)
+        serde_json::from_str::<std::collections::HashMap<String, Vec<PublishTarget>>>(raw)
     else {
         return Vec::new();
     };
@@ -2042,6 +2050,64 @@ fn run_heat(args: &[String]) -> i32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // EFFECTIVE-1380: publish-target registry — ordered lookup by artifact_type,
+    // empty list for types with no registered targets.
+    const TEST_REGISTRY: &str = r#"{
+        "blog-post": [
+            {"target_type": "docs-site", "platform_id": "github-pages", "requires_approval": true},
+            {"target_type": "CHANGELOG", "platform_id": "repo-root", "requires_approval": false},
+            {"target_type": "substack", "platform_id": "substack-newsletter", "requires_approval": true}
+        ],
+        "release": [
+            {"target_type": "release-notes", "platform_id": "github-releases", "requires_approval": false},
+            {"target_type": "CHANGELOG", "platform_id": "repo-root", "requires_approval": false}
+        ],
+        "demo-clip": [
+            {"target_type": "screenshots", "platform_id": "docs-site-gallery", "requires_approval": true},
+            {"target_type": "substack", "platform_id": "substack-newsletter", "requires_approval": true}
+        ],
+        "internal-note": []
+    }"#;
+
+    #[test]
+    fn effective1380_returns_ordered_targets_for_blog_post() {
+        let targets = publish_targets_from_registry_json(TEST_REGISTRY, "blog-post");
+        let types: Vec<&str> = targets.iter().map(|t| t.target_type.as_str()).collect();
+        assert_eq!(types, vec!["docs-site", "CHANGELOG", "substack"]);
+    }
+
+    #[test]
+    fn effective1380_returns_ordered_targets_for_release() {
+        let targets = publish_targets_from_registry_json(TEST_REGISTRY, "release");
+        let types: Vec<&str> = targets.iter().map(|t| t.target_type.as_str()).collect();
+        assert_eq!(types, vec!["release-notes", "CHANGELOG"]);
+    }
+
+    #[test]
+    fn effective1380_returns_ordered_targets_for_demo_clip() {
+        let targets = publish_targets_from_registry_json(TEST_REGISTRY, "demo-clip");
+        let types: Vec<&str> = targets.iter().map(|t| t.target_type.as_str()).collect();
+        assert_eq!(types, vec!["screenshots", "substack"]);
+    }
+
+    #[test]
+    fn effective1380_empty_list_for_type_with_no_targets() {
+        let targets = publish_targets_from_registry_json(TEST_REGISTRY, "internal-note");
+        assert!(targets.is_empty());
+    }
+
+    #[test]
+    fn effective1380_empty_list_for_unregistered_type() {
+        let targets = publish_targets_from_registry_json(TEST_REGISTRY, "never-registered");
+        assert!(targets.is_empty());
+    }
+
+    #[test]
+    fn effective1380_empty_list_for_malformed_registry() {
+        let targets = publish_targets_from_registry_json("not json", "blog-post");
+        assert!(targets.is_empty());
+    }
 
     fn lap(result: &str, touches: Option<u64>) -> LapScore {
         LapScore {
