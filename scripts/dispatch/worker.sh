@@ -604,9 +604,30 @@ fi
 
 # INFRA-686: graceful SIGTERM handler — commit WIP + push + release lease before exit.
 # Reads global vars set by the gap dispatch loop (GAP_ID, branch, wt_path).
+#
+# RESILIENT-1454: when SIGTERM arrives while the worker is blocked deep in an
+# active `claude -p` child (now common via RESILIENT-1453 auto-restart-on-
+# converge), two things used to go wrong: (1) the still-running claude child
+# keeps mutating $wt_path concurrently with the `git add -A && commit` below,
+# racing the checkpoint; (2) bash exits quickly but the orphaned claude child
+# (and its process-tree descendants) stays alive in the systemd cgroup, so
+# the unit doesn't actually stop until systemd's TimeoutStopSec (default 90s)
+# escalates to SIGKILL — hard-killing the in-flight subprocess instead of the
+# checkpoint ever covering it. Reaping the claude-child tree FIRST (bounded,
+# TERM-then-KILL via the existing _kill_cycle_tree helper) fixes both: the
+# worktree is quiescent before the commit, and the cgroup empties within
+# seconds instead of waiting out the full stop timeout.
 _sigterm_wip_checkpoint() {
     log "SIGTERM received — running WIP checkpoint (INFRA-686)"
     local _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    # RESILIENT-1454: reap any still-running claude -p child (and its
+    # descendants) BEFORE touching the worktree, so the checkpoint commit
+    # below reflects a quiescent tree and systemd doesn't have to wait out
+    # TimeoutStopSec for an orphaned grandchild to die on its own.
+    if [[ -n "${_claude_pid:-}" ]] && kill -0 "$_claude_pid" 2>/dev/null; then
+        log "RESILIENT-1454: claude -p child ($_claude_pid) still alive at SIGTERM — reaping before checkpoint"
+        _kill_cycle_tree "$_claude_pid"
+    fi
     # Only act if we're mid-gap (GAP_ID and wt_path set by the loop)
     if [[ -n "${GAP_ID:-}" && -n "${wt_path:-}" && -d "${wt_path:-/nonexistent}" ]]; then
         local _has_changes=0
@@ -620,10 +641,14 @@ _sigterm_wip_checkpoint() {
                 printf '{"ts":"%s","kind":"wip_sigterm_checkpoint","agent_id":"%s","gap_id":"%s","branch":"%s"}\n' \
                     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                     "$AGENT_ID" "$GAP_ID" "${branch:-}" >> "$_amb" 2>/dev/null || true
-                if git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null; then
+                # RESILIENT-1454: bound the push so a hung network/credential
+                # prompt can't itself eat the TimeoutStopSec budget — the
+                # local commit above already preserved the work either way.
+                if (command -v timeout >/dev/null 2>&1 && timeout 20s git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null) \
+                    || (! command -v timeout >/dev/null 2>&1 && git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null); then
                     log "INFRA-686: WIP commit pushed for $GAP_ID → origin/${branch:-}"
                 else
-                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline or no remote)"
+                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline, no remote, or push timed out)"
                 fi
             fi
         fi
