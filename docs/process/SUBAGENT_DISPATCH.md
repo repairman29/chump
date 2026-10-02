@@ -647,13 +647,13 @@ Run `bash scripts/coord/dispatch-health-check.sh` to scan ps aux for hung commit
 
 - [META-116](../gaps/META-116.yaml) — this addendum's source gap
 - [`scripts/coord/dispatch-health-check.sh`](../../scripts/coord/dispatch-health-check.sh) — the operational tool
-- [`AGENTS.md` → Workspace-scoped gaps](../../AGENTS.md#workspace-scoped-gaps--route-to-operatoratc-dont-fleet-dispatch-resilient-292) — a fleet-worker's linked worktree has no filesystem path to sibling `~/Projects/` dirs; gaps tagged `skills_required: workspace_scope` route to an operator/ATC session instead of a dispatched subagent
+- [`docs/process/WORKSPACE_SCOPED_GAPS.md`](./WORKSPACE_SCOPED_GAPS.md) — a fleet-worker's linked worktree has no filesystem path to sibling `~/Projects/` dirs; gaps tagged `skills_required: workspace_scope` route to an operator/ATC session instead of a dispatched subagent
 
 ## No-operator-escalation (extends no-clarifying-questions)
 
 The no-clarifying-questions discipline (sub-agents do NOT ask the dispatcher to clarify) now extends to no-operator-escalation (sub-agents do NOT escalate to the operator from within their PR). 
 
-**Canonical rule:** [`AGENTS.md` → No-operator-escalation discipline](../../AGENTS.md#no-operator-escalation-discipline-operator-decision-of-record-2026-05-30).
+**Canonical rule:** [`docs/process/NO_OPERATOR_ESCALATION.md`](./NO_OPERATOR_ESCALATION.md).
 
 When a sub-agent encounters a decision that isn't trivially its own:
 - Conservative default + ship — note the judgment call in the commit body

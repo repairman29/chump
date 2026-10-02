@@ -189,7 +189,7 @@ The gap's acceptance test asks whether this flowchart's output matches independe
 - [META-116](../gaps/META-116.yaml) — Sonnet hang-detection (a related discipline)
 - [INFRA-2022](../gaps/INFRA-2022.yaml) — `chump gap set` AC-overwrite bug (the prevention; sync is the recovery)
 - [INFRA-1929](../gaps/INFRA-1929.yaml) — prune-worktrees plist missing StartInterval (anti-pattern 4 precedent)
-- [CLAUDE.md → mandatory pre-flight](../../CLAUDE.md#mandatory-pre-flight-every-session-before-any-work)
+- [`docs/process/PREFLIGHT_CHECKLIST.md`](./PREFLIGHT_CHECKLIST.md)
 - [`verify-existence` skill](../../.claude/skills/verify-existence/SKILL.md) — canonical existence check
 
 ## How to extend this doc

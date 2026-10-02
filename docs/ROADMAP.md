@@ -7,7 +7,7 @@
 > other way around.
 >
 > **Cadence.** Reviewed by the operator weekly. Updated by the Mission
-> Driver session (see [`CLAUDE.md` → Mission Driver](../CLAUDE.md#mission-driver--every-session-not-just-when-asked))
+> Driver session (see [`docs/process/MISSION_DRIVER.md`](./process/MISSION_DRIVER.md))
 > when an outcome lands or framing shifts.
 
 ## TL;DR for a returning operator (2026-05-28 reality)

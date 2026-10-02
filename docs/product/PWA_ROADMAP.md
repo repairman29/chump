@@ -491,4 +491,4 @@ don't catch a subtle bug" mode.
 - [`docs/design/OPERATOR_CONSOLE_V2.md`](../design/OPERATOR_CONSOLE_V2.md) — UX spec
 - [`docs/process/PWA_DEPLOYMENT.md`](../process/PWA_DEPLOYMENT.md) — deploy runbook
 - [`docs/strategy/ROADMAP_WAVES.md`](../strategy/ROADMAP_WAVES.md) — what wave PWA gaps belong to
-- [`CLAUDE.md` → Mission Driver](../../CLAUDE.md#mission-driver--every-session-not-just-when-asked) — pillar balance + EFFECTIVE bias when plumbing is healthy
+- [`docs/process/MISSION_DRIVER.md`](../process/MISSION_DRIVER.md) — pillar balance + EFFECTIVE bias when plumbing is healthy

@@ -199,4 +199,4 @@ work per CLAUDE.md mission driver.
 - [`docs/strategy/ROADMAP_50_PER_HOUR.md`](ROADMAP_50_PER_HOUR.md) — capacity plan; reorder its Day 0/+1 sequence per Wave 0 prerequisites
 - [`docs/strategy/ROADMAP_MARCUS.md`](ROADMAP_MARCUS.md) — customer arc, parallel
 - [`docs/strategy/ROADMAP_INDEX.md`](ROADMAP_INDEX.md) — navigation
-- [CLAUDE.md Mission Driver](../../CLAUDE.md#mission-driver--every-session-not-just-when-asked) — pillar balance + roadmap-before-gaps rule
+- [Mission Driver](../process/MISSION_DRIVER.md) — pillar balance + roadmap-before-gaps rule

@@ -41,8 +41,8 @@ fallback helper) but route disjoint vocabularies:
    at this scale; revisit if a third bandit consumer appears.
 
 This is the META-063 redundancy pattern (two implementations of the same
-algorithm, each written for its own scope) — see `AGENTS.md` §
-[Redundancy prevention](../../AGENTS.md#redundancy-prevention-meta-063) for
+algorithm, each written for its own scope) — see
+[`docs/process/REDUNDANCY_PREVENTION.md`](../process/REDUNDANCY_PREVENTION.md) for
 the general policy and the exception recorded for this pair.
 
 Cross-link comments pointing each file at the other (with this rationale

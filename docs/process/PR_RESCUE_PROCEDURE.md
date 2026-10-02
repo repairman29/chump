@@ -454,9 +454,9 @@ This session burned operator attention on these. Don't re-burn:
 
 ## 13. Related docs
 
-- [`CLAUDE.md` → Local CI discipline](../CLAUDE.md#local-ci-discipline-mandatory-infra-1673) — preflight discipline that prevents many of these classes
-- [`CLAUDE.md` → Cache-first reads](../CLAUDE.md#cache-first-reads-infra-1081-2026-05-14) — when you need PR data
-- [`AGENTS.md` → No-operator-escalation discipline](../../AGENTS.md#no-operator-escalation-discipline-operator-decision-of-record-2026-05-30) — when to ask vs broadcast FEEDBACK
+- [`CLAUDE.md` → Local CI discipline](../CLAUDE.md#local-ci-discipline-mandatory) — preflight discipline that prevents many of these classes
+- [`docs/process/GH_CALL_CRITICALITY.md`](./GH_CALL_CRITICALITY.md) — when you need PR data
+- [`docs/process/NO_OPERATOR_ESCALATION.md`](./NO_OPERATOR_ESCALATION.md) — when to ask vs broadcast FEEDBACK
 - [`CLAUDE_GOTCHAS.md`](./CLAUDE_GOTCHAS.md) — operational gotchas (chump binary hung, raw-YAML guard, fleet starved, syspolicyd wedge, rebase footgun, etc.)
 - [`FLEET_SLOS.md`](./FLEET_SLOS.md) — explicit per-layer health targets and escalation criteria
 - [`MISSION_YIELD.md`](../strategy/MISSION_YIELD.md) — yield measurement framework

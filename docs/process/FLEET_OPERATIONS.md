@@ -302,4 +302,4 @@ After you start the fleet:
 - [`scripts/dispatch/fleet-status.sh`](../../scripts/dispatch/fleet-status.sh) — live monitoring pane renderer
 - [`scripts/dispatch/worker.sh`](../../scripts/dispatch/worker.sh) — per-agent loop implementation
 - [`docs/process/CLAUDE_GOTCHAS.md` → Fleet launcher](./CLAUDE_GOTCHAS.md#fleet-launcher-infra-203-canonical-entry-point) — deeper operational details (starvation, heartbeats, reaper integration)
-- [`CLAUDE.md` → Fleet launcher](../../CLAUDE.md#fleet-launcher-one-line) — one-liner reference (hot overlay)
+- [`docs/process/CLAIM_WORKFLOW.md` → Subagent briefing + fleet launcher](./CLAIM_WORKFLOW.md#subagent-briefing--fleet-launcher) — one-liner reference

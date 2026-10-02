@@ -145,4 +145,4 @@ A few honest disclaimers about scope:
 - [`docs/strategy/ROADMAP_WAVES.md`](../strategy/ROADMAP_WAVES.md) — ship-order
 - [`docs/strategy/ROADMAP_MARCUS.md`](../strategy/ROADMAP_MARCUS.md) — customer arc
 - [`docs/syntheses/cos-weekly-*.md`](../syntheses/) — weekly digests
-- [`CLAUDE.md` → Mission Driver](../../CLAUDE.md#mission-driver--every-session-not-just-when-asked) — pillar balance source
+- [`docs/process/MISSION_DRIVER.md`](./MISSION_DRIVER.md) — pillar balance source
