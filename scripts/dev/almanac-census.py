@@ -143,6 +143,7 @@ class Site:
     importer_count: int = None
     coupling: int = None
     has_tests: bool = None
+    summarized: bool = None
 
     @property
     def key(self):
@@ -162,7 +163,21 @@ def normalize_hit(raw: dict) -> Site:
         importer_count=_first(raw, "importer_count", "importers"),
         coupling=_first(raw, "coupling", "neighbor_count"),
         has_tests=_first(raw, "has_tests", "test_presence"),
+        summarized=_first(raw, "summarized", "is_summarized", "has_summary"),
     )
+
+
+def compute_summarized_pct(sites: list) -> float:
+    """Ratio of summarized sites to total sites (0.0-1.0), from the site
+    data itself — CREDIBLE-300 slice (CREDIBLE-352). A site with
+    `summarized` unset (None) counts as not-summarized: unknown is not
+    proof of summarized, and defaulting it to True would overstate
+    coverage the same way CREDIBLE-1045 flagged for the watchdog's
+    missing-pct-field case."""
+    if not sites:
+        return 0.0
+    summarized = sum(1 for s in sites if s.summarized)
+    return round(summarized / len(sites), 4)
 
 
 def load_sites(concept: str, limit: int, fixture: Path, bin_path: str) -> dict:
@@ -476,14 +491,29 @@ def print_human(report: dict) -> None:
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("concept", help="the capability to census, e.g. 'retry exponential backoff'")
+    ap.add_argument("concept", nargs="?", default=None, help="the capability to census, e.g. 'retry exponential backoff'")
     ap.add_argument("--limit", type=int, default=DEFAULT_LIMIT)
     ap.add_argument("--fixture", type=Path, default=None, help="load sites from a JSON fixture instead of a live almanac call")
     ap.add_argument("--almanac-bin", type=str, default=None)
     ap.add_argument("--json", action="store_true")
+    ap.add_argument(
+        "--summarize-pct",
+        action="store_true",
+        help="print almanac_coverage_summarized_pct for the loaded site data and exit (CREDIBLE-352, CREDIBLE-300 slice)",
+    )
     args = ap.parse_args()
 
     bin_path = almanac_bin(args.almanac_bin)
+
+    if args.summarize_pct:
+        loaded = load_sites(args.concept or "", args.limit, args.fixture, bin_path)
+        pct = compute_summarized_pct(loaded["sites"])
+        print(f"almanac_coverage_summarized_pct : {pct}")
+        return 0
+
+    if args.concept is None:
+        ap.error("the following arguments are required: concept")
+
     report = build_report(args.concept, args.limit, args.fixture, bin_path)
 
     if args.json:
