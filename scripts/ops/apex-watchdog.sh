@@ -141,11 +141,21 @@ emit() {  # kind, key=value ...
 }
 
 # ── extract a top-level string field from a node registry JSON file ─────────
+# RESILIENT-1508: a field absent from the file (e.g. a top-level "always_on"
+# when the node JSON only carries it nested under "hardware") makes grep -o
+# match nothing and exit 1. Under this script's `set -euo pipefail`, every
+# caller assigns the result via `x="$(node_field ...)"` — a bare non-zero exit
+# there kills the WHOLE script immediately, before line 177's own
+# nested-field python3 fallback ever runs. That crashed every apex-watchdog
+# tick on cuphead on the very first peer whose registry JSON lacked a
+# top-level always_on (closetjunky.json: only hardware.always_on). An absent
+# field must mean "empty string", not "script dies" — `|| true` makes that
+# so.
 node_field() {
     local file="$1" field="$2"
     grep -o "\"${field}\"[[:space:]]*:[[:space:]]*\"[^\"]*\"" "$file" 2>/dev/null \
         | head -1 \
-        | sed -E "s/\"${field}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\"/\1/"
+        | sed -E "s/\"${field}\"[[:space:]]*:[[:space:]]*\"([^\"]*)\"/\1/" || true
 }
 
 if [[ ! -d "$NODES_DIR" ]]; then

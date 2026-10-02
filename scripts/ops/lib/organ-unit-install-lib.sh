@@ -130,6 +130,70 @@ organ_unit_host_rewrite() {
   return 0
 }
 
+# organ_unit_execstart_resolves <rewritten-unit-file> <reason-var-name>
+#
+# RESILIENT-1508: before a placer `enable --now`s a just-rewritten unit, prove
+# the binary its ExecStart invokes actually resolves on the PATH that unit
+# itself carries — not the invoking installer's shell PATH, which routinely
+# disagrees (an installer run as root with ~/.cargo/bin on ITS PATH will
+# happily `command -v chump` even when the unit's own injected
+# `Environment=PATH=` points at a user/home whose ~/.cargo/bin never got the
+# binary symlinked in, e.g. a `User=root` unit left over from an abandoned
+# /root/.chumpnode bring-up while the box's real, built binary lives under a
+# different user's checkout). That exact drift produced four cuphead organs
+# stuck at exit 127 ("exec: chump: not found") on every tick with no local
+# signal until a human read the journal.
+#
+# Parses the unit's OWN `ExecStart=` line (handling both a direct
+# `ExecStart=/path/to/bin ...` and the common
+# `ExecStart=/bin/bash -c '...; exec <bin> ...'` wrapper), resolves a bare
+# command name against the unit's own `Environment=PATH=` (falling back to
+# the caller's PATH only when the unit sets none — matching systemd's own
+# inherit-from-PID1 behavior), and an absolute/relative path directly via
+# `-x`. Writes a short machine-parseable reason into the nameref target on
+# failure. Returns 0 (resolves) / 1 (does not).
+organ_unit_execstart_resolves() {
+  local unit_file="$1" reason_var="$2"
+  if [[ ! -f "$unit_file" ]]; then
+    printf -v "$reason_var" 'unit_file_missing:%s' "$unit_file"; return 1
+  fi
+
+  local exec_line bin
+  exec_line="$(grep -m1 '^ExecStart=' "$unit_file" || true)"
+  if [[ -z "$exec_line" ]]; then
+    printf -v "$reason_var" 'no_execstart'; return 1
+  fi
+
+  # Prefer the LAST `exec <word>` inside the command (the
+  # `/bin/bash -c '...; exec chump ...'` wrapper shape every organ uses) —
+  # that's the binary systemd's child process actually becomes. Fall back to
+  # the first whitespace token of ExecStart itself for a direct invocation.
+  bin="$(printf '%s\n' "$exec_line" | grep -oE 'exec "?[^ "]+' | tail -1 | sed -E 's/^exec "?//')"
+  if [[ -z "$bin" ]]; then
+    bin="$(printf '%s\n' "${exec_line#ExecStart=}" | awk '{print $1}')"
+  fi
+  if [[ -z "$bin" ]]; then
+    printf -v "$reason_var" 'cannot_parse_execstart'; return 1
+  fi
+
+  # Absolute or relative (contains a slash): resolve directly, no PATH search.
+  if [[ "$bin" == */* ]]; then
+    if [[ -x "$bin" ]]; then return 0; fi
+    printf -v "$reason_var" 'binary_not_executable:%s' "$bin"; return 1
+  fi
+
+  local unit_path
+  unit_path="$(grep -m1 '^Environment=PATH=' "$unit_file" | sed -E 's/^Environment=PATH=//')"
+  [[ -z "$unit_path" ]] && unit_path="$PATH"
+
+  local dir IFS=':'
+  for dir in $unit_path; do
+    [[ -n "$dir" && -x "$dir/$bin" ]] && return 0
+  done
+  printf -v "$reason_var" 'missing_bin_on_unit_path:%s' "$bin"
+  return 1
+}
+
 # organ_unit_run_user <repo-root> — the box's repo-owning user (git/ssh/cargo
 # identity) that units should run as. Mirrors install-helsinki-atc.sh's
 # CHUMP_RUN_USER derivation so both placers agree on the host identity.
