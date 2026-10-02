@@ -33,7 +33,7 @@ Inherited from [META-114](../gaps/META-114.yaml). Each layer has a distinct fres
 | 3 | **chump binary** | new CLI features ship to main faster than `cargo install` runs locally | `freshness-preamble.sh` checks binary mtime; INFRA-2054 adds `--rebuild-if-stale` gate |
 | 4 | **launchd plists** | new daemon shipped; operator hasn't reloaded; or plist installed without `StartInterval` | `chump cron health` (META-110/INFRA-2046) audits every Chump plist |
 | 5 | **YAML gaps** | atomic Write edits don't propagate to state.db | `chump gap sync --pull` (same as #2) |
-| 6 | **active leases / fleet-registry** | local `.chump-locks/*.json` doesn't propagate cross-machine | NATS-primary path ([META-061](../gaps/META-061.yaml)) — not yet shipped; file-fallback only today |
+| 6 | **active leases / fleet-registry** | local `.chump-locks/*.json` doesn't propagate cross-machine | NATS-primary path (META-061) — not yet shipped; file-fallback only today |
 | 7 | **docs (CLAUDE.md, playbooks)** | doctrine evolves mid-session; agents don't re-read | A2A peer broadcasts (INFRA-1932 Pattern 0) surface doctrine updates fast — **today's honest state (verified 2026-07-30): the NATS broker is genuinely live and both A2A flags are ON at the launchd level, but the end-to-end proof (`consensus_result` firing) has never happened once — see [RESILIENT-212](../gaps/RESILIENT-212.yaml). Don't assume this fix is load-bearing yet; verify.** |
 | 8 | **new-content placement** ("Drift Doctor", [DOC-076](../gaps/DOC-076.yaml)) | a finding gets written as a brand-new doc/gap without checking whether it already exists, or belongs in an existing doc as a section | run [§ The doc-placement decision](#the-doc-placement-decision-layer-8) below before creating any new `.md` file |
 

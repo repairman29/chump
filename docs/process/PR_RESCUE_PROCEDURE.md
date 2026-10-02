@@ -454,7 +454,7 @@ This session burned operator attention on these. Don't re-burn:
 
 ## 13. Related docs
 
-- [`CLAUDE.md` → Local CI discipline](../CLAUDE.md#local-ci-discipline-mandatory) — preflight discipline that prevents many of these classes
+- [`CLAUDE.md` → Local CI discipline](../../CLAUDE.md#local-ci-discipline-mandatory) — preflight discipline that prevents many of these classes
 - [`docs/process/GH_CALL_CRITICALITY.md`](./GH_CALL_CRITICALITY.md) — when you need PR data
 - [`docs/process/NO_OPERATOR_ESCALATION.md`](./NO_OPERATOR_ESCALATION.md) — when to ask vs broadcast FEEDBACK
 - [`CLAUDE_GOTCHAS.md`](./CLAUDE_GOTCHAS.md) — operational gotchas (chump binary hung, raw-YAML guard, fleet starved, syspolicyd wedge, rebase footgun, etc.)

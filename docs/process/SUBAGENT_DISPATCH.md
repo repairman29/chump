@@ -1,6 +1,6 @@
 # Subagent dispatch — shipping epilogue + briefing protocol
 
-> **Filed in:** [META-025](../gaps/META-025.yaml) — measured 25-33% subagent
+> **Filed in:** META-025 — measured 25-33% subagent
 > self-ship rate this session against ~80% work-quality. Two bottlenecks:
 > (1) ship-stage hand-off (fixed by the shipping epilogue below), and
 > (2) clarifying-question hesitation (fixed by the no-clarifying-questions
@@ -416,18 +416,18 @@ These are real failure modes from this session, not theoretical:
   epilogue's manual-recovery section.
 - **Operator uses `Agent` tool to "check status" of an existing subagent
   instead of `SendMessage`.** Spawns a fresh agent with no context;
-  wastes a slot. (See [DOC-015](../gaps/DOC-015.yaml).)
+  wastes a slot. (See DOC-015.)
 - **Multiple subagents claim same gap because lease lookups failed.**
   Mitigated by `gap-claim.sh` running before any work; subagents must
   preflight.
 - **Subagent silently falls back to direct YAML write when `chump gap
-  reserve` hangs.** Caught by [INFRA-301](../gaps/INFRA-301.yaml)'s
+  reserve` hangs.** Caught by INFRA-301's
   trace-log instrumentation; remediated by the chump-doctor heal path
-  in [INFRA-275](../gaps/INFRA-275.yaml).
+  in INFRA-275.
 
 ## Re-measurement contract
 
-[META-025](../gaps/META-025.yaml) commits to remeasuring after this
+META-025 commits to remeasuring after this
 template lands: N=5 fresh subagent dispatches, self-ship rate target
 ≥ 70% (vs 25% baseline). Two changes are being tracked together:
 (1) shipping epilogue (already in use since META-025), and
@@ -578,18 +578,18 @@ and are consumed by `ops-audit` and `fleet-brief`.
 
 ## See also
 
-- [META-025](../gaps/META-025.yaml) — parent gap, dispatch-quality findings
-- [INFRA-275](../gaps/INFRA-275.yaml) — the syspolicyd binary wedge that
+- META-025 — parent gap, dispatch-quality findings
+- INFRA-275 — the syspolicyd binary wedge that
   causes most ship-stage hangs
-- [INFRA-301](../gaps/INFRA-301.yaml) — gap-reserve.sh tripwire
-- [DOC-015](../gaps/DOC-015.yaml) — Agent vs SendMessage discipline
+- INFRA-301 — gap-reserve.sh tripwire
+- DOC-015 — Agent vs SendMessage discipline
 - [INFRA-333..337](../gaps/) — sibling improvements (pre-flight,
   heartbeat, telemetry report, stall taxonomy, scope enforcement)
-- [COG-053](../gaps/COG-053.yaml) — no-clarifying-questions directive +
+- COG-053 — no-clarifying-questions directive +
   auto-decide rule (the parallel fix to INFRA-515's sonnet default)
-- [INFRA-515](../gaps/INFRA-515.yaml) — fleet-model default flipped from
+- INFRA-515 — fleet-model default flipped from
   haiku to sonnet; haiku's clarifying-question hesitation kills throughput
-- [INFRA-525](../gaps/INFRA-525.yaml) — worker.sh WIP-rescue checkpoint:
+- INFRA-525 — worker.sh WIP-rescue checkpoint:
   work is committed + pushed at T-30s before fleet timeout
 - [CLAUDE.md](../../CLAUDE.md) "Spawning subagents" subsection (added
   with this PR)

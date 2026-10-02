@@ -216,7 +216,7 @@ subscription-oauth chosen as the model-auth mode (operator, 2026-08-09).
 
 ## Shipped 2026-05-28 — Wave 1 CI scaling ✅
 
-5 PRs landed in one session, targeting ~3–4× CI throughput on existing hardware for $0–5/mo spend. See [`strategy/CI_SCALING_REFERENCE.md`](strategy/CI_SCALING_REFERENCE.md) for the full Wave 1/2/3 decision tree.
+5 PRs landed in one session, targeting ~3–4× CI throughput on existing hardware for $0–5/mo spend. See `strategy/CI_SCALING_REFERENCE.md` for the full Wave 1/2/3 decision tree.
 
 | Bet | Gap | PR | Outcome |
 |---|---|---|---|
@@ -234,7 +234,7 @@ subscription-oauth chosen as the model-auth mode (operator, 2026-08-09).
 | Marcus arc M-B → M-C (post-demo trust + first-customer-onboard) | new gap TBD when M-B framing lands | **next operator decision** — defines this week's bet list. M-A (per-gap budgets INFRA-1486) shipped; M-B chump.fleet.yaml spec INFRA-1483 + multi-repo fan-out INFRA-1484 still open |
 | 50-PRs/hr Phase 2 — sustained 4h verification | INFRA-1540/1542 instrumentation follow-up | shipped capacity; now needs the 4h-green run |
 | A2A-first communication discipline (presence ledger + auto-mirror + passive emit) | [INFRA-1932](gaps/INFRA-1932.yaml) P1/m | ✅ done — partial-shipped via #2524 + later land closed the 6 follow-up ACs |
-| Rust-first orchestration substrate (Wave-3) — port 16.8K LOC bash+Python to ~6K LOC Rust across 6 sub-gaps | [META-107](gaps/META-107.yaml) P1/xl umbrella + [INFRA-1997](gaps/INFRA-1997.yaml) P0/m keystone | ✅ done at umbrella level; cutover follow-ups INFRA-2060..2065 + META-120 filed for the 7–14d parallel-run validation window per blueprint [strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md](strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md) |
+| Rust-first orchestration substrate (Wave-3) — port 16.8K LOC bash+Python to ~6K LOC Rust across 6 sub-gaps | [META-107](gaps/META-107.yaml) P1/xl umbrella + [INFRA-1997](gaps/INFRA-1997.yaml) P0/m keystone | ✅ done at umbrella level; cutover follow-ups INFRA-2060..2065 + META-120 filed for the 7–14d parallel-run validation window per blueprint `strategy/RUST_FIRST_MIGRATION_BLUEPRINT_2026-05-25.md` |
 
 **Chained, not competing.** META-107 IS the substrate that META-090 composes. Without META-107, autopilot inherits 16.8K LOC of bash spaghetti (race conditions in `bot-merge.sh`, env-leak in `pre-push`, `sed`-escape in `broadcast.sh`). With it, autopilot is composed from `chump-ship` + `chump-messaging` + `chump-worker` Rust traits where env-leak / double-instance / SQL-escape bugs are *structurally impossible*.
 
