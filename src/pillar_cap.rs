@@ -12,7 +12,13 @@
 
 use std::collections::BTreeMap;
 
-pub const PILLARS: [&str; 5] = ["EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"];
+pub const PILLARS: [&str; 5] = [
+    "EFFECTIVE",
+    "CREDIBLE",
+    "RESILIENT",
+    "ZERO-WASTE",
+    "MISSION",
+];
 pub const CAP_PCT: f64 = 30.0;
 pub const FLOOR_PCT: f64 = 50.0;
 pub const WINDOW_SECS: i64 = 7 * 86_400;
@@ -22,10 +28,10 @@ pub const P0_BUDGET: usize = 5;
 /// domain that names a pillar (`CREDIBLE`, `ZERO`/`ZERO-WASTE`, ...).
 pub fn pillar_of(title: &str, domain: &str) -> Option<&'static str> {
     let t = title.trim_start();
-    if let Some(p) = PILLARS
-        .iter()
-        .find(|p| t.strip_prefix(**p).is_some_and(|rest| rest.starts_with(':')))
-    {
+    if let Some(p) = PILLARS.iter().find(|p| {
+        t.strip_prefix(**p)
+            .is_some_and(|rest| rest.starts_with(':'))
+    }) {
         return Some(p);
     }
     match domain.trim().to_ascii_uppercase().as_str() {
@@ -89,7 +95,7 @@ where
     let cutoff = now - WINDOW_SECS;
     let mut s = Shares::default();
     for (title, domain, status, closed_at) in gaps {
-        if status != "done" || !closed_at.is_some_and(|c| c >= cutoff) {
+        if status != "done" || closed_at.is_none_or(|c| c < cutoff) {
             continue;
         }
         s.total += 1;
@@ -141,7 +147,9 @@ pub fn decide(pillar: &str, priority: &str, shares: &Shares, open_p0: usize) -> 
 }
 
 pub fn enabled() -> bool {
-    std::env::var("CHUMP_PILLAR_CAP").map(|v| v != "0").unwrap_or(true)
+    std::env::var("CHUMP_PILLAR_CAP")
+        .map(|v| v != "0")
+        .unwrap_or(true)
 }
 
 #[cfg(test)]
@@ -189,15 +197,24 @@ mod tests {
     #[test]
     fn over_cap_demotes_p0_p1_to_p2() {
         let s = shares(&[("RESILIENT", 5), ("EFFECTIVE", 3), ("CREDIBLE", 2)], 0);
-        assert_eq!(decide("RESILIENT", "P1", &s, 0), Decision::Demote { to: "P2" });
-        assert_eq!(decide("RESILIENT", "P0", &s, 0), Decision::Demote { to: "P2" });
+        assert_eq!(
+            decide("RESILIENT", "P1", &s, 0),
+            Decision::Demote { to: "P2" }
+        );
+        assert_eq!(
+            decide("RESILIENT", "P0", &s, 0),
+            Decision::Demote { to: "P2" }
+        );
         assert_eq!(decide("RESILIENT", "P2", &s, 0), Decision::Keep);
     }
 
     #[test]
     fn under_floor_bumps_effective_and_credible() {
         let s = shares(&[("RESILIENT", 3), ("EFFECTIVE", 1), ("ZERO-WASTE", 3)], 3);
-        assert_eq!(decide("EFFECTIVE", "P2", &s, 0), Decision::Bump { to: "P1" });
+        assert_eq!(
+            decide("EFFECTIVE", "P2", &s, 0),
+            Decision::Bump { to: "P1" }
+        );
         assert_eq!(decide("CREDIBLE", "P1", &s, 0), Decision::Bump { to: "P0" });
         // P0 budget full: no P1→P0 bump.
         assert_eq!(decide("CREDIBLE", "P1", &s, P0_BUDGET), Decision::Keep);
@@ -208,16 +225,28 @@ mod tests {
     fn cap_wins_over_floor_and_no_data_keeps() {
         // EFFECTIVE alone is over cap while EFF+CRED is under the floor.
         let s = shares(&[("EFFECTIVE", 4)], 6);
-        assert_eq!(decide("EFFECTIVE", "P1", &s, 0), Decision::Demote { to: "P2" });
-        assert_eq!(decide("RESILIENT", "P1", &Shares::default(), 0), Decision::Keep);
+        assert_eq!(
+            decide("EFFECTIVE", "P1", &s, 0),
+            Decision::Demote { to: "P2" }
+        );
+        assert_eq!(
+            decide("RESILIENT", "P1", &Shares::default(), 0),
+            Decision::Keep
+        );
     }
 
     #[test]
     fn status_line_flags_cap_and_floor() {
         let s = shares(&[("RESILIENT", 6), ("EFFECTIVE", 1)], 3);
         let line = s.status_line();
-        assert!(line.starts_with("Pillars: RESILIENT 60% [OVER CAP]"), "{line}");
+        assert!(
+            line.starts_with("Pillars: RESILIENT 60% [OVER CAP]"),
+            "{line}"
+        );
         assert!(line.contains("EFFECTIVE 10% [under floor]"), "{line}");
-        assert_eq!(Shares::default().status_line(), "Pillars: no merges in the last 7d");
+        assert_eq!(
+            Shares::default().status_line(),
+            "Pillars: no merges in the last 7d"
+        );
     }
 }

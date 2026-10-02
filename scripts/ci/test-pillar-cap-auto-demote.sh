@@ -45,7 +45,7 @@ cd "$FAKE" || exit 1
 reserve() {  # reserve <title> <priority> [extra args...] → prints new id
     local title="$1" prio="$2"; shift 2
     "$CHUMP" gap reserve --domain INFRA --title "$title" --priority "$prio" \
-        --effort xs --no-outcome-required --no-evidence-required --quiet "$@" 2>>"$TMP/err.log" \
+        --effort xs --force --no-outcome-required --no-evidence-required --quiet "$@" 2>>"$TMP/err.log" \
         | grep -oE 'INFRA-[0-9]+' | head -1
 }
 prio_of() {  # prio_of <id>

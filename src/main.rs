@@ -10702,7 +10702,12 @@ async fn main() -> Result<()> {
                 let rows = store.list(None).unwrap_or_default();
                 let shares = pillar_cap::compute_shares(
                     rows.iter().map(|g| {
-                        (g.title.as_str(), g.domain.as_str(), g.status.as_str(), g.closed_at)
+                        (
+                            g.title.as_str(),
+                            g.domain.as_str(),
+                            g.status.as_str(),
+                            g.closed_at,
+                        )
                     }),
                     chrono::Utc::now().timestamp(),
                 );
@@ -10748,7 +10753,12 @@ async fn main() -> Result<()> {
                         let rows = store.list(None).unwrap_or_default();
                         let shares = pillar_cap::compute_shares(
                             rows.iter().map(|g| {
-                                (g.title.as_str(), g.domain.as_str(), g.status.as_str(), g.closed_at)
+                                (
+                                    g.title.as_str(),
+                                    g.domain.as_str(),
+                                    g.status.as_str(),
+                                    g.closed_at,
+                                )
                             }),
                             chrono::Utc::now().timestamp(),
                         );
@@ -10776,7 +10786,10 @@ async fn main() -> Result<()> {
                                 );
                             }
                             let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
-                            let reason = cap_override.clone().unwrap_or_default().replace(['"', '\\'], "");
+                            let reason = cap_override
+                                .clone()
+                                .unwrap_or_default()
+                                .replace(['"', '\\'], "");
                             // gap_id is filled in once the reserve succeeds.
                             pillar_cap_event = Some(format!(
                                 r#"{{"ts":"{ts}","kind":"pillar_cap_demote","gap_id":"{{GAP_ID}}","pillar":"{pillar}","current_share":{:.1},"decision":"{decision_label}","from":"{from}","to":"{to}","override_reason":"{reason}"}}"#,
