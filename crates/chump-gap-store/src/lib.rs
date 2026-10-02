@@ -2811,6 +2811,21 @@ impl GapStore {
             );
         }
 
+        // RESILIENT-469: run `cargo hakari generate` to keep the workspace-hack
+        // dedup crate in sync before the gap flips to status=done. Best-effort
+        // and non-fatal (missing `cargo-hakari` binary or a hakari-less
+        // checkout must never block a ship) — only attempted against a real
+        // Cargo workspace, mirroring the RESILIENT-492 build-step guard above.
+        if self.repo_root.join("Cargo.toml").exists() {
+            eprintln!("Running cargo hakari generate");
+            let _ = std::process::Command::new("cargo")
+                .args(["hakari", "generate"])
+                .current_dir(&self.repo_root)
+                .stderr(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .status();
+        }
+
         let now = unix_now();
         let iso = unix_to_iso_date(now);
         // CREDIBLE-218: reconcile ANY non-terminal status, not just 'open'. A gap

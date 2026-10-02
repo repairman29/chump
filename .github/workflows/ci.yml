@@ -175,6 +175,7 @@ jobs:
               - 'chump-tool-macro/**'
               - 'config/**'
               - 'content/**'
+              - 'workspace-hack/**'
               - 'docker/**'
               - 'deploy/**'
               - 'e2e/**'
