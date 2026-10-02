@@ -1007,6 +1007,59 @@ fn detect_ssrf(input: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Minimum star count at which a repo is treated as a higher-leverage
+/// "opportunity library" and sorted ahead of lower-star targets during a
+/// portfolio sweep (EFFECTIVE-1408 / EFFECTIVE-374 slice).
+const PORTFOLIO_SWEEP_LEVERAGE_TIER_STARS: u64 = 4;
+
+/// Validates `gh_portfolio_sweep`-shaped input against the owned-repo
+/// allowlist *before* the inner tool (and its network requests) runs,
+/// logging a `NO-GO` for any foreign repo. Ordering of the surviving
+/// targets prioritizes 4-star+ leverage-tier repos.
+///
+/// Mirrors the allowlist + tier-sort behavior in
+/// `crates/mcp-servers/chump-mcp-github/src/main.rs`'s
+/// `filter_and_prioritize_sweep_targets`, applied one layer up so a
+/// portfolio sweep is rejected before it ever reaches the MCP server.
+fn check_portfolio_sweep_targets(input: &Value) -> Result<()> {
+    let Some(targets) = input.get("repos").and_then(|v| v.as_array()) else {
+        return Ok(());
+    };
+    let mut foreign = Vec::new();
+    for t in targets {
+        let Some(repo) = t.get("repo").and_then(|v| v.as_str()) else {
+            continue;
+        };
+        if !crate::repo_allowlist::allowlist_contains(repo)
+            && crate::repo_allowlist::allowlist_non_empty()
+        {
+            tracing::warn!(repo = repo, "NO-GO: portfolio sweep target not owned");
+            foreign.push(repo.to_string());
+        }
+    }
+    if foreign.is_empty() {
+        Ok(())
+    } else {
+        Err(anyhow!(
+            "NO-GO: portfolio sweep rejected unowned repo(s): {}",
+            foreign.join(", ")
+        ))
+    }
+}
+
+/// Orders `(repo, stars)` sweep targets so 4-star+ leverage-tier repos sort
+/// first, ties broken by star count descending then repo name.
+fn prioritize_sweep_targets(mut targets: Vec<(String, u64)>) -> Vec<(String, u64)> {
+    targets.sort_by(|a, b| {
+        let tier_order = |stars: u64| u8::from(stars < PORTFOLIO_SWEEP_LEVERAGE_TIER_STARS);
+        tier_order(a.1)
+            .cmp(&tier_order(b.1))
+            .then(b.1.cmp(&a.1))
+            .then(a.0.cmp(&b.0))
+    });
+    targets
+}
+
 /// Default timeout for a single tool execution (seconds).
 /// INFRA-321: reduced from 30s → 8s so a wedged tool (e.g. memory_brain
 /// trying a missing path) fails fast instead of blocking a turn for 60s.
@@ -1080,6 +1133,9 @@ impl Tool for ToolTimeoutWrapper {
                 None
             };
         detect_ssrf(&input)?;
+        if name == "gh_portfolio_sweep" {
+            check_portfolio_sweep_targets(&input)?;
+        }
         enforce_tool_rate_limit(&name)?;
 
         // CREDIBLE-174: review-class dispatch gate. PR-review-intelligence
@@ -2295,5 +2351,79 @@ mod tests {
             "non-review dispatch must retain write access: {result:?}"
         );
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    #[serial]
+    fn portfolio_sweep_rejects_unowned_repo_as_no_go() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned-repo");
+        let input = serde_json::json!({
+            "repos": [
+                { "repo": "owner/owned-repo", "stars": 2 },
+                { "repo": "other/foreign-repo", "stars": 9 },
+            ]
+        });
+        let result = check_portfolio_sweep_targets(&input);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        let err = result.expect_err("foreign repo target must be rejected");
+        assert!(err.to_string().contains("NO-GO"));
+        assert!(err.to_string().contains("other/foreign-repo"));
+    }
+
+    #[test]
+    #[serial]
+    fn portfolio_sweep_allows_all_owned_repos() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/a,owner/b");
+        let input = serde_json::json!({
+            "repos": [
+                { "repo": "owner/a", "stars": 1 },
+                { "repo": "owner/b", "stars": 5 },
+            ]
+        });
+        let result = check_portfolio_sweep_targets(&input);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        assert!(result.is_ok());
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn execute_gate_blocks_unowned_repo_before_tool_runs() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned-repo");
+        let calls = std::sync::Arc::new(std::sync::atomic::AtomicUsize::new(0));
+        let wrapped = ToolTimeoutWrapper::new(Box::new(CountingTool {
+            name: "gh_portfolio_sweep",
+            calls: calls.clone(),
+        }));
+        let result = wrapped
+            .execute(serde_json::json!({
+                "repos": [{ "repo": "other/foreign-repo", "stars": 9 }]
+            }))
+            .await;
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        assert!(result.is_err(), "NO-GO target must block execution");
+        assert_eq!(
+            calls.load(std::sync::atomic::Ordering::SeqCst),
+            0,
+            "inner tool (and its network request) must never run for a rejected sweep"
+        );
+    }
+
+    #[test]
+    fn prioritize_sweep_targets_orders_four_star_plus_first() {
+        let ordered = prioritize_sweep_targets(vec![
+            ("owner/low-star".to_string(), 1),
+            ("owner/mid-star".to_string(), 3),
+            ("owner/high-star".to_string(), 10),
+            ("owner/exactly-four".to_string(), 4),
+        ]);
+        assert_eq!(
+            ordered,
+            vec![
+                ("owner/high-star".to_string(), 10),
+                ("owner/exactly-four".to_string(), 4),
+                ("owner/mid-star".to_string(), 3),
+                ("owner/low-star".to_string(), 1),
+            ]
+        );
     }
 }
