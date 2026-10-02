@@ -3190,3 +3190,22 @@ CHUMP_FLEET_TARGET_SIZE
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_GAP_SHIP_HYGIENE_SIMILARITY
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_MEMORY_DB
+# detected in: (standard input)
+CHUMP_NOTIFY_CMD_OVERRIDE_UNUSED
+# detected in: (standard input)
+CHUMP_PEER_BUDGET_USD
+# detected in: (standard input)
+CHUMP_PEER_CLAUDE_BIN
+# detected in: (standard input)
+CHUMP_PEER_EXECUTE
+# detected in: (standard input)
+CHUMP_PEER_MEMORY_DB
+# detected in: (standard input)
+CHUMP_PEER_MODEL
+# detected in: (standard input)
+CHUMP_PEER_TIMEOUT_S
