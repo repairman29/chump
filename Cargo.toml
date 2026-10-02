@@ -52,6 +52,7 @@ members = [
     "crates/chump-storage",
     "crates/chump-comprehension-organ",
     "crates/chump-idea-drop",
+    "workspace-hack",
 ]
 resolver = "2"
 
@@ -221,6 +222,7 @@ wasmtime-wasi = "49"
 wasi-common = "46"
 sha2 = "0.11.0"
 hex = "0.4.3"
+workspace-hack = { version = "0.1", path = "workspace-hack" }
 
 [profile.dev]
 # EFFECTIVE-393 (build-speed): the dev/test/CI profile. Cold builds of the
@@ -305,6 +307,14 @@ openssl = { version = "0.10", features = ["vendored"] }
 # not correctness; the cycle-thrash of force-pushing fixes outweighs the
 # style benefit. If we ever want them back, downgrade to "warn" first to
 # scrub the codebase, then back to "deny".
+# RESILIENT-469: cargo-hakari workspace-hack dedup. Authoritative config
+# lives in .config/hakari.toml (read by `cargo hakari generate`); mirrored
+# here so the hakari setup is visible from the workspace manifest.
+[workspace.metadata.hakari]
+hakari-package = "workspace-hack"
+dep-format-version = "4"
+resolver = "2"
+
 [workspace.lints.clippy]
 # Names verified against clippy 1.95 lint index. Earlier INFRA-664 used
 # 'doc_list_item_overindented' which is unknown; real name is
