@@ -6688,6 +6688,26 @@ events:
       Backfill later with: chump gap set <ID> --acceptance-criteria "..."
       # scanner-anchor: ac_gate_bypassed
 
+  # anchor: pillar_cap_demote
+  - kind: pillar_cap_demote
+    effect_metric: self
+    emitter: src/main.rs gap reserve handler (CREDIBLE-072)
+    trigger: >
+      chump gap reserve filed a NEW gap whose pillar (title prefix tag, else
+      domain) breached the 7-day merge-share rules: the pillar is over 30% of
+      the week's merges (decision=demote, P0/P1 to P2), or EFFECTIVE+CREDIBLE
+      together are under 50% (decision=bump, one tier up within the P0
+      budget), or the operator kept the requested priority with
+      --cap-override <reason> (decision=override).
+    consumers: [fleet-brief, audit-log, kpi-report]
+    fields_required: [ts, kind, gap_id, pillar, current_share, decision]
+    docs: |
+      current_share is the pillar's percentage of gaps closed as done in the
+      last 7 days. from/to carry the requested and final priority;
+      override_reason is set only for decision=override. Disable the rule
+      with CHUMP_PILLAR_CAP=0. Current shares: chump gap pillar-share.
+      # scanner-anchor: pillar_cap_demote
+
   - kind: gap_dup_archived
     effect_metric: self
     emitter: src/main.rs gap consolidate --apply handler (INFRA-1435)

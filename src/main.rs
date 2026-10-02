@@ -197,6 +197,7 @@ mod pending_peer_approval;
 mod perception;
 mod peripheral_sensor;
 mod phi_proxy;
+mod pillar_cap; // CREDIBLE-072: per-pillar weekly merge-share cap/floor at gap reserve
 mod pilot_metrics;
 mod plan_mode;
 mod platform_router;
@@ -10694,6 +10695,19 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // `chump gap pillar-share` (CREDIBLE-072) — one-line 7-day
+            // per-pillar merge share, flagging pillars over the reserve-time
+            // cap and EFFECTIVE/CREDIBLE under the floor.
+            "pillar-share" => {
+                let rows = store.list(None).unwrap_or_default();
+                let shares = pillar_cap::compute_shares(
+                    rows.iter().map(|g| {
+                        (g.title.as_str(), g.domain.as_str(), g.status.as_str(), g.closed_at)
+                    }),
+                    chrono::Utc::now().timestamp(),
+                );
+                println!("{}", shares.status_line());
+            }
             "reserve" => {
                 let has_flag_domain = args.iter().any(|a| a == "--domain");
                 let domain = flag("--domain").or_else(|| {
@@ -10720,7 +10734,60 @@ async fn main() -> Result<()> {
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| "New gap".into())
                 });
-                let priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                let mut priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                // ── CREDIBLE-072: per-pillar weekly merge-share cap / floor ─────
+                // A NEW gap in a pillar that already holds >30% of the last 7
+                // days' merges is demoted to P2; when EFFECTIVE+CREDIBLE are
+                // under 50% combined, a NEW gap in either is bumped one tier
+                // (P0 bumps held to the P0 budget). `--cap-override <reason>`
+                // keeps the requested priority and is logged. Every decision
+                // other than "keep" emits kind=pillar_cap_demote.
+                let mut pillar_cap_event: Option<String> = None;
+                if pillar_cap::enabled() {
+                    if let Some(pillar) = pillar_cap::pillar_of(&title, &domain) {
+                        let rows = store.list(None).unwrap_or_default();
+                        let shares = pillar_cap::compute_shares(
+                            rows.iter().map(|g| {
+                                (g.title.as_str(), g.domain.as_str(), g.status.as_str(), g.closed_at)
+                            }),
+                            chrono::Utc::now().timestamp(),
+                        );
+                        let open_p0 = rows
+                            .iter()
+                            .filter(|g| g.status == "open" && g.priority == "P0")
+                            .count();
+                        let cap_override = flag("--cap-override");
+                        let decision = pillar_cap::decide(pillar, &priority, &shares, open_p0);
+                        let (decision_label, new_priority) = match (&cap_override, &decision) {
+                            (_, pillar_cap::Decision::Keep) => ("keep", None),
+                            (Some(_), _) => ("override", None),
+                            (None, pillar_cap::Decision::Demote { to })
+                            | (None, pillar_cap::Decision::Bump { to }) => {
+                                (decision.label(), Some(to.to_string()))
+                            }
+                        };
+                        if decision_label != "keep" {
+                            let from = priority.clone();
+                            let to = new_priority.clone().unwrap_or_else(|| priority.clone());
+                            if !args.iter().any(|a| a == "--quiet") {
+                                eprintln!(
+                                    "[reserve] CREDIBLE-072: {pillar} is {:.0}% of 7d merges — {decision_label} {from} → {to}",
+                                    shares.pct(pillar)
+                                );
+                            }
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let reason = cap_override.clone().unwrap_or_default().replace(['"', '\\'], "");
+                            // gap_id is filled in once the reserve succeeds.
+                            pillar_cap_event = Some(format!(
+                                r#"{{"ts":"{ts}","kind":"pillar_cap_demote","gap_id":"{{GAP_ID}}","pillar":"{pillar}","current_share":{:.1},"decision":"{decision_label}","from":"{from}","to":"{to}","override_reason":"{reason}"}}"#,
+                                shares.pct(pillar)
+                            ));
+                        }
+                        if let Some(p) = new_priority {
+                            priority = p;
+                        }
+                    }
+                }
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
                 // CREDIBLE-107: --evidence required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
@@ -11873,6 +11940,20 @@ async fn main() -> Result<()> {
                         // write-and-autostage path this replaced is gone).
                         // Use `chump gap show <ID>` for human-readable
                         // per-gap inspection.
+                        // CREDIBLE-072: audit the pillar-cap decision with the real id.
+                        if let Some(line) = pillar_cap_event.take() {
+                            let line = line.replace("{GAP_ID}", &id);
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write as _;
+                                let _ = writeln!(f, "{line}");
+                            }
+                        }
                         if json_out {
                             println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
                         } else {
