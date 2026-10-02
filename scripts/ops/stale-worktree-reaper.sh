@@ -120,6 +120,11 @@ done
 
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+# RESILIENT-1507: opt-in, off-origin backup remote for wip/ snapshot branches.
+# Unset by default — wip/ branches then stay on the local ref only. Must never
+# resolve to origin/$REMOTE (enforced at push time below); origin rejects
+# refs/heads/wip/** creation/update by repository rule.
+WIP_PUSH_REMOTE="${WIP_PUSH_REMOTE:-}"
 # INFRA-2020: scan paths — default covers both .claude/worktrees (git linked worktrees)
 # and /tmp/chump-* (chump claim convention). Override via WORKTREE_SCAN_PATHS env var.
 # The /tmp/chump-* glob is intentional: claim creates /tmp/chump-<gap-id>/ directories.
@@ -749,12 +754,23 @@ process_worktree() {
             return 1
         fi
 
-        # Best-effort push for OFF-machine recoverability. A push failure no longer
-        # costs the work — the verified LOCAL ref above already preserves it.
-        if git -C "$wt" push "$REMOTE" "$wip_branch" 2>/dev/null; then
-            info "  pushed wip branch: $wip_branch"
+        # RESILIENT-1507: NEVER push wip/ snapshot branches to origin. A dirty-tree
+        # auto-stash can contain untracked files that must not leave the node, and
+        # (as of 2026-10-02) origin rejects refs/heads/wip/** outright (repository
+        # rule, no bypass) — pushing there always failed anyway, logging a
+        # misleading "offline?" warning. The verified LOCAL ref above (RESILIENT-235)
+        # is the recovery point. Only push when the operator has explicitly
+        # configured a DIFFERENT remote via WIP_PUSH_REMOTE for off-machine backup.
+        if [[ -n "$WIP_PUSH_REMOTE" ]]; then
+            if [[ "$WIP_PUSH_REMOTE" == "$REMOTE" || "$WIP_PUSH_REMOTE" == "origin" ]]; then
+                warn "  WIP_PUSH_REMOTE=$WIP_PUSH_REMOTE refuses to resolve to origin — work preserved on LOCAL ref $wip_branch only"
+            elif git -C "$wt" push "$WIP_PUSH_REMOTE" "$wip_branch" 2>/dev/null; then
+                info "  pushed wip branch to configured remote $WIP_PUSH_REMOTE: $wip_branch"
+            else
+                warn "  push of $wip_branch to $WIP_PUSH_REMOTE failed — work preserved on LOCAL ref $wip_branch"
+            fi
         else
-            warn "  push of $wip_branch failed (offline?) — work preserved on LOCAL ref $wip_branch"
+            info "  WIP_PUSH_REMOTE unset — keeping $wip_branch on LOCAL ref only (not pushed to $REMOTE)"
         fi
         # scanner-anchor: "kind":"worktree_work_stashed_before_reap"
         printf '{"ts":"%s","kind":"worktree_work_stashed_before_reap","gap_id":"%s","branch":"%s","uncommitted_lines":%d,"unpushed_commits":%d,"original_worktree":"%s"}\n' \

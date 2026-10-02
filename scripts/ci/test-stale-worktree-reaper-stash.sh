@@ -6,12 +6,17 @@
 #
 # Tests:
 #   T1: clean worktree (no uncommitted, no unpushed) → reaped normally, no wip branch
-#   T2: worktree with uncommitted changes → wip/<gap>-<ts> branch created, ambient
-#       event emitted, then worktree reaped
+#   T2: worktree with uncommitted changes → wip/<gap>-<ts> branch created LOCALLY
+#       (RESILIENT-1507: never pushed to origin), ambient event emitted, then
+#       worktree reaped
 #   T3: worktree with unpushed commits → wip/<gap>-<ts> branch with the commits
-#       pushed, ambient event emitted, then reaped
-#   T4: worktree with both uncommitted + unpushed → both preserved in wip branch,
-#       then reaped
+#       preserved locally, never pushed to origin, ambient event emitted, then reaped
+#   T4: worktree with both uncommitted + unpushed → both preserved in a LOCAL wip
+#       branch, then reaped
+#   T5 (RESILIENT-1507): even with REMOTE=origin explicitly set, no wip/* ref is
+#       ever pushed to origin; the log says the ref is kept local, no "offline?"
+#   T6 (RESILIENT-1507): with WIP_PUSH_REMOTE set to a different, non-origin
+#       remote, the wip branch IS pushed there — and still never to origin.
 #
 # Uses a file:// local git remote — no GitHub hits.
 #
@@ -128,11 +133,11 @@ run_reaper() {
     BASE=main \
     LOCKS_DIR="$LOCKS_DIR" \
     REAPER_LOCK_DIR="$LOCKS_DIR" \
+    WIP_PUSH_REMOTE="${WIP_PUSH_REMOTE:-}" \
         bash "$REAPER" \
             --execute \
             --age-min 0 \
-            --force-skip-process-check \
-        2>/dev/null
+            --force-skip-process-check
 }
 
 # ─── T1: clean worktree → reaped normally, no wip branch ────────────────────
@@ -182,12 +187,16 @@ else
     fail "T2: worktree with uncommitted changes was NOT reaped"
 fi
 
-WIP_T2=$(git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null \
-    | awk '{print $2}' | sed 's|refs/heads/||' | head -1 || true)
+WIP_T2=$(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null | head -1 || true)
 if [[ -n "$WIP_T2" ]]; then
-    ok "T2: wip branch created: $WIP_T2"
+    ok "T2: wip branch created LOCALLY: $WIP_T2"
 else
-    fail "T2: no wip branch found on origin after uncommitted-change reap"
+    fail "T2: no local wip branch found after uncommitted-change reap"
+fi
+if ! git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null | grep -q .; then
+    ok "T2 (RESILIENT-1507): wip branch was NOT pushed to origin"
+else
+    fail "T2 (RESILIENT-1507): wip branch was pushed to origin — must stay local-only by default"
 fi
 
 if grep -q 'worktree_work_stashed_before_reap' "$AMBIENT" 2>/dev/null; then
@@ -201,9 +210,9 @@ else
     fail "T2: worktree_work_stashed_before_reap event NOT emitted"
 fi
 truncate -s 0 "$AMBIENT"
-# Clean up wip branches for T3/T4 isolation.
-for _ref in $(git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||'); do
-    git -C "$FAKE_REPO" push origin --delete "$_ref" >/dev/null 2>&1 || true
+# Clean up local wip branches for isolation between tests.
+for _ref in $(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null); do
+    git -C "$FAKE_REPO" branch -D "$_ref" >/dev/null 2>&1 || true
 done
 
 # ─── T3: unpushed commits → wip branch with commits pushed, event emitted ──
@@ -228,12 +237,16 @@ else
     fail "T3: worktree with unpushed commits was NOT reaped"
 fi
 
-WIP_T3=$(git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null \
-    | awk '{print $2}' | sed 's|refs/heads/||' | head -1 || true)
+WIP_T3=$(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null | head -1 || true)
 if [[ -n "$WIP_T3" ]]; then
-    ok "T3: wip branch created: $WIP_T3"
+    ok "T3: wip branch created LOCALLY: $WIP_T3"
 else
-    fail "T3: no wip branch found on origin after unpushed-commit reap"
+    fail "T3: no local wip branch found after unpushed-commit reap"
+fi
+if ! git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null | grep -q .; then
+    ok "T3 (RESILIENT-1507): wip branch was NOT pushed to origin"
+else
+    fail "T3 (RESILIENT-1507): wip branch was pushed to origin — must stay local-only by default"
 fi
 
 if grep -q 'worktree_work_stashed_before_reap' "$AMBIENT" 2>/dev/null; then
@@ -247,8 +260,8 @@ else
     fail "T3: worktree_work_stashed_before_reap event NOT emitted"
 fi
 truncate -s 0 "$AMBIENT"
-for _ref in $(git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null | awk '{print $2}' | sed 's|refs/heads/||'); do
-    git -C "$FAKE_REPO" push origin --delete "$_ref" >/dev/null 2>&1 || true
+for _ref in $(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null); do
+    git -C "$FAKE_REPO" branch -D "$_ref" >/dev/null 2>&1 || true
 done
 
 # ─── T4: both uncommitted + unpushed → all preserved, then reaped ───────────
@@ -273,12 +286,16 @@ else
     fail "T4: worktree with both changes was NOT reaped"
 fi
 
-WIP_T4=$(git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null \
-    | awk '{print $2}' | sed 's|refs/heads/||' | head -1 || true)
+WIP_T4=$(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null | head -1 || true)
 if [[ -n "$WIP_T4" ]]; then
-    ok "T4: wip branch created: $WIP_T4"
+    ok "T4: wip branch created LOCALLY: $WIP_T4"
 else
-    fail "T4: no wip branch found on origin after both-changes reap"
+    fail "T4: no local wip branch found after both-changes reap"
+fi
+if ! git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null | grep -q .; then
+    ok "T4 (RESILIENT-1507): wip branch was NOT pushed to origin"
+else
+    fail "T4 (RESILIENT-1507): wip branch was pushed to origin — must stay local-only by default"
 fi
 
 if grep -q 'worktree_work_stashed_before_reap' "$AMBIENT" 2>/dev/null; then
@@ -293,6 +310,87 @@ if grep -q 'worktree_work_stashed_before_reap' "$AMBIENT" 2>/dev/null; then
 else
     fail "T4: worktree_work_stashed_before_reap event NOT emitted"
 fi
+truncate -s 0 "$AMBIENT"
+for _ref in $(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null); do
+    git -C "$FAKE_REPO" branch -D "$_ref" >/dev/null 2>&1 || true
+done
+
+# ─── T5 (RESILIENT-1507): log says kept-local, no misleading "offline?" ─────
+# Mirrors T3/T4's shape (origin branch deleted -> reapable via "origin branch
+# deleted", bypassing the RESILIENT-267 new-worktree grace window that a
+# still-live origin branch would trip).
+echo ""
+echo "T5: WIP_PUSH_REMOTE unset → log says kept local, no 'offline?' warning"
+WT5=$(make_merged_worktree "t5-logtext")
+git -C "$FAKE_REPO" push origin --delete t5-logtext >/dev/null 2>&1 || true
+# An unpushed commit makes the branch tip diverge from origin/main so the
+# RESILIENT-267 merge-ancestor/grace-window path is bypassed (same shape as T3).
+echo "unpushed work" > "$WT5/unpushed.txt"
+git -C "$WT5" add unpushed.txt
+git -C "$WT5" commit -m "unpushed commit" --no-verify >/dev/null 2>&1
+echo "uncommitted work" > "$WT5/uncommitted.txt"
+git -C "$WT5" add uncommitted.txt
+
+OUT5=$(run_reaper 2>&1 || true)
+
+if [[ ! -d "$WT5" ]]; then
+    ok "T5: worktree was reaped"
+else
+    fail "T5: worktree was NOT reaped"
+fi
+
+if echo "$OUT5" | grep -qi 'offline'; then
+    fail "T5: log still contains misleading 'offline?' warning"
+else
+    ok "T5: log does not contain misleading 'offline?' warning"
+fi
+
+if echo "$OUT5" | grep -qi 'WIP_PUSH_REMOTE unset'; then
+    ok "T5: log explicitly states the ref is kept local (WIP_PUSH_REMOTE unset)"
+else
+    fail "T5: log does not explain that the ref was kept local"
+fi
+truncate -s 0 "$AMBIENT"
+for _ref in $(git -C "$FAKE_REPO" for-each-ref --format='%(refname:short)' 'refs/heads/wip/*' 2>/dev/null); do
+    git -C "$FAKE_REPO" branch -D "$_ref" >/dev/null 2>&1 || true
+done
+
+# ─── T6 (RESILIENT-1507): WIP_PUSH_REMOTE=<other remote> pushes there, never origin
+echo ""
+echo "T6: WIP_PUSH_REMOTE=<other remote> → pushed there, never to origin"
+OTHER_REMOTE_DIR="$TMPBASE/backup-remote.git"
+git init --bare "$OTHER_REMOTE_DIR" -b main >/dev/null 2>&1
+git -C "$FAKE_REPO" remote add backup "file://$OTHER_REMOTE_DIR" >/dev/null 2>&1 || true
+
+WT6=$(make_merged_worktree "t6-otherremote")
+git -C "$FAKE_REPO" push origin --delete t6-otherremote >/dev/null 2>&1 || true
+echo "unpushed work" > "$WT6/unpushed.txt"
+git -C "$WT6" add unpushed.txt
+git -C "$WT6" commit -m "unpushed commit" --no-verify >/dev/null 2>&1
+echo "uncommitted work" > "$WT6/uncommitted.txt"
+git -C "$WT6" add uncommitted.txt
+
+WIP_PUSH_REMOTE=backup run_reaper || true
+
+if [[ ! -d "$WT6" ]]; then
+    ok "T6: worktree was reaped"
+else
+    fail "T6: worktree was NOT reaped"
+fi
+
+WIP_T6_BACKUP=$(git -C "$FAKE_REPO" ls-remote --heads backup 'wip/*' 2>/dev/null | head -1 || true)
+if [[ -n "$WIP_T6_BACKUP" ]]; then
+    ok "T6: wip branch was pushed to the configured non-origin remote (backup)"
+else
+    fail "T6: wip branch was NOT pushed to the configured non-origin remote"
+fi
+
+if ! git -C "$FAKE_REPO" ls-remote --heads origin 'wip/*' 2>/dev/null | grep -q .; then
+    ok "T6: wip branch was NOT pushed to origin even with WIP_PUSH_REMOTE set"
+else
+    fail "T6: wip branch leaked to origin despite WIP_PUSH_REMOTE pointing elsewhere"
+fi
+truncate -s 0 "$AMBIENT"
 
 # ── Summary ───────────────────────────────────────────────────────────────────
 echo ""
