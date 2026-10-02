@@ -3976,29 +3976,62 @@ fn resolve_chump_bin() -> String {
     "chump".to_string()
 }
 
+/// RESILIENT-1105: parsed contents of `~/.chump/oauth-token.json`, token plus
+/// its claimed expiry (epoch millis, per `scripts/coord/oauth-token-refresh.sh`
+/// RESILIENT-056's `claudeAiOauth.expiresAt` capture).
+struct OauthTokenFile {
+    token: String,
+    expires_at: Option<i64>,
+}
+
+/// Pure parse of the token-file JSON body — split out from the HOME-reading
+/// wrapper so it's unit-testable without touching the filesystem or env.
+fn parse_oauth_token_json(content: &str) -> Option<OauthTokenFile> {
+    let v: serde_json::Value = serde_json::from_str(content).ok()?;
+    // Try the three key names worker.sh checks, in the same order.
+    let token = ["token", "access_token", "accessToken"]
+        .iter()
+        .find_map(|key| {
+            v.get(*key)
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+        })?
+        .to_string();
+    // expires_at may be written as a JSON number or a numeric string
+    // (oauth-token-refresh.sh writes it quoted via printf).
+    let expires_at = v.get("expires_at").and_then(|x| {
+        x.as_i64()
+            .or_else(|| x.as_str().and_then(|s| s.trim().parse().ok()))
+    });
+    Some(OauthTokenFile { token, expires_at })
+}
+
 /// RESILIENT-106: read the OAUTH token from `~/.chump/oauth-token.json`.
 ///
 /// Mirrors the pattern from `scripts/dispatch/worker.sh` (INFRA-620, lines 211-232).
-/// Tries keys "token", "access_token", and "accessToken" in that order.
 ///
 /// Returns `None` silently on any error (missing file, parse failure, empty value)
 /// so the caller degrades gracefully.
 ///
 /// IMPORTANT: callers MUST NOT log or print the returned value — it's a credential.
 fn read_oauth_token_file() -> Option<String> {
+    read_oauth_token_file_full().map(|f| f.token)
+}
+
+/// Shared HOME-reading wrapper for [`read_oauth_token_file`] and
+/// [`token_expires_at`] so both read the same file exactly once per call.
+fn read_oauth_token_file_full() -> Option<OauthTokenFile> {
     let home = std::env::var("HOME").ok()?;
     let token_path = PathBuf::from(home).join(".chump/oauth-token.json");
     let content = std::fs::read_to_string(&token_path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
-    // Try the three key names worker.sh checks, in the same order.
-    for key in ["token", "access_token", "accessToken"] {
-        if let Some(s) = v.get(key).and_then(|x| x.as_str()) {
-            if !s.is_empty() {
-                return Some(s.to_string());
-            }
-        }
-    }
-    None
+    parse_oauth_token_json(&content)
+}
+
+/// RESILIENT-1105: the OAUTH token's claimed expiry (epoch millis) from
+/// `~/.chump/oauth-token.json`, or `None` if the file/field is unavailable.
+#[allow(dead_code)]
+pub(crate) fn token_expires_at() -> Option<i64> {
+    read_oauth_token_file_full().and_then(|f| f.expires_at)
 }
 
 /// Detect the default branch of the cloned repo.
@@ -5379,6 +5412,43 @@ Some prose from the agent.
                 .map(|s| s.to_string())
         });
         assert!(result.is_none(), "missing file path should yield None");
+    }
+
+    // ── RESILIENT-1105: expires_at persisted alongside token ───────────────
+
+    /// parse_oauth_token_json: a quoted numeric `expires_at` (as written by
+    /// oauth-token-refresh.sh) is parsed into the correct i64.
+    #[test]
+    fn oauth_token_file_expires_at_string_parsed() {
+        let content = r#"{"token":"tok_abc123","expires_at":"1735689600000"}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.token, "tok_abc123");
+        assert_eq!(parsed.expires_at, Some(1735689600000));
+    }
+
+    /// parse_oauth_token_json: a bare numeric `expires_at` is also accepted.
+    #[test]
+    fn oauth_token_file_expires_at_number_parsed() {
+        let content = r#"{"token":"tok_abc123","expires_at":1735689600000}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.expires_at, Some(1735689600000));
+    }
+
+    /// parse_oauth_token_json: missing `expires_at` field yields None, not an error.
+    #[test]
+    fn oauth_token_file_expires_at_missing_is_none() {
+        let content = r#"{"token":"tok_abc123"}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.expires_at, None);
+    }
+
+    /// read_oauth_token_file keeps returning just the token string — existing
+    /// callers (configure_claude_auth_env) are unaffected by the expires_at slice.
+    #[test]
+    fn oauth_token_file_read_token_unaffected_by_expires_at() {
+        let content = r#"{"token":"tok_abc123","expires_at":"1735689600000"}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.token, "tok_abc123");
     }
 
     // ── EFFECTIVE-201: doctrine-order picking tests ────────────────────────
