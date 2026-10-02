@@ -18737,7 +18737,7 @@ async fn main() -> Result<()> {
                 eprintln!("Server '{name}' is disabled in chump-mcp.json — enable it first.");
                 std::process::exit(1);
             }
-            let mut cmd_parts = vec![entry.command.clone()];
+            let mut cmd_parts = vec![mcp_discovery::expand_command(&entry.command)];
             cmd_parts.extend(entry.args.clone());
             println!("Restart '{name}': {}", cmd_parts.join(" "));
             println!();
