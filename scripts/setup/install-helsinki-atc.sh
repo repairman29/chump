@@ -281,8 +281,26 @@ SYSTEM_UNITS=(
   # enforces it.
   chump-node-converge.service
   chump-node-converge.timer
+  # RESILIENT-1508: self-doctor/paramedic/conductor are the fleet's self-rescue
+  # organs — declared `enabled` in organ-manifest.txt (role=brain,
+  # requires=bin:chump) since their systemd port landed, but NEVER added to
+  # THIS roster (the RESILIENT-376 merged-not-running class again: a unit
+  # existing only on disk from a one-off `chump-node-install.sh --role brain`
+  # run as root, never re-deployed by the roster installer every other organ
+  # goes through). On cuphead that stray root run left the unit files pinned
+  # to a /root/.chumpnode checkout that was never actually built (empty bin/),
+  # so every tick hit exec: chump: not found (exit 127) with no self-rescue
+  # path for the fleet. Rostering them here makes this installer the single
+  # place that (re-)host-rewrites them to the box's real run-user + checkout,
+  # same as every other organ.
+  chump-self-doctor.service
+  chump-self-doctor.timer
+  chump-paramedic.service
+  chump-paramedic.timer
+  chump-conductor.service
+  chump-conductor.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -499,6 +517,22 @@ fi
 # fails, since an operator running this by hand wants to see the error stop
 # the script rather than have it silently continue.
 for t in "${SYSTEM_TIMERS[@]}"; do
+  # RESILIENT-1508: refuse to enable a timer whose companion .service's
+  # ExecStart binary does not resolve for that unit's own User/PATH — the
+  # exact exit-127 class (cuphead self-doctor/paramedic/conductor, stuck
+  # pointing at an abandoned /root/.chumpnode with no binary ever built
+  # there) that otherwise only surfaces by a human reading the journal.
+  svc_unit="${t%.timer}.service"
+  svc_path="$SYSTEMD_DEST_DIR/$svc_unit"
+  if [[ -f "$svc_path" ]]; then
+    resolve_reason=""
+    if ! organ_unit_execstart_resolves "$svc_path" resolve_reason; then
+      echo "ERROR: $svc_unit ExecStart does not resolve ($resolve_reason) — refusing to enable $t" >&2
+      emit organ_units_deploy_failed "\"reason\":\"execstart_unresolved\",\"unit\":\"$t\",\"detail\":\"$resolve_reason\""
+      [[ "$AUTO" == "1" ]] && continue
+      exit 1
+    fi
+  fi
   if ! "$SYSTEMCTL_BIN" enable --now "$t" 2>&1; then
     echo "ERROR: systemctl enable --now $t failed" >&2
     emit organ_units_deploy_failed "\"reason\":\"systemctl_enable_failed\",\"unit\":\"$t\""
