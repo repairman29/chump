@@ -921,11 +921,21 @@ fn preflight(ws: &Workspace) -> Result<()> {
     // failed here with "gap-preflight.sh missing". Shell out to our own binary's
     // subcommand — the exact check worker.sh uses.
     let exe = std::env::current_exe().context("resolve chump binary for gap preflight")?;
+    // RESILIENT-1491: cwd for this subprocess is the FRESH worktree (so
+    // worktree-scoped lease files at `<wt>/.chump-locks/` stay visible to
+    // the check), but `.chump/state.db` is gitignored and never populated
+    // in a brand-new worktree — `GapStore::db_path` would otherwise resolve
+    // to `<wt>/.chump/state.db`, an empty/nonexistent file, and preflight
+    // WARNs "not found in state.db" even though the gap is right there in
+    // the main checkout's canonical db. Point it at the main checkout's
+    // state.db explicitly (db_path() checks CHUMP_STATE_DB first).
+    let state_db = opts.repo_root.join(".chump").join("state.db");
     let status = Command::new(&exe)
         .args(["gap", "preflight", opts.gap_id])
         // INFRA-302 blocker (3): run from the worktree so any worktree-scoped
         // state (lease files at `<wt>/.chump-locks/`) is visible to the check.
         .current_dir(ws.working_dir())
+        .env("CHUMP_STATE_DB", &state_db)
         .status()
         .context("invoke chump gap preflight")?;
     if !status.success() {
