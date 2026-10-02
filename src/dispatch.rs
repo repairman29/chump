@@ -342,6 +342,15 @@ fn create_dispatch_worktree(repo_root: &Path, gap_id: &str) -> Result<PathBuf> {
             branch_name
         );
     }
+
+    // RESILIENT-555: symlink the fresh worktree's .chump/state.db to the
+    // main checkout's copy, same as `chump claim` already does (INFRA-3834
+    // 6c-pre4). Without this, the worktree gets its own empty state.db that
+    // doesn't contain the gap being dispatched, so the preflight step right
+    // after this returns "not found in state.db (run chump gap import
+    // first)" for a gap that IS open in the canonical registry.
+    chump_atomic_claim::atomic_claim::nugget_prefetch::link_state_db(repo_root, &worktree_path);
+
     Ok(worktree_path)
 }
 
@@ -1508,6 +1517,85 @@ mod tests {
             "expected Err from invalid repo_root; got: {:?}",
             res.map(|p| p.display().to_string())
         );
+    }
+
+    /// RESILIENT-555 regression: a worktree created by `chump dispatch` must
+    /// end up with a `.chump/state.db` that contains whatever gap is open
+    /// in the main checkout's canonical state.db — not an independent,
+    /// empty file. Builds a real git repo with an `origin/main` ref (the
+    /// base `create_dispatch_worktree` branches from) plus a sentinel
+    /// `.chump/state.db`, runs the real worktree-creation path, and asserts
+    /// the resulting worktree's `.chump/state.db` is a symlink resolving to
+    /// the same content as main's — i.e. the dispatched gap is always
+    /// visible, closing the "not found in state.db" split-brain.
+    #[test]
+    fn create_dispatch_worktree_links_state_db_to_main_checkout() {
+        let tmp = tempfile::TempDir::new().expect("create tempdir");
+        let repo_root = tmp.path().join("main");
+        std::fs::create_dir_all(&repo_root).expect("mk repo_root");
+
+        let run_git = |args: &[&str]| {
+            assert!(
+                Command::new("git")
+                    .args(args)
+                    .current_dir(&repo_root)
+                    .status()
+                    .expect("spawn git")
+                    .success(),
+                "git {args:?} failed"
+            );
+        };
+        run_git(&["init", "--quiet", "-b", "main"]);
+        run_git(&["config", "user.email", "test@example.com"]);
+        run_git(&["config", "user.name", "Test"]);
+        std::fs::write(repo_root.join("f.txt"), "x").expect("write file");
+        run_git(&["add", "."]);
+        run_git(&["commit", "-m", "init", "--quiet"]);
+
+        // Fake an `origin/main` remote-tracking ref without a real remote:
+        // bare-clone the repo into a sibling dir and fetch it back as
+        // "origin" so `git worktree add -b <branch> origin/main` (the exact
+        // invocation create_dispatch_worktree uses) resolves.
+        let bare = tmp.path().join("origin.git");
+        assert!(Command::new("git")
+            .args(["clone", "--quiet", "--bare"])
+            .arg(&repo_root)
+            .arg(&bare)
+            .status()
+            .expect("spawn git clone")
+            .success());
+        run_git(&["remote", "add", "origin", bare.to_str().unwrap()]);
+        run_git(&["fetch", "--quiet", "origin"]);
+
+        std::fs::create_dir_all(repo_root.join(".chump")).expect("mk .chump");
+        std::fs::write(repo_root.join(".chump/state.db"), b"canonical-sentinel")
+            .expect("write sentinel state.db");
+
+        let worktree_path =
+            create_dispatch_worktree(&repo_root, "RESILIENT-TEST-555").expect("worktree created");
+
+        let worktree_db = worktree_path.join(".chump/state.db");
+        let meta = std::fs::symlink_metadata(&worktree_db)
+            .expect("worktree .chump/state.db should exist after dispatch worktree creation");
+        assert!(
+            meta.file_type().is_symlink(),
+            "worktree .chump/state.db should be a symlink to main's, not an \
+             independent file — otherwise the dispatched gap is invisible \
+             to `chump gap preflight` run inside the worktree"
+        );
+        assert_eq!(
+            std::fs::read(&worktree_db).expect("read worktree state.db through symlink"),
+            b"canonical-sentinel",
+            "worktree state.db must resolve to main's content, proving a gap \
+             present on main is visible from the fresh worktree"
+        );
+
+        let _ = Command::new("git")
+            .arg("-C")
+            .arg(&repo_root)
+            .args(["worktree", "remove", "--force"])
+            .arg(&worktree_path)
+            .status();
     }
 
     #[test]
