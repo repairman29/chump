@@ -15,6 +15,11 @@
 #  8. bot-merge.sh WIP squash: "WIP-XXX:" top commit → squashed into parent
 #  9. bot-merge.sh WIP squash: non-WIP top commit → no squash
 # 10. bot-merge.sh WIP squash: dry-run mode prints intent, no git reset
+# 11. RESILIENT-1454: SIGTERM with a still-alive claude -p child reaps the
+#     child tree before checkpointing (so the cgroup empties promptly instead
+#     of relying on systemd TimeoutStopSec → SIGKILL to clean it up)
+# 12. RESILIENT-1454: WIP commit still created when the claude child was
+#     reaped mid-checkpoint (the checkpoint isn't short-circuited by the reap)
 
 set -uo pipefail
 
@@ -261,6 +266,60 @@ elif [[ "$BEFORE_SHA" == "$AFTER_SHA" ]]; then
     ok "dry-run: commit unchanged (no reset performed)"
 else
     fail "dry-run: commit was modified! SHA changed"
+fi
+cd "$REPO_ROOT"
+
+# ── 11/12. RESILIENT-1454: blocked-in-claude-child reap before checkpoint ────
+echo
+echo "[11/12. RESILIENT-1454: SIGTERM reaps a still-alive claude -p child before checkpointing]"
+CHILD_REPO="$TMP/child_repo"
+git init -q "$CHILD_REPO"
+cd "$CHILD_REPO"
+git config user.email "test@test.com"
+git config user.name "Test"
+echo "initial" > README.md
+git add README.md
+git commit -q -m "init"
+echo "wip work from a blocked claude child" > new_file.rs
+
+# _kill_cycle_tree lives earlier in worker.sh than the SIGTERM handler block;
+# pull both in so the standalone eval below can exercise the real reap path.
+KILL_TREE_CODE=$(sed -n '/^_kill_cycle_tree() {/,/^}/p' "$WORKER")
+HANDLER_CODE=$(sed -n '/^# INFRA-686: graceful SIGTERM/,/^trap .* INT TERM/p' "$WORKER")
+
+# Simulate a `claude -p` child "blocked deep" in work: a background sleep
+# that would otherwise outlive the worker and keep the systemd cgroup alive
+# until TimeoutStopSec escalates to SIGKILL.
+sleep 60 &
+FAKE_CLAUDE_PID=$!
+
+bash -c "
+$KILL_TREE_CODE
+$HANDLER_CODE
+log() { true; }
+GAP_ID='INFRA-TEST' wt_path='$CHILD_REPO' branch='chump/test-branch' \
+AGENT_ID='test-agent' REPO_ROOT='$CHILD_REPO' CHUMP_SESSION_ID='test-session'
+CHUMP_AMBIENT_LOG='$CHILD_REPO/ambient.jsonl'
+_claude_pid='$FAKE_CLAUDE_PID'
+set +e
+_sigterm_wip_checkpoint
+" 2>/dev/null || true
+
+# Give the TERM-then-KILL sequence inside _kill_cycle_tree (sleep 2 + kill -KILL)
+# a moment to land before we probe liveness.
+sleep 1
+if ! kill -0 "$FAKE_CLAUDE_PID" 2>/dev/null; then
+    ok "blocked claude -p child reaped before/during checkpoint (RESILIENT-1454)"
+else
+    fail "blocked claude -p child still alive after SIGTERM handler ran"
+    kill -KILL "$FAKE_CLAUDE_PID" 2>/dev/null || true
+fi
+
+CHILD_COMMIT_MSG=$(git -C "$CHILD_REPO" log -1 --format="%s" 2>/dev/null)
+if echo "$CHILD_COMMIT_MSG" | grep -q "^WIP-INFRA-TEST"; then
+    ok "WIP checkpoint still committed after reaping the blocked claude child: '$CHILD_COMMIT_MSG'"
+else
+    fail "WIP commit not found after child-reap path (latest: '$CHILD_COMMIT_MSG')"
 fi
 cd "$REPO_ROOT"
 
