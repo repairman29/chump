@@ -1007,6 +1007,69 @@ fn detect_ssrf(input: &Value) -> Result<()> {
     Ok(())
 }
 
+/// Minimum star rating for the top ("4-star+") opportunity-library leverage tier
+/// (EFFECTIVE-374/EFFECTIVE-1408).
+const LEVERAGE_TIER_MIN_STARS: u64 = 4;
+
+/// Owned-repo allowlist, same source of truth as the chump-mcp-github server
+/// (`CHUMP_GITHUB_REPOS`, comma-separated `owner/name`). Empty = all repos owned.
+fn owned_repo_allowlist() -> Vec<String> {
+    std::env::var("CHUMP_GITHUB_REPOS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+/// Order `(repo, stars)` sweep targets so 4-star+ leverage-tier repos sort
+/// before lower tiers; within a tier, higher star counts sort first, ties
+/// break by repo name for determinism.
+fn prioritize_sweep_targets(mut targets: Vec<(String, u64)>) -> Vec<(String, u64)> {
+    targets.sort_by(|a, b| {
+        let a_tier = a.1 >= LEVERAGE_TIER_MIN_STARS;
+        let b_tier = b.1 >= LEVERAGE_TIER_MIN_STARS;
+        b_tier
+            .cmp(&a_tier)
+            .then_with(|| b.1.cmp(&a.1))
+            .then_with(|| a.0.cmp(&b.0))
+    });
+    targets
+}
+
+/// Defense-in-depth gate for `gh_portfolio_sweep`-shaped tool calls: rejects
+/// (NO-GO) any sweep whose `targets` array names a repo outside the owned
+/// allowlist, before the call ever reaches the MCP server. No-op for every
+/// other tool name and for an empty allowlist (all repos owned).
+fn detect_portfolio_sweep_violation(tool_name: &str, input: &Value) -> Result<()> {
+    if tool_name != "gh_portfolio_sweep" {
+        return Ok(());
+    }
+    let allowed = owned_repo_allowlist();
+    if allowed.is_empty() {
+        return Ok(());
+    }
+    let Some(targets) = input["targets"].as_array() else {
+        return Ok(());
+    };
+    for t in targets {
+        let Some(repo) = t["repo"].as_str() else {
+            continue;
+        };
+        if !allowed.iter().any(|r| r == repo) {
+            eprintln!(
+                "NO-GO: repo '{}' is outside the owned-repo allowlist (CHUMP_GITHUB_REPOS)",
+                repo
+            );
+            return Err(anyhow!(
+                "NO-GO: repo '{}' not in CHUMP_GITHUB_REPOS allowlist",
+                repo
+            ));
+        }
+    }
+    Ok(())
+}
+
 /// Default timeout for a single tool execution (seconds).
 /// INFRA-321: reduced from 30s → 8s so a wedged tool (e.g. memory_brain
 /// trying a missing path) fails fast instead of blocking a turn for 60s.
@@ -1080,6 +1143,7 @@ impl Tool for ToolTimeoutWrapper {
                 None
             };
         detect_ssrf(&input)?;
+        detect_portfolio_sweep_violation(&name, &input)?;
         enforce_tool_rate_limit(&name)?;
 
         // CREDIBLE-174: review-class dispatch gate. PR-review-intelligence
@@ -1584,6 +1648,65 @@ mod tests {
         assert_eq!(result.unwrap(), "allowed");
         std::env::remove_var("CHUMP_TOOL_ENV_ALLOWLIST");
         std::env::remove_var("__TEST_CUSTOM_TOKEN");
+    }
+
+    // ── EFFECTIVE-1408: owned-repo allowlist + leverage-tier sweep gate ──
+
+    #[test]
+    #[serial]
+    fn sweep_violation_rejects_repo_outside_allowlist() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned-a,owner/owned-b");
+        let input = json!({
+            "targets": [
+                { "repo": "owner/owned-a", "stars": 2 },
+                { "repo": "owner/foreign", "stars": 5 },
+            ]
+        });
+        let result = detect_portfolio_sweep_violation("gh_portfolio_sweep", &input);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        let err = result.expect_err("foreign repo must be rejected with NO-GO");
+        assert!(err.to_string().contains("NO-GO"));
+    }
+
+    #[test]
+    #[serial]
+    fn sweep_violation_allows_all_owned_repos() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned-a,owner/owned-b");
+        let input = json!({
+            "targets": [
+                { "repo": "owner/owned-a", "stars": 2 },
+                { "repo": "owner/owned-b", "stars": 5 },
+            ]
+        });
+        let result = detect_portfolio_sweep_violation("gh_portfolio_sweep", &input);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    #[serial]
+    fn sweep_violation_ignores_non_sweep_tools() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned-a");
+        let input = json!({ "targets": [ { "repo": "owner/foreign", "stars": 5 } ] });
+        let result = detect_portfolio_sweep_violation("some_other_tool", &input);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        assert!(result.is_ok());
+    }
+
+    #[test]
+    fn prioritize_sweep_targets_puts_four_star_plus_first() {
+        let targets = vec![
+            ("owner/low".to_string(), 1),
+            ("owner/high".to_string(), 5),
+            ("owner/mid".to_string(), 3),
+            ("owner/tied-high".to_string(), 5),
+        ];
+        let ordered = prioritize_sweep_targets(targets);
+        let names: Vec<&str> = ordered.iter().map(|(r, _)| r.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["owner/high", "owner/tied-high", "owner/mid", "owner/low"]
+        );
     }
 
     // ── AUTO-011: Frustration metric ──────────────────────────────────
