@@ -995,6 +995,25 @@ PY
         | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
     )"
 
+    # RESILIENT-1510: gaps whose PR already merged into origin/main recently,
+    # but whose gap-store status hasn't flipped to done yet (auto-close lag).
+    # Without this, a worker can re-pick a gap moments after its own PR
+    # merged — cuphead picked RESILIENT-1497 four times on 2026-10-02, two
+    # picks AFTER PR #4983 merged at 08:20Z, because `chump gap list --json`
+    # still showed status=open. Commit subjects on this branch are always
+    # "<GAP-ID>: ... (#NNNN)" (see bot-merge.sh squash-merge format), so a
+    # leading gap-id token on a recent origin/main commit is a reliable
+    # merged-PR signal independent of gap-store propagation lag. Best-effort
+    # (empty on failure/offline — Layers A-C above still hold).
+    merged_recent_gaps="$(
+        git -C "$REPO_ROOT" log origin/main --since="${MERGED_RECENT_GAPS_WINDOW:-60 minutes ago}" --format='%s' 2>/dev/null \
+        | grep -oE '^[A-Z][A-Z-]*-[0-9]+' 2>/dev/null \
+        | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
+    )"
+    if [ -n "$merged_recent_gaps" ]; then
+        log "RESILIENT-1510: excluding recently-merged gaps from pick (auto-close lag guard): $merged_recent_gaps"
+    fi
+
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
@@ -1008,6 +1027,7 @@ PY
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
             ACTIVE_GAPS="$active_gaps" \
             IN_PROGRESS_GAPS="$in_progress_gaps" \
+            MERGED_RECENT_GAPS="$merged_recent_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
             WORKER_ID="$AGENT_ID" \

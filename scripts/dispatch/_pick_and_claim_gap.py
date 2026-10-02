@@ -53,6 +53,10 @@ Environment (same as _pick_gap.py plus):
   REBALANCE_WINDOW number of recent ships to consider (default: 20)
   REBALANCE_DOMAIN_THRESHOLD  domain monopoly threshold 0-100 (default: 70)
   CHUMP_ACTIVE_MISSION  active mission outcome ID (MISSION-011); see _pick_gap.py
+  MERGED_RECENT_GAPS    RESILIENT-1510: space-separated gap IDs whose PR merged
+                        into origin/main recently (computed by worker.sh from
+                        commit subjects) — never re-offered even if the
+                        gap-store status hasn't flipped to done yet
 """
 
 from __future__ import annotations
@@ -648,6 +652,10 @@ def main() -> int:
     # awaiting-merge work. Empty/unset = no exclusion (graceful; Layers A+C
     # still prevent the spin on nodes where the set can't be computed).
     in_progress = set(os.environ.get("IN_PROGRESS_GAPS", "").split())
+    # RESILIENT-1510: gaps whose PR already merged into origin/main recently
+    # (worker.sh scans commit subjects), so a gap-store propagation lag can
+    # never cause an immediate re-pick of just-shipped work.
+    merged_recent = set(os.environ.get("MERGED_RECENT_GAPS", "").split())
     cooled = cooled_down_gaps(
         os.environ.get("COOLDOWN_DIR", ""),
         worker_id=os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
@@ -695,6 +703,11 @@ def main() -> int:
         # RESILIENT-332 (anti-spin, Layer B): skip gaps with an open PR /
         # in-progress branch on origin (see IN_PROGRESS_GAPS above).
         if gid in in_progress:
+            continue
+        # RESILIENT-1510: skip gaps whose PR merged recently (see
+        # MERGED_RECENT_GAPS above) even if the gap-store status field hasn't
+        # caught up to "done" yet.
+        if gid in merged_recent:
             continue
         if gid in cooled:
             continue
