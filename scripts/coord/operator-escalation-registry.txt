@@ -56,6 +56,7 @@ discord_advisor_reply	direct	# INFRA-3835: The Advisor's answer to a Jeff DM. Th
 chump_digest	direct	# RESILIENT-376: the twice-daily Discord digest. Scheduled owed-message, not an incident — deliver every time but emit operator_direct_message, never operator_paged (a digest must not inflate the page-rate vital sign or trip cry-wolf watchers).
 board_ceo_briefing	direct	# RESILIENT-1092: the hourly Sonnet strategy briefing (chump-board-ceo-briefing.timer, OnUnitActiveSec=60min). Scheduled owed-message like chump_digest, not an incident — deliver every time but emit operator_direct_message, never operator_paged.
 discord_command_reply	direct	# RESILIENT-1096: the Discord slash-command agent's answer to an operator command. This notify_operator call IS the reply, mirrors discord_advisor_reply — deliver it, but it is not an incident.
+peer_judgment_tick	direct	# RESILIENT-1497: the free Opus peer's cadenced judgment-tick summary (duty-officer-loop.sh judgment-tick). Scheduled owed-message like chump_digest/board_ceo_briefing, not an incident — deliver every tick but emit operator_direct_message, never operator_paged.
 
 # ── PAGE: halt-class or no automated remedy → reach the operator ──────────────
 # (Unlisted kinds also page by default; these document intent + catch typos.)

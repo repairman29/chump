@@ -10057,6 +10057,21 @@ events:
     expected_volume: "1 per loop tick cadence (launchd-scheduled)"
     # payload: {registry_signals: number, ts: string}
 
+  - kind: peer_gated_action_surfaced
+    effect_metric: resilient
+    emitter: scripts/coord/lib/peer-guardrails.sh (RESILIENT-1497)
+    trigger: >
+      Emitted whenever the free Opus peer (duty-officer-loop.sh
+      judgment-tick or discord-command-agent.sh) encounters an action that
+      matches a gated category (repo visibility, spend, credentials,
+      deletes, outward sends) and surfaces it to the operator via
+      notify-operator.sh instead of executing it — the peer is never the
+      approver of its own risky action (META-901).
+    consumers: [orchestrator, curator-opus-incident-commander, fleet-brief]
+    fields_required: [ts, kind, signal, action]
+    expected_volume: "0-N per judgment tick / Discord command, rare by design"
+    # payload: {signal: string, action: string, ts: string}
+
   # META-127 C3e — curator-opus-architecture-coach (INFRA-2223)
   - kind: arch_fit_query
     effect_metric: credible

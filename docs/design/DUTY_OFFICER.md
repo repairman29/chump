@@ -128,4 +128,37 @@ For **customer-0** (ChumpOS itself) the duty officer runs continuously and owns 
 4. **[m] T2 agent-runbooks** — REALITY_CHECK-first execution of the top recurring runbook (pipeline-wedged / ship-assist), one worked example end-to-end.
 5. **[s] Scoreboard** — admin-merge count, incidents-by-tier, escalations; the FLEET-RADIO daily surface (ties to CREDIBLE-272 in SHIP-INFRA).
 
+## 9. The peer-mind extension (RESILIENT-1497)
+
+Everything above is **reactive**: the duty officer only acts when a registered
+ambient signal fires. RESILIENT-1497 adds a second mode on the same binary —
+`duty-officer-loop.sh judgment-tick` — that is **proactive and cadenced**: it
+wakes on `chump-peer-mind.timer` (~20 min, not a tight loop, to respect the
+Claude subscription rate limit), reads fleet state + ambient + its own
+running memory, forms a chief-of-staff judgment, and acts on **non-gated**
+fleet work (file gaps, dispatch, reprioritize, nudge the daily digest) —
+this is the "free Opus peer" Jeff asked for on 2026-09-26: a chief-of-staff
+MIND, not a gap-worker.
+
+- **Memory**: `sessions/chump_memory.db` (same schema `crates/mcp-servers/
+  chump-mcp-memory` already defines) via `scripts/coord/lib/peer-memory.sh`
+  — the peer's running context survives across ticks and is queryable
+  through the existing `memory_search` / `episode_search` MCP tools.
+- **Guardrails** (META-901): `scripts/coord/lib/peer-guardrails.sh` defines
+  the gated-action categories (repo visibility, spend, credentials, deletes,
+  outward sends) shared by both the judgment tick and
+  `scripts/dispatch/discord-command-agent.sh` (the two-way answer half,
+  also pointed at Opus). Enforcement is structural — those commands are
+  absent from the `claude -p` tool allowlist, not just prompted against —
+  so the peer can never self-approve a risky action; it can only surface
+  one via `notify-operator.sh` for Jeff/first-mate.
+- **Rate-limit respect**: a tick that sees a rate-limit/overloaded response
+  backs off and records the skip to memory rather than retrying in-loop —
+  the timer's next fire is the retry, not a hot spin.
+- **Two-way, send-half live / receive-half separate ask**: the operator's
+  daily-digest send path already exists outside this repo (per-node
+  `jeffos/asks-to-discord.mjs`); the Discord gateway's receive half still
+  needs a bot token + MESSAGE CONTENT intent wired — tracked as a separate
+  ask, not blocking this slice.
+
 Do not build the whole thing at once. Slice 1 (the registry) is the keystone: it makes the un-owned tail visible and gives every future auto-heal a home.

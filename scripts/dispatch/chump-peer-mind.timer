@@ -1,0 +1,19 @@
+# Pairs with chump-peer-mind.service. RESILIENT-1497: fires the free Opus
+# peer's judgment tick every ~20 min — cadenced, NOT a tight loop, to respect
+# the Claude subscription rate limit. Enable:
+#   systemctl --user enable --now chump-peer-mind.timer
+[Unit]
+Description=Chump peer-mind (Opus judgment tick) — cadenced, non-gated fleet work (RESILIENT-1497)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=20min
+# RESILIENT-1455 pattern (mirrors chump-duty-officer.timer): a oneshot service
+# goes inactive after each run, so OnUnitActiveSec alone has no live anchor and
+# NextElapse goes n/a after the first fire. OnUnitInactiveSec re-arms from the
+# inactive edge.
+OnUnitInactiveSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
