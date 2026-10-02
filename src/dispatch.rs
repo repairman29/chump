@@ -269,8 +269,17 @@ impl<'a> Workspace<'a> {
                 // stale-worktree-reaper sweeps it up later (see CLAUDE.md
                 // "Worktree disk hygiene"). On hard failure we also leave
                 // it in place so the operator can inspect.
-                create_dispatch_worktree(&opts.repo_root, opts.gap_id)
-                    .with_context(|| format!("creating worktree for {}", opts.gap_id))?
+                let wt = create_dispatch_worktree(&opts.repo_root, opts.gap_id)
+                    .with_context(|| format!("creating worktree for {}", opts.gap_id))?;
+                // RESILIENT-1494 AC2: a fresh worktree's state.db starts
+                // EMPTY — resolve/import the gap from the canonical store
+                // before anything downstream (preflight, prompt-building,
+                // the agent spawn itself) can mistake "not found here" for
+                // "doesn't exist" and proceed on a fallback/empty prompt.
+                resolve_gap_into_worktree(&opts.repo_root, &wt, opts.gap_id).with_context(
+                    || format!("resolving gap {} into fresh dispatch worktree", opts.gap_id),
+                )?;
+                wt
             }
         };
         Ok(Self { opts, working_dir })
@@ -343,6 +352,71 @@ fn create_dispatch_worktree(repo_root: &Path, gap_id: &str) -> Result<PathBuf> {
         );
     }
     Ok(worktree_path)
+}
+
+/// RESILIENT-1494 AC2 — close the state.db worktree split-brain.
+///
+/// A worktree created by [`create_dispatch_worktree`] starts with an EMPTY
+/// `.chump/state.db` (first `GapStore::open` on a path with no existing DB
+/// file creates a fresh, gap-less one). Before this guard, `chump gap
+/// preflight`/`chump claim` run inside that worktree would report
+/// `PreflightResult::NotFound` — a soft WARN that still exits 0 — and
+/// dispatch sailed on to build the agent's prompt and spawn it anyway. On
+/// 2026-09-26 that silently turned a Supabase-fix dispatch into unrelated
+/// `set -euo pipefail` hardening across 100 scripts (PR #4881): the agent
+/// had no gap to read AC from, so it freelanced.
+///
+/// Resolution order, each step self-healing into the worktree's own store:
+///   1. Already present (e.g. a prior successful dispatch) — no-op.
+///   2. The tracked `.chump/state.sql` mirror shipped with the fresh
+///      checkout (same INFRA-3002 self-heal `chump claim` already does).
+///   3. A direct row-copy from the CANONICAL store (`repo_root`, the
+///      caller's own live checkout — the one place guaranteed to have a
+///      gap that was JUST reserved/claimed, before any state.sql re-sync).
+///
+/// If none of those resolve the gap, this FAILS LOUD (returns `Err`) rather
+/// than letting the caller proceed to spawn an agent on an unresolvable
+/// gap — the whole point of this AC.
+fn resolve_gap_into_worktree(repo_root: &Path, worktree: &Path, gap_id: &str) -> Result<()> {
+    let worktree_store = chump_gap_store::GapStore::open(worktree)
+        .with_context(|| format!("opening worktree state.db at {}", worktree.display()))?;
+
+    if worktree_store
+        .get(gap_id)
+        .context("checking worktree state.db for gap")?
+        .is_some()
+    {
+        return Ok(());
+    }
+
+    let sql_path = worktree.join(".chump").join("state.sql");
+    if sql_path.exists()
+        && worktree_store
+            .sync_gap_from_state_sql(&sql_path, gap_id)
+            .unwrap_or(false)
+    {
+        return Ok(());
+    }
+
+    let canonical_row = chump_gap_store::GapStore::open(repo_root)
+        .with_context(|| format!("opening canonical state.db at {}", repo_root.display()))?
+        .get(gap_id)
+        .with_context(|| format!("looking up {gap_id} in canonical store"))?;
+
+    if let Some(row) = canonical_row {
+        worktree_store
+            .import_gap_row(&row)
+            .with_context(|| format!("importing {gap_id} from canonical store into worktree"))?;
+        return Ok(());
+    }
+
+    bail!(
+        "dispatch: gap {gap_id} is not resolvable from the canonical store ({}), the \
+         worktree's state.sql mirror, or a direct row import — refusing to spawn an agent \
+         on an unresolvable gap (RESILIENT-1494 AC2: fail loud, never freelance on a \
+         fallback/empty prompt).",
+        repo_root.display()
+    );
 }
 
 // ── Internals (each one independently portable in Phase 3) ───────────────────
@@ -469,7 +543,7 @@ fn spawn_opencode(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     let child = cmd
         .spawn()
         .context("spawn `opencode -p` (is opencode CLI on PATH?)")?;
-    let status = wait_with_hang_detection(child, "opencode -p", opts.gap_id)
+    let status = wait_with_hang_detection(child, "opencode -p", opts.gap_id, ws.working_dir())
         .context("waiting for opencode -p to complete")?;
     if !status.success() {
         bail!(
@@ -496,7 +570,7 @@ fn spawn_aider(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
     let child = cmd
         .spawn()
         .context("spawn `aider --message` (is aider on PATH?)")?;
-    let status = wait_with_hang_detection(child, "aider", opts.gap_id)
+    let status = wait_with_hang_detection(child, "aider", opts.gap_id, ws.working_dir())
         .context("waiting for aider --message to complete")?;
     if !status.success() {
         bail!(
@@ -534,8 +608,9 @@ fn spawn_local(ws: &Workspace, prompt: &str) -> Result<()> {
     let child = cmd
         .spawn()
         .context("spawn `chump gen --local` (is chump on PATH / built?)")?;
-    let status = wait_with_hang_detection(child, "chump gen --local", opts.gap_id)
-        .context("waiting for chump gen --local to complete")?;
+    let status =
+        wait_with_hang_detection(child, "chump gen --local", opts.gap_id, ws.working_dir())
+            .context("waiting for chump gen --local to complete")?;
     if !status.success() {
         bail!(
             "chump gen --local exited {} for gap {}",
@@ -617,7 +692,7 @@ fn spawn_headless(ws: &Workspace, model: &str, prompt: &str) -> Result<()> {
         // Dropping `stdin` here closes the pipe (EOF), which is how `claude
         // -p` knows the prompt is complete and starts working.
     }
-    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id)
+    let status = wait_with_hang_detection(child, "claude -p", opts.gap_id, ws.working_dir())
         .context("waiting for claude -p to complete")?;
     if !status.success() {
         bail!(
@@ -649,8 +724,9 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
     let child = cmd
         .spawn()
         .with_context(|| format!("spawn `chump --execute-gap {}`", opts.gap_id))?;
-    let status = wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id)
-        .context("waiting for chump --execute-gap to complete")?;
+    let status =
+        wait_with_hang_detection(child, "chump --execute-gap", opts.gap_id, ws.working_dir())
+            .context("waiting for chump --execute-gap to complete")?;
     if !status.success() {
         bail!(
             "chump --execute-gap exited {} for gap {}",
@@ -667,13 +743,23 @@ fn spawn_exec_gap(ws: &Workspace) -> Result<()> {
 ///
 /// The timeout is configurable via CHUMP_DISPATCH_HANG_TIMEOUT_SECS env var
 /// (default 3600 = 1 hour). Set to 0 to disable hang detection.
+///
+/// RESILIENT-1494 AC4: before either kill path (`bail!`s below)
+/// relinquishes control, `snapshot_wip(working_dir)` captures any
+/// uncommitted changes into a `refs/wip/<branch>/<epoch>` commit (the same
+/// mechanism `chump wip-snapshot` exposes, RESILIENT-256). On 2026-09-26 a
+/// SIGTERM at the old 900s budget killed a dispatch that had already landed
+/// a LIVE, working Supabase fix — the stack was healthy but nothing was
+/// committed, so the change was lost outright. A snapshot makes that
+/// recoverable (`git diff HEAD <sha>`) instead of silently gone.
 fn wait_with_hang_detection(
     mut child: Child,
     process_name: &str,
     gap_id: &str,
+    working_dir: &Path,
 ) -> Result<std::process::ExitStatus> {
     // Two cooperating deadlines:
-    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 900s):
+    //   1. SUBAGENT BUDGET (CHUMP_SUBAGENT_BUDGET_S, default 1800s):
     //      parent-enforced upper bound on wall-clock per subagent dispatch.
     //      INFRA-1972 (critique H3): CLAUDE.md documents this as a
     //      "self-discipline rule" for the subagent itself, but yesterday's
@@ -681,6 +767,16 @@ fn wait_with_hang_detection(
     //      budget without self-honoring it. This is the parent-side hard
     //      enforcement that didn't exist before. On exceed: SIGTERM, then
     //      30s grace, then SIGKILL. Emits kind=subagent_killed_at_budget.
+    //
+    //      RESILIENT-1494 AC3: the default was 900s — well under the
+    //      `FLEET_TIMEOUT_S=1800` the fleet worker (`scripts/dispatch/worker.sh`)
+    //      uses for the exact same `claude -p` call. On 2026-09-26 a 900s
+    //      SIGTERM killed a dispatch (duration=903s) that had already landed
+    //      a LIVE Supabase fix, before it could commit — the work was lost.
+    //      Real infra work (multi-step: implement, verify, ship) routinely
+    //      needs more than 900s; align the default with the worker's proven
+    //      1800s floor so `chump dispatch` isn't structurally stricter than
+    //      the fleet path it's meant to mirror. Still fully overridable.
     //   2. HANG TIMEOUT (CHUMP_DISPATCH_HANG_TIMEOUT_SECS, default 3600s):
     //      backup deadline — catches a stuck process that somehow survived
     //      the budget kill. SIGKILL only. Emits kind=hang_detector.
@@ -693,12 +789,12 @@ fn wait_with_hang_detection(
         .or_else(|| {
             // Fall back to the legacy bot-merge-specific name if set,
             // so existing env configs keep working (CLAUDE.md still
-            // documents CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S=900).
+            // documents CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S).
             std::env::var("CHUMP_SUBAGENT_BOT_MERGE_BUDGET_S")
                 .ok()
                 .and_then(|s| s.parse().ok())
         })
-        .unwrap_or(900);
+        .unwrap_or(1800);
 
     let hang_secs: u64 = std::env::var("CHUMP_DISPATCH_HANG_TIMEOUT_SECS")
         .ok()
@@ -742,9 +838,10 @@ fn wait_with_hang_detection(
                     if term_at.elapsed().as_secs() > grace_secs {
                         let _ = child.kill(); // SIGKILL
                         let _ = child.wait();
+                        let snapshot_note = snapshot_wip_best_effort(working_dir, gap_id);
                         bail!(
                             "{} exceeded subagent budget ({} secs) for gap {}; SIGTERM at budget, \
-                             SIGKILL after {}s grace",
+                             SIGKILL after {}s grace.{snapshot_note}",
                             process_name,
                             budget_secs,
                             gap_id,
@@ -759,8 +856,9 @@ fn wait_with_hang_detection(
                     emit_hang_alert(process_name, gap_id, hang_secs);
                     let _ = child.kill();
                     let _ = child.wait();
+                    let snapshot_note = snapshot_wip_best_effort(working_dir, gap_id);
                     bail!(
-                        "{} exceeded no-tool-call timeout ({} secs) for gap {}; sent SIGTERM",
+                        "{} exceeded no-tool-call timeout ({} secs) for gap {}; sent SIGTERM.{snapshot_note}",
                         process_name,
                         hang_secs,
                         gap_id
@@ -872,6 +970,73 @@ fn emit_hang_alert(process_name: &str, gap_id: &str, timeout_secs: u64) {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .spawn();
+    }
+}
+
+/// RESILIENT-1494 AC4 — capture whatever the killed subagent had already
+/// written, right before its kill path gives up on it. Reuses
+/// `git_safety::snapshot` (the same primitive behind `chump wip-snapshot`,
+/// RESILIENT-256): writes any dirty working-tree state into
+/// `refs/wip/<branch>/<epoch>` WITHOUT touching the working tree or index,
+/// so it's safe to call on a tree whose last process just got SIGKILLed.
+///
+/// Best-effort by design — this runs on an already-failing path and must
+/// never itself `bail!`/panic. Returns a short string to splice into the
+/// caller's error message: non-empty (and emits `kind=dispatch_kill_wip_snapshot`
+/// to ambient.jsonl) when there was something to capture, empty when the
+/// tree was clean or the snapshot attempt itself failed (logged to stderr,
+/// not swallowed silently).
+fn snapshot_wip_best_effort(working_dir: &Path, gap_id: &str) -> String {
+    match crate::git_safety::snapshot(working_dir) {
+        Ok(Some(r)) => {
+            emit_dispatch_kill_wip_snapshot(gap_id, &r.commit, r.files);
+            format!(
+                " Partial progress captured: {} file(s) snapshotted to {} \
+                 (recover: git -C {} diff HEAD {}).",
+                r.files,
+                r.git_ref,
+                working_dir.display(),
+                &r.commit[..12.min(r.commit.len())]
+            )
+        }
+        Ok(None) => String::new(), // tree was clean — nothing lost
+        Err(e) => {
+            eprintln!(
+                "[dispatch] WARNING: WIP snapshot attempt failed for gap {gap_id} after kill: {e}"
+            );
+            String::new()
+        }
+    }
+}
+
+/// Emit `kind=dispatch_kill_wip_snapshot` to ambient.jsonl (RESILIENT-1494
+/// AC4) — distinct from `subagent_killed_at_budget`/`hang_detector` so the
+/// fleet can tell "killed, and we caught the work" from "killed, nothing to
+/// catch" without parsing the free-text error message.
+fn emit_dispatch_kill_wip_snapshot(gap_id: &str, commit: &str, files: usize) {
+    let repo_root = crate::repo_path::runtime_base();
+    let lock_dir = repo_root.join(".chump-locks");
+    let _ = std::fs::create_dir_all(&lock_dir);
+    let ambient_path = std::env::var("CHUMP_AMBIENT_LOG")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| lock_dir.join("ambient.jsonl"));
+
+    let session = crate::ambient_stream::env_session_id().unwrap_or_else(|| "unknown".to_string());
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\
+         \"kind\":\"dispatch_kill_wip_snapshot\",\"gap\":\"{gap_id}\",\
+         \"commit\":\"{commit}\",\"files\":{files}}}"
+    );
+
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&ambient_path)
+    {
+        let _ = writeln!(f, "{}", line);
     }
 }
 
@@ -1382,6 +1547,71 @@ mod tests {
         assert!(
             s == "chump" || s.ends_with("/chump") || s.contains("chump"),
             "unexpected resolution: {s}"
+        );
+    }
+
+    // ── RESILIENT-1494 — state.db worktree split-brain guard ────────────────
+
+    /// AC2 + AC5 smoke test: a gap that exists ONLY in the canonical store
+    /// (simulating the real incident — a gap just reserved/claimed in the
+    /// operator's live checkout) must still resolve into a fresh,
+    /// gap-less worktree store, and the resolved row must be THIS gap, not
+    /// a generic fallback. This is the exact guard against PR #4881-style
+    /// wrong-prompt freelancing: before this fix, a fresh worktree's
+    /// `chump gap preflight` reported NotFound (soft WARN, exit 0) and
+    /// dispatch spawned the agent anyway with nothing to read.
+    #[test]
+    fn resolve_gap_into_worktree_imports_from_canonical_store() {
+        let canonical_dir = tempfile::tempdir().unwrap();
+        let worktree_dir = tempfile::tempdir().unwrap();
+
+        let canonical_store =
+            chump_gap_store::GapStore::open(canonical_dir.path()).expect("open canonical store");
+        let gap_id = canonical_store
+            .reserve("RESILIENT", "smoke-test gap for RESILIENT-1494", "P2", "xs")
+            .expect("reserve gap in canonical store");
+
+        // Worktree starts with NO knowledge of this gap (fresh/empty store —
+        // the exact split-brain condition this guard exists to close).
+        resolve_gap_into_worktree(canonical_dir.path(), worktree_dir.path(), &gap_id)
+            .expect("gap must resolve from the canonical store");
+
+        let worktree_store =
+            chump_gap_store::GapStore::open(worktree_dir.path()).expect("reopen worktree store");
+        let row = worktree_store
+            .get(&gap_id)
+            .expect("lookup must not error")
+            .expect("gap must now be present in the worktree store");
+        assert_eq!(
+            row.id, gap_id,
+            "resolved row must be THIS gap, not a fallback"
+        );
+        assert_eq!(row.title, "smoke-test gap for RESILIENT-1494");
+    }
+
+    /// AC2: when the gap cannot be found ANYWHERE (neither worktree,
+    /// state.sql mirror, nor canonical store), dispatch MUST fail loud
+    /// rather than let the caller spawn an agent on an empty/fallback
+    /// prompt. This is the core safety property the gap description
+    /// demands: "A dispatch that cannot load its gap MUST fail loud, never
+    /// spawn an agent on a wrong prompt."
+    #[test]
+    fn resolve_gap_into_worktree_fails_loud_when_gap_is_nowhere() {
+        let canonical_dir = tempfile::tempdir().unwrap();
+        let worktree_dir = tempfile::tempdir().unwrap();
+        // Touch the canonical store so it's a valid (empty) DB, not absent.
+        let _ = chump_gap_store::GapStore::open(canonical_dir.path()).unwrap();
+
+        let err = resolve_gap_into_worktree(
+            canonical_dir.path(),
+            worktree_dir.path(),
+            "RESILIENT-99999999",
+        )
+        .unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(
+            msg.contains("refusing to spawn an agent"),
+            "expected a loud fail-closed error, got: {msg}"
         );
     }
 

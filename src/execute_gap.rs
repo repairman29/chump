@@ -265,15 +265,45 @@ pub fn build_execute_gap_prompt(gap_id: &str, repo_root: &std::path::Path) -> St
     } else {
         format!("\n\n---\n\n{epilogue}")
     };
+    // RESILIENT-1494: this used to tell the agent to go "read the gap entry
+    // in docs/gaps/<ID>.yaml" with the literal, never-substituted token
+    // "<ID>" — a path that never exists — and even with the typo fixed, a
+    // FRESH dispatch worktree's checkout may not have that per-gap YAML
+    // mirror at all (state.db is canonical; YAML is a best-effort mirror).
+    // Inline the resolved gap content directly, same pattern already proven
+    // in `build_free_tier_prompt`: resolve against the MAIN checkout (shared
+    // `.git` parent, always current) rather than `repo_root` (which, for a
+    // dispatch worktree, is the fresh/empty one). An agent with no concrete
+    // AC to read free-lances on whatever looks nearby — see PR #4881.
+    let canonical_root = crate::repo_path::main_checkout_root();
+    let gap_row = chump_gap_store::GapStore::open(&canonical_root)
+        .ok()
+        .and_then(|store| store.get(gap_id).ok().flatten());
+    let gap_spec_block = match gap_row {
+        Some(row) => format!(
+            "\n## Gap {id}\ntitle: {title}\npriority: {priority}\neffort: {effort}\n\
+description: |\n  {description}\nacceptance_criteria: |\n  {ac}\n",
+            id = row.id,
+            title = row.title,
+            priority = row.priority,
+            effort = row.effort,
+            description = row.description.replace('\n', "\n  "),
+            ac = row.acceptance_criteria.replace('\n', "\n  "),
+        ),
+        None => format!(
+            "\n## Gap {gap_id}\n(gap spec not resolvable from state.db — fall back to \
+reading docs/gaps/{gap_id}.yaml if present)\n"
+        ),
+    };
     format!(
         "{overlay}{rules}You are a Chump dispatched agent working on gap {gap}. \
-The gap is already claimed in this worktree. \
-Read the gap entry in docs/gaps/<ID>.yaml for full acceptance criteria. \
-Do the work, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
+The gap is already claimed in this worktree.{spec}\n\
+Do the work per the acceptance criteria above, then ship via:\n  scripts/coord/bot-merge.sh --gap {gap} --auto-merge\n\
 After ship, exit. Reply ONLY with the PR number.{epilogue}",
         overlay = overlay_block,
         rules = rules_block,
         gap = gap_id,
+        spec = gap_spec_block,
         epilogue = epilogue_block,
     )
 }
@@ -1446,6 +1476,29 @@ pub fn classify_execute_gap_error(err: &anyhow::Error) -> ExecuteGapErrorKind {
 mod tests {
     use super::*;
     use serial_test::serial;
+
+    /// RESILIENT-1494: the dispatched-agent prompt used to tell the agent to
+    /// "read the gap entry in docs/gaps/<ID>.yaml" with the literal,
+    /// never-substituted token `<ID>` — a path that can never exist. An
+    /// agent pointed at a nonexistent file has nothing concrete to work
+    /// from and free-lances (PR #4881, 2026-09-26). This asserts the
+    /// literal-token bug is gone and the gap id is substituted wherever the
+    /// prompt mentions the gap, for an id that is guaranteed not to resolve
+    /// via state.db (so this exercises the fallback branch deterministically
+    /// regardless of which checkout the test runs in).
+    #[test]
+    fn build_execute_gap_prompt_never_leaks_literal_id_token() {
+        let tmp = tempfile::tempdir().unwrap();
+        let prompt = build_execute_gap_prompt("SMOKE-TEST-NONEXISTENT-999999", tmp.path());
+        assert!(
+            !prompt.contains("<ID>"),
+            "prompt still contains the never-substituted literal token <ID>: {prompt}"
+        );
+        assert!(
+            prompt.contains("SMOKE-TEST-NONEXISTENT-999999"),
+            "prompt must reference the actual gap id, got: {prompt}"
+        );
+    }
 
     // INFRA-3445: free-tier locate-step routing (almanac grounding vs grep).
     #[test]

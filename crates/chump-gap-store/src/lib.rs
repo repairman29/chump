@@ -4484,6 +4484,56 @@ impl GapStore {
         }
     }
 
+    /// RESILIENT-1494 — import an already-resolved [`GapRow`] (e.g. read
+    /// from another store's live state.db) directly into this store,
+    /// bypassing the YAML round-trip [`sync_gap_from_state_sql`] needs.
+    ///
+    /// Used by `chump dispatch`'s worktree-resolution guard: a FRESH
+    /// worktree's `state.db` starts empty, and the tracked `state.sql`
+    /// mirror can lag a just-reserved gap by a sync interval. When both of
+    /// those self-heal paths miss, this copies the row straight out of the
+    /// CANONICAL store (the caller's live checkout, which `chump gap
+    /// reserve`/`claim` just wrote to) so the dispatched agent's prompt is
+    /// built from a real gap instead of silently freelancing (RESILIENT-1494
+    /// AC2). Field values are already flat (no YAML `Value` unwrapping
+    /// needed) since `GapRow` is itself the post-parse shape.
+    pub fn import_gap_row(&self, row: &GapRow) -> Result<()> {
+        self.conn.execute(
+            "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
+                acceptance_criteria,depends_on,notes,source_doc,created_at,
+                opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22,?23)",
+            params![
+                row.id,
+                row.domain,
+                row.title,
+                row.description,
+                row.priority,
+                row.effort,
+                row.status,
+                row.acceptance_criteria,
+                row.depends_on,
+                row.notes,
+                row.source_doc,
+                row.created_at,
+                row.opened_date,
+                row.closed_date,
+                row.closed_pr,
+                row.skills_required,
+                row.preferred_backend,
+                row.preferred_machine,
+                row.estimated_minutes,
+                row.required_model,
+                row.shipped_in,
+                row.outcome_id,
+                row.evidence,
+            ],
+        )
+        .with_context(|| format!("importing gap row {} directly", row.id))?;
+        Ok(())
+    }
+
     fn load_state_sql(sql_path: &Path) -> Result<YamlGapsFile> {
         let text = std::fs::read_to_string(sql_path)
             .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
