@@ -940,6 +940,14 @@ jobs:
         if: matrix.shard == 4
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
 
+      - name: gh-in-ci GH_TOKEN guard — test scripts calling gh api/gh pr must guard (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-in-ci-guarded.sh
+
+      - name: gh-token-guard smoke test — skip-with-WARN when GH_TOKEN unset (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-token-guard.sh
+
       - name: no-new-bypass-env-vars — forbid new CHUMP_*_BYPASS/SKIP/IGNORE_* (INFRA-2429)
         if: matrix.shard == 4
         run: bash scripts/ci/test-no-new-bypass-env-vars.sh
