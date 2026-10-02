@@ -25,6 +25,24 @@ static SCAN_FAILED_WARNED: AtomicBool = AtomicBool::new(false);
 
 // ────────────────────────── Data types ──────────────────────────
 
+/// ZERO-WASTE-059: advisory report from `queue_hygiene_check_on_ship`.
+/// `dup_candidates` is `(id, title, status, score)` for other open gaps
+/// whose title Jaccard-overlaps the just-shipped gap's title — likely now
+/// stale/duplicate now that this one is done. `vague_ac_gaps` is
+/// `(id, title)` for open gaps in the same domain with no real acceptance
+/// criteria (TODO/TBD/empty).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ShipQueueHygieneReport {
+    pub dup_candidates: Vec<(String, String, String, f64)>,
+    pub vague_ac_gaps: Vec<(String, String)>,
+}
+
+impl ShipQueueHygieneReport {
+    pub fn is_clean(&self) -> bool {
+        self.dup_candidates.is_empty() && self.vague_ac_gaps.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GapRow {
     pub id: String,
@@ -1206,6 +1224,40 @@ impl GapStore {
         scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(top_n);
         Ok(scored)
+    }
+
+    /// ZERO-WASTE-059: run the dedup-check + AC-hygiene scan inline with
+    /// `ship`, scoped to the shipped gap's domain, so the fleet doesn't need
+    /// a separate reconcile-stale-gap PR to notice "this other open gap in
+    /// the same domain is now a duplicate" or "that pickable gap has no
+    /// real acceptance criteria". Advisory only — never blocks the ship.
+    pub fn queue_hygiene_check_on_ship(
+        &self,
+        shipped_gap_id: &str,
+        shipped_title: &str,
+        domain: &str,
+        similarity_threshold: f64,
+    ) -> Result<ShipQueueHygieneReport> {
+        let dup_candidates = self
+            .similarity_candidates(shipped_title, 5, 30)?
+            .into_iter()
+            .filter(|(id, _, status, score)| {
+                id != shipped_gap_id && status == "open" && *score >= similarity_threshold
+            })
+            .collect();
+
+        let vague_ac_gaps: Vec<(String, String)> = self
+            .list(Some("open"))?
+            .into_iter()
+            .filter(|g| g.domain == domain)
+            .filter(|g| acceptance_criteria_is_vague(&g.acceptance_criteria))
+            .map(|g| (g.id, g.title))
+            .collect();
+
+        Ok(ShipQueueHygieneReport {
+            dup_candidates,
+            vague_ac_gaps,
+        })
     }
 
     /// Get a single gap by ID.
@@ -10362,6 +10414,72 @@ meta:
         let gap = store.get(&id).unwrap().unwrap();
         assert_eq!(gap.closed_pr, Some(1234));
         assert_eq!(gap.status, "done");
+    }
+
+    // ZERO-WASTE-059: ship-time dedup + AC-hygiene check
+    #[test]
+    fn queue_hygiene_check_on_ship_flags_duplicate_and_vague_ac() {
+        let (store, _dir) = test_store();
+        let shipped = store
+            .reserve("ZERO-WASTE", "fix the flaky queue drain", "P2", "s")
+            .unwrap();
+        // Near-duplicate still open in the queue after the original ships.
+        let dup = store
+            .reserve("ZERO-WASTE", "fix the flaky queue drain job", "P2", "s")
+            .unwrap();
+        // Unrelated gap in the same domain with no real acceptance criteria.
+        let vague = store
+            .reserve("ZERO-WASTE", "totally unrelated title here", "P2", "s")
+            .unwrap();
+        // A gap with real AC should NOT be flagged.
+        let has_ac = store
+            .reserve("ZERO-WASTE", "another unrelated gap entirely", "P2", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &has_ac,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(r#"["does the real thing"]"#.to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        store.ship(&shipped, "session-x", None).unwrap();
+
+        let report = store
+            .queue_hygiene_check_on_ship(&shipped, "fix the flaky queue drain", "ZERO-WASTE", 0.5)
+            .unwrap();
+
+        assert!(
+            report.dup_candidates.iter().any(|(id, ..)| id == &dup),
+            "expected near-duplicate open gap to be flagged: {:?}",
+            report.dup_candidates
+        );
+        let vague_ids: Vec<&String> = report.vague_ac_gaps.iter().map(|(id, _)| id).collect();
+        assert!(
+            vague_ids.contains(&&vague),
+            "expected vague-AC gap to be flagged: {:?}",
+            report.vague_ac_gaps
+        );
+        assert!(
+            !vague_ids.contains(&&has_ac),
+            "gap with real AC should not be flagged as vague"
+        );
+        assert!(!report.is_clean());
+    }
+
+    #[test]
+    fn queue_hygiene_check_on_ship_clean_when_nothing_to_flag() {
+        let (store, _dir) = test_store();
+        let shipped = store
+            .reserve("ZERO-WASTE", "a perfectly unique ship", "P2", "s")
+            .unwrap();
+        store.ship(&shipped, "session-x", None).unwrap();
+        let report = store
+            .queue_hygiene_check_on_ship(&shipped, "a perfectly unique ship", "ZERO-WASTE", 0.5)
+            .unwrap();
+        assert!(report.is_clean());
     }
 
     // INFRA-1149: title_jaccard similarity tests

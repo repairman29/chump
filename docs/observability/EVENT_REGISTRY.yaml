@@ -1668,6 +1668,19 @@ events:
     consumers: [fleet-brief, waste-tally]
     fields_required: [ts, kind, proposed_title, match_pr, match_title, match_score, merged_at]
 
+  - kind: ship_queue_hygiene_flagged
+    effect_metric: self
+    emitter: src/main.rs gap ship handler (ZERO-WASTE-059)
+    trigger: chump gap ship's inline dedup-check + AC-hygiene scan found
+      either (a) another open gap whose title Jaccard-overlaps the
+      just-shipped gap's title at or above CHUMP_GAP_SHIP_HYGIENE_SIMILARITY
+      (default 0.65), or (b) an open gap in the same domain with vague/empty
+      acceptance criteria. Runs in the SAME op as the ship so these signals
+      surface immediately instead of needing a standalone reconcile-stale-gap
+      PR later. Advisory only — never blocks the ship.
+    consumers: [fleet-brief, waste-tally]
+    fields_required: [ts, kind, gap, dup_candidates, vague_ac_gaps]
+
   - kind: target_artifact_reaped
     effect_metric: self
     emitter: scripts/coord/target-dir-reaper.sh (INFRA-1349)
