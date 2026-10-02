@@ -984,23 +984,63 @@ PY
     # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
     # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
     # a gap while a worker is mid-flight (pre-push); the branch covers it after
-    # the PR is pushed but before it merges (when the lease has expired). One
-    # cheap `git ls-remote` per cycle; best-effort (empty on failure/offline so
-    # Layers A+C still hold). The github_cache webhook DB is not authoritative
-    # here (observed sparse/stale — #3795 absent), so origin refs are used.
-    in_progress_gaps="$(
-        git -C "$REPO_ROOT" ls-remote --heads origin 'refs/heads/chump/*' 2>/dev/null \
-        | grep -oE 'refs/heads/chump/.+-fleet-[0-9]' 2>/dev/null \
-        | sed -E 's#refs/heads/chump/(.+)-fleet-[0-9]$#\1#' \
-        | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
-    )"
+    # the PR is pushed but before it merges (when the lease has expired).
+    #
+    # RESILIENT-1509 fix: a pushed branch alone is NOT proof of in-progress
+    # work anymore. 1,437 dead wip/*-style branches accumulated on origin
+    # (crashed workers, abandoned claims) and ~91 open gaps whose ONLY
+    # blocker was a stale leftover branch sat permanently unpickable. A
+    # branch now only counts when it has an open PR (cheap local cache
+    # lookup, no gh API call) OR a commit within CHUMP_STALE_BRANCH_HOURS
+    # (default 6h). Best-effort throughout: any failure here just falls
+    # back to the empty set (Layers A+C still hold the anti-spin guarantee).
+    _stale_branch_hours="${CHUMP_STALE_BRANCH_HOURS:-6}"
+    in_progress_gaps=""
+    if git -C "$REPO_ROOT" fetch origin --prune --quiet \
+            'refs/heads/chump/*:refs/remotes/origin/chump/*' 2>/dev/null; then
+        _branch_rows="$(
+            git -C "$REPO_ROOT" for-each-ref \
+                --format='%(refname:short) %(committerdate:unix)' \
+                refs/remotes/origin/chump/ 2>/dev/null
+        )"
+        if [ -n "$_branch_rows" ]; then
+            _cache_db="$REPO_ROOT/.chump/github_cache.db"
+            in_progress_gaps="$(
+                printf '%s\n' "$_branch_rows" \
+                | while IFS=' ' read -r _ref _ts; do
+                    _branch="${_ref#origin/}"
+                    _gid="$(printf '%s' "$_branch" | sed -nE 's#^chump/(.+)-fleet-[0-9]+$#\1#p' | tr '[:lower:]' '[:upper:]')"
+                    [ -z "$_gid" ] && continue
+                    _has_pr=0
+                    if command -v sqlite3 >/dev/null 2>&1 && [ -f "$_cache_db" ]; then
+                        _row="$(sqlite3 "$_cache_db" \
+                            "SELECT 1 FROM pr_state WHERE head_ref='${_branch//\'/\'\'}' AND merged_at IS NULL LIMIT 1" \
+                            2>/dev/null || true)"
+                        [ -n "$_row" ] && _has_pr=1
+                    fi
+                    printf '%s\t%s\t%s\n' "$_gid" "${_ts:-0}" "$_has_pr"
+                done \
+                | python3 "$REPO_ROOT/scripts/dispatch/_in_progress_branches.py" \
+                    "$(date -u +%s)" "$_stale_branch_hours" \
+                | tr '\n' ' '
+            )"
+        fi
+    fi
 
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
     # as chump claim so the lease is scoped to this worker's session.
+    #
+    # RESILIENT-1509: stderr is no longer discarded. A crash, a failed
+    # claim, or an over-broad exclusion all used to look identical to a
+    # genuinely empty queue ("no pickable gap" for 276 cycles on cuphead
+    # while 467 open gaps had no blocker). The claimer now also emits a
+    # JSON per-exclusion-reason dump to stderr on every empty cycle (see
+    # _pick_and_claim_gap.py); surface both here.
     gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
     printf '%s' "$gap_json" > "$gap_json_file"
+    _pick_stderr_file="$(mktemp -t fleet-pick-stderr.XXXXXX)"
     pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
             FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
             FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
@@ -1013,8 +1053,13 @@ PY
             WORKER_ID="$AGENT_ID" \
             COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
             FLEET_REQUIRE_TITLE_SUBSTR="${FLEET_REQUIRE_TITLE_SUBSTR:-}" \
-            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
+            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>"$_pick_stderr_file" || true)"
     rm -f "$gap_json_file"
+    _pick_stderr="$(cat "$_pick_stderr_file" 2>/dev/null || true)"
+    rm -f "$_pick_stderr_file"
+    if [ -n "$_pick_stderr" ]; then
+        log "claimer stderr: $_pick_stderr"
+    fi
 
     if [ -z "$pick" ]; then
         # INFRA-315: increment starvation counter; emit ambient ALERT once
