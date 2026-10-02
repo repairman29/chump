@@ -12327,6 +12327,60 @@ async fn main() -> Result<()> {
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
                         }
+                        // ZERO-WASTE-059: dedup-check + AC-hygiene scan runs in the
+                        // SAME op as the ship, so a stale/duplicate sibling or a
+                        // vague-AC gap in this domain surfaces immediately instead
+                        // of needing a later standalone reconcile-stale-gap PR.
+                        // Advisory only — never blocks or fails the ship.
+                        if let Ok(Some(shipped_gap)) = store.get(&gap_id) {
+                            let similarity_threshold: f64 =
+                                std::env::var("CHUMP_GAP_SHIP_HYGIENE_SIMILARITY")
+                                    .ok()
+                                    .and_then(|s| s.trim().parse().ok())
+                                    .unwrap_or(0.65);
+                            if let Ok(report) = store.queue_hygiene_check_on_ship(
+                                &gap_id,
+                                &shipped_gap.title,
+                                &shipped_gap.domain,
+                                similarity_threshold,
+                            ) {
+                                if !report.is_clean() {
+                                    let ts =
+                                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                    let event = serde_json::json!({
+                                        "ts": ts,
+                                        "kind": "ship_queue_hygiene_flagged",
+                                        "gap": gap_id,
+                                        "dup_candidates": report.dup_candidates.iter()
+                                            .map(|(id, title, _, score)| serde_json::json!({"id": id, "title": title, "score": score}))
+                                            .collect::<Vec<_>>(),
+                                        "vague_ac_gaps": report.vague_ac_gaps.iter()
+                                            .map(|(id, title)| serde_json::json!({"id": id, "title": title}))
+                                            .collect::<Vec<_>>(),
+                                    });
+                                    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_log)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            writeln!(f, "{event}")
+                                        });
+                                    for (id, title, _, score) in &report.dup_candidates {
+                                        eprintln!(
+                                            "  [hygiene] possible duplicate still open: {id} ({title}, score={score:.2})"
+                                        );
+                                    }
+                                    for (id, title) in &report.vague_ac_gaps {
+                                        eprintln!(
+                                            "  [hygiene] vague-AC gap in domain {}: {id} ({title})",
+                                            shipped_gap.domain
+                                        );
+                                    }
+                                }
+                            }
+                        }
                         // INFRA-1144: atomically close orphan PRs for this gap
                         // (complements INFRA-1139 sweeper). Emits orphan_pr_closed_at_ship
                         // events for each closure.
