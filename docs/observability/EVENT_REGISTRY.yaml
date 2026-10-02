@@ -5891,6 +5891,21 @@ events:
     consumers: [fleet-brief, reaper-heartbeat-watchdog]
     fields_required: [ts, kind, worktree, lease, ttl_s]
 
+  - kind: dead_session_lease_detected
+    effect_metric: self
+    emitter: scripts/ops/stale-worktree-reaper.sh (reaper_ambient_event / _is_dead_session_lease, RESILIENT-205)
+    trigger: >
+      A state.db lease (interactive `chump claim`, no JSON heartbeat sidecar —
+      RESILIENT-099) is still unexpired by expires_at, but the worktree it
+      points at shows no process activity (lsof) and no git-index/log writes
+      for longer than SESSION_TIMEOUT_S (CHUMP_REAPER_SESSION_TIMEOUT_S,
+      default CHUMP_LEASE_HEARTBEAT_TTL_S). The session holding the lease is
+      dead; the reaper clears the lease row and proceeds to normal
+      reapability checks instead of hard-blocking the worktree until
+      expires_at.
+    consumers: [fleet-brief]
+    fields_required: [ts, kind, worktree, last_activity_s]
+
   # ── RESILIENT-116: target-dir reaper cold-build-safety ──────────────────
   - kind: target_reap_skipped
     effect_metric: self
