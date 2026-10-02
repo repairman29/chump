@@ -7,3 +7,4 @@
 pub mod artifact_gates;
 pub mod file_test_map;
 pub mod preflight;
+pub mod publish_targets;
