@@ -1396,11 +1396,100 @@ pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sy
     Box::new(ToolTimeoutWrapper::new(with_preproc))
 }
 
+/// One portfolio-sweep candidate: a repo slug plus its star count.
+///
+/// Mirrors `SweepTarget` in `crates/mcp-servers/chump-mcp-github/src/main.rs`
+/// (EFFECTIVE-1408) — kept here as a standalone, dependency-free type so the
+/// allowlist + leverage-tier policy has unit coverage in the main binary's
+/// test suite as well as the MCP server's.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct GithubSweepTarget {
+    pub repo: String,
+    pub stars: u64,
+}
+
+/// Minimum star count for the "opportunity-library leverage" tier.
+pub const GITHUB_LEVERAGE_TIER_MIN_STARS: u64 = 4;
+
+/// Validate sweep targets against the owned-repo allowlist and sort the
+/// survivors so 4-star+ leverage-tier repos are scanned before lower tiers.
+/// Rejected (non-allowlisted) targets are dropped and returned separately so
+/// callers can log a `NO-GO` per foreign surface rather than silently skip it.
+pub fn plan_github_portfolio_sweep(
+    targets: Vec<GithubSweepTarget>,
+    owned_allowlist: &[String],
+) -> (Vec<GithubSweepTarget>, Vec<GithubSweepTarget>) {
+    let (owned, rejected): (Vec<_>, Vec<_>) = targets
+        .into_iter()
+        .partition(|t| owned_allowlist.is_empty() || owned_allowlist.iter().any(|r| r == &t.repo));
+    let mut owned = owned;
+    owned.sort_by(|a, b| {
+        let a_tier = a.stars >= GITHUB_LEVERAGE_TIER_MIN_STARS;
+        let b_tier = b.stars >= GITHUB_LEVERAGE_TIER_MIN_STARS;
+        b_tier.cmp(&a_tier).then(b.stars.cmp(&a.stars))
+    });
+    (owned, rejected)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use serial_test::serial;
     use std::time::Instant;
+
+    #[test]
+    fn github_sweep_rejects_unowned_repo_with_no_go() {
+        let targets = vec![
+            GithubSweepTarget {
+                repo: "me/owned".to_string(),
+                stars: 1,
+            },
+            GithubSweepTarget {
+                repo: "stranger/foreign".to_string(),
+                stars: 10,
+            },
+        ];
+        let allowlist = vec!["me/owned".to_string()];
+        let (owned, rejected) = plan_github_portfolio_sweep(targets, &allowlist);
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].repo, "me/owned");
+        assert_eq!(rejected.len(), 1);
+        assert_eq!(rejected[0].repo, "stranger/foreign");
+    }
+
+    #[test]
+    fn github_sweep_prioritizes_four_star_and_up() {
+        let targets = vec![
+            GithubSweepTarget {
+                repo: "me/one-star".to_string(),
+                stars: 1,
+            },
+            GithubSweepTarget {
+                repo: "me/five-star".to_string(),
+                stars: 5,
+            },
+            GithubSweepTarget {
+                repo: "me/four-star".to_string(),
+                stars: 4,
+            },
+            GithubSweepTarget {
+                repo: "me/three-star".to_string(),
+                stars: 3,
+            },
+        ];
+        let (owned, rejected) = plan_github_portfolio_sweep(targets, &[]);
+        assert!(rejected.is_empty());
+        let order: Vec<&str> = owned.iter().map(|t| t.repo.as_str()).collect();
+        assert_eq!(
+            order,
+            vec![
+                "me/five-star",
+                "me/four-star",
+                "me/three-star",
+                "me/one-star"
+            ]
+        );
+    }
 
     #[test]
     #[serial]
