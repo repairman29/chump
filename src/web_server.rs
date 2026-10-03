@@ -4377,6 +4377,105 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /api/brain/node/{id} — full record for a single brain-graph node
+/// (INFRA-1558 right-pane click-to-focus detail view): inferred type, degree,
+/// and every edge touching it.
+async fn handle_brain_node(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<crate::memory_graph_viz::NodeRecord>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let record = crate::memory_graph_viz::export_node(&id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?
+        .ok_or(StatusCode::NOT_FOUND)?;
+    Ok(Json(record))
+}
+
+/// GET /api/brain/graph/stream — SSE endpoint pushing incremental node/edge
+/// add/remove events so the PWA renderer (web/v2/brain.js) never needs a
+/// full reload (INFRA-1558 AC#5). Polls the memory graph every 3s and diffs
+/// against the previous snapshot; only the delta is sent.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+
+    tokio::spawn(async move {
+        let mut prev: std::collections::HashSet<(String, String, String)> =
+            std::collections::HashSet::new();
+
+        // Seed: send the full graph as one snapshot event so the client can
+        // render immediately without a separate /api/brain/graph.json fetch.
+        if let Ok(body) = crate::memory_graph_viz::export_graph_json() {
+            if tx
+                .send(Ok(Event::default().event("snapshot").data(body)))
+                .is_err()
+            {
+                return;
+            }
+        }
+        if let Ok(snap) = crate::memory_graph_viz::load_edge_snapshot() {
+            prev = snap;
+        }
+
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let Ok(cur) = crate::memory_graph_viz::load_edge_snapshot() else {
+                continue;
+            };
+            if cur == prev {
+                continue;
+            }
+            let added: Vec<_> = cur.difference(&prev).cloned().collect();
+            let removed: Vec<_> = prev.difference(&cur).cloned().collect();
+            prev = cur;
+
+            if !added.is_empty() {
+                let edges: Vec<_> = added
+                    .iter()
+                    .map(|(s, r, o)| serde_json::json!({"source": s, "target": o, "relation": r}))
+                    .collect();
+                let data = serde_json::json!({ "edges": edges }).to_string();
+                if tx
+                    .send(Ok(Event::default().event("edge_add").data(data)))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+            if !removed.is_empty() {
+                let edges: Vec<_> = removed
+                    .iter()
+                    .map(|(s, r, o)| serde_json::json!({"source": s, "target": o, "relation": r}))
+                    .collect();
+                let data = serde_json::json!({ "edges": edges }).to_string();
+                if tx
+                    .send(Ok(Event::default().event("edge_remove").data(data)))
+                    .is_err()
+                {
+                    return;
+                }
+            }
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9601,6 +9700,8 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),

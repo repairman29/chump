@@ -2168,6 +2168,34 @@
       background: var(--text-secondary);
     }
     .regret-panel-title { margin-top: 20px; }
+
+    /* INFRA-1558: brain graph renderer (<chump-view-brain>, web/v2/brain.js).
+       Layout/chrome uses canonical tokens; node/edge colors are a one-time
+       data-viz palette defined in brain.js (Token-Discipline-Bypass). */
+    chump-view-brain { display: block; height: 100%; }
+    .brain-root { display: flex; flex-direction: column; height: 100%; }
+    .brain-toolbar {
+      display: flex; flex-wrap: wrap; gap: 12px;
+      padding: 8px 12px; border-bottom: 1px solid var(--border);
+      font-size: 12px; color: var(--text-secondary);
+    }
+    .brain-filter { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+    .brain-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+    .brain-body { display: flex; flex: 1; min-height: 0; }
+    .brain-cy { flex: 1; min-width: 0; background: var(--bg); }
+    .brain-detail {
+      width: 280px; flex-shrink: 0; padding: 12px;
+      border-left: 1px solid var(--border); overflow-y: auto;
+      font-size: 12px; color: var(--text);
+    }
+    .brain-detail-empty { color: var(--text-secondary); }
+    .brain-detail-title { font-size: 13px; margin-bottom: 4px; word-break: break-all; }
+    .brain-detail-type { color: var(--text-secondary); margin-bottom: 8px; }
+    .brain-detail-edges { list-style: none; padding: 0; margin: 0; }
+    .brain-detail-edges li {
+      padding: 4px 0; border-bottom: 1px solid var(--border);
+      word-break: break-word;
+    }
   </style>
 </head>
 <body>
@@ -2276,6 +2304,7 @@
   <!-- INFRA-1711: content-bots toggle view; depends on window.ChumpViewSettings
        (app.js) for the shared error-toast utility, so load order matters. -->
   <script src="content-bots.js" type="module"></script>
+  <script src="brain.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));

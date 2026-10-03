@@ -29,14 +29,56 @@ pub struct GraphStats {
     pub top_entities: Vec<(String, usize)>,
 }
 
+/// Best-effort node-type classification for the brain-graph renderer
+/// (INFRA-1558). The underlying `chump_memory_graph` table is a generic
+/// subject/relation/object triple store, so there's no stored type column —
+/// this infers one from id shape so the frontend can filter/color by
+/// gap | pr | agent | lesson | ambient_event, falling back to "unknown".
+pub fn infer_node_type(id: &str) -> &'static str {
+    let lower = id.to_ascii_lowercase();
+    for (prefix, ty) in [
+        ("gap:", "gap"),
+        ("pr:", "pr"),
+        ("agent:", "agent"),
+        ("lesson:", "lesson"),
+        ("ambient_event:", "ambient_event"),
+        ("event:", "ambient_event"),
+    ] {
+        if lower.starts_with(prefix) {
+            return ty;
+        }
+    }
+    // Bare gap id, e.g. INFRA-1558, CREDIBLE-167.
+    if let Some((domain, num)) = id.split_once('-') {
+        if !domain.is_empty()
+            && domain.chars().all(|c| c.is_ascii_uppercase())
+            && !num.is_empty()
+            && num.chars().all(|c| c.is_ascii_digit())
+        {
+            return "gap";
+        }
+    }
+    // Bare PR number, e.g. "2303" or "#2303".
+    if id
+        .trim_start_matches('#')
+        .chars()
+        .all(|c| c.is_ascii_digit())
+        && !id.is_empty()
+    {
+        return "pr";
+    }
+    "unknown"
+}
+
 #[derive(Debug, Clone, Serialize)]
 struct JsonNode {
     id: String,
     degree: usize,
+    node_type: &'static str,
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct JsonEdge {
+pub struct JsonEdge {
     source: String,
     target: String,
     relation: String,
@@ -159,7 +201,14 @@ fn build_json_graph(edges: &[Edge]) -> JsonGraph {
     let degrees = compute_degrees(edges);
     let mut nodes: Vec<JsonNode> = degrees
         .into_iter()
-        .map(|(id, degree)| JsonNode { id, degree })
+        .map(|(id, degree)| {
+            let node_type = infer_node_type(&id);
+            JsonNode {
+                id,
+                degree,
+                node_type,
+            }
+        })
         .collect();
     nodes.sort_by(|a, b| b.degree.cmp(&a.degree).then_with(|| a.id.cmp(&b.id)));
 
@@ -184,6 +233,52 @@ pub fn export_graph_json() -> Result<String> {
     let edges = load_all_edges()?;
     let graph = build_json_graph(&edges);
     Ok(serde_json::to_string(&graph)?)
+}
+
+/// Full record for a single node (INFRA-1558 right-pane detail view):
+/// its id, inferred type, degree, and every edge touching it (either direction).
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeRecord {
+    pub id: String,
+    pub node_type: &'static str,
+    pub degree: usize,
+    pub edges: Vec<JsonEdge>,
+}
+
+/// Look up a single node by id and return its full record, or `None` if the
+/// id doesn't appear as a subject or object of any edge.
+pub fn export_node(id: &str) -> Result<Option<NodeRecord>> {
+    let edges = load_all_edges()?;
+    let touching: Vec<JsonEdge> = edges
+        .iter()
+        .filter(|e| e.subject == id || e.object == id)
+        .map(|e| JsonEdge {
+            source: e.subject.clone(),
+            target: e.object.clone(),
+            relation: e.relation.clone(),
+            weight: e.weight,
+        })
+        .collect();
+    if touching.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(NodeRecord {
+        id: id.to_string(),
+        node_type: infer_node_type(id),
+        degree: touching.len(),
+        edges: touching,
+    }))
+}
+
+/// Snapshot of edge identities (subject, relation, object) used by the SSE
+/// stream handler to diff successive polls and emit incremental add/remove
+/// events instead of a full reload (INFRA-1558 AC#5).
+pub fn load_edge_snapshot() -> Result<HashSet<(String, String, String)>> {
+    let edges = load_all_edges()?;
+    Ok(edges
+        .into_iter()
+        .map(|e| (e.subject, e.relation, e.object))
+        .collect())
 }
 
 /// Escape a string for safe inclusion as a DOT node ID or label.
