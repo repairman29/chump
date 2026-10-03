@@ -3242,3 +3242,8 @@ CHUMP_DROPS_FILE
 CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE
 # detected in: (standard input)
 CHUMP_PREFLIGHT_LOAD_THRESHOLD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CLAIM_MODE

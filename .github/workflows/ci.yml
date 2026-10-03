@@ -1229,6 +1229,9 @@ jobs:
       - name: open-PR dedup gate at claim time (INFRA-1982)
         run: bash scripts/ci/test-open-pr-dup-detection.sh
 
+      - name: claim-time CHUMP_CLAIM_MODE blocking/advisory (INFRA-3765)
+        run: bash scripts/ci/test-claim-mode.sh
+
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh
 
