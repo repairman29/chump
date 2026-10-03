@@ -283,6 +283,81 @@ pub fn export_subgraph_json(seed_entities: &[String], max_hops: usize) -> Result
     Ok(serde_json::to_string(&graph)?)
 }
 
+/// One side of a [`NodeRecord`]'s relations — the other node + relation kind + direction.
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeNeighbor {
+    pub relation: String,
+    pub other: String,
+    /// "out" if this node is the edge subject, "in" if it's the object.
+    pub direction: &'static str,
+}
+
+/// Full record for a single node (INFRA-1558 brain graph right-pane detail).
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeRecord {
+    pub id: String,
+    pub degree: usize,
+    pub neighbors: Vec<NodeNeighbor>,
+}
+
+/// Look up a single node by id (case-insensitive, matched against subject/object).
+/// Returns `None` if the id doesn't appear in the graph.
+pub fn node_record(id: &str) -> Result<Option<NodeRecord>> {
+    let edges = load_all_edges()?;
+    let needle = id.to_lowercase();
+    let mut neighbors = Vec::new();
+    let mut found = false;
+    for e in &edges {
+        if e.subject.to_lowercase() == needle {
+            found = true;
+            neighbors.push(NodeNeighbor {
+                relation: e.relation.clone(),
+                other: e.object.clone(),
+                direction: "out",
+            });
+        } else if e.object.to_lowercase() == needle {
+            found = true;
+            neighbors.push(NodeNeighbor {
+                relation: e.relation.clone(),
+                other: e.subject.clone(),
+                direction: "in",
+            });
+        }
+    }
+    if !found {
+        return Ok(None);
+    }
+    neighbors.sort_by(|a, b| {
+        a.other
+            .cmp(&b.other)
+            .then_with(|| a.relation.cmp(&b.relation))
+    });
+    Ok(Some(NodeRecord {
+        id: id.to_string(),
+        degree: neighbors.len(),
+        neighbors,
+    }))
+}
+
+/// Export the full graph as JSON (`{"nodes": [...], "edges": [...]}`) plus a hash of the
+/// edge set, used by the SSE stream (INFRA-1558) to detect changes between polls without
+/// re-sending the full graph when nothing moved.
+pub fn graph_fingerprint() -> Result<(String, Vec<Edge>)> {
+    let edges = load_all_edges()?;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = std::collections::hash_map::DefaultHasher::new();
+    let mut sorted: Vec<&Edge> = edges.iter().collect();
+    sorted.sort_by(|a, b| {
+        (&a.subject, &a.relation, &a.object).cmp(&(&b.subject, &b.relation, &b.object))
+    });
+    for e in &sorted {
+        e.subject.hash(&mut hasher);
+        e.relation.hash(&mut hasher);
+        e.object.hash(&mut hasher);
+    }
+    Ok((format!("{:x}", hasher.finish()), edges))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

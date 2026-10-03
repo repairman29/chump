@@ -4377,6 +4377,78 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /brain — brain graph visualization page (INFRA-1558). Serves web/v2/brain.html
+/// directly at a top-level path (rather than through the SPA fallback at /v2/) so the
+/// smoke test and bookmarks can hit it without going through client-side routing.
+async fn handle_brain_page() -> Response {
+    let path = pwa_static_dir().join("v2").join("brain.html");
+    match std::fs::read_to_string(&path) {
+        Ok(body) => ([(header::CONTENT_TYPE, "text/html; charset=utf-8")], body).into_response(),
+        Err(_) => (StatusCode::NOT_FOUND, "brain.html missing").into_response(),
+    }
+}
+
+/// GET /api/brain/node/{id} — full record (neighbors + relation kinds) for one graph
+/// node, used by the /brain right-pane detail view on click (INFRA-1558 AC3).
+async fn handle_brain_node(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    match crate::memory_graph_viz::node_record(&id) {
+        Ok(Some(record)) => Ok(Json(record).into_response()),
+        Ok(None) => Err(StatusCode::NOT_FOUND),
+        Err(_) => Err(StatusCode::INTERNAL_SERVER_ERROR),
+    }
+}
+
+/// GET /api/brain/graph/stream — SSE stream of incremental node/edge changes to the
+/// memory graph (INFRA-1558 AC5). Polls the graph every 3s; on change, emits an "update"
+/// event carrying the full current edge set — the frontend diffs against its own
+/// Cytoscape state and calls cy.add()/cy.remove() incrementally rather than reloading.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        let mut last_fingerprint = String::new();
+        loop {
+            if let Ok((fingerprint, edges)) = crate::memory_graph_viz::graph_fingerprint() {
+                if fingerprint != last_fingerprint {
+                    last_fingerprint = fingerprint;
+                    let graph = serde_json::json!({
+                        "edges": edges.iter().map(|e| serde_json::json!({
+                            "source": e.subject, "target": e.object,
+                            "relation": e.relation, "weight": e.weight,
+                        })).collect::<Vec<_>>(),
+                    });
+                    if tx
+                        .send(Ok(Event::default().event("update").data(graph.to_string())))
+                        .is_err()
+                    {
+                        break; // client disconnected
+                    }
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+        }
+    });
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9601,6 +9673,9 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/brain", get(handle_brain_page))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),

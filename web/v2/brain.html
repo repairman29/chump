@@ -1,0 +1,33 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chump Brain Graph</title>
+<!-- INFRA-1558: Cytoscape.js (MIT) + fcose extension — force-directed layout, 10k+ node capable. -->
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
+<script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+<style>
+  html, body { margin: 0; height: 100%; background: #0b0d12; color: #e6e8ec; font-family: -apple-system, system-ui, sans-serif; }
+  #brain-root { display: flex; height: 100vh; }
+  #cy-container { flex: 1 1 auto; height: 100%; }
+  #brain-side { width: 280px; flex: 0 0 280px; border-left: 1px solid #272b33; padding: 12px; overflow-y: auto; box-sizing: border-box; }
+  #brain-filters { position: absolute; top: 10px; left: 10px; z-index: 5; background: rgba(20,22,28,0.9); border: 1px solid #272b33; border-radius: 8px; padding: 8px 10px; font-size: 12px; }
+  #brain-filters label { display: block; margin: 2px 0; cursor: pointer; }
+  #brain-side h3 { font-size: 13px; margin: 0 0 8px; color: #9aa4b2; text-transform: uppercase; letter-spacing: 0.04em; }
+  #brain-side .neighbor { font-size: 12px; padding: 4px 0; border-bottom: 1px solid #1c1f26; }
+  #brain-legend { position: absolute; bottom: 10px; left: 10px; z-index: 5; background: rgba(20,22,28,0.9); border: 1px solid #272b33; border-radius: 8px; padding: 6px 10px; font-size: 11px; }
+  #brain-legend span { margin-right: 10px; }
+  #brain-legend .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div id="brain-root">
+  <div id="cy-container"></div>
+  <div id="brain-side"><h3>Node</h3><div id="brain-detail">Click a node to inspect.</div></div>
+</div>
+<script src="brain.js"></script>
+</body>
+</html>
