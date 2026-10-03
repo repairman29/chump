@@ -43,6 +43,21 @@ const DEFAULT_PRIORITY: &str = "P1";
 /// (effort=s is a decomposer no-op), so the gap is born sliced.
 const DEFAULT_EFFORT: &str = "l";
 
+/// Launch-log path, relative to `repo_root` (EFFECTIVE-1519).
+const LAUNCH_LOG_RELATIVE_PATH: &str = "logs/launch.log";
+/// Retention window for `logs/launch.log` entries (EFFECTIVE-1519).
+const LAUNCH_LOG_RETENTION_DAYS: i64 = 90;
+
+/// One structured launch-stage log entry, JSON-serialized one-per-line to
+/// `logs/launch.log` (EFFECTIVE-1519).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LaunchLogEntry {
+    pub platform: String,
+    pub timestamp: String,
+    pub user_id: String,
+    pub stage: String,
+}
+
 /// Inbound mission payload for `POST /api/mission`.
 #[derive(Debug, Deserialize)]
 pub struct MissionRequest {
@@ -70,6 +85,13 @@ pub struct MissionRequest {
     /// Explicit `a|b|c` acceptance criteria; overrides `outcome`.
     #[serde(default)]
     pub acceptance_criteria: Option<String>,
+    /// Launch platform this mission targets (default `"chump"`). Recorded in
+    /// `logs/launch.log` (EFFECTIVE-1519).
+    #[serde(default)]
+    pub platform: Option<String>,
+    /// Caller's user id, for the launch-log audit trail (EFFECTIVE-1519).
+    #[serde(default)]
+    pub user_id: Option<String>,
 }
 
 /// Result of a successful intake, serialized back to the caller.
@@ -271,7 +293,23 @@ pub fn create_mission_gap(repo_root: &Path, req: MissionRequest) -> anyhow::Resu
         _ => {}
     }
 
-    // 3. Spawn `chump gap decompose --apply` DETACHED — never awaited.
+    // 3. Launch-stage audit log (EFFECTIVE-1519). This call is the "draft"
+    //    stage: a mission gap is born here before approve/send/publish
+    //    stages exist downstream. Best-effort: a log-write failure must
+    //    never fail the mission intake itself.
+    if let Err(e) = log_launch_stage(
+        repo_root,
+        &LaunchLogEntry {
+            platform: req.platform.clone().unwrap_or_else(|| "chump".to_string()),
+            timestamp: chrono::Utc::now().to_rfc3339(),
+            user_id: req.user_id.clone().unwrap_or_else(|| "unknown".to_string()),
+            stage: "draft".to_string(),
+        },
+    ) {
+        tracing::warn!(gap = %gap_id, "failed to write launch log entry: {e}");
+    }
+
+    // 3b. Spawn `chump gap decompose --apply` DETACHED — never awaited.
     let decompose = spawn_decompose(&chump, repo_root, &gap_id)
         .map(|_| "spawned".to_string())
         .unwrap_or_else(|e| format!("spawn_failed: {e}"));
@@ -286,6 +324,77 @@ pub fn create_mission_gap(repo_root: &Path, req: MissionRequest) -> anyhow::Resu
             "gap reserved; decompose-at-file spawned in background; fleet queue picks up the slices"
                 .into(),
     })
+}
+
+/// Append `entry` as one JSON line to `logs/launch.log`, pruning entries
+/// older than `LAUNCH_LOG_RETENTION_DAYS` first (EFFECTIVE-1519). The prune
+/// runs on every write rather than on a separate schedule — there is no
+/// daemon wired up for this slice yet, so "daily" is approximated by
+/// pruning at every mission-create call, which is frequent enough in
+/// practice to keep the log under the retention window.
+pub fn log_launch_stage(repo_root: &Path, entry: &LaunchLogEntry) -> anyhow::Result<()> {
+    let log_path = repo_root.join(LAUNCH_LOG_RELATIVE_PATH);
+    prune_launch_log(&log_path, LAUNCH_LOG_RETENTION_DAYS)?;
+    if let Some(dir) = log_path.parent() {
+        std::fs::create_dir_all(dir)?;
+    }
+    let line = serde_json::to_string(entry)?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&log_path)?;
+    use std::io::Write;
+    writeln!(f, "{line}")?;
+    Ok(())
+}
+
+/// Remove entries older than `max_age_days` from the launch log at
+/// `log_path`. Lines that fail to parse (or lack a valid `timestamp`) are
+/// kept as-is rather than silently dropped. No-op if the file doesn't exist
+/// yet (EFFECTIVE-1519).
+pub fn prune_launch_log(log_path: &Path, max_age_days: i64) -> anyhow::Result<()> {
+    if !log_path.exists() {
+        return Ok(());
+    }
+    let raw = std::fs::read_to_string(log_path)?;
+    let cutoff = chrono::Utc::now() - chrono::Duration::days(max_age_days);
+    let kept: Vec<&str> = raw
+        .lines()
+        .filter(|line| {
+            let Ok(entry) = serde_json::from_str::<LaunchLogEntry>(line) else {
+                return true;
+            };
+            match chrono::DateTime::parse_from_rfc3339(&entry.timestamp) {
+                Ok(ts) => ts.with_timezone(&chrono::Utc) >= cutoff,
+                Err(_) => true,
+            }
+        })
+        .collect();
+    let mut out = kept.join("\n");
+    if !kept.is_empty() {
+        out.push('\n');
+    }
+    std::fs::write(log_path, out)?;
+    Ok(())
+}
+
+/// Return every `logs/launch.log` line whose `stage` matches `stage`
+/// (EFFECTIVE-1519). Used by the `--query-logs <stage>` CLI flag.
+pub fn handle_log_query(repo_root: &Path, stage: &str) -> anyhow::Result<Vec<String>> {
+    let log_path = repo_root.join(LAUNCH_LOG_RELATIVE_PATH);
+    if !log_path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(&log_path)?;
+    Ok(raw
+        .lines()
+        .filter(|line| {
+            serde_json::from_str::<LaunchLogEntry>(line)
+                .map(|entry| entry.stage == stage)
+                .unwrap_or(false)
+        })
+        .map(str::to_string)
+        .collect())
 }
 
 /// Spawn a detached `chump gap decompose <id> --apply`, logging to
@@ -397,5 +506,85 @@ mod tests {
         assert_eq!(sanitize_effort(Some("XL")), "xl");
         assert_eq!(sanitize_effort(Some("huge")), "l");
         assert_eq!(sanitize_effort(None), "l");
+    }
+
+    fn temp_log_path(name: &str) -> std::path::PathBuf {
+        std::env::temp_dir().join(format!(
+            "chump-test-launch-log-{}-{}",
+            std::process::id(),
+            name
+        ))
+    }
+
+    #[test]
+    fn handle_log_query_filters_by_stage() {
+        let repo_root = temp_log_path("query");
+        std::fs::create_dir_all(repo_root.join("logs")).unwrap();
+        let log_path = repo_root.join(LAUNCH_LOG_RELATIVE_PATH);
+        std::fs::write(
+            &log_path,
+            concat!(
+                r#"{"platform":"x","timestamp":"2026-01-01T00:00:00+00:00","user_id":"a","stage":"draft"}"#,
+                "\n",
+                r#"{"platform":"x","timestamp":"2026-01-01T00:00:00+00:00","user_id":"a","stage":"publish"}"#,
+                "\n",
+            ),
+        )
+        .unwrap();
+
+        let draft = handle_log_query(&repo_root, "draft").unwrap();
+        assert_eq!(draft.len(), 1);
+        assert!(draft[0].contains("\"stage\":\"draft\""));
+
+        let publish = handle_log_query(&repo_root, "publish").unwrap();
+        assert_eq!(publish.len(), 1);
+        assert!(publish[0].contains("\"stage\":\"publish\""));
+
+        assert!(handle_log_query(&repo_root, "approve").unwrap().is_empty());
+
+        let _ = std::fs::remove_dir_all(&repo_root);
+    }
+
+    #[test]
+    fn handle_log_query_returns_empty_when_log_missing() {
+        let repo_root = temp_log_path("missing");
+        assert!(handle_log_query(&repo_root, "draft").unwrap().is_empty());
+    }
+
+    #[test]
+    fn prune_launch_log_drops_entries_older_than_retention_window() {
+        let repo_root = temp_log_path("prune");
+        std::fs::create_dir_all(repo_root.join("logs")).unwrap();
+        let log_path = repo_root.join(LAUNCH_LOG_RELATIVE_PATH);
+        let old_ts = (chrono::Utc::now() - chrono::Duration::days(120)).to_rfc3339();
+        let fresh_ts = chrono::Utc::now().to_rfc3339();
+        std::fs::write(
+            &log_path,
+            format!(
+                "{}\n{}\n",
+                serde_json::to_string(&LaunchLogEntry {
+                    platform: "x".into(),
+                    timestamp: old_ts,
+                    user_id: "a".into(),
+                    stage: "draft".into(),
+                })
+                .unwrap(),
+                serde_json::to_string(&LaunchLogEntry {
+                    platform: "x".into(),
+                    timestamp: fresh_ts,
+                    user_id: "a".into(),
+                    stage: "draft".into(),
+                })
+                .unwrap(),
+            ),
+        )
+        .unwrap();
+
+        prune_launch_log(&log_path, LAUNCH_LOG_RETENTION_DAYS).unwrap();
+
+        let remaining = std::fs::read_to_string(&log_path).unwrap();
+        assert_eq!(remaining.lines().count(), 1, "stale entry should be pruned");
+
+        let _ = std::fs::remove_dir_all(&repo_root);
     }
 }
