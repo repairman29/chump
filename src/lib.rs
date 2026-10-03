@@ -10,3 +10,4 @@
 //! unchanged. Future slices move more modules here the same way.
 
 pub mod calc_tool;
+pub mod subcommand_registry;

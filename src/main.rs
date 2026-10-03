@@ -49,6 +49,10 @@ mod browser_tool;
 // (src/lib.rs); re-exported here so existing `crate::calc_tool::X` call
 // sites in this binary keep resolving unchanged.
 pub use chump::calc_tool;
+// INFRA-4667 (INFRA-1687 slice): subcommand_registry lives in the lib crate
+// (src/lib.rs); re-exported here so existing `crate::subcommand_registry::X`
+// call sites in this binary keep resolving unchanged.
+pub use chump::subcommand_registry;
 mod cancel_registry;
 mod cascade_stats;
 mod checkpoint_db;
