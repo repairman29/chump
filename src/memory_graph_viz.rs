@@ -33,6 +33,42 @@ pub struct GraphStats {
 struct JsonNode {
     id: String,
     degree: usize,
+    node_type: String,
+}
+
+/// Heuristic node-type classification for filtering in the brain-graph UI
+/// (INFRA-1558). The underlying `chump_memory_graph` table stores free-text
+/// subject/object entities, not a typed column, so type is inferred from the
+/// id's shape.
+fn infer_node_type(id: &str) -> &'static str {
+    let lower = id.to_lowercase();
+    if lower
+        .split(['-', '_'])
+        .next()
+        .map(|p| p.chars().all(|c| c.is_ascii_alphabetic()) && p.len() >= 3)
+        .unwrap_or(false)
+        && id.contains('-')
+        && id
+            .rsplit('-')
+            .next()
+            .map(|n| !n.is_empty() && n.chars().all(|c| c.is_ascii_digit()))
+            .unwrap_or(false)
+    {
+        return "gap";
+    }
+    if lower.starts_with("pr#") || lower.starts_with("pr-") || lower.starts_with("pr_") {
+        return "pr";
+    }
+    if lower.starts_with("agent:") || lower.starts_with("agent-") || lower.contains("curator") {
+        return "agent";
+    }
+    if lower.starts_with("lesson:") || lower.starts_with("lesson-") {
+        return "lesson";
+    }
+    if lower.starts_with("ambient:") || lower.contains("ambient_event") {
+        return "ambient_event";
+    }
+    "other"
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -159,7 +195,14 @@ fn build_json_graph(edges: &[Edge]) -> JsonGraph {
     let degrees = compute_degrees(edges);
     let mut nodes: Vec<JsonNode> = degrees
         .into_iter()
-        .map(|(id, degree)| JsonNode { id, degree })
+        .map(|(id, degree)| {
+            let node_type = infer_node_type(&id).to_string();
+            JsonNode {
+                id,
+                degree,
+                node_type,
+            }
+        })
         .collect();
     nodes.sort_by(|a, b| b.degree.cmp(&a.degree).then_with(|| a.id.cmp(&b.id)));
 
@@ -261,6 +304,42 @@ fn bfs_subgraph_nodes(edges: &[Edge], seeds: &[String], max_hops: usize) -> Hash
         }
     }
     visited
+}
+
+/// Full record for a single node (INFRA-1558 `/api/brain/node/{id}`): id,
+/// inferred type, degree, and the list of edges touching it (direction +
+/// relation + the other endpoint).
+pub fn node_record(id: &str) -> Result<Option<serde_json::Value>> {
+    let edges = load_all_edges()?;
+    let touching: Vec<&Edge> = edges
+        .iter()
+        .filter(|e| e.subject == id || e.object == id)
+        .collect();
+    if touching.is_empty() {
+        return Ok(None);
+    }
+    let neighbors: Vec<serde_json::Value> = touching
+        .iter()
+        .map(|e| {
+            let (direction, other) = if e.subject == id {
+                ("outgoing", &e.object)
+            } else {
+                ("incoming", &e.subject)
+            };
+            serde_json::json!({
+                "id": other,
+                "relation": e.relation,
+                "direction": direction,
+                "weight": e.weight,
+            })
+        })
+        .collect();
+    Ok(Some(serde_json::json!({
+        "id": id,
+        "node_type": infer_node_type(id),
+        "degree": touching.len(),
+        "neighbors": neighbors,
+    })))
 }
 
 /// Export the connected subgraph reachable from `seed_entities` within `max_hops`

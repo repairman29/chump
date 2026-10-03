@@ -1,0 +1,69 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Chump — Brain Graph</title>
+  <style>
+    /* ── Design tokens (mirrors web/v2/index.html canonical set, INFRA-1590) */
+    :root {
+      --bg:            #0a0a0a;
+      --bg-surface:    #141414;
+      --bg-elevated:   #1e1e1e;
+      --text:          #f0f0f0;
+      --muted:         #8a8a8e;
+      --accent:        #0a84ff;
+      --accent-dim:    rgba(10, 132, 255, 0.15);
+      --border:        rgba(255,255,255,0.08);
+      --success:       #30d158;
+      --warn:          #ff9f0a;
+      --error:         #ff453a;
+      --radius:        10px;
+      --radius-sm:     6px;
+      /* INFRA-1558: edge-relation palette, read at runtime via getComputedStyle
+         so brain.js never embeds raw hex literals (CSS token discipline). */
+      --edge-blocks:         #ff453a;
+      --edge-references:     #0a84ff;
+      --edge-ships:          #30d158;
+      --edge-applies_lesson: #ff9f0a;
+      --edge-claims:         #bf5af2;
+      --edge-default:        #8a8a8e;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #brain-app { display: flex; flex-direction: column; height: 100vh; }
+    #brain-header { display: flex; align-items: center; gap: 12px; padding: 10px 14px;
+      background: var(--bg-surface); border-bottom: 1px solid var(--border); flex-wrap: wrap; }
+    #brain-header h1 { font-size: 15px; margin: 0 12px 0 0; }
+    .brain-filter { display: flex; align-items: center; gap: 4px; font-size: 13px;
+      color: var(--muted); }
+    #brain-body { flex: 1; display: flex; min-height: 0; }
+    #cy-container { flex: 1; min-width: 0; background: var(--bg); }
+    #brain-detail { width: 320px; border-left: 1px solid var(--border);
+      background: var(--bg-surface); padding: 14px; overflow-y: auto; font-size: 13px; }
+    #brain-detail.hidden { display: none; }
+    #brain-detail h2 { font-size: 14px; margin: 0 0 8px; word-break: break-all; }
+    #brain-detail .neighbor { padding: 6px 0; border-bottom: 1px solid var(--border); }
+    .legend-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px;
+      margin-right: 4px; vertical-align: middle; }
+  </style>
+</head>
+<body>
+  <div id="brain-app">
+    <header id="brain-header">
+      <h1>Brain Graph</h1>
+      <div id="brain-filters"></div>
+      <span id="brain-status" class="brain-filter"></span>
+    </header>
+    <div id="brain-body">
+      <div id="cy-container"></div>
+      <aside id="brain-detail" class="hidden"></aside>
+    </div>
+  </div>
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+  <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+  <script src="brain.js"></script>
+</body>
+</html>

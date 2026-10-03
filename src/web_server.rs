@@ -4377,6 +4377,129 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /api/brain/node/{id} — full record (type, degree, neighbors) for one
+/// brain-graph node. Backs the right-pane detail view in the Cytoscape
+/// renderer (INFRA-1558 AC3).
+async fn handle_brain_node(
+    headers: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<serde_json::Value>, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let record =
+        crate::memory_graph_viz::node_record(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    record.map(Json).ok_or(StatusCode::NOT_FOUND)
+}
+
+/// GET /api/brain/graph/stream — SSE feed of incremental node/edge add/remove
+/// events (INFRA-1558 AC5). Polls the graph on an interval and diffs against
+/// the previous snapshot rather than pushing a full reload each time.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        let mut prev_nodes: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let mut prev_edges: std::collections::HashSet<(String, String, String)> =
+            std::collections::HashSet::new();
+        loop {
+            if let Ok(body) = crate::memory_graph_viz::export_graph_json() {
+                if let Ok(v) = serde_json::from_str::<serde_json::Value>(&body) {
+                    let cur_nodes: std::collections::HashSet<String> = v["nodes"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|n| n["id"].as_str().map(|s| s.to_string()))
+                                .collect()
+                        })
+                        .unwrap_or_default();
+                    let cur_edges: std::collections::HashSet<(String, String, String)> = v["edges"]
+                        .as_array()
+                        .map(|a| {
+                            a.iter()
+                                .filter_map(|e| {
+                                    Some((
+                                        e["source"].as_str()?.to_string(),
+                                        e["target"].as_str()?.to_string(),
+                                        e["relation"].as_str()?.to_string(),
+                                    ))
+                                })
+                                .collect()
+                        })
+                        .unwrap_or_default();
+
+                    for added in cur_nodes.difference(&prev_nodes) {
+                        let data = serde_json::json!({ "id": added }).to_string();
+                        if tx
+                            .send(Ok(Event::default().event("node_added").data(data)))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    for removed in prev_nodes.difference(&cur_nodes) {
+                        let data = serde_json::json!({ "id": removed }).to_string();
+                        if tx
+                            .send(Ok(Event::default().event("node_removed").data(data)))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    for added in cur_edges.difference(&prev_edges) {
+                        let data = serde_json::json!({
+                            "source": added.0, "target": added.1, "relation": added.2,
+                        })
+                        .to_string();
+                        if tx
+                            .send(Ok(Event::default().event("edge_added").data(data)))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    for removed in prev_edges.difference(&cur_edges) {
+                        let data = serde_json::json!({
+                            "source": removed.0, "target": removed.1, "relation": removed.2,
+                        })
+                        .to_string();
+                        if tx
+                            .send(Ok(Event::default().event("edge_removed").data(data)))
+                            .is_err()
+                        {
+                            return;
+                        }
+                    }
+                    prev_nodes = cur_nodes;
+                    prev_edges = cur_edges;
+                }
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
+/// GET /brain — Cytoscape.js brain-graph visualization shell (INFRA-1558).
+/// Static HTML embedded at compile time; the page's own JS (web/v2/brain.js)
+/// fetches /api/brain/graph.json and drives the live SSE stream.
+async fn handle_brain_page() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../web/v2/brain.html"))
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9601,6 +9724,8 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
@@ -9939,6 +10064,10 @@ pub async fn start_web_server(port: u16) -> Result<()> {
     let app = Router::new()
         .merge(api)
         .route("/", get(|| async { Redirect::permanent("/v2/") }))
+        // INFRA-1558: brain graph visualization shell. Served unauthenticated
+        // (same as the v2 PWA shell above) — the JS calls /api/brain/* which
+        // enforces check_auth itself.
+        .route("/brain", get(handle_brain_page))
         .fallback_service(ServeDir::new(&static_dir).append_index_html_on_directories(true))
         .layer(cors);
 
