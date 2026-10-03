@@ -465,3 +465,11 @@ Materialise the pattern file (runner home, mode 0600)       # reason: publish-gu
 Scan diff, commit messages and identities (counts only)     # reason: publish-guard.yml report-only scan of the PR range; same engine runs locally in the git hooks, and it can never fail
 Scan PR title and body (counts only)                        # reason: publish-guard.yml report-only scan of PR text from the event payload; locally bot-merge makes the same call
 Remove the pattern file                                     # reason: publish-guard.yml runner cleanup; GitHub Actions only
+# INFRA-5432: preflight-parity nightly job in ci-nightly.yml. These two
+# steps BUILD and RUN scripts/ci/test-preflight-parity.sh, which itself
+# wraps test-preflight-ci-parity.sh (the parity checker this exceptions
+# file belongs to) — mirroring it inside preflight.rs would mean preflight
+# running itself recursively. The underlying parity logic is already the
+# thing being mirrored/allowlisted/Tier-D'd everywhere else in this file.
+Build chump binary                                           # reason: INFRA-5432 — cargo build step for the nightly preflight-parity job, no assertable gate
+Local-vs-CI preflight parity smoke                            # reason: INFRA-5432 — this step IS test-preflight-parity.sh/test-preflight-ci-parity.sh; self-referential, cannot mirror itself
