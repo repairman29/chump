@@ -1,0 +1,6 @@
+# INFRA-8042: profile for the pre-push test gate (scripts/git-hooks/pre-push).
+# CI runs nextest's built-in default profile; this file only adds `prepush`.
+[profile.prepush]
+# A test still running after 4 x 60s is killed and reported as a timeout, so
+# one hung test fails the gate by name instead of stalling the whole push.
+slow-timeout = { period = "60s", terminate-after = 4 }

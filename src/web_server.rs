@@ -11173,13 +11173,28 @@ mod api_battle_tests {
         let sock_path = chump_dir.join("chumpd.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap();
+        // INFRA-8042: bound the fake daemon's wait. A blocking accept() hung
+        // forever (and, via #[serial], every other serial test behind it)
+        // whenever repo_root() never dialled the socket.
+        listener.set_nonblocking(true).unwrap();
         let db_path_reply = db_path.display().to_string();
         let server = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
-                let resp = serde_json::json!({ "db_path": db_path_reply });
-                let _ = stream.write_all(resp.to_string().as_bytes());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
+                        let mut buf = [0u8; 1024];
+                        let _ = stream.read(&mut buf);
+                        let resp = serde_json::json!({ "db_path": db_path_reply });
+                        let _ = stream.write_all(resp.to_string().as_bytes());
+                        return;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(_) => return,
+                }
             }
         });
 
@@ -11191,6 +11206,10 @@ mod api_battle_tests {
         // try_chumpd_db_path() falls back to $HOME when CHUMP_REPO/CHUMP_HOME
         // are unset — point it at our fake daemon's directory.
         std::env::set_var("HOME", daemon_root.path());
+        // INFRA-8042: an earlier test in this process may already have cached
+        // a chumpd answer; start from a clean cache so this call really
+        // queries the fake daemon.
+        crate::repo_path::reset_chumpd_cache_for_test();
 
         let first = crate::repo_path::repo_root();
         server.join().unwrap();
@@ -11222,6 +11241,8 @@ mod api_battle_tests {
             Some(v) => std::env::set_var("HOME", v),
             None => std::env::remove_var("HOME"),
         }
+        // Don't leave this test's (now deleted) daemon root cached for later tests.
+        crate::repo_path::reset_chumpd_cache_for_test();
     }
 }
 
