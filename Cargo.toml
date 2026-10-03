@@ -52,6 +52,7 @@ members = [
     "crates/chump-storage",
     "crates/chump-comprehension-organ",
     "crates/chump-idea-drop",
+    "crates/chump-subcommand-registry",
     "workspace-hack",
 ]
 resolver = "2"
