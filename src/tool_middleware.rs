@@ -558,6 +558,96 @@ fn target_paths_for_tool(name: &str, input: &Value) -> Vec<String> {
     }
 }
 
+// ── Portfolio sweep gate (EFFECTIVE-1408) ────────────────────────────
+//
+// `gh_portfolio_sweep`-shaped tool calls fan out across many repos. Gate
+// targets against the owned-repo allowlist (`CHUMP_GITHUB_REPOS`, same env
+// var `chump-mcp-github::check_repo` reads) here too — structural
+// belt-and-suspenders in front of the MCP server's own check — and reorder
+// survivors so 4-star+ opportunity-library leverage-tier repos sweep first.
+
+/// Repos at or above this star count are the "opportunity-library" leverage
+/// tier and sweep before everything else.
+const LEVERAGE_TIER_STAR_THRESHOLD: u64 = 4;
+
+#[derive(Debug, Clone, serde::Deserialize, serde::Serialize, PartialEq)]
+struct SweepTarget {
+    repo: String,
+    #[serde(default)]
+    stars: u64,
+}
+
+fn owned_repo_allowlist() -> Vec<String> {
+    std::env::var("CHUMP_GITHUB_REPOS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn is_owned_repo(repo: &str) -> bool {
+    let allowed = owned_repo_allowlist();
+    allowed.is_empty() || allowed.iter().any(|r| r == repo)
+}
+
+/// Drops targets outside the owned allowlist (logging a `NO-GO` for each)
+/// and sorts survivors so 4-star+ leverage-tier repos sweep first.
+fn filter_and_rank_sweep_targets(targets: Vec<SweepTarget>) -> (Vec<SweepTarget>, Vec<String>) {
+    let mut allowed = Vec::new();
+    let mut rejected = Vec::new();
+    for target in targets {
+        if is_owned_repo(&target.repo) {
+            allowed.push(target);
+        } else {
+            tracing::error!(
+                repo = %target.repo,
+                "NO-GO: portfolio sweep target outside owned allowlist"
+            );
+            rejected.push(target.repo);
+        }
+    }
+    allowed.sort_by(|a, b| {
+        let tier_a = a.stars >= LEVERAGE_TIER_STAR_THRESHOLD;
+        let tier_b = b.stars >= LEVERAGE_TIER_STAR_THRESHOLD;
+        tier_b.cmp(&tier_a).then(b.stars.cmp(&a.stars))
+    });
+    (allowed, rejected)
+}
+
+/// Gate + reorder a `gh_portfolio_sweep`-shaped tool input: `{ "targets":
+/// [{"repo": .., "stars": ..}, ...] }`. Non-sweep-shaped input (missing or
+/// malformed `targets`) passes through untouched — the inner tool surfaces
+/// its own validation error. Errors only when every target was rejected;
+/// a partial allowlist hit proceeds, scoped down to the owned survivors.
+fn gate_portfolio_sweep_input(name: &str, mut input: Value) -> Result<Value> {
+    let Some(targets_val) = input.get("targets").cloned() else {
+        return Ok(input);
+    };
+    let targets: Vec<SweepTarget> = match serde_json::from_value(targets_val) {
+        Ok(t) => t,
+        Err(_) => return Ok(input),
+    };
+    let (allowed, rejected) = filter_and_rank_sweep_targets(targets);
+    if allowed.is_empty() && !rejected.is_empty() {
+        return Err(anyhow!(
+            "NO-GO: all portfolio sweep targets for '{}' are outside the owned allowlist: {}",
+            name,
+            rejected.join(", ")
+        ));
+    }
+    if let Some(obj) = input.as_object_mut() {
+        obj.insert(
+            "targets".to_string(),
+            serde_json::to_value(&allowed).unwrap_or_default(),
+        );
+        if !rejected.is_empty() {
+            obj.insert("rejected_targets".to_string(), json!(rejected));
+        }
+    }
+    Ok(input)
+}
+
 /// Returns `Some((path, holder_session))` when this write would conflict with
 /// another session's lease. None when the call is free to proceed.
 fn check_lease_conflict(name: &str, input: &Value) -> Option<(String, String)> {
@@ -1058,7 +1148,7 @@ impl Tool for ToolTimeoutWrapper {
     }
 
     #[tracing::instrument(skip(self, input), fields(tool = %self.inner.name()))]
-    async fn execute(&self, input: Value) -> Result<String> {
+    async fn execute(&self, mut input: Value) -> Result<String> {
         let name = self.inner.name();
         if circuit_open(&name) {
             return Err(anyhow!(
@@ -1081,6 +1171,13 @@ impl Tool for ToolTimeoutWrapper {
             };
         detect_ssrf(&input)?;
         enforce_tool_rate_limit(&name)?;
+
+        // EFFECTIVE-1408: gh_portfolio_sweep fans out across many repos —
+        // enforce the owned allowlist and leverage-tier ordering here,
+        // structurally, before the inner tool ever sees a foreign target.
+        if name == "gh_portfolio_sweep" {
+            input = gate_portfolio_sweep_input(&name, input)?;
+        }
 
         // CREDIBLE-174: review-class dispatch gate. PR-review-intelligence
         // agents (pr_triage / pr_explain / fix_clippy / ac_coverage /
@@ -1401,6 +1498,82 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::time::Instant;
+
+    #[test]
+    #[serial]
+    fn sweep_rejects_foreign_repo_as_no_go() {
+        let prev = std::env::var("CHUMP_GITHUB_REPOS").ok();
+        std::env::set_var("CHUMP_GITHUB_REPOS", "me/owned-one,me/owned-two");
+
+        let targets = vec![
+            SweepTarget {
+                repo: "me/owned-one".to_string(),
+                stars: 2,
+            },
+            SweepTarget {
+                repo: "stranger/foreign-repo".to_string(),
+                stars: 10,
+            },
+        ];
+        let (allowed, rejected) = filter_and_rank_sweep_targets(targets);
+        assert_eq!(allowed.len(), 1);
+        assert_eq!(allowed[0].repo, "me/owned-one");
+        assert_eq!(rejected, vec!["stranger/foreign-repo".to_string()]);
+
+        let input = json!({
+            "targets": [
+                {"repo": "me/owned-one", "stars": 2},
+                {"repo": "stranger/foreign-repo", "stars": 10},
+            ]
+        });
+        let gated = gate_portfolio_sweep_input("gh_portfolio_sweep", input)
+            .expect("partial allowlist hit should still proceed");
+        assert_eq!(gated["rejected_targets"], json!(["stranger/foreign-repo"]));
+
+        let all_foreign = json!({ "targets": [ {"repo": "stranger/foreign-repo", "stars": 10} ] });
+        let err = gate_portfolio_sweep_input("gh_portfolio_sweep", all_foreign)
+            .expect_err("all-foreign sweep should be a NO-GO");
+        assert!(err.to_string().contains("NO-GO"));
+
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_GITHUB_REPOS", v),
+            None => std::env::remove_var("CHUMP_GITHUB_REPOS"),
+        }
+    }
+
+    #[test]
+    #[serial]
+    fn sweep_prioritizes_four_star_plus_leverage_tier() {
+        let prev = std::env::var("CHUMP_GITHUB_REPOS").ok();
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+
+        let targets = vec![
+            SweepTarget {
+                repo: "me/low-star".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "me/high-star".to_string(),
+                stars: 9,
+            },
+            SweepTarget {
+                repo: "me/exactly-four".to_string(),
+                stars: 4,
+            },
+        ];
+        let (allowed, rejected) = filter_and_rank_sweep_targets(targets);
+        assert!(rejected.is_empty());
+        let order: Vec<&str> = allowed.iter().map(|t| t.repo.as_str()).collect();
+        assert_eq!(
+            order,
+            vec!["me/high-star", "me/exactly-four", "me/low-star"]
+        );
+
+        match prev {
+            Some(v) => std::env::set_var("CHUMP_GITHUB_REPOS", v),
+            None => std::env::remove_var("CHUMP_GITHUB_REPOS"),
+        }
+    }
 
     #[test]
     #[serial]
