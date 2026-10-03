@@ -11,6 +11,12 @@
     - "Gate 2 implemented: scripts/lib/halt-class-emit.sh wrapper exists; all halt-class emitters refactored to use it; CI gate refuses pushes that emit class=halt without going through wrapper"
     - "Gate 3 implemented: docs/observability/HALT_CLASS_PREDICATES.yaml lists each kind with required-pre-emit-checks; test-halt-class-predicates.sh asserts each emitter source-file references the documented checks"
     - "Test: re-run the 5 diagnosis-laziness failures from /tmp/diagnose-before-file-proposal.md — each one would now be blocked by exactly one gate"
+  notes: |
+    2026-06-05 addendum (CREDIBLE-117): the original 3-gate proposal is missing
+    Gate 4, a workaround-application audit. Gate 1 only covers gap filings; a
+    band-aid such as RUSTC_WRAPPER='' applied in a build/CI path (CREDIBLE-107
+    case, sccache verified healthy) bypasses all three gates. See
+    docs/process/DURABLE_FIX_DOCTRINE.md case study.
   closed_date: '2026-07-20'
   closed_pr: 3095
   outcome_id: MISSION-010
