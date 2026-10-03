@@ -368,6 +368,48 @@ The Cargo package and default binary are both **`chump`**; the release artifact 
 
 ---
 
+## 7a. XML-tool-tag-emitting models (INFRA-1565)
+
+**What it is:** Some local models — certain Ollama checkpoints, older Mistral
+fine-tunes — don't emit OpenAI-native `tool_calls`; instead they put the call
+inline in the text content as `<tool_call>{"name": "...", "arguments": {...}}</tool_call>`
+or `<function_call name="...">{...}</function_call>`. `crates/chump-xml-adapter`
+detects and extracts these into native `ToolCall` structs so the rest of the
+agent loop (tool dispatch, approval, result formatting) doesn't need to know
+the difference.
+
+**When you need this:** your model talks, tools never fire, and the response
+text visibly contains a `<tool_call>` or `<function_call>` block instead of a
+clean tool invocation.
+
+**Per-slot config flag:** `xml_tool_tags` — set via environment, same place
+every other per-slot setting lives (there is no `chump-config.toml`; slot
+config today is `CHUMP_PROVIDER_{N}_*` env vars, slot 0 is `OPENAI_*`):
+
+| Slot | Env var | Default |
+|------|---------|---------|
+| Slot 0 (`OPENAI_API_BASE`) | `OPENAI_XML_TOOL_TAGS=1` | `false` |
+| Cloud/cascade slot N | `CHUMP_PROVIDER_{N}_XML_TOOL_TAGS=1` | `false` |
+
+**Sample `.env` for an XML-tag-emitting Ollama model on slot 0:**
+
+```bash
+OPENAI_API_BASE=http://127.0.0.1:11434/v1
+OPENAI_API_KEY=ollama
+OPENAI_MODEL=some-xml-tool-call-model
+OPENAI_XML_TOOL_TAGS=1
+```
+
+**Behavior:** when the flag is set, `ProviderCascade::complete` runs the raw
+response text through `chump_xml_adapter::adapt` before the existing
+empty/malformed-tool-call quality gate runs — extracted calls are treated
+exactly like native ones (bandit reward, failover classification, etc. all
+see the same `CompletionResponse` shape). When the flag is unset (default),
+XML tags are left untouched in the response text — no behavior change for
+models that already emit native tool calls.
+
+---
+
 ## 8. Fleet seam: Provider trait abstraction boundary
 
 All in-process callers (CLI, Discord, PWA, agent loop) route inference requests through **`Arc<dyn Provider>`** — a trait-based abstraction that decouples the agent core from inference transport. Today, implementations are HTTP-based (Ollama, vLLM-MLX, SGLang) or in-process (mistral.rs). This trait forms the boundary for **multi-machine fleet inference**: **FLEET-014** (deferred to 2027) will replace the HTTP implementations with a **remote Provider** backed by gRPC/tonic, enabling load-balanced inference across a mesh of worker machines. The rest of the Chump codebase remains unchanged — the **Semaphore** (inference-request concurrency limiter in **`provider_cascade.rs`**) continues to gate completions, cost tracking, and cascading to cloud fallbacks the same way. This architecture lets a single-machine setup scale horizontally to a fleet without touching agent logic, tools, or routing. For now, deploy one of §1–6 per machine and point **`OPENAI_API_BASE`** at the appropriate server; once FLEET-014 lands, spin up inference-worker pods and the same Chump binary will distribute load automatically.
