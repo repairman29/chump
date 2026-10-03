@@ -32,6 +32,7 @@ pub mod inventory;
 pub mod reachability;
 pub mod registry;
 pub mod roadmap_from_vision;
+pub mod rules_audit;
 pub mod sibling_status;
 pub mod source_resolve;
 pub mod swe;

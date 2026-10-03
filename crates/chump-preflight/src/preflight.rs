@@ -2125,6 +2125,20 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // ZERO-WASTE-125 AC1/AC4: rule registry must stay in sync with
+        // on-disk gates, and the two root rulebook files must stay inside
+        // their hard line-count budget. Both are pure static checks, <1s.
+        steps.push(step(
+            "rules-registry-coverage",
+            &["bash", "scripts/ci/test-rules-registry-coverage.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "claude-md-budget",
+            &["bash", "scripts/ci/test-claude-md-budget.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1808: bootstrap-auto-install smoke. install-bootstrap-auto-
         // launchd.sh (the hourly self-install job for chump-fleet-bootstrap.sh)
         // must generate a valid plist and its runner must emit

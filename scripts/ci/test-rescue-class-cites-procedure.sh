@@ -27,10 +27,18 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/gate-emit.sh
 source "$SCRIPT_DIR/lib/gate-emit.sh" 2>/dev/null || true
 
-RESCUE_TITLE_PATTERN='fix\([^)]*rescue[^)]*\)|fix\([^)]*trunk-red[^)]*\)|unblock|fix\([^)]*allowlist[^)]*\)|filed-by-pr-shepherd'
+# ZERO-WASTE-125: "unblock" used to be a bare substring match against the
+# whole title, which fired on any PR whose title merely mentioned the word
+# (e.g. a gap-data-only PR titled "chore(gaps): file INFRA-NNN — unblock
+# downstream audit" — see PR #4888). "unblock" now only counts when the
+# title is itself a `fix(...)` commit, matching the posture of the other
+# alternatives (which all require the keyword inside a fix(...) scope).
+RESCUE_TITLE_PATTERN_SCOPED='fix\([^)]*(rescue|trunk-red|allowlist)[^)]*\)'
+RESCUE_TITLE_PATTERN_UNBLOCK='^fix\([^)]*\):.*unblock'
+RESCUE_TITLE_PATTERN_SHEPHERD='filed-by-pr-shepherd'
 
 is_rescue_class() {
-    echo "$1" | grep -qiE "$RESCUE_TITLE_PATTERN"
+    echo "$1" | grep -qiE "$RESCUE_TITLE_PATTERN_SCOPED|$RESCUE_TITLE_PATTERN_UNBLOCK|$RESCUE_TITLE_PATTERN_SHEPHERD"
 }
 
 # check_pr_body <title> <body> — echoes PASS/FAIL/SKIP, sets $? accordingly.
@@ -118,6 +126,19 @@ run_self_test() {
         ok "Scenario 5: filed-by-pr-shepherd + both citations → PASS"
     else
         bad "Scenario 5: expected PASS, got (rc=$rc): $out"
+    fi
+
+    # Scenario 6 (ZERO-WASTE-125 regression — PR #4888 class): a gap-data-only
+    # title that merely mentions "unblock" without being a fix(...) commit →
+    # SKIP, not FAIL. This was the false-positive this gate used to produce.
+    rc=0
+    out="$(check_citations 'chore(gaps): file INFRA-6001 — unblock downstream audit' \
+        'Files a follow-up gap. No code changes.' \
+        2>&1)" || rc=$?
+    if [[ $rc -eq 0 ]] && echo "$out" | grep -q '^SKIP'; then
+        ok "Scenario 6: gap-data-only title mentioning 'unblock' → SKIP (PR #4888 regression)"
+    else
+        bad "Scenario 6: expected SKIP, got (rc=$rc): $out"
     fi
 
     echo

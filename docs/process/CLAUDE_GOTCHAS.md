@@ -192,7 +192,7 @@ when no `--gap` was given, or when the chump binary doesn't support
 ## Hard rules
 
 - **Default to haiku for routine project work (INFRA-369, 2026-05-03).** `.claude/settings.json` pins `"model": "claude-haiku-4-5"` + `"effortLevel": "medium"` for this repo. Rationale: opus-4-7 high is ~50× haiku per token; one fleet session burned $92 of workspace credit + maxed the $20/mo subscription cap. For routine ship-a-gap work haiku is plenty. Override per-session via `/model` in the Claude Code app for genuinely hard tasks. Per-fleet override: `FLEET_MODEL=sonnet scripts/dispatch/run-fleet.sh` (INFRA-364).
-- **Never push directly to `main`.** Branch + worktree naming follow [AGENTS.md → Naming conventions](./AGENTS.md#naming-conventions-infra-186-2026-05-01) (canonical: `chump/<codename>` branch, `.chump/worktrees/<name>` worktree). Existing `claude/*` branches and `.claude/worktrees/` paths are accepted by tooling for backward compat — new work uses the `chump/` prefix so the project owns the namespace, not whichever tool is running this session.
+- **Never push directly to `main`.** Branch + worktree naming follow [`docs/process/NAMING_CONVENTIONS.md`](./NAMING_CONVENTIONS.md) (canonical: `chump/<codename>` branch, `.chump/worktrees/<name>` worktree). Existing `claude/*` branches and `.claude/worktrees/` paths are accepted by tooling for backward compat — new work uses the `chump/` prefix so the project owns the namespace, not whichever tool is running this session.
 - **Always work in a linked worktree, never in the main repo root.** `chump claim` refuses to run from the main repo root — use a linked worktree under `.chump/worktrees/<name>/` (canonical) or `.claude/worktrees/<name>/` (legacy, accepted). Override with `CHUMP_ALLOW_MAIN_WORKTREE=1` only for bootstrapping.
 - **Never start work on a gap without running `chump gap preflight <GAP-ID>` first.** It takes 3 seconds and prevents hours of wasted work.
 - **Never leave a lease file behind.** Delete `.chump-locks/<session_id>.json` or call `chump --release` when done.
@@ -483,12 +483,12 @@ the INFRA-275 syspolicyd binary wedge.
 
 1. **Every Agent-tool prompt MUST include the standard shipping
    epilogue.** Verbatim copy from
-   [`scripts/dispatch/subagent-shipping-epilogue.md`](scripts/dispatch/subagent-shipping-epilogue.md).
+   [`scripts/dispatch/subagent-shipping-epilogue.md`](../../scripts/dispatch/subagent-shipping-epilogue.md).
    The epilogue covers: bot-merge canonical path, `chump-binary-unwedge.sh`
    heal, manual `git push + gh pr create + gh pr merge` fall-back path,
    forbidden anti-patterns (silent YAML fallback, `--no-verify`),
    and the final-report format. Full context and anti-patterns are in
-   [`docs/process/SUBAGENT_DISPATCH.md`](docs/process/SUBAGENT_DISPATCH.md).
+   [`docs/process/SUBAGENT_DISPATCH.md`](./SUBAGENT_DISPATCH.md).
    The single subagent in this session that did self-ship was the one
    whose briefing included these explicit fall-back instructions.
 
@@ -499,7 +499,7 @@ the INFRA-275 syspolicyd binary wedge.
    `Agent` to check on an existing subagent** — you waste a slot and
    get a "fresh session, no context" response. (Mistake observed
    2026-05-02 in the very session that produced this rule.) See
-   [`docs/gaps/DOC-015.yaml`](docs/gaps/DOC-015.yaml).
+   DOC-015.
 
 When you write a subagent prompt: think of it as briefing a smart
 colleague who just walked into the room — they haven't seen the

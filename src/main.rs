@@ -2449,6 +2449,17 @@ async fn main() -> Result<()> {
         std::process::exit(commands::vote::run(&sub_args));
     }
 
+    // `chump rules audit [--window 30d] [--json]` (ZERO-WASTE-125 AC2) —
+    // reports fires/bypasses per registered rule (docs/process/RULE_REGISTRY.json)
+    // from ambient.jsonl over the trailing window, ranking zero-fire rules as
+    // delete candidates for the self-pruning rulebook loop.
+    if args.get(1).map(String::as_str) == Some("rules")
+        && args.get(2).map(String::as_str) == Some("audit")
+    {
+        let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+        std::process::exit(commands::rules_audit::run(&sub_args));
+    }
+
     // `chump consensus ask <question> --reason <text> [--id <id>] [--block]
     // [--timeout <secs>]` (INFRA-2156, META-125/C5) — publish a fleet
     // decision question onto the existing FEEDBACK kind=proposal channel
