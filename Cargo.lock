@@ -1833,6 +1833,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-launch-draft"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "rusqlite",
+ "tempfile",
+]
+
+[[package]]
 name = "chump-mcp-adb"
 version = "0.1.0"
 dependencies = [
