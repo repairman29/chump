@@ -257,12 +257,15 @@ if [[ "$NO_EMIT" != "1" && "$N" -gt 0 ]]; then
   EMIT="$DIR/../dev/ambient-emit.sh"
   TOP="$(printf '%s' "$RANKED" | jq -c '.[0]')"
   if [[ -x "$EMIT" ]]; then
+    # INFRA-3850: nba_ev/nba_p (not bare "ev"/"p") — namespaces the nba table's
+    # EV/P columns so a cross-kind ambient.jsonl scan can't conflate them with
+    # pr_book.ev or rating.p_win.
     CHUMP_AMBIENT_LOG="$AMBIENT" CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-fleet-dispatcher}" \
     "$EMIT" next_best_action \
       "action=$(printf '%s' "$TOP" | jq -r .action)" \
       "target=$(printf '%s' "$TOP" | jq -r .target)" \
-      "ev=$(printf '%s' "$TOP" | jq -r .expected_value)" \
-      "p=$(printf '%s' "$TOP" | jq -r .p_success)" \
+      "nba_ev=$(printf '%s' "$TOP" | jq -r .expected_value)" \
+      "nba_p=$(printf '%s' "$TOP" | jq -r .p_success)" \
       "who=$(printf '%s' "$TOP" | jq -r .who_should_do_it)" \
       "candidates=$N" "advisory=true" "pane_coverage_pct=$PANE_COVERAGE_PCT" 2>/dev/null || true
   fi
