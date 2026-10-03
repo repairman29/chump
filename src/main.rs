@@ -7480,6 +7480,20 @@ async fn main() -> Result<()> {
                         "⚠  ship-count unavailable (git log origin/main failed) — measurement failed, not a fleet-health verdict; re-run or check for a stale ref/index lock".to_string(),
                     );
                 }
+                // CREDIBLE-120: the brief must never say "healthy" while
+                // `chump health --slo-check` would exit non-zero.
+                let slo_breached = fleet_health::check_slos(&repo_root)
+                    .iter()
+                    .filter(|r| r.breached)
+                    .count();
+                if slo_breached > 0 {
+                    suggestions.insert(
+                        0,
+                        format!(
+                            "⚠ SLO BREACH: {slo_breached} breached — chump health --slo-check for detail"
+                        ),
+                    );
+                }
                 if suggestions.is_empty() {
                     suggestions.push("✓  No urgent actions — fleet looks healthy".to_string());
                 }

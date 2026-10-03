@@ -1333,6 +1333,18 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         },
     });
 
+    // CREDIBLE-120: test hook so CI can exercise the breach path without
+    // needing a genuinely breached fleet.
+    if std::env::var("CHUMP_FAKE_SLO_BREACH").as_deref() == Ok("1") {
+        results.push(SloResult {
+            id: "FAKE-SLO-1",
+            target: "synthetic",
+            current: "synthetic breach".to_string(),
+            breached: true,
+            detail: "CHUMP_FAKE_SLO_BREACH=1 (test fixture)".to_string(),
+        });
+    }
+
     results
 }
 
