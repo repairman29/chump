@@ -4377,6 +4377,63 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /api/brain/node/{id} — full record (degree + every touching edge) for
+/// one graph node. INFRA-1558: backs the brain-graph renderer's click-to-focus
+/// right pane.
+async fn handle_brain_node(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let body = crate::memory_graph_viz::export_node_record(&id)
+        .map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    Ok(([(header::CONTENT_TYPE, "application/json")], body).into_response())
+}
+
+/// GET /api/brain/graph/stream — SSE pushing a fresh graph snapshot every
+/// 10s. INFRA-1558: the client (web/v2/brain.js) diffs each snapshot against
+/// its current Cytoscape elements and applies add/remove incrementally
+/// rather than tearing down and rebuilding the whole graph.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        loop {
+            let data = crate::memory_graph_viz::export_graph_json().unwrap_or_default();
+            if tx
+                .send(Ok(Event::default().event("graph").data(data)))
+                .is_err()
+            {
+                break; // client disconnected
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
+/// GET /brain — the brain-graph visualization page (INFRA-1558). Served as a
+/// standalone static page rather than through the v2 SPA shell/router since
+/// Cytoscape owns its own canvas and doesn't need the chrome.
+async fn handle_brain_page() -> axum::response::Html<&'static str> {
+    axum::response::Html(include_str!("../web/v2/brain.html"))
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9601,6 +9658,9 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
+        .route("/brain", get(handle_brain_page))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),

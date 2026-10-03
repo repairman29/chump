@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Chump Brain Graph</title>
+  <script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+  <script src="https://unpkg.com/layout-base@2.0.1/layout-base.js"></script>
+  <script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+  <script src="https://unpkg.com/cytoscape-fcose@2.2.0/cytoscape-fcose.js"></script>
+  <style>
+    /* INFRA-1558 — one-time data-visualization palette for the brain graph.
+       Token-Discipline-Bypass: node/edge colors are a semantic legend (node
+       type, relation kind), not themeable UI chrome — see
+       docs/process/CSS_TOKEN_DISCIPLINE.md "Adding a new color" note on
+       one-time data-viz palettes. */
+    :root {
+      --bg:            #0a0a0a;
+      --bg-surface:    #141414;
+      --text:          #f0f0f0;
+      --text-secondary:#8a8a8e;
+      --border:        rgba(255,255,255,0.08);
+    }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+    #brain-shell { display: flex; height: 100vh; }
+    #cy-container { flex: 1 1 auto; height: 100%; }
+    #brain-sidebar { width: 280px; flex: 0 0 280px; border-left: 1px solid var(--border); background: var(--bg-surface); overflow-y: auto; padding: 12px; box-sizing: border-box; }
+    #brain-filters { position: absolute; top: 12px; left: 12px; background: var(--bg-surface); border: 1px solid var(--border); border-radius: 8px; padding: 10px 12px; font-size: 12px; z-index: 10; }
+    #brain-filters label { display: block; margin: 4px 0; cursor: pointer; }
+    #brain-status { position: absolute; bottom: 12px; left: 12px; font-size: 11px; color: var(--text-secondary); z-index: 10; }
+    #brain-sidebar h3 { font-size: 13px; margin: 0 0 8px; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.04em; }
+    #brain-detail-empty { color: var(--text-secondary); font-size: 13px; }
+    .brain-edge-row { font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--border); }
+    .brain-legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; }
+  </style>
+</head>
+<body>
+  <div id="brain-shell">
+    <div style="position: relative; flex: 1 1 auto;">
+      <div id="cy-container"></div>
+      <div id="brain-filters"></div>
+      <div id="brain-status">loading…</div>
+    </div>
+    <div id="brain-sidebar">
+      <h3>Node detail</h3>
+      <div id="brain-detail"><div id="brain-detail-empty">Click a node to focus its subgraph and see its full record here.</div></div>
+    </div>
+  </div>
+  <script src="brain.js"></script>
+</body>
+</html>

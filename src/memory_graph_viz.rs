@@ -186,6 +186,42 @@ pub fn export_graph_json() -> Result<String> {
     Ok(serde_json::to_string(&graph)?)
 }
 
+#[derive(Debug, Clone, Serialize)]
+struct NodeRecord {
+    id: String,
+    degree: usize,
+    edges: Vec<JsonEdge>,
+}
+
+/// Export the full record for a single node (INFRA-1558): its degree and
+/// every edge touching it, in either direction. Case-insensitive match on
+/// `id`. Unknown ids return a zero-degree, empty-edges record rather than
+/// an error — the caller (web_server) maps that to a plain 200, matching
+/// `export_graph_json`'s "empty graph is not an error" convention.
+pub fn export_node_record(id: &str) -> Result<String> {
+    let edges = load_all_edges()?;
+    let id_lower = id.to_lowercase();
+    let touching: Vec<&Edge> = edges
+        .iter()
+        .filter(|e| e.subject.to_lowercase() == id_lower || e.object.to_lowercase() == id_lower)
+        .collect();
+    let json_edges: Vec<JsonEdge> = touching
+        .iter()
+        .map(|e| JsonEdge {
+            source: e.subject.clone(),
+            target: e.object.clone(),
+            relation: e.relation.clone(),
+            weight: e.weight,
+        })
+        .collect();
+    let record = NodeRecord {
+        id: id.to_string(),
+        degree: json_edges.len(),
+        edges: json_edges,
+    };
+    Ok(serde_json::to_string(&record)?)
+}
+
 /// Escape a string for safe inclusion as a DOT node ID or label.
 fn dot_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -401,6 +437,29 @@ mod tests {
         let degrees = compute_degrees(&edges);
         let nodes: HashSet<String> = degrees.keys().cloned().collect();
         assert_eq!(count_components(&edges, &nodes), 2);
+    }
+
+    #[test]
+    fn node_record_json_shape() {
+        let edges = vec![
+            Edge {
+                subject: "alice".into(),
+                relation: "knows".into(),
+                object: "bob".into(),
+                weight: 1.0,
+            },
+            Edge {
+                subject: "carol".into(),
+                relation: "knows".into(),
+                object: "alice".into(),
+                weight: 1.0,
+            },
+        ];
+        let touching: Vec<&Edge> = edges
+            .iter()
+            .filter(|e| e.subject == "alice" || e.object == "alice")
+            .collect();
+        assert_eq!(touching.len(), 2);
     }
 
     #[test]
