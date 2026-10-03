@@ -1396,6 +1396,39 @@ pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sy
     Box::new(ToolTimeoutWrapper::new(with_preproc))
 }
 
+/// Minimum star count for a repository to count as a 4-star+ leverage-tier
+/// opportunity-library target during a portfolio sweep (EFFECTIVE-1408,
+/// mirrors `crates/mcp-servers/chump-mcp-github/src/main.rs`).
+pub const PORTFOLIO_SWEEP_LEVERAGE_TIER_MIN_STARS: u64 = 4;
+
+/// Reject a portfolio-sweep target that isn't in `allowlist`, logging a
+/// `NO-GO` reason string. Mirrors `check_repo` in the GitHub MCP server so
+/// the generic tool-call gate enforces the same owned-repo boundary
+/// independent of which path a sweep is driven through. An empty allowlist
+/// means "no restriction" (matches the MCP server's default-open behavior).
+pub fn check_owned_repo_for_sweep(repo: &str, allowlist: &[String]) -> Result<(), String> {
+    if allowlist.is_empty() || allowlist.iter().any(|r| r == repo) {
+        Ok(())
+    } else {
+        Err(format!(
+            "NO-GO: repo '{}' not in owned-repo allowlist",
+            repo
+        ))
+    }
+}
+
+/// Sort `(repo, stars)` portfolio sweep targets so 4-star+ leverage-tier
+/// repos sort before lower-tier repos, with ties broken by descending star
+/// count and relative input order preserved within a tier.
+pub fn sort_sweep_targets_by_leverage_tier(mut targets: Vec<(String, u64)>) -> Vec<(String, u64)> {
+    targets.sort_by(|a, b| {
+        let a_tier = a.1 >= PORTFOLIO_SWEEP_LEVERAGE_TIER_MIN_STARS;
+        let b_tier = b.1 >= PORTFOLIO_SWEEP_LEVERAGE_TIER_MIN_STARS;
+        b_tier.cmp(&a_tier).then(b.1.cmp(&a.1))
+    });
+    targets
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2295,5 +2328,31 @@ mod tests {
             "non-review dispatch must retain write access: {result:?}"
         );
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn portfolio_sweep_rejects_unowned_repo_with_nogo() {
+        let allowlist = vec!["owner/owned".to_string()];
+        assert!(check_owned_repo_for_sweep("owner/owned", &allowlist).is_ok());
+        let rejected = check_owned_repo_for_sweep("owner/foreign", &allowlist);
+        assert!(rejected.is_err());
+        assert!(rejected.unwrap_err().contains("NO-GO"));
+    }
+
+    #[test]
+    fn portfolio_sweep_empty_allowlist_permits_all() {
+        assert!(check_owned_repo_for_sweep("any/repo", &[]).is_ok());
+    }
+
+    #[test]
+    fn portfolio_sweep_prioritizes_four_star_plus_leverage_tier() {
+        let targets = vec![
+            ("owner/low".to_string(), 2),
+            ("owner/high".to_string(), 4),
+            ("owner/highest".to_string(), 9),
+        ];
+        let sorted = sort_sweep_targets_by_leverage_tier(targets);
+        let order: Vec<&str> = sorted.iter().map(|(r, _)| r.as_str()).collect();
+        assert_eq!(order, vec!["owner/highest", "owner/high", "owner/low"]);
     }
 }
