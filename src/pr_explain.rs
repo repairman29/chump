@@ -36,6 +36,17 @@ pub struct ExplainReport {
     pub overall: String, // local | sibling_blocked | fleet_wide | green
     pub rows: Vec<CheckRow>,
     pub summary: String,
+    /// INFRA-5430: cancelled checks attributable to a sibling check's
+    /// real failure in the same rollup — surfaced explicitly (name +
+    /// reason) so the cascade is visible without opening the workflow
+    /// run's raw logs.
+    pub cascade_cancels: Vec<CascadeCancelEntry>,
+}
+
+#[derive(Debug, Clone, Serialize, PartialEq, Eq)]
+pub struct CascadeCancelEntry {
+    pub name: String,
+    pub caused_by: Vec<String>,
 }
 
 /// Pluggable provider: for a given PR number, return its status-check
@@ -58,6 +69,19 @@ pub fn build_report(
 ) -> ExplainReport {
     let mut rows: Vec<CheckRow> = Vec::new();
     let mut worst_scope: Option<String> = None;
+
+    // INFRA-5430: a check that GH cancelled as a side-effect of a sibling
+    // check's real failure (GH Actions' concurrency/needs cascade) is not
+    // an independent bug. Collect the real failures up front so cancelled
+    // rows in the same rollup can cite the root cause by name instead of
+    // guessing ("likely cascade-cancel from a sibling shard failing").
+    let failing_names: Vec<String> = rollup
+        .iter()
+        .filter(|e| e.get("conclusion").and_then(|v| v.as_str()) == Some("FAILURE"))
+        .filter_map(|e| e.get("name").and_then(|v| v.as_str()).map(String::from))
+        .collect();
+
+    let mut cascade_cancels: Vec<CascadeCancelEntry> = Vec::new();
 
     for entry in &rollup {
         let name = entry
@@ -82,6 +106,31 @@ pub fn build_report(
         if conclusion.is_empty() && status == "COMPLETED" {
             continue; // unknown but completed; not a blocker
         }
+
+        // Cascade-cancel: this check was cancelled AND a sibling check in
+        // the same rollup actually failed — the cancellation is collateral,
+        // not a separate issue. Cite the real failure(s) by name and don't
+        // let it escalate `overall` beyond what the real failure already set.
+        if conclusion == "CANCELLED" && !failing_names.is_empty() {
+            let action = format!(
+                "cascade-cancelled — caused by failing check(s): {} — not a separate bug; fix the cause and re-run",
+                failing_names.join(", ")
+            );
+            cascade_cancels.push(CascadeCancelEntry {
+                name: name.clone(),
+                caused_by: failing_names.clone(),
+            });
+            rows.push(CheckRow {
+                name,
+                conclusion,
+                status,
+                scope: "cascade_cancelled".to_string(),
+                also_failing_prs: Vec::new(),
+                next_action: action,
+            });
+            continue;
+        }
+
         // Failure or in-progress — investigate cross-fleet.
         let others = fleet_failing(&name);
         let (scope, action) = classify_and_advise(&name, &conclusion, &status, pr_number, &others);
@@ -97,7 +146,7 @@ pub fn build_report(
     }
 
     let overall = worst_scope.unwrap_or_else(|| "green".to_string());
-    let summary = match overall.as_str() {
+    let mut summary = match overall.as_str() {
         "fleet_wide" => {
             "this PR is blocked by a fleet-wide failure — wait for the keystone fix or file P0"
                 .to_string()
@@ -106,12 +155,20 @@ pub fn build_report(
         "local" => "this PR has local failures — fix in worktree and push".to_string(),
         _ => "all checks green or in progress — no mechanical action needed".to_string(),
     };
+    if !cascade_cancels.is_empty() {
+        let names: Vec<&str> = cascade_cancels.iter().map(|c| c.name.as_str()).collect();
+        summary.push_str(&format!(
+            " (cascade-cancelled: {} — collateral, see cascade_cancels)",
+            names.join(", ")
+        ));
+    }
 
     ExplainReport {
         pr_number,
         overall,
         rows,
         summary,
+        cascade_cancels,
     }
 }
 
@@ -306,6 +363,16 @@ pub fn render_text(r: &ExplainReport) -> String {
         "=== chump pr explain-block #{} ===\n  overall: {}\n  summary: {}\n",
         r.pr_number, r.overall, r.summary
     ));
+    if !r.cascade_cancels.is_empty() {
+        s.push_str("\n  cascade-cancelled (collateral, not a separate bug):\n");
+        for c in &r.cascade_cancels {
+            s.push_str(&format!(
+                "    {} — caused by: {}\n",
+                c.name,
+                c.caused_by.join(", ")
+            ));
+        }
+    }
     if r.rows.is_empty() {
         s.push_str("\n  no blocking checks found.\n");
         return s;
@@ -429,5 +496,54 @@ mod tests {
         ];
         let r = build_report(123, rollup, &fixture_provider(m));
         assert_eq!(r.overall, "fleet_wide");
+    }
+
+    #[test]
+    fn cancelled_check_cites_real_failure_as_cascade_cancel() {
+        // INFRA-5430: fast-checks fails, cargo-test gets cancelled as a
+        // side-effect — must be surfaced as cascade-cancelled with the
+        // real failure named, not a generic "likely cascade-cancel" guess.
+        let rollup = vec![
+            json!({"name": "fast-checks", "conclusion": "FAILURE", "status": "COMPLETED"}),
+            json!({"name": "cargo-test", "conclusion": "CANCELLED", "status": "COMPLETED"}),
+        ];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+
+        assert_eq!(r.cascade_cancels.len(), 1);
+        assert_eq!(r.cascade_cancels[0].name, "cargo-test");
+        assert_eq!(
+            r.cascade_cancels[0].caused_by,
+            vec!["fast-checks".to_string()]
+        );
+
+        // The cascade-cancelled row must not escalate `overall` beyond the
+        // real failure's own scope.
+        assert_eq!(r.overall, "local");
+        assert!(r.summary.contains("cascade-cancelled"));
+
+        let cancelled_row = r
+            .rows
+            .iter()
+            .find(|row| row.name == "cargo-test")
+            .expect("cargo-test row present");
+        assert_eq!(cancelled_row.scope, "cascade_cancelled");
+        assert!(cancelled_row.next_action.contains("fast-checks"));
+
+        let out = render_text(&r);
+        assert!(out.contains("cascade-cancelled"));
+        assert!(out.contains("cargo-test"));
+        assert!(out.contains("fast-checks"));
+    }
+
+    #[test]
+    fn cancelled_check_without_real_failure_keeps_generic_hint() {
+        // No FAILURE in the rollup — e.g. workflow supersedure. Keep the
+        // existing heuristic hint rather than fabricating a cascade claim.
+        let rollup =
+            vec![json!({"name": "e2e-shard", "conclusion": "CANCELLED", "status": "COMPLETED"})];
+        let r = build_report(123, rollup, &fixture_provider(HashMap::new()));
+        assert!(r.cascade_cancels.is_empty());
+        assert_eq!(r.rows[0].scope, "local");
+        assert!(r.rows[0].next_action.contains("cascade-cancel"));
     }
 }
