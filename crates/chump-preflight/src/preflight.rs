@@ -41,6 +41,11 @@ struct Step {
     // its own crate (EFFECTIVE-400); was reachable-as-live inside the bin.
     #[allow(dead_code)]
     kind: GateKind,
+    /// EFFECTIVE-499: when true, `run_step` defers spawning this step's
+    /// command until the system load average drops below a configurable
+    /// threshold (see `defer_until_load_below`). Only set on the cargo-check
+    /// step today; every other gate runs immediately.
+    load_aware: bool,
 }
 
 /// Bucket each gate belongs to. `--scope` keeps only the buckets that match
@@ -61,6 +66,7 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
         name,
         argv: argv.iter().map(|s| s.to_string()).collect(),
         kind,
+        load_aware: false,
     }
 }
 
@@ -339,6 +345,20 @@ fn run_step(s: &Step) -> Outcome {
                 )),
             };
         }
+    }
+
+    // EFFECTIVE-499: defer the cargo-check spawn until load drops below
+    // threshold. CHUMP_PREFLIGHT_LOAD_DEFER_DISABLED=1 is the toggle tests
+    // (and anyone who'd rather race than wait) use to skip the wait loop.
+    if s.load_aware && std::env::var("CHUMP_PREFLIGHT_LOAD_DEFER_DISABLED").as_deref() != Ok("1") {
+        let cpus = available_cpus();
+        defer_until_load_below(
+            load_defer_threshold(cpus),
+            true,
+            std::time::Duration::from_secs(30),
+            std::time::Duration::from_secs(2),
+            &load_average_1m,
+        );
     }
 
     let mut cmd = Command::new(&s.argv[0]);
@@ -682,11 +702,15 @@ fn load_average_1m() -> f64 {
         .unwrap_or(0.0)
 }
 
-/// Build the blocking `cargo check` step, scoped to the changed crate(s)
-/// when scoping is safe, falling back to `--workspace` otherwise. Always
-/// applies the jobs cap + `nice` (see `compute_check_jobs`).
-fn cargo_check_step(repo_root: &std::path::Path, paths: &[String]) -> Step {
-    let jobs = compute_check_jobs(available_cpus(), load_average_1m());
+/// Build the `nice -n 10 cargo check ... -j <jobs>` argv, scoped to
+/// `crate_names` when given (falls back to `--workspace` when `None`).
+/// Factored out of `cargo_check_step` so `jobs` can be pinned to a fixed
+/// value in unit tests instead of depending on `available_cpus()` /
+/// `load_average_1m()` (host-dependent, not reproducible in CI).
+fn build_cargo_check_argv(
+    crate_names: Option<&[String]>,
+    jobs: usize,
+) -> (Vec<String>, &'static str) {
     let mut argv: Vec<String> = vec![
         "nice".to_string(),
         "-n".to_string(),
@@ -694,9 +718,9 @@ fn cargo_check_step(repo_root: &std::path::Path, paths: &[String]) -> Step {
         "cargo".to_string(),
         "check".to_string(),
     ];
-    let name: &'static str = match changed_crate_names(repo_root, paths) {
+    let name: &'static str = match crate_names {
         Some(names) if !names.is_empty() => {
-            for n in &names {
+            for n in names {
                 argv.push("-p".to_string());
                 argv.push(n.clone());
             }
@@ -712,12 +736,66 @@ fn cargo_check_step(repo_root: &std::path::Path, paths: &[String]) -> Step {
         }
     };
     argv.push("--all-targets".to_string());
-    argv.push("--jobs".to_string());
+    argv.push("-j".to_string());
     argv.push(jobs.to_string());
+    (argv, name)
+}
+
+/// EFFECTIVE-499: configurable load-average threshold the cargo-check
+/// load-aware defer waits for before spawning. Defaults to the CPU count
+/// (load >= cpus means the machine is already fully subscribed);
+/// overridable via `CHUMP_PREFLIGHT_LOAD_DEFER_THRESHOLD` for tuning.
+fn load_defer_threshold(cpus: usize) -> f64 {
+    std::env::var("CHUMP_PREFLIGHT_LOAD_DEFER_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(cpus as f64)
+}
+
+/// EFFECTIVE-499: blocks (polling `load_fn` every `poll_interval`) until the
+/// load average reported by `load_fn` drops below `threshold`, or
+/// `max_wait` elapses — whichever comes first. A no-op when `enabled` is
+/// false, which is how tests (and `CHUMP_PREFLIGHT_LOAD_DEFER_DISABLED=1`
+/// in `run_step`) avoid paying a real sleep for a condition that's already
+/// known not to apply.
+fn defer_until_load_below(
+    threshold: f64,
+    enabled: bool,
+    max_wait: std::time::Duration,
+    poll_interval: std::time::Duration,
+    load_fn: &dyn Fn() -> f64,
+) {
+    if !enabled {
+        return;
+    }
+    let started = std::time::Instant::now();
+    let mut load = load_fn();
+    while load >= threshold && started.elapsed() < max_wait {
+        eprintln!(
+            "[preflight] cargo check deferred: load {:.1} >= threshold {:.1}, waiting {}ms...",
+            load,
+            threshold,
+            poll_interval.as_millis()
+        );
+        std::thread::sleep(poll_interval);
+        load = load_fn();
+    }
+}
+
+/// Build the blocking `cargo check` step, scoped to the changed crate(s)
+/// when scoping is safe, falling back to `--workspace` otherwise. Always
+/// applies the jobs cap + `nice` (see `compute_check_jobs`). The resulting
+/// `Step` is marked `load_aware` so `run_step` defers its execution until
+/// load drops below threshold (see `defer_until_load_below`).
+fn cargo_check_step(repo_root: &std::path::Path, paths: &[String]) -> Step {
+    let jobs = compute_check_jobs(available_cpus(), load_average_1m());
+    let crate_names = changed_crate_names(repo_root, paths);
+    let (argv, name) = build_cargo_check_argv(crate_names.as_deref(), jobs);
     Step {
         name,
         argv,
         kind: GateKind::Rust,
+        load_aware: true,
     }
 }
 
@@ -2582,6 +2660,7 @@ pub fn run(argv: &[String]) -> i32 {
                 name,
                 argv: vec!["bash".to_string(), path],
                 kind: GateKind::Scripts,
+                load_aware: false,
             });
         }
     }
@@ -2615,6 +2694,7 @@ pub fn run(argv: &[String]) -> i32 {
                 name,
                 argv: vec!["bash".to_string(), path],
                 kind: GateKind::Scripts,
+                load_aware: false,
             });
             added += 1;
         }
@@ -4189,5 +4269,144 @@ mod tests {
             "unscoped fallback must run --workspace, argv={:?}",
             step.argv
         );
+    }
+
+    #[test]
+    fn cargo_check_step_is_load_aware() {
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let step = cargo_check_step(root, &["Cargo.lock".to_string()]);
+        assert!(
+            step.load_aware,
+            "cargo-check step must defer on load, step={:?}",
+            step
+        );
+    }
+
+    #[test]
+    fn build_cargo_check_argv_includes_nice_and_jobs_cap() {
+        // EFFECTIVE-499 AC#1/#3: pinned jobs=6 (not host-dependent
+        // available_cpus()/load_average_1m()) so this assertion is
+        // reproducible on any machine/CI runner.
+        let (argv, _name) = build_cargo_check_argv(None, 6);
+        assert!(
+            argv.iter().any(|a| a == "nice"),
+            "argv must invoke nice, argv={:?}",
+            argv
+        );
+        let j_pos = argv.iter().position(|a| a == "-j");
+        assert!(j_pos.is_some(), "argv must pass -j <jobs>, argv={:?}", argv);
+        assert_eq!(
+            argv[j_pos.unwrap() + 1],
+            "6",
+            "argv must cap jobs at 6, argv={:?}",
+            argv
+        );
+    }
+
+    #[test]
+    fn build_cargo_check_argv_scopes_to_crate_with_p_flag() {
+        let names = vec!["chump-foo".to_string()];
+        let (argv, name) = build_cargo_check_argv(Some(&names), 6);
+        assert!(argv.iter().any(|a| a == "-p"));
+        assert!(argv.contains(&"chump-foo".to_string()));
+        assert_eq!(name, "cargo check (scoped)");
+    }
+
+    #[test]
+    fn load_defer_threshold_defaults_to_cpu_count() {
+        std::env::remove_var("CHUMP_PREFLIGHT_LOAD_DEFER_THRESHOLD");
+        assert_eq!(load_defer_threshold(4), 4.0);
+    }
+
+    #[test]
+    fn load_defer_threshold_honors_override() {
+        std::env::set_var("CHUMP_PREFLIGHT_LOAD_DEFER_THRESHOLD", "2.5");
+        assert_eq!(load_defer_threshold(4), 2.5);
+        std::env::remove_var("CHUMP_PREFLIGHT_LOAD_DEFER_THRESHOLD");
+    }
+
+    #[test]
+    fn defer_until_load_below_noop_when_disabled() {
+        // EFFECTIVE-499 AC#3: the toggle tests use to skip the real wait —
+        // load_fn must never even be polled when enabled=false.
+        let polls = std::cell::Cell::new(0u32);
+        let load_fn = || {
+            polls.set(polls.get() + 1);
+            999.0
+        };
+        defer_until_load_below(
+            1.0,
+            false,
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_millis(1),
+            &load_fn,
+        );
+        assert_eq!(polls.get(), 0, "disabled defer must not poll load at all");
+    }
+
+    #[test]
+    fn defer_until_load_below_returns_immediately_when_already_below_threshold() {
+        let polls = std::cell::Cell::new(0u32);
+        let load_fn = || {
+            polls.set(polls.get() + 1);
+            0.1
+        };
+        let started = std::time::Instant::now();
+        defer_until_load_below(
+            1.0,
+            true,
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_millis(50),
+            &load_fn,
+        );
+        assert_eq!(
+            polls.get(),
+            1,
+            "should poll once, see below-threshold, and return"
+        );
+        assert!(started.elapsed() < std::time::Duration::from_millis(50));
+    }
+
+    #[test]
+    fn defer_until_load_below_waits_then_proceeds_once_load_drops() {
+        // Load starts at 9.0 (busy), drops to 0.5 (idle) on the 2nd poll.
+        let call = std::cell::Cell::new(0u32);
+        let load_fn = || {
+            let n = call.get();
+            call.set(n + 1);
+            if n == 0 {
+                9.0
+            } else {
+                0.5
+            }
+        };
+        defer_until_load_below(
+            1.0,
+            true,
+            std::time::Duration::from_secs(5),
+            std::time::Duration::from_millis(1),
+            &load_fn,
+        );
+        assert!(
+            call.get() >= 2,
+            "must re-poll after the first above-threshold read"
+        );
+    }
+
+    #[test]
+    fn defer_until_load_below_gives_up_after_max_wait() {
+        // Load never drops -> the loop must bail once max_wait elapses
+        // rather than hanging forever.
+        let load_fn = || 999.0;
+        let started = std::time::Instant::now();
+        defer_until_load_below(
+            1.0,
+            true,
+            std::time::Duration::from_millis(20),
+            std::time::Duration::from_millis(5),
+            &load_fn,
+        );
+        assert!(started.elapsed() < std::time::Duration::from_secs(1));
     }
 }
