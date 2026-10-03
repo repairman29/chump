@@ -371,3 +371,62 @@ The Cargo package and default binary are both **`chump`**; the release artifact 
 ## 8. Fleet seam: Provider trait abstraction boundary
 
 All in-process callers (CLI, Discord, PWA, agent loop) route inference requests through **`Arc<dyn Provider>`** — a trait-based abstraction that decouples the agent core from inference transport. Today, implementations are HTTP-based (Ollama, vLLM-MLX, SGLang) or in-process (mistral.rs). This trait forms the boundary for **multi-machine fleet inference**: **FLEET-014** (deferred to 2027) will replace the HTTP implementations with a **remote Provider** backed by gRPC/tonic, enabling load-balanced inference across a mesh of worker machines. The rest of the Chump codebase remains unchanged — the **Semaphore** (inference-request concurrency limiter in **`provider_cascade.rs`**) continues to gate completions, cost tracking, and cascading to cloud fallbacks the same way. This architecture lets a single-machine setup scale horizontally to a fleet without touching agent logic, tools, or routing. For now, deploy one of §1–6 per machine and point **`OPENAI_API_BASE`** at the appropriate server; once FLEET-014 lands, spin up inference-worker pods and the same Chump binary will distribute load automatically.
+
+---
+
+## 9. XML tool-tag-emitting models (INFRA-1565)
+
+Some models — certain local Ollama checkpoints, older Mistral models, and other
+non-native-tool-call models — don't emit a native OpenAI `tool_calls` array.
+Instead they write the tool call inline in the text response as XML, e.g.:
+
+```
+<tool_call>{"name": "read_file", "arguments": {"path": "src/main.rs"}}</tool_call>
+```
+
+or the attribute-tagged variant:
+
+```
+<function_call name="bash">{"cmd": "ls -la"}</function_call>
+```
+
+Left alone, the cascade treats this as plain text — no tool is invoked and the
+XML tag leaks into the user-visible response. **`crates/chump-xml-adapter`**
+extracts these tags and converts them into the same native `ToolCall` shape a
+tool-calling-capable model would have produced, so the rest of the agent loop
+(tool dispatch, cost tracking, bandit reward) is unaffected.
+
+**Config — per provider slot, opt-in, default off:**
+
+| Slot | Env var |
+|---|---|
+| Slot 0 (local, `OPENAI_API_BASE`) | `CHUMP_LOCAL_XML_TOOL_TAGS=1` |
+| Cloud slot N (`CHUMP_PROVIDER_{N}_*`) | `CHUMP_PROVIDER_{N}_XML_TOOL_TAGS=1` |
+
+Only set this for a slot whose model is known to emit XML tool tags instead of
+native function calling — turning it on for a model that already does native
+tool calls is a no-op (extraction only runs when the response has no native
+`tool_calls` already).
+
+**Sample `.env` for a local Ollama model that emits XML tool calls:**
+
+```bash
+OPENAI_API_BASE=http://127.0.0.1:11434/v1
+OPENAI_API_KEY=not-needed
+OPENAI_MODEL=mistral:7b-instruct
+CHUMP_LOCAL_XML_TOOL_TAGS=1
+```
+
+**Sample for a cloud cascade slot:**
+
+```bash
+CHUMP_PROVIDER_3_ENABLED=1
+CHUMP_PROVIDER_3_BASE=https://api.example.com/v1
+CHUMP_PROVIDER_3_MODEL=some-xml-tool-call-model
+CHUMP_PROVIDER_3_XML_TOOL_TAGS=1
+```
+
+Extraction happens in `src/provider_cascade.rs` immediately after a slot's
+response comes back and before the empty/malformed-response quality gate
+runs — so a successfully-extracted tool call counts as a normal success for
+bandit/quality-tracking purposes, exactly like a native tool call would.

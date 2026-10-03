@@ -282,4 +282,36 @@ mod tests {
         assert_eq!(deserialized.input["key"], "value");
         assert_eq!(tc, deserialized);
     }
+
+    /// 9. INFRA-1565: synthetic LLM response mixing an XML-tagged tool call
+    /// with untagged plain text (both before and after the tag), covering
+    /// both tag styles in one response. Asserts the OpenAI-format ToolCall
+    /// fields convert correctly and the untagged text survives untouched.
+    #[test]
+    fn test_mixed_xml_tagged_and_untagged_content() {
+        let raw = concat!(
+            "Let me check that file for you.\n",
+            r#"<tool_call>{"name":"read_file","arguments":{"path":"src/lib.rs"}}</tool_call>"#,
+            "\nI'll also run a command:\n",
+            r#"<function_call name="bash">{"cmd":"cargo test"}</function_call>"#,
+            "\nThat should cover it.",
+        );
+        let out = adapt(raw);
+        assert_eq!(out.tool_calls.len(), 2);
+
+        let read_call = &out.tool_calls[0];
+        assert_eq!(read_call.name, "read_file");
+        assert_eq!(read_call.input["path"], "src/lib.rs");
+
+        let bash_call = &out.tool_calls[1];
+        assert_eq!(bash_call.name, "bash");
+        assert_eq!(bash_call.input["cmd"], "cargo test");
+
+        // Untagged text on both sides of the extracted blocks is preserved.
+        assert!(out.text.contains("Let me check that file for you."));
+        assert!(out.text.contains("I'll also run a command:"));
+        assert!(out.text.contains("That should cover it."));
+        assert!(!out.text.contains("<tool_call>"));
+        assert!(!out.text.contains("<function_call"));
+    }
 }
