@@ -2635,6 +2635,7 @@ pub fn overlap_outcome(
 /// INFRA-3765: emit a structured ambient event when an advisory-mode claim
 /// proceeds despite a detected path overlap, so the fleet can audit how
 /// often advisory mode is masking real collisions.
+// scanner-anchor: "kind":"claim_overlap_advisory"
 fn emit_claim_overlap_advisory_event(
     ambient_path: &Path,
     gap_id: &str,
