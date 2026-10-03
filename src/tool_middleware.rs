@@ -574,6 +574,76 @@ fn check_lease_conflict(name: &str, input: &Value) -> Option<(String, String)> {
     None
 }
 
+// ── Owned-repo portfolio sweep gate (EFFECTIVE-1408) ────────────────────
+//
+// Mirrors `check_repo`/`filter_and_prioritize_sweep_targets` in
+// `crates/mcp-servers/chump-mcp-github/src/main.rs` at the middleware
+// layer: a defense-in-depth check so a `gh_portfolio_sweep` call never
+// reaches the MCP server (and therefore never issues a network request)
+// with a target outside the owned-repo allowlist. Same `CHUMP_GITHUB_REPOS`
+// convention: empty/unset allowlist means all repos are allowed.
+
+/// Leverage-tier floor: repos at or above this star count sweep first.
+const SWEEP_LEVERAGE_TIER_STAR_FLOOR: u64 = 4;
+
+fn owned_sweep_repos() -> Vec<String> {
+    std::env::var("CHUMP_GITHUB_REPOS")
+        .unwrap_or_default()
+        .split(',')
+        .map(|s| s.trim().to_string())
+        .filter(|s| !s.is_empty())
+        .collect()
+}
+
+fn is_repo_owned(repo: &str) -> bool {
+    let allowed = owned_sweep_repos();
+    allowed.is_empty() || allowed.iter().any(|r| r == repo)
+}
+
+/// Sorts portfolio-sweep targets `{repo, stars}` so 4-star+ leverage-tier
+/// repos come first, then by star count descending within a tier.
+fn sort_sweep_targets_by_leverage_tier(mut targets: Vec<Value>) -> Vec<Value> {
+    targets.sort_by(|a, b| {
+        let stars_a = a["stars"].as_u64().unwrap_or(0);
+        let stars_b = b["stars"].as_u64().unwrap_or(0);
+        let tier_a = stars_a >= SWEEP_LEVERAGE_TIER_STAR_FLOOR;
+        let tier_b = stars_b >= SWEEP_LEVERAGE_TIER_STAR_FLOOR;
+        tier_b.cmp(&tier_a).then(stars_b.cmp(&stars_a))
+    });
+    targets
+}
+
+/// Gate for `gh_portfolio_sweep` calls: rejects the call (before it ever
+/// reaches the MCP server / issues a network request) if any target repo
+/// is outside the owned-repo allowlist, logging a `NO-GO` for each one.
+/// Returns `Some(reason)` to deny, `None` to proceed.
+fn check_portfolio_sweep_targets(name: &str, input: &Value) -> Option<String> {
+    if name != "gh_portfolio_sweep" {
+        return None;
+    }
+    let targets = input["targets"].as_array()?;
+    let mut rejected = Vec::new();
+    for target in targets {
+        if let Some(repo) = target["repo"].as_str() {
+            if !is_repo_owned(repo) {
+                eprintln!(
+                    "NO-GO: portfolio sweep rejected repo '{}': not in owned allowlist",
+                    repo
+                );
+                rejected.push(repo.to_string());
+            }
+        }
+    }
+    if rejected.is_empty() {
+        None
+    } else {
+        Some(format!(
+            "DENIED: portfolio sweep targets outside owned-repo allowlist: {}",
+            rejected.join(", ")
+        ))
+    }
+}
+
 /// Verify tool execution by inspecting the output.
 ///
 /// Two layers, ordered cheapest → most expensive:
@@ -1173,6 +1243,23 @@ impl Tool for ToolTimeoutWrapper {
             }
         }
 
+        // EFFECTIVE-1408: owned-repo allowlist gate for portfolio sweeps —
+        // deny before any network request is initiated.
+        if let Some(reason) = check_portfolio_sweep_targets(&name, &input) {
+            record_tool_call(&name, false);
+            crate::blackboard::post(
+                crate::blackboard::Module::ToolMiddleware,
+                format!("Portfolio sweep denied for {}: {}", name, reason),
+                crate::blackboard::SalienceFactors {
+                    novelty: 0.4,
+                    uncertainty_reduction: 0.4,
+                    goal_relevance: 0.8,
+                    urgency: 0.5,
+                },
+            );
+            return Err(anyhow!(reason));
+        }
+
         // COMP-011a/b: adversary check — runs before execution, default OFF.
         // mode=static (COMP-011a): YAML rule engine.
         // mode=llm (COMP-011b): LLM-based context-aware reviewer.
@@ -1401,6 +1488,52 @@ mod tests {
     use super::*;
     use serial_test::serial;
     use std::time::Instant;
+
+    #[test]
+    #[serial]
+    fn portfolio_sweep_rejects_unowned_repo_with_no_go() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned");
+        let input = json!({
+            "targets": [
+                { "repo": "owner/owned", "stars": 1 },
+                { "repo": "stranger/foreign", "stars": 10 },
+            ]
+        });
+        let reason = check_portfolio_sweep_targets("gh_portfolio_sweep", &input);
+        assert!(reason.is_some());
+        assert!(reason.unwrap().contains("stranger/foreign"));
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn portfolio_sweep_allows_owned_repos_only() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned");
+        let input = json!({ "targets": [ { "repo": "owner/owned", "stars": 1 } ] });
+        assert!(check_portfolio_sweep_targets("gh_portfolio_sweep", &input).is_none());
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn portfolio_sweep_gate_ignores_other_tools() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned");
+        let input = json!({ "targets": [ { "repo": "stranger/foreign", "stars": 10 } ] });
+        assert!(check_portfolio_sweep_targets("some_other_tool", &input).is_none());
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    fn sweep_targets_prioritize_4_star_plus_leverage_tier() {
+        let targets = vec![
+            json!({ "repo": "owner/low", "stars": 1 }),
+            json!({ "repo": "owner/high", "stars": 4 }),
+            json!({ "repo": "owner/highest", "stars": 9 }),
+        ];
+        let sorted = sort_sweep_targets_by_leverage_tier(targets);
+        let order: Vec<&str> = sorted.iter().map(|t| t["repo"].as_str().unwrap()).collect();
+        assert_eq!(order, vec!["owner/highest", "owner/high", "owner/low"]);
+    }
 
     #[test]
     #[serial]

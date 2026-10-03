@@ -82,6 +82,49 @@ fn check_repo(repo: &str) -> Result<()> {
     }
 }
 
+/// EFFECTIVE-1408: a single portfolio-sweep candidate — a repo plus its
+/// star count, used to gate + prioritize sweep targets.
+#[derive(Debug, Clone, Deserialize, Serialize, PartialEq, Eq)]
+struct SweepTarget {
+    repo: String,
+    #[serde(default)]
+    stars: u64,
+}
+
+/// Leverage-tier floor: repos at or above this star count are treated as
+/// the opportunity-library's high-leverage tier and sweep first.
+const LEVERAGE_TIER_STAR_FLOOR: u64 = 4;
+
+/// Splits sweep targets into (owned, rejected), logging a `NO-GO` error to
+/// stderr for every target outside the `CHUMP_GITHUB_REPOS` allowlist.
+/// Owned targets are sorted so 4-star+ leverage-tier repos sweep first,
+/// then by star count descending within a tier, preserving relative order
+/// of ties (stable sort).
+fn filter_and_prioritize_sweep_targets(
+    targets: Vec<SweepTarget>,
+) -> (Vec<SweepTarget>, Vec<String>) {
+    let mut owned = Vec::new();
+    let mut rejected = Vec::new();
+    for target in targets {
+        match check_repo(&target.repo) {
+            Ok(()) => owned.push(target),
+            Err(e) => {
+                eprintln!(
+                    "NO-GO: portfolio sweep rejected repo '{}': {}",
+                    target.repo, e
+                );
+                rejected.push(target.repo);
+            }
+        }
+    }
+    owned.sort_by(|a, b| {
+        let tier_a = a.stars >= LEVERAGE_TIER_STAR_FLOOR;
+        let tier_b = b.stars >= LEVERAGE_TIER_STAR_FLOOR;
+        tier_b.cmp(&tier_a).then(b.stars.cmp(&a.stars))
+    });
+    (owned, rejected)
+}
+
 async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
     let dir = repo_dir()?;
     let out = Command::new("gh")
@@ -286,6 +329,19 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             let (ok, out) = run_gh(&["pr", "view", &num_str, "--comments"]).await?;
             Ok(json!({ "success": ok, "output": out }))
         }
+        "gh_portfolio_sweep" => {
+            if !params["targets"].is_array() {
+                return Err(anyhow!("missing targets array"));
+            }
+            let targets: Vec<SweepTarget> = serde_json::from_value(params["targets"].clone())
+                .map_err(|e| anyhow!("invalid targets: {}", e))?;
+            let (accepted, rejected) = filter_and_prioritize_sweep_targets(targets);
+            Ok(json!({
+                "success": true,
+                "accepted": accepted,
+                "rejected": rejected,
+            }))
+        }
         "github_clone_or_pull" => {
             let repo = params["repo"]
                 .as_str()
@@ -363,6 +419,7 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 { "name": "gh_pr_comment", "description": "Add a comment to a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" }, "body": { "type": "string" } }, "required": ["pr_number", "body"] } },
                 { "name": "gh_pr_view_comments", "description": "View PR comments", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
                 { "name": "github_clone_or_pull", "description": "Clone a repo or pull if it already exists locally", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "ref": { "type": "string", "default": "main" } }, "required": ["repo"] } },
+                { "name": "gh_portfolio_sweep", "description": "Filter sweep targets to the owned-repo allowlist and prioritize 4-star+ leverage tiers", "inputSchema": { "type": "object", "properties": { "targets": { "type": "array", "items": { "type": "object", "properties": { "repo": { "type": "string" }, "stars": { "type": "integer" } }, "required": ["repo"] } } }, "required": ["targets"] } },
             ]
         })),
         _ => Err(anyhow!("unknown method: {}", method)),
@@ -460,5 +517,50 @@ mod tests {
         // With no CHUMP_GITHUB_REPOS set, all repos should be allowed
         std::env::remove_var("CHUMP_GITHUB_REPOS");
         assert!(check_repo("any/repo").is_ok());
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn sweep_rejects_unowned_repo_with_no_go() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "owner/owned");
+        let targets = vec![
+            SweepTarget {
+                repo: "owner/owned".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "stranger/foreign".to_string(),
+                stars: 10,
+            },
+        ];
+        let (accepted, rejected) = filter_and_prioritize_sweep_targets(targets);
+        assert_eq!(accepted.len(), 1);
+        assert_eq!(accepted[0].repo, "owner/owned");
+        assert_eq!(rejected, vec!["stranger/foreign".to_string()]);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn sweep_prioritizes_4_star_plus_leverage_tier() {
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        let targets = vec![
+            SweepTarget {
+                repo: "owner/low".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "owner/high".to_string(),
+                stars: 4,
+            },
+            SweepTarget {
+                repo: "owner/highest".to_string(),
+                stars: 9,
+            },
+        ];
+        let (accepted, rejected) = filter_and_prioritize_sweep_targets(targets);
+        assert!(rejected.is_empty());
+        let order: Vec<&str> = accepted.iter().map(|t| t.repo.as_str()).collect();
+        assert_eq!(order, vec!["owner/highest", "owner/high", "owner/low"]);
     }
 }
