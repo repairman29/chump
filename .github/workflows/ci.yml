@@ -31,11 +31,14 @@ on:
 #     used by the `gh pr view` calls in pr-hygiene.
 #   checks: read — `verified` polls commits/<sha>/check-runs for the
 #     cross-workflow lanes (scripts/ci/poll-cross-workflow-checks.sh).
+#   actions: read — `verified` fetches same-workflow job logs for the
+#     bypass-line-in-failed-jobs audit (scripts/ci/check-bypass-line-in-failed-jobs.sh, INFRA-4537).
 # Do not drop a scope without checking that path-gated lanes still RUN on a PR.
 permissions:
   contents: read
   pull-requests: read
   checks: read
+  actions: read
 
 concurrency:
   # Push to main gets a unique group per run (github.run_id) so concurrency never cancels it —
@@ -588,6 +591,26 @@ jobs:
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha || github.sha }}"
 
+      - name: Bypass-line-in-failed-jobs audit (INFRA-4537)
+        # Scans the ACTUAL LOG OUTPUT of every same-workflow lane that
+        # failed on this run and fails if any of them has no "How to
+        # bypass cleanly:" line. Dynamic sibling of the static
+        # gate-manifest.yaml source-grep in INFRA-5429. Cross-workflow
+        # lanes (audit, ACP-smoke) are not passed here — their logs live
+        # in a different workflow run (see script header for scope note).
+        if: always()
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          bash scripts/ci/check-bypass-line-in-failed-jobs.sh \
+            --lane "fast-checks=${{ needs.fast-checks.result }}" \
+            --lane "fast-checks-heavy=${{ needs.fast-checks-heavy.result }}" \
+            --lane "clippy=${{ needs.clippy.result }}" \
+            --lane "cargo-test=${{ needs.cargo-test.result }}" \
+            --lane "pr-hygiene=${{ needs.pr-hygiene.result }}" \
+            --lane "test=${{ needs.test.result }}"
+
   # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
   # Runs on EVERY pull_request regardless of which paths changed. Catches the
   # two PR-shape failure classes that produced the worst incidents in early
@@ -644,6 +667,14 @@ jobs:
         # the gate never has to reverse-engineer the escape hatch. Also
         # self-tests that a synthetic check WITHOUT the line is caught.
         run: bash scripts/ci/test-bypass-line-required.sh
+
+      - name: Bypass-line-in-failed-jobs self-test (INFRA-4537)
+        # Dynamic sibling of INFRA-5429: scripts/ci/check-bypass-line-in-failed-jobs.sh
+        # scans the ACTUAL RUNTIME LOG of every failed same-workflow lane
+        # (wired into the `verified` job below) rather than statically
+        # grepping check-script source. This step self-tests that audit
+        # logic against fixture logs — no network / gh calls needed.
+        run: bash scripts/ci/test-bypass-line-in-failed-jobs.sh
 
       - name: Broad canary coverage smoke (INFRA-1568)
         # Asserts every external CLI invoked by self-hosted-targeted workflow
