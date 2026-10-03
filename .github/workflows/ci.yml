@@ -1287,6 +1287,11 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-fleet-brief-ship-count-unavailable.sh
 
+      - name: fleet brief alerts window honesty (CREDIBLE-121)
+        run: |
+          cargo build --bin chump 2>&1 | tail -3
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-fleet-brief-alerts-window-honesty.sh
+
       - name: orchestrate session-summary ambient emit (INFRA-1363)
         run: |
           cargo build --bin chump 2>&1 | tail -3

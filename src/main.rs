@@ -7328,21 +7328,31 @@ async fn main() -> Result<()> {
                 };
                 let silent_agents = count_kind_recent("silent_agent");
                 let pr_stuck = count_kind_recent("pr_stuck");
-                let alerts: usize = events
-                    .iter()
-                    .filter(|e| {
-                        let is_alert = e.get("event").and_then(|v| v.as_str()) == Some("ALERT")
-                            || e.get("event").and_then(|v| v.as_str()) == Some("alert");
-                        if !is_alert {
-                            return false;
-                        }
-                        e.get("ts")
+                // CREDIBLE-121: Alerts(30m) is derived live from ambient.jsonl
+                // (`event` = ALERT|alert, `ts` within the last 30m) on every
+                // invocation — no cached alerts file. It counts by the `event`
+                // field, NOT `kind`, so a grep for specific `kind` values can
+                // legitimately differ; the per-kind breakdown below makes the
+                // composition auditable.
+                let mut alerts_by_kind: std::collections::BTreeMap<String, usize> =
+                    std::collections::BTreeMap::new();
+                for e in events.iter().filter(|e| {
+                    let ev = e.get("event").and_then(|v| v.as_str());
+                    (ev == Some("ALERT") || ev == Some("alert"))
+                        && e.get("ts")
                             .and_then(|v| v.as_str())
                             .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
                             .map(|dt| dt.timestamp() >= alert_cutoff)
                             .unwrap_or(false)
-                    })
-                    .count();
+                }) {
+                    let k = e
+                        .get("kind")
+                        .and_then(|v| v.as_str())
+                        .unwrap_or("(no kind)")
+                        .to_string();
+                    *alerts_by_kind.entry(k).or_insert(0) += 1;
+                }
+                let alerts: usize = alerts_by_kind.values().sum();
 
                 // Active leases → stall detection (leases older than 4h)
                 let stall_threshold = now_ts - 4 * 3600;
@@ -7499,6 +7509,7 @@ async fn main() -> Result<()> {
                         "silent_agents": silent_agents,
                         "pr_stuck": pr_stuck,
                         "alerts": alerts,
+                        "alerts_by_kind": alerts_by_kind,
                         "pillar_mix": {
                             "EFFECTIVE": pillar_counts.get("EFFECTIVE").copied().unwrap_or(0),
                             "CREDIBLE":  pillar_counts.get("CREDIBLE").copied().unwrap_or(0),
@@ -7553,8 +7564,19 @@ async fn main() -> Result<()> {
                     );
                     println!("Auto-fixed: {auto_fixed}  flake-rerun+lint");
                     println!("Manual rescues: {manual_rescues}");
-                    if alerts > 0 {
-                        println!("Alerts(30m): {alerts}");
+                    {
+                        let breakdown = alerts_by_kind
+                            .iter()
+                            .map(|(k, n)| format!("{k}={n}"))
+                            .collect::<Vec<_>>()
+                            .join(", ");
+                        if alerts > 0 {
+                            println!(
+                                "Alerts(30m): {alerts}  (live from ambient.jsonl event=ALERT; {breakdown})"
+                            );
+                        } else {
+                            println!("Alerts(30m): 0  (live from ambient.jsonl event=ALERT)");
+                        }
                     }
                     if !suggestions.iter().all(|s| s.starts_with('✓')) {
                         println!("\nActions:");
