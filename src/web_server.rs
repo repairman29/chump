@@ -4377,6 +4377,60 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /api/brain/node/{id} — full record (degree + touching edges) for one node.
+/// Backs the /brain right-pane detail panel (INFRA-1558).
+async fn handle_brain_node(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let detail =
+        crate::memory_graph_viz::node_detail(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match detail {
+        Some(d) => Ok(Json(d).into_response()),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// GET /api/brain/graph/stream — SSE stream that re-pushes the full memory
+/// graph snapshot every 10s so the /brain Cytoscape view can apply incremental
+/// add/remove without a full page reload (INFRA-1558). Polling-based: each
+/// tick re-exports the whole graph; the client diffs against what it already
+/// has rendered rather than this endpoint computing a true delta.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        loop {
+            let data = crate::memory_graph_viz::export_graph_json().unwrap_or_default();
+            if tx
+                .send(Ok(Event::default().event("graph").data(data)))
+                .is_err()
+            {
+                break; // client disconnected
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9601,6 +9655,8 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),

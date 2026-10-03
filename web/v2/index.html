@@ -2276,6 +2276,15 @@
   <!-- INFRA-1711: content-bots toggle view; depends on window.ChumpViewSettings
        (app.js) for the shared error-toast utility, so load order matters. -->
   <script src="content-bots.js" type="module"></script>
+  <!-- INFRA-1558: brain graph renderer. Vendored (not CDN) per air-gap-capable
+       PWA design — classic (non-module) scripts so each UMD bundle's
+       `root["name"] = factory()` fallback attaches to `window`. Order matters:
+       layout-base -> cose-base -> cytoscape-fcose -> cytoscape, then brain.js. -->
+  <script src="lib/vendor/layout-base.js"></script>
+  <script src="lib/vendor/cose-base.js"></script>
+  <script src="lib/vendor/cytoscape-fcose.js"></script>
+  <script src="lib/vendor/cytoscape.min.js"></script>
+  <script src="brain.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
