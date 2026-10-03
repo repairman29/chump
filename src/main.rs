@@ -115,6 +115,7 @@ mod fleet_tool;
 mod fleet_velocity;
 mod floor_temp; // INFRA-1992: THE FLOOR Phase 1 — floor-temperature signal
 mod ftue_tool;
+mod rate_bucket; // INFRA-4246 (INFRA-1319 slice): central token-bucket rate limiter
 mod rebase_queue; // INFRA-2225: fleet rebase-queue — auto-rebase daemon backlog surface
                   // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
                   // The rename keeps every `gap_store::*` call site compiling unchanged.
@@ -1645,6 +1646,19 @@ async fn main() -> Result<()> {
             std::process::exit(farmer_status::run_cli(&sub_args[1..]));
         }
         eprintln!("Usage: chump farmer status [--json] [--quiet]");
+        std::process::exit(2);
+    }
+
+    // INFRA-4246 (INFRA-1319 slice): `chump rate-limit check [--json]` —
+    // central fleet-wide token-bucket rate limiter. Respects
+    // CHUMP_GH_MAX_CALLS_PER_MIN; exits 0 (allow) or 1 (deny, with
+    // retry_after_ms reported).
+    if args.get(1).map(String::as_str) == Some("rate-limit") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        if sub_args.first().map(String::as_str) == Some("check") {
+            std::process::exit(rate_bucket::run_cli(&sub_args[1..]));
+        }
+        eprintln!("Usage: chump rate-limit check [--json]");
         std::process::exit(2);
     }
 
