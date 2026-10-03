@@ -872,6 +872,48 @@ fn prune_expired_lessons(store: &mut Vec<LessonRecord>) {
     store.retain(|l| l.expires_at_ms > now);
 }
 
+/// EFFECTIVE-679: inbound body for `POST /api/drop`.
+#[derive(Debug, serde::Deserialize)]
+struct DropPostRequest {
+    sentence: String,
+    citation: String,
+}
+
+/// EFFECTIVE-679 (EFFECTIVE-392 slice): POST /api/drop — cheap idea-drop
+/// intake. Persists `{sentence, citation}` to the curator's drops queue
+/// file via `chump_gap_store::add_drop`. Idempotent: re-posting the same
+/// `(sentence, citation)` pair returns the existing id with 200 instead of
+/// creating a duplicate record.
+async fn handle_drop_post(
+    headers: HeaderMap,
+    Json(body): Json<DropPostRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let sentence = body.sentence.trim().to_string();
+    let citation = body.citation.trim().to_string();
+    if sentence.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "sentence must be non-empty".to_string(),
+        ));
+    }
+    let repo_root = repo_path::runtime_base();
+    let (record, created) = gap_store::add_drop(&repo_root, &sentence, &citation).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("add_drop failed: {e}"),
+        )
+    })?;
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(serde_json::json!({ "id": record.id }))))
+}
+
 /// META-080: POST /api/lessons — agents publish a lesson to the shared
 /// in-memory store. Lessons expire 24h after publish by default.
 async fn handle_lessons_post(
@@ -9426,6 +9468,8 @@ fn build_api_router() -> Router {
             "/api/decisions/{id}/resolve",
             post(routes::decisions::handle_decisions_resolve),
         )
+        // EFFECTIVE-679: cheap idea-drop intake (EFFECTIVE-392 slice).
+        .route("/api/drop", post(handle_drop_post))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))

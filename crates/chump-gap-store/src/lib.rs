@@ -5141,6 +5141,84 @@ pub fn parse_json_ac_list(s: &str) -> Vec<String> {
     parse_json_string_list(s).unwrap_or_default()
 }
 
+// ────────────────────────── Idea drop intake (EFFECTIVE-679) ──────────────────────────
+
+/// One idea-drop record persisted to `drops_path`. `status` starts `"new"`;
+/// downstream curation (triage/promote-to-gap) is a future slice.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DropRecord {
+    pub id: String,
+    pub sentence: String,
+    pub citation: String,
+    pub status: String,
+    pub timestamp: i64,
+}
+
+/// Path to the curator's idea-drop queue file, relative to `repo_root`.
+/// Override via `CHUMP_DROPS_FILE` (mirrors `GapStore::db_path`'s
+/// `CHUMP_STATE_DB` override pattern) so tests can point at a scratch file.
+pub fn drops_path(repo_root: &Path) -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_DROPS_FILE") {
+        return PathBuf::from(p);
+    }
+    repo_root.join(".chump").join("drops.json")
+}
+
+fn load_drops(path: &Path) -> Result<Vec<DropRecord>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("reading drops file {}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let drops: Vec<DropRecord> = serde_json::from_str(&raw)
+        .with_context(|| format!("parsing drops file {}", path.display()))?;
+    Ok(drops)
+}
+
+fn save_drops(path: &Path, drops: &[DropRecord]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating drops dir {}", parent.display()))?;
+    }
+    let body = serde_json::to_string_pretty(drops)?;
+    std::fs::write(path, body).with_context(|| format!("writing drops file {}", path.display()))?;
+    Ok(())
+}
+
+/// Persist a `{sentence, citation}` idea drop under `repo_root`'s data
+/// directory, idempotently: re-submitting the identical `(sentence,
+/// citation)` pair returns the existing record rather than creating a
+/// duplicate. Backs `POST /api/drop` (EFFECTIVE-679).
+pub fn add_drop(repo_root: &Path, sentence: &str, citation: &str) -> Result<(DropRecord, bool)> {
+    let path = drops_path(repo_root);
+    let mut drops = load_drops(&path)?;
+
+    if let Some(existing) = drops
+        .iter()
+        .find(|d| d.sentence == sentence && d.citation == citation)
+    {
+        return Ok((existing.clone(), false));
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let record = DropRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        sentence: sentence.to_string(),
+        citation: citation.to_string(),
+        status: "new".to_string(),
+        timestamp,
+    };
+    drops.push(record.clone());
+    save_drops(&path, &drops)?;
+    Ok((record, true))
+}
+
 /// META-555: Effect-verified done-bar — the opt-in `verify:` acceptance-criterion
 /// marker and its evaluation. WHY THIS EXISTS: gaps close on PR-merge (CI-green),
 /// not on outcome-changed, so a fix that merges but does not actually work is
@@ -7164,6 +7242,48 @@ mod tests {
         let dir = TempDir::new().unwrap();
         let store = GapStore::open(dir.path()).unwrap();
         (store, dir)
+    }
+
+    // ── EFFECTIVE-679: idea-drop intake tests ──────────────────────────
+
+    #[test]
+    fn add_drop_creates_new_record_with_expected_fields() {
+        let dir = TempDir::new().unwrap();
+        let (record, created) = add_drop(dir.path(), "hello world", "ref1").unwrap();
+        assert!(created);
+        assert_eq!(record.sentence, "hello world");
+        assert_eq!(record.citation, "ref1");
+        assert_eq!(record.status, "new");
+        assert!(!record.id.is_empty());
+
+        let drops = load_drops(&drops_path(dir.path())).unwrap();
+        assert_eq!(drops.len(), 1);
+        assert_eq!(drops[0].id, record.id);
+    }
+
+    #[test]
+    fn add_drop_is_idempotent_on_sentence_and_citation() {
+        let dir = TempDir::new().unwrap();
+        let (first, created_first) = add_drop(dir.path(), "hello world", "ref1").unwrap();
+        assert!(created_first);
+        let (second, created_second) = add_drop(dir.path(), "hello world", "ref1").unwrap();
+        assert!(!created_second);
+        assert_eq!(first.id, second.id);
+
+        let drops = load_drops(&drops_path(dir.path())).unwrap();
+        assert_eq!(drops.len(), 1, "re-posting must not create a duplicate");
+    }
+
+    #[test]
+    fn add_drop_persists_across_separate_loads() {
+        let dir = TempDir::new().unwrap();
+        let (first, _) = add_drop(dir.path(), "durable idea", "ref2").unwrap();
+
+        // Simulate a restart: nothing but the file on disk carries state.
+        let drops = load_drops(&drops_path(dir.path())).unwrap();
+        assert_eq!(drops.len(), 1);
+        assert_eq!(drops[0].id, first.id);
+        assert_eq!(drops[0].sentence, "durable idea");
     }
 
     // ── INFRA-100: cross-source picker tests ──────────────────────────
