@@ -82,6 +82,54 @@ fn check_repo(repo: &str) -> Result<()> {
     }
 }
 
+/// A portfolio-sweep candidate: a repo plus its star count, used to decide
+/// both ownership (allowlist) and leverage-tier ordering (EFFECTIVE-1408).
+#[derive(Debug, Clone, PartialEq, Eq)]
+struct SweepTarget {
+    repo: String,
+    stars: u64,
+}
+
+/// Leverage tier: 0 = the 4-star-and-up "opportunity library" tier that must
+/// be swept before anything else, 1 = everything below that bar.
+fn leverage_tier(stars: u64) -> u8 {
+    if stars >= 4 {
+        0
+    } else {
+        1
+    }
+}
+
+/// Split sweep targets into (owned, rejected-repo-names), logging a NO-GO
+/// error for every target outside the `CHUMP_GITHUB_REPOS` allowlist. An
+/// empty allowlist allows everything (matches `check_repo`'s existing rule).
+fn filter_owned_sweep_targets(targets: Vec<SweepTarget>) -> (Vec<SweepTarget>, Vec<String>) {
+    let mut rejected = Vec::new();
+    let owned = targets
+        .into_iter()
+        .filter(|t| match check_repo(&t.repo) {
+            Ok(()) => true,
+            Err(e) => {
+                eprintln!("NO-GO: {}", e);
+                rejected.push(t.repo.clone());
+                false
+            }
+        })
+        .collect();
+    (owned, rejected)
+}
+
+/// Sort sweep targets so the 4-star+ leverage tier sorts before everything
+/// else, with higher star counts sorting first within a tier.
+fn sort_sweep_targets_by_leverage(mut targets: Vec<SweepTarget>) -> Vec<SweepTarget> {
+    targets.sort_by(|a, b| {
+        leverage_tier(a.stars)
+            .cmp(&leverage_tier(b.stars))
+            .then(b.stars.cmp(&a.stars))
+    });
+    targets
+}
+
 async fn run_gh(args: &[&str]) -> Result<(bool, String)> {
     let dir = repo_dir()?;
     let out = Command::new("gh")
@@ -286,6 +334,29 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
             let (ok, out) = run_gh(&["pr", "view", &num_str, "--comments"]).await?;
             Ok(json!({ "success": ok, "output": out }))
         }
+        "github_portfolio_sweep" => {
+            let targets_raw = params["targets"]
+                .as_array()
+                .ok_or_else(|| anyhow!("missing targets"))?;
+            let targets: Vec<SweepTarget> = targets_raw
+                .iter()
+                .map(|t| {
+                    let repo = t["repo"]
+                        .as_str()
+                        .ok_or_else(|| anyhow!("sweep target missing repo"))?
+                        .to_string();
+                    let stars = t["stars"].as_u64().unwrap_or(0);
+                    Ok(SweepTarget { repo, stars })
+                })
+                .collect::<Result<Vec<_>>>()?;
+            let (owned, rejected) = filter_owned_sweep_targets(targets);
+            let ordered = sort_sweep_targets_by_leverage(owned);
+            Ok(json!({
+                "success": true,
+                "targets": ordered.iter().map(|t| json!({ "repo": t.repo, "stars": t.stars })).collect::<Vec<_>>(),
+                "rejected": rejected,
+            }))
+        }
         "github_clone_or_pull" => {
             let repo = params["repo"]
                 .as_str()
@@ -363,6 +434,7 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                 { "name": "gh_pr_comment", "description": "Add a comment to a PR", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" }, "body": { "type": "string" } }, "required": ["pr_number", "body"] } },
                 { "name": "gh_pr_view_comments", "description": "View PR comments", "inputSchema": { "type": "object", "properties": { "pr_number": { "type": "integer" } }, "required": ["pr_number"] } },
                 { "name": "github_clone_or_pull", "description": "Clone a repo or pull if it already exists locally", "inputSchema": { "type": "object", "properties": { "repo": { "type": "string" }, "ref": { "type": "string", "default": "main" } }, "required": ["repo"] } },
+                { "name": "github_portfolio_sweep", "description": "Filter sweep targets to the owned allowlist (NO-GO on foreign repos) and order survivors with 4-star+ leverage tiers first", "inputSchema": { "type": "object", "properties": { "targets": { "type": "array", "items": { "type": "object", "properties": { "repo": { "type": "string" }, "stars": { "type": "integer" } }, "required": ["repo"] } } }, "required": ["targets"] } },
             ]
         })),
         _ => Err(anyhow!("unknown method: {}", method)),
@@ -460,5 +532,47 @@ mod tests {
         // With no CHUMP_GITHUB_REPOS set, all repos should be allowed
         std::env::remove_var("CHUMP_GITHUB_REPOS");
         assert!(check_repo("any/repo").is_ok());
+    }
+
+    #[test]
+    fn sweep_rejects_foreign_repo_outside_allowlist() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "me/owned-a,me/owned-b");
+        let targets = vec![
+            SweepTarget {
+                repo: "me/owned-a".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "someone/foreign".to_string(),
+                stars: 50,
+            },
+        ];
+        let (owned, rejected) = filter_owned_sweep_targets(targets);
+        assert_eq!(owned.len(), 1);
+        assert_eq!(owned[0].repo, "me/owned-a");
+        assert_eq!(rejected, vec!["someone/foreign".to_string()]);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    fn sweep_orders_four_star_plus_tier_first() {
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        let targets = vec![
+            SweepTarget {
+                repo: "me/low".to_string(),
+                stars: 1,
+            },
+            SweepTarget {
+                repo: "me/high".to_string(),
+                stars: 9,
+            },
+            SweepTarget {
+                repo: "me/mid".to_string(),
+                stars: 4,
+            },
+        ];
+        let ordered = sort_sweep_targets_by_leverage(targets);
+        let repos: Vec<&str> = ordered.iter().map(|t| t.repo.as_str()).collect();
+        assert_eq!(repos, vec!["me/high", "me/mid", "me/low"]);
     }
 }

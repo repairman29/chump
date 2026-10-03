@@ -574,6 +574,57 @@ fn check_lease_conflict(name: &str, input: &Value) -> Option<(String, String)> {
     None
 }
 
+// ── Portfolio-sweep owned-repo gate (EFFECTIVE-1408) ────────────────
+//
+// Mirrors `crates/mcp-servers/chump-mcp-github/src/main.rs`'s sweep-target
+// enforcement so the host-side tool middleware applies the same owned-repo
+// allowlist + 4-star+ leverage-tier ordering before a portfolio sweep ever
+// reaches the MCP server.
+
+/// 0 = the 4-star-and-up "opportunity library" leverage tier (prioritized),
+/// 1 = everything below that bar.
+fn sweep_leverage_tier(stars: u64) -> u8 {
+    if stars >= 4 {
+        0
+    } else {
+        1
+    }
+}
+
+/// Filter `(repo, stars)` sweep targets down to the owned allowlist
+/// (`crate::repo_allowlist`; empty allowlist allows everything) and sort
+/// survivors so the 4-star+ leverage tier sorts before lower tiers, with
+/// higher star counts sorting first within a tier. Every rejected target
+/// logs a `NO-GO` error and is returned in the second element.
+pub fn filter_and_sort_sweep_targets(
+    targets: Vec<(String, u64)>,
+) -> (Vec<(String, u64)>, Vec<String>) {
+    let mut rejected = Vec::new();
+    let mut survivors: Vec<(String, u64)> = targets
+        .into_iter()
+        .filter(|(repo, _)| {
+            if !crate::repo_allowlist::allowlist_non_empty()
+                || crate::repo_allowlist::allowlist_contains(repo)
+            {
+                true
+            } else {
+                eprintln!(
+                    "NO-GO: repo '{}' outside owned allowlist, rejecting sweep target",
+                    repo
+                );
+                rejected.push(repo.clone());
+                false
+            }
+        })
+        .collect();
+    survivors.sort_by(|a, b| {
+        sweep_leverage_tier(a.1)
+            .cmp(&sweep_leverage_tier(b.1))
+            .then(b.1.cmp(&a.1))
+    });
+    (survivors, rejected)
+}
+
 /// Verify tool execution by inspecting the output.
 ///
 /// Two layers, ordered cheapest → most expensive:
@@ -1584,6 +1635,33 @@ mod tests {
         assert_eq!(result.unwrap(), "allowed");
         std::env::remove_var("CHUMP_TOOL_ENV_ALLOWLIST");
         std::env::remove_var("__TEST_CUSTOM_TOKEN");
+    }
+
+    #[test]
+    #[serial]
+    fn sweep_rejects_foreign_repo_outside_allowlist() {
+        std::env::set_var("CHUMP_GITHUB_REPOS", "me/owned-a,me/owned-b");
+        let (survivors, rejected) = filter_and_sort_sweep_targets(vec![
+            ("me/owned-a".to_string(), 1),
+            ("someone/foreign".to_string(), 50),
+        ]);
+        assert_eq!(survivors, vec![("me/owned-a".to_string(), 1)]);
+        assert_eq!(rejected, vec!["someone/foreign".to_string()]);
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+    }
+
+    #[test]
+    #[serial]
+    fn sweep_prioritizes_four_star_plus_leverage_tier() {
+        std::env::remove_var("CHUMP_GITHUB_REPOS");
+        let (survivors, rejected) = filter_and_sort_sweep_targets(vec![
+            ("me/low".to_string(), 1),
+            ("me/high".to_string(), 9),
+            ("me/mid".to_string(), 4),
+        ]);
+        assert!(rejected.is_empty());
+        let repos: Vec<&str> = survivors.iter().map(|(r, _)| r.as_str()).collect();
+        assert_eq!(repos, vec!["me/high", "me/mid", "me/low"]);
     }
 
     // ── AUTO-011: Frustration metric ──────────────────────────────────
