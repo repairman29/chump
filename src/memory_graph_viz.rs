@@ -36,7 +36,7 @@ struct JsonNode {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct JsonEdge {
+pub struct JsonEdge {
     source: String,
     target: String,
     relation: String,
@@ -184,6 +184,54 @@ pub fn export_graph_json() -> Result<String> {
     let edges = load_all_edges()?;
     let graph = build_json_graph(&edges);
     Ok(serde_json::to_string(&graph)?)
+}
+
+/// Full record for a single node: its degree plus every edge touching it
+/// (as subject or object), for the /brain right-pane detail view.
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeDetail {
+    pub id: String,
+    pub degree: usize,
+    pub outgoing: Vec<JsonEdge>,
+    pub incoming: Vec<JsonEdge>,
+}
+
+/// Look up a single node's full record (degree + touching edges). Matching is
+/// case-insensitive since entity names are stored lowercased by the extractor.
+/// Returns `None` if the node has no edges (i.e. doesn't exist in the graph).
+pub fn node_detail(id: &str) -> Result<Option<NodeDetail>> {
+    let edges = load_all_edges()?;
+    let needle = id.to_lowercase();
+    let mut outgoing = Vec::new();
+    let mut incoming = Vec::new();
+    for e in &edges {
+        if e.subject.to_lowercase() == needle {
+            outgoing.push(JsonEdge {
+                source: e.subject.clone(),
+                target: e.object.clone(),
+                relation: e.relation.clone(),
+                weight: e.weight,
+            });
+        }
+        if e.object.to_lowercase() == needle {
+            incoming.push(JsonEdge {
+                source: e.subject.clone(),
+                target: e.object.clone(),
+                relation: e.relation.clone(),
+                weight: e.weight,
+            });
+        }
+    }
+    if outgoing.is_empty() && incoming.is_empty() {
+        return Ok(None);
+    }
+    let degree = outgoing.len() + incoming.len();
+    Ok(Some(NodeDetail {
+        id: id.to_string(),
+        degree,
+        outgoing,
+        incoming,
+    }))
 }
 
 /// Escape a string for safe inclusion as a DOT node ID or label.

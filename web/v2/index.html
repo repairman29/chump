@@ -1256,6 +1256,23 @@
     }
     .memory-text { font-size: 13px; color: var(--text-secondary); line-height: 1.5; }
 
+    /* ── View: brain graph (INFRA-1558) ───────────────────────────────────── */
+    .brain-toolbar {
+      display: flex; flex-wrap: wrap; gap: 12px; padding: 8px 16px;
+      border-bottom: 1px solid var(--border); align-items: center;
+    }
+    .brain-filter { display: flex; align-items: center; gap: 4px; font-size: 12px; }
+    .brain-status { margin-left: auto; font-size: 12px; color: var(--text-secondary); }
+    .brain-layout { display: flex; gap: 12px; padding: 12px 16px; }
+    .brain-detail {
+      flex: 0 0 260px; background: var(--bg-surface); border: 1px solid var(--border);
+      border-radius: var(--radius); padding: 10px 14px; font-size: 12px; color: var(--text);
+      max-height: 600px; overflow-y: auto;
+    }
+    .brain-detail h3 { margin: 0 0 6px; font-size: 14px; }
+    .brain-detail h4 { margin: 10px 0 4px; font-size: 12px; color: var(--text-secondary); }
+    .brain-detail ul { margin: 0; padding-left: 14px; }
+
     /* ── View: agent/gap-queue ──────────────────────────────────────────── */
     .gap-search-bar {
       display: flex; flex-wrap: wrap; gap: 8px; padding: 10px 16px;
@@ -2276,6 +2293,9 @@
   <!-- INFRA-1711: content-bots toggle view; depends on window.ChumpViewSettings
        (app.js) for the shared error-toast utility, so load order matters. -->
   <script src="content-bots.js" type="module"></script>
+  <!-- INFRA-1558: brain graph renderer (Cytoscape.js, vendored locally under
+       lib/cytoscape/ for air-gap use — loaded on-demand by brain.js itself). -->
+  <script src="brain.js" type="module"></script>
   <script>
     window.addEventListener('offline', () => document.body.classList.add('offline'));
     window.addEventListener('online',  () => document.body.classList.remove('offline'));
