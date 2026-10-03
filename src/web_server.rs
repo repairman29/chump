@@ -4377,6 +4377,93 @@ async fn handle_brain_graph_stats(
     Ok(Json(stats))
 }
 
+/// GET /api/brain/node/{id} — single-node focus detail (degree + touching
+/// edges) for the INFRA-1558 Cytoscape renderer's right-pane click-to-focus.
+async fn handle_brain_node(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let detail =
+        crate::memory_graph_viz::node_detail(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match detail {
+        Some(d) => Ok(Json(d).into_response()),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// GET /api/brain/graph/stream — SSE push of incremental node/edge add/remove
+/// events (INFRA-1558). Polls the memory graph every few seconds and diffs
+/// against the previous snapshot so the Cytoscape renderer can call
+/// `cy.add()`/`cy.remove()` incrementally instead of reloading the full graph.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        let mut prev_edges: std::collections::HashSet<(String, String, String)> =
+            std::collections::HashSet::new();
+        loop {
+            let edges = crate::memory_graph_viz::graph_edges_tuples().unwrap_or_default();
+            let cur: std::collections::HashSet<(String, String, String)> =
+                edges.into_iter().collect();
+            if !prev_edges.is_empty() || !cur.is_empty() {
+                for (subj, rel, obj) in cur.difference(&prev_edges) {
+                    let data = serde_json::json!({
+                        "subject": subj, "relation": rel, "object": obj,
+                    })
+                    .to_string();
+                    if tx
+                        .send(Ok(Event::default().event("edge_add").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+                for (subj, rel, obj) in prev_edges.difference(&cur) {
+                    let data = serde_json::json!({
+                        "subject": subj, "relation": rel, "object": obj,
+                    })
+                    .to_string();
+                    if tx
+                        .send(Ok(Event::default().event("edge_remove").data(data)))
+                        .is_err()
+                    {
+                        return;
+                    }
+                }
+            }
+            prev_edges = cur;
+            tokio::time::sleep(std::time::Duration::from_secs(5)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
+}
+
+/// GET /brain — the INFRA-1558 Cytoscape.js brain-graph renderer page.
+async fn handle_brain_page() -> Response {
+    (
+        [(header::CONTENT_TYPE, "text/html; charset=utf-8")],
+        include_str!("../web/v2/brain.html"),
+    )
+        .into_response()
+}
+
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
 
 #[derive(serde::Deserialize)]
@@ -9601,6 +9688,9 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
+        .route("/brain", get(handle_brain_page))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),

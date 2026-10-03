@@ -1,0 +1,66 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chump — Brain Graph</title>
+<style>
+  :root {
+    --bg: #0a0a0a; --bg-surface: #141414; --text: #f0f0f0;
+    --muted: #8a8a8e; --border: rgba(255,255,255,0.08); --accent: #0a84ff;
+  }
+  * { box-sizing: border-box; }
+  html, body { height: 100%; margin: 0; background: var(--bg); color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, system-ui, sans-serif; }
+  #brain-app { display: flex; flex-direction: column; height: 100%; }
+  #brain-header { display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    border-bottom: 1px solid var(--border); flex-shrink: 0; flex-wrap: wrap; }
+  #brain-header h1 { font-size: 15px; font-weight: 600; margin: 0; flex-shrink: 0; }
+  .brain-filter-btn { background: var(--bg-surface); border: 1px solid var(--border);
+    color: var(--muted); border-radius: 6px; padding: 4px 10px; font-size: 12px;
+    cursor: pointer; }
+  .brain-filter-btn[aria-pressed="true"] { color: var(--text); border-color: var(--accent); }
+  #brain-status { margin-left: auto; font-size: 11px; color: var(--muted); }
+  #brain-body { flex: 1; display: flex; min-height: 0; }
+  #cy-container { flex: 1; min-width: 0; }
+  #brain-detail { width: 300px; flex-shrink: 0; border-left: 1px solid var(--border);
+    padding: 12px; overflow-y: auto; font-size: 12px; }
+  #brain-detail h2 { font-size: 13px; margin: 0 0 8px; word-break: break-all; }
+  #brain-detail pre { white-space: pre-wrap; word-break: break-all; color: var(--muted); }
+  .brain-legend { font-size: 11px; color: var(--muted); padding: 10px 12px; }
+  .brain-legend span { display: inline-block; margin-right: 10px; }
+  .brain-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 50%;
+    margin-right: 4px; vertical-align: middle; }
+</style>
+</head>
+<body>
+<div id="brain-app">
+  <div id="brain-header">
+    <h1>Brain Graph</h1>
+    <button class="brain-filter-btn" data-type="gap" aria-pressed="true">gap</button>
+    <button class="brain-filter-btn" data-type="pr" aria-pressed="true">PR</button>
+    <button class="brain-filter-btn" data-type="agent" aria-pressed="true">agent</button>
+    <button class="brain-filter-btn" data-type="lesson" aria-pressed="true">lesson</button>
+    <button class="brain-filter-btn" data-type="ambient_event" aria-pressed="true">ambient_event</button>
+    <button class="brain-filter-btn" data-type="entity" aria-pressed="true">entity</button>
+    <span id="brain-status">loading…</span>
+  </div>
+  <div class="brain-legend">
+    <span><i class="brain-swatch" style="background:#ff453a"></i>blocks</span>
+    <span><i class="brain-swatch" style="background:#0a84ff"></i>references</span>
+    <span><i class="brain-swatch" style="background:#30d158"></i>ships</span>
+    <span><i class="brain-swatch" style="background:#bf5af2"></i>applies_lesson</span>
+    <span><i class="brain-swatch" style="background:#ff9f0a"></i>claims</span>
+    <span><i class="brain-swatch" style="background:#5a5a5e"></i>other</span>
+  </div>
+  <div id="brain-body">
+    <div id="cy-container"></div>
+    <div id="brain-detail"><p style="color:var(--muted)">Click a node to focus its subgraph.</p></div>
+  </div>
+</div>
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<script src="https://unpkg.com/cose-base@2.2.0/cose-base.js"></script>
+<script src="https://unpkg.com/cytoscape-cose-bilkent@4.1.0/cytoscape-cose-bilkent.js"></script>
+<script src="/v2/brain.js"></script>
+</body>
+</html>

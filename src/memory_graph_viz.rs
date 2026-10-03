@@ -36,7 +36,7 @@ struct JsonNode {
 }
 
 #[derive(Debug, Clone, Serialize)]
-struct JsonEdge {
+pub struct JsonEdge {
     source: String,
     target: String,
     relation: String,
@@ -186,6 +186,16 @@ pub fn export_graph_json() -> Result<String> {
     Ok(serde_json::to_string(&graph)?)
 }
 
+/// Flat `(subject, relation, object)` tuples for cheap diffing between polls
+/// (INFRA-1558 SSE stream — avoids re-serializing the whole graph per tick).
+pub fn graph_edges_tuples() -> Result<Vec<(String, String, String)>> {
+    let edges = load_all_edges()?;
+    Ok(edges
+        .into_iter()
+        .map(|e| (e.subject, e.relation, e.object))
+        .collect())
+}
+
 /// Escape a string for safe inclusion as a DOT node ID or label.
 fn dot_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
@@ -281,6 +291,46 @@ pub fn export_subgraph_json(seed_entities: &[String], max_hops: usize) -> Result
         .collect();
     let graph = build_json_graph(&kept);
     Ok(serde_json::to_string(&graph)?)
+}
+
+/// Full record for a single node: its id, degree, and the list of edges
+/// touching it (both directions). Backs `GET /api/brain/node/{id}` — the
+/// INFRA-1558 right-pane "focus" detail when a node is clicked in the
+/// Cytoscape renderer.
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeDetail {
+    pub id: String,
+    pub degree: usize,
+    pub edges: Vec<JsonEdge>,
+}
+
+/// Look up one node by id (case-sensitive match against stored subject/object
+/// text) and return its degree + touching edges. `None` if the id has no edges.
+pub fn node_detail(id: &str) -> Result<Option<NodeDetail>> {
+    let edges = load_all_edges()?;
+    let touching: Vec<Edge> = edges
+        .iter()
+        .filter(|e| e.subject == id || e.object == id)
+        .cloned()
+        .collect();
+    if touching.is_empty() {
+        return Ok(None);
+    }
+    let degree = touching.len();
+    let json_edges = touching
+        .iter()
+        .map(|e| JsonEdge {
+            source: e.subject.clone(),
+            target: e.object.clone(),
+            relation: e.relation.clone(),
+            weight: e.weight,
+        })
+        .collect();
+    Ok(Some(NodeDetail {
+        id: id.to_string(),
+        degree,
+        edges: json_edges,
+    }))
 }
 
 #[cfg(test)]

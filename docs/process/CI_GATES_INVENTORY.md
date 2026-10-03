@@ -124,6 +124,7 @@ Documented for completeness; do **not** file follow-ups.
 | CLI help system consistency | INFRA-3383 — `test-cli-help.sh`; falls back to `cargo build --bin chump` when no binary is on `PATH`; too slow for the preflight fast loop (step name matched, not script path — the CI step wraps it in a multi-line `run: \|` with a `CHUMP_BIN=` prefix line) |
 | CLI integration tests | INFRA-3383 — `test-cli-integration.sh`; requires a compiled `chump` binary on `PATH` to exercise; not preflight-fast-loop shaped (step name matched — see note above) |
 | `test-infra-254-pwa-root-redirect.sh` | INFRA-3383 — runs `cargo build --bin chump` and spins up the PWA server on a port; too heavyweight for preflight |
+| `test-brain-graph-renderer.sh` | INFRA-1558 — same shape as `test-infra-254-pwa-root-redirect.sh`: `cargo build --bin chump` + spins up the PWA server on a port to curl `/brain`; too heavyweight for preflight |
 | `test-subagent-budget-kill.sh` | INFRA-3383 — INFRA-1972 parent-enforced kill is a runtime supervisor test that spawns + kills child processes; not preflight-shaped |
 | `test-md-links-loop.sh` | INFRA-3383 — INFRA-1925 md-links curator loop smoke; tests a curator daemon loop, not a per-commit gate |
 | `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
