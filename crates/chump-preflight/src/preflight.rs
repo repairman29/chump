@@ -2057,6 +2057,17 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // INFRA-4537 (INFRA-1861 slice): bypass-line OUTPUT audit. The
+        // static grep above proves the bypass line exists in source; this
+        // force-fires each FAIL-capable gate against its real violating
+        // fixture and scans the actual printed output, catching a line
+        // that exists in source but never reaches the real failure path.
+        steps.push(step(
+            "bypass-line-output-audit",
+            &["bash", "scripts/ci/test-bypass-line-output-audit.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1810: install-script manifest gate. Verifies every
         // scripts/setup/install-*.sh is mapped to REQUIRED_DAEMONS,
         // optional-installers-allowlist.txt, or deprecated-installers-allowlist.txt.

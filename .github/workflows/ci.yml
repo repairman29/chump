@@ -645,6 +645,14 @@ jobs:
         # self-tests that a synthetic check WITHOUT the line is caught.
         run: bash scripts/ci/test-bypass-line-required.sh
 
+      - name: Bypass-line output audit (INFRA-4537)
+        # INFRA-5429 above greps gate SOURCE for the bypass line (proves
+        # the string exists somewhere). This force-fires each FAIL-capable
+        # gate against its real violating fixture and scans the ACTUAL
+        # stdout+stderr it prints, catching a bypass line that exists in
+        # source but never reaches the real failure path.
+        run: bash scripts/ci/test-bypass-line-output-audit.sh
+
       - name: Broad canary coverage smoke (INFRA-1568)
         # Asserts every external CLI invoked by self-hosted-targeted workflow
         # steps is exercised by scripts/setup/test-runner-lane-broad-canary.sh.
