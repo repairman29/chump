@@ -2069,6 +2069,13 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-subcommand-registry"
+version = "0.1.0"
+dependencies = [
+ "inventory",
+]
+
+[[package]]
 name = "chump-team"
 version = "0.1.0"
 dependencies = [
