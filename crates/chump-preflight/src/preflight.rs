@@ -682,11 +682,86 @@ fn load_average_1m() -> f64 {
         .unwrap_or(0.0)
 }
 
+/// EFFECTIVE-499: configurable load-average ceiling used by the defer loop
+/// below. Defaults to the number of available CPUs — the same ceiling
+/// `compute_check_jobs` already uses to decide "this machine is busy".
+/// Override via `CHUMP_PREFLIGHT_LOAD_THRESHOLD` (e.g. for a shared CI box
+/// that should tolerate more contention before deferring).
+fn load_defer_threshold(cpus: usize) -> f64 {
+    std::env::var("CHUMP_PREFLIGHT_LOAD_THRESHOLD")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(cpus as f64)
+}
+
+/// EFFECTIVE-499: upper bound on how long the defer loop will wait before
+/// giving up and running anyway — a permanently-loaded machine must never
+/// hang preflight forever. Override via `CHUMP_PREFLIGHT_LOAD_DEFER_MAX_WAIT_MS`.
+fn load_defer_max_wait_ms() -> u64 {
+    std::env::var("CHUMP_PREFLIGHT_LOAD_DEFER_MAX_WAIT_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .unwrap_or(10_000)
+}
+
+/// EFFECTIVE-499: testable core of the load-aware-defer. Polls `load_fn` and
+/// sleeps via `sleep_fn` (in `poll_interval_ms` increments) until the load
+/// drops at/below `threshold`, or until `max_wait_ms` total has elapsed.
+/// Returns the number of sleep iterations actually taken (0 = already below
+/// threshold on the first poll, so the caller never slept). Injected
+/// `load_fn`/`sleep_fn` keep this unit-testable without a real `/proc/loadavg`
+/// read or a real `thread::sleep`.
+fn defer_until_load_below(
+    threshold: f64,
+    max_wait_ms: u64,
+    poll_interval_ms: u64,
+    mut load_fn: impl FnMut() -> f64,
+    mut sleep_fn: impl FnMut(u64),
+) -> u32 {
+    let mut waited_ms: u64 = 0;
+    let mut iterations: u32 = 0;
+    while load_fn() > threshold && waited_ms < max_wait_ms {
+        sleep_fn(poll_interval_ms);
+        waited_ms += poll_interval_ms;
+        iterations += 1;
+    }
+    iterations
+}
+
+/// EFFECTIVE-499: real-world wrapper around `defer_until_load_below` — reads
+/// the actual load average, sleeps the actual thread, and is a no-op when
+/// `CHUMP_PREFLIGHT_DEFER_DISABLE=1` (set by tests/CI that want a deterministic,
+/// non-sleeping preflight run).
+fn maybe_defer_for_load(cpus: usize) {
+    if std::env::var("CHUMP_PREFLIGHT_DEFER_DISABLE").as_deref() == Ok("1") {
+        return;
+    }
+    let threshold = load_defer_threshold(cpus);
+    let iterations = defer_until_load_below(
+        threshold,
+        load_defer_max_wait_ms(),
+        1_000,
+        load_average_1m,
+        |ms| std::thread::sleep(std::time::Duration::from_millis(ms)),
+    );
+    if iterations > 0 {
+        eprintln!(
+            "[preflight] deferred cargo check {iterations}s waiting for load average to drop to/below {threshold}"
+        );
+    }
+}
+
 /// Build the blocking `cargo check` step, scoped to the changed crate(s)
 /// when scoping is safe, falling back to `--workspace` otherwise. Always
-/// applies the jobs cap + `nice` (see `compute_check_jobs`).
+/// applies the jobs cap + `nice` (see `compute_check_jobs`). EFFECTIVE-499:
+/// before building the step, defers (sleeps) while the 1-minute load average
+/// is above a configurable threshold — see `maybe_defer_for_load`. Unit
+/// tests below set `CHUMP_PREFLIGHT_DEFER_DISABLE=1` to keep this fn
+/// deterministic and non-sleeping regardless of the test machine's load.
 fn cargo_check_step(repo_root: &std::path::Path, paths: &[String]) -> Step {
-    let jobs = compute_check_jobs(available_cpus(), load_average_1m());
+    let cpus = available_cpus();
+    maybe_defer_for_load(cpus);
+    let jobs = compute_check_jobs(cpus, load_average_1m());
     let mut argv: Vec<String> = vec![
         "nice".to_string(),
         "-n".to_string(),
@@ -912,6 +987,9 @@ BYPASS:
     CHUMP_PREFLIGHT_SKIP_PIPEFAIL=1   Skip pipefail-race-sweep (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_PATHFILTER=1 Skip path-filter-coverage (INFRA-2350).
     CHUMP_PREFLIGHT_SKIP_INSTALLMAP=1 Skip install-manifest gate (INFRA-2350).
+    CHUMP_PREFLIGHT_DEFER_DISABLE=1   Skip the cargo-check load-aware-defer (EFFECTIVE-499).
+    CHUMP_PREFLIGHT_LOAD_THRESHOLD=N  Load-average ceiling the defer waits under (EFFECTIVE-499; default: CPU count).
+    CHUMP_PREFLIGHT_LOAD_DEFER_MAX_WAIT_MS=N Max ms the defer waits before giving up (EFFECTIVE-499; default: 10000).
 
 GATES (in order):
     1. event-registry-audit            (scope: ALWAYS, INFRA-1731/MISSION-064)
@@ -4157,6 +4235,9 @@ mod tests {
 
     #[test]
     fn cargo_check_step_scopes_argv_to_changed_crate_not_workspace() {
+        // EFFECTIVE-499: disable the real load-aware-defer so this test never
+        // sleeps on a loaded CI box — see `maybe_defer_for_load`.
+        std::env::set_var("CHUMP_PREFLIGHT_DEFER_DISABLE", "1");
         let fixture = make_fixture_workspace();
         let root = fixture.path();
         let paths = vec!["crates/foo/src/lib.rs".to_string()];
@@ -4176,10 +4257,27 @@ mod tests {
             "scoped step must NOT run the full workspace check, argv={:?}",
             step.argv
         );
+        assert!(
+            step.argv.contains(&"nice".to_string()),
+            "capped runner must wrap the check in `nice`, argv={:?}",
+            step.argv
+        );
+        let jobs_idx = step
+            .argv
+            .iter()
+            .position(|a| a == "--jobs")
+            .expect("capped runner must pass --jobs");
+        assert_eq!(
+            step.argv[jobs_idx + 1],
+            compute_check_jobs(available_cpus(), load_average_1m()).to_string(),
+            "jobs arg must match the capped jobs computation, argv={:?}",
+            step.argv
+        );
     }
 
     #[test]
     fn cargo_check_step_falls_back_to_workspace_when_scoping_unsafe() {
+        std::env::set_var("CHUMP_PREFLIGHT_DEFER_DISABLE", "1");
         let fixture = make_fixture_workspace();
         let root = fixture.path();
         let paths = vec!["Cargo.lock".to_string()];
@@ -4189,5 +4287,60 @@ mod tests {
             "unscoped fallback must run --workspace, argv={:?}",
             step.argv
         );
+    }
+
+    #[test]
+    fn defer_until_load_below_skips_sleep_when_already_under_threshold() {
+        let mut slept = 0u32;
+        let iterations = defer_until_load_below(4.0, 10_000, 1_000, || 1.0, |_ms| slept += 1);
+        assert_eq!(iterations, 0, "load already under threshold -> no wait");
+        assert_eq!(slept, 0, "must not sleep when already under threshold");
+    }
+
+    #[test]
+    fn defer_until_load_below_waits_while_load_is_high_then_times_out() {
+        // Load never drops -> the defer must still bail out at max_wait_ms
+        // rather than spinning forever on a permanently-busy machine.
+        let mut slept = 0u32;
+        let iterations = defer_until_load_below(1.0, 3_000, 1_000, || 99.0, |_ms| slept += 1);
+        assert_eq!(iterations, 3, "must stop once max_wait_ms is exhausted");
+        assert_eq!(slept, 3, "must actually sleep each iteration it waits");
+    }
+
+    #[test]
+    fn defer_until_load_below_stops_as_soon_as_load_drops() {
+        // Load starts high and drops below threshold after the 2nd poll ->
+        // the loop must stop polling/sleeping immediately, not run to max_wait.
+        let polls = std::cell::RefCell::new(0u32);
+        let mut slept = 0u32;
+        let iterations = defer_until_load_below(
+            2.0,
+            10_000,
+            1_000,
+            || {
+                let mut p = polls.borrow_mut();
+                *p += 1;
+                if *p >= 3 {
+                    0.5
+                } else {
+                    9.0
+                }
+            },
+            |_ms| slept += 1,
+        );
+        assert_eq!(
+            iterations, 2,
+            "must stop as soon as load drops below threshold"
+        );
+        assert_eq!(slept, 2);
+    }
+
+    #[test]
+    fn load_defer_threshold_defaults_to_cpu_count_and_honors_override() {
+        std::env::remove_var("CHUMP_PREFLIGHT_LOAD_THRESHOLD");
+        assert_eq!(load_defer_threshold(6), 6.0);
+        std::env::set_var("CHUMP_PREFLIGHT_LOAD_THRESHOLD", "2.5");
+        assert_eq!(load_defer_threshold(6), 2.5);
+        std::env::remove_var("CHUMP_PREFLIGHT_LOAD_THRESHOLD");
     }
 }
