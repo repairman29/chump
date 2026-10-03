@@ -421,6 +421,50 @@ def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
         pass
 
 
+def _sync_overhead_guard() -> int | None:
+    """CREDIBLE-167: refuse to pick when automated coherence syncs crowd the
+    last 50 commits past SYNC_OVERHEAD_CEILING (0.0-1.0; unset/invalid = off).
+
+    Commit subjects come from SYNC_OVERHEAD_LOG_FILE (one subject per line;
+    used by tests) or `git log -n 50` in CHUMP_REPO. Mirrors
+    GapBriefing::sync_overhead_ratio in src/briefing.rs. Returns 1 to abort the
+    pick, None to continue.
+    """
+    raw = os.environ.get("SYNC_OVERHEAD_CEILING", "").strip()
+    if not raw:
+        return None
+    try:
+        ceiling = float(raw)
+    except ValueError:
+        return None
+    log_file = os.environ.get("SYNC_OVERHEAD_LOG_FILE")
+    try:
+        if log_file:
+            with open(log_file) as f:
+                subjects = f.read().splitlines()[:50]
+        else:
+            import subprocess
+
+            out = subprocess.run(
+                ["git", "-C", os.environ.get("CHUMP_REPO", os.getcwd()),
+                 "log", "-n", "50", "--format=%s"],
+                capture_output=True, text=True, timeout=30, check=True,
+            )
+            subjects = out.stdout.splitlines()
+    except Exception:
+        return None
+    if not subjects:
+        return None
+    ratio = sum("coherence sync" in s.lower() for s in subjects) / len(subjects)
+    if ratio > ceiling:
+        print(
+            f"Sync overhead {ratio * 100:.0f}% exceeds ceiling {ceiling * 100:.0f}%",
+            file=sys.stderr,
+        )
+        return 1
+    return None
+
+
 def main() -> int:
     # INFRA-1737: loop-stop sentinel — checked at the top of every invocation
     # so an operator can halt the dispatch loop within one cycle by touching
@@ -430,6 +474,10 @@ def main() -> int:
     if os.path.exists(stop_sentinel):
         print("stop requested: .chump-locks/loop-stop-requested exists, exiting", file=sys.stderr)
         return 0
+
+    overhead_rc = _sync_overhead_guard()
+    if overhead_rc is not None:
+        return overhead_rc
 
     gap_file = os.environ.get("GAP_JSON_FILE")
     if not gap_file or not os.path.exists(gap_file):

@@ -132,6 +132,48 @@ pub struct GapBriefing {
     /// once and skipped thereafter). Always populated — deterministic
     /// string construction, no subprocess calls, never `None`.
     pub practices_block: String,
+    /// CREDIBLE-167: ceiling on the share of recent commits that may be
+    /// automated coherence syncs before the picker stops handing out work.
+    /// `None` = no ceiling configured. Compared against
+    /// [`GapBriefing::sync_overhead_ratio`].
+    pub sync_overhead_ceiling: Option<f64>,
+}
+
+/// CREDIBLE-167: a commit subject is an automated coherence sync when it
+/// contains "coherence sync" (case-insensitive), e.g.
+/// `chore(backlog): coherence sync — 0 gaps closed, state.sql regenerated`.
+/// Mirrored in `scripts/dispatch/_pick_gap.py`.
+pub fn is_coherence_sync_subject(subject: &str) -> bool {
+    subject.to_lowercase().contains("coherence sync")
+}
+
+impl GapBriefing {
+    /// CREDIBLE-167: proportion (0.0–1.0) of the last 50 commits in
+    /// `repo_path` whose subject is an automated coherence sync. Returns 0.0
+    /// when git is unavailable or the repo has no commits.
+    pub fn sync_overhead_ratio(&self, repo_path: &Path) -> f64 {
+        let Ok(out) = Command::new("git")
+            .arg("-C")
+            .arg(repo_path)
+            .args(["log", "-n", "50", "--format=%s"])
+            .output()
+        else {
+            return 0.0;
+        };
+        if !out.status.success() {
+            return 0.0;
+        }
+        let text = String::from_utf8_lossy(&out.stdout);
+        let subjects: Vec<&str> = text.lines().collect();
+        if subjects.is_empty() {
+            return 0.0;
+        }
+        let syncs = subjects
+            .iter()
+            .filter(|s| is_coherence_sync_subject(s))
+            .count();
+        syncs as f64 / subjects.len() as f64
+    }
 }
 
 /// Build a briefing for the given gap ID. Returns `gap_not_found = true` when
@@ -214,6 +256,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
             fleet_mode: crate::fleet_mode::compute(""),
             comprehension: None,
             practices_block: String::new(),
+            sync_overhead_ceiling: None,
         };
     };
 
@@ -372,6 +415,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         fleet_mode,
         comprehension,
         practices_block,
+        sync_overhead_ceiling: None,
     }
 }
 
@@ -1770,6 +1814,40 @@ gaps:
         fs::create_dir_all(&repo_dir).unwrap();
         let name = derive_repo_name(&repo_dir);
         assert_eq!(name, "my-repo-checkout");
+    }
+
+    #[test]
+    fn sync_overhead_ratio_counts_coherence_sync_commits() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let git = |args: &[&str]| {
+            let st = Command::new("git")
+                .arg("-C")
+                .arg(p)
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(st.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-q"]);
+        for i in 0..50 {
+            let msg = if i < 32 {
+                format!("chore(backlog): coherence sync — {i} gaps closed")
+            } else {
+                format!("real work {i}")
+            };
+            git(&["commit", "-q", "--allow-empty", "-m", &msg]);
+        }
+        let b = GapBriefing::default();
+        assert!((b.sync_overhead_ratio(p) - 0.64).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sync_overhead_ratio_is_zero_without_git_history() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(GapBriefing::default().sync_overhead_ratio(dir.path()), 0.0);
     }
 
     #[test]
