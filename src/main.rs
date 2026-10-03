@@ -139,6 +139,7 @@ mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
+mod gap_file; // INFRA-8061: universal gap-intake filer (POST CHUMP_GAP_URL + durable local spool)
 mod gap_route; // INFRA-3689: route gap mutations to the fleet-server when local checkout is non-canonical
 mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764
 mod gen;
@@ -9898,6 +9899,23 @@ async fn main() -> Result<()> {
     //   chump gap import [--yaml docs/gaps.yaml]
     if args.get(1).map(String::as_str) == Some("gap") {
         let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+
+        // INFRA-8061: the UNIVERSAL gap-intake filer — one portable filing path
+        // (POST CHUMP_GAP_URL, durable local spool + retry). Needs no local
+        // store, no tailscale, no SSH; usable from the Mac, cuphead, cloud
+        // ephemeral agents, and a stranger running their own chump. Handled
+        // before any store/worktree resolution below since it writes only over
+        // HTTP + a local spool file.
+        if subcmd == "file" {
+            match gap_file::run(&args).await {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("chump gap file: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         let repo_root = repo_path::repo_root();
         // INFRA-247: per-file YAML mirrors and the .chump/.last-yaml-op
         // freshness marker are *worktree-local* artifacts — they must land
