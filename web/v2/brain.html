@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Chump — Brain Graph</title>
+<!-- INFRA-1558: Cytoscape.js force-directed renderer over /api/brain/graph.json -->
+<script src="https://unpkg.com/cytoscape@3.28.1/dist/cytoscape.min.js"></script>
+<style>
+  :root {
+    --bg: #0a0a0a; --surface: #141414; --text: #f0f0f0; --text-dim: #8a8a8e;
+    --border: rgba(255,255,255,0.08); --accent: #0a84ff;
+  }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+    font: 13px -apple-system, BlinkMacSystemFont, sans-serif; overflow: hidden; }
+  #brain-root { display: flex; height: 100vh; }
+  #cy-container { flex: 1 1 auto; height: 100vh; min-width: 0; }
+  #brain-side { width: 300px; flex: 0 0 300px; border-left: 1px solid var(--border);
+    background: var(--surface); padding: 12px; overflow-y: auto; box-sizing: border-box; }
+  #brain-filters { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 12px; }
+  #brain-filters label { display: flex; align-items: center; gap: 4px; font-size: 12px;
+    color: var(--text-dim); cursor: pointer; }
+  #node-detail h3 { margin: 0 0 6px; font-size: 14px; word-break: break-all; }
+  #node-detail .neighbor { padding: 4px 0; border-bottom: 1px solid var(--border); font-size: 12px; }
+  #node-detail .relation { color: var(--text-dim); }
+  #node-detail .empty { color: var(--text-dim); font-style: italic; }
+  .legend-dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 4px; }
+</style>
+</head>
+<body>
+<div id="brain-root">
+  <div id="cy-container"></div>
+  <div id="brain-side">
+    <div id="brain-filters"></div>
+    <div id="node-detail"><p class="empty">Click a node to inspect its record.</p></div>
+  </div>
+</div>
+<script src="/v2/brain.js" defer></script>
+</body>
+</html>

@@ -186,6 +186,61 @@ pub fn export_graph_json() -> Result<String> {
     Ok(serde_json::to_string(&graph)?)
 }
 
+/// One neighboring edge of a node, from the node's point of view.
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeNeighbor {
+    pub id: String,
+    pub relation: String,
+    /// "out" if this node is the subject of the relation, "in" if the object.
+    pub direction: &'static str,
+    pub weight: f64,
+}
+
+/// Full record for a single node: id, degree, and every edge touching it.
+/// This is the "click node → right-pane record" payload for the brain graph
+/// renderer (INFRA-1558) — the backing store is a generic entity-relation
+/// graph, not typed gap/PR/agent records, so the "full record" is the set
+/// of relations the node participates in.
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeDetail {
+    pub id: String,
+    pub degree: usize,
+    pub neighbors: Vec<NodeNeighbor>,
+}
+
+/// Look up a single node's neighbors. Returns `Ok(None)` if the node has no
+/// edges (i.e. doesn't exist in the graph).
+pub fn node_detail(id: &str) -> Result<Option<NodeDetail>> {
+    let edges = load_all_edges()?;
+    let mut neighbors = Vec::new();
+    for e in &edges {
+        if e.subject == id {
+            neighbors.push(NodeNeighbor {
+                id: e.object.clone(),
+                relation: e.relation.clone(),
+                direction: "out",
+                weight: e.weight,
+            });
+        } else if e.object == id {
+            neighbors.push(NodeNeighbor {
+                id: e.subject.clone(),
+                relation: e.relation.clone(),
+                direction: "in",
+                weight: e.weight,
+            });
+        }
+    }
+    if neighbors.is_empty() {
+        return Ok(None);
+    }
+    let degree = neighbors.len();
+    Ok(Some(NodeDetail {
+        id: id.to_string(),
+        degree,
+        neighbors,
+    }))
+}
+
 /// Escape a string for safe inclusion as a DOT node ID or label.
 fn dot_escape(s: &str) -> String {
     s.replace('\\', "\\\\").replace('"', "\\\"")
