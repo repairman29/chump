@@ -936,16 +936,28 @@ pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
     // miss the case where two DIFFERENT gap IDs both touch the same file —
     // check declared --paths directly against every open PR's real file
     // list via `gh pr list --json files`.
+    //
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE gates whether an
+    // overlap blocks the claim (`blocking`, default) or merely warns and
+    // lets the claim proceed (`advisory`).
     if let Some(paths_csv) = &args.paths {
         if let Some((pr_num, other_gap, overlap_paths)) =
             check_paths_overlap_open_prs(&args.repo_root, paths_csv)
         {
-            bail!(
-                "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
-                pr_num,
-                other_gap,
-                overlap_paths.join(", "),
-            );
+            match overlap_outcome(claim_mode_from_env(), pr_num, &other_gap, &overlap_paths) {
+                OverlapOutcome::Block(msg) => bail!(msg),
+                OverlapOutcome::Warn(msg) => {
+                    eprintln!("[claim] WARN: {msg}");
+                    let ambient_path = args.repo_root.join(".chump-locks/ambient.jsonl");
+                    emit_claim_overlap_advisory_event(
+                        &ambient_path,
+                        &args.gap_id,
+                        pr_num,
+                        &other_gap,
+                        &overlap_paths,
+                    );
+                }
+            }
         }
     }
 
@@ -2572,6 +2584,90 @@ pub fn check_open_pr_for_gap(repo_root: &Path, gap_id: &str) -> Option<(u64, Str
         }
     }
     None
+}
+
+/// INFRA-3765 (INFRA-1688 slice): claim-time path-overlap enforcement mode.
+/// `Blocking` (default) refuses the claim on overlap; `Advisory` lets it
+/// proceed after emitting a warning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimMode {
+    Blocking,
+    Advisory,
+}
+
+/// Reads `CHUMP_CLAIM_MODE` (default `blocking`). Any value other than the
+/// literal `advisory` (case-insensitive) resolves to `Blocking`, so a typo
+/// fails closed rather than silently disabling the overlap guard.
+pub fn claim_mode_from_env() -> ClaimMode {
+    match std::env::var("CHUMP_CLAIM_MODE") {
+        Ok(v) if v.trim().eq_ignore_ascii_case("advisory") => ClaimMode::Advisory,
+        _ => ClaimMode::Blocking,
+    }
+}
+
+/// INFRA-3765 (INFRA-1688 slice): decision outcome for a detected
+/// path-overlap — either a hard block (message for `bail!`) or a warning
+/// (message to log) that lets the claim proceed. Pure/testable: takes the
+/// already-detected overlap tuple rather than re-deriving it.
+pub enum OverlapOutcome {
+    Block(String),
+    Warn(String),
+}
+
+pub fn overlap_outcome(
+    mode: ClaimMode,
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) -> OverlapOutcome {
+    let msg = format!(
+        "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
+        pr_num,
+        other_gap,
+        overlap_paths.join(", "),
+    );
+    match mode {
+        ClaimMode::Blocking => OverlapOutcome::Block(msg),
+        ClaimMode::Advisory => OverlapOutcome::Warn(msg),
+    }
+}
+
+/// INFRA-3765: emit a structured ambient event when an advisory-mode claim
+/// proceeds despite a detected path overlap, so the fleet can audit how
+/// often advisory mode is masking real collisions.
+// scanner-anchor: "kind":"claim_overlap_advisory"
+fn emit_claim_overlap_advisory_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_overlap_advisory\",\
+         \"gap_id\":\"{}\",\"overlap_pr\":{},\"other_gap\":\"{}\",\"paths\":\"{}\"}}\n",
+        json_escape(gap_id),
+        pr_num,
+        json_escape(other_gap),
+        json_escape(&overlap_paths.join(", ")),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
 }
 
 /// INFRA-4996 (INFRA-2434 slice): check whether any file in `paths_csv`
@@ -6630,6 +6726,101 @@ mod tests {
         assert!(s.starts_with("claim-infra-123-"));
         // claim-infra-123-<pid>-<epoch> = 4 dash-separated segments
         assert_eq!(s.matches('-').count(), 4);
+    }
+
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE default + parsing.
+    #[test]
+    fn claim_mode_defaults_to_blocking_when_unset() {
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Blocking);
+    }
+
+    #[test]
+    fn claim_mode_advisory_is_case_insensitive() {
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_MODE", "Advisory");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Advisory);
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+    }
+
+    #[test]
+    fn claim_mode_unrecognized_value_fails_closed_to_blocking() {
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_MODE", "bogus");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Blocking);
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+    }
+
+    // AC2: blocking semantics unchanged — overlap produces a Block outcome.
+    #[test]
+    fn overlap_outcome_blocking_mode_blocks() {
+        let outcome = overlap_outcome(
+            ClaimMode::Blocking,
+            42,
+            "INFRA-999",
+            &["src/foo.rs".to_string()],
+        );
+        match outcome {
+            OverlapOutcome::Block(msg) => {
+                assert!(msg.contains("#42"));
+                assert!(msg.contains("INFRA-999"));
+                assert!(msg.contains("src/foo.rs"));
+            }
+            OverlapOutcome::Warn(_) => panic!("expected Block in blocking mode"),
+        }
+    }
+
+    // AC3: advisory mode emits a structured warning and succeeds (no block).
+    #[test]
+    fn overlap_outcome_advisory_mode_warns() {
+        let outcome = overlap_outcome(
+            ClaimMode::Advisory,
+            7,
+            "INFRA-111",
+            &["src/bar.rs".to_string()],
+        );
+        match outcome {
+            OverlapOutcome::Warn(msg) => {
+                assert!(msg.contains("#7"));
+                assert!(msg.contains("INFRA-111"));
+                assert!(msg.contains("src/bar.rs"));
+            }
+            OverlapOutcome::Block(_) => panic!("expected Warn in advisory mode"),
+        }
+    }
+
+    #[test]
+    fn claim_overlap_advisory_event_is_emitted_to_ambient() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-claim-mode-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ambient_path = dir.join("ambient.jsonl");
+        emit_claim_overlap_advisory_event(
+            &ambient_path,
+            "INFRA-3765",
+            7,
+            "INFRA-111",
+            &["src/bar.rs".to_string()],
+        );
+        let contents = std::fs::read_to_string(&ambient_path).unwrap();
+        assert!(contents.contains("claim_overlap_advisory"));
+        assert!(contents.contains("INFRA-3765"));
+        assert!(contents.contains("INFRA-111"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // INFRA-1328: gh_owner_repo URL parser — pure logic, no network.

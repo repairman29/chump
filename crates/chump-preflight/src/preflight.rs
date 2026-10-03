@@ -2229,6 +2229,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "claim-mode",
+            &["bash", "scripts/ci/test-claim-mode.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "git-identity-guard",
             &["bash", "scripts/ci/test-git-identity-guard.sh"],
             GateKind::Scripts,
