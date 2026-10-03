@@ -159,10 +159,29 @@ check_json() {
     output=$("$CHUMP" "$@" 2>"$err") || rc=$?
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
+    elif ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
+    else
+        # INFRA-1789: `--help --format json` must additionally carry the
+        # minimum shape a consumer needs to render help programmatically
+        # (command/description/usage/options), not just be *any* valid JSON.
+        local is_help_json=0
+        for a in "$@"; do [[ "$a" == "--help" ]] && is_help_json=1; done
+        if [[ $is_help_json -eq 1 ]] && printf '%s\n' "$@" | grep -qx -- "json"; then
+            if echo "$output" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+required = ("command", "description", "usage", "options")
+missing = [k for k in required if k not in d]
+sys.exit(1 if missing else 0)
+' >/dev/null 2>&1; then
+                ok "$desc"
+            else
+                fail "$desc → valid JSON but missing one of command/description/usage/options; got: ${output:0:160}"
+            fi
+        else
+            ok "$desc"
+        fi
     fi
     rm -f "$err"
 }
@@ -294,6 +313,10 @@ check_any     "dispatch --help shows Usage"          "Usage|dispatch|GAP-ID|auto
 check_error   "dispatch (no GAP-ID) exits non-zero"  "Usage|error|GAP-ID"               dispatch
 # dispatch sub-menu: route, scoreboard, simulate live under 'chump dispatch <sub>'
 check_any     "dispatch route --help shows Usage"    "Usage|route|backend|dispatch"     dispatch route --help
+
+# INFRA-1789: preflight --help --format json → structured help (command/
+# description/usage/options), not just arbitrary valid JSON.
+check_json    "preflight --help --format json returns valid JSON" preflight --help --format json
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 5. SESSION / REFLECTION

@@ -113,6 +113,11 @@ register_step "chump-help-regression"               "bash scripts/ci/check-help-
 # Mirrors ci.yml fast-checks "gap-preflight AC gate" (INFRA-1259).
 register_step "gap-preflight-ac-gate"               "bash scripts/ci/test-gap-preflight-ac-gate.sh 2>/dev/null || true"
 
+# INFRA-1789: `chump preflight --help` golden-file regression — mirrors the
+# discover_test_scripts() entry in crates/chump-preflight/src/preflight.rs
+# so a stale preflight help string is caught on this lane too.
+register_step "help-regression"                     "bash scripts/ci/test-preflight-help-regression.sh"
+
 # Mirrors ci.yml clippy job "cargo clippy".
 register_step "cargo-clippy"                        "cargo clippy --workspace --all-targets -- -D warnings"
 

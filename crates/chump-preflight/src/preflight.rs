@@ -845,6 +845,16 @@ struct Args {
     /// `newcmd` is a placeholder that does nothing but exit 0 — a template
     /// other subcommands can copy the wiring from.
     newcmd: bool,
+    /// INFRA-1789: output format for `--help` (text|json). Only affects the
+    /// help path — the gate-run path already has its own `--json` flag.
+    format: HelpFormat,
+}
+
+/// INFRA-1789: `--help --format json` output mode.
+#[derive(PartialEq, Eq)]
+enum HelpFormat {
+    Text,
+    Json,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -860,6 +870,7 @@ fn parse_args(argv: &[String]) -> Args {
         full: false,
         artifact_type: None,
         newcmd: false,
+        format: HelpFormat::Text,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -908,6 +919,17 @@ fn parse_args(argv: &[String]) -> Args {
             }
             s if s.starts_with("--artifact-type=") => {
                 a.artifact_type = Some(s["--artifact-type=".len()..].to_string());
+            }
+            "--format" => {
+                if i + 1 < argv.len() {
+                    if argv[i + 1] == "json" {
+                        a.format = HelpFormat::Json;
+                    }
+                    i += 1;
+                }
+            }
+            s if s.starts_with("--format=") && &s["--format=".len()..] == "json" => {
+                a.format = HelpFormat::Json;
             }
             _ => {} // ignore unknowns for forward-compat
         }
@@ -990,6 +1012,15 @@ EXIT CODES:
     0   all gates passed (or --vs: only pre-existing failures)
     1   one or more NEW gates failed (see stdout)
     2   bad usage"
+    );
+}
+
+/// INFRA-1789: `chump preflight --help --format json` — machine-readable
+/// mirror of `print_help()`. Hand-built JSON (no serde dependency in this
+/// crate) since every field is a static literal, not user/runtime data.
+fn print_help_json() {
+    println!(
+        "{{\"command\":\"chump preflight\",\"description\":\"local CI mirror (INFRA-1670, INFRA-1672)\",\"usage\":\"chump preflight [OPTIONS]\",\"options\":[\"--scope\",\"--with-tests\",\"--full\",\"--keep-going\",\"--json\",\"--pre-commit\",\"--vs\",\"--artifact-type\",\"--format\",\"-h\",\"--help\"],\"exit_codes\":{{\"0\":\"all gates passed\",\"1\":\"one or more NEW gates failed\",\"2\":\"bad usage\"}}}}"
     );
 }
 
@@ -1275,6 +1306,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: `chump preflight --help` regression — diffs live output
+        // against crates/chump-preflight/tests/help-golden.txt. Pure local,
+        // no network, <1s.
+        "scripts/ci/test-preflight-help-regression.sh",
     ];
     candidates
         .iter()
@@ -1489,7 +1524,11 @@ pub fn run(argv: &[String]) -> i32 {
     }
     let mut args = parse_args(argv);
     if args.help {
-        print_help();
+        if args.format == HelpFormat::Json {
+            print_help_json();
+        } else {
+            print_help();
+        }
         return 0;
     }
     // EFFECTIVE-1547: `newcmd` is a placeholder subcommand — scaffolding
@@ -3465,6 +3504,40 @@ mod tests {
             "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
              always-run allowlist so detector regressions surface locally"
         );
+    }
+
+    // INFRA-1789: the preflight --help golden-file regression script must be
+    // wired into the always-run allowlist, or a drifted help string ships
+    // without local or CI detection.
+    #[test]
+    fn infra1789_preflight_help_regression_test_is_wired() {
+        let repo_root = find_repo_root().expect("repo root");
+        let scripts = discover_test_scripts(&repo_root);
+        assert!(
+            scripts
+                .iter()
+                .any(|p| p.ends_with("scripts/ci/test-preflight-help-regression.sh")),
+            "test-preflight-help-regression.sh must be wired into preflight's \
+             always-run allowlist so --help drift surfaces locally"
+        );
+    }
+
+    // INFRA-1789: `--format json` only changes behavior on the --help path.
+    #[test]
+    fn infra1789_format_json_flag_parses() {
+        let args = parse_args(&[
+            "--help".to_string(),
+            "--format".to_string(),
+            "json".to_string(),
+        ]);
+        assert!(args.help);
+        assert!(args.format == HelpFormat::Json);
+
+        let args = parse_args(&["--help".to_string(), "--format=json".to_string()]);
+        assert!(args.format == HelpFormat::Json);
+
+        let args = parse_args(&["--help".to_string()]);
+        assert!(args.format == HelpFormat::Text);
     }
 
     // INFRA-4116: run_preflight_script must return Ok(()) for a successful
