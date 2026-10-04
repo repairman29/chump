@@ -159,5 +159,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/process/SUBAGENT_DISPATCH.md`](../../docs/process/SUBAGENT_DISPATCH.md) — META-069 dispatch epilogue
 - [`docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md`](../../docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md) — the role-scoped fleet vision (META-074)
 - [`.claude/agents/harvester.md`](./harvester.md) — sibling pattern for productized curator role
+- [`scripts/coord/lib/chump-slo.sh`](../../scripts/coord/lib/chump-slo.sh) — SLO-breach consumer registry (INFRA-2424): during an `slo_breach` (`.chump/fleet-paused`) `chump claim` is blocked but `chump gap reserve` is not — filing follow-up gaps is always allowed, starting work is not
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay
