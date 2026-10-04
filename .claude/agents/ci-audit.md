@@ -139,6 +139,7 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 
 - [`scripts/coord/ci-audit-loop.sh`](../../scripts/coord/ci-audit-loop.sh) — the canonical CLI; all subcommands invoke here
 - [`scripts/ci/test-gap-quality-gate.sh`](../../scripts/ci/test-gap-quality-gate.sh) — test for the `validate-gap-quality.sh` gate (INFRA-2475): checks that gap entries with empty AC, TODO/TBD placeholders, or invalid priority/effort are rejected; include it when auditing test-gate coverage
+- [`scripts/ci/test-stale-main-guards.sh`](../../scripts/ci/test-stale-main-guards.sh) — stale-main guard regression test (INFRA-2628): verifies claim fetches origin/main before provisioning a worktree and that pre-push Guard 6 blocks stale-base branches; run it when auditing stale-main wedges
 - [`docs/architecture/TEAM_OF_AGENTS.md`](../../docs/architecture/TEAM_OF_AGENTS.md) — team hierarchy
 - [`docs/process/OPERATOR_PLAYBOOK.md`](../../docs/process/OPERATOR_PLAYBOOK.md) — operator's directive surface
 - [`docs/process/SUBAGENT_DISPATCH.md`](../../docs/process/SUBAGENT_DISPATCH.md) — META-069 dispatch epilogue (paste verbatim into Sonnet prompts)
