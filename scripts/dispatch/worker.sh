@@ -2294,6 +2294,28 @@ Operator or sibling worker can rescue this branch via:
         chump gap strike "$GAP_ID" >/dev/null 2>&1 || _strike_rc=$?
         [[ "$_strike_rc" -eq 10 ]] || return 0
         log "EFFECTIVE-310: $GAP_ID hit strike threshold on chump-local — frontier decompose"
+
+        # INFRA-8067: root-cause fix for RESILIENT-1437 (gap-store
+        # slice-bloat). Before EVER invoking the real --apply decompose (or
+        # resetting strikes on its success), cheaply check whether $GAP_ID
+        # already has open child slices — e.g. a prior --apply run that
+        # filed slices but was killed/wedged before writing the parent's
+        # status=decomposed marker, leaving it looking "fresh" to this same
+        # reflex on every subsequent strike-threshold hit. `chump gap
+        # decompose --dry-run` hits that guard (new in `chump gap decompose`,
+        # see src/main.rs) before building any provider or calling an LLM —
+        # it's a cheap local SQL check, no API keys/env sourcing needed — and
+        # exits 11 specifically when the parent is already sliced.
+        local _precheck_rc=0
+        chump gap decompose "$GAP_ID" --dry-run >/dev/null 2>>"$cycle_log" || _precheck_rc=$?
+        if [[ "$_precheck_rc" -eq 11 ]]; then
+            log "EFFECTIVE-310: $GAP_ID already has open child slices (INFRA-8067 guard) — skipping re-decompose, leaving strikes in place so this does not silently loop as if resolved"
+            printf '{"ts":"%s","kind":"gap_decompose_refused","source":"worker.sh","agent":"%s","gap_id":"%s","backend":"%s","reason":"already_has_open_slices"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$FLEET_BACKEND" \
+                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+            return 0
+        fi
+
         # EFFECTIVE-512: pin openrouter + deepseek-v4-pro exactly as
         # gap-drain.sh:38-40 does, scoped to THIS decompose call via a subshell
         # so the surrounding worker loop env is untouched.
