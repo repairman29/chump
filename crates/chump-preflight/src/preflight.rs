@@ -1275,6 +1275,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: `chump preflight --help` golden-file regression —
+        // catches a stale CLI surface (INFRA-1246 class) where a flag is
+        // renamed/removed without the help text being updated. Pure local
+        // (one subprocess + a string diff), ~0.1s, no network.
+        "scripts/ci/test-cli-help-regression.sh",
     ];
     candidates
         .iter()
