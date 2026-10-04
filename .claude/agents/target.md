@@ -160,5 +160,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md`](../../docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md) — the role-scoped fleet vision (META-074)
 - [`.claude/agents/harvester.md`](./harvester.md) — sibling pattern for productized curator role
 - [`scripts/coord/daemon-exit-loop-watcher-daemon.sh`](../../scripts/coord/daemon-exit-loop-watcher-daemon.sh) — daemon exit-loop watcher (INFRA-2417): detects consecutive non-zero daemon exits (default threshold 3 × 15 min), files a P0 gap and closes it on recovery
+- [`docs/gaps/INFRA-2534.yaml`](../../docs/gaps/INFRA-2534.yaml) — INFRA-2534 gap record: collapsed the triple `chump contract-scan` call in `test-cross-pr-contract.sh` into one; read it when grading CI/QA (META-074 child A) audit-step wall-clock
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay
