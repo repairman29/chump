@@ -933,6 +933,21 @@ jobs:
         id: job-start
         run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
 
+      # META-197/META-199: catches broken workflow syntax (bad `uses:` refs,
+      # invalid expressions, matrix/job-needs errors) at PR time instead of
+      # after trunk-RED (see INFRA-2200, INFRA-2321). shellcheck is disabled
+      # via `-shellcheck=` — the repo has ~20 pre-existing info/style-level
+      # shellcheck nits in legacy workflow run: blocks (release.yml,
+      # queue-driver.yml, experimental/*) that are unrelated to workflow
+      # structure and would fail every PR regardless of its own diff; fixing
+      # those is tracked separately. Tier-D in
+      # docs/process/CI_GATES_INVENTORY.md and preflight-ci-parity-exceptions.txt
+      # (needs the actionlint binary, not available in the local preflight env).
+      - name: actionlint (META-197/META-199)
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color -shellcheck=
+
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
       # cleanly on ubuntu-latest. Catches "exit 127 / command not found" before
