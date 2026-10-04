@@ -10405,6 +10405,37 @@ events:
     expected_volume: "0-N per 30-min reaper cycle; non-zero signals dormant-inbox backlog"
     # payload: {to: string, sender: string, age_min: number, msg_summary: string, ts: string}
 
+  # INFRA-1945: A2A role-typed routing (INFRA-1862 slice B)
+  - kind: a2a_role_resolved
+    effect_metric: resilient
+    emitter: scripts/coord/broadcast.sh
+    trigger: >
+      Emitted when `broadcast.sh --to role:<name>` resolves against the
+      most-recent fresh (<=30min, CHUMP_A2A_ROLE_FRESHNESS_MIN) entry in
+      .chump-locks/fleet-registry.jsonl whose role==<name>; the message is
+      then routed to that resolved session's inbox instead of requiring the
+      caller to know the exact date-variant session-id. Carries role,
+      resolved_session.
+    consumers: [ops-audit]
+    fields_required: [ts, kind, role, resolved_session, session]
+    expected_volume: "0-N per role-addressed broadcast; proportional to --to role: usage"
+    # payload: {role: string, resolved_session: string, session: string, ts: string}
+
+  # INFRA-1945: A2A role-typed routing (INFRA-1862 slice B)
+  - kind: a2a_role_resolve_failed
+    effect_metric: resilient
+    emitter: scripts/coord/broadcast.sh
+    trigger: >
+      Emitted when `broadcast.sh --to role:<name>` finds no fresh
+      (<=30min) fleet-registry.jsonl entry for that role (and --strict was
+      not passed, which instead exits 1). The message is parked in
+      .chump-locks/inbox/dead-letter.jsonl (slice C shape) rather than
+      silently dropped or guessed-at. Carries role.
+    consumers: [ops-audit, fleet-doctor]
+    fields_required: [ts, kind, role, session]
+    expected_volume: "0-N; non-zero signals a role with no alive session — check fleet-registry.jsonl freshness"
+    # payload: {role: string, session: string, ts: string}
+
   - kind: trunk_cascade_broken
     effect_metric: resilient
     emitter: scripts/ops/break-trunk-cascade.sh (INFRA-2087)
