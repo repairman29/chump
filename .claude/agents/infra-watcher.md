@@ -118,5 +118,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/process/OPUS_SHEPHERD_PLAYBOOK.md`](../../docs/process/OPUS_SHEPHERD_PLAYBOOK.md) — sibling-roles table (Sibling-roles section)
 - [`docs/process/OPERATOR_PLAYBOOK.md`](../../docs/process/OPERATOR_PLAYBOOK.md) — Section 5 productize-curator pattern
 - [`.claude/agents/target.md`](./target.md) — sibling curator pattern
+- [`scripts/setup/com.chump.mesh-worker.plist`](../../scripts/setup/com.chump.mesh-worker.plist) — launchd unit for the mesh worker (INFRA-2545); check it when verifying the mesh worker daemon is installed and running
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay
