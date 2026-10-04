@@ -189,6 +189,8 @@ run_step 2 "cargo test --workspace" \
 
 # Additional Rust-adjacent script checks
 run_test_script 2 "$SCRIPTS_CI/test-no-raw-gh-in-hot-paths.sh"
+run_test_script 2 "$SCRIPTS_CI/test-gh-in-ci-guarded.sh"
+run_test_script 2 "$SCRIPTS_CI/test-gh-token-guard.sh"
 run_test_script 2 "$SCRIPTS_CI/test-no-direct-auto-merge-arm.sh"
 run_test_script 2 "$SCRIPTS_CI/test-preflight-vs-ci-parity.sh"
 run_test_script 2 "$SCRIPTS_CI/test-ci-gates-inventory.sh"
