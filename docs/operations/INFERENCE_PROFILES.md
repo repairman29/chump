@@ -289,6 +289,45 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 ---
 
+## 2c. XML-tool-tag-emitting models
+
+**What it is:** Some models — certain local **Ollama** checkpoints and older **Mistral** builds among them — don't emit native OpenAI-format `tool_calls`. Instead they write the tool call inline as XML text in the response `content`, e.g.:
+
+```
+<tool_call>{"name": "read_file", "arguments": {"path": "src/main.rs"}}</tool_call>
+```
+
+or the attribute-tagged variant:
+
+```
+<function_call name="bash">{"cmd": "ls"}</function_call>
+```
+
+Left alone, these responses look like a plain-text reply with no tool calls — `provider_cascade.rs`'s quality gate would treat it as a tool-call refusal and fail over to the next slot. **`crates/chump-xml-adapter`** (`adapt()`) parses both tag styles out of the text and converts them into native `ToolCall { id, name, input }` entries before that gate runs.
+
+**When to use:** You're routing an Ollama (or similarly XML-emitting) model through the provider cascade and see tool calls showing up as literal `<tool_call>...</tool_call>` text in chat instead of being executed.
+
+**Enable per slot** — this is **off by default**; set the flag only on the slot whose model actually emits XML tags:
+
+```bash
+# Slot 0 (local — e.g. OPENAI_API_BASE pointed at Ollama per §2):
+OPENAI_API_BASE=http://127.0.0.1:11434/v1
+OPENAI_MODEL=some-xml-emitting-model
+CHUMP_LOCAL_XML_TOOL_TAGS=1
+
+# Numbered cloud/local slot N (see docs/architecture/PROVIDER_CASCADE.md):
+CHUMP_PROVIDER_3_BASE=http://127.0.0.1:11434/v1
+CHUMP_PROVIDER_3_MODEL=some-xml-emitting-model
+CHUMP_PROVIDER_3_XML_TOOL_TAGS=1
+```
+
+**Behavior notes:**
+- If the model *does* return native `tool_calls`, those are used as-is — the XML adapter never overrides a native tool call, even when the flag is set.
+- Only malformed-JSON XML blocks are left untouched in the returned text (and will not produce a `ToolCall`); well-formed blocks are stripped from `text` once converted.
+- See [`docs/architecture/PROVIDER_CASCADE.md` § XML tool-call tag extraction](../architecture/PROVIDER_CASCADE.md#xml-tool-call-tag-extraction-non-native-tool-call-models) for the full env-var reference and wiring details.
+
+---
+
 ## 3. Switching profiles (checklist)
 
 1. **Stop** the Discord bot: **`./scripts/setup/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.

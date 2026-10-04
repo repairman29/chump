@@ -120,6 +120,23 @@ Context can look small if no provider has `CONTEXT_K` set — the cascade then c
 
 Each slot tracks calls-per-day in memory (resets every 24 h). Set `CHUMP_PROVIDER_{N}_RPD` to the provider's daily cap; the cascade skips that slot once `calls_today >= RPD * headroom%`. No RPD set = unlimited.
 
+### XML tool-call tag extraction (non-native-tool-call models)
+
+Some local models (certain Ollama checkpoints, older Mistral builds) don't emit
+native OpenAI-format `tool_calls` — they emit `<tool_call>{"name":...}</tool_call>`
+or `<function_call name="...">{...}</function_call>` XML inside the text response
+instead. Set `xml_tool_tags` on the affected slot so the cascade routes its
+response through `crates/chump-xml-adapter` before the empty/malformed quality
+gate, converting the XML into a native `ToolCall`. Native tool calls (when
+present) always win — the adapter is a fallback path only.
+
+| Env var | Purpose |
+|--------|--------|
+| `CHUMP_PROVIDER_{N}_XML_TOOL_TAGS=1` | Cloud/numbered slot `N` emits XML tool-call tags instead of native tool calls. Default `false`. |
+| `CHUMP_LOCAL_XML_TOOL_TAGS=1` | Slot 0 (local, `OPENAI_API_BASE`) emits XML tool-call tags. Default `false`. |
+
+Full sample config and the Ollama-model use case: [`docs/operations/INFERENCE_PROFILES.md` § XML-tool-tag-emitting models](../operations/INFERENCE_PROFILES.md#xml-tool-tag-emitting-models).
+
 ---
 
 ## 3. Verify

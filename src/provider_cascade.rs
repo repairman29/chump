@@ -488,6 +488,13 @@ pub struct ProviderSlot {
     /// tiers so the cascade can prefer the right slot for each task complexity.
     /// From CHUMP_PROVIDER_{N}_MODEL_CLASS. Matched against CHUMP_PREFERRED_MODEL_CLASS.
     pub model_class: Option<String>,
+    /// EFFECTIVE-1565: when true, this slot's model emits tool calls as
+    /// `<tool_call>`/`<function_call>` XML tags instead of native
+    /// OpenAI-format tool calls (common for some local Ollama models and
+    /// older Mistral checkpoints). Response text is routed through
+    /// `chump_xml_adapter::adapt` before native tool-call parsing.
+    /// From CHUMP_PROVIDER_{N}_XML_TOOL_TAGS (slot 0 / local: CHUMP_LOCAL_XML_TOOL_TAGS). Defaults to false.
+    pub xml_tool_tags: bool,
     pub rpm_limit: u32,
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
@@ -604,6 +611,39 @@ fn record_call(slot: &ProviderSlot) {
     slot.calls_today.fetch_add(1, Ordering::Relaxed);
 }
 
+/// EFFECTIVE-1565: for slots whose model emits XML tool-call tags instead of
+/// native tool calls (`slot.xml_tool_tags == true`), extract `<tool_call>` /
+/// `<function_call>` blocks from `r.text` via `chump_xml_adapter::adapt` and
+/// convert them into native `ToolCall`s. No-op when the slot doesn't declare
+/// `xml_tool_tags`, or when the provider already returned native tool calls
+/// (native output always wins — the adapter is a fallback path only).
+fn apply_xml_tool_tags(slot: &ProviderSlot, r: &mut CompletionResponse) {
+    if !slot.xml_tool_tags || !r.tool_calls.is_empty() {
+        return;
+    }
+    let Some(raw) = r.text.as_deref() else {
+        return;
+    };
+    let adapted = chump_xml_adapter::adapt(raw);
+    if adapted.tool_calls.is_empty() {
+        return;
+    }
+    r.tool_calls = adapted
+        .tool_calls
+        .into_iter()
+        .map(|tc| axonerai::provider::ToolCall {
+            id: tc.id,
+            name: tc.name,
+            input: tc.input,
+        })
+        .collect();
+    r.text = if adapted.text.trim().is_empty() {
+        None
+    } else {
+        Some(adapted.text)
+    };
+}
+
 pub struct ProviderCascade {
     pub slots: Vec<ProviderSlot>,
     _strategy: CascadeStrategy,
@@ -645,6 +685,9 @@ impl ProviderCascade {
                     privacy: PrivacyTier::Safe,
                     context_k: None,
                     model_class: None,
+                    xml_tool_tags: std::env::var("CHUMP_LOCAL_XML_TOOL_TAGS")
+                        .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                        .unwrap_or(false),
                     rpm_limit: 0,
                     calls_this_minute: AtomicU32::new(0),
                     minute_start: Mutex::new(Instant::now()),
@@ -706,6 +749,9 @@ impl ProviderCascade {
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.trim().to_lowercase());
+            let xml_tool_tags = std::env::var(format!("CHUMP_PROVIDER_{}_XML_TOOL_TAGS", n))
+                .map(|v| v == "1" || v.eq_ignore_ascii_case("true"))
+                .unwrap_or(false);
 
             // CREDIBLE-227 AC #4: a slot that declares BASE/KEY/MODEL but
             // omits RPM, PRIORITY, and CONTEXT_K is "half-declared" — it
@@ -740,6 +786,7 @@ impl ProviderCascade {
                 privacy,
                 context_k,
                 model_class,
+                xml_tool_tags,
                 rpm_limit: rpm,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -1608,8 +1655,15 @@ impl Provider for ProviderCascade {
                     .await
             };
             match slot_res {
-                Ok(r) => {
+                Ok(mut r) => {
                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
+
+                    // EFFECTIVE-1565: models that emit <tool_call>/<function_call>
+                    // XML instead of native tool calls (xml_tool_tags=true) need
+                    // their text routed through the XML adapter before the
+                    // empty/malformed quality gate below, which inspects
+                    // r.tool_calls / r.text.
+                    apply_xml_tool_tags(slot, &mut r);
 
                     // Quality gate: if response is empty and tools were provided,
                     // the model likely failed silently — try the next slot.
@@ -2319,6 +2373,7 @@ mod tests {
                 privacy: PrivacyTier::Safe,
                 context_k: None,
                 model_class: None,
+                xml_tool_tags: false,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -2341,6 +2396,7 @@ mod tests {
                 privacy: PrivacyTier::Safe,
                 context_k: None,
                 model_class: None,
+                xml_tool_tags: false,
                 rpm_limit: 10,
                 calls_this_minute: AtomicU32::new(0),
                 minute_start: Mutex::new(Instant::now()),
@@ -2908,6 +2964,7 @@ mod tests {
             day_start: Mutex::new(Instant::now()),
             cooldown_until: Mutex::new(None),
             model_class: None,
+            xml_tool_tags: false,
         }
     }
 
@@ -3526,6 +3583,7 @@ mod tests {
             privacy: PrivacyTier::Safe,
             context_k: None,
             model_class: None,
+            xml_tool_tags: false,
             rpm_limit: 0,
             calls_this_minute: AtomicU32::new(0),
             minute_start: Mutex::new(Instant::now()),
@@ -3788,6 +3846,152 @@ mod tests {
         assert_eq!(
             get_last_used_model(),
             Some("gemini-2.5-flash-lite".to_string())
+        );
+    }
+
+    // ── EFFECTIVE-1565: XML tool-call tag adapter wire-up ──────────────────
+
+    /// `apply_xml_tool_tags` is a no-op when the slot doesn't declare
+    /// `xml_tool_tags` — a native-tool-call model's response must pass
+    /// through untouched even if its text happens to contain tag-shaped text.
+    #[test]
+    fn apply_xml_tool_tags_noop_when_flag_unset() {
+        let slot = test_slot(
+            "native",
+            0,
+            ProviderTier::Cloud,
+            PrivacyTier::Safe,
+            0,
+            0,
+            0,
+            0,
+        );
+        let mut r = CompletionResponse {
+            text: Some("<tool_call>{\"name\":\"x\"}</tool_call>".to_string()),
+            tool_calls: vec![],
+            stop_reason: axonerai::provider::StopReason::EndTurn,
+        };
+        apply_xml_tool_tags(&slot, &mut r);
+        assert!(r.tool_calls.is_empty());
+        assert!(r.text.unwrap().contains("<tool_call>"));
+    }
+
+    /// `apply_xml_tool_tags` is a no-op when the provider already returned
+    /// native tool calls — native output always wins over the XML fallback.
+    #[test]
+    fn apply_xml_tool_tags_noop_when_native_tool_calls_present() {
+        let mut slot = test_slot("xml", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0);
+        slot.xml_tool_tags = true;
+        let native = axonerai::provider::ToolCall {
+            id: "call_native".to_string(),
+            name: "native_fn".to_string(),
+            input: serde_json::json!({}),
+        };
+        let mut r = CompletionResponse {
+            text: Some("<tool_call>{\"name\":\"ignored\"}</tool_call>".to_string()),
+            tool_calls: vec![native],
+            stop_reason: axonerai::provider::StopReason::ToolUse,
+        };
+        apply_xml_tool_tags(&slot, &mut r);
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].name, "native_fn");
+    }
+
+    /// `apply_xml_tool_tags` extracts a `<tool_call>` block into a native
+    /// `ToolCall` when the slot declares `xml_tool_tags` and the provider
+    /// returned no native tool calls, and strips the tag out of `text`.
+    #[test]
+    fn apply_xml_tool_tags_extracts_from_xml_emitting_slot() {
+        let mut slot = test_slot("xml", 0, ProviderTier::Local, PrivacyTier::Safe, 0, 0, 0, 0);
+        slot.xml_tool_tags = true;
+        let mut r = CompletionResponse {
+            text: Some(
+                r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#
+                    .to_string(),
+            ),
+            tool_calls: vec![],
+            stop_reason: axonerai::provider::StopReason::EndTurn,
+        };
+        apply_xml_tool_tags(&slot, &mut r);
+        assert_eq!(r.tool_calls.len(), 1);
+        assert_eq!(r.tool_calls[0].name, "read_file");
+        assert_eq!(
+            r.tool_calls[0].input.get("path").and_then(|v| v.as_str()),
+            Some("src/main.rs")
+        );
+        assert!(r.text.map(|t| t.trim().is_empty()).unwrap_or(true));
+    }
+
+    /// Integration test (AC #4): a mock Ollama-style HTTP server emits a
+    /// tool call as `<tool_call>` XML inside `content` (no native
+    /// `tool_calls` array) — proves the end-to-end inference loop
+    /// (`ProviderCascade::complete` → `apply_xml_tool_tags`) converts it to
+    /// a native `ToolCall` when the slot is configured with
+    /// `xml_tool_tags: true`.
+    #[tokio::test]
+    async fn cascade_complete_extracts_xml_tool_call_from_mock_ollama_slot() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": r#"<tool_call>{"name":"read_file","arguments":{"path":"src/main.rs"}}</tool_call>"#
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let base = mock.uri();
+        let provider = LocalOpenAIProvider::new(
+            base.clone(),
+            "not-needed".to_string(),
+            "xml-emitting-model".to_string(),
+        );
+        let slot = ProviderSlot {
+            name: "ollama-xml".to_string(),
+            base_url: base,
+            provider,
+            priority: 0,
+            tier: ProviderTier::Local,
+            privacy: PrivacyTier::Safe,
+            context_k: None,
+            model_class: None,
+            xml_tool_tags: true,
+            rpm_limit: 0,
+            calls_this_minute: AtomicU32::new(0),
+            minute_start: Mutex::new(Instant::now()),
+            rpd_limit: 0,
+            calls_today: AtomicU32::new(0),
+            day_start: Mutex::new(Instant::now()),
+            cooldown_until: Mutex::new(None),
+        };
+        let cascade = ProviderCascade {
+            slots: vec![slot],
+            _strategy: CascadeStrategy::Priority,
+            local_only: false,
+            bandit: std::sync::OnceLock::new(),
+        };
+
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "please read the file".to_string(),
+        }];
+        let out = cascade
+            .complete(messages, None, None, None)
+            .await
+            .expect("mock cascade call should succeed");
+        assert_eq!(out.tool_calls.len(), 1);
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(
+            out.tool_calls[0].input.get("path").and_then(|v| v.as_str()),
+            Some("src/main.rs")
         );
     }
 }

@@ -3259,3 +3259,8 @@ CHUMP_GH_REQUIRED
 CHUMP_COST_PER_SECOND
 # detected in: (standard input)
 CHUMP_VERIFY_CLAIM_BRANCH_FORCE_TIMEOUT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_LOCAL_XML_TOOL_TAGS
