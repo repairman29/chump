@@ -119,5 +119,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/process/OPERATOR_PLAYBOOK.md`](../../docs/process/OPERATOR_PLAYBOOK.md) — Section 5 productize-curator pattern
 - [`.claude/agents/target.md`](./target.md) — sibling curator pattern
 - [`scripts/setup/com.chump.mesh-worker.plist`](../../scripts/setup/com.chump.mesh-worker.plist) — launchd unit for the mesh worker (INFRA-2545); check it when verifying the mesh worker daemon is installed and running
+- [`scripts/setup/install-auto-deploy-launchd.sh`](../../scripts/setup/install-auto-deploy-launchd.sh) — launchd installer for auto-deploy (MISSION-012): installs the agent that runs `scripts/ops/auto-deploy.sh` every ~20 minutes; check it when verifying the auto-deploy daemon is installed
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay
