@@ -118,6 +118,9 @@ if [ "${1:-}" = "--self-test" ]; then
     exit "$_fail"
 fi
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+source "$(dirname "${BASH_SOURCE[0]}")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "mesh-worker" || true
+
 [ -x "$BIN" ] || { echo "[mesh-worker] chump-coord not found at $BIN — exit." >&2; exit 0; }
 
 # MISSION-018: log external-repo pick state at every tick so "is the flag
