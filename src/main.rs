@@ -14688,6 +14688,9 @@ async fn main() -> Result<()> {
                         "  --clone-path <path>       Override the resolved clone path (used with --external-repo)."
                     );
                     println!("  -h, --help                Show this help");
+                    println!();
+                    println!("Exit codes: 0 success/nothing-to-do, 1 not-open error,");
+                    println!("  11 refused — parent already has open child slices (INFRA-8067).");
                     return Ok(());
                 }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
@@ -14808,6 +14811,46 @@ async fn main() -> Result<()> {
                         parent.effort
                     );
                     std::process::exit(0);
+                }
+
+                // INFRA-8067: refuse to re-slice a parent that already has
+                // open child slices — root-cause fix for RESILIENT-1437 (the
+                // gap-store's slice-bloat: the EFFECTIVE-310 decompose
+                // reflex in scripts/dispatch/worker.sh re-slicing the same
+                // parent gap repeatedly). The RESILIENT-1364 guard above
+                // (parent.status != "open") only blocks a SECOND run once
+                // the FIRST run finished cleanly and wrote
+                // status=decomposed. A run that filed slices but was
+                // interrupted before that final write (crash, kill -9,
+                // wedge) leaves the parent looking "fresh" — still
+                // status=open, no "Decomposed into" notes marker — so every
+                // subsequent strike-threshold hit re-decomposes it into
+                // another near-duplicate batch of slices. Counting slices
+                // directly off the title convention `"... (<parent> slice)"`
+                // (and depends_on) rather than the parent's own notes
+                // bookkeeping catches exactly that orphaned-slices case.
+                let open_slice_count = store.count_open_slices(&gap_id).unwrap_or(0);
+                if open_slice_count >= 1 {
+                    eprintln!(
+                        "decompose: {gap_id} already has {open_slice_count} open slice(s); refusing to re-slice"
+                    );
+                    if json_out {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "refused": true,
+                                "reason": "already_has_open_slices",
+                                "open_slice_count": open_slice_count,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    }
+                    // Distinct exit code: callers (EFFECTIVE-310 reflex in
+                    // scripts/dispatch/worker.sh) must treat 11 as "refused,
+                    // do not reset strikes" — separate from 0 (success/
+                    // nothing-to-do) and 1 (hard error) above.
+                    std::process::exit(11);
                 }
 
                 if !dry_run {

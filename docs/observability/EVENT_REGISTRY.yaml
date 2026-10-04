@@ -5781,6 +5781,14 @@ events:
     trigger: a gap hits the chump-local strike threshold (CHUMP_DECOMPOSE_STRIKE_THRESHOLD, default 2 whole-gap failures) and the frontier model decomposes it into xs/s sub-gaps via 'chump gap decompose --apply'
     consumers: [tier-scorecard (model×effort split), ambient glance]
     fields_required: [ts, kind, source, agent, gap_id, backend, trigger_rc]
+  - kind: gap_decompose_refused
+    status: active
+    effect_metric: self
+    emitter: scripts/dispatch/worker.sh (EFFECTIVE-310 failure→decompose reflex, INFRA-8067 guard)
+    emitter_paths: [scripts/dispatch/worker.sh]
+    trigger: a gap hits the chump-local strike threshold but 'chump gap decompose --dry-run' reports the parent already has >=1 open child slice (exit 11) — root-cause fix for RESILIENT-1437 (gap-store slice-bloat from the same parent being re-sliced repeatedly); the reflex skips the real --apply call and does NOT reset strikes, so a resolved/healthy gap is never mistaken for one still stuck in this loop
+    consumers: [ambient glance, RESILIENT-1437 slice-bloat audit]
+    fields_required: [ts, kind, source, agent, gap_id, backend, reason]
   - kind: decompose_provider_selected
     status: active
     effect_metric: self
