@@ -288,6 +288,40 @@ bash scripts/setup/chump-fleet-bootstrap.sh --check
 
 ---
 
+## Class 10 — PR BLOCKED with zero failures: cancelled required checks
+
+**Symptom.** A PR is `BLOCKED`, auto-merge is armed, and no check shows a failure — yet it never merges. A *required* check (audit, test, ACP smoke) ended with conclusion `CANCELLED`: concurrency-cancelled required checks block silently, because a cancelled run is neither green nor red.
+**Receipt.** PR #3488 (2026-08-06).
+**Diagnose** (replace `<N>` / `<RUN_ID>`):
+```bash
+# Required checks and their conclusions — look for CANCELLED (not FAILURE)
+gh pr checks <N> --required
+gh pr view <N> --json statusCheckRollup \
+  --jq '.statusCheckRollup[] | select(.conclusion=="CANCELLED") | {name, detailsUrl}'
+# Find the cancelled run on the PR branch
+gh run list --branch <BRANCH> --json databaseId,name,conclusion \
+  --jq '.[] | select(.conclusion=="cancelled")'
+```
+**Fix.** Re-run only the cancelled run: `gh run rerun <RUN_ID>` (add `--failed` only if some jobs failed; a cancelled run needs a plain rerun). Do not push an empty commit to kick CI.
+
+## Class 11 — superseded-sweep orphans a live second-slice PR
+
+**Symptom.** A second-slice PR for a gap is closed by `scripts/coord/close-superseded-prs.sh` even though its work is verified and unmerged. The sweep keys on the gap ID: when the gap is bookkept `done` against slice 1, every other open PR carrying that gap ID looks "superseded" and is closed.
+**Receipts.** #3488 was closed while its required-check reruns were still queued (CREDIBLE-204).
+**Detect.** A closed PR with `pr_auto_closed_superseded` in `.chump-locks/ambient.jsonl` whose branch still carries a diff over main: `git diff --stat origin/main origin/<BRANCH>`.
+**Prevention.** Before marking a multi-slice gap done on slice 1, check for other open PRs with the gap ID (`gh pr list --search "<GAP-ID> in:title" --state open`) and run `close-superseded-prs.sh <GAP-ID> --dry-run` first.
+
+## Class 12 — clean second-slice recovery: re-mint under a fresh gap ID
+
+**Symptom.** Slice 2 of an already-shipped gap reuses the branch name; `bot-merge.sh` stops with exit 22 and the `INFRA-3532: <branch> has a MERGED PR but HEAD carries an unshipped diff over main` message.
+**Why not the printed recovery.** The INFRA-3532 gate message prints a recovery that needs `Bot-Merge-Bypass` trailers and `CHUMP_BYPASS_BOT_MERGE=1`. Prefer the re-mint, which needs no bypass trailers:
+1. Reserve a slice-2 gap (`chump gap reserve ...`) and claim it.
+2. Create a fresh branch from `origin/main` for the new gap.
+3. Cherry-pick the unshipped commit(s) from the poisoned branch.
+4. Retitle the commit/PR to the new gap ID.
+5. Ship normally with `scripts/coord/bot-merge.sh`.
+**Receipt.** CREDIBLE-205 / PR #3491 shipped this way. Cross-reference: the gate lives in `scripts/coord/bot-merge.sh` (INFRA-3532, regression test `scripts/ci/test-botmerge-poisoned-branch.sh`).
+
 ## Maintenance
 
 This playbook should be **updated whenever a new wedge class is discovered** (new entry in §1), a **new ship-assist tool ships** (entry added to §2), or a **lesson-learning gap closes** (move from §4/§5 in-flight to §6 shipped + cross-link the doc to the fix's PR).
