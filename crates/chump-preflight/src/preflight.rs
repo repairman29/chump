@@ -1275,6 +1275,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: --help golden-file regression — proves `chump preflight
+        // --help` stays in sync with crates/chump-preflight/tests/help-golden.txt
+        // so a stale CLI surface (new flag/gate undocumented) fails locally
+        // rather than confusing an operator reading outdated --help output.
+        // Pure local diff, SKIPs cleanly when chump isn't on PATH, <1s.
+        "scripts/ci/test-help-regression.sh",
     ];
     candidates
         .iter()
@@ -3464,6 +3470,22 @@ mod tests {
                 .any(|p| p.ends_with("scripts/ci/test-pr-stuck-cluster-detection.sh")),
             "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
              always-run allowlist so detector regressions surface locally"
+        );
+    }
+
+    // INFRA-1789: test-help-regression.sh (the --help golden-file diff gate)
+    // must be wired into preflight's always-run allowlist so a stale CLI
+    // surface (new flag/gate undocumented in --help) fails locally.
+    #[test]
+    fn infra1789_help_regression_test_is_wired() {
+        let repo_root = find_repo_root().expect("repo root");
+        let scripts = discover_test_scripts(&repo_root);
+        assert!(
+            scripts
+                .iter()
+                .any(|p| p.ends_with("scripts/ci/test-help-regression.sh")),
+            "test-help-regression.sh must be wired into preflight's \
+             always-run allowlist so --help drift surfaces locally"
         );
     }
 

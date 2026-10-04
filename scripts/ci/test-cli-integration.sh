@@ -159,10 +159,18 @@ check_json() {
     output=$("$CHUMP" "$@" 2>"$err") || rc=$?
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
+    elif ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
+    # INFRA-1789: `--format json` must produce a real JSON structure (object
+    # or array), not just any syntactically-valid JSON token (a bare number
+    # or string would pass json.tool but is not a usable machine-readable
+    # payload). Only enforced for --format json callers — the --json flag
+    # calls above keep the looser check for backward compatibility.
+    elif [[ " $* " == *" --format "*"json"* ]] && \
+         ! echo "$output" | python3 -c 'import json,sys; d=json.load(sys.stdin); sys.exit(0 if isinstance(d, (dict, list)) else 1)' >/dev/null 2>&1; then
+        fail "$desc → --format json output is valid JSON but not an object/array; got: ${output:0:120}"
+    else
+        ok "$desc"
     fi
     rm -f "$err"
 }
@@ -179,6 +187,7 @@ check_error  "gap (no subcommand) exits non-zero"      "subcommand|error|list"  
 # gap list: reads DB, shows gap list
 check_success "gap list exits 0"                       gap list
 check_json    "gap list --json returns valid JSON"     gap list --json
+check_json    "gap list --format json returns a JSON object/array" gap list --format json
 check_success "gap list --status open exits 0"         gap list --status open
 check_success "gap list --status done exits 0"         gap list --status done
 
