@@ -1,0 +1,25 @@
+[package]
+name = "coord-mesh"
+version = "0.1.0"
+edition = "2021"
+
+# INFRA-2264 (INFRA-1815-sideA): local activation shim for the mesh-bridge
+# substrate. The real `coord-mesh` crate is meant to live in the internal
+# sibling repo (chump-proprietary) and be consumed here via a pinned git
+# dependency — see crates/chump-coord/Cargo.toml's `mesh-bridge` feature
+# block and docs/arsenal/cross-pollination/CP-008-chump-coord-mesh.md.
+#
+# `https://github.com/infra/mesh-bridge.git` (as named in INFRA-2264's AC)
+# does not exist (`git ls-remote` -> "Repository not found") and the
+# internal sibling repo isn't checked out in this environment. Wiring an
+# unresolvable git dependency into [dependencies] would break `cargo
+# check`/`cargo test` for the entire workspace, not just this crate — the
+# same failure mode INFRA-1815's existing comment block was written to
+# avoid. Scaffolded commented-out here for the same reason; uncomment once
+# Side A actually ships a resolvable coord-mesh crate.
+#
+# [dependencies]
+# mesh-bridge = { git = "https://github.com/infra/mesh-bridge.git" }
+
+[lints]
+workspace = true

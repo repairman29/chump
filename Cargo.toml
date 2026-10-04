@@ -12,6 +12,7 @@ members = [
     "crates/chump-gap-store",
     "crates/chump-messaging",
     "crates/chump-coord",
+    "crates/coord-mesh",
     "crates/chump-orchestrator",
     "crates/chump-planner",
     "crates/chump-ship",
@@ -142,6 +143,7 @@ dhat = { version = "0.3", optional = true }
 # `version` is required for `cargo publish` on the root crate once these crates
 # exist on crates.io at the pinned versions; workspace builds still use `path`.
 chump-tool-macro = { path = "chump-tool-macro", version = "0.2.0" }
+coord-mesh = { path = "crates/coord-mesh", version = "0.1.0" } # INFRA-2264: mesh-bridge activation shim
 chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.3.0" }
 chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.2.0" }
 chump-planner = { path = "crates/chump-planner", version = "0.1.0" }
