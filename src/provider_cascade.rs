@@ -502,6 +502,13 @@ pub struct ProviderSlot {
     pub day_start: Mutex<Instant>,
     /// When set, skip this slot until the cooldown expires (429 backoff).
     pub cooldown_until: Mutex<Option<Instant>>,
+    /// INFRA-1565: when true, route this slot's responses through
+    /// `chump_xml_adapter::extract_tool_calls` before native tool-call
+    /// parsing — for models (some local Ollama models, older Mistral
+    /// checkpoints) that emit `<tool_call>`/`<function_call>` XML instead of
+    /// native OpenAI-style tool calls. Slot 0: `CHUMP_LOCAL_XML_TOOL_TAGS`;
+    /// cloud slots: `CHUMP_PROVIDER_{N}_XML_TOOL_TAGS`. Defaults to false.
+    pub xml_tool_tags: bool,
 }
 
 fn within_rate_limit(slot: &ProviderSlot) -> bool {
@@ -636,6 +643,9 @@ impl ProviderCascade {
                     .filter(|s| !s.is_empty());
                 let provider =
                     LocalOpenAIProvider::with_fallback(base.clone(), fallback, api_key, model);
+                let xml_tool_tags = std::env::var("CHUMP_LOCAL_XML_TOOL_TAGS")
+                    .map(|v| v.trim() == "1")
+                    .unwrap_or(false);
                 slots.push(ProviderSlot {
                     name: "local".to_string(),
                     base_url: base,
@@ -652,6 +662,7 @@ impl ProviderCascade {
                     calls_today: AtomicU32::new(0),
                     day_start: Mutex::new(Instant::now()),
                     cooldown_until: Mutex::new(None),
+                    xml_tool_tags,
                 });
             }
         }
@@ -706,6 +717,12 @@ impl ProviderCascade {
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.trim().to_lowercase());
+            // INFRA-1565: per-model XML tool-call tag extraction, for models
+            // that emit <tool_call>/<function_call> XML instead of native
+            // tool calls (some local Ollama models, older Mistral checkpoints).
+            let xml_tool_tags = std::env::var(format!("CHUMP_PROVIDER_{}_XML_TOOL_TAGS", n))
+                .map(|v| v.trim() == "1")
+                .unwrap_or(false);
 
             // CREDIBLE-227 AC #4: a slot that declares BASE/KEY/MODEL but
             // omits RPM, PRIORITY, and CONTEXT_K is "half-declared" — it
@@ -747,6 +764,7 @@ impl ProviderCascade {
                 calls_today: AtomicU32::new(0),
                 day_start: Mutex::new(Instant::now()),
                 cooldown_until: Mutex::new(None),
+                xml_tool_tags,
             });
         }
 
@@ -1435,7 +1453,28 @@ impl Provider for ProviderCascade {
                                     .await
                             };
                             match local_res {
-                                Ok(r) => {
+                                Ok(mut r) => {
+                                    // INFRA-1565: same XML tool-call extraction as the
+                                    // primary selection loop above, for the
+                                    // local-as-last-resort fallback path.
+                                    if local_slot.xml_tool_tags && r.tool_calls.is_empty() {
+                                        if let Some(text) = r.text.as_deref() {
+                                            let adapted =
+                                                chump_xml_adapter::extract_tool_calls(text);
+                                            if !adapted.tool_calls.is_empty() {
+                                                r.tool_calls = adapted
+                                                    .tool_calls
+                                                    .into_iter()
+                                                    .map(|tc| axonerai::provider::ToolCall {
+                                                        id: tc.id,
+                                                        name: tc.name,
+                                                        input: tc.input,
+                                                    })
+                                                    .collect();
+                                                r.text = Some(adapted.text);
+                                            }
+                                        }
+                                    }
                                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
                                     local_openai::record_circuit_success(&local_slot.base_url);
                                     record_call(local_slot);
@@ -1608,7 +1647,31 @@ impl Provider for ProviderCascade {
                     .await
             };
             match slot_res {
-                Ok(r) => {
+                Ok(mut r) => {
+                    // INFRA-1565: models that emit XML tool_call/function_call
+                    // tags instead of native tool calls (some local Ollama
+                    // models, older Mistral checkpoints) need their text
+                    // response routed through the XML adapter before the
+                    // quality gate below — otherwise a real tool call looks
+                    // like an empty/text-only response and gets discarded.
+                    if slot.xml_tool_tags && r.tool_calls.is_empty() {
+                        if let Some(text) = r.text.as_deref() {
+                            let adapted = chump_xml_adapter::extract_tool_calls(text);
+                            if !adapted.tool_calls.is_empty() {
+                                r.tool_calls = adapted
+                                    .tool_calls
+                                    .into_iter()
+                                    .map(|tc| axonerai::provider::ToolCall {
+                                        id: tc.id,
+                                        name: tc.name,
+                                        input: tc.input,
+                                    })
+                                    .collect();
+                                r.text = Some(adapted.text);
+                            }
+                        }
+                    }
+
                     let latency_ms = t0.elapsed().as_secs_f64() * 1000.0;
 
                     // Quality gate: if response is empty and tools were provided,
@@ -2326,6 +2389,7 @@ mod tests {
                 calls_today: AtomicU32::new(7),
                 day_start: Mutex::new(Instant::now()),
                 cooldown_until: Mutex::new(None),
+                xml_tool_tags: false,
             },
             ProviderSlot {
                 name: "test_slot_b".to_string(),
@@ -2348,6 +2412,7 @@ mod tests {
                 calls_today: AtomicU32::new(50),
                 day_start: Mutex::new(Instant::now()),
                 cooldown_until: Mutex::new(None),
+                xml_tool_tags: false,
             },
         ];
 
@@ -2907,6 +2972,7 @@ mod tests {
             calls_today: AtomicU32::new(calls_today),
             day_start: Mutex::new(Instant::now()),
             cooldown_until: Mutex::new(None),
+            xml_tool_tags: false,
             model_class: None,
         }
     }
@@ -3533,6 +3599,7 @@ mod tests {
             calls_today: AtomicU32::new(0),
             day_start: Mutex::new(Instant::now()),
             cooldown_until: Mutex::new(None),
+            xml_tool_tags: false,
         }
     }
 
@@ -3788,6 +3855,71 @@ mod tests {
         assert_eq!(
             get_last_used_model(),
             Some("gemini-2.5-flash-lite".to_string())
+        );
+    }
+
+    /// INFRA-1565: end-to-end — a mock Ollama-style slot with `xml_tool_tags`
+    /// enabled emits a native-OpenAI-shaped response whose `content` carries
+    /// an XML `<tool_call>` block instead of a populated `tool_calls` array.
+    /// The cascade must route that text through the XML adapter and return a
+    /// `CompletionResponse` with the extracted tool call populated, rather
+    /// than treating it as an empty/text-only response and failing over.
+    #[tokio::test]
+    async fn cascade_extracts_xml_tool_call_when_slot_opts_in() {
+        use wiremock::matchers::{method, path};
+        use wiremock::{Mock, MockServer, ResponseTemplate};
+
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": r#"<tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call>"#,
+                    "tool_calls": null
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let mut slot = make_slot("ollama-xml", ProviderTier::Local);
+        slot.base_url = mock.uri().to_string();
+        slot.provider = LocalOpenAIProvider::with_fallback(
+            mock.uri().to_string(),
+            None,
+            "not-needed".to_string(),
+            "test-model".to_string(),
+        );
+        slot.xml_tool_tags = true;
+
+        let cascade = ProviderCascade {
+            slots: vec![slot],
+            _strategy: CascadeStrategy::Priority,
+            local_only: true,
+            bandit: std::sync::OnceLock::new(),
+        };
+
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "Please read the readme".to_string(),
+        }];
+        let out = cascade
+            .complete(messages, None, None, None)
+            .await
+            .expect("cascade call should succeed");
+
+        assert_eq!(out.tool_calls.len(), 1, "XML tool call must be extracted");
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(out.tool_calls[0].input["path"], "README.md");
+        assert!(
+            !out.text
+                .as_deref()
+                .unwrap_or_default()
+                .contains("<tool_call>"),
+            "extracted tool-call block should be stripped from remaining text"
         );
     }
 }

@@ -86,6 +86,12 @@ fn parse_function_call_block(open_tag: &str, body: &str) -> Option<(String, serd
 /// Returns `AdapterOutput` with extracted `tool_calls` and remaining `text`.
 /// Malformed JSON inside tags is skipped (not panicked on); the raw block
 /// is left in `text` so the caller can inspect it.
+/// INFRA-1565: alias for `adapt` matching the name used by response-processing
+/// call sites (`crates/chump-xml-adapter::extract_tool_calls`).
+pub fn extract_tool_calls(raw: &str) -> AdapterOutput {
+    adapt(raw)
+}
+
 pub fn adapt(raw: &str) -> AdapterOutput {
     let mut tool_calls: Vec<ToolCall> = Vec::new();
     let mut remaining = raw.to_string();
@@ -264,6 +270,24 @@ mod tests {
             out.text.contains("not json"),
             "raw content should remain in text"
         );
+    }
+
+    /// 9. A synthetic LLM response mixing a tagged tool call with untagged
+    ///    surrounding prose asserts both the extraction and the leftover text
+    ///    are correct in the same pass (INFRA-1565 AC #3).
+    #[test]
+    fn test_mixed_tagged_and_untagged_content() {
+        let raw = concat!(
+            "Let me check that for you.\n",
+            r#"<tool_call>{"name":"read_file","arguments":{"path":"README.md"}}</tool_call>"#,
+            "\nI'll summarize once I see the contents."
+        );
+        let out = extract_tool_calls(raw);
+        assert_eq!(out.tool_calls.len(), 1);
+        assert_eq!(out.tool_calls[0].name, "read_file");
+        assert_eq!(out.tool_calls[0].input["path"], "README.md");
+        assert!(out.text.contains("Let me check that for you."));
+        assert!(out.text.contains("I'll summarize once I see the contents."));
     }
 
     /// 8. Round-trip: ToolCall can be serialized and fields are preserved.

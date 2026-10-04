@@ -289,6 +289,35 @@ mistralrs from-config --file ./mistralrs-tuned.toml
 
 ---
 
+## 2c. XML-tool-tag-emitting models (INFRA-1565)
+
+**What it is:** Some local models — certain **Ollama** builds and older **Mistral** checkpoints — don't emit OpenAI-native `tool_calls`; instead they write the call inline as XML in the text response, e.g.:
+
+```
+<tool_call>{"name": "read_file", "arguments": {"path": "foo.rs"}}</tool_call>
+<function_call name="read_file">{"path": "foo.rs"}</function_call>
+```
+
+Without extraction, the cascade sees an empty `tool_calls` array and either treats the turn as a text-only response or fails the quality gate and fails over to the next slot. **`crates/chump-xml-adapter`** (`extract_tool_calls`) detects both tag styles, converts them to native `ToolCall { id, name, input }` structs, and strips the matched blocks out of the remaining text.
+
+**Enabling it per slot:** set a per-slot flag — defaults to `false` (no behavior change unless opted in):
+
+| Slot | Env var |
+|------|---------|
+| Slot 0 (`OPENAI_API_BASE`, e.g. local Ollama on **11434**) | **`CHUMP_LOCAL_XML_TOOL_TAGS=1`** |
+| Cloud/cascade slot N (`CHUMP_PROVIDER_{N}_*`) | **`CHUMP_PROVIDER_{N}_XML_TOOL_TAGS=1`** |
+
+```bash
+# Ollama model that emits XML tool_call tags instead of native tool calls
+OPENAI_API_BASE=http://127.0.0.1:11434/v1
+OPENAI_MODEL=some-xml-tool-call-model
+CHUMP_LOCAL_XML_TOOL_TAGS=1
+```
+
+**Where it runs:** `src/provider_cascade.rs` checks `slot.xml_tool_tags` immediately after a slot's `complete()` call returns and — only when the native `tool_calls` array is empty — routes `response.text` through `chump_xml_adapter::extract_tool_calls` before the empty/malformed-response quality gate runs. A successful extraction replaces `tool_calls` with the converted calls and `text` with the XML-stripped remainder; if extraction finds nothing, the response is left untouched and the normal quality gate applies as before.
+
+**Scope:** opt-in and per-slot — enabling it on one slot's config has no effect on any other slot, cloud or local.
+
 ## 3. Switching profiles (checklist)
 
 1. **Stop** the Discord bot: **`./scripts/setup/stop-chump-discord.sh`** or **`pkill -f 'chump.*--discord'`** / **`pkill -f 'rust-agent.*--discord'`**.
