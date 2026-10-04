@@ -845,6 +845,11 @@ struct Args {
     /// `newcmd` is a placeholder that does nothing but exit 0 — a template
     /// other subcommands can copy the wiring from.
     newcmd: bool,
+    /// INFRA-1789: `--format json` paired with `--help` emits a machine-readable
+    /// description of the CLI surface instead of the human-readable text, so
+    /// scripts/ci/test-cli-integration.sh can validate the help surface's JSON
+    /// structure the same way it validates `--json` data commands.
+    help_format: Option<String>,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -860,6 +865,7 @@ fn parse_args(argv: &[String]) -> Args {
         full: false,
         artifact_type: None,
         newcmd: false,
+        help_format: None,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -908,6 +914,15 @@ fn parse_args(argv: &[String]) -> Args {
             }
             s if s.starts_with("--artifact-type=") => {
                 a.artifact_type = Some(s["--artifact-type=".len()..].to_string());
+            }
+            "--format" => {
+                if i + 1 < argv.len() {
+                    a.help_format = Some(argv[i + 1].clone());
+                    i += 1;
+                }
+            }
+            s if s.starts_with("--format=") => {
+                a.help_format = Some(s["--format=".len()..].to_string());
             }
             _ => {} // ignore unknowns for forward-compat
         }
@@ -990,6 +1005,18 @@ EXIT CODES:
     0   all gates passed (or --vs: only pre-existing failures)
     1   one or more NEW gates failed (see stdout)
     2   bad usage"
+    );
+}
+
+/// INFRA-1789: `--help --format json` surface — machine-readable mirror of
+/// `print_help()` for scripts that want to assert the CLI surface shape
+/// (flag names, subcommands) without parsing the human-readable text.
+fn print_help_json() {
+    println!(
+        "{{\"command\":\"chump preflight\",\"usage\":\"chump preflight [OPTIONS]\",\
+\"flags\":[\"--scope\",\"--with-tests\",\"--full\",\"--keep-going\",\"--json\",\
+\"--pre-commit\",\"--vs\",\"--artifact-type\",\"--format\",\"--help\"],\
+\"subcommands\":[\"newcmd\"]}}"
     );
 }
 
@@ -1275,6 +1302,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789 (INFRA-1762 Tier C #3): `chump preflight --help` golden-file
+        // regression — catches a stale CLI surface the way INFRA-1246's broad
+        // canary step does, but runs it locally in the always-on allowlist
+        // instead of only on a canary lane. Pure local (binary + diff), no
+        // network.
+        "scripts/ci/test-cli-help-regression.sh",
     ];
     candidates
         .iter()
@@ -1489,7 +1522,11 @@ pub fn run(argv: &[String]) -> i32 {
     }
     let mut args = parse_args(argv);
     if args.help {
-        print_help();
+        if args.help_format.as_deref() == Some("json") {
+            print_help_json();
+        } else {
+            print_help();
+        }
         return 0;
     }
     // EFFECTIVE-1547: `newcmd` is a placeholder subcommand — scaffolding

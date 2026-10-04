@@ -151,18 +151,44 @@ check_any() {
 # isolation — merging stderr with 2>&1 (as the other check_* helpers do)
 # would falsely fail whenever the CI checkout is behind origin/main, which
 # is the steady state on a busy trunk (deterministic trunk-red).
+#
+# INFRA-1789: optionally takes a leading `--require-keys=a|b|c` argument
+# (before the command args) to also assert specific top-level keys are
+# present — used to validate `--help --format json` output actually
+# describes the CLI surface (usage/flags) rather than just being *some*
+# valid JSON blob.
 check_json() {
     local desc="$1"; shift
+    local require_keys=""
+    if [[ "${1:-}" == --require-keys=* ]]; then
+        require_keys="${1#--require-keys=}"
+        shift
+    fi
     local output err rc=0
     err="$(mktemp)"
     # Capture stdout only; route stderr to a temp file for diagnostics.
     output=$("$CHUMP" "$@" 2>"$err") || rc=$?
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
+    elif ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
+    elif [[ -n "$require_keys" ]]; then
+        local key missing=0
+        IFS='|' read -ra _ck_keys <<< "$require_keys"
+        for key in "${_ck_keys[@]}"; do
+            echo "$output" | python3 -c "
+import sys, json
+d = json.load(sys.stdin)
+sys.exit(0 if isinstance(d, dict) and '$key' in d else 1)
+" || missing=1
+        done
+        if [[ $missing -eq 0 ]]; then
+            ok "$desc"
+        else
+            fail "$desc → JSON missing required key(s) from '$require_keys'; got: ${output:0:120}"
+        fi
+    else
+        ok "$desc"
     fi
     rm -f "$err"
 }
@@ -334,6 +360,12 @@ echo "--- 8. Global flags ---"
 
 check_output "--version shows semver"                 "[0-9]\.[0-9]"              --version
 check_output "--help shows full command list"         "gap|fleet|dispatch|health" --help
+
+# INFRA-1789: preflight --help --format json emits a structured description
+# of the CLI surface (usage/flags), not just free-text help.
+check_json "preflight --help --format json returns structured JSON" \
+    --require-keys="usage|flags" \
+    preflight --help --format json
 
 # --debug: may print version + DB path header then hit DB init
 {
