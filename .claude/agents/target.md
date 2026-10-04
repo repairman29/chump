@@ -161,5 +161,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`.claude/agents/harvester.md`](./harvester.md) — sibling pattern for productized curator role
 - [`scripts/coord/daemon-exit-loop-watcher-daemon.sh`](../../scripts/coord/daemon-exit-loop-watcher-daemon.sh) — daemon exit-loop watcher (INFRA-2417): detects consecutive non-zero daemon exits (default threshold 3 × 15 min), files a P0 gap and closes it on recovery
 - [`scripts/coord/main-preflight-watchdog-daemon.sh`](../../scripts/coord/main-preflight-watchdog-daemon.sh) — main-preflight watchdog (INFRA-2397/INFRA-2424): periodically runs `chump preflight` against a fresh worktree of origin/main and files a P0 gap when any gate fails; check its state before trusting a green trunk
+- [`scripts/ci/check-sccache-hit-rate.sh`](../../scripts/ci/check-sccache-hit-rate.sh) — sccache hit-rate gate (CREDIBLE-085): fails a build when the cache hit rate drops below `CHUMP_SCCACHE_HIT_RATE_MIN` (default 10%); check it when CI builds turn unexpectedly slow
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay
