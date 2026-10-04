@@ -116,5 +116,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md`](../../docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md) — role-scoped fleet vision (META-074)
 - [`.claude/agents/handoff.md`](./handoff.md) — sibling pattern this agent mirrors
 - [`.claude/skills/md-links/SKILL.md`](../skills/md-links/SKILL.md) — user-invocable slash command
+- [`docs/strategy/COMMIT_MERGE_AUDIT_2026-06-03.md`](../../docs/strategy/COMMIT_MERGE_AUDIT_2026-06-03.md) — commit→merge pipeline audit (INFRA-2521); reference when diagnosing how doc changes flow through merge
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay
