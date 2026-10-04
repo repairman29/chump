@@ -143,5 +143,6 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md`](../../docs/process/CURATOR_ROLE_PRODUCTIZATION_AC_2026-05-24.md) — AC source-of-truth (INFERRED for this role)
 - [`docs/process/OPUS_MESSAGE_PROTOCOL.md`](../../docs/process/OPUS_MESSAGE_PROTOCOL.md) — A2A inbox protocol
 - [`.claude/agents/target.md`](./target.md) — sibling curator (decomposition consumer)
+- [`scripts/coord/mesh-worker-loop.sh`](../../scripts/coord/mesh-worker-loop.sh) — mesh work-routing consumer (INFRA-2545): picks one capability-matched gap per tick; decomposed child gaps flow to it, so check capability tags when splitting
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay + two-phase decomposition doctrine
