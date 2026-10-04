@@ -228,6 +228,7 @@ pub fn load_apps_config(path: &Path) -> Result<HashMap<Lane, AppCredentials>> {
 
 // ── Unit tests ────────────────────────────────────────────────────────────────
 
+// assert_* tests are static preflight tests; behavior_* tests are runtime CI-only tests.
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -359,7 +360,7 @@ installation_id  = 400
     }
 
     #[test]
-    fn installation_token_expires_at_parses_rfc3339() {
+    fn assert_installation_token_expires_at_parses_rfc3339() {
         // Verify the DateTime parse logic that fetch_installation_token uses
         let raw = "2026-05-16T03:00:00Z";
         let parsed = DateTime::parse_from_rfc3339(raw);
