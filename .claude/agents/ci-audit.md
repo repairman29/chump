@@ -140,6 +140,7 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`scripts/coord/ci-audit-loop.sh`](../../scripts/coord/ci-audit-loop.sh) — the canonical CLI; all subcommands invoke here
 - [`scripts/ci/test-gap-quality-gate.sh`](../../scripts/ci/test-gap-quality-gate.sh) — test for the `validate-gap-quality.sh` gate (INFRA-2475): checks that gap entries with empty AC, TODO/TBD placeholders, or invalid priority/effort are rejected; include it when auditing test-gate coverage
 - [`scripts/ci/test-worktree-build-cache.sh`](../../scripts/ci/test-worktree-build-cache.sh) — worktree build-cache test (INFRA-2183/INFRA-2453): validates that claimed worktrees get the shared sccache wrapper plus a per-worktree target dir; check it when diagnosing cold-build timeouts in CI
+- [`scripts/ci/test-prepush-sccache-probe.sh`](../../scripts/ci/test-prepush-sccache-probe.sh) — pre-push sccache probe test (EFFECTIVE-097): guards the liveness probe against treating a dead sccache server as healthy because `--version` is client-only; run it when auditing pre-push gate hangs
 - [`docs/architecture/TEAM_OF_AGENTS.md`](../../docs/architecture/TEAM_OF_AGENTS.md) — team hierarchy
 - [`docs/process/OPERATOR_PLAYBOOK.md`](../../docs/process/OPERATOR_PLAYBOOK.md) — operator's directive surface
 - [`docs/process/SUBAGENT_DISPATCH.md`](../../docs/process/SUBAGENT_DISPATCH.md) — META-069 dispatch epilogue (paste verbatim into Sonnet prompts)
