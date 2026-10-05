@@ -184,6 +184,23 @@ else:
     fi
 fi
 
+# ── 3. Prometheus metric: almanac_coverage_summarized_pct (CREDIBLE-352, CREDIBLE-300 slice) ──
+# Shells out to almanac-census.py --summarize-pct and re-emits its value in
+# Prometheus exposition format (space-separated, no colon) so a scrape
+# target chained after this watchdog gets the metric without re-deriving it.
+CENSUS_SCRIPT="${CHUMP_ALMANAC_CENSUS_SCRIPT:-$REPO_ROOT/scripts/dev/almanac-census.py}"
+if [[ -f "$CENSUS_SCRIPT" ]]; then
+    census_line="$(python3 "$CENSUS_SCRIPT" --summarize-pct 2>/dev/null || true)"
+    summarized_pct_value="$(printf '%s' "$census_line" | sed -n 's/^almanac_coverage_summarized_pct : \(.*\)$/\1/p')"
+    if [[ -n "$summarized_pct_value" ]]; then
+        echo "almanac_coverage_summarized_pct $summarized_pct_value"
+    else
+        echo "[almanac-summarize-watchdog] WARN: almanac-census.py --summarize-pct produced no parseable value" >&2
+    fi
+else
+    echo "[almanac-summarize-watchdog] almanac-census.py not found at $CENSUS_SCRIPT — skipping summarized_pct metric" >&2
+fi
+
 # Heartbeat — always emit so a dead watchdog is itself observable.
 # scanner-anchor: "kind":"almanac_summarize_watchdog_tick"  (RESILIENT-354;
 # emitted every cycle, success or no-op — proof the watchdog itself is alive)

@@ -157,12 +157,27 @@ check_json() {
     err="$(mktemp)"
     # Capture stdout only; route stderr to a temp file for diagnostics.
     output=$("$CHUMP" "$@" 2>"$err") || rc=$?
+    # INFRA-1789: when both --help and --format json are among the args,
+    # a stale CLI surface could emit valid-but-structureless JSON (e.g. "{}")
+    # instead of real help content. Require a dict with at least one of the
+    # expected help-shape keys, not just JSON-parseable output.
+    local is_help_json=0
+    if [[ " $* " == *" --help "* && " $* " == *" --format "* && " $* " == *" json "* ]]; then
+        is_help_json=1
+    fi
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
+    elif ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
+    elif [[ "$is_help_json" -eq 1 ]] && ! echo "$output" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert isinstance(d, dict)
+assert any(k in d for k in ("usage", "description", "subcommand", "subcommands", "options"))
+' >/dev/null 2>&1; then
+        fail "$desc → --help --format json parsed but missing expected help-shape keys (usage/description/subcommand/options); got: ${output:0:120}"
+    else
+        ok "$desc"
     fi
     rm -f "$err"
 }

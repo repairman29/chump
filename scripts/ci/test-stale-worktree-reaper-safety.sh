@@ -463,6 +463,105 @@ else
     ok "RESILIENT-099: sqlite3 absent — skipping wt_has_active_lease test"
 fi
 
+# ─── RESILIENT-205: dead-session lease detection + cleanup ───────────────────
+echo ""
+echo "=== RESILIENT-205: dead-session lease in state.db is detected and cleaned ==="
+echo ""
+echo "--- Test 15: unexpired state.db lease with no recent worktree activity is reaped"
+
+if command -v sqlite3 >/dev/null 2>&1; then
+    SDB3="$TMPDIR_BASE/state3.db"
+    sqlite3 "$SDB3" "CREATE TABLE leases (session_id TEXT PRIMARY KEY, gap_id TEXT NOT NULL, worktree TEXT NOT NULL DEFAULT '', expires_at INTEGER NOT NULL);"
+    NOW3="$(date -u +%s)"
+    DEAD_WT="$TMPDIR_BASE/chump-dead-session"
+    mkdir -p "$DEAD_WT/.git"
+    touch "$DEAD_WT/.git/index"
+    # Backdate the index mtime well past the (test-local) session timeout so
+    # the worktree shows no activity, even though the lease itself is still
+    # unexpired for hours.
+    touch -t 200001010000 "$DEAD_WT/.git/index"
+    sqlite3 "$SDB3" "INSERT INTO leases VALUES ('dead-session','TEST-205',\"$DEAD_WT\",$((NOW3 + 9999)));"
+
+    # Inline the RESILIENT-205 detection/cleanup logic mirrored from
+    # stale-worktree-reaper.sh (_is_dead_session_lease / _reap_dead_session_lease).
+    LOG_205="$TMPDIR_BASE/reaper-205.log"
+    AMBIENT_205="$TMPDIR_BASE/ambient-205.jsonl"
+    SESSION_TIMEOUT_S_TEST=600
+
+    _activity_epoch() {
+        local idx="$1/.git/index"
+        [[ -f "$idx" ]] || { echo ""; return; }
+        stat -c %Y "$idx" 2>/dev/null || stat -f %m "$idx" 2>/dev/null
+    }
+
+    is_dead_session_lease_test() {
+        local wt_path="$1"
+        local activity_epoch; activity_epoch="$(_activity_epoch "$wt_path")"
+        [[ -z "$activity_epoch" ]] && return 1
+        local now_epoch; now_epoch="$(date -u +%s)"
+        local age_s=$(( now_epoch - activity_epoch ))
+        if [[ "$age_s" -gt "$SESSION_TIMEOUT_S_TEST" ]]; then
+            echo "DEAD_SESSION_LEASE worktree_reaper_skipped_active age=${age_s}s timeout=${SESSION_TIMEOUT_S_TEST}s — dead-session lease detected" >> "$LOG_205"
+            printf '{"ts":"%s","kind":"dead_session_lease_detected","reaper":"worktree","worktree":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$wt_path" >> "$AMBIENT_205"
+            return 0
+        fi
+        return 1
+    }
+
+    reap_dead_session_lease_test() {
+        local wt_path="$1" sdb="$2"
+        sqlite3 "$sdb" "DELETE FROM leases WHERE worktree='$wt_path';" 2>/dev/null || true
+        echo "DEAD_SESSION_LEASE_CLEANED $wt_path — dead-session lease cleaned" >> "$LOG_205"
+    }
+
+    if is_dead_session_lease_test "$DEAD_WT"; then
+        ok "RESILIENT-205: unexpired-but-inactive state.db lease detected as dead-session"
+    else
+        fail "RESILIENT-205: dead-session lease NOT detected"
+    fi
+
+    if grep -q "dead-session lease detected" "$LOG_205" 2>/dev/null; then
+        ok "RESILIENT-205: 'dead-session lease detected' logged"
+    else
+        fail "RESILIENT-205: missing 'dead-session lease detected' log line"
+    fi
+
+    reap_dead_session_lease_test "$DEAD_WT" "$SDB3"
+
+    if grep -q "dead-session lease cleaned" "$LOG_205" 2>/dev/null; then
+        ok "RESILIENT-205: 'dead-session lease cleaned' logged"
+    else
+        fail "RESILIENT-205: missing 'dead-session lease cleaned' log line"
+    fi
+
+    remaining="$(sqlite3 "$SDB3" "SELECT COUNT(*) FROM leases WHERE worktree=\"$DEAD_WT\";" 2>/dev/null || echo "?")"
+    if [[ "$remaining" == "0" ]]; then
+        ok "RESILIENT-205: dead-session lease row removed from state.db"
+    else
+        fail "RESILIENT-205: dead-session lease row still present (count=$remaining)"
+    fi
+else
+    ok "RESILIENT-205: sqlite3 absent — skipping dead-session lease test"
+fi
+
+echo ""
+echo "--- Test 16: a lease with fresh worktree activity is NOT treated as a dead session"
+
+if command -v sqlite3 >/dev/null 2>&1; then
+    FRESH_WT="$TMPDIR_BASE/chump-fresh-session"
+    mkdir -p "$FRESH_WT/.git"
+    touch "$FRESH_WT/.git/index"   # mtime = now
+
+    if is_dead_session_lease_test "$FRESH_WT"; then
+        fail "RESILIENT-205: fresh-activity worktree wrongly flagged as dead-session"
+    else
+        ok "RESILIENT-205: fresh-activity worktree correctly NOT flagged as dead-session"
+    fi
+else
+    ok "RESILIENT-205: sqlite3 absent — skipping fresh-activity test"
+fi
+
 # ─── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "=== Results: $PASS passed, $FAIL failed ==="

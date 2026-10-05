@@ -283,6 +283,44 @@ pub fn export_subgraph_json(seed_entities: &[String], max_hops: usize) -> Result
     Ok(serde_json::to_string(&graph)?)
 }
 
+/// Record of a single node for the `/api/brain/node/{id}` detail panel:
+/// the node's id, degree, and every edge touching it (as subject or object).
+#[derive(Debug, Clone, Serialize)]
+pub struct NodeDetail {
+    id: String,
+    degree: usize,
+    edges: Vec<JsonEdge>,
+}
+
+/// Look up a single node by id (case-insensitive) and return its degree plus
+/// every edge touching it. Returns `None` if the node has no edges.
+pub fn node_detail(id: &str) -> Result<Option<NodeDetail>> {
+    let edges = load_all_edges()?;
+    let needle = id.to_lowercase();
+    let touching: Vec<&Edge> = edges
+        .iter()
+        .filter(|e| e.subject.to_lowercase() == needle || e.object.to_lowercase() == needle)
+        .collect();
+    if touching.is_empty() {
+        return Ok(None);
+    }
+    let degree = touching.len();
+    let json_edges: Vec<JsonEdge> = touching
+        .into_iter()
+        .map(|e| JsonEdge {
+            source: e.subject.clone(),
+            target: e.object.clone(),
+            relation: e.relation.clone(),
+            weight: e.weight,
+        })
+        .collect();
+    Ok(Some(NodeDetail {
+        id: id.to_string(),
+        degree,
+        edges: json_edges,
+    }))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

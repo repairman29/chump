@@ -48,8 +48,8 @@ mkdir -p "$DATA_ROOT/.chump" "$DATA_ROOT/.chump-locks" "$DATA_ROOT/scripts/ops"
 LEDGER="$TMP/led.jsonl"
 CALIB="$DATA_ROOT/.chump/pr-book-calibration.log"
 cat > "$LEDGER" <<'J'
-{"ts":"t","pr":1,"sha":"x","price":0.9,"state":"CLEAN"}
-{"ts":"t","pr":2,"sha":"y","price":0.2,"state":"DIRTY"}
+{"ts":"t","pr":1,"sha":"x","p_merge":0.9,"state":"CLEAN"}
+{"ts":"t","pr":2,"sha":"y","p_merge":0.2,"state":"DIRTY"}
 J
 cat > "$TMP/outcomes.json" <<'J'
 [{"number":1,"state":"MERGED"},{"number":2,"state":"CLOSED"}]

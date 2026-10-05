@@ -890,6 +890,10 @@ jobs:
         if: matrix.shard == 4
         run: bash scripts/ci/test-rollup-cascade-cancel.sh
 
+      - name: cascade-cancellation status description fixture (INFRA-5430)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-cascade-cancellation-status-description.sh
+
       - name: bounced-PR detector fixture (INFRA-781)
         if: matrix.shard == 4
         run: bash scripts/ci/test-bounced-pr-detector.sh

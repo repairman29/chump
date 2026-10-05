@@ -175,6 +175,7 @@ jobs:
               - 'chump-tool-macro/**'
               - 'config/**'
               - 'content/**'
+              - 'workspace-hack/**'
               - 'docker/**'
               - 'deploy/**'
               - 'e2e/**'
@@ -421,8 +422,15 @@ jobs:
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5  # rollup only — quick aggregator check
+    # statuses: write — INFRA-5430: posts the "cascade-cancellation" commit
+    # status below so cancelled-job visibility doesn't require opening logs.
+    # Narrower than the workflow-level read-only default; scoped to this job.
+    permissions:
+      statuses: write
     steps:
       - name: Verify all parallel CI shards passed
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           # `if: always()` lets this job run even when a child fails — we
           # then explicitly fail the rollup so the required check is red.
@@ -525,6 +533,26 @@ jobs:
             printf 'Cascade cancels are caused by the failing shard(s) — not independent bugs.\n' >> "$GITHUB_STEP_SUMMARY"
             printf 'Supersedure cancels are caused by a newer workflow run on the same SHA.\n' >> "$GITHUB_STEP_SUMMARY"
             printf 'Fix the real failure(s) and push to re-run.\n' >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+          # INFRA-5430: surface cascade-cancelled jobs directly on the PR
+          # status line (no log-digging required). Posts a dedicated
+          # "cascade-cancellation" commit status whenever a required check
+          # cancelled sibling jobs, naming the cancelled jobs + the cause.
+          if [ -n "$cascade_cancels" ] || [ -n "$supersedure_cancels" ]; then
+            if [ -n "$cascade_cancels" ]; then
+              cascade_desc="Cancelled (caused by failure in: ${real_failures}): ${cascade_cancels}"
+            else
+              cascade_desc="Cancelled (superseded by newer run on same SHA): ${supersedure_cancels}"
+            fi
+            # GitHub status descriptions are capped at 140 chars.
+            cascade_desc="${cascade_desc:0:140}"
+            gh api "repos/${GITHUB_REPOSITORY}/statuses/${GITHUB_SHA}" \
+              -f state=success \
+              -f context="cascade-cancellation" \
+              -f description="$cascade_desc" \
+              -f target_url="${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}" \
+              >/dev/null 2>&1 || echo "::warning::failed to post cascade-cancellation status (non-fatal)"
           fi
 
           # Decision: fail only on real failures.
@@ -643,6 +671,14 @@ jobs:
         # the gate never has to reverse-engineer the escape hatch. Also
         # self-tests that a synthetic check WITHOUT the line is caught.
         run: bash scripts/ci/test-bypass-line-required.sh
+
+      - name: Bypass-line output audit (INFRA-4537)
+        # INFRA-5429 above greps gate SOURCE for the bypass line (proves
+        # the string exists somewhere). This force-fires each FAIL-capable
+        # gate against its real violating fixture and scans the ACTUAL
+        # stdout+stderr it prints, catching a bypass line that exists in
+        # source but never reaches the real failure path.
+        run: bash scripts/ci/test-bypass-line-output-audit.sh
 
       - name: Broad canary coverage smoke (INFRA-1568)
         # Asserts every external CLI invoked by self-hosted-targeted workflow
@@ -896,6 +932,21 @@ jobs:
       - name: Record job start (CREDIBLE-069)
         id: job-start
         run: echo "ts=$(date -u +%s)" >> "$GITHUB_OUTPUT"
+
+      # META-197/META-199: catches broken workflow syntax (bad `uses:` refs,
+      # invalid expressions, matrix/job-needs errors) at PR time instead of
+      # after trunk-RED (see INFRA-2200, INFRA-2321). shellcheck is disabled
+      # via `-shellcheck=` — the repo has ~20 pre-existing info/style-level
+      # shellcheck nits in legacy workflow run: blocks (release.yml,
+      # queue-driver.yml, experimental/*) that are unrelated to workflow
+      # structure and would fail every PR regardless of its own diff; fixing
+      # those is tracked separately. Tier-D in
+      # docs/process/CI_GATES_INVENTORY.md and preflight-ci-parity-exceptions.txt
+      # (needs the actionlint binary, not available in the local preflight env).
+      - name: actionlint (META-197/META-199)
+        uses: docker://rhysd/actionlint:1.7.7
+        with:
+          args: -color -shellcheck=
 
       # INFRA-1556: when this job lands on a self-hosted macOS runner, verify
       # the runner's plist PATH resolves every CLI the workflow needs. Skips
@@ -1227,6 +1278,9 @@ jobs:
 
       - name: open-PR dedup gate at claim time (INFRA-1982)
         run: bash scripts/ci/test-open-pr-dup-detection.sh
+
+      - name: claim-time CHUMP_CLAIM_MODE blocking/advisory (INFRA-3765)
+        run: bash scripts/ci/test-claim-mode.sh
 
       - name: pre-push preflight guard (INFRA-1671)
         run: bash scripts/ci/test-pre-push-preflight-hook.sh

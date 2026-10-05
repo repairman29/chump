@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tower::ServiceExt; // for `.oneshot()`
 
-use chump_fleet_server::mission::BATPHONE_TOKEN_ENV;
+use chump_fleet_server::mission::{create_mission_gap, MissionRequest, BATPHONE_TOKEN_ENV};
 use chump_fleet_server::{db::FleetStore, routes};
 
 fn test_dir() -> PathBuf {
@@ -251,6 +251,45 @@ exit 0
     assert_eq!(body[0]["id"].as_str(), Some("RESILIENT-1030"));
 
     std::env::remove_var(BATPHONE_TOKEN_ENV);
+    std::env::remove_var("CHUMP_BIN");
+
+    // ── EFFECTIVE-1519: `create_mission_gap` must append exactly one
+    // `"stage":"draft"` entry to `logs/launch.log` on a successful mission
+    // creation. Reuses the same fake-chump reserve dir as above (`dir`,
+    // `fake_bin`) so the shell-out path is deterministic.
+    std::env::set_var("CHUMP_BIN", &fake_bin);
+    let outcome = create_mission_gap(
+        &dir,
+        MissionRequest {
+            title: "launch-log test mission".to_string(),
+            intent: None,
+            description: None,
+            priority: None,
+            outcome: None,
+            domain: None,
+            effort: None,
+            acceptance_criteria: None,
+            platform: Some("twitter".to_string()),
+            user_id: Some("jeff".to_string()),
+        },
+    )
+    .expect("create_mission_gap should succeed with the fake chump binary");
+    assert_eq!(outcome.gap_id, "INFRA-8471");
+
+    let launch_log = std::fs::read_to_string(dir.join("logs/launch.log"))
+        .expect("logs/launch.log should exist after a successful mission creation");
+    let draft_entries: Vec<&str> = launch_log
+        .lines()
+        .filter(|l| l.contains("\"stage\":\"draft\""))
+        .collect();
+    assert_eq!(
+        draft_entries.len(),
+        1,
+        "expected exactly one draft-stage log entry, got:\n{launch_log}"
+    );
+    assert!(draft_entries[0].contains("\"platform\":\"twitter\""));
+    assert!(draft_entries[0].contains("\"user_id\":\"jeff\""));
+
     std::env::remove_var("CHUMP_BIN");
     let _ = std::fs::remove_dir_all(&dir);
 }

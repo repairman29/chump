@@ -1,7 +1,7 @@
 - id: INFRA-1946
   domain: INFRA
   title: "INFRA-1862 slice C: undeliverable-msg dead-letter queue — msgs to dormant inbox park in .chump-locks/inbox/dead-letter.jsonl after N=30min, operator-pageable via INFRA-626 operator-recall"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -16,5 +16,7 @@
     - Done definition — msgs to dormant inboxes never disappear silently; either delivered, dead-lettered, or flooded-paged
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  closed_date: '2026-10-04'
+  closed_pr: 3773
   outcome_id: MISSION-010
 

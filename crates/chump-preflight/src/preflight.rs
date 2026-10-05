@@ -26,7 +26,7 @@
 //!   `--scope all`     same as INFRA-1670 (every gate)
 
 use std::process::{Command, ExitCode, Stdio};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 /// One gate the preflight runs.
 #[derive(Debug, Clone)]
@@ -338,6 +338,26 @@ fn run_step(s: &Step) -> Outcome {
                     script_path
                 )),
             };
+        }
+    }
+
+    // EFFECTIVE-499: the capped-jobs cargo check runner (see
+    // `cargo_check_step`) is identifiable by its `nice` prefix. Defer actual
+    // execution until system load drops below a configurable threshold
+    // rather than racing another busy process at a capped job count.
+    // Disabled via CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE=1 (tests, CI runners).
+    if s.argv.first().map(String::as_str) == Some("nice")
+        && std::env::var(LOAD_DEFER_DISABLE_ENV).as_deref() != Ok("1")
+    {
+        let defers = defer_until_load_below(
+            load_defer_threshold(),
+            Duration::from_secs(30),
+            Duration::from_secs(2),
+            load_average_1m,
+            std::thread::sleep,
+        );
+        if defers > 0 {
+            eprintln!("[preflight] cargo check deferred {defers} poll(s) waiting for load to drop");
         }
     }
 
@@ -661,6 +681,49 @@ fn compute_check_jobs(cpus: usize, load1: f64) -> usize {
     } else {
         cap
     }
+}
+
+/// Env var overriding the load1 threshold above which the cargo check
+/// runner defers execution rather than racing another busy process.
+/// Absolute `/proc/loadavg` 1-minute value; defaults to `available_cpus()`.
+const LOAD_DEFER_THRESHOLD_ENV: &str = "CHUMP_PREFLIGHT_LOAD_THRESHOLD";
+/// Set to "1" to skip the defer-and-poll loop entirely. Used by tests (no
+/// real clock/`/proc/loadavg` to wait on) and by CI runners, where there's
+/// no other local process to wait out.
+const LOAD_DEFER_DISABLE_ENV: &str = "CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE";
+
+/// EFFECTIVE-499: resolve the configurable load1 threshold from
+/// `CHUMP_PREFLIGHT_LOAD_THRESHOLD`, falling back to `available_cpus()` when
+/// unset or unparseable.
+fn load_defer_threshold() -> f64 {
+    std::env::var(LOAD_DEFER_THRESHOLD_ENV)
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or_else(|| available_cpus() as f64)
+}
+
+/// EFFECTIVE-499: polls `load_fn` until it drops to/below `threshold`,
+/// sleeping `poll` (via injected `sleep_fn`) between checks, up to
+/// `max_wait` total before giving up and letting the caller run anyway —
+/// never blocks forever on a machine that's just permanently busy. Returns
+/// the number of polls that observed load above threshold (0 means no defer
+/// happened). Pure over injected `load_fn`/`sleep_fn` so it's unit-testable
+/// without a real clock or `/proc/loadavg`.
+fn defer_until_load_below(
+    threshold: f64,
+    max_wait: Duration,
+    poll: Duration,
+    mut load_fn: impl FnMut() -> f64,
+    mut sleep_fn: impl FnMut(Duration),
+) -> u32 {
+    let mut waited = Duration::ZERO;
+    let mut defers = 0u32;
+    while load_fn() > threshold && waited < max_wait {
+        defers += 1;
+        sleep_fn(poll);
+        waited += poll;
+    }
+    defers
 }
 
 /// Best-effort CPU count; defaults to 4 if unavailable (matches CI runner
@@ -1217,6 +1280,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // that latency_ms and failure_class ride along, and runs
         // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
         "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: `chump preflight --help` golden-file regression —
+        // catches a stale CLI surface (INFRA-1246 class) where a flag is
+        // renamed/removed without the help text being updated. Pure local
+        // (one subprocess + a string diff), ~0.1s, no network.
+        "scripts/ci/test-cli-help-regression.sh",
     ];
     candidates
         .iter()
@@ -1999,6 +2067,17 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // INFRA-4537 (INFRA-1861 slice): bypass-line OUTPUT audit. The
+        // static grep above proves the bypass line exists in source; this
+        // force-fires each FAIL-capable gate against its real violating
+        // fixture and scans the actual printed output, catching a line
+        // that exists in source but never reaches the real failure path.
+        steps.push(step(
+            "bypass-line-output-audit",
+            &["bash", "scripts/ci/test-bypass-line-output-audit.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1810: install-script manifest gate. Verifies every
         // scripts/setup/install-*.sh is mapped to REQUIRED_DAEMONS,
         // optional-installers-allowlist.txt, or deprecated-installers-allowlist.txt.
@@ -2168,6 +2247,11 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "claim-fuzzy-match",
             &["bash", "scripts/ci/test-claim-fuzzy-match.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "claim-mode",
+            &["bash", "scripts/ci/test-claim-mode.sh"],
             GateKind::Scripts,
         ));
         steps.push(step(
@@ -4194,5 +4278,86 @@ mod tests {
             "unscoped fallback must run --workspace, argv={:?}",
             step.argv
         );
+    }
+
+    #[test]
+    fn cargo_check_step_argv_includes_nice_and_capped_jobs() {
+        // EFFECTIVE-499 AC 1 & 3: `nice -n 10 cargo check ... -j 6` (or
+        // equivalent capped jobs) under an idle (load1=0.0) machine with
+        // >=6 CPUs — compute_check_jobs caps at 6 regardless of CPU count.
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["crates/foo/src/lib.rs".to_string()];
+        let step = cargo_check_step(root, &paths);
+        assert_eq!(step.argv[0], "nice", "argv={:?}", step.argv);
+        assert!(
+            step.argv.windows(2).any(|w| w == ["-n", "10"]),
+            "expected `nice -n 10`, argv={:?}",
+            step.argv
+        );
+        let jobs_idx = step
+            .argv
+            .iter()
+            .position(|a| a == "--jobs")
+            .expect("expected --jobs flag");
+        let jobs_val: usize = step.argv[jobs_idx + 1].parse().expect("numeric jobs value");
+        assert!(
+            jobs_val <= 6,
+            "capped jobs must be <= 6, got {jobs_val}, argv={:?}",
+            step.argv
+        );
+    }
+
+    #[test]
+    fn defer_until_load_below_runs_immediately_when_already_under_threshold() {
+        let mut sleeps = 0u32;
+        let defers = defer_until_load_below(
+            4.0,
+            Duration::from_secs(30),
+            Duration::from_secs(2),
+            || 1.0,
+            |_| sleeps += 1,
+        );
+        assert_eq!(defers, 0);
+        assert_eq!(sleeps, 0);
+    }
+
+    #[test]
+    fn defer_until_load_below_polls_until_load_drops() {
+        // Load reported as busy (10.0) for the first two polls, then drops
+        // below the threshold (4.0) on the third read.
+        let loads = std::cell::RefCell::new(vec![10.0, 10.0, 2.0]);
+        let mut sleeps = 0u32;
+        let defers = defer_until_load_below(
+            4.0,
+            Duration::from_secs(30),
+            Duration::from_millis(1),
+            || loads.borrow_mut().remove(0),
+            |_| sleeps += 1,
+        );
+        assert_eq!(defers, 2, "expected 2 deferred polls before load dropped");
+        assert_eq!(sleeps, 2);
+    }
+
+    #[test]
+    fn defer_until_load_below_gives_up_after_max_wait() {
+        // Toggle-for-tests: a permanently-busy load_fn still returns within
+        // a bounded max_wait rather than looping forever.
+        let defers = defer_until_load_below(
+            1.0,
+            Duration::from_millis(5),
+            Duration::from_millis(2),
+            || 99.0,
+            |_| {},
+        );
+        assert!(defers >= 2, "expected at least 2 polls, got {defers}");
+    }
+
+    #[test]
+    fn load_defer_disable_env_is_the_expected_name() {
+        // Guards the toggle-for-tests contract referenced in run_step: the
+        // env var name must stay stable since it's the documented escape
+        // hatch for CI/tests to skip the real-time defer loop.
+        assert_eq!(LOAD_DEFER_DISABLE_ENV, "CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE");
     }
 }

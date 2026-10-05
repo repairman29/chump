@@ -20,8 +20,23 @@ GUARD="$REPO_ROOT/scripts/git-hooks/pre-push-actionlint-guard.sh"
 
 PASS=0
 FAIL=0
+# INFRA-1649: overall failure class across all fail() calls this run.
+# permanent beats transient — a single logic-bug fail means the whole run
+# is "permanent" even if an environment-flaky fail also occurred.
+FAIL_CLASS="none"
 ok()   { printf '  \033[0;32mPASS\033[0m %s\n' "$*"; PASS=$((PASS+1)); }
-fail() { printf '  \033[0;31mFAIL\033[0m %s\n' "$*"; FAIL=$((FAIL+1)); }
+# fail MESSAGE [transient|permanent]  (default: permanent)
+fail() {
+    local msg="$1"
+    local class="${2:-permanent}"
+    printf '  \033[0;31mFAIL\033[0m %s\n' "$msg"
+    FAIL=$((FAIL+1))
+    if [[ "$class" == "permanent" ]]; then
+        FAIL_CLASS="permanent"
+    elif [[ "$FAIL_CLASS" == "none" ]]; then
+        FAIL_CLASS="transient"
+    fi
+}
 
 echo "=== INFRA-2322 pre-push actionlint gate test ==="
 echo
@@ -127,7 +142,7 @@ else
     if run_guard >/tmp/actionlint-guard-test.out 2>&1; then
         ok "actionlint absent → guard exits 0 (transient, non-blocking)"
     else
-        fail "guard should not block when actionlint binary is absent"
+        fail "guard should not block when actionlint binary is absent" transient
         cat /tmp/actionlint-guard-test.out
     fi
     grep -q '"kind":"actionlint_guard_skipped"' "$AMB" 2>/dev/null \
@@ -171,4 +186,10 @@ done
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="
-[[ "$FAIL" -eq 0 ]]
+if [[ "$FAIL" -eq 0 ]]; then
+    echo "guard: ok"
+    exit 0
+else
+    echo "guard: fail class=$FAIL_CLASS" >&2
+    exit 1
+fi

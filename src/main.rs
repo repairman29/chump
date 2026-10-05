@@ -49,6 +49,10 @@ mod browser_tool;
 // (src/lib.rs); re-exported here so existing `crate::calc_tool::X` call
 // sites in this binary keep resolving unchanged.
 pub use chump::calc_tool;
+// INFRA-4667 (INFRA-1687 slice): subcommand_registry lives in the lib crate
+// (src/lib.rs); re-exported here so existing `crate::subcommand_registry::X`
+// call sites in this binary keep resolving unchanged.
+pub use chump::subcommand_registry;
 mod cancel_registry;
 mod cascade_stats;
 mod checkpoint_db;
@@ -135,6 +139,7 @@ mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
+mod gap_file; // INFRA-8061: universal gap-intake filer (POST CHUMP_GAP_URL + durable local spool)
 mod gap_route; // INFRA-3689: route gap mutations to the fleet-server when local checkout is non-canonical
 mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764
 mod gen;
@@ -197,6 +202,7 @@ mod pending_peer_approval;
 mod perception;
 mod peripheral_sensor;
 mod phi_proxy;
+mod pillar_cap; // CREDIBLE-072: per-pillar weekly merge-share cap/floor at gap reserve
 mod pilot_metrics;
 mod plan_mode;
 mod platform_router;
@@ -329,6 +335,7 @@ mod e2e_bot_tests;
 mod embed_inprocess;
 
 mod metrics;
+mod metrics_registry;
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -9892,6 +9899,23 @@ async fn main() -> Result<()> {
     //   chump gap import [--yaml docs/gaps.yaml]
     if args.get(1).map(String::as_str) == Some("gap") {
         let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+
+        // INFRA-8061: the UNIVERSAL gap-intake filer — one portable filing path
+        // (POST CHUMP_GAP_URL, durable local spool + retry). Needs no local
+        // store, no tailscale, no SSH; usable from the Mac, cuphead, cloud
+        // ephemeral agents, and a stranger running their own chump. Handled
+        // before any store/worktree resolution below since it writes only over
+        // HTTP + a local spool file.
+        if subcmd == "file" {
+            match gap_file::run(&args).await {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("chump gap file: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         let repo_root = repo_path::repo_root();
         // INFRA-247: per-file YAML mirrors and the .chump/.last-yaml-op
         // freshness marker are *worktree-local* artifacts — they must land
@@ -10694,6 +10718,24 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // `chump gap pillar-share` (CREDIBLE-072) — one-line 7-day
+            // per-pillar merge share, flagging pillars over the reserve-time
+            // cap and EFFECTIVE/CREDIBLE under the floor.
+            "pillar-share" => {
+                let rows = store.list(None).unwrap_or_default();
+                let shares = pillar_cap::compute_shares(
+                    rows.iter().map(|g| {
+                        (
+                            g.title.as_str(),
+                            g.domain.as_str(),
+                            g.status.as_str(),
+                            g.closed_at,
+                        )
+                    }),
+                    chrono::Utc::now().timestamp(),
+                );
+                println!("{}", shares.status_line());
+            }
             "reserve" => {
                 let has_flag_domain = args.iter().any(|a| a == "--domain");
                 let domain = flag("--domain").or_else(|| {
@@ -10720,7 +10762,68 @@ async fn main() -> Result<()> {
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| "New gap".into())
                 });
-                let priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                let mut priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                // ── CREDIBLE-072: per-pillar weekly merge-share cap / floor ─────
+                // A NEW gap in a pillar that already holds >30% of the last 7
+                // days' merges is demoted to P2; when EFFECTIVE+CREDIBLE are
+                // under 50% combined, a NEW gap in either is bumped one tier
+                // (P0 bumps held to the P0 budget). `--cap-override <reason>`
+                // keeps the requested priority and is logged. Every decision
+                // other than "keep" emits kind=pillar_cap_demote.
+                let mut pillar_cap_event: Option<String> = None;
+                if pillar_cap::enabled() {
+                    if let Some(pillar) = pillar_cap::pillar_of(&title, &domain) {
+                        let rows = store.list(None).unwrap_or_default();
+                        let shares = pillar_cap::compute_shares(
+                            rows.iter().map(|g| {
+                                (
+                                    g.title.as_str(),
+                                    g.domain.as_str(),
+                                    g.status.as_str(),
+                                    g.closed_at,
+                                )
+                            }),
+                            chrono::Utc::now().timestamp(),
+                        );
+                        let open_p0 = rows
+                            .iter()
+                            .filter(|g| g.status == "open" && g.priority == "P0")
+                            .count();
+                        let cap_override = flag("--cap-override");
+                        let decision = pillar_cap::decide(pillar, &priority, &shares, open_p0);
+                        let (decision_label, new_priority) = match (&cap_override, &decision) {
+                            (_, pillar_cap::Decision::Keep) => ("keep", None),
+                            (Some(_), _) => ("override", None),
+                            (None, pillar_cap::Decision::Demote { to })
+                            | (None, pillar_cap::Decision::Bump { to }) => {
+                                (decision.label(), Some(to.to_string()))
+                            }
+                        };
+                        if decision_label != "keep" {
+                            let from = priority.clone();
+                            let to = new_priority.clone().unwrap_or_else(|| priority.clone());
+                            if !args.iter().any(|a| a == "--quiet") {
+                                eprintln!(
+                                    "[reserve] CREDIBLE-072: {pillar} is {:.0}% of 7d merges — {decision_label} {from} → {to}",
+                                    shares.pct(pillar)
+                                );
+                            }
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let reason = cap_override
+                                .clone()
+                                .unwrap_or_default()
+                                .replace(['"', '\\'], "");
+                            // gap_id is filled in once the reserve succeeds.
+                            pillar_cap_event = Some(format!(
+                                r#"{{"ts":"{ts}","kind":"pillar_cap_demote","gap_id":"{{GAP_ID}}","pillar":"{pillar}","current_share":{:.1},"decision":"{decision_label}","from":"{from}","to":"{to}","override_reason":"{reason}"}}"#,
+                                shares.pct(pillar)
+                            ));
+                        }
+                        if let Some(p) = new_priority {
+                            priority = p;
+                        }
+                    }
+                }
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
                 // CREDIBLE-107: --evidence required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
@@ -11873,6 +11976,20 @@ async fn main() -> Result<()> {
                         // write-and-autostage path this replaced is gone).
                         // Use `chump gap show <ID>` for human-readable
                         // per-gap inspection.
+                        // CREDIBLE-072: audit the pillar-cap decision with the real id.
+                        if let Some(line) = pillar_cap_event.take() {
+                            let line = line.replace("{GAP_ID}", &id);
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write as _;
+                                let _ = writeln!(f, "{line}");
+                            }
+                        }
                         if json_out {
                             println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
                         } else {
@@ -14571,6 +14688,9 @@ async fn main() -> Result<()> {
                         "  --clone-path <path>       Override the resolved clone path (used with --external-repo)."
                     );
                     println!("  -h, --help                Show this help");
+                    println!();
+                    println!("Exit codes: 0 success/nothing-to-do, 1 not-open error,");
+                    println!("  11 refused — parent already has open child slices (INFRA-8067).");
                     return Ok(());
                 }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
@@ -14691,6 +14811,46 @@ async fn main() -> Result<()> {
                         parent.effort
                     );
                     std::process::exit(0);
+                }
+
+                // INFRA-8067: refuse to re-slice a parent that already has
+                // open child slices — root-cause fix for RESILIENT-1437 (the
+                // gap-store's slice-bloat: the EFFECTIVE-310 decompose
+                // reflex in scripts/dispatch/worker.sh re-slicing the same
+                // parent gap repeatedly). The RESILIENT-1364 guard above
+                // (parent.status != "open") only blocks a SECOND run once
+                // the FIRST run finished cleanly and wrote
+                // status=decomposed. A run that filed slices but was
+                // interrupted before that final write (crash, kill -9,
+                // wedge) leaves the parent looking "fresh" — still
+                // status=open, no "Decomposed into" notes marker — so every
+                // subsequent strike-threshold hit re-decomposes it into
+                // another near-duplicate batch of slices. Counting slices
+                // directly off the title convention `"... (<parent> slice)"`
+                // (and depends_on) rather than the parent's own notes
+                // bookkeeping catches exactly that orphaned-slices case.
+                let open_slice_count = store.count_open_slices(&gap_id).unwrap_or(0);
+                if open_slice_count >= 1 {
+                    eprintln!(
+                        "decompose: {gap_id} already has {open_slice_count} open slice(s); refusing to re-slice"
+                    );
+                    if json_out {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "refused": true,
+                                "reason": "already_has_open_slices",
+                                "open_slice_count": open_slice_count,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    }
+                    // Distinct exit code: callers (EFFECTIVE-310 reflex in
+                    // scripts/dispatch/worker.sh) must treat 11 as "refused,
+                    // do not reset strikes" — separate from 0 (success/
+                    // nothing-to-do) and 1 (hard error) above.
+                    std::process::exit(11);
                 }
 
                 if !dry_run {

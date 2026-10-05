@@ -42,13 +42,17 @@ done
 FILE_LIST_TMP=$(mktemp)
 trap 'rm -f "$FILE_LIST_TMP"' EXIT
 
+# Vendored third-party bundles (INFRA-1558) live under web/**/lib/vendor/ —
+# minified/bundled code is not first-party design-token surface and its
+# packed hex-like substrings are false positives for this scanner.
 if [ "$SCAN_ALL" = "1" ]; then
     find "$REPO_ROOT/web" -type f \( -name "*.js" -o -name "*.html" -o -name "*.css" \) \
-        2>/dev/null > "$FILE_LIST_TMP" || true
+        2>/dev/null | grep -v '/lib/vendor/' > "$FILE_LIST_TMP" || true
 else
     git diff --cached --name-only 2>/dev/null \
         | grep -E '\.(js|html|css)$' \
         | grep -E '^web/' \
+        | grep -v '/lib/vendor/' \
         | while IFS= read -r f; do
             [ -f "$REPO_ROOT/$f" ] && echo "$REPO_ROOT/$f"
           done > "$FILE_LIST_TMP" || true
