@@ -30,6 +30,17 @@ roles:
       - shell
       - git
 
+  - name: fleet-test
+    description: >
+      CI test-harness role used by the claim/coordination smoke tests
+      (scripts/ci/coord-surfaces-smoke.sh and scripts/ci/test-claim-*.sh) to
+      drive `chump claim` end-to-end on the positive path. Not a real fleet
+      lane — it exists only so CI can exercise a claim. Negative-path tests
+      deliberately use an unregistered role (e.g. `bogus`) and must keep
+      failing, so those stay out of this registry.
+    skills:
+      - ci-harness
+
   - name: paramedic
     description: >
       Resilience/recovery role (crates/chump-paramedic) that revives wedged
