@@ -400,6 +400,20 @@ board_vitals_check() {
     [[ "${CHUMP_BOARD_VITALS_ENABLED:-1}" == "0" ]] && return 0
     _bv_harden_env
 
+    # ── GUARD: summarized_pct must be >95% or abort (CREDIBLE-1113, CREDIBLE-300
+    # slice) ─────────────────────────────────────────────────────────────────
+    # Hard precondition, distinct from the almanac_coverage_low PAGE below
+    # (which pages but lets the cycle continue). CHUMP_BOARD_VITALS_SUMMARIZED_PCT
+    # is an explicit override for callers/tests that need a deterministic abort
+    # path; when unset, this guard is a no-op and prior behavior is unchanged.
+    local summarized_pct="${CHUMP_BOARD_VITALS_SUMMARIZED_PCT:-}"
+    if [[ -n "$summarized_pct" ]]; then
+        if ! [[ "$summarized_pct" =~ ^[0-9]+$ ]] || (( summarized_pct <= 95 )); then
+            echo "summarized_pct must be >95% – aborting" >&2
+            return 1
+        fi
+    fi
+
     local now; now="$(_bv_now)"
     local disk_path disk_pct_thr drought_min silent_min main_red_min
     disk_path="${CHUMP_BOARD_VITALS_DISK_PATH:-/}"

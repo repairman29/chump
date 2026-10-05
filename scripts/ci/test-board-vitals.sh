@@ -37,6 +37,37 @@ echo "[test-board-vitals] sourcing contract"
     && _ok "sourcing defines board_vitals_check" \
     || _fail "sourcing defines board_vitals_check"
 
+# ── CREDIBLE-1113: summarized_pct >95% hard guard ────────────────────────────
+echo "[test-board-vitals] summarized_pct=94 aborts with exit 1 and the exact error string"
+G94_ERR="$TMP/guard-94.err"
+( set -a
+  CHUMP_BOARD_VITALS_SUMMARIZED_PCT=94
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>"$G94_ERR"
+g94_rc=$?
+[[ "$g94_rc" -eq 1 ]] && _ok "summarized_pct=94 → exit 1" \
+    || _fail "summarized_pct=94 → expected exit 1, got $g94_rc"
+grep -qF "summarized_pct must be >95% – aborting" "$G94_ERR" \
+    && _ok "summarized_pct=94 → exact error string printed" \
+    || _fail "summarized_pct=94 → error string missing (got: $(cat "$G94_ERR"))"
+
+echo "[test-board-vitals] summarized_pct=96 completes successfully with no error"
+G96_ERR="$TMP/guard-96.err"
+( set -a
+  CHUMP_BOARD_VITALS_SUMMARIZED_PCT=96
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>"$G96_ERR"
+g96_rc=$?
+[[ "$g96_rc" -eq 0 ]] && _ok "summarized_pct=96 → exit 0" \
+    || _fail "summarized_pct=96 → expected exit 0, got $g96_rc"
+grep -qF "summarized_pct must be >95% – aborting" "$G96_ERR" \
+    && _fail "summarized_pct=96 → unexpected error string printed" \
+    || _ok "summarized_pct=96 → no error string printed"
+
 # ── disk incident: force threshold below real usage, DRY_RUN, dedup ──────────
 echo "[test-board-vitals] disk incident pages once then dedupes"
 A="$TMP/disk.jsonl"; : > "$A"     # empty ambient → worker_ep=0 → worker checks inert
