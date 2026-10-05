@@ -1502,6 +1502,7 @@ dependencies = [
  "rusqlite",
  "serde",
  "serde_json",
+ "serde_yaml",
  "tempfile",
  "tokio",
  "uuid 1.26.1",
