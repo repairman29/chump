@@ -1,0 +1,16 @@
+- id: ZERO-WASTE-049
+  domain: ZERO-WASTE
+  title: "scheduled curation loop: triage+consolidate+write-ac exist, none is scheduled, and a gap that cannot be qualified has no retirement path"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "MACHINERY EXISTS — this is scheduling and closing a taxonomy, not building curation. 'chump gap triage' classifies non-pickable gaps and prescribes a remedy (vague-ac->add-ac, too-large->decompose, false-dep->strip-dep) and its --apply does ONLY provably-safe fixes (strip deps on already-done gaps, demote P2->P3). 'chump gap consolidate' does near-duplicate title detection. 'chump gap write-ac' fills criteria (shipped 2026-08-07). Retirement is already normal practice: 955 superseded + 802 wontfix against 1742 done — the fleet retires about as much as it ships"
+    - "NOTHING IS SCHEDULED: 0 cron/launchd entries reference triage, consolidate or gardener (measured 2026-08-07). Eighth instance of the built-not-wired pattern in one session — see ZERO-WASTE-036"
+    - "DETECTORS ARE BLIND TO THE DOMINANT CASE, fix before scheduling or the loop will certify a broken queue as healthy: triage finds 2 vague-ac and audit-ac finds 6, while 74 of 240 open gaps carry the default_acceptance_criteria template. All three must count template-AC as vague (see EFFECTIVE-407)"
+    - "MISSING TERMINAL PATH — the actual ask. triage prescribes add-ac but nothing handles 'add-ac was attempted and could not produce testable criteria'. Failure to qualify IS the signal: if a repo-grounded writer with title + description + real repo files cannot write testable ACs, the gap does not contain enough information to be work"
+    - "RETIREMENT IS PROPOSED, NEVER EXECUTED, and carries its reason. Auto-closing real work is strictly worse than carrying a vague gap. Reuse the existing statuses rather than inventing one: superseded when consolidate finds it is a duplicate/subset, wontfix when it is no longer true or never was actionable. Record who/what decided and why, so a re-detected gap is not re-proposed forever (same allowlist discipline as ZERO-WASTE-036)"
+    - "UPSTREAM FIX IS THE REAL LEVERAGE — without it this loop runs forever: 74 template ACs exist because default_acceptance_criteria (src/main.rs:18442) fires whenever 'chump gap reserve' omits --acceptance-criteria. Either reserve calls write-ac inline, or it refuses to create a P0/P1 without real criteria (the same shape as the MISSION-045 outcome gate and the CREDIBLE-107 evidence gate that already work). Stop producing them, do not just sweep them"
+    - "SELF-CHECK — the loop must be honest about its own author: triage today flags MISSION-076, MISSION-077 and ZERO-WASTE-036 as too-large/decompose. Two of those were filed hours earlier in this same session. A curation loop that exempts recent or self-filed gaps is not a curation loop"
+  outcome_id: ZERO-WASTE-000
+

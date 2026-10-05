@@ -1,0 +1,13 @@
+- id: ZERO-WASTE-034
+  domain: ZERO-WASTE
+  title: cargo-target-reaper blind to ~/.cargo/chump-shared-target (the fleet's real CARGO_TARGET_DIR) — 109GB unbounded growth → 97% disk → build thrashing
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    ROOT CAUSE of the 2026-08-01 build/ship friction. scripts/ops/cargo-target-reaper.sh scans chump/target/, /tmp/chump-*/target, and ~/.cache/chump-runner/cargo-target — but NOT $HOME/.cargo/chump-shared-target, which is the CARGO_TARGET_DIR the fleet + operator actually build into (per CLAUDE.md shared-target convention). Result: that dir grew unbounded to 109GB (88GB in debug/deps alone) while the reaper reported ~12MB reclaimable; disk hit 97% (16GB free of 460GB). Downstream symptoms: shared-target build contention (binaries overwritten mid-session — a just-built PART-A binary didn't stick, defeating live proofs), incremental-cache corruption ('failed to move dep-graph.bin: No such file or directory'), slow builds + lock waits. Manual reclaim on 2026-08-01 freed ~53GB (release profile + bench clones + find -mtime +3 -delete on debug/deps) → 69GB free. FIX: add $HOME/.cargo/chump-shared-target (and any dir named by $CARGO_TARGET_DIR) to the reaper's scan set, with the same age-based prune (FINGERPRINT_AGE_D) it uses elsewhere, so it never re-balloons. Bonus: the disk-critical escalation (INFRA-2188) should key on $HOME free (it does) AND actually cover the dir consuming the space.
+  acceptance_criteria:
+    - "The change described by \"cargo-target-reaper blind to ~/.cargo/chump-shared-target (the fleet's real CARGO_TARGET_DIR) — 109GB unbounded growth → 97% disk → build thrashing\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

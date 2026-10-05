@@ -1,22 +1,13 @@
 - id: MISSION-059
   domain: MISSION
-  title: 'MISSION: re-check HELD-on-CI external PRs when they go green (improve loop advances, never re-merges them)'
+  title: "MISSION: re-check HELD-on-CI external PRs when they go green (improve loop advances, never re-merges them)"
   status: done
   priority: P0
   effort: m
   acceptance_criteria:
-  - 'NO ABANDONED PRs + be-best-at-CI-at-scale. The improve loop must own every PR it opens to a terminal state (merged or
-    closed), and resolve held PRs BEFORE advancing (dep-bound work can''t skip a held blocker). COMPOSE the existing arsenal
-    — do not rebuild: (1) on HELD(ci), CLASSIFY the failing checks via ci_summary::classify_log (flake '
-  - ' test-coupling '
-  - ' real-bug); (2) flake -> rerun failed checks (gh run rerun), re-verify (no agent — cheap, this is the scale lever); (3)
-    mechanical (clippy/fmt/lint) -> auto-fix on the SAME branch (pr fix-clippy / pr_rescue-style patch), push, re-verify;
-    (4) real-bug -> re-spawn the improve agent with a FIX prompt (failing-check logs) on the same branch, push, re-verify
-    — bounded CHUMP_IMPROVE_FIX_RETRIES (default 2); (5) still red after retries or unsalvageable -> CLOSE the PR with a reason
-    comment. Also: before Stage-1 PICK, a GREEN-FIRST-over-OWN-PRs pass resolves the loop''s open held PRs first (they may
-    block deps). Scale: classifier triages so only real logic bugs cost an LLM spawn across N repos. Verify: a HELD improve
-    PR is driven green+merged or closed within N ticks with no human; no open-red improve PR persists >1 cycle; a flake is
-    rerun (not re-implemented). Precedent: BEAST #16 opened by closetjunky''s loop, HELD(ci), abandoned. Reuses: ci_summary.rs
-    (INFRA-506), pr_rescue.rs (INFRA-1714), pr_fix_clippy.rs, improve GREEN-FIRST (EFFECTIVE-288).'
+    - "NO ABANDONED PRs + be-best-at-CI-at-scale. The improve loop must own every PR it opens to a terminal state (merged or closed), and resolve held PRs BEFORE advancing (dep-bound work can't skip a held blocker). COMPOSE the existing arsenal — do not rebuild: (1) on HELD(ci), CLASSIFY the failing checks via ci_summary::classify_log (flake "
+    - " test-coupling "
+    - " real-bug); (2) flake -> rerun failed checks (gh run rerun), re-verify (no agent — cheap, this is the scale lever); (3) mechanical (clippy/fmt/lint) -> auto-fix on the SAME branch (pr fix-clippy / pr_rescue-style patch), push, re-verify; (4) real-bug -> re-spawn the improve agent with a FIX prompt (failing-check logs) on the same branch, push, re-verify — bounded CHUMP_IMPROVE_FIX_RETRIES (default 2); (5) still red after retries or unsalvageable -> CLOSE the PR with a reason comment. Also: before Stage-1 PICK, a GREEN-FIRST-over-OWN-PRs pass resolves the loop's open held PRs first (they may block deps). Scale: classifier triages so only real logic bugs cost an LLM spawn across N repos. Verify: a HELD improve PR is driven green+merged or closed within N ticks with no human; no open-red improve PR persists >1 cycle; a flake is rerun (not re-implemented). Precedent: BEAST #16 opened by closetjunky's loop, HELD(ci), abandoned. Reuses: ci_summary.rs (INFRA-506), pr_rescue.rs (INFRA-1714), pr_fix_clippy.rs, improve GREEN-FIRST (EFFECTIVE-288)."
   closed_date: '2026-07-25'
   closed_pr: 3294
+

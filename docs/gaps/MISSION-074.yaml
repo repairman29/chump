@@ -1,0 +1,13 @@
+- id: MISSION-074
+  domain: MISSION
+  title: "MISSION: End-to-end integration test for CHUMPOS Phase 0 (MISSION-065 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Integration test verifies the flow: Hetzner config -> Disk Gate -> Scaling Formula"
+    - Test fails if any of the three components are disabled or malfunctioning
+    - cargo test and clippy pass with no warnings
+  depends_on: [MISSION-068, MISSION-069, MISSION-071, MISSION-073]
+  outcome_id: CHUMPOS
+

@@ -1,0 +1,63 @@
+# BARNACLE_SURFACES.yaml — RESILIENT-359
+#
+# Registry of "accumulating surfaces" — gradients with no drain that silently
+# build up until they cause a cascade (evidence 2026-08-20: worktree-reaper
+# was OFF -> 182 stale /tmp worktrees -> ship path failed on disk-quota).
+#
+# scripts/coord/barnacle-buster.sh reads this file, runs each surface's
+# `check` command, compares the printed integer against `threshold`, and
+# auto-files a debounced gap when a surface crosses its threshold. This is
+# the shared health model that composes the fleet's fragmented reapers/
+# detectors into ONE immune system.
+#
+# Each entry:
+#   id          — stable slug, used for debounce state + gap dedup
+#   description — one line, what buildup this drains
+#   check       — shell command; MUST print a single non-negative integer to
+#                 stdout (the current buildup level) and exit 0. Any other
+#                 exit code or output is treated as "check failed" (skipped,
+#                 not alerted — a broken check should not itself page anyone).
+#   threshold   — integer; check_value > threshold triggers a barnacle
+#   domain      — gap domain to file against on breach
+#   priority    — gap priority on breach
+#   effort      — gap effort estimate on breach
+surfaces:
+  - id: stale-worktrees
+    description: "Stale /tmp git worktrees left after abandoned claims — the RESILIENT-359 origin incident (182 stale worktrees -> disk-quota ship failure)."
+    check: "{ find /tmp -maxdepth 1 -iname 'chump-*' -type d -mmin +720 2>/dev/null; git worktree list --porcelain 2>/dev/null | sed -n 's/^worktree //p' | grep -E '^/tmp/' ; } | sort -u | wc -l | tr -d ' '"
+    threshold: 30
+    domain: RESILIENT
+    priority: P1
+    effort: s
+
+  - id: untracked-gap-yaml
+    description: "Untracked docs/gaps/*.yaml piling up in the main worktree — blocks a clean pull, precedent META-225."
+    check: "git ls-files --others --exclude-standard docs/gaps/ 2>/dev/null | grep -c '\\.yaml$' || echo 0"
+    threshold: 50
+    domain: META
+    priority: P1
+    effort: s
+
+  - id: commits-behind-main
+    description: "Main worktree drifting behind origin/main."
+    check: "git rev-list --count HEAD..origin/main 2>/dev/null || echo 0"
+    threshold: 30
+    domain: META
+    priority: P1
+    effort: s
+
+  - id: disk-usage-pct
+    description: "Root filesystem fill percentage — disk-quota is the terminal state of every unfought barnacle."
+    check: "df -P / 2>/dev/null | awk 'NR==2 {gsub(/%/,\"\",$5); print $5}' || echo 0"
+    threshold: 90
+    domain: RESILIENT
+    priority: P0
+    effort: s
+
+  - id: expired-leases
+    description: "Stale .chump-locks/*.json claim leases past their TTL — orphaned leases block re-claim of the same paths."
+    check: "find .chump-locks -maxdepth 1 -name '*.json' -mmin +180 2>/dev/null | wc -l | tr -d ' '"
+    threshold: 10
+    domain: RESILIENT
+    priority: P1
+    effort: s

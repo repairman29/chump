@@ -44,7 +44,9 @@ fi
 
 # Parse fleet_status from JSON (pure bash — no jq dependency on Termux by default)
 FLEET_STATUS=$(echo "${BODY}" | grep -o '"fleet_status":"[^"]*"' | head -1 | cut -d'"' -f4 || echo "unknown")
-SHIP_RUNNING=$(echo "${BODY}" | grep -o '"ship_running":[^,}]*' | head -1 | grep -c "true" || echo "0")
+# RESILIENT-281: grep -c already prints "0" (and exits 1) on zero matches;
+# `|| echo "0"` appended a duplicate line ($'0\n0'), so use `|| true`.
+SHIP_RUNNING=$(echo "${BODY}" | grep -o '"ship_running":[^,}]*' | head -1 | grep -c "true" || true)
 
 log "probe-mac-health: fleet_status=${FLEET_STATUS} ship_running=${SHIP_RUNNING}"
 

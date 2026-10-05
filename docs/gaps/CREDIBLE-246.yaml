@@ -1,0 +1,10 @@
+- id: CREDIBLE-246
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker presence record storage in NATS-KV (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A worker presence record is stored in the NATS-KV bucket when a worker registers
+    - The record is updated when a worker's presence changes (e.g. when a worker ships or exits)
+

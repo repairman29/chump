@@ -1,0 +1,14 @@
+- id: INFRA-3443
+  domain: INFRA
+  title: close-gate-test DELETEME
+  status: superseded
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"close-gate-test DELETEME\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-27T00:04:41Z] close-gate test fixture, cleanup
+  outcome_id: RESILIENT-000
+

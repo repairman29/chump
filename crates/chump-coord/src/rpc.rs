@@ -106,6 +106,21 @@ impl std::error::Error for RpcError {
     }
 }
 
+impl RpcError {
+    /// INFRA-2358: failure-class taxonomy for ambient events + retry policy.
+    ///
+    /// `transient` — NoNats/Timeout/Transport: a retry may succeed (broker
+    /// hiccup, slow peer, dropped connection).
+    /// `permanent` — HandlerCrash/Deserialize: retrying reproduces the same
+    /// failure (peer's handler is broken, or the wire payload is malformed).
+    pub fn failure_class(&self) -> &'static str {
+        match self {
+            RpcError::NoNats | RpcError::Timeout { .. } | RpcError::Transport(_) => "transient",
+            RpcError::HandlerCrash { .. } | RpcError::Deserialize(_) => "permanent",
+        }
+    }
+}
+
 impl From<serde_json::Error> for RpcError {
     fn from(e: serde_json::Error) -> Self {
         RpcError::Deserialize(e)
@@ -213,12 +228,14 @@ pub async fn call_rpc_with_nats(
         Some(c) => c,
         None => {
             // No NATS client available — emit rpc_send_failed and return error
+            let err = RpcError::NoNats;
             let ts = chrono::Utc::now().to_rfc3339();
             let fail_line = format!(
-                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}"}}"#
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}","failure_class":"{}"}}"#,
+                err.failure_class()
             );
             let _ = append_ambient(&fail_line);
-            return Err(RpcError::NoNats);
+            return Err(err);
         }
     };
 
@@ -234,33 +251,48 @@ pub async fn call_rpc_with_nats(
     {
         Ok(Ok(msg)) => msg,
         Ok(Err(e)) => {
+            let err = RpcError::Transport(e.to_string());
             let ts = chrono::Utc::now().to_rfc3339();
             let fail_line = format!(
-                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}"}}"#
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}","failure_class":"{}"}}"#,
+                err.failure_class()
             );
             let _ = append_ambient(&fail_line);
-            return Err(RpcError::Transport(e.to_string()));
+            return Err(err);
         }
         Err(_elapsed) => {
             // Deadline exceeded — emit a2a_rpc_timeout
+            let err = RpcError::Timeout {
+                request_id: request_id.clone(),
+                timeout_ms,
+            };
             let ts = chrono::Utc::now().to_rfc3339();
             let timeout_line = format!(
-                r#"{{"ts":"{ts}","kind":"a2a_rpc_timeout","request_id":"{request_id}","timeout_s":{}}}"#,
-                timeout_ms / 1000
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_timeout","request_id":"{request_id}","timeout_s":{},"failure_class":"{}"}}"#,
+                timeout_ms / 1000,
+                err.failure_class()
             );
             let _ = append_ambient(&timeout_line);
-            return Err(RpcError::Timeout {
-                request_id,
-                timeout_ms,
-            });
+            return Err(err);
         }
     };
 
     let elapsed_ms = start.elapsed().as_millis() as u64;
 
     // Deserialize response
-    let mut response: RpcResponse =
-        serde_json::from_slice(&reply_msg.payload).map_err(RpcError::Deserialize)?;
+    let mut response: RpcResponse = match serde_json::from_slice(&reply_msg.payload) {
+        Ok(r) => r,
+        Err(e) => {
+            let err = RpcError::Deserialize(e);
+            let ts = chrono::Utc::now().to_rfc3339();
+            let fail_line = format!(
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_send_failed","method":"{method}","target":"{target_session}","request_id":"{request_id}","failure_class":"{}"}}"#,
+                err.failure_class()
+            );
+            let _ = append_ambient(&fail_line);
+            return Err(err);
+        }
+    };
     // Patch latency if server didn't fill it
     if response.latency_ms == 0 {
         response.latency_ms = elapsed_ms;
@@ -273,12 +305,31 @@ pub async fn call_rpc_with_nats(
                 .trim_start_matches("handler_crash:")
                 .trim()
                 .to_string();
-            return Err(RpcError::HandlerCrash {
-                request_id: response.request_id,
+            let err = RpcError::HandlerCrash {
+                request_id: response.request_id.clone(),
+                reason: reason.clone(),
+            };
+            let ts = chrono::Utc::now().to_rfc3339();
+            let crash_line = format!(
+                r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method}","session":"{target_session}","request_id":"{}","reason":"{}","failure_class":"{}"}}"#,
+                response.request_id,
                 reason,
-            });
+                err.failure_class()
+            );
+            let _ = append_ambient(&crash_line);
+            return Err(err);
         }
     }
+
+    // Success — exactly one of {finished, timeout, send_failed, handler_crash}
+    // has now fired for this call (INFRA-2358 AC-1). Cost signal is latency_ms
+    // since RPC calls are NATS-native with no LLM spend (INFRA-2358 AC-2).
+    let ts = chrono::Utc::now().to_rfc3339();
+    let finished_line = format!(
+        r#"{{"ts":"{ts}","kind":"a2a_rpc_finished","method":"{method}","target":"{target_session}","request_id":"{}","latency_ms":{}}}"#,
+        response.request_id, response.latency_ms
+    );
+    let _ = append_ambient(&finished_line);
 
     Ok(response)
 }
@@ -393,7 +444,7 @@ where
                     // Handler returned Err — emit handler_crash event
                     let ts = chrono::Utc::now().to_rfc3339();
                     let crash_line = format!(
-                        r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method_owned}","session":"{session_owned}","request_id":"{}","reason":"{err_str}"}}"#,
+                        r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method_owned}","session":"{session_owned}","request_id":"{}","reason":"{err_str}","failure_class":"permanent"}}"#,
                         request.request_id
                     );
                     let _ = append_ambient(&crash_line);
@@ -415,7 +466,7 @@ where
                     };
                     let ts = chrono::Utc::now().to_rfc3339();
                     let crash_line = format!(
-                        r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method_owned}","session":"{session_owned}","request_id":"{}","reason":"{reason}"}}"#,
+                        r#"{{"ts":"{ts}","kind":"a2a_rpc_handler_crash","method":"{method_owned}","session":"{session_owned}","request_id":"{}","reason":"{reason}","failure_class":"permanent"}}"#,
                         request.request_id
                     );
                     let _ = append_ambient(&crash_line);
@@ -553,6 +604,86 @@ pub async fn ask_capability(
     .await
 }
 
+// ── EFFECTIVE-1138: ephemeral loop scheduler ────────────────────────────────
+//
+// chump-coord cannot depend on the root `chump` crate (the dependency runs
+// the other way), so this is a standalone copy of the ephemeral-scheduler
+// logic in `src/agent_loop/iteration_controller.rs::run_ephemeral_loop`
+// specialized for the `loop` RPC method's use case (no CLI arg parsing).
+
+static LOOP_SHUTDOWN_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+extern "C" fn loop_on_signal(sig: i32) {
+    LOOP_SHUTDOWN_SIGNAL.store(sig, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Repeatedly spawns `cmd` (argv[0] + args) every `interval_secs` seconds,
+/// printing one JSON line per iteration to stdout with `run`, `status`,
+/// `start_ts`, and `end_ts` fields. Stops after `max_iters` iterations
+/// (if `Some`), or immediately on SIGINT/SIGTERM (returns exit code 0).
+fn run_ephemeral_loop(cmd: &[String], interval_secs: u64, max_iters: Option<u64>) -> i32 {
+    if cmd.is_empty() {
+        return 1;
+    }
+
+    // SAFETY: handler only stores an atomic; async-signal-safe.
+    unsafe {
+        let handler = loop_on_signal as extern "C" fn(i32) as *const () as usize;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
+    }
+
+    let mut run: u64 = 0;
+    loop {
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        run += 1;
+        let start_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let status = std::process::Command::new(&cmd[0]).args(&cmd[1..]).status();
+        let end_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+        let status_code = match &status {
+            Ok(s) => s.code().unwrap_or(-1),
+            Err(_) => -1,
+        };
+        println!(
+            "{}",
+            serde_json::json!({
+                "run": run,
+                "status": status_code,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+            })
+        );
+
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        let mut slept = 0u64;
+        while slept < interval_secs {
+            if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+                return 0;
+            }
+            let chunk = (interval_secs - slept).min(1);
+            std::thread::sleep(std::time::Duration::from_secs(chunk));
+            slept += chunk;
+        }
+    }
+}
+
 // ── Worker integration ────────────────────────────────────────────────────────
 
 /// Register all 5 standard RPC method handlers for a worker session.
@@ -626,6 +757,37 @@ pub async fn register_worker_rpc_handlers(
     })
     .await?;
 
+    // loop: EFFECTIVE-1138 ephemeral scheduler RPC handler. Spawns a
+    // background thread running `run_ephemeral_loop` so the RPC call itself
+    // returns immediately rather than blocking the async dispatch task for
+    // the (potentially unbounded) lifetime of the loop.
+    serve_rpc_with_nats(Some(nats), session_id, "loop", |args| {
+        let cmd: Vec<String> = args
+            .get("cmd")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if cmd.is_empty() {
+            return Err("loop: \"cmd\" must be a non-empty array of strings".to_string());
+        }
+        let interval_secs = args
+            .get("interval")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| "loop: \"interval\" (seconds, u64) is required".to_string())?;
+        let max_iters = args.get("max_iters").and_then(|v| v.as_u64());
+
+        std::thread::spawn(move || {
+            run_ephemeral_loop(&cmd, interval_secs, max_iters);
+        });
+
+        Ok(serde_json::json!({"started": true}))
+    })
+    .await?;
+
     // ask-capability: report capabilities from env
     let caps: Vec<String> = std::env::var("WORKER_SKILLS")
         .unwrap_or_default()
@@ -642,6 +804,26 @@ pub async fn register_worker_rpc_handlers(
         } else {
             Ok(serde_json::json!({"capabilities": caps}))
         }
+    })
+    .await?;
+
+    // prune_ledger: return the deterministic set of low-Crit dormant ledger
+    // entry ids eligible for pruning (CREDIBLE-1049, CREDIBLE-356 slice).
+    // args: {"entries": [{"id","criticality","dormant","timestamp"}, ...], "threshold": f64}
+    serve_rpc_with_nats(Some(nats), session_id, "prune_ledger", |args| {
+        let entries: Vec<crate::ledger::LedgerEntry> = args
+            .get("entries")
+            .cloned()
+            .map(serde_json::from_value)
+            .transpose()
+            .map_err(|e: serde_json::Error| e.to_string())?
+            .unwrap_or_default();
+        let threshold = args
+            .get("threshold")
+            .and_then(|v| v.as_f64())
+            .unwrap_or(0.5);
+        let pruned = crate::ledger::prune_ledger(&entries, threshold);
+        Ok(serde_json::json!({"pruned": pruned}))
     })
     .await?;
 
@@ -931,5 +1113,74 @@ mod tests {
             t.record(&format!("req-{i}"));
         }
         assert_eq!(t.len(), 5);
+    }
+
+    // ── INFRA-2358: failure_class taxonomy ──────────────────────────────────
+
+    #[test]
+    fn failure_class_no_nats_is_transient() {
+        assert_eq!(RpcError::NoNats.failure_class(), "transient");
+    }
+
+    #[test]
+    fn failure_class_timeout_is_transient() {
+        let e = RpcError::Timeout {
+            request_id: "req-1".to_string(),
+            timeout_ms: 10_000,
+        };
+        assert_eq!(e.failure_class(), "transient");
+    }
+
+    #[test]
+    fn failure_class_transport_is_transient() {
+        let e = RpcError::Transport("connection reset".to_string());
+        assert_eq!(e.failure_class(), "transient");
+    }
+
+    #[test]
+    fn failure_class_handler_crash_is_permanent() {
+        let e = RpcError::HandlerCrash {
+            request_id: "req-1".to_string(),
+            reason: "boom".to_string(),
+        };
+        assert_eq!(e.failure_class(), "permanent");
+    }
+
+    #[test]
+    fn failure_class_deserialize_is_permanent() {
+        let json_err = serde_json::from_str::<RpcRequest>("not json").unwrap_err();
+        let e = RpcError::Deserialize(json_err);
+        assert_eq!(e.failure_class(), "permanent");
+    }
+
+    #[tokio::test]
+    async fn call_rpc_no_nats_emits_send_failed_with_failure_class() {
+        let tmp = std::env::temp_dir().join(format!("chump-rpc-test-{}", new_request_id()));
+        std::fs::create_dir_all(&tmp).unwrap();
+        let ambient_path = tmp.join("ambient.jsonl");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient_path.to_str().unwrap());
+
+        let result = call_rpc_with_nats(
+            None,
+            "peer-session",
+            "ask-eta",
+            serde_json::json!({}),
+            DEFAULT_RPC_TIMEOUT_MS,
+        )
+        .await;
+        assert!(matches!(result, Err(RpcError::NoNats)));
+
+        let contents = std::fs::read_to_string(&ambient_path).unwrap_or_default();
+        assert!(
+            contents.contains("\"kind\":\"a2a_rpc_send_failed\""),
+            "expected a2a_rpc_send_failed in ambient log: {contents}"
+        );
+        assert!(
+            contents.contains("\"failure_class\":\"transient\""),
+            "expected failure_class=transient: {contents}"
+        );
+
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

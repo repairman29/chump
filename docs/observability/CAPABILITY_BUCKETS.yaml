@@ -131,7 +131,6 @@ buckets:
       - "scripts/ab-harness/**"
       - "scripts/eval/**"
       - "scripts/eval-human-label/**"
-      - "scripts/eval-reflection-ab/**"
       - "scripts/qa/**"
 
   - name: tool_governance_wasm_sandbox

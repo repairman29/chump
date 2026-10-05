@@ -1,9 +1,11 @@
 - id: INFRA-1864
   domain: INFRA
   title: "MISSION: Harvester per-file primitive indexing (per CP-002 finding — catalog needed per-file granularity to proactively surface tree-sitter overlap)"
-  status: open
+  status: done
   priority: P1
   effort: m
+  closed_pr: 3706
+  closed_date: '2026-08-17'
   acceptance_criteria:
     - scripts/arsenal/build.py extended to scan each repo's src/ tree for known-primitive signatures (e.g. 'use tree_sitter' in Rust, 'import tree-sitter' in TS/JS/Python, 'stripe.api_key' for Stripe primitive, 'jwt.verify' for JWT auth, etc) — produce per-file primitive index in GLOBAL_ARSENAL.json under repos_by_name[X].extracted_primitives
     - Primitive signature library lives at scripts/arsenal/primitive_signatures.json — language-keyed regex patterns mapping to primitive labels (auth, payment, ast, vector_embedding, llm_router, etc)

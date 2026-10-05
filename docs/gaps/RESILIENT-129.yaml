@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT: test-credible-061-gap-list-json-schema.sh expects ≥5 fixture gaps but seed produces 3 — wedges every PR's audit-shard (1) gate"
   status: open
-  priority: P1
+  priority: P0
   effort: xs
   acceptance_criteria:
     - "Reproducer: PR #3095 (and presumably every other PR right now) fails audit-shard (1) at scripts/ci/test-credible-061-gap-list-json-schema.sh with 'FAIL: expected ≥5 fixture gaps; got 3'"

@@ -1,0 +1,21 @@
+# Pairs with chump-nba-dispatch.service. Fires the auto-dispatch consumer every
+# ~30 min — half the producer's 20-min cadence is plenty: the consumer reads the
+# freshest ~/.chump/next-best-action.json and acts on (or defers) the top bet.
+# The consumer is idempotent (30-min bet cooldown) so a tight cadence never
+# re-dispatches the same standing bet. Cheap (no LLM call).
+[Unit]
+Description=Run the Chump NBA auto-dispatch consumer every 30 minutes (aim the OS between human check-ins — EFFECTIVE-509)
+
+[Timer]
+OnBootSec=9min
+OnUnitActiveSec=30min
+# RESILIENT-1455: OnUnitInactiveSec pairs with OnUnitActiveSec so this Type=oneshot
+# timer self-perpetuates. A oneshot goes inactive after each run, leaving OnUnitActiveSec
+# with no live "active" anchor -> NextElapse goes n/a and the timer fires once, never again.
+# OnUnitInactiveSec re-arms from the inactive edge (the anchor a oneshot has). Mirrors the
+# chump-farmer.timer fix (#4808 / RESILIENT-313).
+OnUnitInactiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

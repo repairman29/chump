@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT P1: fleet-wire reaction-cooldown — per-role corr_id-react-dedupe (anti wire-storm + echo-chamber)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Risk 3 of 10. Curator A broadcasts FEEDBACK → B reads → B reacts + broadcasts → A reads → A reacts → wire-storm. Even with EFFECTIVE-028 corr_id threading there's no react-cooldown.

@@ -1,0 +1,18 @@
+- id: ZERO-WASTE-045
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: dedupe gaps at reserve time — almanac already indexes all 3,489 gap YAMLs, nothing queries them"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    DOC-082 doctrine says check for an existing gap before filing; it is a manual step, and it failed twice in one day producing superseded gaps within minutes. Measured 2026-08-07: almanac's chump index already holds 3,489 rows under docs/gaps/, so the whole registry is keyword- and (post-INFRA-3529) heading-searchable RIGHT NOW with zero new indexing work. The build is a pre-flight query inside 'chump gap reserve': search the proposed title against docs/gaps/ plus recent merged PR subjects, print near-matches with their IDs and status, and require an explicit confirm (or --no-dedupe-check) before minting an ID. Cheap, and it attacks a documented recurring waste.
+  acceptance_criteria:
+    - chump gap reserve runs a title similarity check against the indexed docs/gaps/ corpus BEFORE minting an ID and prints any near-matches with gap ID, status, and citation
+    - "a near-match does not hard-block: the operator or agent can proceed with an explicit flag, and that choice is recorded in the gap notes so a later audit can see the dupe was considered, not missed"
+    - closed and shipped gaps are included in the search — the DOC-082 failure mode was re-filing something already SHIPPED, not something open
+    - "the check degrades safely: if almanac is unreachable or the index is stale, reserve still works and says loudly that the dedupe check did not run (never a silent skip — cf CREDIBLE-214)"
+    - a test proves that reserving a title near-identical to an existing gap surfaces that gap, and fails without the change
+  notes: |
+    THREE live receipts from the 2026-08-07 session, all by the agent that filed this gap, all AFTER filing it: (1) CREDIBLE-217 filed as a CONFIG-organ cadence sweep, already covered by EFFECTIVE-389 code-posse — superseded; (2) META-328 filed as a from-scratch coherence advisor specifying mechanical checks that ALREADY SHIP and run every 30 minutes (chump mission-grade INFRA-599, chump roadmap-status INFRA-606/1145 with starved_outcomes + untraced_p0 + --exit-on-drift) — re-scoped down to composition; (3) EFFECTIVE-383 avoided the same fate only by luck, because EFFECTIVE-386 shipped mid-session and someone noticed. All three were caught by a human asking, not by any check. The doctrine does not survive contact with an agent in flow — which is the argument FOR this automation, not against the rule. Note the dedupe must search CODE and SHIPPED COMMANDS too, not just gap titles: META-328's duplicate was a built CLI subcommand, invisible to any title-similarity search.
+  outcome_id: ZERO-WASTE-000
+

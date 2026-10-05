@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-032
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: curator autopilot-logs unbounded (md-links logged 5.0G, no rotation) → disk_critical"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"curator autopilot-logs unbounded (md-links logged 5.0G, no rotation) → disk_critical\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    STALE — verified 2026-08-02. The problem this gap describes (ambient.jsonl unbounded, no rotation, disk_critical) was already solved by INFRA-941 (in-process rotation on write) and INFRA-1468 (scripts/ops/ambient-rotate-now.sh, emergency force-rotate) — both real, both currently active. Verified live: rotation history goes back to 2026-05-08 (gzipped archives on disk), current active files are bounded (ambient.jsonl 8.1M, .1 10.4M, .2 12M — nowhere near the 5.0G this gap describes). The 5GB incident this gap was filed against already got cleaned up manually or by the reactor; the underlying fix (rotation) predates or coincides with the incident and was never cross-referenced back to close this gap. closed_pr set to 941 (the in-process rotation gap ID) as the most direct resolving reference — no PR number recorded for that era's gaps in this DB.
+  closed_pr: 941
+  outcome_id: ZERO-WASTE-000
+

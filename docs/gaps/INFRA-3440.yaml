@@ -1,0 +1,15 @@
+- id: INFRA-3440
+  domain: INFRA
+  title: "RESILIENT: bot-merge.sh Mode A (batched integration queue) marks gap ready_to_ship but never pushes branch — integrator fetch fails with 'couldn't find remote ref'"
+  status: wontfix
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - 1. bot-merge.sh Mode A branch (scripts/coord/bot-merge.sh, around line 1936-1994) pushes $BRANCH to $REMOTE with --force-with-lease BEFORE marking the gap ready_to_ship and exiting, so the branch actually exists on origin for chump-integrator-daemon to fetch
+    - "2. Regression reproduced 2026-07-26: bot-merge.sh --gap INFRA-1811 --auto-merge --fast chose Mode A, printed 'routed to batched integration queue', but the branch chump/infra-1811-fleet-2-20260726-085021 was never pushed; chump-integrator-daemon log showed 'fatal: couldn't find remote ref chump/infra-1811-resilient--pr-auto-rebase-fall' and 'skipping INFRA-1811'"
+    - "3. CI test scripts/ci/test-bot-merge-mode-a-push.sh: stub gh/chump-coord, assert git push is invoked before the Mode A success exit path"
+    - 4. cargo fmt/clippy/shellcheck clean per CLAUDE.md
+  notes: |
+    Discovered while shipping INFRA-1811. Worked around manually via CHUMP_BYPASS_BOT_MERGE=1 git push + gh pr create + gh pr merge --auto. Without this fix, every Mode-A-routed gap silently stalls in ready_to_ship forever (integrator can never find the branch) until an operator notices and manually pushes.
+    [2026-07-26T23:55:26Z] mission-focus prune 2026-07-26: fleet-meta, not product/mission-critical; reversible via chump gap requeue INFRA-3440
+

@@ -353,6 +353,7 @@ Fixed in RESILIENT-020.
 | W-011 | <5 min | 🟡 manual (long-term: chump fleet bootstrap --check) |
 | W-012 | <5 min per test | 🟡 patch tests lazily as they surface |
 | W-013 | <5 min per test | 🟡 patch tests lazily as they surface |
+| W-014 | <30 min | 🟡 detector shipped (INFRA-2036); bulk-fix remains manual |
 
 ---
 
@@ -388,6 +389,97 @@ Patched lazily as they surface in CI.
 
 **First seen**: 2026-05-25 — surfaced on MISSION-007 canary (#2573) audit gate.
 Fixed in RESILIENT-023.
+
+---
+
+## Class W-014 — Toolchain-ratchet (rust version / strict-fmt / strict-clippy refresh)
+
+**Signature**:
+- A PR bumps `rust-toolchain.toml`, `.cargo/config.toml`, or `clippy.toml` (or
+  otherwise tightens fmt/clippy strictness) and merges CLEAN — `cargo fmt`/`cargo
+  clippy` pass against the diff that PR itself touched.
+- The new rustc/clippy version enables lints that didn't exist (or weren't
+  triggered) under the old toolchain, across pre-existing code the merging PR
+  never touched.
+- Every OTHER open PR now fails fmt/clippy on code it didn't write or change —
+  main is "clean at merge" but the queue behind it wedges on unrelated lint
+  noise. Same failure *shape* as THE FLOOR's silent-failure-tax strict-mode
+  flip (INFRA-1996), scoped to the toolchain/lint-config surface instead.
+
+**Time-to-recovery target**: <30 min (bulk fix PR) to clear the queue; the
+ratchet itself is a one-way door — new lints don't un-fire without a code fix.
+
+**Detection**: `scripts/coord/toolchain-ratchet-detector.sh` — scans recent
+git history for a commit touching a toolchain-defining file, then checks
+whether ≥2 open PRs are failing `*clippy*`/`*fmt*` checks. Fires
+`kind=wedge_detected wedge_class=W-014`. Wired into the 5-min wedge-watch
+sweep; wedge-state-machine.sh routes W-014 to an advisory WARN broadcast
+(no auto-mutation of main — a `cargo clippy --fix` run is state-mutating and
+risky to fire unattended).
+
+**Recovery playbook**:
+1. Confirm the ratchet: `git show <commit> -- rust-toolchain.toml .cargo/config.toml clippy.toml`
+2. Run `cargo clippy --workspace --fix --allow-dirty` + `cargo fmt --all` on a
+   fresh branch off main
+3. Ship as a standalone bulk-fix PR (no functional changes, lint-only) — do
+   NOT bundle with unrelated work
+4. Once merged, open PRs auto-clear on next rebase (no lingering ratchet)
+
+**Hardening shipped**: INFRA-2036 ships the detector
+(`scripts/coord/toolchain-ratchet-detector.sh`) + W-014 routing in
+wedge-state-machine.sh. Real auto-remediation (unattended bulk fmt/clippy fix
+PR) is a follow-up — today's fix is advisory-only by design given the blast
+radius of an automated `--fix` run on main.
+
+**First seen**: 2026-08-16 — filed as INFRA-2036 from the general "same class
+as THE FLOOR strict-mode flip" pattern; no live incident yet at detector
+ship-time.
+
+---
+
+## Class W-015 — SYSTEMIC-RED shared-check wedge (N>=3 open PRs, identical failing check)
+
+**Signature**:
+- >= 3 open code PRs are all failing the SAME named required (or non-required)
+  check, regardless of `mergeStateStatus` (they don't need to have reached
+  BLOCKED yet).
+- Distinct from **main-health-watchdog** (INFRA-1656), which only inspects the
+  latest CI run on `main` itself — a shared-check wedge can exist while main
+  is perfectly green (e.g. a farmer-flap false-red every open PR inherits on
+  rebase).
+- Distinct from **W-AGG** in `wedge-watch.sh`, which only counts "any PR
+  BLOCKED with any failing check" — a coarse aggregate that never confirms
+  the failures share one check, never names it, and requires
+  `mergeStateStatus=BLOCKED` (a false-red often hasn't reached BLOCKED yet).
+
+**Time-to-recovery target**: <5 min to alarm + name the shared gate (the fix
+itself depends on root cause — flake-restart vs. genuine gate fix).
+
+**Detection**: `scripts/coord/systemic-red-detector.sh` — groups all open
+PRs' failing check names (via `gh pr list --json number,statusCheckRollup`),
+alarms when any single check name is shared by >= `CHUMP_SYSTEMIC_RED_THRESHOLD`
+(default 3) open PRs. Fires `kind=wedge_detected wedge_class=W-015` naming the
+shared check + a best-effort suspected root cause. Wired into the 5-min
+wedge-watch sweep; wedge-state-machine.sh routes W-015 to an advisory WARN
+broadcast (no auto-mutation — remediation depends on whether the shared
+check is a flake or a genuine regression).
+
+**Recovery playbook**:
+1. Read the `wedge_detected` event's `check` + `pr_numbers` fields to see the
+   shared gate and affected PRs.
+2. Open one affected PR's run for that check; determine flake vs. genuine
+   regression (per Verify-before-alarm, CLAUDE.md).
+3. Flake (e.g. farmer-flap false-red): restart/re-arm the offending daemon or
+   re-run the check on the affected PRs.
+4. Genuine regression: fix the gate itself (or the shared root cause it's
+   catching) and let affected PRs re-run on next push/rebase.
+
+**Hardening shipped**: RESILIENT-337 ships the detector
+(`scripts/coord/systemic-red-detector.sh`) + W-015 routing in
+wedge-state-machine.sh.
+
+**First seen**: 2026-08-20 — 14 PRs stacked on a farmer-flap false-red for
+hours with zero alarm; the board only caught it after operator prodding.
 
 ## When you find a new class
 

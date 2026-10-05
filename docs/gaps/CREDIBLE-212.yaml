@@ -1,0 +1,19 @@
+- id: CREDIBLE-212
+  domain: CREDIBLE
+  title: "CREDIBLE: AC hard gate must block BEFORE merge — relocate EFFECTIVE-375 judge into external verify-merge as Gate 4"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"AC hard gate must block BEFORE merge — relocate EFFECTIVE-375 judge into external verify-merge as Gate 4\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-07'
+  closed_pr: 3498
+  outcome_id: COTG
+  evidence: |
+    COMMAND: traced improve.rs ship path — src/improve.rs:215 (dry-run early-return, so Stage 4 runs only when apply=true), :367 verify_and_merge, :1918 passes --apply; src/external_verify_merge.rs:340 if opts.apply merge_pr, :1483 merge_pr=gh pr merge --squash (immediate); improve.rs:377 EFFECTIVE-375 AC hard gate runs AFTER verify_and_merge returns.
+    OUTPUT: In the real apply path, gates 1/2/3 pass -> PR merged immediately at external_verify_merge.rs:345 -> control returns to improve.rs:377 where the AC judge runs on an ALREADY-MERGED PR and flips verdict verified->held, handing an already-squash-merged branch to remediate_held.
+    THEORY: EFFECTIVE-375's hard gate is placed after the merge, not before it like gates 1/2/3, so whenever verdict==verified the PR is already merged and flipping to held gates nothing. The gate is cosmetic in the only path that ships; green!=done is NOT actually enforced.
+    ALT: Could gate in improve.rs by running verify_and_merge WITHOUT --apply then merging separately after the AC judge — rejected: duplicates merge logic and splits the gate set. Correct fix is to co-locate the AC judge with gates 1/2/3 inside external verify-merge, before the --apply merge, emitting HELD(ac-incomplete) and NOT merging on any UNMET bullet.
+

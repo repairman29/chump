@@ -149,7 +149,7 @@ fn force_fire_pillar_cap_penalty_at_51_pct() {
 "#;
     let g: Gap = chump_planner::gap::load_str(yaml).unwrap();
     let graph = DependencyGraph::build(std::slice::from_ref(&g));
-    let open = [g.id.clone()].into_iter().collect();
+    let open: std::collections::HashSet<_> = [g.id.clone()].into_iter().collect();
 
     let mut share = HashMap::new();
     share.insert(chump_planner::Domain::Infra, 0.51);
@@ -157,7 +157,15 @@ fn force_fire_pillar_cap_penalty_at_51_pct() {
         pillar_share: Some(&share),
         ..Default::default()
     };
-    let s = chump_planner::score::score(&g, &graph, &open, &telem, today(), &Weights::default());
+    let s = chump_planner::score::score(
+        &g,
+        std::slice::from_ref(&g),
+        &graph,
+        &open,
+        &telem,
+        today(),
+        &Weights::default(),
+    );
 
     let cap = s
         .breakdown

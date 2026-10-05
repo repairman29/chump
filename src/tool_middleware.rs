@@ -43,6 +43,22 @@ fn circuit_cooldown_secs() -> u64 {
         .max(1)
 }
 
+/// Consecutive `git_commit` postcondition checks seen without an intervening
+/// successful non-commit action (EFFECTIVE-633: storming guard — a model
+/// stuck in a commit-retry loop without making forward progress). Reset to 0
+/// whenever `check_postconditions` runs for any tool other than `git_commit`.
+static CONSECUTIVE_GIT_COMMITS: std::sync::atomic::AtomicU32 = std::sync::atomic::AtomicU32::new(0);
+
+/// Max consecutive `git_commit` calls allowed before the rate limiter starts
+/// rejecting. Configurable via `CHUMP_GIT_COMMIT_RATE_LIMIT` (default 3).
+fn git_commit_rate_limit() -> u32 {
+    std::env::var("CHUMP_GIT_COMMIT_RATE_LIMIT")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(3)
+        .max(1)
+}
+
 /// Returns true if the tool is in cooldown (circuit open): >= N consecutive failures and within cooldown window.
 fn circuit_open(tool_name: &str) -> bool {
     let threshold = circuit_failure_threshold();
@@ -649,6 +665,11 @@ fn check_postconditions(
     input: &Value,
     _output: &str,
 ) -> Option<PostconditionResult> {
+    // EFFECTIVE-633: any successful non-commit action clears the storming
+    // guard's counter — only *consecutive* git_commit calls trip the limit.
+    if tool_name != "git_commit" {
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+    }
     match tool_name {
         "write_file" | "patch_file" => {
             // The most common case the heuristic gets wrong: tool reports
@@ -696,6 +717,26 @@ fn check_postconditions(
             })
         }
         "git_commit" => {
+            // EFFECTIVE-633: rate limit consecutive git_commit calls before
+            // doing any real work — a model storming git_commit without an
+            // intervening successful action (file write, test run, ...) is
+            // spinning, not making progress. Counter resets above whenever
+            // check_postconditions runs for a non-commit tool.
+            let limit = git_commit_rate_limit();
+            let count =
+                CONSECUTIVE_GIT_COMMITS.fetch_add(1, std::sync::atomic::Ordering::Relaxed) + 1;
+            if count > limit {
+                return Some(PostconditionResult {
+                    passed: false,
+                    detail: format!(
+                        "git_commit rate limit hit: {} consecutive git_commit calls (cooldown limit {}) \
+                         with no intervening successful action — make a real edit or run a test before \
+                         committing again",
+                        count, limit
+                    ),
+                });
+            }
+
             // git_commit's postcondition: working tree should be clean
             // immediately after (no staged or unstaged changes the commit
             // missed). Use blocking process spawn — verify_tool_execution
@@ -1355,6 +1396,39 @@ pub fn wrap_tool(inner: Box<dyn Tool + Send + Sync>) -> Box<dyn Tool + Send + Sy
     Box::new(ToolTimeoutWrapper::new(with_preproc))
 }
 
+/// Minimum star count for a repository to count as a 4-star+ leverage-tier
+/// opportunity-library target during a portfolio sweep (EFFECTIVE-1408,
+/// mirrors `crates/mcp-servers/chump-mcp-github/src/main.rs`).
+pub const PORTFOLIO_SWEEP_LEVERAGE_TIER_MIN_STARS: u64 = 4;
+
+/// Reject a portfolio-sweep target that isn't in `allowlist`, logging a
+/// `NO-GO` reason string. Mirrors `check_repo` in the GitHub MCP server so
+/// the generic tool-call gate enforces the same owned-repo boundary
+/// independent of which path a sweep is driven through. An empty allowlist
+/// means "no restriction" (matches the MCP server's default-open behavior).
+pub fn check_owned_repo_for_sweep(repo: &str, allowlist: &[String]) -> Result<(), String> {
+    if allowlist.is_empty() || allowlist.iter().any(|r| r == repo) {
+        Ok(())
+    } else {
+        Err(format!(
+            "NO-GO: repo '{}' not in owned-repo allowlist",
+            repo
+        ))
+    }
+}
+
+/// Sort `(repo, stars)` portfolio sweep targets so 4-star+ leverage-tier
+/// repos sort before lower-tier repos, with ties broken by descending star
+/// count and relative input order preserved within a tier.
+pub fn sort_sweep_targets_by_leverage_tier(mut targets: Vec<(String, u64)>) -> Vec<(String, u64)> {
+    targets.sort_by(|a, b| {
+        let a_tier = a.1 >= PORTFOLIO_SWEEP_LEVERAGE_TIER_MIN_STARS;
+        let b_tier = b.1 >= PORTFOLIO_SWEEP_LEVERAGE_TIER_MIN_STARS;
+        b_tier.cmp(&a_tier).then(b.1.cmp(&a.1))
+    });
+    targets
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1766,6 +1840,181 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
+    // ── git_commit rate limiter tests (EFFECTIVE-633) ──────────────────
+    //
+    // Point CHUMP_HOME/CHUMP_REPO at a plain (non-git) temp dir so the
+    // underlying `git status --porcelain` call fails deterministically
+    // ("git status query failed after commit") instead of depending on this
+    // worktree's real, possibly-dirty tree state. That keeps these tests
+    // focused purely on the rate-limit gate, which runs before the real git
+    // status check and short-circuits it once the limit is exceeded.
+
+    #[test]
+    #[serial]
+    fn git_commit_rate_limit_rejects_fourth_consecutive_call() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::remove_var("CHUMP_GIT_COMMIT_RATE_LIMIT");
+        std::env::set_var("CHUMP_HOME", &dir);
+        std::env::set_var("CHUMP_REPO", &dir);
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+
+        let input = serde_json::json!({});
+        for _ in 0..3 {
+            let res = check_postconditions("git_commit", &input, "committed");
+            // Under the default limit of 3, none of the first 3 calls should
+            // be rejected by the rate limiter specifically (they may still
+            // fail the real git-status check — that's fine, it's not the
+            // thing under test here).
+            if let Some(r) = &res {
+                assert!(
+                    !r.detail.contains("rate limit"),
+                    "call under the limit should not be rate-limited: {:?}",
+                    r
+                );
+            }
+        }
+        let fourth = check_postconditions("git_commit", &input, "committed")
+            .expect("4th consecutive git_commit should produce a rejection result");
+        assert!(
+            !fourth.passed,
+            "4th consecutive git_commit should be rejected"
+        );
+        assert!(
+            fourth.detail.contains("rate limit") || fourth.detail.contains("cooldown"),
+            "detail should mention rate limit / cooldown: {}",
+            fourth.detail
+        );
+        assert!(
+            fourth.detail.contains("git_commit"),
+            "detail should name git_commit: {}",
+            fourth.detail
+        );
+
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn git_commit_rate_limit_resets_on_successful_non_commit_action() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let target = dir.join("hello.txt");
+        std::fs::write(&target, "real content").unwrap();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::remove_var("CHUMP_GIT_COMMIT_RATE_LIMIT");
+        std::env::set_var("CHUMP_HOME", &dir);
+        std::env::set_var("CHUMP_REPO", &dir);
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+
+        let commit_input = serde_json::json!({});
+        for _ in 0..3 {
+            check_postconditions("git_commit", &commit_input, "committed");
+        }
+
+        // A successful file_write resets the counter.
+        let write_res = check_postconditions(
+            "write_file",
+            &serde_json::json!({"path": "hello.txt", "content": "real content"}),
+            "wrote 12 bytes",
+        )
+        .expect("write_file should produce a result");
+        assert!(write_res.passed, "file_write postcondition should pass");
+        assert_eq!(
+            CONSECUTIVE_GIT_COMMITS.load(std::sync::atomic::Ordering::Relaxed),
+            0,
+            "counter should reset after a successful non-commit action"
+        );
+
+        // The next git_commit should not be rejected by the rate limiter.
+        let next = check_postconditions("git_commit", &commit_input, "committed");
+        if let Some(r) = &next {
+            assert!(
+                !r.detail.contains("rate limit"),
+                "git_commit right after a reset should not be rate-limited: {:?}",
+                r
+            );
+        }
+
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[serial]
+    fn git_commit_rate_limit_is_configurable() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-pc-test-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let prev_home = std::env::var("CHUMP_HOME").ok();
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        std::env::set_var("CHUMP_HOME", &dir);
+        std::env::set_var("CHUMP_REPO", &dir);
+        std::env::set_var("CHUMP_GIT_COMMIT_RATE_LIMIT", "2");
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+
+        let input = serde_json::json!({});
+        // First 2 consecutive calls stay under the lowered limit.
+        for _ in 0..2 {
+            let res = check_postconditions("git_commit", &input, "committed");
+            if let Some(r) = &res {
+                assert!(
+                    !r.detail.contains("rate limit"),
+                    "should not be rate-limited yet: {:?}",
+                    r
+                );
+            }
+        }
+        // 3rd consecutive call exceeds limit=2.
+        let third = check_postconditions("git_commit", &input, "committed")
+            .expect("3rd consecutive git_commit should produce a rejection result");
+        assert!(!third.passed);
+        assert!(third.detail.contains("rate limit") || third.detail.contains("cooldown"));
+
+        CONSECUTIVE_GIT_COMMITS.store(0, std::sync::atomic::Ordering::Relaxed);
+        std::env::remove_var("CHUMP_GIT_COMMIT_RATE_LIMIT");
+        match prev_home {
+            Some(ref s) => std::env::set_var("CHUMP_HOME", s),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_repo {
+            Some(ref s) => std::env::set_var("CHUMP_REPO", s),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     /// `CHUMP_VERIFY_POSTCONDITIONS=0` disables the deep checks entirely, so
     /// the whole layer is skippable for benchmark runs.
     #[test]
@@ -2079,5 +2328,31 @@ mod tests {
             "non-review dispatch must retain write access: {result:?}"
         );
         assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 1);
+    }
+
+    #[test]
+    fn portfolio_sweep_rejects_unowned_repo_with_nogo() {
+        let allowlist = vec!["owner/owned".to_string()];
+        assert!(check_owned_repo_for_sweep("owner/owned", &allowlist).is_ok());
+        let rejected = check_owned_repo_for_sweep("owner/foreign", &allowlist);
+        assert!(rejected.is_err());
+        assert!(rejected.unwrap_err().contains("NO-GO"));
+    }
+
+    #[test]
+    fn portfolio_sweep_empty_allowlist_permits_all() {
+        assert!(check_owned_repo_for_sweep("any/repo", &[]).is_ok());
+    }
+
+    #[test]
+    fn portfolio_sweep_prioritizes_four_star_plus_leverage_tier() {
+        let targets = vec![
+            ("owner/low".to_string(), 2),
+            ("owner/high".to_string(), 4),
+            ("owner/highest".to_string(), 9),
+        ];
+        let sorted = sort_sweep_targets_by_leverage_tier(targets);
+        let order: Vec<&str> = sorted.iter().map(|(r, _)| r.as_str()).collect();
+        assert_eq!(order, vec!["owner/highest", "owner/high", "owner/low"]);
     }
 }

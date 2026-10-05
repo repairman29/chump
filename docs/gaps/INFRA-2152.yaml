@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P1: 2 cargo-test failures on main blocking #2700 — chump-coord::ambient_distribution::emit_round_trips_to_subscriber + chump-gap-store::tests::test_reserve_skips_yaml_drift"
   status: open
-  priority: P1
+  priority: P0
   effort: s
   acceptance_criteria:
     - "1. chump-coord::ambient_distribution::emit_round_trips_to_subscriber test in crates/chump-coord/tests/ambient_distribution.rs:76 — panics in CI; investigate timing/race (likely needs longer wait OR deterministic subscriber-ready signal)"

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "INFRA-1862 slice E: A2A schema validation + 4 observability kinds (a2a_msg_sent, a2a_msg_delivered, a2a_msg_acked, a2a_msg_dead_lettered) all registered in EVENT_REGISTRY.yaml"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - Background — INFRA-1944/1945/1946/1947 will all emit new ambient kinds. INFRA-1948 makes sure they're all registered + schema-validated before they ship, not as a follow-up after the audit gate yells at us (INFRA-1916 pattern recurrence)

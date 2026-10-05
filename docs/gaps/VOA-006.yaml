@@ -1,0 +1,17 @@
+- id: VOA-006
+  domain: VOA
+  title: "VOICE-OF-AGENT VOA-006: gap_import_broken_by_corrupt_entry — 15 min lost; fix-shape: tooling"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - Full friction report at docs/voice/VOA-006-FULL.yaml with wedge_class=gap_import_broken_by_corrupt_entry, minutes_lost=15
+    - Evidence references documented in FULL report
+  notes: |
+    [2026-08-09T15:35:43Z] Auto-filed by `chump voice` (INFRA-2258).
+    Wedge class: gap_import_broken_by_corrupt_entry
+    Minutes lost: 15
+    Evidence:
+    - "chump gap import: gaps[2750]: duplicate field evidence line 44856"
+    See docs/voice/VOA-006-FULL.yaml for full report.
+

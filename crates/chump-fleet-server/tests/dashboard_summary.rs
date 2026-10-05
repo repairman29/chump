@@ -181,6 +181,10 @@ async fn test_dashboard_summary_empty_fixtures() {
 
     // Required top-level keys.
     assert!(v.get("today_ships").is_some(), "missing today_ships");
+    assert!(
+        v.get("merges_24h").is_some(),
+        "missing canonical merges_24h column (INFRA-7142)"
+    );
     assert!(v.get("ci_qa_score").is_some(), "missing ci_qa_score key");
     assert!(v.get("active_leases").is_some(), "missing active_leases");
     assert!(v.get("window_hours").is_some(), "missing window_hours");
@@ -247,6 +251,17 @@ async fn test_dashboard_summary_with_fixtures() {
         "today_ships should count 3 merged PRs from fixture cache"
     );
 
+    // merges_24h (canonical column, INFRA-7142) mirrors today_ships exactly.
+    assert_eq!(
+        v["merges_24h"].as_u64().unwrap(),
+        3,
+        "merges_24h should count 3 merged PRs from fixture cache"
+    );
+    assert_eq!(
+        v["merges_24h"], v["today_ships"],
+        "merges_24h and today_ships must always agree"
+    );
+
     // ci_qa_score from ambient fixture.
     let score = v["ci_qa_score"]
         .as_object()
@@ -256,8 +271,19 @@ async fn test_dashboard_summary_with_fixtures() {
         "pct mismatch: {:?}",
         score["pct"]
     );
+    // INFRA-3847 (parent INFRA-3841 slice 4/9): ci_clean_landing_pct is the
+    // distinctly-named twin of `pct` — must agree, and must NOT be confused
+    // with vital-signs.sh's separately-namespaced `ci_run_pass_rate` sign
+    // (a run-level metric, not this PR-level one).
+    assert_eq!(
+        score["ci_clean_landing_pct"], score["pct"],
+        "ci_clean_landing_pct and pct must always agree"
+    );
     assert_eq!(score["sample_size"].as_u64().unwrap(), 40);
-    assert_eq!(score["status"].as_str().unwrap(), "healthy");
+    // INFRA-3854: the fixture writes the legacy label "healthy" (still
+    // emitted by some readers); the dashboard normalizes it onto the
+    // canonical green|amber|red|unknown vocabulary before serializing.
+    assert_eq!(score["status"].as_str().unwrap(), "green");
 
     // active_leases from claim files.
     let leases = v["active_leases"].as_array().unwrap();

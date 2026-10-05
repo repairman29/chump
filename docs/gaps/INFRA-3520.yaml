@@ -1,0 +1,11 @@
+- id: INFRA-3520
+  domain: INFRA
+  title: "INFRA: cold-water proposed gaps from Issues #22-24 never reach canonical registry (3rd cycle unfiled); gap-reserve sandbox fails; no automated filing mechanism"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"cold-water proposed gaps from Issues #22-24 never reach canonical registry (3rd cycle unfiled); gap-reserve sandbox fails; no automated filing mechanism\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

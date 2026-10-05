@@ -1,0 +1,50 @@
+- id: EFFECTIVE-423
+  domain: EFFECTIVE
+  title: "[almanac] rebuild the coverage trust-signal on MCP search responses — destroyed unshipped in the 2026-08-09 reset"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Destroyed unshipped on 2026-08-09 by the reset in RESILIENT-256 — ~574 lines across coverage.rs (+51), embed.rs (+98), fusion.rs (+29), almanac-mcp/src/main.rs (+224), almanac-mcp/tests/roundtrip.rs (+93), scripts/embed-fleet.sh (+115), README.md (+23). Unrecoverable: unstaged work never enters the object store, so fsck found nothing. The implementation was never read by anyone still around, so this is a REBUILD from the known intent, not a restore — do not claim it as recovered work.
+    
+    Known intent, from the one hunk that was read before the loss: measure a repo's coverage from an ALREADY-OPEN Store (measure_from_store) so an MCP search response can carry its own reliability marker inline, without the caller making a second almanac_coverage call.
+    
+    Why it matters: README already tells operators that 'almanac coverage is the one to run before trusting a fusion answer' — the two semantic legs only fire on embedded+summarized rows, so a half-fed repo answers with keyword wearing a fusion label. Today that check is a SEPARATE command an agent has to know to make. An answer should carry its own trustworthiness.
+    
+    Precedent to follow, shipped 2026-08-09 in almanac cdf45e5 (RESILIENT-255): put the signal ON the result, not in a droppable response-level note, and omit it from JSON when it is the healthy value so existing callers see an unchanged shape.
+  acceptance_criteria:
+    - a coverage figure reaches the almanac_search / fusion MCP response without a second DB open — measured from the Store already held on the hot path
+    - the signal is omitted (or plainly healthy) for a well-fed repo, so existing MCP callers see no contract change
+    - a half-fed repo answering fusion-labelled keyword is visibly marked as such in the response, matching the fallback_reason precedent
+    - the percentage is against SUMMARIZABLE files, matching almanac coverage's existing denominator — a different denominator in two places is its own credibility bug
+    - tests cover the healthy and degraded shapes, and DEPTH.md names what they do not cover, in the same commit
+  notes: |
+    REBUILT + SHIPPED 2026-08-09 in almanac 279b180 (origin/main). No chump PR — the code lives in almanac and landed by direct commit.
+    
+    All five acceptance criteria met:
+    1. coverage reaches the almanac_search fusion response from the Store already
+       open on the hot path — no second Store::open.
+    2. a well-fed repo gets the numbers and NO warning; nothing existing changes.
+    3. unfed and partial repos get a coverage_warning naming what the ranking misses.
+    4. percentages use the SUMMARIZABLE denominator, same as 'almanac coverage'.
+    5. 1 MCP roundtrip test + DEPTH.md updated in-commit, naming its gaps.
+    
+    COST measured, not assumed (chump, 439MB, warm): the full six-count measure is
+    ~650ms — too much per search. count(*) from embeddings alone is 212ms and
+    answers nothing the warning asks. The two counts actually needed are 169ms
+    (summarizable 97 + summarized 72), so the hot path uses a new
+    summary_feed_from_store rather than the full measure.
+    
+    BONUS FIX: this work surfaced a LATENT race in the MCP roundtrip test binary —
+    three tests set the process-global ALMANAC_HOME, load the Registry, then unset
+    it, and cargo runs tests as threads of ONE process. Adding a third made two
+    fail together while --test-threads=1 passed. Now serialized behind a mutex
+    (register_under_home), verified over three consecutive parallel runs.
+    
+    PROVENANCE: a REBUILD from known intent, not a recovery. The original was never
+    read before the reset destroyed it, so this is the same FEATURE, not the same
+    code. Do not describe it as restored.
+  closed_date: '2026-08-09'
+  closed_pr: 3549
+  skills_required: "external_repo:repairman29/almanac"
+

@@ -1,0 +1,13 @@
+- id: EFFECTIVE-393
+  domain: EFFECTIVE
+  title: "EFFECTIVE: build-speed pt1 — [profile.dev] split-debuginfo + line-tables to cut link/deploy time (measured baseline: touch main.rs = 4m11s)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"build-speed pt1 — [profile.dev] split-debuginfo + line-tables to cut link/deploy time (measured baseline: touch main.rs = 4m11s)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3508
+  outcome_id: CHUMPOS
+

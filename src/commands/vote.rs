@@ -1,8 +1,9 @@
 //! META-159: `chump vote <corr_id> <+1|-1|0> --reason <text>` — emit a
 //! FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
 //!
-//! Gated behind `CHUMP_FLEET_RECV_SIDE_V0=1`. When the flag is unset,
-//! prints "feature flag off, vote not emitted" and exits 0.
+//! Enabled by default (CREDIBLE-179). Set `CHUMP_FLEET_RECV_SIDE_V0=0` to
+//! opt out; when explicitly disabled, prints "feature flag off, vote not
+//! emitted" and exits 0.
 //!
 //! Shells out to `scripts/coord/broadcast.sh FEEDBACK preference <subject>
 //! <reason> <vote>` which emits the FEEDBACK event (ambient.jsonl +
@@ -22,6 +23,20 @@
 //!   AC5 — test-chump-vote.sh asserts ambient line has event=FEEDBACK,
 //!          kind=vote, vote=<N>, corr_id=<corr_id>, rationale=<reason>
 //!   AC7 — feature-flag gated; prints message when unset
+//!
+//! ## INFRA-2157 (META-125/C6) note
+//! Added optional `--confidence <0-100>` flag. Invalid values (non-integer
+//! or out of [0,100]) print an error and exit 2. Omitting the flag defaults
+//! confidence to 100, preserving backward compat with existing callers. The
+//! emitted `kind=vote` event now carries a `confidence` field alongside
+//! `vote` and `rationale`.
+//!
+//! ## INFRA-2162 (META-125/C3) note
+//! The umbrella originally named this lifecycle step `consensus_vote_cast`;
+//! the shipped kind is `kind=vote` (this file, line ~79) instead. See
+//! docs/observability/EVENT_REGISTRY.yaml's `consensus_vote_cast` entry and
+//! scripts/ci/event-registry-reserved.txt's `vote` reservation.
+// scanner-anchor: "kind":"consensus_vote_cast"
 
 use std::path::PathBuf;
 use std::process::Command;
@@ -68,6 +83,7 @@ fn emit_vote_event(
     vote: i32,
     reason: &str,
     session_id: &str,
+    confidence: u32,
 ) -> anyhow::Result<()> {
     use std::io::Write;
     let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
@@ -76,7 +92,7 @@ fn emit_vote_event(
     let escaped_corr = corr_id.replace('\\', "\\\\").replace('"', "\\\"");
     let escaped_session = session_id.replace('\\', "\\\\").replace('"', "\\\"");
     let line = format!(
-        r#"{{"ts":"{ts}","event":"FEEDBACK","kind":"vote","corr_id":"{escaped_corr}","vote":{vote},"rationale":"{escaped_reason}","session":"{escaped_session}"}}"#,
+        r#"{{"ts":"{ts}","event":"FEEDBACK","kind":"vote","corr_id":"{escaped_corr}","vote":{vote},"rationale":"{escaped_reason}","confidence":{confidence},"session":"{escaped_session}"}}"#,
     );
     // Append to ambient.jsonl; create parent dirs if needed.
     if let Some(parent) = ambient_path.parent() {
@@ -91,15 +107,25 @@ fn emit_vote_event(
 }
 
 pub fn run(args: &[String]) -> i32 {
-    // Feature flag gate (AC7).
-    if std::env::var("CHUMP_FLEET_RECV_SIDE_V0").as_deref() != Ok("1") {
+    // CREDIBLE-179: default ON per CLAUDE.md's "A2A consensus is always-on
+    // and mandatory" doctrine. The flag used to require an explicit "1",
+    // which was only ever set via a macOS-only `launchctl setenv` call in
+    // chump-fleet-bootstrap.sh — on Linux hosts (and any session that
+    // doesn't go through that bootstrap step) the flag was silently never
+    // set, so every `chump vote` call printed this message and exited 0
+    // without ever emitting a vote. Root cause of zero real votes ever cast
+    // on any FEEDBACK proposal despite the mandatory-voting doctrine.
+    // Explicit CHUMP_FLEET_RECV_SIDE_V0=0 remains the opt-out escape hatch.
+    if std::env::var("CHUMP_FLEET_RECV_SIDE_V0").as_deref() == Ok("0") {
         println!("feature flag off, vote not emitted");
         return 0;
     }
 
     // Usage: chump vote <corr_id> <+1|-1|0> --reason <text> [--deadline <ts>]
     if args.len() < 2 {
-        eprintln!("Usage: chump vote <corr_id> <+1|-1|0> --reason <text> [--deadline <ts>]");
+        eprintln!(
+            "Usage: chump vote <corr_id> <+1|-1|0> --reason <text> [--deadline <ts>] [--confidence <0-100>]"
+        );
         return 2;
     }
 
@@ -113,9 +139,10 @@ pub fn run(args: &[String]) -> i32 {
         }
     };
 
-    // Parse --reason <text> and optional --deadline <ts>.
+    // Parse --reason <text>, optional --deadline <ts>, optional --confidence <0-100>.
     let mut reason = String::new();
     let mut _deadline: Option<String> = None;
+    let mut confidence: u32 = 100;
     let mut i = 2;
     while i < args.len() {
         match args[i].as_str() {
@@ -129,6 +156,24 @@ pub fn run(args: &[String]) -> i32 {
                 i += 1;
                 if i < args.len() {
                     _deadline = Some(args[i].clone());
+                }
+            }
+            "--confidence" => {
+                i += 1;
+                if i < args.len() {
+                    match args[i].parse::<i64>() {
+                        Ok(v) if (0..=100).contains(&v) => confidence = v as u32,
+                        _ => {
+                            eprintln!(
+                                "--confidence must be an integer between 0 and 100 (got {:?})",
+                                args[i]
+                            );
+                            return 2;
+                        }
+                    }
+                } else {
+                    eprintln!("--confidence requires a value");
+                    return 2;
                 }
             }
             _ => {}
@@ -177,11 +222,20 @@ pub fn run(args: &[String]) -> i32 {
 
     let session_id = std::env::var("CHUMP_SESSION_ID").unwrap_or_else(|_| "unknown".to_string());
 
-    if let Err(e) = emit_vote_event(&ambient_path, corr_id, vote, &reason, &session_id) {
+    if let Err(e) = emit_vote_event(
+        &ambient_path,
+        corr_id,
+        vote,
+        &reason,
+        &session_id,
+        confidence,
+    ) {
         eprintln!("warn: failed to emit kind=vote event: {e}");
         // Non-fatal: broadcast.sh already emitted the preference event.
     }
 
-    println!("[vote] recorded: corr_id={corr_id} vote={vote:+} reason={reason}");
+    println!(
+        "[vote] recorded: corr_id={corr_id} vote={vote:+} reason={reason} confidence={confidence}"
+    );
     0
 }

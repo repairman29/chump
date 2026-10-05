@@ -1,0 +1,21 @@
+- id: CREDIBLE-213
+  domain: CREDIBLE
+  title: "CREDIBLE: the MISSION-045 outcome gate has a side door — gap set --priority P1 skips the check reserve enforces"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Found 2026-08-07 by auditing my own session behavior after filing four gaps the correct way and noticing I had filed two the wrong way earlier the same day. MISSION-045 requires P0/P1 gaps to carry --outcome; chump gap reserve enforces it. chump gap set --priority does not, so reserve-at-P2-then-bump reaches the P1 pickable pool with no outcome, silently. Same shape as the docs-delta gate's history (INFRA-1969): a check that fires at one stage only, where the bypass is easier than compliance, trains people into the bypass. Fix is to run the outcome check on any transition INTO P0/P1 in gap set, with the same error text and the same audited-bypass escape hatch reserve already offers, so the two entry points behave identically. Related but NOT duplicate: EFFECTIVE-322 (P2/s, open) covers the decomposer minting P1 slices without inheriting the parent's outcome — a different code path, different fix, same gate. Fixing both closes the gate; fixing either alone leaves a door. Cleanup already done by hand this session: PRODUCT-178/179/180/181/182/183/185 were all P1 with no outcome and are now linked to EFFECTIVE-000 — evidence the hole is not theoretical and that the decompose path (322) leaks at scale.
+  acceptance_criteria:
+    - chump gap set --priority P0
+    - P1 on a gap with no linked outcome is refused with the same MISSION-045 error text reserve produces, naming the fix (--outcome or chump outcome link)
+    - the refusal fires on the TRANSITION only — a gap already at P1 with an outcome can still have other fields set, and P2/P3 edits are untouched
+    - the same audited bypass reserve offers is available on set, so genuine migrations are possible and recorded rather than forced into silence
+    - a test proves the two-step path (reserve P2 -> set P1, no outcome) is now refused, and fails without the change
+    - an audit pass reports any EXISTING P0/P1 gaps carrying no outcome so the backlog created by this hole is visible rather than silently grandfathered (chump gap audit-priorities is the natural home)
+  notes: |
+    Demoted P1->P2 2026-08-07 during queue alignment: I filed ~14 P1s in one session into a pool of 61 (a 23% inflation of the P1 signal). This one is real but is an enhancement, not a blocker — it returns to P1 when a force-multiplier ahead of it lands or when someone needs it.
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: (1) chump gap reserve --domain PRODUCT --title '...' --priority P1   (2) chump gap reserve --domain PRODUCT --title '...' --priority P2 && chump gap set <ID> --priority P1  |  OUTPUT: path (1) is refused without --outcome per MISSION-045. Path (2) succeeds end to end: reserve at P2 prints 'Bypass: --no-outcome-required (audited). P2/P3 need no outcome.' and the subsequent set --priority P1 attaches no outcome and prints no warning. Verified live: PRODUCT-185 was reserved P2 then bumped to P1 on 2026-08-06 and carried NO outcome until hand-linked with chump outcome link on 2026-08-07; PRODUCT-182 the same. Both sat in the P1 pickable pool untraceable to any mission outcome.  |  THEORY: the outcome requirement is enforced at the reserve entry point only, but priority is mutable afterward, so every gap has a two-step path to P1 that bypasses the gate. The failure mode is ACCIDENTAL, not adversarial — I took it twice in one session without noticing, which is exactly why a gate that only guards one door is not a gate.  |  ALT: considered leaving it since the picker does not read outcomes — rejected: MISSION-045 exists so P1 work traces to a mission outcome, and an untraceable P1 pool is the precise drift it was built to prevent. Considered blocking set --priority outright — rejected as too blunt; the fix is to run the same check on the P0/P1 transition. Considered folding this into EFFECTIVE-322 — rejected: that gap is the decompose-inherits-outcome path (slices minted at P1 by the decomposer) and is a different code path with a different fix; they are siblings, not duplicates.
+

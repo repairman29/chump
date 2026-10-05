@@ -1,0 +1,13 @@
+- id: CREDIBLE-186
+  domain: CREDIBLE
+  title: "ChumpBench ci-green FALSE-GREENS on post-merge race: fetch_ci_verdict PASSes on whatever check-runs are conclusive right after merge (live: caught 2 fast [success,success] while ml-pipeline/smoke-tests still in_progress on BEAST-MODE PR#37). Require ALL checks conclusive (no in_progress/queued) AND the specific previously-red check present+green before PASS"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"fetch_ci_verdict PASSes on whatever check-runs are conclusive right after merge (live: caught 2 fast [success,success] while ml-pipeline/smoke-tests still in_progress on BEAST-MODE PR#37). Require ALL checks conclusive (no in_progress/queued) AND the specific previously-red check present+green before PASS\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+  outcome_id: COTG
+

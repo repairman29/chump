@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 # INFRA-158: regression test for the gap-status-check workflow guard
 # (INFRA-066). The script scripts/coord/check-gap-status-flip.sh is
-# called by .github/workflows/gap-status-guard.yml on every PR. It
+# called by the gap-status-check job in .github/workflows/ci.yml (folded
+# from gap-status-guard.yml, INFRA-2299) on every PR. It
 # rejects PRs whose title is "<DOMAIN>-<NUMBER>: ..." but whose
 # gaps.yaml entry for that gap is still status: open. QUALITY-005
 # audit (2026-04-25) found 7 of 31 "open" gaps had already shipped

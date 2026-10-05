@@ -1,0 +1,13 @@
+- id: EFFECTIVE-388
+  domain: EFFECTIVE
+  title: "EFFECTIVE: AC-writer repo-grounding — feed relevant files so generated AC names REAL paths, not hallucinated ones"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"AC-writer repo-grounding — feed relevant files so generated AC names REAL paths, not hallucinated ones\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3505
+  outcome_id: COTG
+

@@ -1,0 +1,14 @@
+- id: EFFECTIVE-364
+  domain: EFFECTIVE
+  title: "EFFECTIVE: publication stage after ship — merged artifacts queue their own publish work"
+  status: open
+  priority: P1
+  effort: m
+  description: |
+    The pipeline ends at merge: gap -> claim -> gates -> ship, then silence. The artifact abstraction needs stages 5-6: Publication then Feedback. Rough shape: (a) on gap ship (the existing ship event path), a publication resolver checks the shipped gap's artifact_type + a publish-target registry (docs-site refresh, CHANGELOG append, release-notes queue, substack draft, screenshots) and reserves the publish work as NEW gaps tagged with the source gap — publication is work in the queue, visible and gated, not a side effect; (b) publish targets that are Jeff-facing (external platforms) route to the EFFECTIVE-365 approval queue, never auto-post; (c) feedback leg: holler remains the inbound; publication gaps carry a where-published receipt so adoption signals can trace back; (d) no-op cleanly when a type has no targets (code infra gaps mostly will not publish). Depends on EFFECTIVE-363 for artifact_type. This is the stage whose absence made built != shipped != told a permanent condition — every audit this week (L7 empty, PRODUCT-137 orphaned, GIVEAWAY Phase E human-only) is this missing stage.
+  acceptance_criteria:
+    - "After merge, the publication stage puts the artifact in the persons hands: deploy/package/link per artifact_type — merged code becomes a usable, reachable thing"
+    - "Proven: a merged product gap yields a live URL / installable / delivered artifact the operator can actually use, not just a green PR"
+  depends_on: [EFFECTIVE-363]
+  outcome_id: COTG
+

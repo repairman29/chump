@@ -4,6 +4,7 @@
   status: open
   priority: P2
   effort: s
+  depends_on: [INFRA-3838]
   acceptance_criteria:
     - "Parallel-run validation: CHUMP_FLEET_RUST=1 has selected chump-fleet binary over scripts/dispatch/run-fleet.sh for 7+ consecutive days across at least 3 distinct multi-worker fleet sessions; ambient kind=worker_divergence_detected count == 0 over the window; ship rate (PRs merged / PRs opened) remained at or above baseline (≥70% per FLEET-518 gate)"
     - Cutover PR removes scripts/dispatch/worker.sh (1807 LOC bash) + scripts/dispatch/run-fleet.sh (750 LOC bash); tmux pane spawn logic fully migrated to chump-fleet binary (which spawns chump-worker child processes; no bash trampolines remain)
@@ -13,5 +14,7 @@
     - CRITICAL — this is the FINAL cutover of the META-107 arc; PR body includes (a) full LOC-out summary across all 6 cutover gaps, (b) reference to META-107 umbrella, (c) emit kind=meta_107_complete (already-registered) as the final closing event
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-2002 (chump-worker + chump-fleet). FINAL cutover in the META-107 arc. Sibling cutovers: INFRA-2060/2061/2062/2063/2064. Recommend cutting over LAST in the sequence — chump-worker hot-path depends on the github-cache cutover (INFRA-2062) being complete first since worker reads PR state every cycle.
+
+    BLOCKED 2026-08-28 (verified while claimed on this session, see INFRA-3838 for full detail): AC1's precondition never started. scripts/dispatch/run-fleet.sh:72 still reads CHUMP_FLEET_RUST:-0 and scripts/dispatch/worker.sh:38 still reads CHUMP_WORKER_RUST:-0 — neither flag has ever been flipped to default-on, so the "7+ consecutive days across 3+ sessions" soak clock has not started. No ambient kind=worker_divergence_detected or kind=rust_migration_landed gap=INFRA-2002 events exist anywhere, consistent with zero soak activity. Separately, AC4's named hard dependency INFRA-2062 (chump-github-cache cutover) is still status:open — unshipped — so the cache layer chump-worker reads PR state from is not yet single-stack. Removing scripts/dispatch/worker.sh (1807 LOC) + scripts/dispatch/run-fleet.sh (750 LOC) now would strip the fleet's only working spawn path and do so against two unmet hard preconditions. Do not re-attempt this cutover until INFRA-3838 (and by extension INFRA-2062) ships and a real soak has actually elapsed.
   outcome_id: MISSION-010
 

@@ -1,0 +1,20 @@
+- id: ZERO-WASTE-039
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: stranded-work detector — dirty checkouts, ahead-branches, aged stashes become visible at session start with zero-loss snapshots"
+  status: done
+  priority: P0
+  effort: m
+  description: |
+    Work done ON the factory (operator/Claude sessions editing main checkouts directly) has no registration artifact, so no gate, detector, picker, or session-start digest ever sees it. Observed 2026-08-05: Chump's checkout carried the almanac Phase D integration (+313 lines) dirty for 4-5 days while the fleet independently re-shipped the same work (#3477) and an audit session nearly shipped the residue a second time (EFFECTIVE-362, caught by 3-way conflict); almanac's checkout was left switched onto an unmerged branch holding a live registry-corruption race fix; 10 stashes back to May; ~30 squash-residue branches. Rough shape: (a) freshness-preamble/fleet-doctor gains a stranded_work check — dirty tracked files >24h old, local branches with git-cherry '+' commits >24h, checkout not on main, stashes >7d — session-start WARN; (b) kind=stranded_work registered in EVENT_REGISTRY.yaml; (c) daily launchd sweeper (SCHEDULING_LAYERS: fleet-durable) snapshots any dirty diff to a dated patch under .chump/stranded/ — zero-loss guarantee — and surfaces counts in the digest; (d) surface only, never auto-commit and never auto-file gaps (MISSION-045: signals are not work); (e) sweep registered external repos too (the almanac case).
+  acceptance_criteria:
+    - detector fires on a seeded fixture (dirty file backdated, ahead-branch, aged stash) and stays quiet on a clean tree
+    - kind=stranded_work in EVENT_REGISTRY.yaml with CI parity
+    - dated zero-loss patch written before any warning asks a human to act
+    - session-start digest surfaces the count
+    - no auto-commit, no auto-filed gaps
+  closed_date: '2026-08-17'
+  closed_pr: 3599
+  outcome_id: ZERO-WASTE-000
+  evidence: |
+    COMMAND: git status --short; git stash list; git for-each-ref + git cherry origin/main <branch>; git worktree list (run 2026-08-05 across Chump + almanac). OUTPUT: Chump main checkout carried 6 dirty tracked files (+313 lines) for 4-5 days — the almanac Phase D integration — invisible to the fleet, which ships from origin/main worktrees; 10 stashes back to May; ~30 local branches 'ahead' (mostly squash residue, verified via git cherry minus-prefix); almanac had a same-day branch with a live registry-corrupting race fix unmerged, and its main checkout was left switched onto that branch. THEORY: work done ON the factory (operator/IDE sessions editing main checkouts) has no registration artifact, so no gate, detector, or picker ever sees it — claim/preflight/off-rails only guard work INSIDE the pipeline. Meanwhile the fleet independently re-shipped the same Phase D work as PR #3477, and the stranded copy nearly went out again as EFFECTIVE-362 (caught at claim time by a 3-way conflict). ALT: 'operators should just remember' — refuted by 4 concurrent session streams tonight; and freshness-preamble already exists precisely because memory does not scale.
+

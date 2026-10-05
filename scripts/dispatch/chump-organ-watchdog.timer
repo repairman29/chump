@@ -6,8 +6,16 @@
 Description=Run the Chump organ watchdog every 5 minutes (INFRA-3595)
 
 [Timer]
+# ROOT-CAUSE FIX (RESILIENT-413, 2026-08-30): was OnUnitActiveSec=5min. THE
+# HEALER ITSELF went dark this way on CJ (2026-08-30, last trigger 17:26 then
+# NextElapse=infinity) — a self-chaining monotonic timer that loses its anchor
+# on daemon-reload/unit-recreate. If the watchdog's own timer wedges, nothing
+# heals anything (no organ, including §2b, ever runs). OnCalendar is wall-clock
+# and self-anchoring so the watchdog cannot silently stop; Persistent=true
+# replays a missed cycle. This is the meta-fix that keeps the self-heal loop
+# alive; §2b covers every OTHER organ, and this line covers §2b.
 OnBootSec=1min
-OnUnitActiveSec=5min
+OnCalendar=*:0/5
 Persistent=true
 
 [Install]

@@ -1,0 +1,30 @@
+# EFFECTIVE-464 — the DRAIN LOOP organ. Keeps the cheap DeepSeek floor
+# (EFFECTIVE-445) fed with LANDABLE, surgical single-change gaps:
+#   thin  -> enrich concrete  (chump-gap-enricher --apply: Almanac file:line +
+#                              deepseek-v4-pro rewrites in place, anti-bloat)
+#   broad -> decompose surgical (chump gap decompose --apply: m/l gap -> xs/s
+#                              sub-gaps, one file/one edit/one testable AC each)
+# Both LLM calls route to deepseek-v4-pro (OPENAI_API_BASE=openrouter slot 0),
+# NOT the contended local ollama that owns the cascade's slot 0 on CJ.
+# Paired with chump-gap-drain.timer; rostered in install-helsinki-atc.sh +
+# organ-manifest.txt so organ-reconcile keeps it alive (RESILIENT-366).
+[Unit]
+Description=Chump gap-drain — enrich thin + decompose broad open gaps into surgical, flash-landable specs (EFFECTIVE-464)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jeff
+Environment=HOME=/home/jeff
+Environment=PATH=/home/jeff/.cargo/bin:/home/jeff/Projects/chump/target/release:/usr/local/bin:/usr/bin:/bin
+Environment=CHUMP_REPO_ROOT=/home/jeff/Projects/chump
+WorkingDirectory=/home/jeff/Projects/chump
+# Source providers.env (OPENROUTER_API_KEY etc.) for parity with the other
+# organs; the drain script pins OPENAI_API_BASE->openrouter/deepseek-v4-pro from
+# OPENROUTER_API_KEY itself, so the cheap floor — not local ollama — serves the
+# enrich/decompose calls.
+ExecStart=/bin/bash -lc 'set -a; source /home/jeff/.chump/providers.env 2>/dev/null; source /home/jeff/.chump/cj.env 2>/dev/null; set +a; cd /home/jeff/Projects/chump; exec bash scripts/dispatch/gap-drain.sh'
+# Enrichment is ~55s/gap (deepseek-v4-pro w/ reasoning); a full tick of 6 enrich
+# + 2 decompose fits well under this ceiling.
+TimeoutStartSec=1800

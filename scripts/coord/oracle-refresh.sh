@@ -58,12 +58,12 @@ STALE_THRESHOLD_S="${CHUMP_ORACLE_STALE_THRESHOLD_S:-43200}"  # 12h default
 HEARTBEAT_WINDOW_S="${CHUMP_ORACLE_HEARTBEAT_WINDOW_S:-21600}"  # 6h default
 if [[ -f "$THE_PATH" ]]; then
     # mtime in epoch — macOS uses -f %m, linux uses -c %Y
-    path_mtime="$(stat -f %m "$THE_PATH" 2>/dev/null || stat -c %Y "$THE_PATH" 2>/dev/null || echo 0)"
+    path_mtime="$(stat -c %Y "$THE_PATH" 2>/dev/null || stat -f %m "$THE_PATH" 2>/dev/null || echo 0)"
     now_s="$(date +%s)"
     path_age_s=$(( now_s - path_mtime ))
     if [[ $path_age_s -gt $STALE_THRESHOLD_S && -s "$STATE" ]]; then
         # State file has content AND was touched in window → daemon is "alive"
-        state_mtime="$(stat -f %m "$STATE" 2>/dev/null || stat -c %Y "$STATE" 2>/dev/null || echo 0)"
+        state_mtime="$(stat -c %Y "$STATE" 2>/dev/null || stat -f %m "$STATE" 2>/dev/null || echo 0)"
         state_age_s=$(( now_s - state_mtime ))
         if [[ $state_age_s -lt $HEARTBEAT_WINDOW_S ]]; then
             # scanner-anchor: "kind":"oracle_stale_despite_heartbeat"

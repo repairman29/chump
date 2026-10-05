@@ -1,0 +1,11 @@
+- id: INFRA-3567
+  domain: INFRA
+  title: "EFFECTIVE: reconcile ROADMAP.md — add the Run-the-Business track (RUN_THE_BUSINESS_2026-08-09) as a co-equal arm so the fleet gets pointed at run-the-business work, not only build"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"reconcile ROADMAP.md — add the Run-the-Business track (RUN_THE_BUSINESS_2026-08-09) as a co-equal arm so the fleet gets pointed at run-the-business work, not only build\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

@@ -1,0 +1,13 @@
+- id: INFRA-3450
+  domain: INFRA
+  title: "EFFECTIVE: chump consults ChumpOS comprehension organs — comprehend_repo native tool + chump comprehend CLI (the run-the-OS consult point)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chump consults ChumpOS comprehension organs — comprehend_repo native tool + chump comprehend CLI (the run-the-OS consult point)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3349
+  outcome_id: MISSION-010
+

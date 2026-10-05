@@ -1,0 +1,21 @@
+- id: INFRA-3531
+  domain: INFRA
+  title: "almanac: markdown files structurally invisible to indexing, portfolio-wide"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    almanac's ast-crawler is_supported() covers rust/python/js/ts/go/bash/yaml only. Everything else, including markdown, got its language flattened to the literal string 'unknown' and dropped entirely before reaching the files table — found 2026-08-02 while investigating why olive's real, current docs/ROADMAP.md never surfaced in any almanac_search query, in any mode. Three stacked bugs: (1) crawl_paths/crawl_file hardcoded language:'unknown' discarding detect_language's real answer, (2) parse_repo dropped every unsupported file with no survival path for real documents, (3) summarize_and_embed builds its LLM input from file_symbol_digest (symbols-table only) — markdown has zero symbols by design, so the digest was always empty and empty-digest files are silently skipped forever, confirmed via a 4-run stall at 'files 47, summarized 0'. Consequence portfolio-wide: every prior fleet search for 'does repo X have a roadmap/plan/done-when' was structurally blind to the exact file type that would answer it — this is what led a first-mate session to wrongly conclude olive and upshift-platform had no defined goals when both had real, substantial roadmaps sitting in docs/.
+  acceptance_criteria:
+    - detect_language recognizes .md/.mdx as markdown
+    - unsupported-file branches preserve the real detected language instead of flattening to unknown
+    - parse_repo lets markdown through as a zero-symbol file record
+    - file_symbol_digest falls back to raw file content for markdown when the symbol digest is empty
+    - "verified end-to-end against a real repo (not just unit tests): files table count increases by the real .md count, at least one doc gets a correct LLM summary, that doc surfaces in a real fusion search query"
+    - regression test guards the specific hardcoded-unknown bug
+  notes: |
+    Shipped in repairman29/almanac#3 (merged, squashed) — cross-repo fix, same bypass rationale as INFRA-3526. Verified end-to-end against olive: files 155->185 (all 30 real .md files), docs/ROADMAP.md and docs/DEPLOYMENT.md both summarized with accurate content, DEPLOYMENT.md confirmed surfacing in real fusion search. 26 unit tests pass incl. new regression guard markdown_is_tagged_not_flattened_to_unknown. Fleet summarize backfill (already running, 6 workers) will pick up remaining un-summarized docs across all 88+ repos over time — no additional manual push needed. Spawned two follow-ups: INFRA-3529 (fusion scoring structurally favors code over docs even once indexed) and INFRA-3530 (SQL is a second, lower-urgency blind spot).
+  source_doc: session 2026-08-02, portfolio audit + roadmap/%-to-goal investigation
+  closed_pr: 3
+  outcome_id: MISSION-032
+

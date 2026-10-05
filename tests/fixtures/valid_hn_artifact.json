@@ -1,0 +1,6 @@
+{
+  "title": "Show HN: A generic A/B ship harness for launch artifacts",
+  "url": "https://example.com/launch/generic-ab-harness",
+  "platform": "Show HN",
+  "body": "We built a small harness that normalizes ship artifacts into a LaunchContext before running trials."
+}

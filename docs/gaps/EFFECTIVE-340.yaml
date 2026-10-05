@@ -1,0 +1,13 @@
+- id: EFFECTIVE-340
+  domain: EFFECTIVE
+  title: Wire FINISH-mode engine-drive into ChumpBench (completes bench breadth 5/5)
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"Wire FINISH-mode engine-drive into ChumpBench (completes bench breadth 5/5)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3428
+

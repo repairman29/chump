@@ -244,6 +244,67 @@ else
 fi
 teardown_sandbox "$SB"
 
+# ── T7: rot-reaped-labeled PR → NOT reopened (the reap↔revive fight fix) ──────
+# RESILIENT-311: a PR the no-abandon janitor deliberately closed carries the
+# `rot-reaped` label AND its gap is already re-queued. This watcher must NOT
+# reopen it — doing so resurrected the dead #3792 every 60s for 13h.
+
+printf '\nT7: rot-reaped-labeled closed PR → skipped (no reopen)\n'
+GH_JSON="$(python3 -c "
+import json, datetime
+now = datetime.datetime.now(datetime.timezone.utc)
+pr = {
+    'number': 3792,
+    'headRefName': 'chump/resilient-329-fleet-1-claim',
+    'state': 'CLOSED',
+    'stateReason': 'NOT_PLANNED',
+    'closedAt': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'title': 'RESILIENT-329: halt-organ governance registry',
+    'labels': [{'name': 'rot-reaped'}],
+    'mergedAt': None,
+}
+print(json.dumps([pr]))
+")"
+
+SB="$(setup_sandbox)"
+OUT="$(run_daemon "$SB" "$GH_JSON")"
+if echo "$OUT" | grep -q "SKIP reopen PR #3792" && ! echo "$OUT" | grep -q "INCIDENT"; then
+    pass "T7: rot-reaped PR skipped, not treated as incident (fight fixed)"
+else
+    fail "T7" "expected SKIP + no INCIDENT for rot-reaped PR; output: $OUT"
+fi
+teardown_sandbox "$SB"
+
+# ── T8: merged PR (mergedAt set, stateReason empty) → not an incident ─────────
+# Kills the WARN spam where a merged PR with stateReason='' was treated as an
+# incident and a failing `gh pr reopen` was attempted every cycle.
+
+printf '\nT8: merged PR via mergedAt (stateReason empty) → ignored\n'
+GH_JSON="$(python3 -c "
+import json, datetime
+now = datetime.datetime.now(datetime.timezone.utc)
+pr = {
+    'number': 3807,
+    'headRefName': 'chump/infra-2232-claim',
+    'state': 'CLOSED',
+    'stateReason': '',
+    'closedAt': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+    'title': 'INFRA-2232: skip-redundant-rerun gate',
+    'labels': [],
+    'mergedAt': now.strftime('%Y-%m-%dT%H:%M:%SZ'),
+}
+print(json.dumps([pr]))
+")"
+
+SB="$(setup_sandbox)"
+OUT="$(run_daemon "$SB" "$GH_JSON")"
+if ! echo "$OUT" | grep -q "INCIDENT"; then
+    pass "T8: merged PR (mergedAt) not treated as incident"
+else
+    fail "T8" "merged PR via mergedAt incorrectly flagged; output: $OUT"
+fi
+teardown_sandbox "$SB"
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 
 printf '\n────────────────────────────────────────────\n'

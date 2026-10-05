@@ -1,0 +1,47 @@
+- id: DOC-076
+  domain: DOC
+  title: Drift Doctor — doc-placement decision + wire mid-session doctrine push onto the (already-live) A2A/NATS bus
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Context (2026-07-30 operator conversation): named "Drift Doctor" -- the missing
+    piece is NOT freshness-detection (that's already ~85% built: docs/process/
+    FRESHNESS_DISCIPLINE.md, the verify-existence skill, freshness-preamble.sh /
+    freshness-gate.sh, all real and working). What's missing is two distinct things:
+    
+    (1) DOC-PLACEMENT LOGIC (genuinely novel, checked, nothing owns this): before
+    writing a new .md file, decide -- does a doc on this topic already exist? does
+    this fit as a section/amendment to it? is it indexed/linked from something a
+    session actually reads at start, or is it "discoverable via grep over 70 docs"
+    (the exact unsolved symptom docs/process/CUSTODIAN_BLUEPRINT.md already names
+    under its own hidden-gems gap)? A literal decision flowchart, not prose.
+    
+    (2) MID-SESSION PUSH (the "what if they're already in a session" case): today's
+    answer is "they won't find out" for any already-running session -- freshness-
+    preamble.sh only runs at session START. FRESHNESS_DISCIPLINE.md's own layer-7
+    table names the fix: A2A peer broadcasts (INFRA-1932 Pattern 0). Investigated
+    2026-07-30: the NATS broker is genuinely live (nats-server --jetstream, running
+    since Friday), CHUMP_A2A_LAYER=1 and CHUMP_FLEET_RECV_SIDE_V0=1 are ALREADY set
+    at the launchd level (contradicting docs/design/A2A_MASTER_PLAN_2026-06-03.md's
+    stale "never set" claim) -- but the end-to-end proof (consensus_result firing)
+    has never happened once, tracked separately as RESILIENT-212. EFFECTIVE-037
+    (L5 event-sourcing coordination bus -- the exact mechanism a "new doc landed"
+    push would ride on) and EFFECTIVE-038 (task suspend-states) were reopened
+    2026-07-30 -- they were gap-bankruptcy-swept 2026-07-26 as neglected backlog,
+    not rejected on the merits, and carry real 2026-06 design research already.
+    
+    Sequencing: this gap's mid-session-push half is BLOCKED on RESILIENT-212
+    (prove the bus is load-bearing) and EFFECTIVE-037 (the event-sourcing mechanism
+    itself) landing first. The doc-placement-logic half has no such dependency and
+    can ship independently, sooner.
+  acceptance_criteria:
+    - "a decision flowchart (mermaid, checked into a real doc, not just this gap's description) resolves: does this exist (verify-existence) -> does a doc on this topic exist -> amend vs new file -> is it linked/indexed from something read at session-start"
+    - the flowchart is wired into docs/process/FRESHNESS_DISCIPLINE.md as an explicit new layer (or amends layer 7), not a disconnected new doc itself -- eating its own dog food
+    - the mid-session-push half is scoped as depends_on RESILIENT-212 + EFFECTIVE-037, not built standalone or duplicated
+    - "test: given a fixture 'new finding,' the flowchart's output (new-doc / amend-existing-doc / don't-file) matches a human reviewer's independent judgment on a set of past real cases from this session (the 4 amendments made vs 3 new gaps filed 2026-07-30 make a ready-made test set)"
+  depends_on: [RESILIENT-212, EFFECTIVE-037]
+  closed_date: '2026-07-30'
+  closed_pr: 3406
+  outcome_id: CHUMPOS
+

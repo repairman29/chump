@@ -11,6 +11,35 @@
 > mirrors. 6-8 of those filed as per-gate follow-ups (see § Follow-up gaps).
 > The rest are either low-frequency, low-cost-to-fail, or genuinely require
 > GitHub state.
+>
+> **Generated inventory (INFRA-5119, INFRA-1861 slice, 2026-09-06).** The
+> tables below are hand-maintained and drift as gates ship, get renamed, or
+> get removed (e.g. the Tier C `test-env-vars-internal-coverage.sh` row below
+> no longer corresponds to any `run:` step in `.github/workflows/*.yml` — the
+> gate was removed from CI since it was filed). The authoritative,
+> machine-generated per-gate mapping — every CI gate step scanned across
+> `ci.yml` + sibling workflows, matched against its `chump preflight` mirror,
+> Tier-D reason, or allowlist entry — lives at
+> [`docs/process/CI_GATES_GENERATED_INVENTORY.md`](./CI_GATES_GENERATED_INVENTORY.md).
+> Regenerate it with:
+> ```bash
+> CHUMP_GENERATE_INVENTORY=docs/process/CI_GATES_GENERATED_INVENTORY.md \
+>   bash scripts/ci/test-preflight-ci-parity.sh
+> ```
+> As of the last regeneration: **369 gate steps scanned, 0 MISSING** (all
+> have a mirror, a Tier-D reason, or an allowlist entry) — see that file's
+> "MISSING preflight equivalents" section for the live AC-2 list. When that
+> section is non-empty, file a gap per entry and add it to Tier C below.
+>
+> **INFRA-5428 verification (2026-09-25).** Re-ran the regeneration command
+> above to confirm the 3 acceptance criteria this gap tracks are still true:
+> `chump preflight --scope all` runs and enumerates every gate (AC1); the
+> generated inventory above cross-references each CI gate step against its
+> preflight mirror, Tier-D entry, or exceptions-file allowlist (AC2); and
+> `scripts/ci/test-preflight-ci-parity.sh` is wired into `ci.yml`'s
+> `fast-checks` job as a strict-fail step, so drift fails CI (AC3). The
+> checked-in generated inventory had drifted (339 → 369 gate steps) since
+> the last regeneration — refreshed in this same change.
 
 ## Reading guide
 
@@ -67,7 +96,6 @@ Documented for completeness; do **not** file follow-ups.
 
 | Gate | Why no local mirror |
 |---|---|
-| `gap-status-guard.yml` (status flip on merge) | Requires GitHub PR merge state from the API |
 | `branch-protection-drift.yml` | Reads live branch-protection rules from GitHub repo settings |
 | `pr-rescue.yml` | Polls open PRs across the repo; needs GitHub API |
 | `dependabot-auto-merge.yml` | Dependabot-only; runs against bot-authored PRs |
@@ -82,11 +110,13 @@ Documented for completeness; do **not** file follow-ups.
 | `ftue-clean-machine-2026.yml` | Requires a fresh VM |
 | `no-anthropic-smoke.yml` | Validates chump-first contract under no-network |
 | `sccache health probe` | Probes R2 remote-cache connectivity in CI runner environment; local dev has different network + credentials — meaningless to run locally (INFRA-2288) |
+| `sccache --show-config (BuildBuddy + R2 URLs)` | Diagnostic print of CI-only env vars (`SCCACHE_BUILDBUDDY_URL`, `SCCACHE_ENDPOINT`) and the running sccache server's stats; local dev has neither the secrets nor a CI-started server (INFRA-4653) |
 | `actionlint — workflow syntax gate` (META-199) | Uses `rhysd/actionlint` GitHub Action; requires the actionlint binary not in standard preflight env |
 | `coverage-nightly.yml` (META-200) | Nightly cron only; llvm-cov instrument pass is too slow for per-PR preflight |
 | commit-msg docs-delta trailer check | INFRA-1969/INFRA-3379 — `test-docs-delta-commit-msg.sh` validates the commit-msg git hook itself; runs as a `commit-msg` hook, not a preflight gate — mirroring would duplicate hook logic rather than test something preflight doesn't already cover |
 | gap-reserve concurrency | INFRA-021/301/INFRA-3379 — `test-gap-reserve-concurrency.sh` requires a freshly `cargo build`-ed `chump` binary on `PATH`; the parallel-claim race it tests only reproduces against the compiled binary, too slow for the preflight fast loop |
 | gap-reserve ID zero-padding | INFRA-080/INFRA-3379 — `test-gap-reserve-padding.sh`, same as above, requires compiled `chump` binary on `PATH` |
+| gap-reserve --acceptance-criteria gate | CREDIBLE-1300/INFRA-3379 — `test-chump-gap-reserve-acceptance-criteria.sh` requires a compiled `chump` binary on `PATH` to exercise the reserve CLI gate; same shape as the sibling gap-reserve functional tests above |
 | gap-ID cross-session collision | CREDIBLE-052/INFRA-3379 — `test-gap-id-cross-session.sh` requires `CHUMP_BIN` pointing at a compiled `chump` binary; cross-session collision fixture needs the real CLI, not source |
 | gap-ID lease uniqueness gate | INFRA-1970/INFRA-3379 — `test-gap-id-lease-uniqueness.sh` requires `CHUMP_BIN`; duplicate-PR race-window guard needs the compiled binary under concurrent invocation |
 | UUID gap-ID compatibility | INFRA-3379 — `test-uuid-gap-id-compat.sh` requires `CHUMP_BIN`; UUID gap-ID compatibility fixture drives the real CLI |
@@ -99,6 +129,22 @@ Documented for completeness; do **not** file follow-ups.
 | `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
 | `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
 | `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
+| `Design-pass check` | EFFECTIVE-1159 (design-pass.yml) — stub gate for the new design-pass CI stage; its only step is two `echo` lines that always exit 0 (no design-spec artifact contract exists yet, per EFFECTIVE-358). Nothing to mirror locally until the real check lands; RESILIENT-586 auto-recognition doesn't fire because `get_added_jobs_from_diff` diffs `HEAD` (always empty in a clean CI checkout) instead of the merge-base — separate bug, filed rather than fixed here. |
+
+## Required-vs-advisory disposition decisions
+
+Gates that were demoted out of `ci.yml` (INFRA-1381) and now run only in
+`ci-nightly.yml` / `ci-advisory.yml` need an explicit disposition: PROMOTE
+back to required, or KEEP-ADVISORY with a documented reason + review-by
+date. `docs/process/CI_GATES.md` referenced by earlier gap filings does not
+exist in this repo — this section (`CI_GATES_INVENTORY.md`) is the
+canonical home for these decisions.
+
+| Gate | Disposition | Rationale | Flake/fail rate cited | Review by |
+|---|---|---|---|---|
+| `tauri-cowork-e2e` | **KEEP-ADVISORY** (nightly + post-merge only, INFRA-1385) | Full Tauri + WebDriver smoke is failing almost every run, not flaking occasionally — this is a broken/too-fragile-to-gate environment, not a borderline-flaky test. Promoting to required would block ~every PR. | `gh run view` job-level conclusion for the `tauri-cowork-e2e` job: **30/30 failures** on `ci-nightly.yml` (last 30 runs) and **29/30 failures** on `ci-advisory.yml` (post-merge, last 30 runs) as of 2026-08-21. `scripts/ci/check-gate-fire-rate.sh` referenced by earlier gap filings does not exist in this repo; `scripts/dispatch/gate-fire-rate.sh` covers chump-internal `gate_check_*` ambient events, not GitHub Actions job outcomes, so job-level `gh run view` history was used instead. | 2026-11-21 (re-check after Tauri/WebDriver environment work, or after 90 days, whichever first) |
+| `e2e-battle-sim` | **KEEP-ADVISORY** (nightly + post-merge only, INFRA-1386) | Not borderline-flaky and not broken — it is currently a **no-op**. `scripts/ci/run-battle-sim-suite.sh` has a `BATTLE_SIM_SKIP_IF_NO_LLM=1` guard (both `ci-nightly.yml` and `ci-advisory.yml` set this env var) that `exit 0`s immediately when neither `OPENAI_API_BASE` nor `OPENROUTER_API_KEY` is set — and neither workflow provisions an LLM credential for this job. Every recorded run completes in ~7s (checkout + skip-echo only); the mock-project fix-and-verify loop the suite exists to exercise never runs. Promoting to required would gate every PR on a check that provides **zero signal** while still costing a required-check slot + runner minute. KEEP-ADVISORY until CI wiring for an LLM credential (Ollama service container or `OPENROUTER_API_KEY` secret) makes the suite actually execute — only then is a flake-rate re-measurement meaningful. | `gh run view` job-level conclusion for the `e2e-battle-sim` job: **30/30 "success"** on `ci-nightly.yml` and **30/30 "success"** on `ci-advisory.yml` (last 30 runs each) as of 2026-08-21 — but every run's `startedAt`→`completedAt` span is ~7s, confirming the skip-guard fires every time rather than the suite actually running. `scripts/ci/check-gate-fire-rate.sh` referenced by the gap filing does not exist in this repo (same gap as INFRA-1385/tauri-cowork-e2e); job-level `gh run view` history was used instead. | 2026-11-21 (re-check once an LLM credential is wired into `ci-nightly.yml`/`ci-advisory.yml` for this job, or after 90 days, whichever first) |
+| `e2e-golden-path` | **KEEP-ADVISORY** (nightly + post-merge only, INFRA-1387) | Unlike `tauri-cowork-e2e` and `e2e-battle-sim`, this gate is **neither broken nor a no-op** — `scripts/ci/verify-external-golden-path.sh` + `scripts/ci/golden-path-timing.sh` do a real `cargo build` (debug) and file-presence smoke, and the job is consistently green. That real signal is exactly why it's still worth measuring, but RESILIENT-016 (2026-05-17) moved it off the per-PR path for a *cost* reason, not a *correctness* reason: the job needs `apt-get install webkit2gtk-4.1`/`libayatana-appindicator3-dev`/etc. plus a full cargo build (~4-5 min wall-clock per run), and running that on every PR was part of the 5+-simultaneous-PR pileup RESILIENT-016 fixed (see `INFRA-1529`). Re-enabling it as required in `ci.yml` would reintroduce that per-PR runner-minute + apt-install cost, and — separately — the job today runs with `continue-on-error: true` inside a matrix (`e2e` job) feeding a rollup (`test-e2e`) that is *itself* `continue-on-error: true`; promoting for real would mean restructuring that matrix/rollup, not just flipping a flag, which is out of scope for this s-effort disposition gap. KEEP-ADVISORY for now; the near-100% pass rate below makes this the strongest PROMOTE candidate of the three RESILIENT-016 gates if/when the e2e matrix is restructured to make per-suite required-vs-advisory splits cheap. | `gh api .../actions/runs/<id>/jobs` job-level conclusion for the `e2e-golden-path` job, last 30 runs each as of 2026-08-21: **30/30 "success"** on `ci-advisory.yml` (post-merge, ~4-5 min per run) and **29/30 "success" + 1 "cancelled"** on `ci-nightly.yml`. `scripts/ci/check-gate-fire-rate.sh` referenced by the gap filing does not exist in this repo (same gap as INFRA-1385/INFRA-1386); job-level `gh api`/`gh run list` history was used instead. | 2026-11-21 (re-check after any e2e matrix/rollup restructuring makes per-suite required promotion cheap, or after 90 days, whichever first) |
 
 ## Promotion criteria for Tier C → Tier A
 

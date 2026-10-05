@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+
+# --- modern-bash re-exec (INFRA-3688) -------------------------------------
+# macOS ships bash 3.2, which lacks `mapfile`/`readarray` and errors on an
+# empty array expanded under `set -u` — silently breaking any guard that uses
+# bash-4 idioms (the actionlint + ci-regression guards among them, which is how
+# the Mac kept pushing split-brained state past dead guardrails). Re-exec the
+# whole hook (and everything it sources) under a bash>=4 if one exists;
+# otherwise warn LOUDLY rather than no-op in silence.
+if [ -z "${CHUMP_HOOK_BASH_REEXEC:-}" ] && [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _cb in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    if [ -x "$_cb" ]; then export CHUMP_HOOK_BASH_REEXEC=1; exec "$_cb" "$0" "$@"; fi
+  done
+  echo "⚠ [chump-hook $(basename "$0")] bash ${BASH_VERSINFO:-3}.x too old and no bash>=4 found — guards may silently no-op. Fix: brew install bash" >&2
+fi
+# --------------------------------------------------------------------------
 #
 # Chump pre-commit hook: coordination checks.
 #
@@ -475,9 +490,9 @@ if [ "${CHUMP_STOMP_WARN:-1}" != "0" ]; then
             # Only check files that still exist in the working tree.
             # Deletions and renames-to-nonexistent are out of scope.
             [ -f "$f" ] || continue
-            # stat flags differ macOS vs Linux. Try macOS first; fall back to
-            # Linux on failure.
-            mtime=$(stat -f %m "$f" 2>/dev/null || stat -c %Y "$f" 2>/dev/null || echo 0)
+            # stat flags differ macOS vs Linux. Try GNU/Linux form first (it
+            # fails cleanly on macOS); fall back to BSD/macOS form.
+            mtime=$(stat -c %Y "$f" 2>/dev/null || stat -f %m "$f" 2>/dev/null || echo 0)
             [ "$mtime" -gt 0 ] || continue
             age=$((now_epoch - mtime))
             if [ "$age" -gt "$threshold" ]; then
@@ -1679,6 +1694,19 @@ fi
 fi
 
 # ------------------------------------------------------------------
+# 7b. publish guard, REPORT-ONLY (INFRA-7880)
+# ------------------------------------------------------------------
+# Scans the staged diff for private or revealing material and logs what it
+# finds (stderr + one publish_guard_report ambient event with class counts).
+# It never blocks: the wrapper always exits 0 and the exit code is ignored
+# here as well. It sits ABOVE the lean exit on purpose, so it runs on every
+# commit. No pattern file on this machine = generic rules only, and it says so.
+# There is no switch for it: a check that cannot fail needs no bypass.
+if [ -f "$REPO_ROOT/scripts/publish-guard/report_only.py" ] && command -v python3 >/dev/null 2>&1; then
+    python3 "$REPO_ROOT/scripts/publish-guard/report_only.py" staged || true
+fi
+
+# ------------------------------------------------------------------
 # 8. credential-pattern guard (INFRA-018, 2026-04-20)
 # ------------------------------------------------------------------
 # Scan staged diff for common API-key / token shapes. Blocks the commit
@@ -1693,7 +1721,13 @@ if [ "${CHUMP_CREDENTIAL_CHECK:-1}" != "0" ]; then
         if [ -n "$HIT" ]; then
             echo "" >&2
             echo "🚫 credential-pattern guard (INFRA-018): staged diff contains what looks like a secret" >&2
-            printf '%s\n' "$HIT" | sed 's/^/   match: /' >&2
+            # INFRA-7880: never echo the match. stderr lands in bot-merge and
+            # worker logs, so printing the value publishes the secret a second
+            # time. Name the file and the key family instead.
+            git diff --cached --name-only -G"$PATTERNS" -- . ':(exclude)scripts/git-hooks/pre-commit' 2>/dev/null \
+                | head -5 | sed 's/^/   in: /' >&2 || true
+            printf '%s\n' "$HIT" | sed -E 's/^(sk-ant-|sk-|tgp_v1_|AIzaSy|ghp_|github_pat_).*/\1/' | sort -u \
+                | sed 's/^/   key family: /; s/$/... (value withheld)/' >&2
             echo "" >&2
             echo "   If real: unstage the file and rotate the key immediately." >&2
             echo "   If a false positive (fixture/example), bypass with:" >&2

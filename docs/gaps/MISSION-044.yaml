@@ -2,7 +2,7 @@
   domain: MISSION
   title: "MISSION UMBRELLA: Cut the Friction — eliminate the toil + papercuts that slow every agent and the operator"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Friction — the toil/papercuts that slow every agent AND the operator — is a first-class bug class, not background noise. This 2026-06-08 session alone, friction caused: (a) ~30 turns of confused hand-grinding before the real root surfaced; (b) a 13h SILENT fleet stall from a dead-flag auth probe (claude --once removed by a CLI update) — RESILIENT-134; (c) a 60-line docs commit taking 5 attempts through a stacked, non-fail-fast commit-gate gauntlet — RESILIENT-137; (d) every fresh-gap manual ship hitting bot-merge not-found until the YAML is hand-copied — RESILIENT-138; (e) fleet launch blocked by silent PTY exhaustion (527>511) — RESILIENT-139; (f) bot-merge wedges: cold-build timeout / lease-corruption / post-fmt hang — RESILIENT-132/133; (g) agents drowning in 1584-line core docs + 545 total, fixed by a north-star — META-287; (h) the fleet-brief lying healthy through a silent stall — fixed by fresh-eyes comparator_6 (META-287). PRINCIPLE: every gate must FAIL FAST and list the FULL remediation up front (no discover-one-blocker-per-retry); no non-tty hangs; no stacked surprises; a legitimate small change lands in one clean pass. This umbrella collects friction sub-gaps and drives down attempts-per-ship + turns-to-first-ship.

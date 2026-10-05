@@ -42,8 +42,8 @@ Today's cascade (2026-05-23) layered three distinct CI-only failure modes that s
 | `ci.yml` | `*-required` | (rollup) | 🔁 mirrors underlying | — |
 | `ci.yml` | `integration-test` (System integration test INFRA-849) | — | ❌ unmirrored — heavy (needs synthetic state.db fixture) | [`INFRA-1857`](../gaps/INFRA-1857.yaml) |
 | `ci.yml` | `tauri-cowork-e2e` | — | 🚫 NA — Tauri build, GUI env | — |
-| `gap-status-guard.yml` | `gap-status-check` | `gap-preflight-ac-gate` (sibling, not identical) | 🟡 partial — different check class | reasonable as-is; flag if drift |
-| `gap-status-guard.yml` | `gaps-integrity` | `gaps-integrity` (INFRA-1831) | ✅ mirrored | — |
+| `ci.yml` | `gap-status-check` (INFRA-2299: folded from gap-status-guard.yml) | `gap-preflight-ac-gate` (sibling, not identical) | 🟡 partial — different check class | reasonable as-is; flag if drift |
+| `ci.yml` | `gaps-integrity` (INFRA-2299: folded from gap-status-guard.yml) | `gaps-integrity` (INFRA-1831) | ✅ mirrored | — |
 | `no-anthropic-smoke.yml` | `chump-first contract — coordination layer works without Anthropic` | — | ❌ unmirrored — heavy (needs env scrub + binary spawn) | [`INFRA-1858`](../gaps/INFRA-1858.yaml) |
 | `editor-integration.yml` | `ACP protocol smoke test (Zed / JetBrains compatible)` | — | ❌ unmirrored — heavy (acp protocol harness) | [`INFRA-1859`](../gaps/INFRA-1859.yaml) |
 | `pr-rescue.yml` | `scan and rebase stale PRs` | — | 🚫 NA — cloud daemon (operator-facing) | — |

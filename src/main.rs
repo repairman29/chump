@@ -16,12 +16,13 @@ mod agent_lease;
 pub mod agent_loop;
 mod agent_session;
 mod agent_turn;
+mod scaffold_holes;
 // EFFECTIVE-023: ambient_emit/rotate/stream live in crates/ambient-cli/ now.
 // Re-exported at the crate root so existing `crate::ambient_emit::*` callers
 // (18+ across the binary) keep working without churn.
 pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream};
 // EFFECTIVE-394: verify cluster extracted to crates/chump-verify; re-export so existing crate::pr_ac_coverage / crate::external_verify_merge / crate::confidence references keep resolving unchanged.
-pub use chump_verify::{confidence, external_verify_merge, pr_ac_coverage};
+pub use chump_verify::{confidence, external_verify_merge, organ_muster, pr_ac_coverage};
 mod almanac_tool;
 mod approval_resolver;
 mod asi_telemetry;
@@ -44,13 +45,21 @@ mod blocker_detect;
 mod briefing;
 mod browser;
 mod browser_tool;
-mod calc_tool;
+// INFRA-7938 (INFRA-1965 slice): calc_tool now lives in the lib crate
+// (src/lib.rs); re-exported here so existing `crate::calc_tool::X` call
+// sites in this binary keep resolving unchanged.
+pub use chump::calc_tool;
+// INFRA-4667 (INFRA-1687 slice): subcommand_registry lives in the lib crate
+// (src/lib.rs); re-exported here so existing `crate::subcommand_registry::X`
+// call sites in this binary keep resolving unchanged.
+pub use chump::subcommand_registry;
 mod cancel_registry;
 mod cascade_stats;
 mod checkpoint_db;
 mod checkpoint_tool;
 mod chump_init;
 mod chump_log;
+mod ci_lesson;
 mod ci_summary;
 mod cli_tool;
 mod cluster_mesh;
@@ -67,6 +76,7 @@ mod cost_ledger;
 mod cost_tracker;
 mod cost_watch;
 mod counterfactual;
+mod curator_bell;
 mod dashboard;
 mod sourcing_resolver; // INFRA-3508 (COTG-S.1): repo -> arsenal -> world prior-art resolver
 pub use chump_db_pool::db_pool;
@@ -81,14 +91,17 @@ mod discord_intent;
 mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (META-128/C7)
 mod dispatch;
 mod doctor;
+mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
 mod episode_extractor;
 mod episode_tool;
+mod playbook_registry; // RESILIENT-443: registry loading from JSON (RESILIENT-274 slice)
 pub use chump_eval_harness::eval_harness;
 mod execute_gap;
 mod failure_catalog;
+mod farmer_status; // RESILIENT-069: farmer readiness gate (lights-on check)
 mod file_watch;
 mod fleet;
 mod fleet_capability;
@@ -106,13 +119,17 @@ mod fleet_tool;
 mod fleet_velocity;
 mod floor_temp; // INFRA-1992: THE FLOOR Phase 1 — floor-temperature signal
 mod ftue_tool;
-// INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
-// The rename keeps every `gap_store::*` call site compiling unchanged.
+mod rebase_queue; // INFRA-2225: fleet rebase-queue — auto-rebase daemon backlog surface
+                  // INFRA-693: gap_store moved to its own crate (crates/chump-gap-store/).
+                  // The rename keeps every `gap_store::*` call site compiling unchanged.
 use chump_gap_store as gap_store;
 // INFRA-1229: explicit linkage declaration so Cargo always links chump-ship
 // even when the CI rust-cache restores a stale build (fixes E0433 on Ubuntu).
 extern crate chump_ship;
 mod audit;
+mod audit_log; // INFRA-1842: queryable per-action audit log (CP-010, vendored from BEAST-MODE AuditLogger)
+mod inference_provider;
+mod log_triage; // INFRA-1891: `chump fleet log-triage` daily structured ambient×state.db triage pass // INFRA-1844: multi-model provider chain (CP-012, vendored from ai-gm-service)
 pub use chump_bench::bench; // DOC-072/EFFECTIVE-327: ChumpBench — run a track as a scoreable lap (EFFECTIVE-405: extracted to crates/chump-bench)
 mod budget_tracker; // INFRA-1486: per-gap execution budgets (Marcus trust gate)
 mod cartographer; // INFRA-1782: chump cartograph <repo-path> — ARCHITECTURE.md generation (INFRA-1746 phase 2)
@@ -120,28 +137,39 @@ mod collision_prediction; // META-076: predictive collision detection (mock inpu
 mod completion;
 mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
+mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
+mod gap_file; // INFRA-8061: universal gap-intake filer (POST CHUMP_GAP_URL + durable local spool)
+mod gap_route; // INFRA-3689: route gap mutations to the fleet-server when local checkout is non-canonical
+mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764
 mod gen;
 mod genai_conv;
 mod git_safety; // RESILIENT-256: destructive-git guard + object-store WIP snapshot
 mod git_tools;
 mod github_rate_limit;
+mod gonogo; // INFRA-3481/INFRA-5340: honest go/no-go verdict parsing, cloned from pr_ac_coverage::parse_judge_verdicts
+mod harvester_cli; // INFRA-1823: chump harvest <scan|check|brief|deep-scan|list-clusters> — fleet cartographer CLI
 mod health;
 mod health_server;
 mod hitl_escalation;
 mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
+mod inference_router; // INFRA-1843: two-tier LLM dispatch (Reflexive on-device + Neocortex cloud), CP-011
 mod ingest; // INFRA-1780: chump ingest <repo-path> (phase 1a — validation + read-only safety)
+mod ingest_backlog; // MISSION-055: chump ingest <repo-path> --import-backlog — import a repo's DEFINED backlog as fleet gaps
 mod ingest_librarian; // INFRA-1781: Phase 1 Librarian audit + triage report (INFRA-1746 phase 1b)
+mod ingest_orchestrate; // INFRA-1784: orchestration + certificate + auto-gaps (INFRA-1746 phase 5)
 mod ingest_preflight; // INFRA-1778: chump ingest-preflight — gh auth + push-access safety rail
 mod inspect_cmd; // INFRA-1456: chump inspect <gap-id> — eject-and-inspect surface
 mod intent_parser;
 mod interrupt_notify;
 mod intervention_watchdog; // COTG-2.1/INFRA-3489: log every human touch as an autonomy defect
 mod introspect_tool;
+mod scan; // INFRA-1882: chump scan <repo-path> — repo takeover opener (2026 demo #2)
 pub use chump_inventory::inventory; // META-271: fleet inventory + tech-debt review-only audit DB (EFFECTIVE-401: extracted to crates/chump-inventory)
 mod job_log;
 pub use chump_kpi_report::kpi_report; // EFFECTIVE-418: extracted to crates/chump-kpi-report (build-speed)
+mod ledger_prune; // CREDIBLE-1307: prune_ledger — remove low-crit dormant ledger entries
 mod lesson_action;
 mod lesson_embeddings;
 mod limits;
@@ -174,11 +202,13 @@ mod pending_peer_approval;
 mod perception;
 mod peripheral_sensor;
 mod phi_proxy;
+mod pillar_cap; // CREDIBLE-072: per-pillar weekly merge-share cap/floor at gap reserve
 mod pilot_metrics;
 mod plan_mode;
 mod platform_router;
 mod plugin;
 mod policy_override;
+mod pr_blame_file; // INFRA-1445: chump pr blame-file <path>
 mod pr_coupling_cost;
 mod pr_explain; // INFRA-1416: chump pr explain-block <PR>
 mod pr_fix_clippy;
@@ -188,7 +218,9 @@ mod precision_controller;
 pub use chump_preflight::preflight; // INFRA-1670: local CI mirror — chump preflight subcommand (extracted to crates/chump-preflight, EFFECTIVE-400)
 mod provider_bandit;
 mod provider_cascade;
+mod provider_probe;
 mod provider_quality;
+mod prune_ledger; // CREDIBLE-1277: prune_ledger — low-crit dormant stage pruning
 mod ratings;
 mod read_url_tool;
 mod reasoning_mode;
@@ -207,6 +239,7 @@ mod resume_cmd; // INFRA-1456: chump resume <gap-id> — reattach wedged gap
 mod revert_pr;
 mod review_dispatch; // CREDIBLE-181: `chump review` — structurally review-only agent dispatch
 mod review_handoff;
+mod roadmap_pillar_score; // META-409 (META-152 slice): roadmap-bottleneck-pillar alignment scoring
 mod roadmap_status;
 mod rollup_cmd; // INFRA-1455: chump rollup --semantic (Marcus M-B converge)
 mod routes;
@@ -231,6 +264,7 @@ mod skill_db;
 mod skill_hub;
 mod skill_hub_tool;
 mod skill_metrics;
+mod skill_routing; // META-078: skill-aware routing decision engine (stub skills DB), first impl of docs/design/SKILL_AWARE_ROUTING_SCHEMA.md
 mod skill_tool;
 mod skills;
 mod slack;
@@ -243,6 +277,7 @@ mod state_db;
 mod stream_events;
 mod streaming_provider;
 mod system_prompt;
+mod systematizer; // INFRA-1783: chump systematize <repo-path> — CAPABILITIES_REGISTRY.json generation (INFRA-1746 phase 4)
 mod task_contract;
 mod task_db;
 mod task_executor;
@@ -263,11 +298,13 @@ mod tool_routing;
 mod toolkit_status_tool;
 mod tracing_init;
 mod trajectory_replay;
+mod trek; // INFRA-3656 (RIBBON-01): chump trek — auto-execute front-door entrypoint
 mod user_error_hints;
 pub mod user_profile;
 mod vector6_verify;
 mod vector7_swarm_verify;
 mod verify; // CREDIBLE-155: unified policy engine — chump verify subcommand
+mod verify_claim_branch; // INFRA-1649 (re-do of INFRA-1598): verify-claim-branch primitive
 mod version;
 mod vision_intake; // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
 mod wasm_calc_tool;
@@ -279,6 +316,7 @@ mod wasm_text_tool;
 // `main()` → `waste_tally::set_cost_fn`).
 pub use chump_waste_tally::waste_tally;
 mod web_brain;
+#[cfg(feature = "web-push")]
 mod web_push_send;
 mod web_server;
 mod web_sessions_db;
@@ -297,6 +335,7 @@ mod e2e_bot_tests;
 mod embed_inprocess;
 
 mod metrics;
+mod metrics_registry;
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -476,6 +515,23 @@ fn unix_ts() -> u64 {
         .as_secs()
 }
 
+/// INFRA-1611: age-in-days for a gap, preferring `opened_date` (the
+/// original-reservation date, stamped by `gap reserve` / the backfill
+/// script) over `created_at` (state.db import time). Without this, a
+/// fresh `chump gap import` zeroes every gap's age — the P0 aging census
+/// in `chump gap audit-priorities` and the "P0 budget = 5 max" enforcement
+/// mechanism both depend on real age, not import recency.
+fn gap_age_days(opened_date: &str, created_at: i64, now_secs: i64) -> i64 {
+    if !opened_date.is_empty() {
+        if let Ok(d) = chrono::NaiveDate::parse_from_str(opened_date, "%Y-%m-%d") {
+            if let Some(opened_secs) = d.and_hms_opt(0, 0, 0).map(|dt| dt.and_utc().timestamp()) {
+                return (now_secs - opened_secs) / 86400;
+            }
+        }
+    }
+    (now_secs - created_at) / 86400
+}
+
 /// INFRA-1886: `chump gap preflight <ID>` advisory hint. When the target
 /// gap is open + unclaimed, surface up to 3 higher-priority unclaimed gaps
 /// so the picker is nudged toward what's actually starved without enforcing
@@ -582,9 +638,19 @@ fn is_test_domain(domain: &str) -> bool {
         || domain.ends_with("TEST")
 }
 
-/// INFRA-1259/1878: Returns true if a single AC entry is a placeholder stub.
-/// Only matches entries that ARE stubs, not entries that mention "TODO" in
-/// meaningful text (e.g. "AC: ensures no TODO in field X" must not match).
+/// INFRA-1259/1878/2984: Returns true if a single AC entry is a placeholder
+/// stub or a non-verifiable filler phrase. Only matches entries that ARE
+/// stubs, not entries that mention "TODO" in meaningful text (e.g. "AC:
+/// ensures no TODO in field X" must not match).
+///
+/// INFRA-2984: an exact-match allowlist of filler phrases like "verify it
+/// works" slipped past the TODO/TBD checks — non-empty, so `chump gap
+/// audit-priorities`/preflight let it through as pickable, but not a single
+/// concrete, testable claim, so the agent that claimed it had nothing to
+/// implement. The phrase list below is deliberately an exact-match
+/// allowlist (not a substring/keyword match) so real AC text that happens
+/// to contain "works" (e.g. "ensure the retry logic works under load") is
+/// never flagged.
 fn is_vague_ac_entry(s: &str) -> bool {
     let t = s.trim();
     let upper = t.to_uppercase();
@@ -598,6 +664,22 @@ fn is_vague_ac_entry(s: &str) -> bool {
         || upper.starts_with("TBD ")
         || upper.starts_with("<FILL")
         || upper.starts_with("FILL IN")
+        || matches!(
+            upper.as_str(),
+            "VERIFY IT WORKS"
+                | "VERIFY IT"
+                | "VERIFY"
+                | "IT WORKS"
+                | "WORKS"
+                | "MAKE IT WORK"
+                | "SHOULD WORK"
+                | "IT SHOULD WORK"
+                | "TEST IT"
+                | "DONE"
+                | "COMPLETE"
+                | "FIX IT"
+                | "IMPLEMENT IT"
+        )
 }
 
 /// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
@@ -668,6 +750,72 @@ fn parse_duration_to_secs(s: &str) -> Option<u64> {
     };
     let n: u64 = num_part.parse().ok()?;
     n.checked_mul(unit_secs)
+}
+
+// CREDIBLE-623: unit tests for helpers shared by the `gap reserve`, `gap
+// claim`, `gap show`, and `gap ship` subcommands (CREDIBLE-004 slice).
+#[cfg(test)]
+mod credible_623_subcommand_helper_tests {
+    use super::{parse_duration_to_secs, ship_plan_count_behind_ahead};
+
+    // ── parse_duration_to_secs — used by `gap show --since` / `gap list
+    // --since` / stuck-gap discipline shared with claim/ship flows ──
+
+    #[test]
+    fn parse_duration_plain_seconds() {
+        assert_eq!(parse_duration_to_secs("30s"), Some(30));
+        assert_eq!(parse_duration_to_secs("30"), Some(30));
+    }
+
+    #[test]
+    fn parse_duration_minutes_hours_days() {
+        assert_eq!(parse_duration_to_secs("5m"), Some(300));
+        assert_eq!(parse_duration_to_secs("2h"), Some(7_200));
+        assert_eq!(parse_duration_to_secs("1d"), Some(86_400));
+    }
+
+    #[test]
+    fn parse_duration_empty_is_none() {
+        assert_eq!(parse_duration_to_secs(""), None);
+        assert_eq!(parse_duration_to_secs("   "), None);
+    }
+
+    #[test]
+    fn parse_duration_non_numeric_is_none() {
+        assert_eq!(parse_duration_to_secs("abc"), None);
+        assert_eq!(parse_duration_to_secs("dh"), None);
+    }
+
+    #[test]
+    fn parse_duration_overflow_is_none() {
+        // u64::MAX days would overflow the multiply — checked_mul must catch it.
+        assert_eq!(parse_duration_to_secs("18446744073709551615d"), None);
+    }
+
+    #[test]
+    fn parse_duration_trims_whitespace() {
+        assert_eq!(parse_duration_to_secs("  10m  "), Some(600));
+    }
+
+    // ── ship_plan_count_behind_ahead — used by `gap ship` to compute the
+    // BEHIND/AHEAD counts printed in the ship plan ──
+
+    #[test]
+    fn ship_plan_count_behind_ahead_identical_refs_is_zero() {
+        // HEAD...HEAD has nothing on either side.
+        let (behind, ahead) = ship_plan_count_behind_ahead("HEAD", "HEAD")
+            .expect("git rev-list should succeed in a git worktree");
+        assert_eq!((behind, ahead), (0, 0));
+    }
+
+    #[test]
+    fn ship_plan_count_behind_ahead_invalid_spec_is_zero() {
+        // An unresolvable ref makes the underlying `git rev-list` fail;
+        // the helper degrades to (0, 0) rather than propagating an error.
+        let (behind, ahead) = ship_plan_count_behind_ahead("not-a-real-ref-credible-623", "HEAD")
+            .expect("command itself should still run and exit non-zero");
+        assert_eq!((behind, ahead), (0, 0));
+    }
 }
 
 /// INFRA-1719: surface file-path-like tokens from arbitrary text (gap
@@ -800,6 +948,38 @@ fn load_dotenv() {
 /// Shown when `chump` is run with no args, or when `chump help` / `chump --help` is used.
 // EFFECTIVE-011: expand short command aliases before routing.
 // "s" is a compound alias: "chump s <ID>" → "chump gap ship <ID>".
+/// INFRA-2028: prime `GH_TOKEN` for this process (and every `gh` subprocess
+/// it spawns) when the caller hasn't already supplied one. Fixes the class
+/// where `chump`'s spawned `gh` calls silently 401 (falls back to anonymous
+/// request) because the subprocess context can't read the macOS keychain
+/// entry an interactive shell's `gh` uses, even though `gh auth status`
+/// reports a valid keyring-backed login. `gh auth token` performs its own
+/// keychain read in the *caller's* shell context before chump ever spawns a
+/// child, so it is unaffected by the child-subprocess keychain block —
+/// resolving it once here and exporting the result lets every later
+/// `Command::new("gh")` inherit a working token via plain env-var auth
+/// instead of a keychain lookup.
+fn ensure_gh_token_env() {
+    if std::env::var_os("GH_TOKEN").is_some() || std::env::var_os("GITHUB_TOKEN").is_some() {
+        return;
+    }
+    let Ok(out) = std::process::Command::new("gh")
+        .args(["auth", "token"])
+        .output()
+    else {
+        return;
+    };
+    if !out.status.success() {
+        return;
+    }
+    let token = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if token.is_empty() {
+        return;
+    }
+    // Safety: called once at startup before any threads/async tasks spawn.
+    unsafe { std::env::set_var("GH_TOKEN", token) };
+}
+
 fn expand_aliases(mut args: Vec<String>) -> Vec<String> {
     if args.len() < 2 {
         return args;
@@ -885,6 +1065,9 @@ fn print_help() {
     println!("GAP MANAGEMENT");
     println!("  gap <sub>  (alias: g)  list, show, reserve, ship, audit-priorities …");
     println!("  claim <GAP-ID>  (alias: c)  atomic worktree + lease + preflight in one call");
+    println!(
+        "                              [--role ROLE] tag the claiming session with a role hint"
+    );
     println!("  ship <GAP-ID>   (alias: s)  shorthand for 'gap ship <GAP-ID>'");
     println!("  onboard <repo-url-or-path>  first-touch external-repo scanner (INFRA-2108)");
     println!("  improve <owner/repo> [--gap <ID>] [--apply] [--clone-dir <path>]");
@@ -896,6 +1079,8 @@ fn print_help() {
     println!("FLEET");
     println!("  fleet <sub>  (alias: f)  worker control — up/status/down/doctor …");
     println!("  dispatch <sub>  (alias: d)  route/scoreboard/simulate/cost-report …");
+    println!("  brain status [--json]       unified summary: memory + reflections + per-bot routing (INFRA-1773)");
+    println!("  brain query <memory|reflections|routing> [--limit N] [--bot NAME] [--json]");
     println!("  orchestrate        Opus-driven conversational loop (interactive)");
     println!();
     println!("ANALYTICS");
@@ -910,6 +1095,7 @@ fn print_help() {
     println!("  waste-tally        % of compute spent on closed-without-merge PRs");
     println!("  ship-quality       post-merge signal: pass rate, revert rate");
     println!("  roadmap-status     milestone completion %");
+    println!("  roadmap-pillar-score  rank lanes by bottleneck-pillar alignment");
     println!(
         "  mission-grade      current pillar grades (EFFECTIVE/CREDIBLE/RESILIENT/ZERO-WASTE)"
     );
@@ -924,6 +1110,13 @@ fn print_help() {
     println!("  kpi report --agents  per-agent throughput (ships/fails/P50)");
     println!("  kpi report --agents --date YYYY-MM-DD  specific date");
     println!("  kpi report --claims  claim-lint bust-rate per model (CREDIBLE-208)");
+    println!(
+        "  kpi report --debt-index  crown gauge (live_pct/debt/top-5 dormant) + NBA feed (CREDIBLE-357)"
+    );
+    println!(
+        "  kpi report --integration  integration-cycle dashboard: ship velocity, CI efficiency, quality, external costs (INFRA-2143)"
+    );
+    println!("  kpi report --integration --window 24h|7d|30d  window override (default 7d)");
     println!("  claim-lint --range <base>..<head>  ground ship-time claims against the diff (CREDIBLE-208)");
     println!("  cost-watch  (alias: cs)  real-time inference spend + per-slot breakdown");
     println!("  cost record-pr     attach cost metadata to a merged PR");
@@ -1325,12 +1518,45 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("git-guard") {
         std::process::exit(git_safety::run_cli(&args));
     }
+
+    // INFRA-5754 (INFRA-1748 pilot slice): self-registered subcommands take
+    // priority over the legacy if/else dispatch chain below. Nothing is
+    // registered via `inventory::submit! { CommandEntry::new(...) }` yet —
+    // this is a no-op until the first subcommand migrates per
+    // docs/refactor/MAIN_RS_DECOMPOSITION.md.
+    if let Some(name) = args.get(1) {
+        if let Some(result) = commands::registry::dispatch(name, &args) {
+            return result;
+        }
+    }
     // RESILIENT-256: the load-bearing half. Writes a dirty checkout into the
     // object store (refs/wip/…) without touching its working tree or index,
     // so `reset --hard` stops being unrecoverable even when it is correct.
     if args.get(1).map(String::as_str) == Some("wip-snapshot") {
         std::process::exit(git_safety::run_snapshot_cli(&args));
     }
+
+    // INFRA-1649 (re-do of INFRA-1598): `chump verify-claim-branch [--json]`
+    // asserts the current git branch matches the branch implied by this
+    // session's active claim lease. Dispatched here — ahead of store/config
+    // init — so it's cheap enough to call from a pre-push hook on every
+    // push (Guard 5 in scripts/git-hooks/pre-push already does the same
+    // check inline in bash; this is the reusable Rust primitive for
+    // non-hook callers).
+    if args.get(1).map(String::as_str) == Some("verify-claim-branch") {
+        std::process::exit(verify_claim_branch::run_cli(&args));
+    }
+
+    // INFRA-2028: every `gh` subprocess chump spawns inherits this process's
+    // env, but a subprocess spawned by chump doesn't get the macOS keychain
+    // entitlement an interactive shell's `gh` has — so `gh` silently falls
+    // back to an anonymous (401) request instead of the keychain-backed
+    // token. If GH_TOKEN/GITHUB_TOKEN aren't already set, resolve the token
+    // once via `gh auth token` (same call the operator's shell already makes
+    // successfully) and export it so every later `Command::new("gh")` in
+    // this process inherits it for free. No-op if gh isn't installed or the
+    // caller already supplied an explicit token.
+    ensure_gh_token_env();
 
     // INFRA-2054 (META-114 freshness cluster, binary-staleness layer):
     // `chump --build-info [--json]` prints the build-time metadata baked
@@ -1413,6 +1639,35 @@ async fn main() -> Result<()> {
         ));
     }
 
+    // RESILIENT-069: `chump farmer status [--json] [--quiet]` — the
+    // readiness gate for scripts/coord/farmer.sh (RESILIENT-068). Pure
+    // local-state read (<100ms, pause-immune): exits 0 (GREEN) when
+    // sentinel absent + zero exit-78 supervisors + oauth fresh + farmer
+    // heartbeat <120s, else 1 (RED). Wired into `chump claim` and the
+    // gap-reserve admission guard below.
+    if args.get(1).map(String::as_str) == Some("farmer") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        if sub_args.first().map(String::as_str) == Some("status") {
+            std::process::exit(farmer_status::run_cli(&sub_args[1..]));
+        }
+        eprintln!("Usage: chump farmer status [--json] [--quiet]");
+        std::process::exit(2);
+    }
+
+    // CREDIBLE-227: `chump provider probe` — probes every enabled cloud
+    // provider slot's live rate-limit headers + /v1/models existence,
+    // compares against the hand-entered CHUMP_PROVIDER_{N}_RPM/RPD in .env,
+    // and hollers (ambient kind=provider_slot_drift) any disagreement
+    // instead of silently trusting or rewriting the configured value.
+    if args.get(1).map(String::as_str) == Some("provider")
+        && args.get(2).map(String::as_str) == Some("probe")
+    {
+        load_dotenv();
+        let summary = provider_probe::run_probe_and_report().await;
+        println!("{}", summary);
+        return Ok(());
+    }
+
     // EFFECTIVE-009: no-args → help; `chump help` → help. Must come before
     // any mode that falls through to the interactive agent loop.
     let wants_help = args.len() == 1
@@ -1450,6 +1705,57 @@ async fn main() -> Result<()> {
             print!("{}", briefing::render_markdown(&b));
         }
         return Ok(());
+    }
+
+    // `chump ci-lesson capture` (INFRA-1765) — turns one CI failure into a
+    // structured lesson persisted to memory_db (chump_reflections /
+    // chump_improvement_targets), scoped by --domain so it's auto-surfaced
+    // in the next `chump --briefing <GAP-ID>` for that domain. Reads failure
+    // text from --failure-text or stdin. Intended to be invoked by
+    // scripts/coord/ci-lesson-propagation.sh, one call per failing check.
+    if args.get(1).map(String::as_str) == Some("ci-lesson")
+        && args.get(2).map(String::as_str) == Some("capture")
+    {
+        let get_flag = |name: &str| -> Option<String> {
+            args.iter()
+                .position(|a| a == name)
+                .and_then(|i| args.get(i + 1))
+                .cloned()
+        };
+        let domain = get_flag("--domain").unwrap_or_default();
+        let check = get_flag("--check").unwrap_or_default();
+        let pr_ref = get_flag("--pr-ref").unwrap_or_default();
+        let failure_text = match get_flag("--failure-text") {
+            Some(t) => t,
+            None => {
+                use std::io::Read;
+                let mut buf = String::new();
+                let _ = std::io::stdin().read_to_string(&mut buf);
+                buf
+            }
+        };
+        if check.is_empty() || failure_text.trim().is_empty() {
+            eprintln!(
+                "Usage: chump ci-lesson capture --check <name> --pr-ref <ref> --domain <domain> \
+                 [--failure-text <text> | stdin]"
+            );
+            std::process::exit(2);
+        }
+        let repo_root = repo_path::repo_root();
+        match ci_lesson::capture_ci_lesson(&repo_root, &domain, &check, &pr_ref, &failure_text) {
+            Ok(res) => {
+                println!(
+                    "captured: class={} reflection_id={}",
+                    res.class.as_str(),
+                    res.reflection_id
+                );
+                return Ok(());
+            }
+            Err(e) => {
+                eprintln!("ci-lesson capture failed: {e}");
+                std::process::exit(1);
+            }
+        }
     }
 
     // `chump llm-complete` (INFRA-3461) — the SANCTIONED shell gateway to the
@@ -1502,6 +1808,69 @@ async fn main() -> Result<()> {
                 std::process::exit(1);
             }
         }
+    }
+
+    // `chump provider-chain simulate --chain a,b --scenario NAME [--json]`
+    // (INFRA-1844, CP-012). Smoke-test entry point for
+    // scripts/ci/test-provider-chain.sh — drives the real ProviderChain
+    // executor against a scripted client so fallback/retry/ambient-emission
+    // behavior is exercised without depending on live providers.
+    if args.get(1).map(String::as_str) == Some("provider-chain") {
+        let sub = args.get(2).map(String::as_str).unwrap_or("--help");
+        if sub != "simulate" {
+            println!(
+                "Usage: chump provider-chain simulate --chain <a,b,...> --scenario <name> [--json]"
+            );
+            println!();
+            println!("Scenarios: happy | auth_fail | rate_limit_exhausted | transient_5xx |");
+            println!("           timeout | content_refusal | invalid_prompt | chain_exhausted");
+            return Ok(());
+        }
+        let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+        let mut chain_arg: Option<&str> = None;
+        let mut scenario_arg: Option<&str> = None;
+        let want_json = rest.contains(&"--json");
+        let mut it = rest.iter().peekable();
+        while let Some(a) = it.next() {
+            match *a {
+                "--chain" => chain_arg = it.next().copied(),
+                "--scenario" => scenario_arg = it.next().copied(),
+                _ => {}
+            }
+        }
+        let chain_names = chain_arg.unwrap_or("anthropic,openai");
+        let scenario = scenario_arg.unwrap_or("happy");
+        let repo_root = repo_path::repo_root();
+        std::env::set_var("CHUMP_PROVIDER_CHAIN", chain_names);
+        let chain = inference_provider::ProviderChain::from_env(&repo_root);
+        let client = inference_provider::testing::ScenarioClient::new(scenario);
+        let result = chain.execute(&client, "smoke test prompt", &repo_root);
+        if want_json {
+            let json = match &result {
+                Ok(c) => format!(
+                    r#"{{"ok":true,"provider":"{}","model":"{}"}}"#,
+                    c.provider, c.model
+                ),
+                Err(inference_provider::ChainError::InvalidPrompt(msg)) => {
+                    format!(r#"{{"ok":false,"error":"invalid_prompt","message":"{msg}"}}"#)
+                }
+                Err(inference_provider::ChainError::AllProvidersFailed { attempts }) => {
+                    format!(
+                        r#"{{"ok":false,"error":"all_providers_failed","attempts":{attempts}}}"#
+                    )
+                }
+            };
+            println!("{json}");
+        } else {
+            match &result {
+                Ok(c) => println!("OK provider={} model={}", c.provider, c.model),
+                Err(e) => println!("ERR {e:?}"),
+            }
+        }
+        return match result {
+            Ok(_) => Ok(()),
+            Err(_) => std::process::exit(1),
+        };
     }
 
     // `chump agent-run` (INFRA-3475) — the external-repo execution keystone. Runs
@@ -1666,6 +2035,117 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump curator status [--role ROLE] [--json]` /
+    // `chump curator refresh <role> [--pr-url U] [--commit-sha S] [--gap-ids CSV]`
+    // (INFRA-2185 — META-125 ring-the-bell operator surface). Mutates
+    // canonical state (.chump-locks/curator-memory/<role>.json), so it's a
+    // Rust CLI per the Rust-first criteria; scripts/coord/main-merge-listener.sh
+    // and scripts/coord/post-merge-bell.sh are the shell glue that calls in.
+    if args.get(1).map(String::as_str) == Some("curator") {
+        let repo_root = repo_path::repo_root();
+        match args.get(2).map(String::as_str) {
+            Some("status") => {
+                if args.iter().any(|a| a == "--help" || a == "-h") {
+                    println!("Usage: chump curator status [--role ROLE] [--json]");
+                    println!();
+                    println!("Show each curator role's last post-merge refresh timestamp,");
+                    println!("whether it is >24h stale on its lane, and open staleness findings.");
+                    return Ok(());
+                }
+                let role_filter = args
+                    .iter()
+                    .position(|a| a == "--role")
+                    .and_then(|i| args.get(i + 1))
+                    .map(String::as_str);
+                let rows = curator_bell::status_rows(&repo_root, role_filter);
+                if args.iter().any(|a| a == "--json") {
+                    let json: Vec<serde_json::Value> = rows
+                        .iter()
+                        .map(|r| {
+                            serde_json::json!({
+                                "role": r.role,
+                                "last_refresh": r.last_refresh,
+                                "stale": r.stale,
+                                "open_findings": r.open_findings,
+                            })
+                        })
+                        .collect();
+                    println!("{}", serde_json::to_string_pretty(&json).unwrap());
+                } else {
+                    print!("{}", curator_bell::render_status_text(&rows));
+                }
+                return Ok(());
+            }
+            Some("refresh") => {
+                if args.iter().any(|a| a == "--help" || a == "-h") {
+                    println!("Usage: chump curator refresh <role> [--pr-url URL] [--commit-sha SHA] [--gap-ids CSV]");
+                    println!();
+                    println!(
+                        "Manual or fan-out-triggered ring-the-bell for one curator: records the"
+                    );
+                    println!(
+                        "merge in its memory file and re-evaluates staleness against current main."
+                    );
+                    return Ok(());
+                }
+                let role = match args.get(3) {
+                    Some(r) if !r.starts_with("--") => r.clone(),
+                    _ => {
+                        eprintln!("chump curator refresh: missing <role>");
+                        eprintln!("Usage: chump curator refresh <role> [--pr-url URL] [--commit-sha SHA] [--gap-ids CSV]");
+                        std::process::exit(2);
+                    }
+                };
+                let pr_url = args
+                    .iter()
+                    .position(|a| a == "--pr-url")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_default();
+                let commit_sha = args
+                    .iter()
+                    .position(|a| a == "--commit-sha")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned()
+                    .unwrap_or_default();
+                let gap_ids: Vec<String> = args
+                    .iter()
+                    .position(|a| a == "--gap-ids")
+                    .and_then(|i| args.get(i + 1))
+                    .map(|s| {
+                        s.split(',')
+                            .map(str::trim)
+                            .filter(|s| !s.is_empty())
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default();
+                let mem = curator_bell::refresh(
+                    &repo_root,
+                    &curator_bell::RefreshArgs {
+                        role: role.clone(),
+                        pr_url,
+                        commit_sha,
+                        gap_ids,
+                    },
+                );
+                println!(
+                    "chump curator refresh: {} refreshed at {} ({} seen_merges, {} findings)",
+                    mem.role,
+                    mem.last_refresh.as_deref().unwrap_or("?"),
+                    mem.seen_merges.len(),
+                    mem.staleness_findings.len(),
+                );
+                return Ok(());
+            }
+            _ => {
+                eprintln!("chump curator: unknown subcommand");
+                eprintln!("Try: chump curator <status|refresh> [args…]");
+                std::process::exit(2);
+            }
+        }
+    }
+
     // `chump ship plan` (INFRA-1229 slice 1) — pure planner that decides
     // REBASE / ARM / WAIT / CONFLICT-RECOVER / etc. given a snapshot of
     // PR + branch state. Today's bot-merge.sh consumes the output as a
@@ -1753,13 +2233,41 @@ async fn main() -> Result<()> {
     // its own bypass env for testing / unusual setups.
     if args.get(1).map(String::as_str) == Some("claim") {
         let repo_root = repo_path::repo_root();
-        let claim_args = match atomic_claim::ClaimArgs::from_argv(&args[1..], repo_root.clone()) {
+
+        // RESILIENT-069: farmer readiness gate. RED = farmer has positive
+        // evidence of trouble (stale heartbeat, exit-78 supervisor, a
+        // paused-fleet sentinel, or a known-broken auth cache) — admit no
+        // NEW claims until it's lights-on again. Bypass: --skip-farmer-gate
+        // (stripped before handing args to ClaimArgs::from_argv, which
+        // rejects unrecognized flags).
+        let farmer_gate_bypass = args.iter().any(|a| a == "--skip-farmer-gate");
+        let claim_argv: Vec<String> = args[1..]
+            .iter()
+            .filter(|a| a.as_str() != "--skip-farmer-gate")
+            .cloned()
+            .collect();
+        // CREDIBLE-291: validate the request (GAP-ID format) BEFORE the farmer
+        // readiness gate. A malformed/invalid GAP-ID must return a format error
+        // regardless of farmer GREEN/RED — otherwise a transient farmer-RED flap
+        // makes `claim <bad-id>` print "farmer status RED" instead of the format
+        // error, failing test-cli-integration.sh (fast-checks) and cascading
+        // fast-checks -> test -> verified red on EVERY code PR (fleet-wide
+        // false-red jam, 2026-08-20). Mirrors CREDIBLE-166's autonomy-gate fix:
+        // validate request shape before any health/admission gate.
+        let claim_args = match atomic_claim::ClaimArgs::from_argv(&claim_argv, repo_root.clone()) {
             Ok(a) => a,
             Err(e) => {
                 eprintln!("chump claim: {e:#}");
+                // INFRA-5486 (INFRA-1863 slice): AC2 requires exit code 1
+                // specifically for the missing-mandatory-`--role` case;
+                // other argument errors keep the existing exit code 2.
+                if format!("{e:#}").contains("missing required flag --role") {
+                    std::process::exit(1);
+                }
                 eprintln!();
-                eprintln!("Usage: chump claim <GAP-ID> [--paths CSV] [--session ID]");
+                eprintln!("Usage: chump claim <GAP-ID> --role ROLE [--paths CSV] [--session ID]");
                 eprintln!("                          [--skip-doctor] [--skip-import]");
+                eprintln!("                          [--scope SCOPE]");
                 eprintln!();
                 eprintln!("Atomically: fetch origin/main, verify the gap, run chump-doctor,");
                 eprintln!("create a linked worktree, write the lease. Replaces the 6-step");
@@ -1767,6 +2275,21 @@ async fn main() -> Result<()> {
                 std::process::exit(2);
             }
         };
+
+        // RESILIENT-069: farmer readiness gate — admit no NEW (valid) claims
+        // until the farmer is lights-on again. Runs AFTER format validation
+        // (CREDIBLE-291) so a farmer blip never masks a bad-request error.
+        if !farmer_gate_bypass {
+            let fs = farmer_status::compute(&repo_root);
+            if !fs.green {
+                eprintln!("chump claim: farmer status RED — no new claims admitted.");
+                for r in &fs.reasons {
+                    eprintln!("  - {r}");
+                }
+                eprintln!("Run `chump farmer status` for detail. Bypass: --skip-farmer-gate");
+                std::process::exit(1);
+            }
+        }
         match atomic_claim::run_claim(claim_args) {
             Ok(report) => {
                 atomic_claim::print_report(&report);
@@ -1788,6 +2311,14 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("preflight") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(preflight::run(&sub_args));
+    }
+
+    // `chump cron install|uninstall|status` (INFRA-2057) — declarative cron
+    // expr to launchd plist (macOS) / systemd user timer (Linux) generator.
+    // Fleet-durable scheduling: never depends on any agent session being alive.
+    if args.get(1).map(String::as_str) == Some("cron") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(chump_cron::run(&sub_args));
     }
 
     // `chump verify` (CREDIBLE-155) — unified policy engine: typed rules
@@ -1864,6 +2395,15 @@ async fn main() -> Result<()> {
         std::process::exit(ingest_preflight::run(&sub_args));
     }
 
+    // `chump scan <repo-path> [--max-gaps N]` (INFRA-1882, 2026 demo #2) —
+    // local read-only heuristics against a sibling repo, files up to
+    // --max-gaps concrete gaps straight into the TARGET repo's own
+    // .chump/state.db. Pairs with `chump fleet-mode --takeover`.
+    if args.get(1).map(String::as_str) == Some("scan") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(scan::run(&sub_args));
+    }
+
     // `chump cartograph <target-repo-path> [--json]` (INFRA-1782, phase 2 of
     // INFRA-1746) — static, read-only scan of a target repo that writes
     // <target-repo-path>/docs/ARCHITECTURE.md. No LLM calls, no network
@@ -1873,13 +2413,65 @@ async fn main() -> Result<()> {
         std::process::exit(cartographer::run(&sub_args));
     }
 
+    // `chump evangelize <target-repo-path> [--json]` (INFRA-1783, phase 3 of
+    // INFRA-1746) — static, read-only scan of a target repo that writes
+    // <target-repo-path>/docs/HIDDEN_GEMS.md. No LLM calls, no network
+    // calls; the only write is HIDDEN_GEMS.md itself.
+    if args.get(1).map(String::as_str) == Some("evangelize") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(evangelist::run(&sub_args));
+    }
+
+    // `chump harvest <scan|check|brief|deep-scan|list-clusters>` (INFRA-1823)
+    // — Fleet Cartographer CLI. Productizes the Harvester (previously a
+    // Claude-Code-session-only shell script + agent) as a first-class chump
+    // engine capability, usable from any harness.
+    if args.get(1).map(String::as_str) == Some("harvest") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(harvester_cli::run(&sub_args));
+    }
+
+    // `chump systematize <target-repo-path> [--json]` (INFRA-1783, phase 4 of
+    // INFRA-1746) — static, read-only scan of a target repo that writes
+    // <target-repo-path>/docs/CAPABILITIES_REGISTRY.json. No LLM calls, no
+    // network calls; the only write is CAPABILITIES_REGISTRY.json itself.
+    if args.get(1).map(String::as_str) == Some("systematize") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(systematizer::run(&sub_args));
+    }
+
     // `chump vote <corr_id> <+1|-1|0> --reason <text>` (META-159) —
     // emit a FEEDBACK kind=vote event via the broadcast.sh FEEDBACK pathway.
-    // Gated behind CHUMP_FLEET_RECV_SIDE_V0=1; prints "feature flag off,
-    // vote not emitted" and exits 0 when flag is unset.
+    // Enabled by default (CREDIBLE-179); CHUMP_FLEET_RECV_SIDE_V0=0 opts out,
+    // printing "feature flag off, vote not emitted" and exiting 0.
     if args.get(1).map(String::as_str) == Some("vote") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::vote::run(&sub_args));
+    }
+
+    // `chump consensus ask <question> --reason <text> [--id <id>] [--block]
+    // [--timeout <secs>]` (INFRA-2156, META-125/C5) — publish a fleet
+    // decision question onto the existing FEEDBACK kind=proposal channel
+    // and return a consensus_id; --block polls ambient.jsonl for the
+    // deliberator's consensus_result up to --timeout seconds.
+    // Enabled by default (CREDIBLE-179), same flag as `chump vote`.
+    if args.get(1).map(String::as_str) == Some("consensus")
+        && args.get(2).map(String::as_str) == Some("ask")
+    {
+        let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
+        std::process::exit(commands::consensus_ask::run(&sub_args));
+    }
+
+    // `chump unwedge <GAP-ID> [--stall-threshold-s N] [--dry-run]` (EFFECTIVE-1136,
+    // EFFECTIVE-178 slice) — on-demand kill + recover of a wedged bot-merge
+    // run: detects a stalled `bot-merge.sh --gap <ID>` process past the
+    // stall threshold, kills it (+ children), aborts any in-progress
+    // rebase/merge and clears stale git locks, then invokes
+    // `chump claim <ID> --force-recover` to reconcile the lease/worktree.
+    // Emits kind=gap_unwedged.
+    if args.get(1).map(String::as_str) == Some("unwedge") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::unwedge::run(&sub_args));
     }
 
     // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
@@ -1941,6 +2533,19 @@ async fn main() -> Result<()> {
         std::process::exit(commands::consensus_tally::run(&sub_args));
     }
 
+    // `chump consensus resolve <corr_id> [--since <dur>]` /
+    // `chump consensus status [<corr_id> | --all] [--since <dur>]`
+    // (INFRA-2158, META-125/C7) — resolve productizes the deliberator's
+    // tally + kind=consensus_result emission as a directly-callable CLI;
+    // status makes the resulting decision state queryable (durable
+    // consensus_result if reached, else a live tally). Always runs
+    // regardless of feature flag (read-only aggregation; resolve's only
+    // write is the ambient.jsonl append on a reached decision).
+    if args.get(1).map(String::as_str) == Some("consensus") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::consensus::run(&sub_args));
+    }
+
     // `chump sibling-status [--json] [--watch]` (META-154) — per-active-lease
     // progress matrix. Beats "lease exists" by classifying each holder as
     // progressing / in-flight / heartbeat-only / stalled / silent / expired.
@@ -1992,7 +2597,20 @@ async fn main() -> Result<()> {
         std::process::exit(commands::bootstrap::run(&sub_args));
     }
 
-    // `chump roadmap-from-vision <vision> --domain D [--outcome ID] [--max-gaps N] [--apply]`
+    // `chump swe <prompt> [--budget-secs N] [--budget-tokens N]
+    //   [--budget-dollars N] [--paths CSV] [--dry-run-diff]` (INFRA-2089) —
+    // one-shot bounded SWE-agent wrapper: reserve+claim a synthetic gap from
+    // the prompt, dispatch a headless sub-agent under budget, arm auto-merge,
+    // emit kind=swe_invocation_complete. Productizes the existing per-gap
+    // claim -> worktree -> subagent-dispatch -> auto-merge pipeline
+    // (crate::dispatch::run) as a direct prompt-in surface (Bet 1,
+    // MARKET_POSITIONING_2026-05-27 #2679).
+    if args.get(1).map(String::as_str) == Some("swe") {
+        let sub_args: Vec<String> = args.iter().skip(1).cloned().collect();
+        std::process::exit(commands::swe::run(&sub_args));
+    }
+
+    // `chump roadmap-from-vision --vision <STR> --domain D [--outcome ID] [--max-gaps N] [--apply]`
     // (EFFECTIVE-425, COTG spine slice 1) — vision string -> validated Roadmap JSON;
     // with --apply, files each GapDraft via `chump gap reserve --outcome <id>` so
     // MISSION-045 / pillar / similarity gates apply. See commands::roadmap_from_vision.
@@ -2303,8 +2921,214 @@ async fn main() -> Result<()> {
             println!(
                 "  librarian-sweep   dead-code + redundant-script triage for an ingest target repo"
             );
+            println!("  query             query the per-action audit log (INFRA-1842, CP-010)");
+            println!("  retention         delete audit_log rows older than a cutoff (INFRA-1842)");
             println!();
             println!("Run 'chump audit <subcommand> --help' for options.");
+            return Ok(());
+        }
+        // `chump audit query [filters] [--json]` (INFRA-1842, CP-010) — queryable
+        // per-action audit log. See docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md.
+        if sub == "query" {
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            if rest.iter().any(|a| *a == "--help" || *a == "help") {
+                println!("Usage: chump audit query [filters] [--json]");
+                println!();
+                println!("Options:");
+                println!("  --actor <id>          filter by actor (session id or login)");
+                println!("  --action <name>        filter by action name (e.g. gap.shipped)");
+                println!(
+                    "  --resource <class>     filter by resource class (gap | pr | lease | config)"
+                );
+                println!(
+                    "  --resource-id <id>     filter by specific resource id (e.g. INFRA-1842)"
+                );
+                println!("  --since <duration|iso> 24h | 7d | 1m | 0s | RFC-3339 timestamp");
+                println!("  --until <duration|iso> same syntax as --since");
+                println!("  --limit N              truncate result (default 100)");
+                println!("  --json                 structured JSON output (default: pretty table)");
+                return Ok(());
+            }
+            let want_json = rest.contains(&"--json");
+            let mut filter = audit_log::QueryFilter::default();
+            let mut it = rest.iter().peekable();
+            while let Some(a) = it.next() {
+                match *a {
+                    "--actor" => filter.actor = it.next().map(|s| s.to_string()),
+                    "--action" => filter.action = it.next().map(|s| s.to_string()),
+                    "--resource" => filter.resource = it.next().map(|s| s.to_string()),
+                    "--resource-id" => filter.resource_id = it.next().map(|s| s.to_string()),
+                    "--since" => {
+                        if let Some(v) = it.next() {
+                            match audit_log::resolve_time_bound(v) {
+                                Ok(ts) => filter.since = Some(ts),
+                                Err(e) => {
+                                    eprintln!("chump audit query: bad --since value: {e}");
+                                    std::process::exit(2);
+                                }
+                            }
+                        }
+                    }
+                    "--until" => {
+                        if let Some(v) = it.next() {
+                            match audit_log::resolve_time_bound(v) {
+                                Ok(ts) => filter.until = Some(ts),
+                                Err(e) => {
+                                    eprintln!("chump audit query: bad --until value: {e}");
+                                    std::process::exit(2);
+                                }
+                            }
+                        }
+                    }
+                    "--limit" => {
+                        if let Some(v) = it.next() {
+                            filter.limit = v.parse().ok();
+                        }
+                    }
+                    _ => {}
+                }
+            }
+            let repo_root = repo_path::repo_root();
+            let conn = match audit_log::open(&repo_root) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("chump audit query: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let entries = match audit_log::query(&conn, &filter) {
+                Ok(e) => e,
+                Err(e) => {
+                    eprintln!("chump audit query: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "count": entries.len(), "entries": entries })
+                );
+            } else {
+                println!(
+                    "{:<28} {:<22} {:<24} {:<10} resource_id",
+                    "ts", "actor", "action", "result"
+                );
+                for e in &entries {
+                    println!(
+                        "{:<28} {:<22} {:<24} {:<10} {}",
+                        e.ts,
+                        e.actor,
+                        e.action,
+                        e.result.as_str(),
+                        e.resource_id.clone().unwrap_or_default()
+                    );
+                }
+                println!("{} entries", entries.len());
+            }
+            return Ok(());
+        }
+        // `chump audit retention --older-than <duration> [--dry-run] [--json]` (INFRA-1842).
+        if sub == "retention" {
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            if rest.iter().any(|a| *a == "--help" || *a == "help") || rest.is_empty() {
+                println!(
+                    "Usage: chump audit retention --older-than <duration> [--dry-run] [--json]"
+                );
+                println!();
+                println!("Deletes audit_log rows with ts older than the cutoff. No automatic");
+                println!("rotation — operator/cron invoked, mirrors BEAST-MODE's clearLogs().");
+                return Ok(());
+            }
+            let want_json = rest.contains(&"--json");
+            let mut older_than: Option<String> = None;
+            let mut it = rest.iter().peekable();
+            while let Some(a) = it.next() {
+                if *a == "--older-than" {
+                    older_than = it.next().map(|s| s.to_string());
+                }
+            }
+            let older_than = match older_than {
+                Some(v) => v,
+                None => {
+                    eprintln!("chump audit retention: --older-than is required");
+                    std::process::exit(2);
+                }
+            };
+            let cutoff = match audit_log::resolve_time_bound(&older_than) {
+                Ok(ts) => ts,
+                Err(e) => {
+                    eprintln!("chump audit retention: bad --older-than value: {e}");
+                    std::process::exit(2);
+                }
+            };
+            let repo_root = repo_path::repo_root();
+            let conn = match audit_log::open(&repo_root) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("chump audit retention: {e}");
+                    std::process::exit(1);
+                }
+            };
+            let report = match audit_log::clear_older_than(&conn, &cutoff) {
+                Ok(r) => r,
+                Err(e) => {
+                    eprintln!("chump audit retention: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if want_json {
+                println!(
+                    "{}",
+                    serde_json::json!({ "removed": report.removed, "remaining": report.remaining })
+                );
+            } else {
+                println!(
+                    "removed {} rows older than {}, {} remaining",
+                    report.removed, cutoff, report.remaining
+                );
+            }
+            return Ok(());
+        }
+        // `chump audit _test_seed ...` — hidden subcommand for synthetic audit
+        // entries, gated on CHUMP_TEST_MODE=1, matching the pattern used by
+        // scripts/ci/test-gap-audit-priorities.sh's fixture seeding.
+        if sub == "_test_seed" {
+            if std::env::var("CHUMP_TEST_MODE").as_deref() != Ok("1") {
+                eprintln!("chump audit _test_seed: only available with CHUMP_TEST_MODE=1");
+                std::process::exit(2);
+            }
+            let rest: Vec<&str> = args.iter().skip(3).map(String::as_str).collect();
+            let mut actor = "test-actor".to_string();
+            let mut action = "test.action".to_string();
+            let mut resource: Option<String> = None;
+            let mut resource_id: Option<String> = None;
+            let mut it = rest.iter().peekable();
+            while let Some(a) = it.next() {
+                match *a {
+                    "--actor" => actor = it.next().map(|s| s.to_string()).unwrap_or(actor),
+                    "--action" => action = it.next().map(|s| s.to_string()).unwrap_or(action),
+                    "--resource" => resource = it.next().map(|s| s.to_string()),
+                    "--resource-id" => resource_id = it.next().map(|s| s.to_string()),
+                    _ => {}
+                }
+            }
+            let mut entry = audit_log::AuditEntry::new(&actor, &action);
+            if let (Some(r), Some(rid)) = (resource, resource_id) {
+                entry = entry.with_resource(&r, &rid);
+            }
+            let repo_root = repo_path::repo_root();
+            let conn = match audit_log::open(&repo_root) {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("chump audit _test_seed: {e}");
+                    std::process::exit(1);
+                }
+            };
+            if let Err(e) = audit_log::log_action(&conn, &entry) {
+                eprintln!("chump audit _test_seed: {e}");
+                std::process::exit(1);
+            }
+            println!("{}", entry.id);
             return Ok(());
         }
         if sub == "librarian-sweep" {
@@ -2629,6 +3453,9 @@ async fn main() -> Result<()> {
             println!("  record-outcome NAME true|false");
             println!("                             Record a success/failure outcome");
             println!("  tap-add URL                Install skills from a GitHub repo");
+            println!(
+                "  bundle install             Tap skills-bundle/* into the brain (INFRA-1615)"
+            );
             println!();
             println!("Skills live in: chump-brain/skills/<name>/SKILL.md");
             println!("Override: CHUMP_BRAIN_PATH env var");
@@ -2636,6 +3463,33 @@ async fn main() -> Result<()> {
         }
 
         match subcmd {
+            "bundle" => {
+                let bundle_subcmd = args.get(3).map(String::as_str).unwrap_or("");
+                if bundle_subcmd != "install" {
+                    eprintln!("Usage: chump skill bundle install");
+                    std::process::exit(2);
+                }
+                let repo_root = repo_path::repo_root();
+                match crate::skills::install_bundle(&repo_root) {
+                    Ok(installed) if installed.is_empty() => {
+                        println!(
+                            "chump skill bundle install: nothing to install (already present or no skills-bundle/ found)"
+                        );
+                    }
+                    Ok(installed) => {
+                        println!(
+                            "Installed {} seed skill(s): {}",
+                            installed.len(),
+                            installed.join(", ")
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("chump skill bundle install: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+                return Ok(());
+            }
             "list" => {
                 match crate::skills::list_skills() {
                     Ok(skills) if skills.is_empty() => {
@@ -2872,7 +3726,7 @@ async fn main() -> Result<()> {
             }
             other => {
                 eprintln!("chump skill: unknown subcommand '{other}'");
-                eprintln!("Valid: list, view, health, record-outcome, tap-add");
+                eprintln!("Valid: list, view, health, record-outcome, tap-add, bundle install");
                 eprintln!("Run 'chump skill --help' for usage.");
                 std::process::exit(2);
             }
@@ -2988,10 +3842,15 @@ async fn main() -> Result<()> {
     }
 
     // MISSION-008 / MISSION-030: `chump outcome <sub>` — first-class Outcome object commands.
-    // INFRA-3480: chump intake "<plain-language problem>" [--json] [--create]
+    // INFRA-3480 / EFFECTIVE-357: chump intake "<plain-language problem>" [--json] [--create]
     // CREATE-mode conversational intake — plain-language restatement, 1-3
     // clarifying questions, and a proposed definition-of-done. Never emits
     // software jargon (structurally enforced in VisionIntakeContract::validate).
+    // With --create: writes an outcome row, then — only when chump-perception
+    // scores the raw input below the ambiguity threshold — files ONE
+    // structured umbrella gap with real acceptance criteria via the existing
+    // roadmap-from-vision pipeline (EFFECTIVE-357). Above the threshold,
+    // intake stops at the clarifying questions instead of guessing AC.
     if args.get(1).map(String::as_str) == Some("intake") {
         let json_out = args.iter().any(|a| a == "--json");
         let create = args.iter().any(|a| a == "--create");
@@ -3002,6 +3861,10 @@ async fn main() -> Result<()> {
             .cloned()
             .unwrap_or_else(|| {
                 eprintln!("Usage: chump intake \"<plain-language problem>\" [--json] [--create]");
+                eprintln!(
+                    "  --create   Write an outcome row, and (if the input isn't too ambiguous) \
+                     a structured gap with real acceptance criteria"
+                );
                 std::process::exit(2);
             });
         if let Err(e) = vision_intake::run(&text, json_out, create).await {
@@ -3156,8 +4019,33 @@ async fn main() -> Result<()> {
                                     )
                                 })
                                 .collect();
+                            let jtbd_json = if r.outcome.jtbd_who.is_some()
+                                || r.outcome.jtbd_struggling_moment.is_some()
+                                || r.outcome.jtbd_done_signal.is_some()
+                            {
+                                format!(
+                                    r#","jtbd":{{"who":"{}","struggling_moment":"{}","done_signal":"{}"}}"#,
+                                    r.outcome
+                                        .jtbd_who
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .replace('"', "\\\""),
+                                    r.outcome
+                                        .jtbd_struggling_moment
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .replace('"', "\\\""),
+                                    r.outcome
+                                        .jtbd_done_signal
+                                        .as_deref()
+                                        .unwrap_or("")
+                                        .replace('"', "\\\""),
+                                )
+                            } else {
+                                String::new()
+                            };
                             println!(
-                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","definition_of_done":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]}}"#,
+                                r#"{{"outcome_id":"{}","title":"{}","priority":"{}","status":"{}","definition_of_done":"{}","total":{},"open":{},"done":{},"other":{},"advisory":true,"gaps":[{}]{}}}"#,
                                 r.outcome.id,
                                 r.outcome.title.replace('"', "\\\""),
                                 r.outcome.priority,
@@ -3168,6 +4056,7 @@ async fn main() -> Result<()> {
                                 r.done,
                                 r.other,
                                 gaps_json.join(","),
+                                jtbd_json,
                             );
                         } else {
                             println!("=== Outcome: {} ===", r.outcome.id);
@@ -3176,6 +4065,22 @@ async fn main() -> Result<()> {
                             println!("Status   : {}", r.outcome.status);
                             if !r.outcome.definition_of_done.is_empty() {
                                 println!("DoD      : {}", r.outcome.definition_of_done);
+                            }
+                            if r.outcome.jtbd_who.is_some()
+                                || r.outcome.jtbd_struggling_moment.is_some()
+                                || r.outcome.jtbd_done_signal.is_some()
+                            {
+                                println!();
+                                println!("Job to be done:");
+                                if let Some(who) = &r.outcome.jtbd_who {
+                                    println!("  Who              : {}", who);
+                                }
+                                if let Some(m) = &r.outcome.jtbd_struggling_moment {
+                                    println!("  Struggling moment: {}", m);
+                                }
+                                if let Some(s) = &r.outcome.jtbd_done_signal {
+                                    println!("  Done signal      : {}", s);
+                                }
                             }
                             println!();
                             println!("Child gaps (advisory rollup — never gates close):");
@@ -4049,6 +4954,34 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump roadmap-pillar-score [--json]` (META-409, META-152 slice)
+    // Parses docs/ROADMAP.md into lanes (## sections), counts pillar
+    // mentions per lane, and ranks lanes by alignment with the pillar(s)
+    // most starved of open gaps (the "bottleneck" pillars).
+    if args.get(1).map(String::as_str) == Some("roadmap-pillar-score") {
+        if args.iter().any(|a| a == "--help" || a == "help") {
+            println!("Usage: chump roadmap-pillar-score [--json]");
+            println!();
+            println!("Parses docs/ROADMAP.md into lanes (## sections) and scores each lane");
+            println!("by how strongly it aligns with the pillar(s) currently most starved");
+            println!("of open gaps (per roadmap-status pillar_coverage).");
+            println!();
+            println!("Options:");
+            println!("  --json   output in JSON format");
+            return Ok(());
+        }
+        let want_json = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let scores = roadmap_pillar_score::build_report(&repo_root);
+
+        if want_json {
+            println!("{}", roadmap_pillar_score::render_json(&scores));
+        } else {
+            print!("{}", roadmap_pillar_score::render_text(&scores));
+        }
+        return Ok(());
+    }
+
     // `chump fleet-status` (INFRA-494) — single-command operator
     // dashboard combining active leases, last-24h shipped/abandoned,
     // last-24h waste tally summary, and recent fleet wedges.
@@ -4584,6 +5517,45 @@ async fn main() -> Result<()> {
         }
     }
 
+    // `chump pr blame-file <path> [--json] [--db <path>]` (INFRA-1445) —
+    // CREDIBLE: combines git log on the path with GitHub squash-merge
+    // history (via .chump/github_cache.db) so the operator sees fixes
+    // that landed via a squash-merged/cherry-picked PR that plain
+    // `git log -- <path>` alone missed.
+    if args.get(1).map(String::as_str) == Some("pr")
+        && args.get(2).map(String::as_str) == Some("blame-file")
+    {
+        let path = match args.get(3) {
+            Some(p) if !p.starts_with("--") => p.clone(),
+            _ => {
+                eprintln!("Usage: chump pr blame-file <path> [--json] [--db <path>]");
+                std::process::exit(2);
+            }
+        };
+        let json_out = args.iter().any(|a| a == "--json");
+        let repo_root = repo_path::repo_root();
+        let db_path = args
+            .iter()
+            .position(|a| a == "--db")
+            .and_then(|i| args.get(i + 1))
+            .map(std::path::PathBuf::from)
+            .unwrap_or_else(|| repo_root.join(".chump").join("github_cache.db"));
+        match pr_blame_file::run(&repo_root, &db_path, &path) {
+            Ok(rows) => {
+                if json_out {
+                    println!("{}", pr_blame_file::render_json(&path, &rows)?);
+                } else {
+                    print!("{}", pr_blame_file::render_text(&path, &rows));
+                }
+            }
+            Err(e) => {
+                eprintln!("chump pr blame-file: {e}");
+                std::process::exit(1);
+            }
+        }
+        return Ok(());
+    }
+
     // `chump pr fix-clippy <PR#> [--dry-run]`
     // (INFRA-618) — ZERO-WASTE: auto-fix obvious clippy lints on a PR branch.
     // Targets: manual_split_once, unused_variables, redundant_clone, single_match.
@@ -4716,6 +5688,10 @@ async fn main() -> Result<()> {
             println!("                       instead of re-triaging.");
             println!("  daemon               Loop triage→execute forever. Single-instance via PID");
             println!("                       file at .chump-locks/paramedic.lock.");
+            println!(
+                "  smoke-test           INFRA-1645: quick observability check — dummy LLM call,"
+            );
+            println!("                       prints a cost_report JSON line, exits 0.");
             println!();
             println!("Options:");
             println!("  --dry-run            Print actions; do not actually run gh commands.");
@@ -4727,6 +5703,17 @@ async fn main() -> Result<()> {
             println!("  chump paramedic triage");
             println!("  chump paramedic triage | chump paramedic execute --plan /dev/stdin");
             println!("  chump paramedic daemon --interval-secs 300 --dry-run");
+            println!("  chump paramedic smoke-test");
+            return Ok(());
+        }
+
+        // `chump paramedic --smoke-test` (AC §3 flag form, in addition to
+        // the `smoke-test` subcommand above).
+        if args.iter().any(|a| a == "--smoke-test") {
+            if let Err(e) = paramedic::smoke_test(&repo_root) {
+                eprintln!("chump paramedic smoke-test: {e}");
+                std::process::exit(1);
+            }
             return Ok(());
         }
 
@@ -4781,6 +5768,12 @@ async fn main() -> Result<()> {
 
                 if let Err(e) = paramedic::daemon(interval_secs, &repo_root, dry_run) {
                     eprintln!("chump paramedic daemon: {e}");
+                    std::process::exit(1);
+                }
+            }
+            "smoke-test" => {
+                if let Err(e) = paramedic::smoke_test(&repo_root) {
+                    eprintln!("chump paramedic smoke-test: {e}");
                     std::process::exit(1);
                 }
             }
@@ -5543,26 +6536,45 @@ async fn main() -> Result<()> {
             // dial (EFFECTIVE-086) layers nuance on top; this is the dumb
             // write that every entry-point checks.
             "level" => {
+                // EFFECTIVE-086: query-only flags read the current level
+                // and report a derived fact rather than writing anything.
+                if args.iter().any(|a| a == "--max-workers") {
+                    let level =
+                        autonomy_level::read_autonomy_level(&autonomy_level::default_path());
+                    match level.max_workers() {
+                        Some(n) => println!("{n}"),
+                        None => println!("unbounded"),
+                    }
+                    std::process::exit(0);
+                }
                 let n_str = args.get(3).cloned().unwrap_or_else(|| {
-                    // No arg: print current level and exit 0.
-                    let level = autonomy_level::read_level(&autonomy_level::default_path());
-                    println!("{level}");
+                    // No arg: print current level (name + number) and exit 0.
+                    let level =
+                        autonomy_level::read_autonomy_level(&autonomy_level::default_path());
+                    println!("{} ({})", i64::from(level), level.name());
                     std::process::exit(0);
                 });
                 let n: i64 = n_str.parse().unwrap_or_else(|_| {
                     eprintln!("chump fleet level: N must be an integer, got '{n_str}'");
                     std::process::exit(2);
                 });
-                if n < 0 {
-                    eprintln!("chump fleet level: N must be >= 0 (0 = STOP)");
+                // EFFECTIVE-086: the graduated dial is 0-5 (STOP..UNLEASHED)
+                // — reject anything outside that range so the dial can't be
+                // set to a value with no defined action set.
+                if !(0..=5).contains(&n) {
+                    eprintln!(
+                        "chump fleet level: N must be 0-5 (0=STOP 1=OBSERVE 2=ASSIST \
+                         3=SUPERVISED 4=AUTONOMOUS 5=UNLEASHED), got '{n}'"
+                    );
                     std::process::exit(2);
                 }
                 let al_path = autonomy_level::default_path();
                 match autonomy_level::write_level(n, &al_path) {
                     Ok(()) => {
-                        let status_word = if n == 0 { "STOP" } else { "GO" };
+                        let level = autonomy_level::AutonomyLevel::from(n);
                         println!(
-                            "AUTONOMY_LEVEL={n} ({status_word}) written to {}",
+                            "AUTONOMY_LEVEL={n} ({}) written to {}",
+                            level.name(),
                             al_path.display()
                         );
                     }
@@ -5590,6 +6602,147 @@ async fn main() -> Result<()> {
                     std::process::exit(1);
                 });
                 std::process::exit(status.code().unwrap_or(1));
+            }
+            // CREDIBLE-257 (CREDIBLE-099 slice): harness-neutral verb to list
+            // registered workers + live state from the `chump_workers`
+            // NATS-KV bucket (CREDIBLE-246 storage layer). Works from any
+            // harness — this is a plain CLI subcommand, not Claude-Code-only.
+            "workers" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let nats_url = std::env::var("CHUMP_NATS_URL")
+                    .or_else(|_| std::env::var("NATS_URL"))
+                    .unwrap_or_else(|_| chump_coord::DEFAULT_NATS_URL.to_string());
+
+                let connect_result = tokio::time::timeout(
+                    std::time::Duration::from_secs(3),
+                    async_nats::connect(&nats_url),
+                )
+                .await;
+
+                let nats = match connect_result {
+                    Ok(Ok(n)) => n,
+                    Ok(Err(e)) => {
+                        eprintln!("chump fleet workers: NATS connect failed ({nats_url}): {e}");
+                        std::process::exit(1);
+                    }
+                    Err(_) => {
+                        eprintln!("chump fleet workers: NATS connect timed out ({nats_url})");
+                        std::process::exit(1);
+                    }
+                };
+                let js = async_nats::jetstream::new(nats);
+                let kv = match chump_coord::presence::init_workers_bucket(&js).await {
+                    Ok(kv) => kv,
+                    Err(e) => {
+                        eprintln!("chump fleet workers: workers KV bucket unavailable: {e}");
+                        std::process::exit(1);
+                    }
+                };
+
+                let mut presences = match chump_coord::presence::list_presence(&kv).await {
+                    Ok(p) => p,
+                    Err(e) => {
+                        eprintln!("chump fleet workers: list_presence failed: {e}");
+                        std::process::exit(1);
+                    }
+                };
+                presences.sort_by(|a, b| a.worker_id.cmp(&b.worker_id));
+
+                let now = chrono::Utc::now();
+                let today = now.date_naive();
+
+                // ships_today: best-effort — count today's `ship_grade`
+                // ambient events whose agent_id matches this worker_id.
+                // agent_id (AGENT_ID env) and worker_id (presence session
+                // id) are distinct id spaces today, so this only counts
+                // when a caller happened to set them equal; it is not a
+                // hard guarantee. Loaded once and reused per worker.
+                let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                let ambient_content = std::fs::read_to_string(&ambient_path).unwrap_or_default();
+                let ships_today_for = |worker_id: &str| -> u64 {
+                    let mut count = 0u64;
+                    for line in ambient_content.lines() {
+                        if !line.contains("ship_grade") {
+                            continue;
+                        }
+                        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+                            continue;
+                        };
+                        if v.get("kind").and_then(|x| x.as_str()) != Some("ship_grade") {
+                            continue;
+                        }
+                        if v.get("agent_id").and_then(|x| x.as_str()) != Some(worker_id) {
+                            continue;
+                        }
+                        let ts_matches_today = v
+                            .get("ts")
+                            .and_then(|x| x.as_str())
+                            .and_then(|s| chrono::DateTime::parse_from_rfc3339(s).ok())
+                            .map(|dt| dt.with_timezone(&chrono::Utc).date_naive() == today)
+                            .unwrap_or(false);
+                        if ts_matches_today {
+                            count += 1;
+                        }
+                    }
+                    count
+                };
+
+                if want_json {
+                    let rows: Vec<serde_json::Value> = presences
+                        .iter()
+                        .map(|p| {
+                            let heartbeat_age_s =
+                                now.signed_duration_since(p.updated_at).num_seconds().max(0);
+                            serde_json::json!({
+                                "worker_id": p.worker_id,
+                                "backend": p.backend,
+                                "machine": p.machine,
+                                "skills": p.skills,
+                                "harness": p.harness,
+                                "current_gap": p.current_gap,
+                                "status": p.status,
+                                "heartbeat_age_s": heartbeat_age_s,
+                                "ships_today": ships_today_for(&p.worker_id),
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({ "workers": rows }))
+                            .unwrap_or_else(|_| "{}".to_string())
+                    );
+                } else if presences.is_empty() {
+                    println!(
+                        "No registered workers found in NATS-KV bucket '{}'.",
+                        chump_coord::presence::WORKERS_BUCKET
+                    );
+                } else {
+                    println!(
+                        "{:<24} {:<10} {:<12} {:<20} {:<14} {:<9} {:<9} SKILLS",
+                        "WORKER_ID",
+                        "BACKEND",
+                        "MACHINE",
+                        "CURRENT_GAP",
+                        "STATUS",
+                        "HB_AGE",
+                        "SHIPS_2D"
+                    );
+                    for p in &presences {
+                        let heartbeat_age_s =
+                            now.signed_duration_since(p.updated_at).num_seconds().max(0);
+                        println!(
+                            "{:<24} {:<10} {:<12} {:<20} {:<14} {:<9} {:<9} {}",
+                            p.worker_id,
+                            p.backend,
+                            p.machine.as_deref().unwrap_or("-"),
+                            p.current_gap.as_deref().unwrap_or("-"),
+                            format!("{:?}", p.status).to_lowercase(),
+                            format!("{}s", heartbeat_age_s),
+                            ships_today_for(&p.worker_id),
+                            p.skills.join(","),
+                        );
+                    }
+                }
             }
             "scale" => {
                 let n_str = args.get(3).cloned().unwrap_or_else(|| {
@@ -6119,37 +7272,51 @@ async fn main() -> Result<()> {
                 // real ship rate is ~0.5/hr — conditioning "healthy, autonomous"
                 // when the fleet ships little. git reads local origin/main (no
                 // fetch), matching the shell script's window semantics exactly.
-                let count_merges_since = |cutoff_ts: i64| -> usize {
-                    let cutoff_iso = chrono::DateTime::from_timestamp(cutoff_ts, 0)
-                        .map(|d| d.to_rfc3339())
-                        .unwrap_or_default();
-                    if cutoff_iso.is_empty() {
-                        return 0;
-                    }
+                // CREDIBLE-129: `git log ... origin/main` can transiently fail
+                // (loose ref mid-gc/pack-refs, a fetch killed mid-transport, a
+                // stale index/ref lock from a concurrent git process on the
+                // same worktree) — see docs/investigations/CREDIBLE-1107-fleet-brief-subshell-audit.md.
+                // The old `.unwrap_or(0)` made that failure bitwise identical
+                // to "zero real ships", which produced the false fleet-dead
+                // banner. Return `None` on a failed measurement (after one
+                // retry, since the race is transient) so callers can print
+                // "unavailable" instead of a misleading 0 and skip the
+                // stalled/healthy verdicts that a real 0 would otherwise
+                // drive.
+                let count_merges_since = |cutoff_ts: i64| -> Option<usize> {
+                    let cutoff_iso =
+                        chrono::DateTime::from_timestamp(cutoff_ts, 0).map(|d| d.to_rfc3339())?;
                     let main_root = repo_path::main_checkout_root();
-                    std::process::Command::new("git")
-                        .args([
-                            "-C",
-                            &main_root.to_string_lossy(),
-                            "log",
-                            "--format=%H",
-                            &format!("--since={cutoff_iso}"),
-                            "origin/main",
-                        ])
-                        .output()
-                        .ok()
-                        .filter(|o| o.status.success())
-                        .map(|o| {
-                            String::from_utf8_lossy(&o.stdout)
+                    let run_git_log = || -> Option<usize> {
+                        let output = std::process::Command::new("git")
+                            .args([
+                                "-C",
+                                &main_root.to_string_lossy(),
+                                "log",
+                                "--format=%H",
+                                &format!("--since={cutoff_iso}"),
+                                "origin/main",
+                            ])
+                            .output()
+                            .ok()?;
+                        if !output.status.success() {
+                            return None;
+                        }
+                        Some(
+                            String::from_utf8_lossy(&output.stdout)
                                 .lines()
                                 .filter(|l| !l.trim().is_empty())
-                                .count()
-                        })
-                        .unwrap_or(0)
+                                .count(),
+                        )
+                    };
+                    // One retry: the ref-unresolvable window (concurrent
+                    // fetch/gc/pack-refs) is typically sub-second.
+                    run_git_log().or_else(run_git_log)
                 };
                 let ships = count_merges_since(cutoff);
                 // INFRA-2013: 1h ship count — leading indicator (not subject to 24h rolling lag)
                 let ships_1h = count_merges_since(cutoff_1h);
+                let ships_measurement_failed = ships.is_none() || ships_1h.is_none();
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
@@ -6228,7 +7395,10 @@ async fn main() -> Result<()> {
                 // the last 30 min (the same signal the shell path uses via gh).
                 // When condition fires: emit fleet_stalled to ambient.jsonl so
                 // watchers (operator-recall, cluster-detector, etc.) can page.
-                let fleet_stalled = ships_1h == 0 && pr_stuck >= 2;
+                // CREDIBLE-129: only fire on a REAL 0 — if the git measurement
+                // itself failed (ships_1h == None), we don't know the real
+                // ship rate, so don't manufacture a stalled verdict from it.
+                let fleet_stalled = ships_1h == Some(0) && pr_stuck >= 2;
                 if fleet_stalled {
                     let stall_line = format!(
                         "{{\"ts\":\"{ts_iso}\",\"kind\":\"fleet_stalled\",\"ships_1h\":0,\"blocked_open\":{pr_stuck},\"source\":\"chump-fleet-brief\"}}\n"
@@ -6318,6 +7488,16 @@ async fn main() -> Result<()> {
                         "📌 RESILIENT has {re} pickable gap(s) — file 1-2 to balance"
                     ));
                 }
+                // CREDIBLE-129 AC #1/#3: a failed ship-count measurement must
+                // never present as "0 + healthy" — it's a measurement
+                // failure, not a fleet-health verdict, so it takes priority
+                // over every other suggestion (including "looks healthy").
+                if ships_measurement_failed {
+                    suggestions.insert(
+                        0,
+                        "⚠  ship-count unavailable (git log origin/main failed) — measurement failed, not a fleet-health verdict; re-run or check for a stale ref/index lock".to_string(),
+                    );
+                }
                 if suggestions.is_empty() {
                     suggestions.push("✓  No urgent actions — fleet looks healthy".to_string());
                 }
@@ -6328,6 +7508,7 @@ async fn main() -> Result<()> {
                         "window_h": window_secs / 3600,
                         "ships_24h": ships,
                         "ships_1h": ships_1h,
+                        "ships_measurement_failed": ships_measurement_failed,
                         "fleet_stalled": fleet_stalled,
                         "auto_fixed": auto_fixed,
                         "manual_rescues": manual_rescues,
@@ -6349,15 +7530,26 @@ async fn main() -> Result<()> {
                 } else {
                     let window_h = window_secs / 3600;
                     println!("═══ Fleet brief (last {window_h}h) ═══");
-                    // INFRA-2013: show 1h ships alongside rolling average
-                    println!(
-                        "Ships: {ships}  (≈{}/hr) | last 1h: {ships_1h}",
-                        if window_h > 0 {
-                            format!("{:.1}", ships as f64 / window_h as f64)
-                        } else {
-                            "?".to_string()
+                    // INFRA-2013: show 1h ships alongside rolling average.
+                    // CREDIBLE-129: a failed git measurement prints
+                    // "unavailable", never a bare 0 that reads as real data.
+                    match (ships, ships_1h) {
+                        (Some(s), Some(s1h)) => {
+                            println!(
+                                "Ships: {s}  (≈{}/hr) | last 1h: {s1h}",
+                                if window_h > 0 {
+                                    format!("{:.1}", s as f64 / window_h as f64)
+                                } else {
+                                    "?".to_string()
+                                }
+                            );
                         }
-                    );
+                        _ => {
+                            println!(
+                                "Ships: unavailable (git log origin/main failed) | last 1h: unavailable"
+                            );
+                        }
+                    }
                     // INFRA-2013: prominent STALLED banner when condition met
                     if fleet_stalled {
                         eprintln!("*** STALLED: 0 merges in last 1h with {pr_stuck} stuck PRs — investigate now ***");
@@ -6740,6 +7932,91 @@ async fn main() -> Result<()> {
                     }
                 }
                 return Ok(());
+            }
+            // INFRA-1890: detector escalation tier. Detection + filing logic
+            // lives in scripts/coord/escalation-tier.sh (same pattern as
+            // other ambient-scanning detectors, e.g. bounced-pr-detector.sh);
+            // this arm owns operator-facing suppression state, which is
+            // canonical fleet config and belongs in Rust per the Rust-first
+            // criteria (mutates .chump/escalation-suppressions.json).
+            "escalation" => {
+                let suppressions_path = repo_root.join(".chump/escalation-suppressions.json");
+                if let Some(rule_id) = flag("--suppress-rule") {
+                    let reason = flag("--reason").unwrap_or_else(|| "unspecified".to_string());
+                    let _ =
+                        std::fs::create_dir_all(suppressions_path.parent().unwrap_or(&repo_root));
+                    let mut doc: serde_json::Value = std::fs::read_to_string(&suppressions_path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    let ts_iso = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                    doc[&rule_id] = serde_json::json!({
+                        "suppressed_at": ts_iso,
+                        "reason": reason,
+                    });
+                    std::fs::write(
+                        &suppressions_path,
+                        serde_json::to_string_pretty(&doc).unwrap_or_default(),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!(
+                            "chump fleet escalation: failed to write {}: {e}",
+                            suppressions_path.display()
+                        );
+                        std::process::exit(1);
+                    });
+                    println!(
+                        "chump fleet escalation: rule '{rule_id}' suppressed (see {})",
+                        suppressions_path.display()
+                    );
+                    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .append(true)
+                        .create(true)
+                        .open(&ambient_path)
+                    {
+                        // scanner-anchor: "kind":"escalation_rule_suppressed_by_operator"
+                        let _ = writeln!(
+                            f,
+                            "{{\"ts\":\"{ts_iso}\",\"kind\":\"escalation_rule_suppressed_by_operator\",\
+                             \"rule_id\":\"{rule_id}\"}}"
+                        );
+                    }
+                    return Ok(());
+                }
+                if let Some(rule_id) = flag("--unsuppress-rule") {
+                    let mut doc: serde_json::Value = std::fs::read_to_string(&suppressions_path)
+                        .ok()
+                        .and_then(|s| serde_json::from_str(&s).ok())
+                        .unwrap_or_else(|| serde_json::json!({}));
+                    if let Some(obj) = doc.as_object_mut() {
+                        obj.remove(&rule_id);
+                    }
+                    std::fs::write(
+                        &suppressions_path,
+                        serde_json::to_string_pretty(&doc).unwrap_or_default(),
+                    )
+                    .unwrap_or_else(|e| {
+                        eprintln!(
+                            "chump fleet escalation: failed to write {}: {e}",
+                            suppressions_path.display()
+                        );
+                        std::process::exit(1);
+                    });
+                    println!("chump fleet escalation: rule '{rule_id}' un-suppressed");
+                    return Ok(());
+                }
+                // Default: run one detection cycle now (same script the
+                // hourly launchd job / daemon cadence calls).
+                let escalation_sh = repo_root.join("scripts/coord/escalation-tier.sh");
+                let status = std::process::Command::new("bash")
+                    .arg(&escalation_sh)
+                    .status()
+                    .unwrap_or_else(|e| {
+                        eprintln!("chump fleet escalation: {e}");
+                        std::process::exit(1);
+                    });
+                std::process::exit(status.code().unwrap_or(1));
             }
             // INFRA-827: prune stale linked worktrees (age > CHUMP_WT_MAX_AGE_H AND no open PR)
             "prune-worktrees" => {
@@ -7863,6 +9140,27 @@ async fn main() -> Result<()> {
                 };
                 std::process::exit(code);
             }
+            // INFRA-2225: operator surface for the pr-auto-rebase daemon —
+            // current BEHIND+armed PR count (from the local GitHub cache,
+            // no live `gh` call) plus how long the backlog has been aging.
+            "rebase-queue" => {
+                let want_json = args.iter().any(|a| a == "--json");
+                let repo_root = repo_path::repo_root();
+                let status = rebase_queue::build(&repo_root);
+                if want_json {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&status).unwrap_or_else(|_| "{}".to_string())
+                    );
+                } else {
+                    print!("{}", rebase_queue::render_text(&status));
+                }
+                // Exit 1 when the BEHIND backlog is aging past 15 min — the
+                // same saturation signature as the 2026-05-29 overnight
+                // incident this gap was filed from.
+                let code = if status.backlog_age_secs > 900 { 1 } else { 0 };
+                std::process::exit(code);
+            }
             "mode" => {
                 // INFRA-1718: fleet-mode surface — auth + backend + cost
                 // ceiling snapshot so agents stop misrouting work to a
@@ -7877,6 +9175,54 @@ async fn main() -> Result<()> {
                     println!("{}", fleet_mode::render_line(&mode));
                 }
                 std::process::exit(if mode.auth_usable { 0 } else { 1 });
+            }
+            "log-triage" => {
+                // INFRA-1891: daily structured pass over ambient.jsonl x
+                // state.db — replaces the ad-hoc "maybe I should review the
+                // logs" habit with a bounded (<=5 finding) Markdown/JSON
+                // report the operator gates before filing gaps.
+                let want_json = args.iter().any(|a| a == "--json");
+                let window_h: u64 = flag("--window-h")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(24);
+                let rare_threshold: u64 = flag("--rare-threshold")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(40);
+
+                let cfg = log_triage::TriageConfig {
+                    repo_root: repo_root.clone(),
+                    window_h,
+                    rare_threshold,
+                };
+                match log_triage::run_triage(&cfg) {
+                    Ok(report) => {
+                        let scan_date = chrono::Utc::now().format("%Y-%m-%d").to_string();
+                        match log_triage::write_report(&repo_root, &report, &scan_date) {
+                            Ok(path) => {
+                                log_triage::emit_ambient_events(&repo_root, &report);
+                                if want_json {
+                                    println!("{}", log_triage::render_json(&report));
+                                } else {
+                                    println!(
+                                        "chump fleet log-triage: wrote {} ({} findings, {} parse errors)",
+                                        path.display(),
+                                        report.findings.len(),
+                                        report.parse_errors
+                                    );
+                                }
+                                std::process::exit(0);
+                            }
+                            Err(e) => {
+                                eprintln!("chump fleet log-triage: failed to write report: {e}");
+                                std::process::exit(1);
+                            }
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump fleet log-triage: {e}");
+                        std::process::exit(1);
+                    }
+                }
             }
             "doctor" => {
                 // INFRA-1595: fleet doctor — Wave 0b autonomy outer loop.
@@ -7994,6 +9340,90 @@ async fn main() -> Result<()> {
                     Some(report)
                 };
 
+                // INFRA-2364: default mode now shells out to the strict
+                // health aggregator (INFRA-1427,
+                // scripts/coord/fleet-doctor-strict.sh) instead of only
+                // running the required-check gate. Falls back cleanly
+                // (no-op) when the script isn't present — e.g. isolated
+                // test fixtures that aren't a full chump checkout.
+                let repo_root_for_strict = repo_path::repo_root();
+                let strict_script =
+                    repo_root_for_strict.join("scripts/coord/fleet-doctor-strict.sh");
+                let strict_timeout_s: u64 = std::env::var("CHUMP_FLEET_DOCTOR_STRICT_TIMEOUT_S")
+                    .ok()
+                    .and_then(|v| v.parse().ok())
+                    .unwrap_or(30);
+
+                // (exit_code, duration_ms, failure_class, status)
+                let mut strict_outcome: Option<(i32, u128, &'static str, &'static str)> = None;
+
+                if strict_script.is_file() {
+                    let start = std::time::Instant::now();
+                    let mut cmd = std::process::Command::new("bash");
+                    cmd.arg(&strict_script);
+                    if want_json {
+                        cmd.arg("--json");
+                    }
+                    match cmd.spawn() {
+                        Ok(mut child) => {
+                            let deadline = start + std::time::Duration::from_secs(strict_timeout_s);
+                            let mut timed_out = false;
+                            let wait_status = loop {
+                                match child.try_wait() {
+                                    Ok(Some(status)) => break Some(status),
+                                    Ok(None) => {
+                                        if std::time::Instant::now() >= deadline {
+                                            let _ = child.kill();
+                                            let _ = child.wait();
+                                            timed_out = true;
+                                            break None;
+                                        }
+                                        std::thread::sleep(std::time::Duration::from_millis(200));
+                                    }
+                                    Err(_) => break None,
+                                }
+                            };
+                            let duration_ms = start.elapsed().as_millis();
+                            strict_outcome = Some(if timed_out {
+                                (124, duration_ms, "transient", "timeout")
+                            } else if let Some(status) = wait_status {
+                                let code = status.code().unwrap_or(-1);
+                                if code == 0 {
+                                    (code, duration_ms, "none", "healthy")
+                                } else {
+                                    (code, duration_ms, "permanent", "unhealthy")
+                                }
+                            } else {
+                                (-1, duration_ms, "transient", "spawn_error")
+                            });
+                        }
+                        Err(_) => {
+                            strict_outcome = Some((-1, 0, "transient", "spawn_error"));
+                        }
+                    }
+
+                    // Cost note (AC #2): this is a deterministic shell
+                    // aggregator over local state + `gh`/`git` calls, not an
+                    // LLM call — there is no token cost to track. duration_ms
+                    // below is the operational cost signal operators care
+                    // about (a doctor run that creeps past its historical
+                    // p50 is the actionable proxy).
+                    if let Some((code, duration_ms, failure_class, status)) = strict_outcome {
+                        // scanner-anchor: "kind":"fleet_doctor_strict_tick"
+                        let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                            kind: "fleet_doctor_strict_tick".to_string(),
+                            source: Some("fleet_self_doctor".to_string()),
+                            fields: vec![
+                                ("exit_code".to_string(), code.to_string()),
+                                ("duration_ms".to_string(), duration_ms.to_string()),
+                                ("failure_class".to_string(), failure_class.to_string()),
+                                ("status".to_string(), status.to_string()),
+                            ],
+                            ..Default::default()
+                        });
+                    }
+                }
+
                 if want_json {
                     println!(
                         "{}",
@@ -8003,7 +9433,13 @@ async fn main() -> Result<()> {
                                 "any_unhealthy": r.any_unhealthy,
                                 "checks": r.checks,
                             })),
-                            "note": "--heal not requested; diagnose-only stub until INFRA-1427 strict lands"
+                            "strict": strict_outcome.map(|(code, duration_ms, failure_class, status)| serde_json::json!({
+                                "exit_code": code,
+                                "duration_ms": duration_ms,
+                                "failure_class": failure_class,
+                                "status": status,
+                            })),
+                            "note": "diagnose-only; --heal auto-fixes what INFRA-1427 strict + required-check gates surface"
                         })
                     );
                 } else {
@@ -8015,9 +9451,22 @@ async fn main() -> Result<()> {
                             println!("  required-check health: {} checks OK", r.checks.len());
                         }
                     }
+                    if let Some((code, duration_ms, failure_class, status)) = strict_outcome {
+                        println!(
+                            "  strict health ({}): exit={} duration_ms={} failure_class={}",
+                            status, code, duration_ms, failure_class
+                        );
+                    } else if !strict_script.is_file() {
+                        println!(
+                            "  strict health: skipped (script not found at {})",
+                            strict_script.display()
+                        );
+                    }
                 }
 
-                let exit_code = if health_report.as_ref().is_some_and(|r| r.any_unhealthy) {
+                let exit_code = if health_report.as_ref().is_some_and(|r| r.any_unhealthy)
+                    || strict_outcome.is_some_and(|(code, ..)| code != 0)
+                {
                     1
                 } else {
                     0
@@ -8435,6 +9884,9 @@ async fn main() -> Result<()> {
                     "  doctor      [--heal] [--json]  -- self-healing autonomy loop (INFRA-1595)"
                 );
                 eprintln!(
+                    "  log-triage  [--window-h N] [--rare-threshold N] [--json]  -- daily ambient x state.db triage report (INFRA-1891)"
+                );
+                eprintln!(
                     "  view        [--fixtures]  -- open Fleet Scrubber UI in browser (INFRA-2176)"
                 );
                 eprintln!(
@@ -8459,6 +9911,23 @@ async fn main() -> Result<()> {
     //   chump gap import [--yaml docs/gaps.yaml]
     if args.get(1).map(String::as_str) == Some("gap") {
         let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+
+        // INFRA-8061: the UNIVERSAL gap-intake filer — one portable filing path
+        // (POST CHUMP_GAP_URL, durable local spool + retry). Needs no local
+        // store, no tailscale, no SSH; usable from the Mac, cuphead, cloud
+        // ephemeral agents, and a stranger running their own chump. Handled
+        // before any store/worktree resolution below since it writes only over
+        // HTTP + a local spool file.
+        if subcmd == "file" {
+            match gap_file::run(&args).await {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("chump gap file: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         let repo_root = repo_path::repo_root();
         // INFRA-247: per-file YAML mirrors and the .chump/.last-yaml-op
         // freshness marker are *worktree-local* artifacts — they must land
@@ -8470,13 +9939,6 @@ async fn main() -> Result<()> {
         // resolves to the linked worktree the operator is actually in.
         // state.db remains under repo_root (shared canonical state).
         let worktree_root = repo_path::worktree_root();
-        let store = match gap_store::GapStore::open(&repo_root) {
-            Ok(s) => s,
-            Err(e) => {
-                eprintln!("chump gap: cannot open state.db: {e:#}");
-                std::process::exit(1);
-            }
-        };
         let flag = |name: &str| -> Option<String> {
             args.iter()
                 .position(|a| a == name)
@@ -8484,6 +9946,211 @@ async fn main() -> Result<()> {
                 .cloned()
         };
         let json_out = args.iter().any(|a| a == "--json");
+
+        // A client explicitly configured for canonical-server mode must not
+        // touch its local state.db before routing. Otherwise a corrupt or
+        // stale Mac replica can block the very recovery path intended to
+        // replace it. The server performs the normal validation and mutation
+        // against its own managed checkout; failures are deliberately
+        // fail-closed below.
+        if gap_route::canonical_server_mode()
+            && matches!(
+                subcmd,
+                "reserve" | "set" | "update" | "modify" | "edit" | "change" | "ship"
+            )
+        {
+            let server_base = std::env::var(gap_route::GAP_SERVER_ENV)
+                .unwrap_or_default()
+                .trim()
+                .to_string();
+            if server_base.is_empty() {
+                eprintln!(
+                    "chump gap: CHUMP_GAP_SERVER_MODE=canonical requires a non-empty CHUMP_GAP_SERVER; refusing a local write to prevent split gap state"
+                );
+                std::process::exit(2);
+            }
+            let token = std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+            let routed = match subcmd {
+                "reserve" => {
+                    let has_flag_domain = args.iter().any(|a| a == "--domain");
+                    let domain = flag("--domain").or_else(|| {
+                        args.get(3)
+                            .and_then(|arg| (!arg.starts_with('-')).then(|| arg.clone()))
+                    });
+                    let domain = domain.unwrap_or_else(|| {
+                        eprintln!("Usage: chump gap reserve --domain D --title T");
+                        std::process::exit(2);
+                    });
+                    let title = flag("--title").unwrap_or_else(|| {
+                        if has_flag_domain {
+                            eprintln!("--title required when using --domain");
+                            std::process::exit(2);
+                        }
+                        args.get(4..)
+                            .map(|tail| tail.join(" "))
+                            .filter(|value| !value.is_empty())
+                            .unwrap_or_else(|| "New gap".into())
+                    });
+                    let acceptance_criteria = flag("--acceptance-criteria")
+                        .map(|raw| raw.split('|').map(str::to_string).collect::<Vec<_>>());
+                    let body = gap_route::GapMutationBody {
+                        op: "reserve".into(),
+                        domain: Some(domain),
+                        title: Some(title),
+                        priority: flag("--priority"),
+                        effort: flag("--effort"),
+                        outcome: flag("--outcome"),
+                        evidence: flag("--evidence"),
+                        acceptance_criteria,
+                        external_repo: flag("--external-repo"),
+                        force: Some(args.iter().any(|arg| arg == "--force")),
+                        skip_obs_acs: Some(args.iter().any(|arg| arg == "--skip-obs-acs")),
+                        ..Default::default()
+                    };
+                    gap_route::route_gap_mutation(&server_base, &token, &body).await
+                }
+                "ship" => {
+                    let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump gap ship <GAP-ID> [--update-yaml] [--closed-pr N]");
+                        std::process::exit(2);
+                    });
+                    let closed_pr = match flag("--closed-pr") {
+                        Some(value) => match value.trim().parse::<i64>() {
+                            Ok(value) if value > 0 => Some(value),
+                            _ => {
+                                eprintln!(
+                                    "chump gap ship: --closed-pr expects a positive integer (got {:?})",
+                                    value
+                                );
+                                std::process::exit(2);
+                            }
+                        },
+                        None => None,
+                    };
+                    let session = flag("--session")
+                        .or_else(crate::ambient_stream::env_session_id)
+                        .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                    let body = gap_route::GapMutationBody {
+                        op: "ship".into(),
+                        gap_id: Some(gap_id),
+                        closed_pr,
+                        session: Some(session),
+                        ..Default::default()
+                    };
+                    gap_route::route_gap_mutation(&server_base, &token, &body).await
+                }
+                "set" | "update" | "modify" | "edit" | "change" => {
+                    let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                        eprintln!("Usage: chump gap set <GAP-ID> [--title T] [--description D] [--priority P]");
+                        std::process::exit(2);
+                    });
+                    if gap_id.starts_with("--") {
+                        eprintln!(
+                            "Error: unknown flag {:?}. Did you forget the GAP-ID?",
+                            gap_id
+                        );
+                        std::process::exit(2);
+                    }
+                    let acceptance_values: Vec<String> = args
+                        .windows(2)
+                        .filter(|&pair| pair[0] == "--acceptance-criteria")
+                        .map(|pair| pair[1].clone())
+                        .collect();
+                    let acceptance_criteria =
+                        if acceptance_values.len() == 1 && acceptance_values[0].contains('|') {
+                            Some(
+                                acceptance_values[0]
+                                    .split('|')
+                                    .map(str::to_string)
+                                    .collect(),
+                            )
+                        } else if acceptance_values.is_empty() {
+                            None
+                        } else {
+                            Some(acceptance_values)
+                        };
+                    let closed_pr = match flag("--closed-pr") {
+                        Some(value) => match value.trim().parse::<i64>() {
+                            Ok(value) if value > 0 => Some(value),
+                            _ => {
+                                eprintln!(
+                                    "chump gap set: --closed-pr expects a positive integer (got {:?})",
+                                    value
+                                );
+                                std::process::exit(2);
+                            }
+                        },
+                        None => None,
+                    };
+                    let body = gap_route::GapMutationBody {
+                        op: "set".into(),
+                        gap_id: Some(gap_id),
+                        title: flag("--title"),
+                        description: flag("--description"),
+                        priority: flag("--priority"),
+                        effort: flag("--effort"),
+                        status: flag("--status"),
+                        outcome: flag("--outcome"),
+                        acceptance_criteria,
+                        depends_on: flag("--depends-on"),
+                        notes: flag("--notes"),
+                        add_note: flag("--add-note"),
+                        source_doc: flag("--source-doc"),
+                        opened_date: flag("--opened-date"),
+                        closed_date: flag("--closed-date"),
+                        closed_pr,
+                        skills_required: flag("--skills-required"),
+                        preferred_backend: flag("--preferred-backend"),
+                        preferred_machine: flag("--preferred-machine"),
+                        estimated_minutes: flag("--estimated-minutes"),
+                        required_model: flag("--required-model"),
+                        evidence: flag("--evidence"),
+                        artifact_type: flag("--artifact-type"),
+                        ..Default::default()
+                    };
+                    gap_route::route_gap_mutation(&server_base, &token, &body).await
+                }
+                _ => unreachable!("canonical mutation subcommand already matched"),
+            };
+            match routed {
+                Ok(result) => {
+                    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                        kind: "gap_mutation_routed_to_server".to_string(),
+                        source: Some(format!("chump_gap_{}", result.op)),
+                        gap: Some(result.gap_id.clone()),
+                        fields: vec![
+                            ("op".to_string(), result.op.clone()),
+                            ("server".to_string(), server_base),
+                            ("behind".to_string(), "unverified-canonical".to_string()),
+                        ],
+                        ..Default::default()
+                    });
+                    match result.op.as_str() {
+                        "reserve" if json_out => {
+                            println!("{{\"id\":\"{}\",\"yaml_path\":\"\"}}", result.gap_id)
+                        }
+                        "reserve" => println!("{}", result.gap_id),
+                        "ship" => println!("shipped {}", result.gap_id),
+                        _ => println!("updated {}", result.gap_id),
+                    }
+                    return Ok(());
+                }
+                Err(error) => {
+                    eprintln!(
+                        "chump gap: canonical fleet-server routing failed ({error:#}); refusing a local write to prevent split gap state"
+                    );
+                    std::process::exit(1);
+                }
+            }
+        }
+
+        let store = match gap_store::GapStore::open(&repo_root) {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("chump gap: cannot open state.db: {e:#}");
+                std::process::exit(1);
+            }
+        };
 
         match subcmd {
             // INFRA-498: 'chump gap show <ID>' — human-readable per-gap
@@ -8809,6 +10476,20 @@ async fn main() -> Result<()> {
                         "state.db was empty on open — auto-imported from docs/gaps/"
                     );
                 }
+                // INFRA-3687 part 3: loud, non-blocking staleness warning.
+                // stderr only — stdout is script-parsed (--json/--csv/plain
+                // ids), so this must never appear there and must never
+                // block the read. Deliberately doesn't force a fetch (this
+                // is a hot/frequent read path); it reports against whatever
+                // origin/main ref this checkout already knows.
+                if let Some(behind) = store.behind_origin_main() {
+                    if behind > 0 {
+                        eprintln!(
+                            "\u{26A0} gap list may be STALE: checkout is {behind} commit(s) \
+                             behind origin/main — run `git pull` for canonical state."
+                        );
+                    }
+                }
                 match store.list(status_filter.as_deref()) {
                     Ok(all_gaps) => {
                         // Apply --since filter before any output path.
@@ -9049,6 +10730,24 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // `chump gap pillar-share` (CREDIBLE-072) — one-line 7-day
+            // per-pillar merge share, flagging pillars over the reserve-time
+            // cap and EFFECTIVE/CREDIBLE under the floor.
+            "pillar-share" => {
+                let rows = store.list(None).unwrap_or_default();
+                let shares = pillar_cap::compute_shares(
+                    rows.iter().map(|g| {
+                        (
+                            g.title.as_str(),
+                            g.domain.as_str(),
+                            g.status.as_str(),
+                            g.closed_at,
+                        )
+                    }),
+                    chrono::Utc::now().timestamp(),
+                );
+                println!("{}", shares.status_line());
+            }
             "reserve" => {
                 let has_flag_domain = args.iter().any(|a| a == "--domain");
                 let domain = flag("--domain").or_else(|| {
@@ -9075,7 +10774,68 @@ async fn main() -> Result<()> {
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| "New gap".into())
                 });
-                let priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                let mut priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                // ── CREDIBLE-072: per-pillar weekly merge-share cap / floor ─────
+                // A NEW gap in a pillar that already holds >30% of the last 7
+                // days' merges is demoted to P2; when EFFECTIVE+CREDIBLE are
+                // under 50% combined, a NEW gap in either is bumped one tier
+                // (P0 bumps held to the P0 budget). `--cap-override <reason>`
+                // keeps the requested priority and is logged. Every decision
+                // other than "keep" emits kind=pillar_cap_demote.
+                let mut pillar_cap_event: Option<String> = None;
+                if pillar_cap::enabled() {
+                    if let Some(pillar) = pillar_cap::pillar_of(&title, &domain) {
+                        let rows = store.list(None).unwrap_or_default();
+                        let shares = pillar_cap::compute_shares(
+                            rows.iter().map(|g| {
+                                (
+                                    g.title.as_str(),
+                                    g.domain.as_str(),
+                                    g.status.as_str(),
+                                    g.closed_at,
+                                )
+                            }),
+                            chrono::Utc::now().timestamp(),
+                        );
+                        let open_p0 = rows
+                            .iter()
+                            .filter(|g| g.status == "open" && g.priority == "P0")
+                            .count();
+                        let cap_override = flag("--cap-override");
+                        let decision = pillar_cap::decide(pillar, &priority, &shares, open_p0);
+                        let (decision_label, new_priority) = match (&cap_override, &decision) {
+                            (_, pillar_cap::Decision::Keep) => ("keep", None),
+                            (Some(_), _) => ("override", None),
+                            (None, pillar_cap::Decision::Demote { to })
+                            | (None, pillar_cap::Decision::Bump { to }) => {
+                                (decision.label(), Some(to.to_string()))
+                            }
+                        };
+                        if decision_label != "keep" {
+                            let from = priority.clone();
+                            let to = new_priority.clone().unwrap_or_else(|| priority.clone());
+                            if !args.iter().any(|a| a == "--quiet") {
+                                eprintln!(
+                                    "[reserve] CREDIBLE-072: {pillar} is {:.0}% of 7d merges — {decision_label} {from} → {to}",
+                                    shares.pct(pillar)
+                                );
+                            }
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let reason = cap_override
+                                .clone()
+                                .unwrap_or_default()
+                                .replace(['"', '\\'], "");
+                            // gap_id is filled in once the reserve succeeds.
+                            pillar_cap_event = Some(format!(
+                                r#"{{"ts":"{ts}","kind":"pillar_cap_demote","gap_id":"{{GAP_ID}}","pillar":"{pillar}","current_share":{:.1},"decision":"{decision_label}","from":"{from}","to":"{to}","override_reason":"{reason}"}}"#,
+                                shares.pct(pillar)
+                            ));
+                        }
+                        if let Some(p) = new_priority {
+                            priority = p;
+                        }
+                    }
+                }
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
                 // CREDIBLE-107: --evidence required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
@@ -9116,6 +10876,58 @@ async fn main() -> Result<()> {
                     }
                     _ => "[]".into(),
                 };
+
+                // ── CREDIBLE-1270: acceptance-criteria gate for P0/P1 ──────────────
+                // A P0/P1 gap with empty acceptance_criteria is unpickable in
+                // practice (audit-priorities already flags "vague pickable" gaps —
+                // this closes the gate at file time instead of catching it after
+                // the fact). Only the explicit `[]` case (--skip-obs-acs with no
+                // --acceptance-criteria) trips the gate; the default obs-AC
+                // template above already fills acceptance_criteria_json for the
+                // common path, so this fires rarely. Bypass: --no-ac-required
+                // (audited to ambient.jsonl), same shape as MISSION-045 below.
+                {
+                    let no_ac_required = args.iter().any(|a| a == "--no-ac-required");
+                    let enforce_priorities = ["P0", "P1"];
+                    if enforce_priorities.contains(&priority.as_str())
+                        && acceptance_criteria_json == "[]"
+                    {
+                        if !no_ac_required {
+                            eprintln!();
+                            eprintln!(
+                                "chump gap reserve: P0/P1 gaps require acceptance criteria (CREDIBLE-1270)."
+                            );
+                            eprintln!(
+                                "Pass --acceptance-criteria \"bullet one|bullet two\" (or drop --skip-obs-acs to use the default template)."
+                            );
+                            eprintln!(
+                                "Bypass: --no-ac-required (audited). P2/P3 gaps are unaffected."
+                            );
+                            std::process::exit(1);
+                        }
+                        let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let safe_domain = domain.replace(['"', '\\'], "");
+                        let safe_title = title.replace(['"', '\\'], "");
+                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                            .append(true)
+                            .create(true)
+                            .open(&ambient_path)
+                        {
+                            use std::io::Write;
+                            let _ = writeln!(
+                                f,
+                                r#"{{"ts":"{ts}","kind":"ac_gate_bypassed","priority":"{priority}","domain":"{safe_domain}","title":"{safe_title}","bypass_reason":"--no-ac-required flag"}}"#
+                            );
+                        }
+                        if !quiet {
+                            eprintln!(
+                                "[reserve] WARN: ac_gate_bypassed emitted (bypass=--no-ac-required flag)"
+                            );
+                        }
+                    }
+                }
+                // ── end CREDIBLE-1270 acceptance-criteria gate ──────────────────────
 
                 // FLEET-029: ambient glance before allocating ID
                 if !force && std::env::var("FLEET_029_AMBIENT_GLANCE_SKIP").is_err() {
@@ -9515,6 +11327,73 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // ── INFRA-6701: recently-merged-PR overlap advisory ──────────────────
+                // The state.db (INFRA-1149) and Almanac (ZERO-WASTE-045) checks above
+                // catch duplicate *gaps*; the FLEET-029 ambient glance catches overlap
+                // with *open* PRs. None of them folds a new gap against PRs that
+                // recently MERGED — the exact shape of the "already shipped, just
+                // closing the gap" bookkeeping-PR class (INFRA-6701 convergence audit:
+                // 12 such PRs in 6 days; gap store growing ~18:1 vs drain). Advisory
+                // ONLY: it links the likely-duplicate merged PR(s) and records them in
+                // the new gap's notes so a human/curator can supersede or dismiss. It
+                // NEVER exits — gaps are truth; we surface duplicates, we do not
+                // throttle generation.
+                if similarity_enabled {
+                    let window_days: i64 = std::env::var("CHUMP_GAP_RESERVE_MERGED_PR_WINDOW_DAYS")
+                        .ok()
+                        .and_then(|v| v.parse().ok())
+                        .unwrap_or(7);
+                    let merged_pr_warn_threshold: f64 =
+                        std::env::var("CHUMP_GAP_RESERVE_SIMILARITY_WARN")
+                            .ok()
+                            .and_then(|v| v.parse().ok())
+                            .unwrap_or(0.65);
+                    let pr_hits = gap_store::recently_merged_pr_dedupe_candidates(
+                        &worktree_root,
+                        &title,
+                        window_days,
+                        merged_pr_warn_threshold,
+                    );
+                    if !pr_hits.is_empty() {
+                        let ambient_path = worktree_root.join(".chump-locks").join("ambient.jsonl");
+                        let ts = unix_ts();
+                        eprintln!();
+                        eprintln!(
+                            "[reserve] INFRA-6701: recently-merged-PR overlap — proposed: \"{}\"",
+                            title
+                        );
+                        for (num, ptitle, merged_at, score) in &pr_hits {
+                            eprintln!(
+                                "  {:.2}  PR #{} (merged {}) — \"{}\"",
+                                score, num, merged_at, ptitle
+                            );
+                            dedupe_considered.push(format!(
+                                "merged-PR near-match #{num} (score {score:.2}, merged {merged_at})"
+                            ));
+                            let safe_title = title.replace(['"', '\\'], "");
+                            let safe_ptitle = ptitle.replace(['"', '\\'], "");
+                            let safe_merged = merged_at.replace(['"', '\\'], "");
+                            // scanner-anchor: "kind":"gap_reserve_merged_pr_overlap"
+                            let _ = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                                .and_then(|mut f| {
+                                    use std::io::Write;
+                                    writeln!(
+                                        f,
+                                        r#"{{"ts":"{ts}","kind":"gap_reserve_merged_pr_overlap","proposed_title":"{safe_title}","match_pr":{num},"match_title":"{safe_ptitle}","match_score":{score:.3},"merged_at":"{safe_merged}"}}"#
+                                    )
+                                });
+                        }
+                        eprintln!(
+                            "[reserve] advisory only — proceeding. Check whether the above \
+                             already ships this work before claiming; pass --force-duplicate to \
+                             record an explicit override."
+                        );
+                    }
+                }
+
                 // ── INFRA-1152: pillar-balance guard ─────────────────────────────────
                 // Parse proposed pillar from title prefix, then check current
                 // open-pickable distribution and warn/block overweighted pillars.
@@ -9874,6 +11753,119 @@ async fn main() -> Result<()> {
                 }
                 // ── end MISSION-045 outcome gate ────────────────────────────────────────
 
+                // ── RESILIENT-069: farmer readiness gate (gap-reserve admission guard) ──
+                // RED = farmer has positive evidence of trouble — admit no NEW
+                // claims (reserve is how new work enters the pickable queue).
+                // The Farmer's own recovery routes around this: it acts via
+                // launchctl/rm directly, never through `chump gap reserve`.
+                // Bypass: --force (same flag already used for the ambient-
+                // glance overlap check above).
+                if !force {
+                    let fs = farmer_status::compute(&repo_path::repo_root());
+                    if !fs.green {
+                        eprintln!("chump gap reserve: farmer status RED — no new claims admitted.");
+                        for r in &fs.reasons {
+                            eprintln!("  - {r}");
+                        }
+                        eprintln!("Run `chump farmer status` for detail. Bypass: --force");
+                        std::process::exit(1);
+                    }
+                }
+                // ── end farmer readiness gate ────────────────────────────────────────────
+
+                // ── INFRA-3689: route to fleet-server when opted in + stale ──────────────
+                // Mac-independence of canonical gap state: when CHUMP_GAP_SERVER is set
+                // AND this checkout's local `main` is verifiably behind origin/main, a
+                // local `reserve` would write to a non-canonical replica. Delegate to the
+                // fleet-server's `POST /api/gap` (running on owned iron with a canonical
+                // checkout) instead of writing state.db here. Unset CHUMP_GAP_SERVER (the
+                // default) leaves this whole block a no-op — fleet nodes stay local-first.
+                if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
+                    let server_base = server_base.trim().to_string();
+                    if !server_base.is_empty() {
+                        let behind = store.behind_origin_main();
+                        let canonical_mode = gap_route::canonical_server_mode();
+                        if gap_route::should_route_to_server(behind, true, canonical_mode) {
+                            if !quiet {
+                                eprintln!(
+                                    "[reserve] routing to fleet-server (mode={}, local main behind={} commit(s)); CHUMP_GAP_SERVER={} — not writing local state.db",
+                                    if canonical_mode { "canonical" } else { "stale-only" },
+                                    behind.unwrap_or(0),
+                                    server_base
+                                );
+                            }
+                            let token =
+                                std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+                            let ac_list: Option<Vec<String>> = if acceptance_criteria_json != "[]" {
+                                serde_json::from_str(&acceptance_criteria_json).ok()
+                            } else {
+                                None
+                            };
+                            let body = gap_route::GapMutationBody {
+                                op: "reserve".into(),
+                                domain: Some(domain.clone()),
+                                title: Some(title.clone()),
+                                priority: Some(priority.clone()),
+                                effort: Some(effort.clone()),
+                                outcome: reserve_outcome_id.clone(),
+                                evidence: reserve_evidence.clone(),
+                                acceptance_criteria: ac_list,
+                                external_repo: reserve_external_repo.clone(),
+                                force: Some(force),
+                                skip_obs_acs: Some(skip_obs_acs),
+                                ..Default::default()
+                            };
+                            match gap_route::route_gap_mutation(&server_base, &token, &body).await {
+                                Ok(result) => {
+                                    let _ =
+                                        crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                                            kind: "gap_mutation_routed_to_server".to_string(),
+                                            source: Some("chump_gap_reserve".to_string()),
+                                            gap: Some(result.gap_id.clone()),
+                                            fields: vec![
+                                                ("op".to_string(), "reserve".to_string()),
+                                                ("server".to_string(), server_base.clone()),
+                                                (
+                                                    "behind".to_string(),
+                                                    behind.unwrap_or(0).to_string(),
+                                                ),
+                                            ],
+                                            ..Default::default()
+                                        });
+                                    if json_out {
+                                        println!(
+                                            "{{\"id\":\"{}\",\"yaml_path\":\"\"}}",
+                                            result.gap_id
+                                        );
+                                    } else {
+                                        println!("{}", result.gap_id);
+                                    }
+                                    if why {
+                                        eprintln!(
+                                            "reserved {} — why: routed to fleet-server ({}) because local checkout is non-canonical (INFRA-3689): {}",
+                                            result.gap_id, server_base, result.detail
+                                        );
+                                    }
+                                    return Ok(());
+                                }
+                                Err(e) => {
+                                    if canonical_mode {
+                                        eprintln!(
+                                            "[reserve] fleet-server routing failed ({e:#}); canonical mode refuses a local reserve to prevent split gap state"
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                    // Stale-only mode preserves its original compatibility
+                                    // behavior; reserve_verified below independently blocks
+                                    // a stale/unverifiable canonical local write.
+                                    eprintln!("[reserve] fleet-server routing failed ({e:#}); falling through to local reserve path");
+                                }
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
+
                 // INFRA-216: use reserve_verified so sibling sessions on the
                 // same host (shared .chump-locks/) detect and resolve ID
                 // collisions within the 200ms verification window.
@@ -9996,6 +11988,20 @@ async fn main() -> Result<()> {
                         // write-and-autostage path this replaced is gone).
                         // Use `chump gap show <ID>` for human-readable
                         // per-gap inspection.
+                        // CREDIBLE-072: audit the pillar-cap decision with the real id.
+                        if let Some(line) = pillar_cap_event.take() {
+                            let line = line.replace("{GAP_ID}", &id);
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write as _;
+                                let _ = writeln!(f, "{line}");
+                            }
+                        }
                         if json_out {
                             println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
                         } else {
@@ -10096,7 +12102,36 @@ async fn main() -> Result<()> {
                     None
                 };
 
-                match store.claim(&gap_id, &session_id, &worktree, ttl) {
+                let claim_result = match store.claim(&gap_id, &session_id, &worktree, ttl) {
+                    Ok(()) => Ok(()),
+                    // INFRA-3002: a worktree's local state.db is a snapshot
+                    // taken at worktree-creation time — a gap reserved/
+                    // imported on origin/main afterward is invisible here
+                    // ("gap {id} not found in state.db") until someone
+                    // manually runs `chump gap restore --from-sql`. Self-heal
+                    // by syncing just the claimed gap's row from
+                    // .chump/state.sql (the tracked YAML mirror) and retrying
+                    // once, instead of hard-failing the interactive-claim path.
+                    Err(e) if e.to_string().contains("not found in state.db") => {
+                        let sql_path = repo_path::repo_root().join(".chump").join("state.sql");
+                        match store.sync_gap_from_state_sql(&sql_path, &gap_id) {
+                            Ok(true) => {
+                                eprintln!(
+                                    "[claim] INFRA-3002: {gap_id} was missing from local state.db — synced from state.sql, retrying claim"
+                                );
+                                store.claim(&gap_id, &session_id, &worktree, ttl)
+                            }
+                            Ok(false) => Err(e),
+                            Err(sync_err) => {
+                                eprintln!("[claim] INFRA-3002: state.sql sync attempt failed: {sync_err:#}");
+                                Err(e)
+                            }
+                        }
+                    }
+                    Err(e) => Err(e),
+                };
+
+                match claim_result {
                     Ok(()) => {
                         println!("claimed {} for session {}", gap_id, session_id);
                         if why {
@@ -10137,6 +12172,22 @@ async fn main() -> Result<()> {
                 });
                 match store.preflight(&gap_id) {
                     Ok(gap_store::PreflightResult::Available) => {
+                        // INFRA-2472: local state.db only reflects claims this
+                        // machine has seen (synced via periodic coherence-sync
+                        // commits). Consult the shared NATS registry too — it
+                        // sees claims other machines took that haven't landed
+                        // in a sync commit yet. Fail-open: NATS unconfigured
+                        // or unreachable means no signal, not "must be free".
+                        let self_session = std::env::var("CHUMP_SESSION_ID").ok();
+                        if let Some(holder) = atomic_claim::shared_registry_whois(&gap_id) {
+                            if self_session.as_deref() != Some(holder.as_str()) {
+                                eprintln!(
+                                    "[preflight] FAIL {} — live-claimed by session {} in the shared NATS registry (INFRA-2472; invisible to local state.db).",
+                                    gap_id, holder
+                                );
+                                std::process::exit(1);
+                            }
+                        }
                         println!("[preflight] OK {} — open and unclaimed.", gap_id);
                         // INFRA-1886: soft pre-claim suggestion. If target
                         // is not P0 and CHUMP_PREFLIGHT_NO_SUGGEST is unset,
@@ -10177,8 +12228,56 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     Ok(gap_store::PreflightResult::NotFound) => {
-                        eprintln!("[preflight] WARN {} — not found in state.db (run `chump gap import` first).", gap_id);
-                        return Ok(());
+                        // CREDIBLE-1486: a worktree's local state.db is a snapshot
+                        // taken at worktree-creation time (same INFRA-3002 class as
+                        // `chump claim`'s self-heal) — a gap reserved/imported on
+                        // origin/main afterward is invisible here until someone
+                        // manually runs `chump gap restore --from-sql`. Before this
+                        // fix, NotFound still printed a WARN but returned `Ok(())`
+                        // (exit 0), so callers that gate on exit code alone — like
+                        // `chump dispatch`'s preflight step — treated a MISSING gap
+                        // as "pickable", proceeded to claim, and failed hard there
+                        // instead of at the check meant to catch exactly this.
+                        // Self-heal by syncing just this gap's row from
+                        // `.chump/state.sql` (the tracked YAML mirror) and retrying
+                        // once; only exit non-zero if the gap is genuinely absent
+                        // from both the live store and the tracked mirror.
+                        let sql_path = repo_root.join(".chump").join("state.sql");
+                        let healed = store
+                            .sync_gap_from_state_sql(&sql_path, &gap_id)
+                            .unwrap_or(false);
+                        if healed {
+                            eprintln!(
+                                "[preflight] {} was missing from local state.db — synced from state.sql (CREDIBLE-1486)",
+                                gap_id
+                            );
+                            match store.preflight(&gap_id) {
+                                Ok(gap_store::PreflightResult::Available) => {
+                                    println!("[preflight] OK {} — open and unclaimed.", gap_id);
+                                    return Ok(());
+                                }
+                                Ok(gap_store::PreflightResult::Done) => {
+                                    eprintln!("[preflight] FAIL {} — already done.", gap_id);
+                                    std::process::exit(1);
+                                }
+                                Ok(gap_store::PreflightResult::Claimed(s)) => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — live-claimed by session {}.",
+                                        gap_id, s
+                                    );
+                                    std::process::exit(1);
+                                }
+                                _ => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — not found in state.db (run `chump gap import` first).",
+                                        gap_id
+                                    );
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        eprintln!("[preflight] FAIL {} — not found in state.db (run `chump gap import` first).", gap_id);
+                        std::process::exit(1);
                     }
                     Err(e) => {
                         eprintln!("chump gap preflight: {e:#}");
@@ -10334,6 +12433,66 @@ async fn main() -> Result<()> {
                         std::process::exit(3);
                     }
                 }
+                // ── INFRA-3689: route to fleet-server when opted in + stale ──────────────
+                // Same gate as `chump gap reserve`/`set` — see reserve's comment for
+                // rationale. Uses repo_root's local `main` (the canonical replica),
+                // distinct from the CHUMP_GAP_SHIP_STALE_THRESHOLD gate above which
+                // checks the current worktree's HEAD.
+                if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
+                    let server_base = server_base.trim().to_string();
+                    if !server_base.is_empty() {
+                        let behind = store.behind_origin_main();
+                        let canonical_mode = gap_route::canonical_server_mode();
+                        if gap_route::should_route_to_server(behind, true, canonical_mode) {
+                            eprintln!(
+                                "[gap ship] routing to fleet-server (mode={}, local main behind={} commit(s)); CHUMP_GAP_SERVER={} — not writing local state.db",
+                                if canonical_mode { "canonical" } else { "stale-only" },
+                                behind.unwrap_or(0),
+                                server_base
+                            );
+                            let token =
+                                std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+                            let body = gap_route::GapMutationBody {
+                                op: "ship".into(),
+                                gap_id: Some(gap_id.clone()),
+                                closed_pr,
+                                session: Some(session_id.clone()),
+                                ..Default::default()
+                            };
+                            match gap_route::route_gap_mutation(&server_base, &token, &body).await {
+                                Ok(result) => {
+                                    let _ =
+                                        crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                                            kind: "gap_mutation_routed_to_server".to_string(),
+                                            source: Some("chump_gap_ship".to_string()),
+                                            gap: Some(result.gap_id.clone()),
+                                            fields: vec![
+                                                ("op".to_string(), "ship".to_string()),
+                                                ("server".to_string(), server_base.clone()),
+                                                (
+                                                    "behind".to_string(),
+                                                    behind.unwrap_or(0).to_string(),
+                                                ),
+                                            ],
+                                            ..Default::default()
+                                        });
+                                    println!("shipped {}", result.gap_id);
+                                    return Ok(());
+                                }
+                                Err(e) => {
+                                    if canonical_mode {
+                                        eprintln!(
+                                            "[gap ship] fleet-server routing failed ({e:#}); canonical mode refuses a local ship to prevent split gap state"
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                    eprintln!("[gap ship] fleet-server routing failed ({e:#}); falling through to local ship path");
+                                }
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
                 match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);
@@ -10344,6 +12503,60 @@ async fn main() -> Result<()> {
                             eprintln!(
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
+                        }
+                        // ZERO-WASTE-059: dedup-check + AC-hygiene scan runs in the
+                        // SAME op as the ship, so a stale/duplicate sibling or a
+                        // vague-AC gap in this domain surfaces immediately instead
+                        // of needing a later standalone reconcile-stale-gap PR.
+                        // Advisory only — never blocks or fails the ship.
+                        if let Ok(Some(shipped_gap)) = store.get(&gap_id) {
+                            let similarity_threshold: f64 =
+                                std::env::var("CHUMP_GAP_SHIP_HYGIENE_SIMILARITY")
+                                    .ok()
+                                    .and_then(|s| s.trim().parse().ok())
+                                    .unwrap_or(0.65);
+                            if let Ok(report) = store.queue_hygiene_check_on_ship(
+                                &gap_id,
+                                &shipped_gap.title,
+                                &shipped_gap.domain,
+                                similarity_threshold,
+                            ) {
+                                if !report.is_clean() {
+                                    let ts =
+                                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                    let event = serde_json::json!({
+                                        "ts": ts,
+                                        "kind": "ship_queue_hygiene_flagged",
+                                        "gap": gap_id,
+                                        "dup_candidates": report.dup_candidates.iter()
+                                            .map(|(id, title, _, score)| serde_json::json!({"id": id, "title": title, "score": score}))
+                                            .collect::<Vec<_>>(),
+                                        "vague_ac_gaps": report.vague_ac_gaps.iter()
+                                            .map(|(id, title)| serde_json::json!({"id": id, "title": title}))
+                                            .collect::<Vec<_>>(),
+                                    });
+                                    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_log)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            writeln!(f, "{event}")
+                                        });
+                                    for (id, title, _, score) in &report.dup_candidates {
+                                        eprintln!(
+                                            "  [hygiene] possible duplicate still open: {id} ({title}, score={score:.2})"
+                                        );
+                                    }
+                                    for (id, title) in &report.vague_ac_gaps {
+                                        eprintln!(
+                                            "  [hygiene] vague-AC gap in domain {}: {id} ({title})",
+                                            shipped_gap.domain
+                                        );
+                                    }
+                                }
+                            }
                         }
                         // INFRA-1144: atomically close orphan PRs for this gap
                         // (complements INFRA-1139 sweeper). Emits orphan_pr_closed_at_ship
@@ -10439,22 +12652,166 @@ async fn main() -> Result<()> {
                                     .spawn(); // fire-and-forget
                             }
                         }
-                        if update_yaml {
-                            // ZERO-WASTE-020: YAML mirrors retired — state.db
-                            // is canonical, .chump/state.sql is the tracked
-                            // dump. `--update-yaml` is now a documented no-op
-                            // kept for CLI compatibility with existing callers
-                            // (bot-merge.sh auto-close path) rather than a
-                            // hard error. Use `chump gap show <ID>` for
-                            // human-readable per-gap inspection.
-                            eprintln!(
-                                "chump gap ship --update-yaml: no-op (ZERO-WASTE-020 — YAML mirrors retired, state.db is canonical)"
-                            );
+                        // ZERO-WASTE-056: write docs/gaps/<ID>.yaml ATOMICALLY on
+                        // every ship, so the gap-close rides in the WORK PR and no
+                        // separate per-gap reconcile PR is ever needed (that churn
+                        // was ~half of all merges). Uses the LOSSLESS single-file
+                        // writer (dump_per_file_single merge-preserves hand-curated
+                        // fields) — NOT the destructive bulk regen ZERO-WASTE-020
+                        // disabled. --update-yaml is now the default; the flag is
+                        // still accepted (bot-merge.sh path) but no longer required.
+                        let _ = update_yaml;
+                        let gaps_dir = repo_root.join("docs/gaps");
+                        match store.dump_per_file_single(&gap_id, &gaps_dir) {
+                            Ok(true) => {
+                                println!("  synced docs/gaps/{}.yaml (status=done)", gap_id)
+                            }
+                            Ok(false) => {}
+                            Err(e) => eprintln!(
+                                "chump gap ship: warning — could not sync docs/gaps/{}.yaml: {e:#}",
+                                gap_id
+                            ),
                         }
                         return Ok(());
                     }
                     Err(e) => {
                         eprintln!("chump gap ship: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            // EFFECTIVE-038: A2A L2 task-suspension. `suspend` moves a gap
+            // into status=waiting_operator carrying a structured question
+            // payload — used when an agent hits auth_required (missing
+            // credential, RESILIENT-054's silent-death mode) or an
+            // ambiguous input_required decision instead of guessing wrong
+            // or filing a disconnected follow-up gap.
+            "suspend" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap suspend <GAP-ID> --kind input_required|auth_required --question TEXT [--context JSON]\n\n\
+                         Suspends the gap into status=waiting_operator, carrying a structured\n\
+                         question payload. `chump gap respond <ID> --answer JSON` resumes it\n\
+                         from exactly the status it was in before suspending."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap suspend <GAP-ID> --kind K --question TEXT");
+                    std::process::exit(2);
+                });
+                let kind = flag("--kind").unwrap_or_else(|| {
+                    eprintln!("chump gap suspend: --kind input_required|auth_required is required");
+                    std::process::exit(2);
+                });
+                let question = flag("--question").unwrap_or_else(|| {
+                    eprintln!("chump gap suspend: --question TEXT is required");
+                    std::process::exit(2);
+                });
+                let context = flag("--context");
+                match store.suspend_waiting(&gap_id, &kind, &question, context.as_deref()) {
+                    Ok(()) => {
+                        if json_out {
+                            println!(
+                                r#"{{"id":"{gap_id}","status":"waiting_operator","kind":"{kind}"}}"#
+                            );
+                        } else {
+                            println!(
+                                "{gap_id} suspended → waiting_operator (kind={kind}). Respond with: chump gap respond {gap_id} --answer '<json>'"
+                            );
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap suspend: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            // EFFECTIVE-038: resumes a waiting_operator gap with the
+            // operator's answer, restoring the status it paused from.
+            "respond" => {
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap respond <GAP-ID> --answer JSON\n\n\
+                         Resumes a gap suspended via `chump gap suspend`. Restores the status\n\
+                         the gap held immediately before suspension and appends the Q/A pair\n\
+                         to notes as an audit trail."
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap respond <GAP-ID> --answer JSON");
+                    std::process::exit(2);
+                });
+                let answer = flag("--answer").unwrap_or_else(|| {
+                    eprintln!("chump gap respond: --answer JSON is required");
+                    std::process::exit(2);
+                });
+                match store.respond_gap(&gap_id, &answer) {
+                    Ok(resumed_status) => {
+                        if json_out {
+                            println!(r#"{{"id":"{gap_id}","resumed_status":"{resumed_status}"}}"#);
+                        } else {
+                            println!("{gap_id} resumed → status={resumed_status}");
+                        }
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap respond: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
+            "close" => {
+                // RESILIENT-119: first-class triage-close. Unlike `chump gap
+                // ship`, this path never expects a PR — it flips status
+                // directly and does NOT run the clean/current-worktree
+                // (INFRA-2423) or proof-of-merge (INFRA-1392) guards, since
+                // those exist to protect real PR-ships, not this path.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate> [--session ID]\n\n\
+                         Triage-close a gap that will never ship a PR. Updates state.db (canonical).\n\
+                         Does NOT require a clean/current worktree or a merge commit naming the gap —\n\
+                         those guards are for `chump gap ship`, not triage-closes.\n\n\
+                         Options:\n  \
+                           --reason R    Required. One of: superseded, wontfix, obsolete, duplicate\n  \
+                           --session ID  Session ID to record on the close event (default derived)\n  \
+                           -h, --help    Show this help"
+                    );
+                    return Ok(());
+                }
+                let gap_id = args.get(3).cloned().unwrap_or_else(|| {
+                    eprintln!("Usage: chump gap close <GAP-ID> --reason <superseded|wontfix|obsolete|duplicate>");
+                    std::process::exit(2);
+                });
+                let reason = flag("--reason").unwrap_or_else(|| {
+                    eprintln!(
+                        "chump gap close: --reason is required (superseded|wontfix|obsolete|duplicate)"
+                    );
+                    std::process::exit(2);
+                });
+                let session_id = flag("--session")
+                    .or_else(|| crate::ambient_stream::env_session_id())
+                    .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                match store.close(&gap_id, &session_id, &reason) {
+                    Ok(()) => {
+                        println!("closed {} (reason={})", gap_id, reason);
+                        return Ok(());
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap close: {e:#}");
                         std::process::exit(1);
                     }
                 }
@@ -10700,6 +13057,95 @@ async fn main() -> Result<()> {
                 } else {
                     flag_local("--notes")
                 };
+
+                // ── INFRA-3689: route to fleet-server when opted in + stale ──────────────
+                // Same gate as `chump gap reserve` — see its comment for rationale.
+                if let Ok(server_base) = std::env::var(gap_route::GAP_SERVER_ENV) {
+                    let server_base = server_base.trim().to_string();
+                    if !server_base.is_empty() {
+                        let behind = store.behind_origin_main();
+                        let canonical_mode = gap_route::canonical_server_mode();
+                        if gap_route::should_route_to_server(behind, true, canonical_mode) {
+                            eprintln!(
+                                "[gap set] routing to fleet-server (mode={}, local main behind={} commit(s)); CHUMP_GAP_SERVER={} — not writing local state.db",
+                                if canonical_mode { "canonical" } else { "stale-only" },
+                                behind.unwrap_or(0),
+                                server_base
+                            );
+                            let token =
+                                std::env::var(gap_route::BATPHONE_TOKEN_ENV).unwrap_or_default();
+                            let ac_list: Vec<String> = acceptance_criteria
+                                .as_deref()
+                                .and_then(|s| serde_json::from_str::<Vec<String>>(s).ok())
+                                .unwrap_or_default();
+                            let body = gap_route::GapMutationBody {
+                                op: "set".into(),
+                                gap_id: Some(gap_id.clone()),
+                                title: flag_local("--title"),
+                                description: flag_local("--description"),
+                                priority: flag_local("--priority"),
+                                effort: flag_local("--effort"),
+                                status: flag_local("--status"),
+                                outcome: flag_local("--outcome"),
+                                acceptance_criteria: if ac_list.is_empty() {
+                                    None
+                                } else {
+                                    Some(ac_list)
+                                },
+                                depends_on: flag_local("--depends-on"),
+                                // Send the operator's raw intent. `notes` above is
+                                // the local-path value (and may contain a stale
+                                // client's copy); the server must calculate
+                                // `--add-note` against its own canonical row.
+                                notes: flag_local("--notes"),
+                                add_note: flag_local("--add-note"),
+                                source_doc: flag_local("--source-doc"),
+                                opened_date: flag_local("--opened-date"),
+                                closed_date: flag_local("--closed-date"),
+                                closed_pr,
+                                skills_required: flag_local("--skills-required"),
+                                preferred_backend: flag_local("--preferred-backend"),
+                                preferred_machine: flag_local("--preferred-machine"),
+                                estimated_minutes: flag_local("--estimated-minutes"),
+                                required_model: flag_local("--required-model"),
+                                evidence: flag_local("--evidence"),
+                                artifact_type: flag_local("--artifact-type"),
+                                ..Default::default()
+                            };
+                            match gap_route::route_gap_mutation(&server_base, &token, &body).await {
+                                Ok(result) => {
+                                    let _ =
+                                        crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+                                            kind: "gap_mutation_routed_to_server".to_string(),
+                                            source: Some("chump_gap_set".to_string()),
+                                            gap: Some(result.gap_id.clone()),
+                                            fields: vec![
+                                                ("op".to_string(), "set".to_string()),
+                                                ("server".to_string(), server_base.clone()),
+                                                (
+                                                    "behind".to_string(),
+                                                    behind.unwrap_or(0).to_string(),
+                                                ),
+                                            ],
+                                            ..Default::default()
+                                        });
+                                    println!("updated {}", result.gap_id);
+                                    return Ok(());
+                                }
+                                Err(e) => {
+                                    if canonical_mode {
+                                        eprintln!(
+                                            "[gap set] fleet-server routing failed ({e:#}); canonical mode refuses a local set to prevent split gap state"
+                                        );
+                                        std::process::exit(1);
+                                    }
+                                    eprintln!("[gap set] fleet-server routing failed ({e:#}); falling through to local set path");
+                                }
+                            }
+                        }
+                    }
+                }
+                // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
 
                 let update = gap_store::GapFieldUpdate {
                     title: flag_local("--title"),
@@ -11034,7 +13480,7 @@ async fn main() -> Result<()> {
                 let p0_stuck: Vec<(&gap_store::GapRow, i64)> = p0_open
                     .iter()
                     .filter_map(|g| {
-                        let age_days = (now_secs - g.created_at) / 86400;
+                        let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                         if age_days > 7 {
                             Some((*g, age_days))
                         } else {
@@ -11043,9 +13489,33 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-1611: open P0/P1 gaps with no (or placeholder) opened_date
+                // are invisible to the aging census above — flag them so the
+                // fleet can see coverage gaps instead of silently treating them
+                // as "0d old".
+                let is_placeholder_opened_date = |d: &str| {
+                    let d = d.trim();
+                    d.is_empty() || d == "0000-00-00" || d == "1970-01-01" || d == "TODO"
+                };
+                let missing_opened_date_p0p1: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        g.status == "open"
+                            && (g.priority == "P0" || g.priority == "P1")
+                            && is_placeholder_opened_date(&g.opened_date)
+                    })
+                    .collect();
+
+                // INFRA-2984: was `.trim().is_empty()` only, so a non-empty
+                // but non-verifiable AC (e.g. `["verify it works"]`, as
+                // INFRA-2984 itself shipped with) passed this gate silently.
+                // Route through the same is_acceptance_criteria_vague() used
+                // by `gap list`/`gap preflight` so all three surfaces agree.
                 let vague_pickable: Vec<&gap_store::GapRow> = all_gaps
                     .iter()
-                    .filter(|g| g.status == "open" && g.acceptance_criteria.trim().is_empty())
+                    .filter(|g| {
+                        g.status == "open" && is_acceptance_criteria_vague(&g.acceptance_criteria)
+                    })
                     .collect();
 
                 let double_encoded: Vec<&gap_store::GapRow> = all_gaps
@@ -11126,6 +13596,35 @@ async fn main() -> Result<()> {
                     .filter(|g| g.status == "open" && g.title.to_lowercase().starts_with("race-"))
                     .collect();
 
+                // CREDIBLE-225: placeholder-title pollution — gaps filed with a
+                // throwaway/scratch title (e.g. "tmp", "test", "wip") carry no
+                // real intent, so their AC ends up genericized around the
+                // literal title text (see CREDIBLE-225 itself: title "tmp",
+                // AC reading "The change described by \"tmp\" is implemented
+                // ..."). is_acceptance_criteria_vague() doesn't catch these
+                // since the AC field is non-empty — this is a title-level check.
+                let placeholder_titles = [
+                    "tmp",
+                    "temp",
+                    "test",
+                    "testing",
+                    "wip",
+                    "asdf",
+                    "xxx",
+                    "foo",
+                    "todo",
+                    "placeholder",
+                    "scratch",
+                    "untitled",
+                ];
+                let placeholder_pollution: Vec<&gap_store::GapRow> = all_gaps
+                    .iter()
+                    .filter(|g| {
+                        g.status == "open"
+                            && placeholder_titles.contains(&g.title.trim().to_lowercase().as_str())
+                    })
+                    .collect();
+
                 let done_with_closed_pr: Vec<&gap_store::GapRow> = all_gaps
                     .iter()
                     .filter(|g| g.status == "done" && g.closed_pr.is_some())
@@ -11156,9 +13655,36 @@ async fn main() -> Result<()> {
                     })
                     .collect();
 
+                // INFRA-902: CREDIBLE pillar-balance analysis — shells out to
+                // scripts/ops/pillar-balance-check.sh (see AC 5) and folds its
+                // JSON result into this report. Runs the *fixture* binary
+                // (this same `chump` process) via CHUMP_BIN so the script
+                // never silently falls back to a stale PATH `chump`.
+                let pillar_balance: serde_json::Value = {
+                    let script_path =
+                        repo_path::repo_root().join("scripts/ops/pillar-balance-check.sh");
+                    let mut cmd = std::process::Command::new("bash");
+                    cmd.arg(&script_path).arg("--json");
+                    if let Ok(self_bin) = std::env::current_exe() {
+                        cmd.env("CHUMP_BIN", self_bin);
+                    }
+                    match cmd.output() {
+                        Ok(out) => {
+                            let stdout = String::from_utf8_lossy(&out.stdout);
+                            serde_json::from_str(stdout.trim()).unwrap_or_else(|_| {
+                                serde_json::json!({"error": "pillar-balance-check.sh produced no parseable output"})
+                            })
+                        }
+                        Err(e) => {
+                            serde_json::json!({"error": format!("failed to run pillar-balance-check.sh: {e}")})
+                        }
+                    }
+                };
+
                 if json_out {
                     let mut report = serde_json::json!({
                         "p0_count": p0_count,
+                        "pillar_balance": pillar_balance,
                         "p0_manual_count": p0_manual_count,
                         "p0_auto_filed_count": p0_auto_filed.len(),
                         "p0_stuck_7d": p0_stuck.len(),
@@ -11169,8 +13695,9 @@ async fn main() -> Result<()> {
                         "open_with_closed_pr": open_with_closed_pr.len(),
                         "done_with_closed_pr": done_with_closed_pr.len(),
                         "race_test_pollution": race_pollution.len(),
+                        "placeholder_title_pollution": placeholder_pollution.len(),
                         "p0_gaps": p0_open.iter().map(|g| {
-                            let age_days = (now_secs - g.created_at) / 86400;
+                            let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                             let auto_filed = g.notes.contains(auto_filed_marker);
                             serde_json::json!({"id": g.id, "title": g.title, "age_days": age_days, "auto_filed": auto_filed})
                         }).collect::<Vec<_>>(),
@@ -11183,6 +13710,11 @@ async fn main() -> Result<()> {
                         "missing_evidence_count": missing_evidence.len(),
                         "missing_evidence": missing_evidence.iter().take(5).map(|g| {
                             serde_json::json!({"id": g.id, "priority": g.priority, "domain": g.domain, "title": g.title})
+                        }).collect::<Vec<_>>(),
+                        // INFRA-1611: opened_date coverage on open P0/P1 gaps
+                        "missing_opened_date_p0p1_count": missing_opened_date_p0p1.len(),
+                        "missing_opened_date_p0p1": missing_opened_date_p0p1.iter().map(|g| {
+                            serde_json::json!({"id": g.id, "priority": g.priority, "title": g.title})
                         }).collect::<Vec<_>>(),
                     });
                     // MISSION-030: inject by-outcome rollup into JSON when flag set.
@@ -11258,7 +13790,7 @@ async fn main() -> Result<()> {
                         p0_auto_filed.len()
                     );
                     for g in &p0_open {
-                        let age_days = (now_secs - g.created_at) / 86400;
+                        let age_days = gap_age_days(&g.opened_date, g.created_at, now_secs);
                         let stuck = if age_days > 7 { " *** STUCK" } else { "" };
                         let marker = if g.notes.contains(auto_filed_marker) {
                             " [auto-filed]"
@@ -11269,6 +13801,14 @@ async fn main() -> Result<()> {
                             "  {} — {} ({}d old{}{})",
                             g.id, g.title, age_days, stuck, marker
                         );
+                    }
+                    println!();
+                    println!(
+                        "Missing/placeholder opened_date on open P0/P1: {}",
+                        missing_opened_date_p0p1.len()
+                    );
+                    for g in &missing_opened_date_p0p1 {
+                        println!("  {} — {} ({})", g.id, g.title, g.priority);
                     }
                     println!();
                     println!("Vague (no AC) pickable: {}", vague_pickable.len());
@@ -11326,6 +13866,14 @@ async fn main() -> Result<()> {
                     for g in &race_pollution {
                         println!("  {} — {}", g.id, g.title);
                     }
+                    println!();
+                    println!(
+                        "placeholder-title pollution (open): {}",
+                        placeholder_pollution.len()
+                    );
+                    for g in &placeholder_pollution {
+                        println!("  {} — {}", g.id, g.title);
+                    }
                     // CREDIBLE-107: --flag-empty-evidence section.
                     if flag_empty_evidence {
                         println!();
@@ -11348,6 +13896,36 @@ async fn main() -> Result<()> {
                             println!(
                                 "  Backfill with: chump gap set <ID> --evidence \"COMMAND: ...\""
                             );
+                        }
+                    }
+                    // INFRA-902: pillar-balance-check.sh result.
+                    println!();
+                    println!("=== Pillar balance (INFRA-902) ===");
+                    if let Some(err) = pillar_balance.get("error").and_then(|v| v.as_str()) {
+                        println!("  (unavailable: {})", err);
+                    } else {
+                        let total = pillar_balance
+                            .get("total_pickable")
+                            .and_then(|v| v.as_u64())
+                            .unwrap_or(0);
+                        println!("  total pickable: {}", total);
+                        if let Some(counts) =
+                            pillar_balance.get("counts").and_then(|v| v.as_object())
+                        {
+                            for (pillar, count) in counts {
+                                println!("    {:<12} {}", pillar, count);
+                            }
+                        }
+                        if let Some(alerts) =
+                            pillar_balance.get("alerts").and_then(|v| v.as_array())
+                        {
+                            if alerts.is_empty() {
+                                println!("  (pillars balanced — no alerts)");
+                            } else {
+                                for a in alerts {
+                                    println!("  ALERT: {}", a);
+                                }
+                            }
                         }
                     }
                     // MISSION-008: outcome-aware P0 budget view (advisory alongside per-gap checks).
@@ -12170,6 +14748,9 @@ async fn main() -> Result<()> {
                         "  --clone-path <path>       Override the resolved clone path (used with --external-repo)."
                     );
                     println!("  -h, --help                Show this help");
+                    println!();
+                    println!("Exit codes: 0 success/nothing-to-do, 1 not-open error,");
+                    println!("  11 refused — parent already has open child slices (INFRA-8067).");
                     return Ok(());
                 }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
@@ -12290,6 +14871,46 @@ async fn main() -> Result<()> {
                         parent.effort
                     );
                     std::process::exit(0);
+                }
+
+                // INFRA-8067: refuse to re-slice a parent that already has
+                // open child slices — root-cause fix for RESILIENT-1437 (the
+                // gap-store's slice-bloat: the EFFECTIVE-310 decompose
+                // reflex in scripts/dispatch/worker.sh re-slicing the same
+                // parent gap repeatedly). The RESILIENT-1364 guard above
+                // (parent.status != "open") only blocks a SECOND run once
+                // the FIRST run finished cleanly and wrote
+                // status=decomposed. A run that filed slices but was
+                // interrupted before that final write (crash, kill -9,
+                // wedge) leaves the parent looking "fresh" — still
+                // status=open, no "Decomposed into" notes marker — so every
+                // subsequent strike-threshold hit re-decomposes it into
+                // another near-duplicate batch of slices. Counting slices
+                // directly off the title convention `"... (<parent> slice)"`
+                // (and depends_on) rather than the parent's own notes
+                // bookkeeping catches exactly that orphaned-slices case.
+                let open_slice_count = store.count_open_slices(&gap_id).unwrap_or(0);
+                if open_slice_count >= 1 {
+                    eprintln!(
+                        "decompose: {gap_id} already has {open_slice_count} open slice(s); refusing to re-slice"
+                    );
+                    if json_out {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "refused": true,
+                                "reason": "already_has_open_slices",
+                                "open_slice_count": open_slice_count,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    }
+                    // Distinct exit code: callers (EFFECTIVE-310 reflex in
+                    // scripts/dispatch/worker.sh) must treat 11 as "refused,
+                    // do not reset strikes" — separate from 0 (success/
+                    // nothing-to-do) and 1 (hard error) above.
+                    std::process::exit(11);
                 }
 
                 if !dry_run {
@@ -12844,10 +15465,51 @@ async fn main() -> Result<()> {
                     suggestions
                 };
 
+                // ── INFRA-1823 AC4: harvest pre-flight ──────────────────────
+                //
+                // Before slices are printed/filed, check the arsenal catalog
+                // for prior art matching this gap so the implementing worker
+                // sees it instead of re-inventing a primitive that already
+                // exists elsewhere in the fleet. Best-effort: a missing
+                // catalog (no `chump harvest scan` run yet) is not fatal to
+                // decompose, it just means no citation is attached.
+                let harvest_overlap: Option<String> = {
+                    let mut hit = None;
+                    let mut candidates = vec![gap_id.clone()];
+                    candidates.extend(
+                        parent
+                            .title
+                            .split_whitespace()
+                            .map(|w| w.trim_matches(|c: char| !c.is_alphanumeric()).to_string())
+                            .filter(|w| w.len() >= 5)
+                            .take(4),
+                    );
+                    for topic in candidates {
+                        if topic.is_empty() {
+                            continue;
+                        }
+                        if let Some((found, text)) = harvester_cli::capture_check(&topic) {
+                            if found && !text.is_empty() {
+                                hit = Some(format!("[chump harvest check '{topic}']\n{text}"));
+                                break;
+                            }
+                        }
+                    }
+                    hit
+                };
+                if let Some(ref overlap) = harvest_overlap {
+                    eprintln!();
+                    eprintln!("=== harvest pre-flight: prior-art overlap found ===");
+                    eprintln!("{overlap}");
+                    eprintln!("=== end harvest pre-flight ===");
+                }
+
                 if json_out {
                     println!(
                         "{}",
-                        serde_json::to_string_pretty(&serde_json::json!(suggestions
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "harvest_overlap": harvest_overlap,
+                            "slices": suggestions
                             .iter()
                             .enumerate()
                             .map(|(i, s)| {
@@ -12860,7 +15522,8 @@ async fn main() -> Result<()> {
                                     "depends_on": s.depends_on,
                                 })
                             })
-                            .collect::<Vec<_>>()))
+                            .collect::<Vec<_>>(),
+                        }))
                         .unwrap_or_default()
                     );
                 } else if !apply {
@@ -12934,11 +15597,18 @@ async fn main() -> Result<()> {
                                 // suggestion, append; otherwise set directly.
                                 let skills_update: Option<String> = external_repo_tag.clone();
 
+                                // INFRA-1823 AC4: carry the harvest citation
+                                // onto every filed sub-gap's notes so the
+                                // implementing worker sees the prior art
+                                // without having to re-run the check.
+                                let notes_update: Option<String> = harvest_overlap.clone();
+
                                 let _ = store.set_fields(
                                     &new_id,
                                     gap_store::GapFieldUpdate {
                                         acceptance_criteria: Some(ac_json),
                                         skills_required: skills_update,
+                                        notes: notes_update,
                                         ..Default::default()
                                     },
                                 );
@@ -12979,11 +15649,21 @@ async fn main() -> Result<()> {
                         }
                     }
 
-                    // Demote parent to P2
+                    // RESILIENT-1364: demote parent to P2 AND take it out of
+                    // the pick pool. Before this fix the parent stayed
+                    // status='open' after decompose, so `chump gap list
+                    // --status open` (what every worker/curator picks from)
+                    // kept re-surfacing the umbrella itself alongside its own
+                    // slices — a worker would grab it, fail (it isn't
+                    // implementable, it's a tracking gap), and INFRA-3832
+                    // auto-blocked it 3 cycles later. status='decomposed' is
+                    // registered in gap_status_registry and is simply never
+                    // 'open', so no picker-side filter change is needed.
                     let _ = store.set_fields(
                         &gap_id,
                         gap_store::GapFieldUpdate {
                             priority: Some("P2".into()),
+                            status: Some("decomposed".into()),
                             notes: Some(format!(
                                 "Decomposed into {} slices: {}",
                                 filed_ids.len(),
@@ -12994,7 +15674,7 @@ async fn main() -> Result<()> {
                     );
                     eprintln!();
                     eprintln!(
-                        "Decomposed {gap_id} into {} slices. Parent demoted to P2.",
+                        "Decomposed {gap_id} into {} slices. Parent demoted to P2 and marked decomposed (out of the pick pool; auto-closes once every slice ships — see `chump gap close-decomposed`).",
                         filed_ids.len()
                     );
 
@@ -13012,6 +15692,323 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                return Ok(());
+            }
+            "close-decomposed" => {
+                // RESILIENT-1364 fix #2: sweep every status='decomposed'
+                // umbrella and auto-close (-> done) any whose slices
+                // (parsed from its "Decomposed into N slices: ..." notes)
+                // are ALL 'done'. Mirrors the outcomes open_children rollup
+                // (chump-gap-store) but turns it into an action, since a
+                // decomposed umbrella has no other route out of limbo once
+                // its slices land — unlike an outcome, which just sits
+                // advisory-open. Safe to run repeatedly / on a cron: a
+                // parent with any non-done child is a no-op.
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!("Usage: chump gap close-decomposed [--json]");
+                    println!();
+                    println!("Auto-closes decomposed umbrella parents whose child slices are all 'done'.");
+                    return Ok(());
+                }
+                let json_out = args.iter().skip(3).any(|a| a == "--json");
+                let closed = store.auto_close_decomposed_parents()?;
+                if json_out {
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({ "closed": closed }))
+                            .unwrap_or_default()
+                    );
+                } else if closed.is_empty() {
+                    println!("no decomposed parents ready to auto-close.");
+                } else {
+                    for id in &closed {
+                        println!("auto-closed {id}: all child slices done.");
+                    }
+                }
+                return Ok(());
+            }
+            "scaffold-holes" => {
+                // EFFECTIVE-440: mechanical hole-finder for the
+                // scaffold-and-holes pattern. A scaffold PR merges traits +
+                // todo!() holes + failing tests as ONE stable PR; this arm
+                // lists every hole as a candidate one-hole-per-gap leaf spec
+                // so each fill-this-hole gap is tiny, disjoint, and
+                // mechanically verifiable (no LLM call, no ambiguity).
+                if args
+                    .iter()
+                    .skip(3)
+                    .any(|a| matches!(a.as_str(), "--help" | "-h"))
+                {
+                    println!(
+                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply] [--metrics]"
+                    );
+                    println!();
+                    println!(
+                        "Scans DIR (default: repo root) for todo!() holes left by a scaffold PR"
+                    );
+                    println!("and prints one fill-this-hole leaf-gap spec (title + AC) per hole.");
+                    println!(
+                        "--apply files one leaf gap per hole via chump-gap-store instead of \
+                         just printing specs (INFRA-2515 A2A voting still applies to what those \
+                         leaf gaps become — this only reserves them)."
+                    );
+                    println!(
+                        "--metrics compares shipped leaf gaps (depends_on GAP-ID) against a \
+                         baseline of shipped open-ended gaps (no depends_on) in the same domain: \
+                         mean ship cycle-time and file-collision rate for each group."
+                    );
+                    return Ok(());
+                }
+                let gap_id = match args.get(3) {
+                    Some(a) if !a.starts_with('-') => a.clone(),
+                    _ => {
+                        eprintln!("Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json]");
+                        std::process::exit(1);
+                    }
+                };
+                let scan_dir = flag("--path")
+                    .map(std::path::PathBuf::from)
+                    .unwrap_or_else(|| repo_root.clone());
+                let as_json = json_out || args.iter().any(|a| a == "--json");
+                let do_apply = args.iter().any(|a| a == "--apply");
+                let do_metrics = args.iter().any(|a| a == "--metrics");
+
+                if do_metrics {
+                    let domain = store
+                        .get(&gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.domain)
+                        .unwrap_or_else(|| {
+                            gap_id.split('-').next().unwrap_or("EFFECTIVE").to_string()
+                        });
+                    let closed = store.list(Some("closed")).unwrap_or_default();
+                    let done = store.list(Some("done")).unwrap_or_default();
+                    let all_closed: Vec<_> = closed.into_iter().chain(done).collect();
+
+                    let files_for_pr = |pr: i64| -> Vec<String> {
+                        let out = std::process::Command::new("git")
+                            .args(["log", "--all", "--merges", "--format=%H"])
+                            .arg("--grep")
+                            .arg(format!("#{pr}"))
+                            .current_dir(&repo_root)
+                            .output();
+                        let Ok(out) = out else { return Vec::new() };
+                        let sha = String::from_utf8_lossy(&out.stdout)
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if sha.is_empty() {
+                            return Vec::new();
+                        }
+                        std::process::Command::new("git")
+                            .args(["show", "--stat", "--format=", &sha])
+                            .current_dir(&repo_root)
+                            .output()
+                            .map(|o| {
+                                String::from_utf8_lossy(&o.stdout)
+                                    .lines()
+                                    .filter_map(|l| l.split('|').next())
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    };
+
+                    let to_metric = |g: &gap_store::GapRow| -> scaffold_holes::GapMetric {
+                        let cycle_time_secs = g.closed_at.map(|c| c - g.created_at);
+                        let files_touched = g.closed_pr.map(files_for_pr).unwrap_or_default();
+                        scaffold_holes::GapMetric {
+                            id: g.id.clone(),
+                            cycle_time_secs,
+                            files_touched,
+                        }
+                    };
+
+                    let scaffold_leaves: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| g.domain == domain && g.depends_on.contains(&gap_id))
+                        .map(to_metric)
+                        .collect();
+                    let open_ended: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| {
+                            g.domain == domain
+                                && !g.depends_on.contains(&gap_id)
+                                && (g.depends_on.is_empty() || g.depends_on == "[]")
+                        })
+                        .map(to_metric)
+                        .collect();
+
+                    let report = scaffold_holes::compare_scaffold_vs_open_ended(
+                        &scaffold_leaves,
+                        &open_ended,
+                    );
+
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "scaffold_leaf_count": report.scaffold_leaf_count,
+                                "open_ended_count": report.open_ended_count,
+                                "scaffold_leaf_mean_cycle_secs": report.scaffold_leaf_mean_cycle_secs,
+                                "open_ended_mean_cycle_secs": report.open_ended_mean_cycle_secs,
+                                "scaffold_leaf_collision_rate": report.scaffold_leaf_collision_rate,
+                                "open_ended_collision_rate": report.open_ended_collision_rate,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "--- scaffold-and-holes metrics for {gap_id} (domain {domain}) ---"
+                        );
+                        println!(
+                            "scaffold leaves: {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.scaffold_leaf_count,
+                            report.scaffold_leaf_mean_cycle_secs,
+                            report.scaffold_leaf_collision_rate
+                        );
+                        println!(
+                            "open-ended:      {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.open_ended_count,
+                            report.open_ended_mean_cycle_secs,
+                            report.open_ended_collision_rate
+                        );
+                    }
+                    return Ok(());
+                }
+
+                let holes = match scaffold_holes::find_todo_holes_in_dir(&scan_dir) {
+                    Ok(h) => h,
+                    Err(e) => {
+                        eprintln!(
+                            "chump gap scaffold-holes: failed to scan {}: {e:#}",
+                            scan_dir.display()
+                        );
+                        std::process::exit(1);
+                    }
+                };
+
+                if do_apply {
+                    // One leaf gap per hole: tiny, disjoint, mechanically
+                    // verifiable ("fill this hole, make this test pass").
+                    // Filing (not just printing) is what turns the scaffold
+                    // PR into N pickable leaf gaps instead of one open-ended
+                    // gap the fleet has to interpret.
+                    let domain = store
+                        .get(&gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.domain)
+                        .unwrap_or_else(|| {
+                            gap_id.split('-').next().unwrap_or("EFFECTIVE").to_string()
+                        });
+                    let session_id = crate::ambient_stream::env_session_id()
+                        .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
+                    let mut filed_ids: Vec<String> = Vec::new();
+                    for h in &holes {
+                        let (title, ac) = scaffold_holes::hole_to_gap_spec(h, &gap_id);
+                        match store.reserve_verified(&domain, &title, "P2", "xs", &session_id) {
+                            Ok(new_id) => {
+                                let ac_json = serde_json::to_string(&vec![ac])
+                                    .unwrap_or_else(|_| "[]".into());
+                                let _ = store.set_fields(
+                                    &new_id,
+                                    gap_store::GapFieldUpdate {
+                                        acceptance_criteria: Some(ac_json),
+                                        depends_on: Some(
+                                            serde_json::to_string(&vec![gap_id.clone()])
+                                                .unwrap_or_else(|_| "[]".into()),
+                                        ),
+                                        notes: Some(format!(
+                                            "scaffold-and-holes leaf: {}:{} (parent {})",
+                                            h.file.display(),
+                                            h.line,
+                                            gap_id
+                                        )),
+                                        ..Default::default()
+                                    },
+                                );
+                                filed_ids.push(new_id);
+                            }
+                            Err(e) => {
+                                eprintln!(
+                                    "chump gap scaffold-holes: failed to reserve leaf gap for {}:{}: {e:#}",
+                                    h.file.display(),
+                                    h.line
+                                );
+                            }
+                        }
+                    }
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "filed": filed_ids,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "--- filed {} leaf gap(s) for {} ---",
+                            filed_ids.len(),
+                            gap_id
+                        );
+                        for id in &filed_ids {
+                            println!("{id}");
+                        }
+                    }
+                    return Ok(());
+                }
+
+                if as_json {
+                    let specs: Vec<serde_json::Value> = holes
+                        .iter()
+                        .map(|h| {
+                            let (title, ac) = scaffold_holes::hole_to_gap_spec(h, &gap_id);
+                            serde_json::json!({
+                                "file": h.file.display().to_string(),
+                                "line": h.line,
+                                "function": h.function,
+                                "nearest_test": h.nearest_test,
+                                "title": title,
+                                "acceptance_criteria": ac,
+                            })
+                        })
+                        .collect();
+                    println!(
+                        "{}",
+                        serde_json::to_string_pretty(&serde_json::json!({
+                            "parent": gap_id,
+                            "holes": specs,
+                        }))
+                        .unwrap_or_default()
+                    );
+                } else if holes.is_empty() {
+                    println!(
+                        "chump gap scaffold-holes: no todo!() holes found under {}",
+                        scan_dir.display()
+                    );
+                } else {
+                    for h in &holes {
+                        let (title, _ac) = scaffold_holes::hole_to_gap_spec(h, &gap_id);
+                        println!("{title}");
+                    }
+                    println!(
+                        "--- {} hole(s) found under {} ---",
+                        holes.len(),
+                        scan_dir.display()
+                    );
+                }
                 return Ok(());
             }
             "dep-clean" => {
@@ -14483,6 +17480,7 @@ async fn main() -> Result<()> {
                                     "inserted": report.inserted,
                                     "updated": report.updated,
                                     "skipped": report.skipped,
+                                    "ac_preserved": report.ac_preserved,
                                     "changed_ids": report.changed_ids,
                                 });
                                 println!("{}", summary);
@@ -14492,6 +17490,12 @@ async fn main() -> Result<()> {
                                     "{}chump gap sync --pull: {} inserted, {} updated, {} unchanged",
                                     prefix, report.inserted, report.updated, report.skipped
                                 );
+                                if report.ac_preserved > 0 {
+                                    println!(
+                                        "  INFRA-2227: preserved concrete acceptance_criteria on {} gap(s) (not reverted to YAML template)",
+                                        report.ac_preserved
+                                    );
+                                }
                                 if !report.changed_ids.is_empty() {
                                     println!("  changed: {}", report.changed_ids.join(", "));
                                 }
@@ -14750,6 +17754,7 @@ async fn main() -> Result<()> {
                 );
                 eprintln!("                             [--acceptance-criteria \"a|b|c\"] [--depends-on \"X-1,X-2\"]");
                 eprintln!("  decompose        <GAP-ID> [--apply] [--json] [--dry-run] [--no-description] [--external-repo <owner/repo|path>] [--clone-path <path>]  # LLM-assisted slicing");
+                eprintln!("  scaffold-holes   <GAP-ID> [--path DIR] [--json]  # mechanical todo!() hole-finder for scaffold-and-holes PRs (EFFECTIVE-440)");
                 eprintln!("  dep-clean        [--apply] [--json]  # strip depends_on entries pointing at done gaps");
                 eprintln!("  dump             [--out PATH] [--per-file [--out-dir docs/gaps/]]");
                 eprintln!("  import           [--yaml docs/gaps.yaml]");
@@ -14984,12 +17989,66 @@ async fn main() -> Result<()> {
         let want_impact = args.iter().any(|a| a == "--impact");
         let want_agents = args.iter().any(|a| a == "--agents");
         let want_claims = args.iter().any(|a| a == "--claims");
+        let want_integration = args.iter().any(|a| a == "--integration");
+        let want_mission_binary = args.iter().any(|a| a == "--mission-binary");
+        let want_debt_index = args.iter().any(|a| a == "--debt-index");
 
         let repo_root = repo_path::repo_root();
+
+        // MISSION-066: --mission-binary shows ① THE BINARY repeatability —
+        // the current/longest zero-touch-BEAST-merge streak recorded by
+        // scripts/dev/mission-scoreboard.sh's mission_binary_check events.
+        if want_mission_binary {
+            let section = kpi_report::build_mission_binary_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
+
+        // INFRA-2143: --integration shows the integration-cycle dashboard
+        // (ship velocity / CI efficiency / quality / external costs).
+        // --window accepts "24h", "7d", "30d" (bare digits treated as days);
+        // default window is 7d.
+        if want_integration {
+            let window_hours = flag("--window")
+                .map(|w| {
+                    let w = w.trim();
+                    if let Some(h) = w.strip_suffix('h') {
+                        h.parse::<u64>().unwrap_or(168)
+                    } else if let Some(d) = w.strip_suffix('d') {
+                        d.parse::<u64>().unwrap_or(7).saturating_mul(24)
+                    } else {
+                        w.parse::<u64>().unwrap_or(7).saturating_mul(24)
+                    }
+                })
+                .unwrap_or(168);
+            let section = kpi_report::build_integration_cycle_section(&repo_root, window_hours);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
 
         // CREDIBLE-208: --claims shows claim-lint bust-rate per model.
         if want_claims {
             let section = kpi_report::build_claim_bust_section(&repo_root);
+            if want_json {
+                println!("{}", section.render_json());
+            } else {
+                print!("{}", section.render_text());
+            }
+            return Ok(());
+        }
+
+        // CREDIBLE-357: --debt-index shows the crown gauge (live_pct/debt/
+        // top-5 dormant-by-Crit) + next_best_action candidate list.
+        if want_debt_index {
+            let section = kpi_report::build_debt_index_section(&repo_root);
             if want_json {
                 println!("{}", section.render_json());
             } else {
@@ -15194,6 +18253,229 @@ async fn main() -> Result<()> {
             );
         }
         return Ok(());
+    }
+
+    // `chump brain` (INFRA-1773) — unified read surface over the three
+    // stores an agent's "brain" is scattered across today: memory_db
+    // (sessions/chump_memory.db `chump_memory` table, semantic facts),
+    // reflection_db (same DB, `chump_reflections`/`chump_improvement_targets`
+    // tables, postmortem lessons), and routing_outcomes (`.chump/state.db`,
+    // per-backend dispatch scoreboard — the "per-bot" slice). `chump dispatch
+    // scoreboard` already exposes routing_outcomes standalone; `brain`'s job
+    // is the *unified* view so an operator doesn't have to remember three
+    // separate subcommands to answer "what does the fleet know and how well
+    // is each bot doing." Mutation (the gap title's "mutate" half) is
+    // intentionally out of scope for this first cut — every mutation path
+    // here already has a dedicated, reviewed entrypoint (`memory_brain` tool,
+    // `save_reflection`, the orchestrator monitor's routing_outcomes
+    // writer) and a generic `chump brain set` would just be an unreviewed
+    // side door onto the same tables. Incremental path to the "mega-brain"
+    // stretch goal in the gap title: add write verbs here once a concrete
+    // cross-store mutation need shows up, not speculatively.
+    if args.get(1).map(String::as_str) == Some("brain") {
+        let want_json = args.iter().any(|a| a == "--json");
+        match args.get(2).map(String::as_str) {
+            Some("status") | None => {
+                let mem_count = memory_db::count().unwrap_or(-1);
+                let reflection_counts = reflection_db::outcome_class_counts().unwrap_or_default();
+                let repo_root = repo_path::repo_root();
+                let per_backend: Vec<(String, u64, u64, u64)> =
+                    match gap_store::GapStore::open(&repo_root) {
+                        Ok(store) => {
+                            let mut agg: std::collections::BTreeMap<String, (u64, u64, u64)> =
+                                std::collections::BTreeMap::new();
+                            if let Ok(entries) = store.routing_scoreboard() {
+                                for e in entries {
+                                    let slot = agg.entry(e.backend.clone()).or_default();
+                                    slot.0 += e.successes;
+                                    slot.1 += e.failures;
+                                    slot.2 += e.total;
+                                }
+                            }
+                            agg.into_iter().map(|(k, (s, f, t))| (k, s, f, t)).collect()
+                        }
+                        Err(_) => Vec::new(),
+                    };
+
+                if want_json {
+                    let reflections_json: Vec<_> = reflection_counts
+                        .iter()
+                        .map(|(k, v)| serde_json::json!({"outcome_class": k, "count": v}))
+                        .collect();
+                    let backends_json: Vec<_> = per_backend
+                        .iter()
+                        .map(|(backend, s, f, t)| {
+                            serde_json::json!({
+                                "backend": backend, "successes": s, "failures": f, "total": t
+                            })
+                        })
+                        .collect();
+                    let out = serde_json::json!({
+                        "memory_count": mem_count,
+                        "reflections_by_outcome": reflections_json,
+                        "routing_by_backend": backends_json,
+                    });
+                    println!("{}", serde_json::to_string_pretty(&out)?);
+                } else {
+                    println!("chump brain status");
+                    println!();
+                    println!(
+                        "memory_db (chump_memory)      : {} row(s)",
+                        if mem_count < 0 {
+                            "unavailable".to_string()
+                        } else {
+                            mem_count.to_string()
+                        }
+                    );
+                    println!("reflection_db (chump_reflections):");
+                    if reflection_counts.is_empty() {
+                        println!("  (no reflections recorded yet)");
+                    }
+                    for (class, n) in &reflection_counts {
+                        println!("  {class:<12}: {n}");
+                    }
+                    println!("routing_outcomes (per bot/backend):");
+                    if per_backend.is_empty() {
+                        println!("  (no routing outcomes recorded yet)");
+                    }
+                    for (backend, s, f, t) in &per_backend {
+                        let rate = if *t > 0 {
+                            (*s as f64 / *t as f64) * 100.0
+                        } else {
+                            0.0
+                        };
+                        println!("  {backend:<14}: {s} ok / {f} fail / {t} total ({rate:.1}%)");
+                    }
+                }
+                return Ok(());
+            }
+            Some("query") => {
+                let store_name = match args.get(3) {
+                    Some(s) => s.as_str(),
+                    None => {
+                        eprintln!("Usage: chump brain query <memory|reflections|routing> [--limit N] [--bot NAME] [--json]");
+                        std::process::exit(2);
+                    }
+                };
+                let limit: usize = args
+                    .iter()
+                    .position(|a| a == "--limit")
+                    .and_then(|i| args.get(i + 1))
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(20);
+                let bot_filter = args
+                    .iter()
+                    .position(|a| a == "--bot")
+                    .and_then(|i| args.get(i + 1))
+                    .cloned();
+
+                match store_name {
+                    "memory" => {
+                        let mut rows = memory_db::load_all().unwrap_or_default();
+                        rows.truncate(limit);
+                        if want_json {
+                            println!("{}", serde_json::to_string_pretty(&rows)?);
+                        } else if rows.is_empty() {
+                            println!("(no memory rows)");
+                        } else {
+                            for r in &rows {
+                                println!(
+                                    "[{}] ({}) {} — {}",
+                                    r.id,
+                                    r.memory_type,
+                                    r.ts,
+                                    r.content.chars().take(100).collect::<String>()
+                                );
+                            }
+                        }
+                    }
+                    "reflections" => {
+                        let rows =
+                            reflection_db::recent_reflections_brief(limit).unwrap_or_default();
+                        if want_json {
+                            println!("{}", serde_json::to_string_pretty(&rows)?);
+                        } else if rows.is_empty() {
+                            println!("(no reflections)");
+                        } else {
+                            for r in &rows {
+                                println!(
+                                    "[{}] ({}) {} — {}",
+                                    r.id,
+                                    r.outcome_class,
+                                    r.created_at,
+                                    r.intended_goal.chars().take(100).collect::<String>()
+                                );
+                            }
+                        }
+                    }
+                    "routing" => {
+                        let repo_root = repo_path::repo_root();
+                        let store = match gap_store::GapStore::open(&repo_root) {
+                            Ok(s) => s,
+                            Err(e) => {
+                                eprintln!("chump brain query routing: cannot open state.db: {e:#}");
+                                std::process::exit(1);
+                            }
+                        };
+                        let mut entries = store.routing_scoreboard().unwrap_or_default();
+                        if let Some(bot) = &bot_filter {
+                            entries.retain(|e| &e.backend == bot);
+                        }
+                        entries.truncate(limit);
+                        if want_json {
+                            let json: Vec<_> = entries
+                                .iter()
+                                .map(|e| {
+                                    serde_json::json!({
+                                        "task_class": e.task_class,
+                                        "backend": e.backend,
+                                        "model": e.model,
+                                        "provider_pfx": e.provider_pfx,
+                                        "successes": e.successes,
+                                        "failures": e.failures,
+                                        "total": e.total,
+                                        "success_rate": e.success_rate,
+                                        "avg_cost_usd": e.avg_cost_usd,
+                                        "route_score": e.route_score,
+                                        "last_seen": e.last_seen,
+                                    })
+                                })
+                                .collect();
+                            println!("{}", serde_json::to_string_pretty(&json)?);
+                        } else if entries.is_empty() {
+                            println!("(no routing outcomes)");
+                        } else {
+                            for e in &entries {
+                                println!(
+                                    "{:<10}{:<14}{:<40}{:>6} ok {:>6} fail  {:.1}%",
+                                    if e.task_class.is_empty() {
+                                        "-"
+                                    } else {
+                                        &e.task_class
+                                    },
+                                    e.backend,
+                                    if e.model.is_empty() { "-" } else { &e.model },
+                                    e.successes,
+                                    e.failures,
+                                    e.success_rate * 100.0,
+                                );
+                            }
+                        }
+                    }
+                    other => {
+                        eprintln!(
+                            "chump brain query: unknown store '{other}' (expected memory|reflections|routing)"
+                        );
+                        std::process::exit(2);
+                    }
+                }
+                return Ok(());
+            }
+            Some(other) => {
+                eprintln!("chump brain: unknown subcommand '{other}' (expected status|query)");
+                std::process::exit(2);
+            }
+        }
     }
 
     // `chump dispatch simulate <task_class> <count>` (COG-037) — sample
@@ -15790,7 +19072,7 @@ async fn main() -> Result<()> {
                 eprintln!("Server '{name}' is disabled in chump-mcp.json — enable it first.");
                 std::process::exit(1);
             }
-            let mut cmd_parts = vec![entry.command.clone()];
+            let mut cmd_parts = vec![mcp_discovery::expand_command(&entry.command)];
             cmd_parts.extend(entry.args.clone());
             println!("Restart '{name}': {}", cmd_parts.join(" "));
             println!();
@@ -16702,6 +19984,98 @@ async fn main() -> Result<()> {
         return Ok(());
     }
 
+    // `chump trek "<plain job>" [--yes] [--json]` (INFRA-3656, RIBBON-01)
+    //
+    // The auto-execute front-door entrypoint: classifies like `chump start`
+    // above, but under --yes ACTUALLY dispatches the routed engine in-process
+    // (CREATE -> bootstrap, IMPROVE -> swe, INGEST -> ingest) and emits
+    // trek_start + trek_outcome. Ambiguous asks; diagnosis-only routes
+    // (Rescue/Comprehend) exit non-zero honestly rather than faking success.
+    if args.get(1).map(String::as_str) == Some("trek") {
+        let repo_root = repo_path::repo_root();
+        let mission_store = chump_coord::mission::FileBackedMissionStore::default_root();
+
+        // `chump trek --list` (INFRA-3658, RIBBON-03): read every persisted
+        // Mission record back so a walked-away operator can see what past
+        // trek runs produced.
+        if args.get(2).map(String::as_str) == Some("--list") {
+            use chump_coord::mission::MissionStore;
+            match mission_store.list() {
+                Ok(mut ids) => {
+                    ids.sort();
+                    if ids.is_empty() {
+                        println!("(no trek runs recorded yet)");
+                    } else {
+                        for id in ids {
+                            match mission_store.load(&id) {
+                                Ok(pm) => println!("{}", trek::format_mission_summary(&pm)),
+                                Err(e) => eprintln!("trek --list: {id}: {e:#}"),
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("trek --list: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
+        // `chump trek status <mission-id>` (INFRA-3658, RIBBON-03).
+        if args.get(2).map(String::as_str) == Some("status") {
+            use chump_coord::mission::MissionStore;
+            let Some(id) = args.get(3) else {
+                eprintln!("Usage: chump trek status <mission-id>");
+                std::process::exit(1);
+            };
+            match mission_store.load(id) {
+                Ok(pm) => println!("{}", trek::format_mission_detail(&pm)),
+                Err(e) => {
+                    eprintln!("trek status: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
+        let Some(job) = args.get(2).filter(|a| !a.starts_with("--")) else {
+            eprintln!("Usage: chump trek \"<what you're trying to do, in plain language>\" [--yes] [--json]");
+            std::process::exit(1);
+        };
+        let yes = args.iter().any(|a| a == "--yes");
+        let json = args.iter().any(|a| a == "--json");
+        let spawner = trek::RealEngineSpawner;
+        let outcome = trek::run_trek(&repo_root, job, yes, &spawner, &mission_store);
+        if json {
+            let j = match &outcome {
+                trek::TrekOutcome::Landed { mode, exit_code } => serde_json::json!({
+                    "status": "landed", "mode": mode, "engine_exit_code": exit_code,
+                }),
+                trek::TrekOutcome::NeedsConfirmation { question } => serde_json::json!({
+                    "status": "needs_confirmation", "question": question,
+                }),
+                trek::TrekOutcome::Ambiguous { question } => serde_json::json!({
+                    "status": "ambiguous", "question": question,
+                }),
+                trek::TrekOutcome::DiagnosisOnly { mode, message } => serde_json::json!({
+                    "status": "diagnosis_only", "mode": mode, "message": message,
+                }),
+            };
+            println!("{}", serde_json::to_string_pretty(&j).unwrap_or_default());
+        } else {
+            match &outcome {
+                trek::TrekOutcome::Landed { mode, exit_code } => {
+                    println!("trek: {mode} landed (engine exit {exit_code})");
+                }
+                trek::TrekOutcome::NeedsConfirmation { question } => println!("{question}"),
+                trek::TrekOutcome::Ambiguous { question } => println!("{question}"),
+                trek::TrekOutcome::DiagnosisOnly { message, .. } => eprintln!("{message}"),
+            }
+        }
+        std::process::exit(outcome.exit_code());
+    }
+
     // `chump orchestrate [<intent>]` (INFRA-598 / INFRA-798)
     //
     // With no positional args: Opus-driven conversational loop (INFRA-598).
@@ -17070,21 +20444,33 @@ async fn main() -> Result<()> {
         .filter(|s| !s.is_empty());
 
     if let Some(msg) = single_message {
-        // CREDIBLE-134: a bare single-token arg reaching this catch-all is an
-        // unknown/typo'd subcommand — every real subcommand (and help/--help/
-        // --version) returned earlier. Error with usage + a non-zero exit
-        // instead of silently routing to the model (which printed a
-        // hallucinated "Response from Agent" reply and exited 0 — a scripting
-        // footgun: a typo'd `chump <cmd>` in any fleet script "succeeds").
-        // Freeform NL stays available as a quoted multi-word string.
-        if args.len() == 2
-            && !msg.contains(char::is_whitespace)
+        // CREDIBLE-134 / CREDIBLE-110: a bare subcommand-shaped word reaching
+        // this catch-all (with or without trailing args, e.g. `chump farmer
+        // bogus` or `chump cron list`) is an unknown/typo'd subcommand —
+        // every real subcommand (and help/--help/--version) returned
+        // earlier. Error with usage + a non-zero exit instead of silently
+        // routing to the model (which printed a hallucinated LLM-prose reply
+        // and exited 0 — a scripting AND interactive footgun: a typo'd
+        // `chump <cmd> [args...]` "succeeds" and the trailing args are
+        // silently dropped since only args[1] is ever sent to the model).
+        // Freeform NL is gated behind an explicit entrypoint: `--chump
+        // "<msg>"` / `-p "<msg>"` (see `chump_mode` above), or — as a
+        // legacy fallback — a single quoted multi-word arg containing
+        // whitespace (e.g. chump "summarize today's ships").
+        if !msg.contains(char::is_whitespace)
             && msg.chars().next().is_some_and(|c| c.is_ascii_lowercase())
             && msg
                 .chars()
                 .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-' || c == '_')
         {
-            eprintln!("chump: unknown subcommand '{msg}'");
+            if args.len() > 2 {
+                eprintln!(
+                    "chump: unknown subcommand '{msg}' (args {:?} ignored)",
+                    &args[2..]
+                );
+            } else {
+                eprintln!("chump: unknown subcommand '{msg}'");
+            }
             eprintln!(
                 "Run `chump help` for available commands, or quote a full question \
                  for a freeform query (e.g. chump \"summarize today's ships\")."
@@ -17957,7 +21343,7 @@ async fn run_reflection_ab_mode(episodes_path: Option<std::path::PathBuf>) {
     use reflection::{reflect_heuristic, reflect_via_provider, OutcomeClass, ReflectionInput};
 
     // ── Locate episode file ────────────────────────────────────────────────
-    let default_path = std::path::PathBuf::from("scripts/eval-reflection-ab/episodes.json");
+    let default_path = std::path::PathBuf::from("scripts/eval/fixtures/reflection-episodes.json");
     let path = episodes_path.unwrap_or(default_path);
     let raw = match std::fs::read_to_string(&path) {
         Ok(s) => s,
@@ -19245,5 +22631,52 @@ mod tests {
         assert!(super::is_vague_ac_entry("todo: stuff"));
         assert!(super::is_vague_ac_entry("N/A"));
         assert!(!super::is_vague_ac_entry("Implement X with Y"));
+    }
+
+    #[test]
+    fn infra_2984_filler_phrase_ac_is_vague() {
+        // The exact phrase INFRA-2984 itself shipped with — non-empty, so it
+        // slipped past the old `.trim().is_empty()` audit-priorities check.
+        assert!(super::is_vague_ac_entry("verify it works"));
+        assert!(super::is_vague_ac_entry("Verify It Works"));
+        assert!(super::is_vague_ac_entry("it works"));
+        assert!(super::is_vague_ac_entry("done"));
+        assert!(super::is_vague_ac_entry("make it work"));
+
+        // Real AC text that happens to contain "works" must not be flagged
+        // (mirrors the INFRA-1878 in-passing-mention precedent for TODO).
+        assert!(!super::is_vague_ac_entry(
+            "ensure the retry logic works under load"
+        ));
+        assert!(!super::is_vague_ac_entry(
+            "the /health endpoint works and returns 200"
+        ));
+    }
+
+    #[test]
+    fn infra_2984_acceptance_criteria_vague_catches_filler_phrase_array() {
+        assert!(super::is_acceptance_criteria_vague(
+            r#"["verify it works"]"#
+        ));
+        assert!(!super::is_acceptance_criteria_vague(
+            r#"["Add retry with backoff", "Add unit test for timeout path"]"#
+        ));
+    }
+
+    #[test]
+    fn infra_3259_verify_it_without_works_is_vague() {
+        // INFRA-3259 itself shipped with AC `["verify it"]` — the shorter
+        // "verify it" / bare "verify" filler slipped past the INFRA-2984
+        // allowlist because it only matched "verify it works".
+        assert!(super::is_vague_ac_entry("verify it"));
+        assert!(super::is_vague_ac_entry("Verify It"));
+        assert!(super::is_vague_ac_entry("VERIFY"));
+        assert!(super::is_acceptance_criteria_vague(r#"["verify it"]"#));
+
+        // Real AC text that happens to start with "verify" must not be
+        // flagged (mirrors the INFRA-2984 in-passing-mention precedent).
+        assert!(!super::is_vague_ac_entry(
+            "verify the /health endpoint returns 200 under load"
+        ));
     }
 }

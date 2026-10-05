@@ -1,0 +1,19 @@
+- id: ZERO-WASTE-051
+  domain: ZERO-WASTE
+  title: "Tender fleet: census + ownership map + tender-of-tenders health (stop tenders dying silently)"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - a tender census enumerates all tender daemons with an ownership map, and a tender-of-tenders health check surfaces any tender that has died; a killed tender is detected.
+  notes: |
+    FINDING (2026-08-08): the fleet has ~20 curator roles (.claude/agents/curator-opus-*.md) + ~15 reaper/hygiene daemons (ghost-gap-reaper, stale-gap-lock-reaper, gap-doctor-cron, stale-{pr,branch,worktree}-reaper, curator-supervisor…) — 'so many tenders' — but NO single owner of the outcome 'the work-board is trustworthy', and NO one tending the tenders' HEALTH. Consequence: the integration-cycle daemon sat dead 15 days (exit 127), ghost ready_to_ship gaps + orphan locks accumulated, ~10 hygiene daemons were broken (127/78) unnoticed. This BLOCKS the batched-ship lane — the integrator's input queue must be clean.
+    
+    DO NOT invent a 21st tender (anti-bloat, per CLAUDE.md 'don't manufacture'). Instead:
+    (a) TENDER REGISTRY — a census doc (docs/process/TENDER_REGISTRY.md): every curator+reaper+daemon → what it owns, its health-probe, and the outcome→owner map. Almanac-indexed so future work of this kind routes to the RIGHT EXISTING tender, not a new one. This is the discoverable artifact Jeff asked for.
+    (b) ASSIGN work-board-integrity to an EXISTING tender (best fit: quartermaster / operationalization curator) with measurable AC: 0 ghost ready_to_ship, 0 orphan claim-locks at session-start, stranded-work surfaced (ZERO-WASTE-039), integrator input validated.
+    (c) TENDER-OF-TENDERS HEALTH — revive/fix curator-supervisor (found broken today) so a dead tender/daemon SURFACES (ambient alert) instead of rotting. The reapers exist; nobody watches whether they're alive.
+    
+    Rough shape (decompose at claim): registry doc → health-probe per tender → outcome-owner map → wire the alert. Precondition for trusting the batched integrator lane. Related: ZERO-WASTE-039 (stranded-work detector), EFFECTIVE-417 (integrator revival), the 69-daemon audit ([[chump-mac-daemon-fleet]]).
+  outcome_id: CHUMPOS
+

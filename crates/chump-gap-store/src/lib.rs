@@ -9,6 +9,7 @@
 //!   `GapStore::import_from_yaml(&repo_root)` is idempotent — safe to re-run.
 //!   Existing DB rows are NOT overwritten; only new gaps are inserted.
 
+pub mod backend;
 pub mod maintenance;
 pub mod sync;
 
@@ -23,6 +24,24 @@ use std::time::{SystemTime, UNIX_EPOCH};
 static SCAN_FAILED_WARNED: AtomicBool = AtomicBool::new(false);
 
 // ────────────────────────── Data types ──────────────────────────
+
+/// ZERO-WASTE-059: advisory report from `queue_hygiene_check_on_ship`.
+/// `dup_candidates` is `(id, title, status, score)` for other open gaps
+/// whose title Jaccard-overlaps the just-shipped gap's title — likely now
+/// stale/duplicate now that this one is done. `vague_ac_gaps` is
+/// `(id, title)` for open gaps in the same domain with no real acceptance
+/// criteria (TODO/TBD/empty).
+#[derive(Debug, Clone, Default, Serialize, Deserialize, PartialEq)]
+pub struct ShipQueueHygieneReport {
+    pub dup_candidates: Vec<(String, String, String, f64)>,
+    pub vague_ac_gaps: Vec<(String, String)>,
+}
+
+impl ShipQueueHygieneReport {
+    pub fn is_clean(&self) -> bool {
+        self.dup_candidates.is_empty() && self.vague_ac_gaps.is_empty()
+    }
+}
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
 pub struct GapRow {
@@ -120,6 +139,15 @@ pub struct OutcomeRow {
     /// Only meaningful when status == "parked"; NULL otherwise.
     #[serde(default)]
     pub park_reason: Option<String>,
+    /// EFFECTIVE-443: JTBD-sharpen triple captured at intake time. All three
+    /// are `None` for outcomes created without a JTBD (pre-slice outcomes,
+    /// or ones created via `chump outcome create` directly).
+    #[serde(default)]
+    pub jtbd_who: Option<String>,
+    #[serde(default)]
+    pub jtbd_struggling_moment: Option<String>,
+    #[serde(default)]
+    pub jtbd_done_signal: Option<String>,
 }
 
 /// MISSION-033: first-class Repo object.
@@ -530,6 +558,27 @@ impl GapStore {
             "ALTER TABLE gaps ADD COLUMN artifact_type TEXT NOT NULL DEFAULT 'code'",
             [],
         );
+        // EFFECTIVE-038: A2A L2 task-suspension columns. A gap that hits
+        // input_required (ambiguous decision, needs operator judgment) or
+        // auth_required (missing credential — RESILIENT-054's silent-death
+        // mode) flips status='waiting_operator' instead of failing or
+        // spawning a free-text follow-up gap. `waiting_payload` carries the
+        // structured question (kind + question + any context); `resume_status`
+        // is the status to restore on `chump gap respond` (almost always
+        // whatever the gap's status was the instant before it suspended, so
+        // it resumes exactly where it paused instead of falling back to a
+        // generic 'open'). All three are nullable/defaulted so existing rows
+        // are unaffected until a gap actually suspends.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN waiting_payload TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE gaps ADD COLUMN resume_status TEXT NOT NULL DEFAULT ''",
+            [],
+        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE gaps ADD COLUMN waiting_since INTEGER", []);
         // Backfill closed_date for done rows that predate the column. Idempotent:
         // only touches rows where closed_date is empty AND closed_at is set, so
         // re-running is a no-op once the row is healed. UTC matches `unix_to_iso_date`.
@@ -616,8 +665,25 @@ impl GapStore {
                ('wontfix',             'legacy',       'will not be implemented'),
                ('ready_to_ship',       'INFRA-2130',   'passed preflight; awaiting integration batch'),
                ('bisect_quarantined',  'INFRA-2137',   'failed integration-bisect; needs operator review'),
-               ('already_satisfied',   'CREDIBLE-197', 'acceptance verified already met in the repo; closed with an evidence receipt, no PR — a Scout/Holler finding that was already fixed');
+               ('already_satisfied',   'CREDIBLE-197', 'acceptance verified already met in the repo; closed with an evidence receipt, no PR — a Scout/Holler finding that was already fixed'),
+               ('waiting_operator',    'EFFECTIVE-038','suspended — carrying a structured question payload (input_required | auth_required); chump gap respond resumes it');
             ",
+        );
+
+        // RESILIENT-1364: register `decomposed` — the status `chump gap
+        // decompose --apply` flips a parent umbrella to, instead of leaving
+        // it `open`. Being a distinct, non-'open' status IS the whole fix:
+        // every picker/worker path reads `status='open'` (`chump gap list
+        // --status open`), so a decomposed parent simply stops being
+        // pickable the moment this status lands — no picker-side "has open
+        // children" filter needed. `auto_close_decomposed_parents()` later
+        // flips it to `done` once every child slice named in its notes
+        // reaches `done`.
+        let _ = self.conn.execute(
+            "INSERT OR IGNORE INTO gap_status_registry (status, added_by, note)
+             VALUES ('decomposed', 'RESILIENT-1364',
+               'umbrella parent taken out of the pick pool by chump gap decompose --apply; auto-closes to done once all child slices (parsed from notes) reach done')",
+            [],
         );
 
         // MISSION-008: additive, non-destructive migrations for first-class
@@ -663,6 +729,24 @@ impl GapStore {
             .conn
             .execute("ALTER TABLE outcomes ADD COLUMN park_reason TEXT", []);
 
+        // EFFECTIVE-443: JTBD-sharpen columns — who is struggling, the
+        // struggling moment, and the done-signal — captured at intake time
+        // (`chump intake --create`) so the plain-language "job to be done"
+        // survives past the CLI turn that produced it instead of being
+        // printed once and lost. Nullable, no default: outcomes created
+        // before this slice (and outcomes created outside vision-intake)
+        // simply have no JTBD triple.
+        let _ = self
+            .conn
+            .execute("ALTER TABLE outcomes ADD COLUMN jtbd_who TEXT", []);
+        let _ = self.conn.execute(
+            "ALTER TABLE outcomes ADD COLUMN jtbd_struggling_moment TEXT",
+            [],
+        );
+        let _ = self
+            .conn
+            .execute("ALTER TABLE outcomes ADD COLUMN jtbd_done_signal TEXT", []);
+
         // CREDIBLE-107: evidence column for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
         // Nullable TEXT — no default — so existing rows stay NULL (no evidence required
         // retroactively). New gaps in enforced domains must supply evidence at reserve time.
@@ -693,11 +777,186 @@ impl GapStore {
             ",
         );
 
+        // EFFECTIVE-1298 (EFFECTIVE-409 slice): OpenRouter model metadata index,
+        // enriched by maintenance::enricher::fetch_and_store_openrouter_models.
+        // Keyed by OpenRouter model id so a refresh UPSERTs existing rows
+        // in place rather than dropping/recreating the table.
+        let _ = self.conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS openrouter_model_metadata (
+                model_id                TEXT PRIMARY KEY,
+                context_length          INTEGER NOT NULL DEFAULT 0,
+                pricing_json            TEXT NOT NULL DEFAULT '{}',
+                per_request_limits_json TEXT NOT NULL DEFAULT '{}',
+                expiration_date         TEXT NOT NULL DEFAULT '',
+                knowledge_cutoff        TEXT NOT NULL DEFAULT '',
+                architecture_json       TEXT NOT NULL DEFAULT '{}',
+                reasoning_json          TEXT NOT NULL DEFAULT '{}',
+                supported_parameters_json TEXT NOT NULL DEFAULT '[]',
+                updated_at              INTEGER NOT NULL DEFAULT 0
+             );
+            ",
+        );
+
         Ok(())
     }
 }
 
+/// One OpenRouter `/v1/models` entry, trimmed to the fields EFFECTIVE-409
+/// (inference tender) consumes: context/pricing/limits for routing, plus
+/// expiration/knowledge_cutoff/architecture/reasoning/supported_parameters
+/// for capability + deprecation checks. See
+/// `maintenance::enricher::fetch_and_store_openrouter_models`.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq, Default)]
+pub struct OpenRouterModel {
+    pub id: String,
+    #[serde(default)]
+    pub context_length: i64,
+    #[serde(default)]
+    pub pricing: serde_json::Value,
+    #[serde(default)]
+    pub per_request_limits: serde_json::Value,
+    #[serde(default)]
+    pub expiration_date: String,
+    #[serde(default)]
+    pub knowledge_cutoff: String,
+    #[serde(default)]
+    pub architecture: serde_json::Value,
+    #[serde(default)]
+    pub reasoning: serde_json::Value,
+    #[serde(default)]
+    pub supported_parameters: Vec<String>,
+}
+
+impl GapStore {
+    /// EFFECTIVE-1298: mutate the `openrouter_model_metadata` index in place —
+    /// one `INSERT ... ON CONFLICT DO UPDATE` per model, keyed by `model_id`.
+    /// Never drops or recreates the table, so a partial/incremental refresh
+    /// never loses rows for models absent from `models` (e.g. a filtered
+    /// re-fetch). Returns the number of rows upserted.
+    pub fn upsert_openrouter_model_metadata(&self, models: &[OpenRouterModel]) -> Result<usize> {
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64;
+        let mut count = 0usize;
+        for m in models {
+            let pricing_json = serde_json::to_string(&m.pricing)?;
+            let limits_json = serde_json::to_string(&m.per_request_limits)?;
+            let architecture_json = serde_json::to_string(&m.architecture)?;
+            let reasoning_json = serde_json::to_string(&m.reasoning)?;
+            let supported_parameters_json = serde_json::to_string(&m.supported_parameters)?;
+            self.conn.execute(
+                "INSERT INTO openrouter_model_metadata
+                    (model_id, context_length, pricing_json, per_request_limits_json,
+                     expiration_date, knowledge_cutoff, architecture_json, reasoning_json,
+                     supported_parameters_json, updated_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+                 ON CONFLICT(model_id) DO UPDATE SET
+                    context_length = excluded.context_length,
+                    pricing_json = excluded.pricing_json,
+                    per_request_limits_json = excluded.per_request_limits_json,
+                    expiration_date = excluded.expiration_date,
+                    knowledge_cutoff = excluded.knowledge_cutoff,
+                    architecture_json = excluded.architecture_json,
+                    reasoning_json = excluded.reasoning_json,
+                    supported_parameters_json = excluded.supported_parameters_json,
+                    updated_at = excluded.updated_at",
+                params![
+                    m.id,
+                    m.context_length,
+                    pricing_json,
+                    limits_json,
+                    m.expiration_date,
+                    m.knowledge_cutoff,
+                    architecture_json,
+                    reasoning_json,
+                    supported_parameters_json,
+                    now,
+                ],
+            )?;
+            count += 1;
+        }
+        Ok(count)
+    }
+
+    /// Read back one model's metadata row by OpenRouter model id, if present.
+    pub fn get_openrouter_model_metadata(&self, model_id: &str) -> Result<Option<OpenRouterModel>> {
+        let mut stmt = self.conn.prepare(
+            "SELECT model_id, context_length, pricing_json, per_request_limits_json,
+                    expiration_date, knowledge_cutoff, architecture_json, reasoning_json,
+                    supported_parameters_json
+             FROM openrouter_model_metadata WHERE model_id = ?1",
+        )?;
+        let mut rows = stmt.query(params![model_id])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        let pricing_json: String = row.get(2)?;
+        let limits_json: String = row.get(3)?;
+        let architecture_json: String = row.get(6)?;
+        let reasoning_json: String = row.get(7)?;
+        let supported_parameters_json: String = row.get(8)?;
+        Ok(Some(OpenRouterModel {
+            id: row.get(0)?,
+            context_length: row.get(1)?,
+            pricing: serde_json::from_str(&pricing_json).unwrap_or_default(),
+            per_request_limits: serde_json::from_str(&limits_json).unwrap_or_default(),
+            expiration_date: row.get(4)?,
+            knowledge_cutoff: row.get(5)?,
+            architecture: serde_json::from_str(&architecture_json).unwrap_or_default(),
+            reasoning: serde_json::from_str(&reasoning_json).unwrap_or_default(),
+            supported_parameters: serde_json::from_str(&supported_parameters_json)
+                .unwrap_or_default(),
+        }))
+    }
+}
+
 // ────────────────────────── gap commands ──────────────────────────
+
+/// EFFECTIVE-364 slice (EFFECTIVE-478): the event handed to the publication
+/// resolver when a gap ships — enough for the resolver to decide whether
+/// (and where) "ship -> told" work should be reserved.
+#[derive(Debug, Clone, Serialize)]
+struct PublicationEvent {
+    source_gap_id: String,
+    artifact_type: String,
+}
+
+/// EFFECTIVE-364 slice (EFFECTIVE-834): resolves a shipped gap into
+/// publication work. Records the receipt for audit, then looks up
+/// `publish_targets.json` (via `chump_bench::get_publish_targets`, EFFECTIVE-477)
+/// for the shipped gap's `artifact_type`. When one or more targets are
+/// registered, reserves a low-priority follow-up gap per target so the
+/// "ship -> told" work actually lands in the queue; an unregistered
+/// artifact_type (the common case today) is a no-op past the receipt log.
+async fn resolve_publication(event: PublicationEvent, repo_root: PathBuf) -> Result<()> {
+    use std::io::Write as _;
+    let line = serde_json::to_string(&event)? + "\n";
+    let path = repo_root
+        .join(".chump-locks")
+        .join("publication_events.jsonl");
+    std::fs::create_dir_all(path.parent().unwrap_or(&repo_root))?;
+    let mut f = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)?;
+    f.write_all(line.as_bytes())?;
+
+    let targets = chump_bench::bench::get_publish_targets(&event.artifact_type);
+    if targets.is_empty() {
+        return Ok(());
+    }
+
+    let store = GapStore::open(&repo_root)?;
+    for target in targets {
+        let title = format!(
+            "Publish {} ({}) to {} [{}]",
+            event.source_gap_id, event.artifact_type, target.platform_id, target.target_type
+        );
+        store.reserve("EFFECTIVE", &title, "P3", "xs")?;
+    }
+    Ok(())
+}
 
 impl GapStore {
     /// Total row count across all statuses. Used to detect an empty-on-clone DB.
@@ -793,6 +1052,50 @@ impl GapStore {
             let rows = stmt.query_map([], make_row)?;
             rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
         }
+    }
+
+    /// CREDIBLE-339: list gaps with a specific status, ordered by closed_at ASC
+    /// (oldest closed first). Used by the done-gap over-claim auditor
+    /// so each run processes the oldest closed gaps and subsequent runs
+    /// naturally pick up newer gaps without re-auditing.
+    pub fn list_by_status_ordered(&self, status: &str) -> Result<Vec<GapRow>> {
+        let make_row = |row: &rusqlite::Row<'_>| {
+            Ok(GapRow {
+                id: row.get(0)?,
+                domain: row.get(1)?,
+                title: row.get(2)?,
+                description: row.get(3)?,
+                priority: row.get(4)?,
+                effort: row.get(5)?,
+                status: row.get(6)?,
+                acceptance_criteria: row.get(7)?,
+                depends_on: row.get(8)?,
+                notes: row.get(9)?,
+                source_doc: row.get(10)?,
+                created_at: row.get(11)?,
+                closed_at: row.get(12)?,
+                opened_date: row.get(13)?,
+                closed_date: row.get(14)?,
+                closed_pr: row.get(15)?,
+                skills_required: row.get(16)?,
+                preferred_backend: row.get(17)?,
+                preferred_machine: row.get(18)?,
+                estimated_minutes: row.get(19)?,
+                required_model: row.get(20)?,
+                shipped_in: row.get(21)?,
+                outcome_id: row.get(22)?,
+                evidence: row.get(23)?,
+            })
+        };
+        let mut stmt = self.conn.prepare(
+            "SELECT id,domain,title,description,priority,effort,status,
+                    CAST(acceptance_criteria AS TEXT) AS acceptance_criteria,depends_on,notes,source_doc,created_at,CASE WHEN typeof(closed_at)='integer' THEN closed_at ELSE NULL END AS closed_at,
+                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                    preferred_machine,estimated_minutes,required_model,shipped_in,outcome_id,evidence
+             FROM gaps WHERE status=?1 ORDER BY closed_at ASC, id ASC",
+        )?;
+        let rows = stmt.query_map(params![status], make_row)?;
+        rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
     }
 
     // ── INFRA-1149: reserve-time title similarity ─────────────────────────────
@@ -921,6 +1224,40 @@ impl GapStore {
         scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
         scored.truncate(top_n);
         Ok(scored)
+    }
+
+    /// ZERO-WASTE-059: run the dedup-check + AC-hygiene scan inline with
+    /// `ship`, scoped to the shipped gap's domain, so the fleet doesn't need
+    /// a separate reconcile-stale-gap PR to notice "this other open gap in
+    /// the same domain is now a duplicate" or "that pickable gap has no
+    /// real acceptance criteria". Advisory only — never blocks the ship.
+    pub fn queue_hygiene_check_on_ship(
+        &self,
+        shipped_gap_id: &str,
+        shipped_title: &str,
+        domain: &str,
+        similarity_threshold: f64,
+    ) -> Result<ShipQueueHygieneReport> {
+        let dup_candidates = self
+            .similarity_candidates(shipped_title, 5, 30)?
+            .into_iter()
+            .filter(|(id, _, status, score)| {
+                id != shipped_gap_id && status == "open" && *score >= similarity_threshold
+            })
+            .collect();
+
+        let vague_ac_gaps: Vec<(String, String)> = self
+            .list(Some("open"))?
+            .into_iter()
+            .filter(|g| g.domain == domain)
+            .filter(|g| acceptance_criteria_is_vague(&g.acceptance_criteria))
+            .map(|g| (g.id, g.title))
+            .collect();
+
+        Ok(ShipQueueHygieneReport {
+            dup_candidates,
+            vague_ac_gaps,
+        })
     }
 
     /// Get a single gap by ID.
@@ -1306,6 +1643,133 @@ impl GapStore {
         Ok(v)
     }
 
+    /// EFFECTIVE-038 (A2A L2): suspend a gap into `waiting_operator`, carrying
+    /// a structured question payload — the Google-A2A-shaped alternative to
+    /// "silently die" (auth_required, RESILIENT-054) or "guess wrong / file a
+    /// disconnected follow-up gap" (input_required, ambiguous decision).
+    ///
+    /// `kind` is `"input_required"` or `"auth_required"`; `question` is a
+    /// human-readable prompt for the operator; `context_json` is an optional
+    /// caller-supplied JSON blob (e.g. partial progress) round-tripped
+    /// verbatim into the payload so `respond` can hand it back unchanged.
+    ///
+    /// Captures the gap's current status as `resume_status` so `respond`
+    /// resumes exactly where the gap paused, not to a generic 'open'.
+    /// Refuses to suspend a gap that is already `done` or `waiting_operator`.
+    pub fn suspend_waiting(
+        &self,
+        gap_id: &str,
+        kind: &str,
+        question: &str,
+        context_json: Option<&str>,
+    ) -> Result<()> {
+        if kind != "input_required" && kind != "auth_required" {
+            bail!(
+                "suspend_waiting: kind must be 'input_required' or 'auth_required', got '{}'",
+                kind
+            );
+        }
+        let cur_status: Option<String> = self
+            .conn
+            .query_row("SELECT status FROM gaps WHERE id=?1", [gap_id], |r| {
+                r.get(0)
+            })
+            .ok();
+        let cur_status = match cur_status {
+            Some(s) => s,
+            None => bail!("gap {} not found", gap_id),
+        };
+        if cur_status == "done" {
+            bail!(
+                "gap {} is already done; cannot suspend to waiting_operator",
+                gap_id
+            );
+        }
+        if cur_status == "waiting_operator" {
+            bail!(
+                "gap {} is already waiting_operator; respond to it first before suspending again",
+                gap_id
+            );
+        }
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs() as i64)
+            .unwrap_or(0);
+        let payload = serde_json::json!({
+            "kind": kind,
+            "question": question,
+            "context": context_json.and_then(|c| serde_json::from_str::<serde_json::Value>(c).ok()),
+        });
+        self.conn.execute(
+            "UPDATE gaps SET status='waiting_operator', waiting_payload=?1,
+             resume_status=?2, waiting_since=?3 WHERE id=?4",
+            params![payload.to_string(), cur_status, now, gap_id],
+        )?;
+        Ok(())
+    }
+
+    /// EFFECTIVE-038: read the structured question payload of a gap
+    /// currently in `waiting_operator`. Returns `None` if the gap has no
+    /// pending payload (never suspended, or already resumed).
+    pub fn get_waiting_payload(&self, gap_id: &str) -> Result<Option<String>> {
+        let v: Option<String> = self.conn.query_row(
+            "SELECT waiting_payload FROM gaps WHERE id=?1",
+            [gap_id],
+            |r| r.get(0),
+        )?;
+        Ok(v)
+    }
+
+    /// EFFECTIVE-038: resume a `waiting_operator` gap with the operator's
+    /// answer. Restores `status` to whatever it was the instant before
+    /// suspension (`resume_status`), clears the waiting payload, and appends
+    /// the question + answer to `notes` as an audit trail. Returns the
+    /// resumed status. Errors if the gap is not currently `waiting_operator`.
+    pub fn respond_gap(&self, gap_id: &str, answer_json: &str) -> Result<String> {
+        let row: Option<(String, Option<String>, String, String)> = self
+            .conn
+            .query_row(
+                "SELECT status, waiting_payload, resume_status, notes FROM gaps WHERE id=?1",
+                [gap_id],
+                |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)),
+            )
+            .ok();
+        let (status, payload, resume_status, notes) = match row {
+            Some(v) => v,
+            None => bail!("gap {} not found", gap_id),
+        };
+        if status != "waiting_operator" {
+            bail!(
+                "gap {} is not waiting_operator (current status: '{}') — nothing to respond to",
+                gap_id,
+                status
+            );
+        }
+        let resume_status = if resume_status.is_empty() {
+            "open".to_string()
+        } else {
+            resume_status
+        };
+        let question = payload
+            .as_deref()
+            .and_then(|p| serde_json::from_str::<serde_json::Value>(p).ok())
+            .and_then(|v| v.get("question").and_then(|q| q.as_str()).map(String::from))
+            .unwrap_or_default();
+        let mut new_notes = notes;
+        if !new_notes.is_empty() {
+            new_notes.push('\n');
+        }
+        new_notes.push_str(&format!(
+            "[operator response] Q: {question} A: {answer_json}"
+        ));
+        self.conn.execute(
+            "UPDATE gaps SET status=?1, waiting_payload=NULL, resume_status='', notes=?2
+             WHERE id=?3",
+            params![resume_status, new_notes, gap_id],
+        )?;
+        Ok(resume_status)
+    }
+
     /// Reserve a new gap ID atomically using a per-domain counter row.
     /// The counter upsert + gap insert runs under an exclusive transaction,
     /// so concurrent callers get distinct IDs with no retries.
@@ -1376,6 +1840,51 @@ impl GapStore {
         //   reconcile any manual YAML edits back into state.db — that's the right
         //   home for the reconciliation pass, not the hot reserve path.
 
+        // INFRA-3687, parts 1+2 of the stale-checkout collision fix: consult
+        // origin/main's canonical state.sql BEFORE touching the local
+        // counter, and fail closed if this checkout is genuinely behind
+        // origin/main AND canonical truth is unverifiable. Computed up
+        // front (outside the BEGIN IMMEDIATE write-lock below) since both
+        // are pure git shell-outs with no state.db interaction — no reason
+        // to hold the write lock across them.
+        //
+        // Existing test fixtures (`test_store()`) use a bare `TempDir` with
+        // no `.git` at all, so both calls return `None` for them and this
+        // gate is a no-op — unaffected.
+        let canonical_max = self.canonical_max_id(&domain_upper);
+        let behind = behind_origin_main_count(&self.repo_root).unwrap_or(0);
+        let allow_stale = std::env::var("CHUMP_RESERVE_ALLOW_STALE").as_deref() == Ok("1");
+        if behind > 0 && canonical_max.is_none() {
+            if !allow_stale {
+                bail!(
+                    "refusing to reserve {domain_upper}: checkout is {behind} commit(s) behind \
+                     origin/main and canonical state.sql is unreadable — cannot guarantee a \
+                     unique ID. Run `git pull` (or restore state.db from state.sql) and retry. \
+                     Emergency escape hatch: CHUMP_RESERVE_ALLOW_STALE=1 (audited)."
+                );
+            }
+            // CHUMP_RESERVE_ALLOW_STALE=1 audit trail — same ambient-event
+            // idiom already used twice below in this function
+            // (gap_id_allocator_collision_avoided /
+            // gap_id_reused_from_git_history_avoided). Registered in
+            // docs/observability/EVENT_REGISTRY.yaml.
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let ts = unix_to_iso_full(unix_now());
+            // scanner-anchor: "kind":"gap_reserve_stale_bypass_used" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-3687)
+            let line = format!(
+                "{{\"ts\":\"{ts}\",\"kind\":\"gap_reserve_stale_bypass_used\",\
+                 \"domain\":\"{domain_upper}\",\"behind\":{behind}}}\n"
+            );
+            use std::io::Write as _;
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
+
         // Seed the counter from existing gaps if this is the first reserve for the domain.
         // Then atomically bump it and insert the new gap row under IMMEDIATE (reserved write
         // lock). BEGIN EXCLUSIVE was too strong: concurrent GapStore::open + migrate on the
@@ -1395,7 +1904,17 @@ impl GapStore {
             // pending leases (sources the DB cannot see). The counter must
             // start above the max of (DB max, external max).
             let extra_max = extra_used.iter().copied().max().unwrap_or(0);
-            let combined_max = std::cmp::max(existing_max, extra_max);
+            // INFRA-3687: also bump past origin/main's canonical state.sql
+            // max (computed above, before the transaction started) — the
+            // fix for the stale-checkout collision class. A checkout behind
+            // origin/main has a stale `existing_max` here; folding in
+            // `canonical_max` makes it impossible to re-issue an ID that
+            // canonically already belongs to a merged gap, independent of
+            // how stale this checkout's local DB and leases are.
+            let combined_max = std::cmp::max(
+                std::cmp::max(existing_max, extra_max),
+                canonical_max.unwrap_or(0),
+            );
             self.conn.execute(
                 "INSERT INTO gap_counters(domain, next_num) VALUES(?1, ?2)
                  ON CONFLICT(domain) DO UPDATE SET next_num = MAX(next_num, excluded.next_num)",
@@ -1443,6 +1962,10 @@ impl GapStore {
             // in a past commit message on any ref; if so, skip it and try the
             // next number. Bounded retry (not unbounded) so a persistently
             // broken git binary can't hang reserve forever.
+            // CREDIBLE-292: pull fresh origin refs once before the retry loop
+            // so git_id_referenced() below can see IDs a sibling node already
+            // merged, even if this checkout's last fetch predates them.
+            fetch_origin_refs(&self.repo_root);
             const MAX_GIT_HISTORY_SKIPS: u32 = 50;
             let mut new_id = String::new();
             for _ in 0..MAX_GIT_HISTORY_SKIPS {
@@ -1484,10 +2007,23 @@ impl GapStore {
                      CHUMP_RESERVE_GIT_HISTORY_CHECK or the domain counter."
                 );
             }
+            // INFRA-1611: stamp opened_date at original-reservation time (not
+            // import time) so the P0 aging census in `chump gap
+            // audit-priorities` has real age data instead of showing every
+            // gap as "0d old" after a fresh state.db import.
+            let opened_date = unix_to_iso_full(now)[..10].to_string();
             self.conn.execute(
-                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at)
-                 VALUES(?1,?2,?3,?4,?5,'open',?6)",
-                params![new_id, domain_upper, title, priority, effort, now],
+                "INSERT INTO gaps(id,domain,title,priority,effort,status,created_at,opened_date)
+                 VALUES(?1,?2,?3,?4,?5,'open',?6,?7)",
+                params![
+                    new_id,
+                    domain_upper,
+                    title,
+                    priority,
+                    effort,
+                    now,
+                    opened_date
+                ],
             )?;
             Ok(new_id)
         })();
@@ -1888,6 +2424,101 @@ impl GapStore {
         Ok(out)
     }
 
+    /// INFRA-3687: read origin/main's tracked `.chump/state.sql` — the
+    /// canonical, git-tracked dump of every gap ever reserved or merged —
+    /// and return the highest `<DOMAIN>-N` id number found for
+    /// `domain_upper`.
+    ///
+    /// This closes the stale-checkout ID collision class documented in
+    /// `docs/process/CANONICAL_STATE_CONTRACT.md` § Drift Mode G: a
+    /// checkout N commits behind `origin/main` has a stale local `gaps`
+    /// table, so `existing_max` (local state.db) and `extra_max`
+    /// (`.chump-locks/*.json` leases + open-PR titles) can BOTH under-count,
+    /// and `reserve_with_external` re-issues an ID that canonically already
+    /// belongs to a merged gap (real repro: a checkout 177 commits behind
+    /// reserved `INFRA-3680`, canonically a merged "parse_verdict" gap).
+    /// Folding this method's result into `combined_max` in
+    /// `reserve_with_external` makes that physically impossible whenever
+    /// origin refs are reachable.
+    ///
+    /// Best-effort `git fetch origin main --quiet` first (mirrors the
+    /// INFRA-2423 `ship()` auto-fetch pattern; non-fatal offline/no-remote —
+    /// falls through to whatever `origin/main` this checkout already knows
+    /// about). Then reads `origin/main:.chump/state.sql` via `git show` and
+    /// delegates to [`Self::max_id_num_in_gaps`] — the SAME id-column-only
+    /// extraction the local allocator uses, deliberately NOT a raw
+    /// text/regex scan over the whole dump (see that method's docs for why:
+    /// state.sql is known to carry `<DOMAIN>-N`-shaped junk substrings
+    /// outside the `id` column, e.g. `INFRA-9999999` quoted in a note).
+    ///
+    /// Returns `None` — "could not verify canonical truth" — ONLY when
+    /// there is no `.git`, the `git show` itself fails (offline,
+    /// unreachable ref, or the file does not exist at `origin/main`'s
+    /// current tip), or the YAML fails to parse. Deliberately distinct from
+    /// "the file was read successfully but this domain has zero canonical
+    /// gaps" — that case is verified truth (a fresh domain's canonical max
+    /// really is 0) and returns `Some(0)`, not `None`. Collapsing the two
+    /// would make `reserve_with_external`'s fail-closed gate refuse every
+    /// first-ever reserve for a new domain on a checkout that happens to be
+    /// behind, which is not a staleness risk at all. Callers MUST treat
+    /// `None` as "unverifiable" — see the fail-closed gate in
+    /// `reserve_with_external`.
+    pub fn canonical_max_id(&self, domain_upper: &str) -> Option<i64> {
+        if !self.repo_root.join(".git").exists() {
+            return None;
+        }
+        // Registry privacy: the canonical registry is published to the
+        // private `registry` git remote, not to the public code repo. When
+        // that remote is configured it is the ONLY source consulted: a
+        // configured-but-unreadable registry returns `None` (unverifiable,
+        // fail-closed gate) rather than quietly falling back to a frozen
+        // legacy copy on origin/main, which would under-report the max ID
+        // and hand out colliding IDs. `origin/main` is consulted only when
+        // no registry remote exists (the legacy, pre-cutover layout).
+        let has_registry_remote = std::process::Command::new("git")
+            .args(["remote", "get-url", "registry"])
+            .current_dir(&self.repo_root)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let (remote, spec) = if has_registry_remote {
+            ("registry", "registry/main:.chump/state.sql")
+        } else {
+            ("origin", "origin/main:.chump/state.sql")
+        };
+        // Best-effort refresh; non-fatal if offline (mirrors the INFRA-2423
+        // auto-fetch already used by ship()'s proof-of-merge check).
+        let _ = std::process::Command::new("git")
+            .args(["fetch", remote, "main", "--quiet"])
+            .current_dir(&self.repo_root)
+            .output();
+        let output = std::process::Command::new("git")
+            .args(["show", spec])
+            .current_dir(&self.repo_root)
+            .output()
+            .ok()?;
+        if !output.status.success() {
+            return None;
+        }
+        let text = String::from_utf8_lossy(&output.stdout);
+        let file = Self::parse_state_sql_yaml(&text).ok()?;
+        // Read + parse succeeded: this IS verified canonical truth, even
+        // when the domain has zero matches there (a brand-new domain's
+        // canonical max legitimately is 0 — see the doc comment above).
+        Some(Self::max_id_num_in_gaps(&file.gaps, domain_upper).unwrap_or(0))
+    }
+
+    /// Public wrapper around [`behind_origin_main_count`] for CLI callers
+    /// (`chump gap list`'s Drift-Mode-G staleness warning, part 3 of the
+    /// INFRA-3687 fix). Deliberately does NOT fetch first — `gap list` is a
+    /// hot/frequent read path and this must stay non-blocking; it reports
+    /// against whatever `origin/main` ref this checkout already has from
+    /// ambient fetches elsewhere. See that function's docs for `None`
+    /// semantics.
+    pub fn behind_origin_main(&self) -> Option<u64> {
+        behind_origin_main_count(&self.repo_root)
+    }
+
     /// Claim a gap for a session (write lease row).
     pub fn claim(
         &self,
@@ -1988,7 +2619,14 @@ impl GapStore {
             .optional()?;
         match row {
             None => return Ok(PreflightResult::NotFound),
-            Some(s) if s == "done" => return Ok(PreflightResult::Done),
+            // RESILIENT-1447: 'open' is the ONLY pickable status. Before this
+            // fix, only status=='done' was rejected here, so a worker re-pick
+            // could slip through on any other terminal/in-flight status
+            // (wontfix, already_satisfied, decomposed, superseded,
+            // ready_to_ship, bisect_quarantined, waiting_operator) — burning a
+            // full cycle producing a hollow ship with no branch/PR (e.g.
+            // RESILIENT-700). Treat every non-'open' status as not pickable.
+            Some(s) if s != "open" => return Ok(PreflightResult::Done),
             _ => {}
         }
         let live_claim: Option<String> = self
@@ -2124,6 +2762,41 @@ impl GapStore {
                             let _ = f.write_all(line.as_bytes());
                         }
                     }
+
+                    // RESILIENT-492: after a successful pull, rebuild the
+                    // release binary so a stale binary can never ship silently.
+                    // Capture stdout/stderr to build.log in the repo root and
+                    // abort the ship if the build fails. Only applies to a
+                    // real Cargo workspace — auto-fetch/auto-pull test
+                    // fixtures use plain git repos with no Cargo.toml, and
+                    // ship() must stay usable against those without dragging
+                    // in a cargo dependency.
+                    if self.repo_root.join("Cargo.toml").exists() {
+                        let build_output = std::process::Command::new("cargo")
+                            .args(["build", "--release"])
+                            .current_dir(&self.repo_root)
+                            .output()
+                            .context("RESILIENT-492: failed to spawn `cargo build --release`")?;
+
+                        {
+                            use std::io::Write as _;
+                            let build_log = self.repo_root.join("build.log");
+                            if let Ok(mut f) = std::fs::File::create(&build_log) {
+                                let _ = f.write_all(&build_output.stdout);
+                                let _ = f.write_all(&build_output.stderr);
+                            }
+                        }
+
+                        if !build_output.status.success() {
+                            bail!(
+                                "RESILIENT-492: cargo build --release failed with {:?} after \
+                                 auto-pull for {gap_id} — see build.log in repo root for details",
+                                build_output.status.code()
+                            );
+                        }
+
+                        eprintln!("cargo build --release completed with exit code 0");
+                    }
                 }
             }
         }
@@ -2136,6 +2809,21 @@ impl GapStore {
                  mentions {gap_id}. Auto-fetch from origin/main already ran; if the \
                  commit is not yet on main, wait for the merge to land and retry."
             );
+        }
+
+        // RESILIENT-469: run `cargo hakari generate` to keep the workspace-hack
+        // dedup crate in sync before the gap flips to status=done. Best-effort
+        // and non-fatal (missing `cargo-hakari` binary or a hakari-less
+        // checkout must never block a ship) — only attempted against a real
+        // Cargo workspace, mirroring the RESILIENT-492 build-step guard above.
+        if self.repo_root.join("Cargo.toml").exists() {
+            eprintln!("Running cargo hakari generate");
+            let _ = std::process::Command::new("cargo")
+                .args(["hakari", "generate"])
+                .current_dir(&self.repo_root)
+                .stderr(std::process::Stdio::null())
+                .stdout(std::process::Stdio::null())
+                .status();
         }
 
         let now = unix_now();
@@ -2173,6 +2861,226 @@ impl GapStore {
             "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
             params![session_id, gap_id],
         );
+
+        // META-555 (advisory MVP): now that the gap has flipped to done,
+        // evaluate whether its acceptance criterion was EFFECT-verified and
+        // not merely CI-green. Best-effort + NEVER blocks — a gap with no
+        // `verify:` criterion (the default) is untouched; one whose `verify:`
+        // live-check fails is flagged (note + `closed_effect_unverified`
+        // signal) so it stays visible under the SAME id instead of silently
+        // respawning as a fresh gap id (root incident: RESILIENT-1230 ->
+        // 1258 -> 1294, one unfixed symptom, three ids).
+        self.record_effect_verification(gap_id);
+
+        // EFFECTIVE-478 (EFFECTIVE-364 slice): trigger the publication
+        // resolver asynchronously so "ship -> told" work gets queued
+        // without blocking this transition. `ship()` is called from a sync
+        // context with no ambient tokio runtime, so we spin up a
+        // lightweight current-thread runtime on a background OS thread
+        // rather than calling `tokio::spawn` directly (which panics
+        // outside a runtime). Any failure is logged and never propagated —
+        // publication is best-effort and must not turn a successful ship
+        // into an error.
+        {
+            let artifact_type = self
+                .get_artifact_type(gap_id)
+                .unwrap_or_else(|_| "code".to_string());
+            let event = PublicationEvent {
+                source_gap_id: gap_id.to_string(),
+                artifact_type,
+            };
+            let repo_root = self.repo_root.clone();
+            std::thread::spawn(move || {
+                let rt = match tokio::runtime::Builder::new_current_thread()
+                    .enable_all()
+                    .build()
+                {
+                    Ok(rt) => rt,
+                    Err(e) => {
+                        eprintln!(
+                            "WARN: EFFECTIVE-478: publication resolver runtime init failed: {e:#}"
+                        );
+                        return;
+                    }
+                };
+                let _guard = rt.enter();
+                let handle = tokio::spawn(resolve_publication(event, repo_root));
+                match rt.block_on(handle) {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => {
+                        eprintln!("WARN: EFFECTIVE-478: publication resolver failed: {e:#}")
+                    }
+                    Err(e) => {
+                        eprintln!("WARN: EFFECTIVE-478: publication resolver task panicked: {e:#}")
+                    }
+                }
+            });
+        }
+
+        Ok(())
+    }
+
+    /// META-555: after a gap flips to done in `ship()`, evaluate whether its
+    /// acceptance criterion was EFFECT-verified — not merely that a PR merged
+    /// green. Reads the gap's opt-in `verify:` live-check command(s) (see
+    /// `extract_verify_commands`) and runs them in the repo root. Pure of side
+    /// effects (no ambient emit, no DB write) so it is cheaply unit-testable;
+    /// `record_effect_verification` is the side-effecting wrapper ship() calls.
+    ///
+    /// ANTI-WEDGE: a gap with no `verify:` criterion returns `NoLiveCriterion`
+    /// immediately, having run nothing. This is the >99% default and the reason
+    /// this check can never stall an ordinary closure.
+    pub fn evaluate_effect_verification(&self, gap_id: &str) -> EffectVerdict {
+        let ac: String = match self.conn.query_row(
+            "SELECT CAST(acceptance_criteria AS TEXT) FROM gaps WHERE id=?1",
+            params![gap_id],
+            |r| r.get(0),
+        ) {
+            Ok(s) => s,
+            Err(_) => return EffectVerdict::NoLiveCriterion,
+        };
+        let cmds = extract_verify_commands(&ac);
+        if cmds.is_empty() {
+            return EffectVerdict::NoLiveCriterion;
+        }
+        let timeout_s: u64 = std::env::var("CHUMP_EFFECT_VERIFY_TIMEOUT_S")
+            .ok()
+            .and_then(|v| v.parse().ok())
+            .unwrap_or(30);
+        for cmd in &cmds {
+            match run_verify_command(&self.repo_root, cmd, timeout_s) {
+                Ok(true) => continue,
+                Ok(false) => {
+                    return EffectVerdict::EffectUnverified {
+                        failed_command: cmd.clone(),
+                        detail: "verify command exited non-zero".to_string(),
+                    }
+                }
+                Err(e) => {
+                    return EffectVerdict::EffectUnverified {
+                        failed_command: cmd.clone(),
+                        detail: format!("{e:#}"),
+                    }
+                }
+            }
+        }
+        EffectVerdict::EffectVerified
+    }
+
+    /// META-555: the side-effecting wrapper `ship()` calls once a gap has flipped
+    /// to done. Best-effort ONLY — every path swallows its errors so a successful
+    /// close is NEVER turned into a failure (the hard anti-wedge rule). Outputs:
+    ///   * NoLiveCriterion  -> nothing (ordinary closures untouched).
+    ///   * EffectVerified   -> a `closed_effect_verified` ambient signal (receipt).
+    ///   * EffectUnverified -> a `closed_effect_unverified` ambient signal AND a
+    ///     queryable `[META-555 EFFECT-UNVERIFIED ...]` note appended to the gap,
+    ///     so downstream (dedup / operator / a future re-work consumer) can find
+    ///     done-but-flagged gaps via `notes LIKE '%EFFECT-UNVERIFIED%'` and
+    ///     re-work them under the SAME id rather than spawning a duplicate.
+    fn record_effect_verification(&self, gap_id: &str) {
+        let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+        let append = |payload: &serde_json::Value| {
+            use std::io::Write as _;
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = writeln!(f, "{payload}");
+            }
+        };
+        match self.evaluate_effect_verification(gap_id) {
+            EffectVerdict::NoLiveCriterion => {}
+            EffectVerdict::EffectVerified => {
+                // scanner-anchor: "kind":"closed_effect_verified" (META-555)
+                append(&serde_json::json!({
+                    "ts": unix_to_iso_full(unix_now()),
+                    "kind": "closed_effect_verified",
+                    "gap_id": gap_id,
+                }));
+            }
+            EffectVerdict::EffectUnverified {
+                failed_command,
+                detail,
+            } => {
+                let ts = unix_to_iso_full(unix_now());
+                let flag =
+                    format!("[META-555 EFFECT-UNVERIFIED @ {ts}: `{failed_command}` -> {detail}]");
+                // Queryable flag so a merged-but-ineffective fix stays visible
+                // under the same id rather than being silently clean-done.
+                let _ = self.conn.execute(
+                    "UPDATE gaps SET notes = TRIM(COALESCE(notes,'') || char(10) || ?1) WHERE id=?2",
+                    params![flag, gap_id],
+                );
+                // scanner-anchor: "kind":"closed_effect_unverified" (META-555)
+                append(&serde_json::json!({
+                    "ts": ts,
+                    "kind": "closed_effect_unverified",
+                    "gap_id": gap_id,
+                    "cmd": failed_command,
+                    "detail": detail,
+                }));
+            }
+        }
+    }
+
+    /// RESILIENT-119: first-class triage-close for gaps that will never ship
+    /// a PR (superseded / wontfix / obsolete / duplicate). Deliberately does
+    /// NOT run the `ship()` guards — INFRA-2423 (clean/current worktree) and
+    /// INFRA-1392 (proof-of-merge commit on main) exist to protect PR-ships
+    /// from being marked done prematurely. A triage-close is the opposite
+    /// case: there is no PR and never will be one, so those guards can only
+    /// ever fail spuriously here. Before this method existed, the only way
+    /// to flip such a gap's status was `git reset --hard origin/main +
+    /// CHUMP_BINARY_STALENESS_CHECK=0 chump gap edit --status superseded` —
+    /// a band-aid that discarded local state as a side effect just to dodge
+    /// guards that were never meant to apply.
+    pub fn close(&self, gap_id: &str, session_id: &str, reason: &str) -> Result<()> {
+        const VALID_REASONS: &[&str] = &["superseded", "wontfix", "obsolete", "duplicate"];
+        if !VALID_REASONS.contains(&reason) {
+            bail!(
+                "chump gap close: invalid --reason {:?}. Must be one of: {}",
+                reason,
+                VALID_REASONS.join(", ")
+            );
+        }
+        let now = unix_now();
+        let iso = unix_to_iso_date(now);
+        let changed = self.conn.execute(
+            "UPDATE gaps SET status=?1, closed_at=?2, closed_date=?3
+             WHERE id=?4 AND status NOT IN
+               ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied','obsolete','duplicate')",
+            params![reason, now, iso, gap_id],
+        )?;
+        if changed == 0 {
+            bail!(
+                "gap {} not found or already in a terminal status (done/superseded/wontfix/closed/obsolete/duplicate)",
+                gap_id
+            );
+        }
+        let _ = self.conn.execute(
+            "DELETE FROM leases WHERE session_id=?1 AND gap_id=?2",
+            params![session_id, gap_id],
+        );
+        // Best-effort ambient audit event — never fail the caller on write errors.
+        {
+            use std::io::Write as _;
+            let ts = unix_to_iso_full(now);
+            // scanner-anchor: gap_triage_closed (RESILIENT-119)
+            let line = format!(
+                r#"{{"ts":"{ts}","kind":"gap_triage_closed","gap_id":"{gap_id}","reason":"{reason}","session_id":"{session_id}"}}"#,
+            ) + "\n";
+            let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+            let _ = std::fs::create_dir_all(amb.parent().unwrap_or(&self.repo_root));
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&amb)
+            {
+                let _ = f.write_all(line.as_bytes());
+            }
+        }
         Ok(())
     }
 
@@ -2815,6 +3723,21 @@ const DB_OWNED_GAP_FIELDS: &[&str] = &[
     "estimated_minutes",
     "required_model",
     "outcome_id",
+    // INFRA-3605: evidence IS a DB-owned column (format_gap_yaml emits it
+    // above). Its absence here was the bug: merge_preserve_unknown_fields
+    // treated any pre-existing on-disk `evidence:` block as unknown/
+    // hand-curated and re-spliced it in *after* the freshly generated
+    // `evidence:` block, producing two `evidence:` keys in one gap mapping.
+    // serde_yaml correctly rejects that as a duplicate field, which made
+    // `chump gap dump --out docs/gaps.yaml` (the state.db -> gaps.yaml sync
+    // path, via dump_yaml_with_meta) fail outright and no-op instead of
+    // updating the mirror -- the root cause of the ~449-entry drift.
+    "evidence",
+    // artifact_type (EFFECTIVE-363) is also DB-owned. format_gap_yaml does
+    // not currently emit it, so this entry is a no-op today, but it
+    // documents ownership correctly and pre-empts the same duplicate-key
+    // class the day emission is added.
+    "artifact_type",
 ];
 
 /// INFRA-208: take freshly-generated per-file YAML (one block-list entry as
@@ -3071,6 +3994,82 @@ struct YamlGapsFile {
     gaps: Vec<YamlGap>,
 }
 
+/// VOA-006: load the gap registry, parsing each `docs/gaps/*.yaml` on its own.
+///
+/// The three call sites here (import, closed_pr backfill, status backfill) each
+/// used to concatenate every per-file YAML into one buffer and parse it once, so
+/// a single malformed entry aborted the whole read. INFRA-3429.yaml shipped with
+/// 39 duplicate `evidence:` keys (#3309) and that alone killed every
+/// `chump gap import` — the docs/gaps -> state.db sync was dead and freshly filed
+/// gaps never became pickable.
+///
+/// A bad file is now named on stderr and stepped over. Returns `None` only when
+/// there is no registry at all (neither `docs/gaps/` nor `docs/gaps.yaml`), which
+/// callers treat as a clean no-op rather than an error.
+fn load_gap_registry(repo_root: &Path) -> Result<Option<YamlGapsFile>> {
+    let read_monolithic = || -> Result<Option<YamlGapsFile>> {
+        let yaml_path = repo_root.join("docs").join("gaps.yaml");
+        match std::fs::read_to_string(&yaml_path) {
+            Ok(t) => Ok(Some(serde_yaml::from_str(&t).with_context(|| {
+                format!("parsing gap registry {}", yaml_path.display())
+            })?)),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(anyhow::Error::from(e))
+                .with_context(|| format!("reading {}", yaml_path.display())),
+        }
+    };
+
+    let per_file_dir = repo_root.join("docs").join("gaps");
+    if !per_file_dir.is_dir() {
+        return read_monolithic();
+    }
+
+    let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
+        .with_context(|| format!("reading {}", per_file_dir.display()))?
+        .flatten()
+        .filter(|e| {
+            e.path()
+                .extension()
+                .and_then(|s| s.to_str())
+                .map(|s| s == "yaml")
+                .unwrap_or(false)
+        })
+        .collect();
+    dir_entries.sort_by_key(|e| e.file_name());
+
+    if dir_entries.is_empty() {
+        return read_monolithic();
+    }
+
+    let mut gaps: Vec<YamlGap> = Vec::new();
+    let mut malformed = 0usize;
+    for entry in &dir_entries {
+        let content = std::fs::read_to_string(entry.path())
+            .with_context(|| format!("reading {}", entry.path().display()))?;
+        if content.trim().is_empty() {
+            continue;
+        }
+        // Each file holds a bare YAML list; wrap it so it parses as YamlGapsFile.
+        let wrapped = format!("gaps:\n{content}");
+        match serde_yaml::from_str::<YamlGapsFile>(&wrapped) {
+            Ok(f) => gaps.extend(f.gaps),
+            Err(e) => {
+                eprintln!(
+                    "chump gap import: SKIPPING malformed {}: {e}",
+                    entry.path().display()
+                );
+                malformed += 1;
+            }
+        }
+    }
+    if malformed > 0 {
+        eprintln!(
+            "chump gap import: {malformed} malformed file(s) skipped — fix them or they stay unimported"
+        );
+    }
+    Ok(Some(YamlGapsFile { gaps }))
+}
+
 impl GapStore {
     /// Import from the gap registry into the DB. Idempotent — existing rows are skipped.
     ///
@@ -3097,53 +4096,11 @@ impl GapStore {
     /// is now called automatically by `import_from_yaml` so re-running
     /// `chump gap import` heals the tree.
     pub fn backfill_closed_pr_from_yaml(&self, repo_root: &Path) -> Result<usize> {
-        // Re-use the same YAML aggregation logic as import_from_yaml.
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                let content = std::fs::read_to_string(entry.path())
-                    .with_context(|| format!("reading {}", entry.path().display()))?;
-                parts.push(content);
-            }
-            if parts.is_empty() {
-                let yaml_path = repo_root.join("docs").join("gaps.yaml");
-                match std::fs::read_to_string(&yaml_path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e))
-                            .with_context(|| format!("reading {}", yaml_path.display()));
-                    }
-                }
-            } else {
-                format!("gaps:\n{}", parts.join(""))
-            }
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                Err(e) => {
-                    return Err(anyhow::Error::from(e))
-                        .with_context(|| format!("reading {}", yaml_path.display()));
-                }
-            }
+        // VOA-006: shared resilient loader — one bad file no longer sinks the read.
+        let file = match load_gap_registry(repo_root)? {
+            Some(f) => f,
+            None => return Ok(0),
         };
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| "parsing gap registry for closed_pr backfill")?;
 
         let mut backfilled = 0usize;
         for g in &file.gaps {
@@ -3334,56 +4291,15 @@ impl GapStore {
     }
 
     pub fn import_from_yaml(&self, repo_root: &Path) -> Result<(usize, usize, usize)> {
-        // INFRA-188: prefer per-file directory if it exists and is non-empty.
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            // Aggregate all per-file YAML into one monolithic string.
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                let content = std::fs::read_to_string(entry.path())
-                    .with_context(|| format!("reading {}", entry.path().display()))?;
-                parts.push(content);
-            }
-            if parts.is_empty() {
-                // Empty directory — fall through to monolithic check
-                let yaml_path = repo_root.join("docs").join("gaps.yaml");
-                match std::fs::read_to_string(&yaml_path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0, 0)),
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e))
-                            .with_context(|| format!("reading {}", yaml_path.display()));
-                    }
-                }
-            } else {
-                // Wrap entries as a monolithic `gaps:` list for uniform parsing.
-                format!("gaps:\n{}", parts.join(""))
-            }
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok((0, 0, 0)),
-                Err(e) => {
-                    return Err(anyhow::Error::from(e))
-                        .with_context(|| format!("reading {}", yaml_path.display()));
-                }
-            }
+        // VOA-006: parse per-file rather than concatenate-then-parse-once. A single
+        // malformed entry (e.g. INFRA-3429's 39 duplicate `evidence:` keys, shipped in
+        // #3309) used to abort the WHOLE docs/gaps -> state.db sync, so no gap could be
+        // imported and freshly-filed gaps never became pickable. Now a bad file is
+        // skipped and named on stderr; every well-formed file still imports.
+        let file = match load_gap_registry(repo_root)? {
+            Some(f) => f,
+            None => return Ok((0, 0, 0)),
         };
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| "parsing gap registry (per-file or monolithic)")?;
 
         let mut inserted = 0usize;
         let mut skipped = 0usize;
@@ -3544,10 +4460,7 @@ impl GapStore {
     /// The caller is responsible for backing up the existing state.db before
     /// calling this (typically rename to state.db.bak).
     pub fn restore_from_state_sql(&mut self, sql_path: &Path) -> Result<usize> {
-        let text = std::fs::read_to_string(sql_path)
-            .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| format!("parsing YAML in {}", sql_path.display()))?;
+        let file = Self::load_state_sql(sql_path)?;
 
         // Clear existing data so the restore is a full replacement, not a merge.
         self.conn
@@ -3556,113 +4469,184 @@ impl GapStore {
 
         let mut inserted = 0usize;
         for g in &file.gaps {
-            let ac = match &g.acceptance_criteria {
-                Some(v) => normalize_string_list(v),
-                None => String::new(),
-            };
-            let deps = match &g.depends_on {
-                Some(v) => {
-                    let json: serde_json::Value =
-                        serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
-                    normalize_string_list(&json)
-                }
-                None => String::new(),
-            };
-            let notes = g
-                .notes
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let source_doc = g
-                .source_doc
-                .as_ref()
-                .map(yaml_value_to_loose_string)
-                .unwrap_or_default();
-            let opened_date = g
-                .opened_date
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let closed_date = g
-                .closed_date
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
-            let skills_required = g
-                .skills_required
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let preferred_backend = g
-                .preferred_backend
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let preferred_machine = g
-                .preferred_machine
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let estimated_minutes = g
-                .estimated_minutes
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            let required_model = g
-                .required_model
-                .as_ref()
-                .map(yaml_value_to_string)
-                .unwrap_or_default();
-            // MISSION-008: nullable outcome FK.
-            let outcome_id: Option<String> = g
-                .outcome_id
-                .as_ref()
-                .map(yaml_value_to_string)
-                .filter(|s| !s.is_empty());
-            // CREDIBLE-107: nullable evidence blob.
-            let evidence: Option<String> = g
-                .evidence
-                .as_ref()
-                .map(yaml_value_to_string)
-                .filter(|s| !s.is_empty());
-            let created_at = unix_now();
-
-            self.conn.execute(
-                "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
-                    acceptance_criteria,depends_on,notes,source_doc,created_at,
-                    opened_date,closed_date,closed_pr,skills_required,preferred_backend,
-                    preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
-                 VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
-                params![
-                    g.id,
-                    g.domain,
-                    g.title,
-                    g.description,
-                    g.priority,
-                    g.effort,
-                    g.status,
-                    ac,
-                    deps,
-                    notes,
-                    source_doc,
-                    created_at,
-                    opened_date,
-                    closed_date,
-                    closed_pr,
-                    skills_required,
-                    preferred_backend,
-                    preferred_machine,
-                    estimated_minutes,
-                    required_model,
-                    outcome_id,
-                    evidence,
-                ],
-            )
-            .with_context(|| format!("inserting gap {} during restore", g.id))?;
+            self.insert_or_replace_gap_row(g)
+                .with_context(|| format!("inserting gap {} during restore", g.id))?;
             inserted += 1;
         }
         Ok(inserted)
+    }
+
+    /// INFRA-3002 — targeted single-gap sync from `.chump/state.sql` into
+    /// state.db, without touching any other row. Used by `chump claim` to
+    /// self-heal the "gap {id} not found in state.db" failure mode: a
+    /// worktree's local state.db is a snapshot taken at `chump claim`
+    /// worktree-creation time, so a gap reserved/imported on `origin/main`
+    /// afterward is invisible until someone manually runs
+    /// `chump gap restore --from-sql` (a full-table rebuild). This lets
+    /// `claim` repair just the one row it needs, in-place.
+    ///
+    /// Returns `Ok(true)` if `gap_id` was found in state.sql and
+    /// inserted/replaced, `Ok(false)` if state.sql has no such gap.
+    pub fn sync_gap_from_state_sql(&self, sql_path: &Path, gap_id: &str) -> Result<bool> {
+        let file = Self::load_state_sql(sql_path)?;
+        match file.gaps.iter().find(|g| g.id == gap_id) {
+            Some(g) => {
+                self.insert_or_replace_gap_row(g)
+                    .with_context(|| format!("inserting gap {gap_id} during single-gap sync"))?;
+                Ok(true)
+            }
+            None => Ok(false),
+        }
+    }
+
+    fn load_state_sql(sql_path: &Path) -> Result<YamlGapsFile> {
+        let text = std::fs::read_to_string(sql_path)
+            .with_context(|| format!("reading state.sql at {}", sql_path.display()))?;
+        Self::parse_state_sql_yaml(&text)
+            .with_context(|| format!("parsing YAML in {}", sql_path.display()))
+    }
+
+    /// Parse the YAML body of a `.chump/state.sql` dump (despite the `.sql`
+    /// extension it is a YAML gaps list, not SQL — see [`Self::load_state_sql`])
+    /// from an in-memory string. Split out of `load_state_sql` so
+    /// [`Self::canonical_max_id`] can parse `git show origin/main:.chump/state.sql`
+    /// output directly, without a temp-file round trip.
+    fn parse_state_sql_yaml(text: &str) -> Result<YamlGapsFile> {
+        serde_yaml::from_str(text).context("parsing state.sql YAML")
+    }
+
+    /// Extract the highest numeric suffix among `gaps[].id` values matching
+    /// `<DOMAIN_UPPER>-<N>` — the **id column only**.
+    ///
+    /// This is deliberately narrow: `state.sql` is known to contain
+    /// `<DOMAIN>-<N>`-shaped substrings *outside* the `id` field too (test
+    /// fixtures and incident write-ups quoted verbatim in `notes`/`title`/
+    /// `description`, e.g. a stray `INFRA-9999999` mentioned as example
+    /// junk data). A raw text/regex scan over the whole dump would treat
+    /// those as real gap IDs and could rocket the allocator to a nonsense
+    /// value — a worse regression than the stale-checkout collision this
+    /// method exists to prevent. Scanning only `g.id` mirrors exactly what
+    /// the local counter's SQL query does
+    /// (`SELECT MAX(...) FROM gaps WHERE id LIKE 'DOMAIN-%'`).
+    ///
+    /// `MAX_SANE_GAP_NUM` is defense-in-depth on top of that: even a
+    /// legitimate-looking `id` field is dropped if its suffix is absurdly
+    /// large, so a malformed or synthetic row can never poison allocation.
+    fn max_id_num_in_gaps(gaps: &[YamlGap], domain_upper: &str) -> Option<i64> {
+        const MAX_SANE_GAP_NUM: i64 = 1_000_000;
+        let prefix = format!("{}-", domain_upper);
+        gaps.iter()
+            .filter_map(|g| g.id.strip_prefix(prefix.as_str()))
+            .filter_map(|rest| rest.parse::<i64>().ok())
+            .filter(|&n| n > 0 && n <= MAX_SANE_GAP_NUM)
+            .max()
+    }
+
+    fn insert_or_replace_gap_row(&self, g: &YamlGap) -> Result<()> {
+        let ac = match &g.acceptance_criteria {
+            Some(v) => normalize_string_list(v),
+            None => String::new(),
+        };
+        let deps = match &g.depends_on {
+            Some(v) => {
+                let json: serde_json::Value =
+                    serde_json::from_str(&v.to_string()).unwrap_or(serde_json::Value::Null);
+                normalize_string_list(&json)
+            }
+            None => String::new(),
+        };
+        let notes = g
+            .notes
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let source_doc = g
+            .source_doc
+            .as_ref()
+            .map(yaml_value_to_loose_string)
+            .unwrap_or_default();
+        let opened_date = g
+            .opened_date
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let closed_date = g
+            .closed_date
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let closed_pr = g.closed_pr.as_ref().and_then(yaml_value_to_i64);
+        let skills_required = g
+            .skills_required
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let preferred_backend = g
+            .preferred_backend
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let preferred_machine = g
+            .preferred_machine
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let estimated_minutes = g
+            .estimated_minutes
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        let required_model = g
+            .required_model
+            .as_ref()
+            .map(yaml_value_to_string)
+            .unwrap_or_default();
+        // MISSION-008: nullable outcome FK.
+        let outcome_id: Option<String> = g
+            .outcome_id
+            .as_ref()
+            .map(yaml_value_to_string)
+            .filter(|s| !s.is_empty());
+        // CREDIBLE-107: nullable evidence blob.
+        let evidence: Option<String> = g
+            .evidence
+            .as_ref()
+            .map(yaml_value_to_string)
+            .filter(|s| !s.is_empty());
+        let created_at = unix_now();
+
+        self.conn.execute(
+            "INSERT OR REPLACE INTO gaps(id,domain,title,description,priority,effort,status,
+                acceptance_criteria,depends_on,notes,source_doc,created_at,
+                opened_date,closed_date,closed_pr,skills_required,preferred_backend,
+                preferred_machine,estimated_minutes,required_model,outcome_id,evidence)
+             VALUES(?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18,?19,?20,?21,?22)",
+            params![
+                g.id,
+                g.domain,
+                g.title,
+                g.description,
+                g.priority,
+                g.effort,
+                g.status,
+                ac,
+                deps,
+                notes,
+                source_doc,
+                created_at,
+                opened_date,
+                closed_date,
+                closed_pr,
+                skills_required,
+                preferred_backend,
+                preferred_machine,
+                estimated_minutes,
+                required_model,
+                outcome_id,
+                evidence,
+            ],
+        )?;
+        Ok(())
     }
 
     /// INFRA-460 — propagate `status: done` from per-file YAML mirrors to
@@ -3676,55 +4660,13 @@ impl GapStore {
     /// the YAML provides them and the DB row is missing them, since the
     /// closer writes all three together.
     pub fn backfill_status_done_from_yaml(&self, repo_root: &Path) -> Result<usize> {
-        // Re-use the same YAML aggregation logic as import_from_yaml /
-        // backfill_closed_pr_from_yaml. Identical loader keeps drift
-        // between the three call sites impossible.
-        let per_file_dir = repo_root.join("docs").join("gaps");
-        let text = if per_file_dir.is_dir() {
-            let mut parts = Vec::new();
-            let mut dir_entries: Vec<_> = std::fs::read_dir(&per_file_dir)
-                .with_context(|| format!("reading {}", per_file_dir.display()))?
-                .flatten()
-                .filter(|e| {
-                    e.path()
-                        .extension()
-                        .and_then(|s| s.to_str())
-                        .map(|s| s == "yaml")
-                        .unwrap_or(false)
-                })
-                .collect();
-            dir_entries.sort_by_key(|e| e.file_name());
-            for entry in &dir_entries {
-                let content = std::fs::read_to_string(entry.path())
-                    .with_context(|| format!("reading {}", entry.path().display()))?;
-                parts.push(content);
-            }
-            if parts.is_empty() {
-                let yaml_path = repo_root.join("docs").join("gaps.yaml");
-                match std::fs::read_to_string(&yaml_path) {
-                    Ok(t) => t,
-                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                    Err(e) => {
-                        return Err(anyhow::Error::from(e))
-                            .with_context(|| format!("reading {}", yaml_path.display()));
-                    }
-                }
-            } else {
-                format!("gaps:\n{}", parts.join(""))
-            }
-        } else {
-            let yaml_path = repo_root.join("docs").join("gaps.yaml");
-            match std::fs::read_to_string(&yaml_path) {
-                Ok(t) => t,
-                Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(0),
-                Err(e) => {
-                    return Err(anyhow::Error::from(e))
-                        .with_context(|| format!("reading {}", yaml_path.display()));
-                }
-            }
+        // Shared loader with import_from_yaml / backfill_closed_pr_from_yaml, so
+        // drift between the three call sites really is impossible (VOA-006 — they
+        // were previously three copy-pasted blocks that all had to be fixed).
+        let file = match load_gap_registry(repo_root)? {
+            Some(f) => f,
+            None => return Ok(0),
         };
-        let file: YamlGapsFile = serde_yaml::from_str(&text)
-            .with_context(|| "parsing gap registry for status backfill")?;
 
         let mut backfilled = 0usize;
         for g in &file.gaps {
@@ -4002,6 +4944,73 @@ fn git_id_referenced(repo_root: &Path, id: &str) -> bool {
     }
 }
 
+/// CREDIBLE-292: refresh `refs/remotes/origin/*` before [`git_id_referenced`]
+/// runs, so the history check sees IDs a sibling node already merged to
+/// `origin/main` even if this checkout hasn't fetched in a while.
+///
+/// This is the actual fix for the registry split-brain collision pattern
+/// (RESILIENT-331, CREDIBLE-289): `git_id_referenced` only ever searched
+/// refs this checkout already knew about (`git log --all`) — on a node that
+/// hadn't fetched recently (or whose `backlog-sync --reader` daemon was
+/// dead), a sibling node's already-merged ID was invisible, so the naive
+/// counter handed it out again. `origin/main` is the one shared coordination
+/// point every node already pushes to for shipped work, so a cheap fetch
+/// immediately before the check closes the gap without needing new
+/// infrastructure (NATS-KV, node-prefixed ranges, etc).
+///
+/// Best-effort and non-fatal: a network hiccup, missing `origin` remote, or
+/// offline dev box must not brick `reserve()` — the existing DB/lease/PR
+/// sources still apply, and this is defense-in-depth on top of those, not
+/// the sole guard. Bounded by a short timeout via `git`'s own connect
+/// timeout is not configurable here, so instead we just don't block long: if
+/// `git fetch` hangs indefinitely (e.g. auth prompt), that's a pre-existing
+/// risk for every other git-shelling caller in this file too.
+/// Opt out via `CHUMP_RESERVE_FETCH_ORIGIN=0` (offline-only workflows).
+fn fetch_origin_refs(repo_root: &Path) {
+    if std::env::var("CHUMP_RESERVE_FETCH_ORIGIN").as_deref() == Ok("0") {
+        return;
+    }
+    if !repo_root.join(".git").exists() {
+        return;
+    }
+    let _ = std::process::Command::new("git")
+        .args(["fetch", "origin", "--quiet", "--no-tags"])
+        .current_dir(repo_root)
+        .output();
+}
+
+/// INFRA-3687: how many commits `origin/main` is ahead of local `main` —
+/// i.e. how far behind this checkout is. Deliberately returns `None` (NOT
+/// `0`) when the question doesn't apply: no `.git` at all (synthetic test
+/// fixtures — every existing `test_store()`-based test uses a bare
+/// `TempDir`), or the `rev-list` call itself fails (no local `main` ref,
+/// detached HEAD, shallow clone). Callers MUST treat `None` as "not
+/// applicable" and skip any staleness gate built on top of it, never as
+/// "definitely not behind" — see the fail-closed check in
+/// `reserve_with_external` and `GapStore::behind_origin_main`.
+///
+/// Uses whatever `refs/remotes/origin/main` this checkout already knows
+/// about — no fetch here, callers that need a fresh view fetch first
+/// (`canonical_max_id` does; `chump gap list`'s staleness warning
+/// deliberately does not, to stay non-blocking on a hot read path).
+fn behind_origin_main_count(repo_root: &Path) -> Option<u64> {
+    if !repo_root.join(".git").exists() {
+        return None;
+    }
+    let output = std::process::Command::new("git")
+        .args(["rev-list", "--count", "main..origin/main"])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    String::from_utf8_lossy(&output.stdout)
+        .trim()
+        .parse::<u64>()
+        .ok()
+}
+
 /// INFRA-100: lightweight matcher for `<DOMAIN>-NNN` substrings in a string.
 /// Avoids pulling in the `regex` crate just for this since it's not already
 /// a dep of chump's bin target. Domain is uppercase; NNN is one-or-more
@@ -4130,6 +5139,179 @@ fn yaml_block_scalar(s: &str, indent: &str) -> String {
 /// empty Vec when the field is empty or unparseable. Public for COG-052 audit-ac.
 pub fn parse_json_ac_list(s: &str) -> Vec<String> {
     parse_json_string_list(s).unwrap_or_default()
+}
+
+// ────────────────────────── Idea drop intake (EFFECTIVE-679) ──────────────────────────
+
+/// One idea-drop record persisted to `drops_path`. `status` starts `"new"`;
+/// downstream curation (triage/promote-to-gap) is a future slice.
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct DropRecord {
+    pub id: String,
+    pub sentence: String,
+    pub citation: String,
+    pub status: String,
+    pub timestamp: i64,
+}
+
+/// Path to the curator's idea-drop queue file, relative to `repo_root`.
+/// Override via `CHUMP_DROPS_FILE` (mirrors `GapStore::db_path`'s
+/// `CHUMP_STATE_DB` override pattern) so tests can point at a scratch file.
+pub fn drops_path(repo_root: &Path) -> PathBuf {
+    if let Ok(p) = std::env::var("CHUMP_DROPS_FILE") {
+        return PathBuf::from(p);
+    }
+    repo_root.join(".chump").join("drops.json")
+}
+
+fn load_drops(path: &Path) -> Result<Vec<DropRecord>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(path)
+        .with_context(|| format!("reading drops file {}", path.display()))?;
+    if raw.trim().is_empty() {
+        return Ok(Vec::new());
+    }
+    let drops: Vec<DropRecord> = serde_json::from_str(&raw)
+        .with_context(|| format!("parsing drops file {}", path.display()))?;
+    Ok(drops)
+}
+
+fn save_drops(path: &Path, drops: &[DropRecord]) -> Result<()> {
+    if let Some(parent) = path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating drops dir {}", parent.display()))?;
+    }
+    let body = serde_json::to_string_pretty(drops)?;
+    std::fs::write(path, body).with_context(|| format!("writing drops file {}", path.display()))?;
+    Ok(())
+}
+
+/// Persist a `{sentence, citation}` idea drop under `repo_root`'s data
+/// directory, idempotently: re-submitting the identical `(sentence,
+/// citation)` pair returns the existing record rather than creating a
+/// duplicate. Backs `POST /api/drop` (EFFECTIVE-679).
+pub fn add_drop(repo_root: &Path, sentence: &str, citation: &str) -> Result<(DropRecord, bool)> {
+    let path = drops_path(repo_root);
+    let mut drops = load_drops(&path)?;
+
+    if let Some(existing) = drops
+        .iter()
+        .find(|d| d.sentence == sentence && d.citation == citation)
+    {
+        return Ok((existing.clone(), false));
+    }
+
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs() as i64)
+        .unwrap_or(0);
+    let record = DropRecord {
+        id: uuid::Uuid::new_v4().to_string(),
+        sentence: sentence.to_string(),
+        citation: citation.to_string(),
+        status: "new".to_string(),
+        timestamp,
+    };
+    drops.push(record.clone());
+    save_drops(&path, &drops)?;
+    Ok((record, true))
+}
+
+/// META-555: Effect-verified done-bar — the opt-in `verify:` acceptance-criterion
+/// marker and its evaluation. WHY THIS EXISTS: gaps close on PR-merge (CI-green),
+/// not on outcome-changed, so a fix that merges but does not actually work is
+/// marked `done` and its still-present symptom respawns as a fresh gap id. Live
+/// proof 2026-09-15: RESILIENT-1230 -> 1258 -> 1294 = three ids for ONE unfixed
+/// sentinel false-page; PRs #4688 and #4690 both merged green and flipped their
+/// gaps to done while the symptom never stopped once. CI-green proved the code
+/// compiled + its own unit test passed; it never proved the LIVE symptom stopped.
+///
+/// This is the ADVISORY MVP wire-in of the fleet's existing effect-verification
+/// idea (scripts/ops/effect-verifier.sh RESILIENT-1109 and
+/// organ-success-verifier.sh RESILIENT-1108 verify ORGAN effects; this brings the
+/// same shape to the GAP-CLOSURE path). It NEVER blocks a close — see
+/// `GapStore::ship` / `GapStore::record_effect_verification`.
+///
+/// An acceptance-criterion list item whose trimmed text begins (case-insensitively)
+/// with the exact prefix `verify:` DECLARES a live, checkable command that proves
+/// the fix changed the real outcome (e.g.
+/// `verify: ! journalctl -u sentinel | grep -q false-page`). The command is
+/// everything after the prefix. Every other criterion — the overwhelming default —
+/// yields no command, so ship() is byte-for-byte unchanged for it. THIS is the
+/// structural anti-wedge guarantee: the opt-in class is empty until a gap author
+/// or curator deliberately writes a `verify:` line, and a `verify:` substring
+/// buried mid-sentence (or a `self-verify:` prefix) never matches.
+pub fn extract_verify_commands(acceptance_criteria: &str) -> Vec<String> {
+    const MARKER: &str = "verify:";
+    parse_json_ac_list(acceptance_criteria)
+        .iter()
+        .filter_map(|item| {
+            let t = item.trim();
+            if t.len() >= MARKER.len() && t[..MARKER.len()].eq_ignore_ascii_case(MARKER) {
+                let cmd = t[MARKER.len()..].trim();
+                if cmd.is_empty() {
+                    None
+                } else {
+                    Some(cmd.to_string())
+                }
+            } else {
+                None
+            }
+        })
+        .collect()
+}
+
+/// META-555: the verdict of the advisory effect check run at gap-close time.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum EffectVerdict {
+    /// The gap carries no `verify:` live-check criterion (the default for nearly
+    /// every gap). ship() does nothing extra — no signal, no annotation. This is
+    /// the case that guarantees ordinary closures are never touched.
+    NoLiveCriterion,
+    /// The gap carried one or more `verify:` commands and they all exited 0 — the
+    /// merged fix demonstrably changed the live outcome. Clean-done, confirmed.
+    EffectVerified,
+    /// A `verify:` command failed (non-zero, could not spawn, or timed out). The
+    /// close STILL succeeds (advisory MVP — never blocks); the gap is annotated
+    /// and a `closed_effect_unverified` signal is emitted so a merged-but-
+    /// ineffective fix stays visibly FLAGGED under the SAME id instead of
+    /// silently clean-done + respawning as a new id.
+    EffectUnverified {
+        failed_command: String,
+        detail: String,
+    },
+}
+
+/// META-555: run one `verify:` live-check under `sh -c` in the repo root, bounded
+/// by `timeout_s`. Ok(true) => exited 0; Ok(false) => exited non-zero; Err =>
+/// could not spawn or timed out. The caller treats every non-Ok(true) as
+/// UNVERIFIED (we could not prove the effect), never as verified.
+fn run_verify_command(repo_root: &std::path::Path, cmd: &str, timeout_s: u64) -> Result<bool> {
+    use std::process::{Command, Stdio};
+    use std::time::{Duration, Instant};
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(cmd)
+        .current_dir(repo_root)
+        .stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null())
+        .spawn()
+        .with_context(|| format!("META-555: spawn verify command failed: {cmd}"))?;
+    let deadline = Instant::now() + Duration::from_secs(timeout_s.max(1));
+    loop {
+        if let Some(status) = child.try_wait()? {
+            return Ok(status.success());
+        }
+        if Instant::now() >= deadline {
+            let _ = child.kill();
+            let _ = child.wait();
+            bail!("META-555: verify command timed out after {timeout_s}s: {cmd}");
+        }
+        std::thread::sleep(Duration::from_millis(100));
+    }
 }
 
 /// INFRA-1411: load a single gap from its YAML file as a fallback when
@@ -4276,6 +5458,69 @@ pub fn shipped_gap_dedupe_candidates(
         .map(|g| {
             let score = GapStore::title_jaccard(proposed_title, &g.title);
             (g.id, g.title, g.status, score)
+        })
+        .filter(|(_, _, _, score)| *score >= threshold)
+        .collect();
+    scored.sort_by(|a, b| b.3.partial_cmp(&a.3).unwrap_or(std::cmp::Ordering::Equal));
+    scored
+}
+
+/// INFRA-6701: recently-merged-PR overlap advisory candidates.
+///
+/// Reads the local GitHub PR cache (`.chump/github_cache.db`, populated by the
+/// webhook / REST cache path) for PRs merged within the last `window_days` and
+/// returns those whose title Jaccard-overlaps `proposed_title` at or above
+/// `threshold`. This is the fold the reserve-time dedupe layer was missing: the
+/// state.db + Almanac checks catch duplicate *gaps*, and the FLEET-029 glance
+/// catches overlap with *open* PRs, but nothing folded a new gap against PRs
+/// that recently MERGED — the exact shape of the "already shipped, just closing
+/// the gap" bookkeeping-PR class (INFRA-6701 convergence audit).
+///
+/// Advisory ONLY. Returns `(pr_number, pr_title, merged_at, score)` sorted
+/// descending by score. Best-effort: returns an empty vec on a missing or
+/// unreadable cache so the caller surfaces a signal rather than blocking a
+/// legitimate reserve — gaps are truth; we surface duplicates, never throttle.
+pub fn recently_merged_pr_dedupe_candidates(
+    repo_root: &std::path::Path,
+    proposed_title: &str,
+    window_days: i64,
+    threshold: f64,
+) -> Vec<(i64, String, String, f64)> {
+    let db = repo_root.join(".chump").join("github_cache.db");
+    if !db.exists() {
+        return Vec::new();
+    }
+    let conn = match rusqlite::Connection::open_with_flags(
+        &db,
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY,
+    ) {
+        Ok(c) => c,
+        Err(_) => return Vec::new(),
+    };
+    let mut stmt = match conn.prepare(
+        "SELECT number, title, merged_at FROM pr_state \
+         WHERE merged_at IS NOT NULL AND title IS NOT NULL \
+           AND julianday('now') - julianday(merged_at) <= ?1",
+    ) {
+        Ok(s) => s,
+        Err(_) => return Vec::new(),
+    };
+    let rows = stmt.query_map([window_days], |r| {
+        Ok((
+            r.get::<_, i64>(0)?,
+            r.get::<_, String>(1)?,
+            r.get::<_, String>(2)?,
+        ))
+    });
+    let rows = match rows {
+        Ok(r) => r,
+        Err(_) => return Vec::new(),
+    };
+    let mut scored: Vec<(i64, String, String, f64)> = rows
+        .filter_map(|r| r.ok())
+        .map(|(num, title, merged_at)| {
+            let score = GapStore::title_jaccard(proposed_title, &title);
+            (num, title, merged_at, score)
         })
         .filter(|(_, _, _, score)| *score >= threshold)
         .collect();
@@ -4454,10 +5699,30 @@ impl GapStore {
         Ok(())
     }
 
+    /// EFFECTIVE-443: attach the JTBD-sharpen triple to an existing outcome.
+    /// Called by `chump intake --create` right after `create_outcome` when
+    /// the vision-intake subagent supplied a `jtbd` object. A no-op (Ok) if
+    /// the outcome id doesn't exist — the caller already has the outcome.
+    pub fn set_outcome_jtbd(
+        &self,
+        id: &str,
+        who: &str,
+        struggling_moment: &str,
+        done_signal: &str,
+    ) -> Result<()> {
+        self.conn.execute(
+            "UPDATE outcomes SET jtbd_who=?2, jtbd_struggling_moment=?3, jtbd_done_signal=?4
+             WHERE id=?1",
+            params![id, who, struggling_moment, done_signal],
+        )?;
+        Ok(())
+    }
+
     /// Fetch one outcome by ID. Returns None if not found.
     pub fn get_outcome(&self, id: &str) -> Result<Option<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,
+                    jtbd_who,jtbd_struggling_moment,jtbd_done_signal
              FROM outcomes WHERE id=?1",
         )?;
         stmt.query_row(params![id], |r| {
@@ -4470,6 +5735,9 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                jtbd_who: r.get(8)?,
+                jtbd_struggling_moment: r.get(9)?,
+                jtbd_done_signal: r.get(10)?,
             })
         })
         .optional()
@@ -4479,7 +5747,8 @@ impl GapStore {
     /// List all outcomes, ordered by id.
     pub fn list_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,
+                    jtbd_who,jtbd_struggling_moment,jtbd_done_signal
              FROM outcomes ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -4492,6 +5761,9 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                jtbd_who: r.get(8)?,
+                jtbd_struggling_moment: r.get(9)?,
+                jtbd_done_signal: r.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -4556,7 +5828,8 @@ impl GapStore {
     /// Keeps existing per-gap P0 checks intact — adds outcome-level view alongside.
     pub fn list_p0_outcomes(&self) -> Result<Vec<OutcomeRow>> {
         let mut stmt = self.conn.prepare(
-            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason
+            "SELECT id,title,priority,definition_of_done,status,created_at,closed_at,park_reason,
+                    jtbd_who,jtbd_struggling_moment,jtbd_done_signal
              FROM outcomes WHERE priority='P0' AND status='open' ORDER BY id",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -4569,6 +5842,9 @@ impl GapStore {
                 created_at: r.get(5)?,
                 closed_at: r.get(6)?,
                 park_reason: r.get(7)?,
+                jtbd_who: r.get(8)?,
+                jtbd_struggling_moment: r.get(9)?,
+                jtbd_done_signal: r.get(10)?,
             })
         })?;
         rows.collect::<Result<Vec<_>, _>>().map_err(Into::into)
@@ -4617,6 +5893,175 @@ impl GapStore {
                 .filter(|g| g.outcome_id.as_deref() == Some(outcome_id))
                 .collect()
         })
+    }
+}
+
+// ────────── decomposed umbrella gaps (RESILIENT-1364) ──────────
+
+/// RESILIENT-1364: parse the child gap IDs recorded by `chump gap decompose
+/// --apply` in a parent's notes field: "Decomposed into N slices: ID, ID,
+/// ...". This free-text line is, today, the ONLY link between an umbrella
+/// and its slices (no parent_id column) — this is the single extraction
+/// point so a future structured link only has to change one function.
+/// Returns an empty vec if the marker isn't present or nothing parses.
+pub fn parse_decomposed_children(notes: &str) -> Vec<String> {
+    const MARKER: &str = "Decomposed into";
+    let Some(marker_pos) = notes.find(MARKER) else {
+        return Vec::new();
+    };
+    let after_marker = &notes[marker_pos..];
+    let Some(colon_pos) = after_marker.find(':') else {
+        return Vec::new();
+    };
+    let ids_part = &after_marker[colon_pos + 1..];
+    // Stop at end of line — notes may carry more content after this marker.
+    let ids_line = ids_part.lines().next().unwrap_or("");
+    ids_line
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+        .collect()
+}
+
+/// Advisory rollup of one decomposed umbrella's children, mirroring
+/// `outcome_status`'s open_children pattern above for gap-to-gap umbrellas
+/// instead of outcome-to-gap.
+#[derive(Debug, Clone)]
+pub struct DecomposedParentRollup {
+    pub parent_id: String,
+    pub child_ids: Vec<String>,
+    /// Children that resolved to a real gap row.
+    pub total: usize,
+    pub open: usize,
+    pub done: usize,
+}
+
+impl GapStore {
+    /// Rollup of a decomposed parent's children, parsed from its notes.
+    /// Returns `None` if `parent_id` doesn't exist or has no parseable
+    /// "Decomposed into" marker.
+    pub fn decomposed_parent_rollup(
+        &self,
+        parent_id: &str,
+    ) -> Result<Option<DecomposedParentRollup>> {
+        let parent = match self.get(parent_id)? {
+            Some(g) => g,
+            None => return Ok(None),
+        };
+        let child_ids = parse_decomposed_children(&parent.notes);
+        if child_ids.is_empty() {
+            return Ok(None);
+        }
+        let mut total = 0usize;
+        let mut open = 0usize;
+        let mut done = 0usize;
+        for cid in &child_ids {
+            if let Some(child) = self.get(cid)? {
+                total += 1;
+                if child.status == "open" || child.status == "claimed" {
+                    open += 1;
+                } else if child.status == "done" {
+                    done += 1;
+                }
+            }
+        }
+        Ok(Some(DecomposedParentRollup {
+            parent_id: parent_id.to_string(),
+            child_ids,
+            total,
+            open,
+            done,
+        }))
+    }
+
+    /// RESILIENT-1364 fix #2: scan every gap with status='decomposed' and
+    /// auto-close (status -> done) any whose children are ALL 'done'.
+    /// Mirrors the outcomes open_children pattern above, extended into an
+    /// action here because a decomposed umbrella (unlike an outcome) has no
+    /// other route out of limbo once its slices land.
+    ///
+    /// The closing UPDATE excludes only the deliberate terminal statuses
+    /// (CREDIBLE-218 shape) rather than gating on `WHERE status='decomposed'`
+    /// — so a parent that drifted to some other status between the read
+    /// above and this write (e.g. an operator hand-closed it in the
+    /// meantime) is never double-closed or ghosted; the UPDATE affects 0
+    /// rows and is simply skipped.
+    ///
+    /// A child ID that doesn't resolve to a real gap is treated as "not
+    /// done" (never auto-closes on unverifiable data) rather than being
+    /// silently ignored.
+    ///
+    /// Returns the IDs of parents that were auto-closed.
+    pub fn auto_close_decomposed_parents(&self) -> Result<Vec<String>> {
+        let parents = self.list(Some("decomposed"))?;
+        let mut closed = Vec::new();
+        let now = unix_now();
+        let iso = unix_to_iso_date(now);
+        for parent in parents {
+            let child_ids = parse_decomposed_children(&parent.notes);
+            if child_ids.is_empty() {
+                continue;
+            }
+            let mut all_done = true;
+            for cid in &child_ids {
+                match self.get(cid)? {
+                    Some(child) if child.status == "done" => {}
+                    _ => {
+                        all_done = false;
+                        break;
+                    }
+                }
+            }
+            if !all_done {
+                continue;
+            }
+            let changed = self.conn.execute(
+                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2
+                 WHERE id=?3 AND status NOT IN
+                   ('done','superseded','wontfix','wont_fix','closed','closed_not_a_bug','already_satisfied')",
+                params![now, iso, parent.id],
+            )?;
+            if changed > 0 {
+                let _ = self
+                    .conn
+                    .execute("DELETE FROM leases WHERE gap_id=?1", params![parent.id]);
+                closed.push(parent.id);
+            }
+        }
+        Ok(closed)
+    }
+
+    /// INFRA-8067: count `parent_id`'s existing OPEN child slices — the
+    /// root-cause fix for RESILIENT-1437 (the decompose reflex re-slicing
+    /// the same parent repeatedly).
+    ///
+    /// `decomposed_parent_rollup` (above) can only find children once the
+    /// parent's `notes` field carries the "Decomposed into N slices: ..."
+    /// marker, which `chump gap decompose --apply` writes LAST, after every
+    /// slice is filed. If that run is interrupted (crash, OOM, kill -9)
+    /// after filing slices but before writing the marker, the parent is
+    /// still `status=open` with no notes marker, so a second decompose run
+    /// sees a "fresh" parent and re-files the same slices again — observed
+    /// in the field as the gap-store's 92% slice-bloat (RESILIENT-1437).
+    ///
+    /// This scans OPEN gaps directly for the slice-naming convention
+    /// (`"... (<parent_id> slice)"`, exactly what `chump gap decompose
+    /// --apply` titles each filed slice) and for any gap whose
+    /// `depends_on` references `parent_id`, so it finds orphaned slices
+    /// even when the parent's own bookkeeping never landed.
+    pub fn count_open_slices(&self, parent_id: &str) -> Result<usize> {
+        let suffix = format!("({parent_id} slice)");
+        let needle = format!("\"{parent_id}\"");
+        let open_gaps = self.list(Some("open"))?;
+        let count = open_gaps
+            .iter()
+            .filter(|g| {
+                g.id != parent_id
+                    && (g.title.trim_end().ends_with(&suffix) || g.depends_on.contains(&needle))
+            })
+            .count();
+        Ok(count)
     }
 }
 
@@ -5106,11 +6551,23 @@ mod auto_fetch_tests {
             .ok();
         git(repo, &["push", "--quiet", "origin", "main"]);
 
-        // Advance origin (via scratch clone) so local is behind.
+        // Advance origin (via scratch clone) so local is behind. Also
+        // commit a (real-world-realistic) `.chump/state.sql` so
+        // INFRA-3687's canonical_max_id() can verify canonical truth here —
+        // this scenario is exercising ship()'s dirty-tree guard, not the
+        // stale-checkout reserve() guard, so canonical must be readable or
+        // the new fail-closed gate below would (correctly, but not what
+        // this test is about) refuse the reserve() call before ship() is
+        // ever reached.
         let scratch_dir = tempdir().unwrap();
         non_bare_clone(origin_dir.path().to_str().unwrap(), scratch_dir.path());
         std::fs::write(scratch_dir.path().join("extra.txt"), b"extra").ok();
-        git(scratch_dir.path(), &["add", "extra.txt"]);
+        std::fs::create_dir_all(scratch_dir.path().join(".chump")).ok();
+        std::fs::write(scratch_dir.path().join(".chump/state.sql"), b"gaps: []\n").ok();
+        git(
+            scratch_dir.path(),
+            &["add", "extra.txt", ".chump/state.sql"],
+        );
         git(
             scratch_dir.path(),
             &["commit", "--quiet", "-m", "chore: origin-ahead"],
@@ -5196,6 +6653,356 @@ mod auto_fetch_tests {
             "Scenario A: expected Ok after auto-pull on clean+behind; got: {result:?}"
         );
     }
+
+    /// INFRA-3687 regression lock, part 1: the exact stale-checkout drift
+    /// from the real repro (a checkout 177 commits behind reserved
+    /// INFRA-3680, canonically a merged "parse_verdict" gap). Local
+    /// state.db only ever sees a low max (INFRA-1xx-ish); origin/main's
+    /// canonical `.chump/state.sql` already records a much higher gap
+    /// (INFRA-3866). `reserve()` must fold in the canonical max and must
+    /// NOT hand back an ID at or below it.
+    #[test]
+    fn canonical_max_id_reads_origin_state_sql_and_reserve_beats_stale_local() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        // Origin starts in sync with local (no state.sql yet).
+        let origin_dir = tempdir().unwrap();
+        bare_clone(repo, origin_dir.path());
+        std::process::Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                origin_dir.path().to_str().unwrap(),
+            ])
+            .current_dir(repo)
+            .status()
+            .ok();
+        git(repo, &["push", "--quiet", "origin", "main"]);
+
+        // Advance origin (via scratch clone) with a canonical state.sql
+        // recording INFRA-3866 as an already-merged gap — this checkout's
+        // local state.db has never seen it. Also plant a junk
+        // `INFRA-9999999`-shaped substring in the notes field of the SAME
+        // row to prove the id-column-only extraction isn't fooled by it.
+        let scratch_dir = tempdir().unwrap();
+        non_bare_clone(origin_dir.path().to_str().unwrap(), scratch_dir.path());
+        std::fs::create_dir_all(scratch_dir.path().join(".chump")).ok();
+        std::fs::write(
+            scratch_dir.path().join(".chump/state.sql"),
+            b"gaps:\n\
+              - id: INFRA-3866\n\
+              \x20 domain: INFRA\n\
+              \x20 title: parse_verdict\n\
+              \x20 status: done\n\
+              \x20 priority: P2\n\
+              \x20 effort: s\n\
+              \x20 notes: \"see also junk id INFRA-9999999 mentioned in an old incident writeup\"\n",
+        )
+        .ok();
+        git(scratch_dir.path(), &["add", ".chump/state.sql"]);
+        git(
+            scratch_dir.path(),
+            &[
+                "commit",
+                "--quiet",
+                "-m",
+                "chore: canonical state.sql with INFRA-3866",
+            ],
+        );
+        git(scratch_dir.path(), &["push", "--quiet", "origin", "main"]);
+
+        // Local checkout never pulled this — reproduces the "N commits
+        // behind" drift. Seed local state.db with a low max (INFRA-1) so
+        // existing_max alone would naively pick INFRA-2.
+        let store = open_store(repo);
+        store
+            .reserve("INFRA", "local-only seed, stale checkout", "P2", "xs")
+            .unwrap();
+
+        let canonical = store.canonical_max_id("INFRA");
+        assert_eq!(
+            canonical,
+            Some(3866),
+            "canonical_max_id must read origin/main's state.sql id column \
+             only (3866), ignoring the junk INFRA-9999999 substring in \
+             notes; got {canonical:?}"
+        );
+
+        let id = store
+            .reserve("INFRA", "post-drift reserve must beat canonical", "P1", "s")
+            .unwrap();
+        let picked_num: i64 = id
+            .strip_prefix("INFRA-")
+            .and_then(|n| n.parse().ok())
+            .unwrap_or(-1);
+        assert!(
+            picked_num > 3866,
+            "reserve must allocate above canonical max 3866 despite a \
+             stale local checkout; got {id}"
+        );
+    }
+
+    /// Registry privacy: when a `registry` git remote is configured, the
+    /// canonical max ID comes from `registry/main:.chump/state.sql` and the
+    /// code repo (`origin`) is never consulted, even if a frozen legacy copy
+    /// still sits there with a LOWER max. A configured registry that carries
+    /// no state.sql is "unverifiable" (`None`), not a fallback to origin.
+    #[test]
+    fn canonical_max_id_prefers_registry_remote_over_origin() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        // origin = the code repo, carrying a frozen legacy state.sql (max 100).
+        let origin_dir = tempdir().unwrap();
+        bare_clone(repo, origin_dir.path());
+        git(
+            repo,
+            &[
+                "remote",
+                "add",
+                "origin",
+                origin_dir.path().to_str().unwrap(),
+            ],
+        );
+        git(repo, &["push", "--quiet", "origin", "main"]);
+        let scratch = tempdir().unwrap();
+        non_bare_clone(origin_dir.path().to_str().unwrap(), scratch.path());
+        std::fs::create_dir_all(scratch.path().join(".chump")).ok();
+        std::fs::write(
+            scratch.path().join(".chump/state.sql"),
+            b"gaps:\n- id: INFRA-100\n  domain: INFRA\n  title: frozen legacy\n  status: done\n  priority: P2\n  effort: s\n",
+        )
+        .ok();
+        git(scratch.path(), &["add", ".chump/state.sql"]);
+        git(scratch.path(), &["commit", "--quiet", "-m", "legacy copy"]);
+        git(scratch.path(), &["push", "--quiet", "origin", "main"]);
+
+        // registry = a separate, unrelated-history repo with the live max 4200.
+        let reg_src = tempdir().unwrap();
+        init_repo(reg_src.path());
+        std::fs::create_dir_all(reg_src.path().join(".chump")).ok();
+        std::fs::write(
+            reg_src.path().join(".chump/state.sql"),
+            b"gaps:\n- id: INFRA-4200\n  domain: INFRA\n  title: live registry\n  status: open\n  priority: P2\n  effort: s\n",
+        )
+        .ok();
+        git(reg_src.path(), &["add", ".chump/state.sql"]);
+        git(reg_src.path(), &["commit", "--quiet", "-m", "registry"]);
+        let reg_bare = tempdir().unwrap();
+        bare_clone(reg_src.path(), reg_bare.path());
+
+        let store = open_store(repo);
+        // No registry remote yet: legacy path reads origin/main.
+        assert_eq!(store.canonical_max_id("INFRA"), Some(100));
+
+        git(
+            repo,
+            &[
+                "remote",
+                "add",
+                "registry",
+                reg_bare.path().to_str().unwrap(),
+            ],
+        );
+        assert_eq!(
+            store.canonical_max_id("INFRA"),
+            Some(4200),
+            "with a registry remote configured the registry is canonical"
+        );
+
+        // A configured registry with NO state.sql is unverifiable: must not
+        // fall back to the frozen origin copy (which would under-report).
+        let empty_src = tempdir().unwrap();
+        init_repo(empty_src.path());
+        let empty_bare = tempdir().unwrap();
+        bare_clone(empty_src.path(), empty_bare.path());
+        git(
+            repo,
+            &[
+                "remote",
+                "set-url",
+                "registry",
+                empty_bare.path().to_str().unwrap(),
+            ],
+        );
+        // Drop the previously fetched tracking ref so the stale registry/main
+        // from the first remote cannot satisfy the read.
+        git(repo, &["update-ref", "-d", "refs/remotes/registry/main"]);
+        let got = store.canonical_max_id("INFRA");
+        assert_eq!(
+            got, None,
+            "configured-but-empty registry is unverifiable; must never fall \
+             back to origin's frozen legacy copy (100); got {got:?}"
+        );
+    }
+
+    /// INFRA-3687 regression lock, part 2: fail-closed when this checkout
+    /// is genuinely behind origin/main AND canonical truth is unreadable
+    /// (origin/main advanced but never touched `.chump/state.sql`, so `git
+    /// show origin/main:.chump/state.sql` fails). `reserve()` must refuse
+    /// rather than silently trust a possibly-stale local counter.
+    /// `CHUMP_RESERVE_ALLOW_STALE=1` must bypass the refusal.
+    #[test]
+    fn reserve_fails_closed_when_behind_and_canonical_unreadable_bypass_works() {
+        let dir = tempdir().unwrap();
+        let repo = dir.path();
+        init_repo(repo);
+
+        let origin_dir = tempdir().unwrap();
+        bare_clone(repo, origin_dir.path());
+        std::process::Command::new("git")
+            .args([
+                "remote",
+                "add",
+                "origin",
+                origin_dir.path().to_str().unwrap(),
+            ])
+            .current_dir(repo)
+            .status()
+            .ok();
+        git(repo, &["push", "--quiet", "origin", "main"]);
+
+        // Advance origin with a commit that does NOT touch .chump/state.sql
+        // — canonical_max_id's `git show origin/main:.chump/state.sql` will
+        // fail (the file has never existed at that ref), simulating
+        // "canonical truth unreadable" while genuinely behind.
+        let scratch_dir = tempdir().unwrap();
+        non_bare_clone(origin_dir.path().to_str().unwrap(), scratch_dir.path());
+        std::fs::write(scratch_dir.path().join("extra.txt"), b"extra").ok();
+        git(scratch_dir.path(), &["add", "extra.txt"]);
+        git(
+            scratch_dir.path(),
+            &[
+                "commit",
+                "--quiet",
+                "-m",
+                "chore: origin-ahead, no state.sql ever committed",
+            ],
+        );
+        git(scratch_dir.path(), &["push", "--quiet", "origin", "main"]);
+
+        let store = open_store(repo);
+        unsafe {
+            std::env::remove_var("CHUMP_RESERVE_ALLOW_STALE");
+        }
+        let result = store.reserve(
+            "INFRA",
+            "should refuse — unverifiable staleness",
+            "P3",
+            "xs",
+        );
+        assert!(
+            result.is_err(),
+            "expected Err when behind + canonical-unreadable; got {result:?}"
+        );
+        let msg = format!("{:?}", result.unwrap_err());
+        assert!(
+            msg.contains("behind origin/main") && msg.contains("CHUMP_RESERVE_ALLOW_STALE"),
+            "expected staleness refusal message naming the escape hatch; got: {msg}"
+        );
+
+        // CHUMP_RESERVE_ALLOW_STALE=1 must bypass the fail-closed gate.
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_ALLOW_STALE", "1");
+        }
+        let result2 = store.reserve("INFRA", "bypass allowed via env escape hatch", "P3", "xs");
+        unsafe {
+            std::env::remove_var("CHUMP_RESERVE_ALLOW_STALE");
+        }
+        assert!(
+            result2.is_ok(),
+            "CHUMP_RESERVE_ALLOW_STALE=1 must bypass the fail-closed gate; got {result2:?}"
+        );
+    }
+}
+
+/// INFRA-3687: fast, no-git unit tests for the id-column-only extraction
+/// that [`GapStore::canonical_max_id`] delegates to. Proves the invariant
+/// directly against the parser + filter, independent of the git plumbing
+/// (which the `auto_fetch_tests` module above exercises end-to-end).
+#[cfg(test)]
+mod canonical_max_id_parse_tests {
+    use super::*;
+
+    #[test]
+    fn canonical_max_id_ignores_junk_ids_in_descriptions() {
+        // Real state.sql shape: one gap whose `id` is legitimately
+        // INFRA-3887, but whose `notes` field quotes a much larger
+        // `INFRA-9999999`-shaped substring as example junk data (and
+        // INFRA-9999 too, just to be doubly sure) — plus an older, lower
+        // real gap. A naive text/regex scan over the whole dump would
+        // return 9999999; the id-column-only extraction must return 3887.
+        let yaml = r#"
+gaps:
+- id: INFRA-3887
+  domain: INFRA
+  title: "real gap"
+  status: open
+  priority: P2
+  effort: s
+  notes: "mentions INFRA-9999999 as junk test data, and INFRA-9999 too, but is NOT one"
+- id: INFRA-042
+  domain: INFRA
+  title: "older real gap"
+  status: done
+  priority: P3
+  effort: xs
+"#;
+        let file = GapStore::parse_state_sql_yaml(yaml).expect("state.sql YAML must parse");
+        let max = GapStore::max_id_num_in_gaps(&file.gaps, "INFRA");
+        assert_eq!(
+            max,
+            Some(3887),
+            "junk INFRA-9999999 / INFRA-9999 substrings in `notes` must not \
+             poison the max — only the `id` column is authoritative; got {max:?}"
+        );
+    }
+
+    #[test]
+    fn max_id_num_in_gaps_drops_absurdly_large_ids_as_a_sanity_ceiling() {
+        // Defense-in-depth: even if a malformed/synthetic row DID slip an
+        // absurd number into the `id` column itself, it must not poison
+        // allocation. This is belt-and-suspenders on top of the
+        // id-column-only extraction above, not the primary defense.
+        let yaml = r#"
+gaps:
+- id: INFRA-3887
+  domain: INFRA
+  title: "real gap"
+  status: open
+  priority: P2
+  effort: s
+- id: INFRA-99999999
+  domain: INFRA
+  title: "synthetic/malformed fixture row — must be ignored"
+  status: open
+  priority: P2
+  effort: s
+"#;
+        let file = GapStore::parse_state_sql_yaml(yaml).expect("state.sql YAML must parse");
+        let max = GapStore::max_id_num_in_gaps(&file.gaps, "INFRA");
+        assert_eq!(
+            max,
+            Some(3887),
+            "an absurdly large id-column value must be dropped by the sanity \
+             ceiling, not treated as the real max; got {max:?}"
+        );
+    }
+
+    #[test]
+    fn canonical_max_id_returns_none_without_a_git_dir() {
+        // Every existing test_store()-based fixture (and any real
+        // synthetic GapStore built in a bare TempDir) has no `.git` at
+        // all. canonical_max_id must short-circuit to None rather than
+        // attempting to shell out to git in a directory that isn't a repo.
+        let dir = tempfile::tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        assert_eq!(store.canonical_max_id("INFRA"), None);
+    }
 }
 
 #[cfg(test)]
@@ -5203,6 +7010,34 @@ mod proof_of_merge_tests {
     //! INFRA-1392: pure-function tests for the proof-of-merge helper.
     use super::*;
     use tempfile::tempdir;
+
+    // CREDIBLE-280: every git invocation in this module must be hermetic (no
+    // ambient global/system config, no leaked GIT_* env) and its exit status
+    // must be checked. Before this fix, `empty_repo_with_no_commits_passes`,
+    // `repo_with_commits_but_no_main_branch_fails_closed`,
+    // `real_repo_with_matching_commit_subject_passes`, and
+    // `real_repo_with_pr_number_in_subject_passes_when_closed_pr_set` ran
+    // `git init`/`git config`/`git commit` against whatever global/system
+    // gitconfig happened to be present on the runner and silently discarded
+    // the exit status of `git commit` (`let _ = ... .status()`). On a
+    // CI-hosted runner with an ambient gitconfig (e.g. `commit.gpgsign` or a
+    // `core.hooksPath` pointing at this repo's hooks), `git commit` could
+    // fail without the test noticing, leaving the fixture repo with fewer
+    // commits than the assertions below assume — an intermittent failure
+    // that never reproduced locally where no such ambient config exists.
+    fn hermetic_git(dir: &std::path::Path, args: &[&str]) -> std::process::Output {
+        std::process::Command::new("git")
+            .args(args)
+            .current_dir(dir)
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .output()
+            .expect("git should spawn")
+    }
 
     #[test]
     fn fixture_without_git_dir_passes_through() {
@@ -5217,45 +7052,83 @@ mod proof_of_merge_tests {
     #[test]
     fn credible218_merge_older_than_200_commits_is_proven() {
         // CREDIBLE-218: a merge that landed MORE than 200 commits ago must still be
-        // provable. The old `-n 200` window silently missed it → ship() refused → the
+        // provable. The old `-n 200` window silently missed it, ship() refused, and the
         // gap became a permanent ghost. Here the gap-mentioning commit is the OLDEST,
         // buried under 205 newer commits.
+        //
+        // FLAKE FIX (CREDIBLE-282): this fixture flaked red on GitHub-hosted ubuntu
+        // runners even after making every `git commit` call hermetic. Root cause: it
+        // spawned 206 separate `git commit` subprocesses in a tight loop. Under CI
+        // resource contention (fork/exec pressure, disk I/O contention from sibling
+        // shards), an occasional `git commit` invocation in that chain silently failed
+        // ("filler N must land"), even with clean env + inline identity.
+        //
+        // CREDIBLE-289 FIX: replace the 206-subprocess commit loop with a SINGLE
+        // `git fast-import` call. fast-import takes the entire commit graph as one
+        // stdin stream and builds it in-process — no per-commit fork/exec, so there is
+        // nothing left for CI resource contention to race.
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=main", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
+        // Hermetic git: no ambient global/system config and no leaked GIT_* env can
+        // perturb this fixture on a shared runner.
+        if !hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"])
+            .status
+            .success()
+        {
             return; // older git without --initial-branch
         }
-        for (k, v) in [("user.email", "t@t.local"), ("user.name", "t")] {
-            let _ = std::process::Command::new("git")
-                .args(["config", k, v])
-                .current_dir(dir.path())
-                .status();
-        }
-        // Oldest commit carries the gap ID.
-        let _ = std::process::Command::new("git")
-            .args([
-                "commit",
-                "--allow-empty",
-                "-m",
-                "EFFECTIVE-9999: the real merge, buried deep",
-            ])
-            .current_dir(dir.path())
-            .status();
+        // Build the whole 206-commit chain as one fast-import stream. Root commit
+        // (mark :1) carries the gap ID; it has no `from` line so it starts a fresh
+        // root. Every later commit omits `from` too — fast-import defaults to the
+        // branch's current tip, so they chain automatically.
+        let mut stream = String::new();
+        let write_commit = |mark: usize, msg: &str, stream: &mut String| {
+            stream.push_str("commit refs/heads/main\n");
+            stream.push_str(&format!("mark :{mark}\n"));
+            stream.push_str("author t <t@t.local> 0 +0000\n");
+            stream.push_str("committer t <t@t.local> 0 +0000\n");
+            stream.push_str(&format!("data {}\n", msg.len()));
+            stream.push_str(msg);
+            stream.push_str("\n\n");
+        };
+        write_commit(
+            1,
+            "EFFECTIVE-9999: the real merge, buried deep",
+            &mut stream,
+        );
         // 205 newer commits bury it past the old -n 200 window.
         for i in 0..205 {
-            let _ = std::process::Command::new("git")
-                .args([
-                    "commit",
-                    "--allow-empty",
-                    "-m",
-                    &format!("chore: filler {i}"),
-                ])
-                .current_dir(dir.path())
-                .status();
+            write_commit(2 + i, &format!("chore: filler {i}"), &mut stream);
         }
+
+        use std::io::Write;
+        let mut child = std::process::Command::new("git")
+            .args(["fast-import", "--quiet"])
+            .current_dir(dir.path())
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
+            .env("GIT_CONFIG_SYSTEM", "/dev/null")
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .env_remove("GIT_DIR")
+            .env_remove("GIT_WORK_TREE")
+            .env_remove("GIT_INDEX_FILE")
+            .stdin(std::process::Stdio::piped())
+            .stdout(std::process::Stdio::null())
+            .stderr(std::process::Stdio::piped())
+            .spawn()
+            .expect("git fast-import should spawn");
+        child
+            .stdin
+            .take()
+            .expect("fast-import stdin")
+            .write_all(stream.as_bytes())
+            .expect("fast-import stream should write");
+        let out = child
+            .wait_with_output()
+            .expect("git fast-import should complete");
+        assert!(
+            out.status.success(),
+            "git fast-import must build the 206-commit fixture: {}",
+            String::from_utf8_lossy(&out.stderr)
+        );
         assert!(
             verify_proof_of_merge(dir.path(), "EFFECTIVE-9999", None),
             "a merge >200 commits back must still be proven (CREDIBLE-218)"
@@ -5268,11 +7141,12 @@ mod proof_of_merge_tests {
         // synthetic gap. Zero commits = test fixture, not production.
         // Guard passes so tests can ship synthetic gaps.
         let dir = tempdir().unwrap();
-        std::process::Command::new("git")
-            .args(["init", "--quiet"])
-            .current_dir(dir.path())
-            .status()
-            .unwrap();
+        let init = hermetic_git(dir.path(), &["init", "--quiet"]);
+        assert!(
+            init.status.success(),
+            "git init must succeed: {}",
+            String::from_utf8_lossy(&init.stderr)
+        );
         assert!(verify_proof_of_merge(dir.path(), "INFRA-9501", Some(123)));
     }
 
@@ -5282,30 +7156,26 @@ mod proof_of_merge_tests {
         // branch, but `main` doesn't. We have no way to verify proof
         // there — fail closed.
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=other", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
-            return; // older git
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=other", "--quiet"]);
+        if !init.status.success() {
+            return; // older git without --initial-branch
         }
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.local"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args([
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
+        let commit = hermetic_git(
+            dir.path(),
+            &[
                 "commit",
                 "--allow-empty",
                 "-m",
                 "feat: INFRA-9501 on side branch",
-            ])
-            .current_dir(dir.path())
-            .status();
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
         // HEAD exists (commit on "other") but `git log main` will fail.
         assert!(!verify_proof_of_merge(dir.path(), "INFRA-9501", Some(123)));
     }
@@ -5313,32 +7183,28 @@ mod proof_of_merge_tests {
     #[test]
     fn real_repo_with_matching_commit_subject_passes() {
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=main", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"]);
+        if !init.status.success() {
             // Older git without --initial-branch; skip gracefully.
             return;
         }
         // Configure local user.email/name for the commit.
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.local"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args([
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
+        let commit = hermetic_git(
+            dir.path(),
+            &[
                 "commit",
                 "--allow-empty",
                 "-m",
                 "feat(INFRA-9502): RESILIENT — proof-of-merge fixture",
-            ])
-            .current_dir(dir.path())
-            .status();
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
         assert!(verify_proof_of_merge(dir.path(), "INFRA-9502", None));
         // Case-insensitive: lowercase claim should still hit the
         // uppercase commit subject.
@@ -5350,33 +7216,29 @@ mod proof_of_merge_tests {
     #[test]
     fn real_repo_with_pr_number_in_subject_passes_when_closed_pr_set() {
         let dir = tempdir().unwrap();
-        let init = std::process::Command::new("git")
-            .args(["init", "--initial-branch=main", "--quiet"])
-            .current_dir(dir.path())
-            .status();
-        if init.is_err() || !init.unwrap().success() {
+        let init = hermetic_git(dir.path(), &["init", "--initial-branch=main", "--quiet"]);
+        if !init.status.success() {
             return;
         }
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.email", "test@test.local"])
-            .current_dir(dir.path())
-            .status();
-        let _ = std::process::Command::new("git")
-            .args(["config", "user.name", "test"])
-            .current_dir(dir.path())
-            .status();
+        hermetic_git(dir.path(), &["config", "user.email", "test@test.local"]);
+        hermetic_git(dir.path(), &["config", "user.name", "test"]);
         // Subject mentions only the PR number (squash-merge convention),
         // NOT the gap ID. The gap-ID branch of the check should miss but
         // the `(#PR)` branch should hit.
-        let _ = std::process::Command::new("git")
-            .args([
+        let commit = hermetic_git(
+            dir.path(),
+            &[
                 "commit",
                 "--allow-empty",
                 "-m",
                 "feat: ship a thing (#4242)",
-            ])
-            .current_dir(dir.path())
-            .status();
+            ],
+        );
+        assert!(
+            commit.status.success(),
+            "git commit must succeed: {}",
+            String::from_utf8_lossy(&commit.stderr)
+        );
         assert!(verify_proof_of_merge(
             dir.path(),
             "INFRA-NO-MATCH",
@@ -5414,7 +7276,397 @@ mod tests {
         (store, dir)
     }
 
+    // ── EFFECTIVE-679: idea-drop intake tests ──────────────────────────
+
+    #[test]
+    fn add_drop_creates_new_record_with_expected_fields() {
+        let dir = TempDir::new().unwrap();
+        let (record, created) = add_drop(dir.path(), "hello world", "ref1").unwrap();
+        assert!(created);
+        assert_eq!(record.sentence, "hello world");
+        assert_eq!(record.citation, "ref1");
+        assert_eq!(record.status, "new");
+        assert!(!record.id.is_empty());
+
+        let drops = load_drops(&drops_path(dir.path())).unwrap();
+        assert_eq!(drops.len(), 1);
+        assert_eq!(drops[0].id, record.id);
+    }
+
+    #[test]
+    fn add_drop_is_idempotent_on_sentence_and_citation() {
+        let dir = TempDir::new().unwrap();
+        let (first, created_first) = add_drop(dir.path(), "hello world", "ref1").unwrap();
+        assert!(created_first);
+        let (second, created_second) = add_drop(dir.path(), "hello world", "ref1").unwrap();
+        assert!(!created_second);
+        assert_eq!(first.id, second.id);
+
+        let drops = load_drops(&drops_path(dir.path())).unwrap();
+        assert_eq!(drops.len(), 1, "re-posting must not create a duplicate");
+    }
+
+    #[test]
+    fn add_drop_persists_across_separate_loads() {
+        let dir = TempDir::new().unwrap();
+        let (first, _) = add_drop(dir.path(), "durable idea", "ref2").unwrap();
+
+        // Simulate a restart: nothing but the file on disk carries state.
+        let drops = load_drops(&drops_path(dir.path())).unwrap();
+        assert_eq!(drops.len(), 1);
+        assert_eq!(drops[0].id, first.id);
+        assert_eq!(drops[0].sentence, "durable idea");
+    }
+
     // ── INFRA-100: cross-source picker tests ──────────────────────────
+
+    // ── RESILIENT-1364: decomposed-umbrella pick-pool + auto-close ────
+
+    #[test]
+    fn parse_decomposed_children_extracts_ids_from_notes() {
+        let notes = "Decomposed into 3 slices: RESILIENT-1353, RESILIENT-1354, RESILIENT-1355";
+        let ids = parse_decomposed_children(notes);
+        assert_eq!(
+            ids,
+            vec!["RESILIENT-1353", "RESILIENT-1354", "RESILIENT-1355"]
+        );
+
+        assert!(parse_decomposed_children("no marker here").is_empty());
+        assert!(parse_decomposed_children("").is_empty());
+    }
+
+    #[test]
+    fn decomposed_status_is_registered() {
+        // RESILIENT-1364: the picker at every call site keys off
+        // gap_status_registry-known statuses; 'decomposed' must be present
+        // from a fresh store, the same way 'ready_to_ship' etc. are.
+        let (store, _dir) = test_store();
+        let known = store.known_statuses().unwrap();
+        assert!(
+            known.iter().any(|k| k == "decomposed"),
+            "registry must contain 'decomposed': {known:?}"
+        );
+    }
+
+    #[test]
+    fn decomposed_parent_is_excluded_from_the_open_pick_pool() {
+        // RESILIENT-1364 fix #1: this is the exact failure mode from the
+        // gap report — a just-sliced umbrella must never again be returned
+        // by `chump gap list --status open` (store.list(Some("open"))),
+        // which is what every worker/curator reads to pick its next gap.
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let child1 = store.reserve("RESILIENT", "slice one", "P2", "s").unwrap();
+        let child2 = store.reserve("RESILIENT", "slice two", "P2", "s").unwrap();
+
+        // Before the fix, decompose left status='open' (only priority was
+        // demoted) — that's exactly the bug. Simulate the fixed
+        // `chump gap decompose --apply` write path.
+        store
+            .set_fields(
+                &parent,
+                GapFieldUpdate {
+                    priority: Some("P2".into()),
+                    status: Some("decomposed".into()),
+                    notes: Some(format!("Decomposed into 2 slices: {child1}, {child2}")),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let open = store.list(Some("open")).unwrap();
+        assert!(
+            !open.iter().any(|g| g.id == parent),
+            "decomposed parent must not be in the open pick pool: {:?}",
+            open.iter().map(|g| &g.id).collect::<Vec<_>>()
+        );
+        // Its slices, meanwhile, ARE pickable — that's the whole point.
+        assert!(open.iter().any(|g| g.id == child1));
+        assert!(open.iter().any(|g| g.id == child2));
+    }
+
+    #[test]
+    fn auto_close_decomposed_parents_waits_for_all_children_then_closes() {
+        // RESILIENT-1364 fix #2, mirroring the outcomes open_children
+        // pattern: a decomposed parent must stay open (as a tracking row)
+        // while ANY child slice is unfinished, and auto-close to 'done'
+        // only once every child named in its notes has reached 'done'.
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let child1 = store.reserve("RESILIENT", "slice one", "P2", "s").unwrap();
+        let child2 = store.reserve("RESILIENT", "slice two", "P2", "s").unwrap();
+
+        store
+            .set_fields(
+                &parent,
+                GapFieldUpdate {
+                    status: Some("decomposed".into()),
+                    notes: Some(format!("Decomposed into 2 slices: {child1}, {child2}")),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        // Neither child done yet -> no auto-close.
+        let closed = store.auto_close_decomposed_parents().unwrap();
+        assert!(
+            closed.is_empty(),
+            "must not auto-close while both children are open"
+        );
+        assert_eq!(store.get(&parent).unwrap().unwrap().status, "decomposed");
+
+        // One child done, one still open -> still no auto-close.
+        store
+            .set_fields(
+                &child1,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(101),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let closed = store.auto_close_decomposed_parents().unwrap();
+        assert!(
+            closed.is_empty(),
+            "must not auto-close with one child still open"
+        );
+        assert_eq!(store.get(&parent).unwrap().unwrap().status, "decomposed");
+
+        // Both children done -> parent auto-closes.
+        store
+            .set_fields(
+                &child2,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(102),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let closed = store.auto_close_decomposed_parents().unwrap();
+        assert_eq!(closed, vec![parent.clone()]);
+        assert_eq!(store.get(&parent).unwrap().unwrap().status, "done");
+
+        // Idempotent: running again is a no-op (already done, excluded by
+        // the terminal-status guard in the UPDATE).
+        let closed_again = store.auto_close_decomposed_parents().unwrap();
+        assert!(closed_again.is_empty());
+    }
+
+    // ── INFRA-8067: re-slice guard (RESILIENT-1437 root-cause fix) ────
+    //
+    // RESILIENT-1437: the gap-store was ~92% redundant machine-filed
+    // slices because the EFFECTIVE-310 decompose reflex in
+    // scripts/dispatch/worker.sh could re-slice the same parent gap
+    // repeatedly. `chump gap decompose` only ever guarded on
+    // parent.status != "open" (RESILIENT-1364) — a decompose run that
+    // files slices but is interrupted (crash/kill/wedge) BEFORE writing
+    // the parent's final status=decomposed + notes marker leaves that
+    // parent looking "fresh" (still status=open, no notes marker) to
+    // every subsequent run, which re-files a near-duplicate batch of
+    // slices. `count_open_slices` is the fix: it finds a parent's open
+    // slices directly from the slice title convention (and depends_on),
+    // independent of whether the parent's own bookkeeping ever landed.
+
+    #[test]
+    fn count_open_slices_is_zero_for_a_fresh_parent() {
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        assert_eq!(
+            store.count_open_slices(&parent).unwrap(),
+            0,
+            "a parent with no filed slices must report zero open slices"
+        );
+    }
+
+    #[test]
+    fn count_open_slices_finds_slices_even_without_the_parent_notes_marker() {
+        // This is the exact orphaned-slices scenario from RESILIENT-1437:
+        // slices got filed (title carries the "(<parent> slice)" suffix
+        // `chump gap decompose --apply` uses) but the run never reached
+        // the final `store.set_fields(parent, status=decomposed, notes=...)`
+        // write — e.g. it was killed mid-flight. The parent is still
+        // status=open with empty notes, so `decomposed_parent_rollup`
+        // (which parses the notes marker) finds nothing — but
+        // `count_open_slices` must still see the orphaned slices, because
+        // it is what the decompose command's new re-slice guard depends
+        // on.
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let _child = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: first slice ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+
+        // Parent was NEVER demoted/marked decomposed (simulating the crash).
+        assert_eq!(store.get(&parent).unwrap().unwrap().status, "open");
+        assert!(store.decomposed_parent_rollup(&parent).unwrap().is_none());
+
+        assert_eq!(
+            store.count_open_slices(&parent).unwrap(),
+            1,
+            "must find the orphaned slice by its title convention even with no notes marker"
+        );
+    }
+
+    #[test]
+    fn count_open_slices_ignores_slices_that_are_no_longer_open() {
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let child = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: first slice ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+        store
+            .set_fields(
+                &child,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(1),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            store.count_open_slices(&parent).unwrap(),
+            0,
+            "a done slice must not count as an open slice"
+        );
+    }
+
+    #[test]
+    fn a_parent_with_open_slices_is_sliced_at_most_once() {
+        // The regression this gap exists to prevent: simulate two
+        // decompose "runs" using the same store primitives
+        // `chump gap decompose --apply` uses (reserve + set_fields), and
+        // assert the guard `count_open_slices` relies on blocks the
+        // second run from ever filing a duplicate batch.
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+
+        // ── Run 1: a genuinely fresh parent — must be allowed to slice. ──
+        assert_eq!(store.count_open_slices(&parent).unwrap(), 0);
+        let slice1 = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: do the thing ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+        let slice2 = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: do the other thing ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+        // Run 1 is interrupted before writing status=decomposed + notes —
+        // the exact crash window RESILIENT-1437 exploited.
+
+        // ── Run 2: reflex hits strike threshold again, tries to decompose
+        // the "same" parent (still status=open from its point of view). ──
+        let open_slices_before_run_2 = store.count_open_slices(&parent).unwrap();
+        assert_eq!(
+            open_slices_before_run_2, 2,
+            "the two slices from run 1 must already be visible to the guard"
+        );
+        // This is the guard `chump gap decompose` now checks before doing
+        // ANY LLM work or filing ANY new slice (src/main.rs): count >= 1
+        // means refuse. We assert the refusal condition directly rather
+        // than re-implementing the CLI's LLM-calling code path here.
+        let run_2_must_refuse = open_slices_before_run_2 >= 1;
+        assert!(
+            run_2_must_refuse,
+            "run 2 must be refused — parent already has open slices"
+        );
+
+        // Prove the refusal: the gap store still has exactly the 2 slices
+        // from run 1 — a buggy second run (pre-INFRA-8067) would have
+        // filed 2 MORE near-duplicate slices here, for 4 total.
+        let open_gaps = store.list(Some("open")).unwrap();
+        let slice_count = open_gaps
+            .iter()
+            .filter(|g| g.title.ends_with(&format!("({parent} slice)")))
+            .count();
+        assert_eq!(
+            slice_count, 2,
+            "parent must have been sliced AT MOST ONCE — found {slice_count} slices, expected exactly 2 from the single allowed run"
+        );
+        assert!(open_gaps.iter().any(|g| g.id == slice1));
+        assert!(open_gaps.iter().any(|g| g.id == slice2));
+    }
+
+    #[test]
+    fn decomposed_parent_rollup_reports_counts() {
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let child1 = store.reserve("RESILIENT", "slice one", "P2", "s").unwrap();
+        let child2 = store.reserve("RESILIENT", "slice two", "P2", "s").unwrap();
+        store
+            .set_fields(
+                &parent,
+                GapFieldUpdate {
+                    status: Some("decomposed".into()),
+                    notes: Some(format!("Decomposed into 2 slices: {child1}, {child2}")),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let rollup = store
+            .decomposed_parent_rollup(&parent)
+            .unwrap()
+            .expect("parent has a parseable decompose marker");
+        assert_eq!(rollup.total, 2);
+        assert_eq!(rollup.open, 2);
+        assert_eq!(rollup.done, 0);
+
+        store
+            .set_fields(
+                &child1,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(201),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let rollup = store.decomposed_parent_rollup(&parent).unwrap().unwrap();
+        assert_eq!(rollup.open, 1);
+        assert_eq!(rollup.done, 1);
+
+        // A plain gap with no decompose marker in its notes has no rollup.
+        let plain = store
+            .reserve("RESILIENT", "not an umbrella", "P2", "s")
+            .unwrap();
+        assert!(store.decomposed_parent_rollup(&plain).unwrap().is_none());
+    }
 
     #[test]
     fn known_statuses_reads_the_registry() {
@@ -5439,6 +7691,60 @@ mod tests {
         assert!(
             !known.iter().any(|k| k == "tottaly-done"),
             "unknown stays unknown"
+        );
+    }
+
+    #[test]
+    fn set_outcome_jtbd_persists_and_round_trips() {
+        // EFFECTIVE-443: the JTBD-sharpen triple (who / struggling-moment /
+        // done-signal) must survive a write + re-fetch — before this slice,
+        // outcomes only had jtbd fields in the ephemeral CLI output, not the
+        // stored row, so a fresh `get_outcome`/`list_outcomes` always came
+        // back with all three fields unset.
+        let (store, _dir) = test_store();
+        store
+            .create_outcome("VISION-test1", "A test outcome", "P2", "done means x")
+            .unwrap();
+
+        // Freshly created outcome has no JTBD yet.
+        let fresh = store.get_outcome("VISION-test1").unwrap().unwrap();
+        assert!(fresh.jtbd_who.is_none());
+        assert!(fresh.jtbd_struggling_moment.is_none());
+        assert!(fresh.jtbd_done_signal.is_none());
+
+        store
+            .set_outcome_jtbd(
+                "VISION-test1",
+                "a solo dog walker juggling paper routes",
+                "the phone rings mid-walk and they lose track of who's next",
+                "they can glance at one place and see every upcoming route",
+            )
+            .unwrap();
+
+        let updated = store.get_outcome("VISION-test1").unwrap().unwrap();
+        assert_eq!(
+            updated.jtbd_who.as_deref(),
+            Some("a solo dog walker juggling paper routes")
+        );
+        assert_eq!(
+            updated.jtbd_struggling_moment.as_deref(),
+            Some("the phone rings mid-walk and they lose track of who's next")
+        );
+        assert_eq!(
+            updated.jtbd_done_signal.as_deref(),
+            Some("they can glance at one place and see every upcoming route")
+        );
+
+        // list_outcomes must also carry the persisted triple through.
+        let listed = store
+            .list_outcomes()
+            .unwrap()
+            .into_iter()
+            .find(|o| o.id == "VISION-test1")
+            .unwrap();
+        assert_eq!(
+            listed.jtbd_who.as_deref(),
+            Some("a solo dog walker juggling paper routes")
         );
     }
 
@@ -5737,6 +8043,77 @@ mod tests {
         }
     }
 
+    // EFFECTIVE-834 (EFFECTIVE-364 slice): resolve_publication reads the
+    // shipped gap's artifact_type, looks up publish_targets.json, and only
+    // reserves a follow-up "publish work" gap when a target is registered
+    // for that artifact_type. Exercises the resolver directly (rather than
+    // via ship()'s fire-and-forget background thread) so the assertion is
+    // deterministic.
+    #[tokio::test]
+    #[serial_test::serial(publish_targets_path_env)]
+    async fn effective834_resolver_queues_publish_work_when_targets_exist() {
+        let (store, dir) = test_store();
+        let repo_root = dir.path().to_path_buf();
+
+        let targets_path = dir.path().join("publish_targets.json");
+        std::fs::write(
+            &targets_path,
+            r#"{"doc":[{"target_type":"docs-site","platform_id":"github-pages","requires_approval":true}]}"#,
+        )
+        .unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_PUBLISH_TARGETS_PATH", &targets_path);
+        }
+
+        let event = PublicationEvent {
+            source_gap_id: "EFFECTIVE-999".to_string(),
+            artifact_type: "doc".to_string(),
+        };
+        resolve_publication(event, repo_root).await.unwrap();
+
+        unsafe {
+            std::env::remove_var("CHUMP_PUBLISH_TARGETS_PATH");
+        }
+
+        let open = store.list(Some("open")).unwrap();
+        assert!(
+            open.iter()
+                .any(|g| g.title.contains("EFFECTIVE-999") && g.title.contains("github-pages")),
+            "expected a queued publish-work gap, got: {:?}",
+            open.iter().map(|g| &g.title).collect::<Vec<_>>()
+        );
+    }
+
+    #[tokio::test]
+    #[serial_test::serial(publish_targets_path_env)]
+    async fn effective834_resolver_noop_when_no_targets_registered() {
+        let (store, dir) = test_store();
+        let repo_root = dir.path().to_path_buf();
+
+        let targets_path = dir.path().join("publish_targets.json");
+        std::fs::write(&targets_path, r#"{}"#).unwrap();
+        unsafe {
+            std::env::set_var("CHUMP_PUBLISH_TARGETS_PATH", &targets_path);
+        }
+
+        let event = PublicationEvent {
+            source_gap_id: "EFFECTIVE-998".to_string(),
+            artifact_type: "code".to_string(),
+        };
+        resolve_publication(event, repo_root).await.unwrap();
+
+        unsafe {
+            std::env::remove_var("CHUMP_PUBLISH_TARGETS_PATH");
+        }
+
+        let open = store.list(Some("open")).unwrap();
+        assert!(
+            !open.iter().any(|g| g.title.contains("EFFECTIVE-998")),
+            "expected no publish-work gap when no targets are registered, got: {:?}",
+            open.iter().map(|g| &g.title).collect::<Vec<_>>()
+        );
+    }
+
     #[test]
     fn credible218_ship_reconciles_ready_to_ship() {
         // CREDIBLE-218: a gap that merged while in an INTERMEDIATE status (not 'open')
@@ -5757,6 +8134,32 @@ mod tests {
             PreflightResult::Done => {}
             other => panic!("expected Done after reconciling ready_to_ship, got {other:?}"),
         }
+    }
+
+    #[test]
+    fn zerowaste056_ship_syncs_yaml_to_done() {
+        // ZERO-WASTE-056: the `gap ship` CLI writes docs/gaps/<ID>.yaml atomically
+        // (via dump_per_file_single) in the same op as the state.db flip, so the
+        // gap-close rides in the WORK PR and no separate per-gap reconcile PR is
+        // ever needed (that churn was ~half of all merges). Locks in the two ops
+        // the CLI handler chains; removing the dump call fails this.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("ZERO-WASTE", "ship-yaml-sync test", "P1", "s")
+            .unwrap();
+        let gaps_dir = _dir.path().join("docs").join("gaps");
+        store.ship(&id, "s", Some(4242)).unwrap();
+        let wrote = store.dump_per_file_single(&id, &gaps_dir).unwrap();
+        assert!(wrote, "dump_per_file_single should write the yaml on ship");
+        let yaml = std::fs::read_to_string(gaps_dir.join(format!("{id}.yaml"))).unwrap();
+        assert!(
+            yaml.contains("status: done"),
+            "post-ship yaml must show status: done (no drift), got: {yaml}"
+        );
+        assert!(
+            yaml.contains("closed_pr: 4242"),
+            "post-ship yaml must record closed_pr, got: {yaml}"
+        );
     }
 
     #[test]
@@ -6739,6 +9142,64 @@ meta:
         assert_eq!(row2.closed_pr, None);
     }
 
+    // ── RESILIENT-119: triage-close ─────────────────────────────────────
+
+    #[test]
+    fn test_close_flips_status_for_each_valid_reason() {
+        // No `.git` in `test_store()`'s tempdir, so ship()'s auto-fetch /
+        // proof-of-merge machinery would be unreachable anyway — but close()
+        // must not even attempt it: no fetch, no worktree-clean check, no
+        // scan for a commit naming the gap.
+        let (store, _dir) = test_store();
+        for reason in ["superseded", "wontfix", "obsolete", "duplicate"] {
+            let id = store.reserve("INFRA", reason, "P1", "s").unwrap();
+            store.claim(&id, "s", "/wt", 3600).unwrap();
+            store.close(&id, "s", reason).unwrap();
+            let row = store.get(&id).unwrap().expect("row");
+            assert_eq!(row.status, reason);
+        }
+    }
+
+    #[test]
+    fn test_close_rejects_invalid_reason() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "bad reason", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        let err = store.close(&id, "s", "bogus").unwrap_err();
+        assert!(
+            format!("{err:#}").contains("invalid --reason"),
+            "unexpected error: {err:#}"
+        );
+        // Status must be untouched by the rejected call.
+        let row = store.get(&id).unwrap().expect("row");
+        assert_eq!(row.status, "open");
+    }
+
+    #[test]
+    fn test_close_is_not_a_reroute_of_ship_and_releases_lease() {
+        let (store, dir) = test_store();
+        let id = store.reserve("INFRA", "lease release", "P1", "s").unwrap();
+        store.claim(&id, "s", "/wt", 3600).unwrap();
+        store.close(&id, "s", "wontfix").unwrap();
+        // Lease is released just like ship() does.
+        let leftover: i64 = store
+            .conn
+            .query_row(
+                "SELECT COUNT(*) FROM leases WHERE gap_id=?1 AND session_id=?2",
+                params![id, "s"],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(leftover, 0, "close() must release the caller's lease");
+        // Already-terminal gap cannot be re-closed.
+        let err = store.close(&id, "s", "superseded").unwrap_err();
+        assert!(
+            format!("{err:#}").contains("already in a terminal status"),
+            "unexpected error: {err:#}"
+        );
+        drop(dir);
+    }
+
     #[test]
     fn test_yaml_import_coerces_closed_pr_integer() {
         // Round-trip: dump → re-import should preserve closed_pr through the
@@ -6763,6 +9224,61 @@ meta:
         assert!(ins >= 1, "expected at least one inserted row, got {}", ins);
         let reimported = store2.get(&id).unwrap().expect("row reimported");
         assert_eq!(reimported.closed_pr, Some(598));
+    }
+
+    /// VOA-006: one corrupt per-file entry must not abort the whole import.
+    ///
+    /// Precedent: INFRA-3429.yaml shipped with 39 duplicate `evidence:` keys
+    /// (#3309). Because the importer concatenated every `docs/gaps/*.yaml` into a
+    /// single buffer and parsed it once, that lone bad file made `chump gap import`
+    /// fail outright — the entire YAML -> state.db sync was dead, and newly filed
+    /// gaps never became pickable. Fails before the fix (the whole call errors).
+    #[test]
+    fn test_import_skips_malformed_file_and_imports_the_rest() {
+        let (_store, dir) = test_store();
+        let gaps_dir = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps_dir).unwrap();
+
+        // Well-formed neighbours, sorted either side of the corrupt file.
+        for id in ["INFRA-0001", "INFRA-9999"] {
+            std::fs::write(
+                gaps_dir.join(format!("{id}.yaml")),
+                format!(
+                    "- id: {id}\n  domain: INFRA\n  title: healthy entry\n  \
+                     status: open\n  priority: P1\n  effort: s\n"
+                ),
+            )
+            .unwrap();
+        }
+        // The corrupt one: duplicate `evidence` key, exactly INFRA-3429's shape.
+        std::fs::write(
+            gaps_dir.join("INFRA-5000.yaml"),
+            "- id: INFRA-5000\n  domain: INFRA\n  title: corrupt entry\n  status: open\n  \
+             priority: P1\n  effort: s\n  evidence: |\n    first\n  evidence: |\n    second\n",
+        )
+        .unwrap();
+
+        let store = GapStore::open(dir.path()).unwrap();
+        let (inserted, _skipped, _backfilled) = store
+            .import_from_yaml(dir.path())
+            .expect("import must succeed despite one malformed file");
+
+        assert!(
+            inserted >= 2,
+            "healthy files must still import; inserted={inserted}"
+        );
+        assert!(
+            store.get("INFRA-0001").unwrap().is_some(),
+            "file sorting before the corrupt one must import"
+        );
+        assert!(
+            store.get("INFRA-9999").unwrap().is_some(),
+            "file sorting after the corrupt one must import"
+        );
+        assert!(
+            store.get("INFRA-5000").unwrap().is_none(),
+            "the malformed file itself must be skipped, not partially imported"
+        );
     }
 
     /// INFRA-233: `import_from_yaml` must backfill `closed_pr` for rows that
@@ -7368,6 +9884,84 @@ meta:
         assert_eq!(id, "FRESHDOM-001");
     }
 
+    /// CREDIBLE-292: reproduces the registry split-brain collision pattern
+    /// (RESILIENT-331, CREDIBLE-289) — two nodes with independent local
+    /// state.db copies, sharing one `origin` remote. Node A reserves and
+    /// pushes SPLIT-001; node B's checkout hasn't fetched since before that
+    /// push, so its own counter (seeded from an empty local state.db) would
+    /// naively also hand out SPLIT-001. `fetch_origin_refs` + the existing
+    /// git-history check must close that gap: node B's reserve() fetches
+    /// origin first and skips the already-taken ID.
+    #[test]
+    fn reserve_avoids_cross_node_collision_via_origin_fetch() {
+        let git = |dir: &Path, args: &[&str]| {
+            let out = std::process::Command::new("git")
+                .args(args)
+                .current_dir(dir)
+                .output()
+                .unwrap();
+            assert!(
+                out.status.success(),
+                "git {args:?} failed: {}",
+                String::from_utf8_lossy(&out.stderr)
+            );
+        };
+
+        // Bare "origin" both nodes share.
+        let origin_dir = TempDir::new().unwrap();
+        git(
+            origin_dir.path(),
+            &["init", "--bare", "--initial-branch=main", "--quiet"],
+        );
+
+        // Node A: clones origin, reserves+commits+pushes SPLIT-001.
+        let node_a = TempDir::new().unwrap();
+        git(
+            node_a.path(),
+            &["clone", "--quiet", origin_dir.path().to_str().unwrap(), "."],
+        );
+        git(node_a.path(), &["config", "user.email", "a@test.local"]);
+        git(node_a.path(), &["config", "user.name", "node-a"]);
+        git(
+            node_a.path(),
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat(SPLIT-001): node A's reservation",
+            ],
+        );
+        git(node_a.path(), &["push", "--quiet", "origin", "main"]);
+
+        // Node B: independent clone of the SAME origin, but never fetched
+        // after node A's push landed (simulates the dead backlog-sync
+        // window) — its local refs are exactly what they were at clone time.
+        let node_b = TempDir::new().unwrap();
+        git(
+            node_b.path(),
+            &["clone", "--quiet", origin_dir.path().to_str().unwrap(), "."],
+        );
+        git(node_b.path(), &["config", "user.email", "b@test.local"]);
+        git(node_b.path(), &["config", "user.name", "node-b"]);
+
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "1");
+            std::env::set_var("CHUMP_RESERVE_FETCH_ORIGIN", "1");
+        }
+        let store_b = GapStore::open(node_b.path()).unwrap();
+        // Node B's local state.db has never seen SPLIT-001 — naive counter
+        // would start at SPLIT-001 too. fetch_origin_refs() pulls node A's
+        // push first, so git_id_referenced() catches it and skips ahead.
+        let id = store_b
+            .reserve("SPLIT", "node B's reservation", "P1", "s")
+            .unwrap();
+        assert_eq!(
+            id, "SPLIT-002",
+            "node B must skip SPLIT-001 (already minted by node A on origin/main), got {id}"
+        );
+    }
+
     // ── INFRA-208: dump preserves unknown hand-curated fields ──────────
 
     /// Bare round-trip: a per-file YAML containing `acceptance:`,
@@ -7507,6 +10101,78 @@ meta:
         );
     }
 
+    /// INFRA-3605 regression: `evidence` IS a DB-owned column
+    /// (`format_gap_yaml` emits it), but was missing from
+    /// `DB_OWNED_GAP_FIELDS`. That made `merge_preserve_unknown_fields`
+    /// treat any pre-existing on-disk `evidence:` block as unknown/
+    /// hand-curated and splice it back in after the freshly generated
+    /// `evidence:` block, producing two `evidence:` keys in one gap
+    /// mapping. Applies to both `dump_per_file`/`dump_per_file_single`
+    /// (this test) and `dump_yaml_with_meta` (the monolithic-dump-onto-
+    /// existing-file path used by `chump gap dump --out docs/gaps.yaml`,
+    /// which self-validates via serde_yaml and fails outright on the
+    /// duplicate -- the state.db -> gaps.yaml sync no-op this gap fixes).
+    #[test]
+    fn dump_per_file_single_does_not_duplicate_evidence_field() {
+        let (store, _dbdir) = test_store();
+        let id = store
+            .reserve("INFRA", "evidence dup test", "P1", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    evidence: Some("fresh evidence from the DB".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        let out_dir = TempDir::new().unwrap();
+        // Seed a per-file mirror that ALREADY has an evidence: block (the
+        // shape every gap with evidence set has on disk before a re-dump).
+        let seeded = format!(
+            "- id: {id}\n  \
+             domain: INFRA\n  \
+             title: evidence dup test\n  \
+             status: open\n  \
+             priority: P1\n  \
+             effort: s\n  \
+             evidence: |\n    \
+             stale evidence already on disk\n\n",
+            id = id
+        );
+        let path = out_dir.path().join(format!("{}.yaml", id));
+        std::fs::write(&path, &seeded).unwrap();
+
+        store.dump_per_file_single(&id, out_dir.path()).unwrap();
+        let after = std::fs::read_to_string(&path).unwrap();
+
+        let evidence_key_count = after
+            .lines()
+            .filter(|l| l.starts_with("  evidence:"))
+            .count();
+        assert_eq!(
+            evidence_key_count, 1,
+            "expected exactly one 'evidence:' key, got {evidence_key_count}\n--- got ---\n{after}"
+        );
+        assert!(
+            after.contains("fresh evidence from the DB"),
+            "DB evidence did not win\n--- got ---\n{after}"
+        );
+        assert!(
+            !after.contains("stale evidence already on disk"),
+            "stale on-disk evidence should have been replaced, not preserved\n--- got ---\n{after}"
+        );
+        // The whole file must still parse as valid YAML with no duplicate keys.
+        let parsed: Result<serde_yaml::Value, _> = serde_yaml::from_str(&after);
+        assert!(
+            parsed.is_ok(),
+            "output is not valid YAML: {:?}\n--- got ---\n{after}",
+            parsed.err()
+        );
+    }
+
     /// Unit-level tests for the field-block extractor — ensure the line
     /// scanner correctly distinguishes block-scalar continuation from new
     /// field starts, and ignores DB-owned keys.
@@ -7568,6 +10234,120 @@ meta:
         assert!(parse_json_ac_list("   ").is_empty());
         // Unparseable returns empty vec (graceful).
         assert!(parse_json_ac_list("not json").is_empty());
+    }
+
+    // ── META-555: effect-verified done-bar (advisory MVP) ─────────────────────
+
+    #[test]
+    fn meta555_extract_verify_commands_default_is_empty() {
+        // Natural-language ACs (the overwhelming default) yield NO command, so
+        // ship() is untouched for them — the structural anti-wedge guarantee.
+        assert!(extract_verify_commands(
+            r#"["cargo fmt passes","script exists and is executable"]"#
+        )
+        .is_empty());
+        assert!(extract_verify_commands("").is_empty());
+        assert!(extract_verify_commands("not json").is_empty());
+        // A mid-sentence or differently-prefixed "verify:" must NOT match — only
+        // an exact `verify:` prefix on the trimmed item counts.
+        assert!(extract_verify_commands(
+            r#"["This will self-verify: nothing","please verify: it by hand"]"#
+        )
+        .is_empty());
+    }
+
+    #[test]
+    fn meta555_extract_verify_commands_opt_in_marker() {
+        let cmds = extract_verify_commands(
+            r#"["some prose","verify: test -f Cargo.toml","VERIFY:   echo hi  "]"#,
+        );
+        assert_eq!(
+            cmds,
+            vec!["test -f Cargo.toml".to_string(), "echo hi".to_string()]
+        );
+    }
+
+    #[test]
+    fn meta555_no_criterion_is_noop() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "plain-gap", "P2", "s").unwrap();
+        // No verify: marker -> NoLiveCriterion, nothing run.
+        assert_eq!(
+            store.evaluate_effect_verification(&id),
+            EffectVerdict::NoLiveCriterion
+        );
+    }
+
+    #[test]
+    fn meta555_passing_verify_is_effect_verified() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "verified-gap", "P2", "s").unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(r#"["verify: true"]"#.to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        assert_eq!(
+            store.evaluate_effect_verification(&id),
+            EffectVerdict::EffectVerified
+        );
+    }
+
+    #[test]
+    fn meta555_failing_verify_flags_gap_but_still_ships() {
+        // The core scenario: a fix that "merges" but does NOT change the live
+        // outcome. Its verify: check fails -> the gap ships (done) but is left
+        // FLAGGED (note annotation) rather than clean-done, so it can be
+        // re-worked under the same id instead of spawning a duplicate.
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("INFRA", "ineffective-fix", "P2", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(r#"["verify: false"]"#.to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        // Direct verdict.
+        match store.evaluate_effect_verification(&id) {
+            EffectVerdict::EffectUnverified { failed_command, .. } => {
+                assert_eq!(failed_command, "false");
+            }
+            other => panic!("expected EffectUnverified, got {other:?}"),
+        }
+        // End-to-end through ship(): closure SUCCEEDS (never blocked) ...
+        store.ship(&id, "s", None).unwrap();
+        let g = store.get(&id).unwrap().expect("gap exists");
+        assert_eq!(g.status, "done", "advisory MVP must NOT block the close");
+        // ... but the gap is visibly FLAGGED, not clean-done.
+        assert!(
+            g.notes.contains("EFFECT-UNVERIFIED"),
+            "expected effect-unverified flag in notes, got: {:?}",
+            g.notes
+        );
+    }
+
+    #[test]
+    fn meta555_ordinary_ship_is_not_flagged() {
+        // Anti-wedge end-to-end: a normal gap with no verify: criterion ships
+        // exactly as before — done, and NOT flagged.
+        let (store, _dir) = test_store();
+        let id = store.reserve("INFRA", "ordinary", "P2", "s").unwrap();
+        store.ship(&id, "s", None).unwrap();
+        let g = store.get(&id).unwrap().expect("gap exists");
+        assert_eq!(g.status, "done");
+        assert!(
+            !g.notes.contains("EFFECT-UNVERIFIED"),
+            "ordinary ship must not be flagged"
+        );
     }
 
     /// Empty-input guard: nothing to preserve, nothing returned.
@@ -7680,6 +10460,38 @@ meta:
     }
 
     #[test]
+    fn preflight_rejects_non_open_terminal_and_intermediate_statuses() {
+        // RESILIENT-1447: preflight must reject re-picking ANY non-'open'
+        // status, not just 'done' — a status like 'ready_to_ship' or
+        // 'wontfix' previously fell through to Available and let a worker
+        // burn a full cycle on already-finished work (e.g. RESILIENT-700:
+        // status=done-equivalent, re-picked, 769s cycle, no branch/PR).
+        let (store, _dir) = test_store();
+        for status in [
+            "wontfix",
+            "already_satisfied",
+            "decomposed",
+            "superseded",
+            "ready_to_ship",
+            "bisect_quarantined",
+            "waiting_operator",
+        ] {
+            let id = store
+                .reserve("RESILIENT", &format!("gap in status {status}"), "P2", "s")
+                .unwrap();
+            store
+                .conn
+                .execute("UPDATE gaps SET status=?1 WHERE id=?2", params![status, id])
+                .unwrap();
+            let result = store.preflight(&id).unwrap();
+            assert!(
+                matches!(result, PreflightResult::Done),
+                "status={status} expected preflight to reject re-pick (Done), got {result:?}"
+            );
+        }
+    }
+
+    #[test]
     fn preflight_claimed_gap_returns_claimed() {
         let (store, _dir) = test_store();
         let id = store
@@ -7752,6 +10564,81 @@ meta:
     // (found via full-text search over docs/gaps/*.yaml) get loaded straight
     // from YAML and scored, so long-shipped gaps that fell out of state.db's
     // closed-lookback window still surface as near-matches.
+    // ── INFRA-6701: recently-merged-PR overlap advisory ──────────────
+    fn seed_pr_cache(dir: &std::path::Path) -> std::path::PathBuf {
+        let chump = dir.join(".chump");
+        std::fs::create_dir_all(&chump).unwrap();
+        let db = chump.join("github_cache.db");
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE pr_state (number INTEGER PRIMARY KEY, title TEXT, merged_at TEXT);",
+        )
+        .unwrap();
+        db
+    }
+
+    #[test]
+    fn recently_merged_pr_flags_in_window_near_dup_only() {
+        let tmp = tempfile::tempdir().unwrap();
+        let db = seed_pr_cache(tmp.path());
+        let conn = rusqlite::Connection::open(&db).unwrap();
+        // In-window merged near-dup — MUST be flagged.
+        conn.execute(
+            "INSERT INTO pr_state (number, title, merged_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params![4242_i64, "duty-officer escalation page fallback"],
+        )
+        .unwrap();
+        // Unrelated merged PR — MUST NOT match.
+        conn.execute(
+            "INSERT INTO pr_state (number, title, merged_at) VALUES (?1, ?2, datetime('now'))",
+            rusqlite::params![4243_i64, "kroger cart pricing edge function"],
+        )
+        .unwrap();
+        // Near-dup but merged 90 days ago — outside the 7-day window.
+        conn.execute(
+            "INSERT INTO pr_state (number, title, merged_at) VALUES (?1, ?2, datetime('now','-90 days'))",
+            rusqlite::params![4244_i64, "duty-officer escalation page fallback"],
+        )
+        .unwrap();
+        // Still-open PR (merged_at NULL) — this fold is merged-only.
+        conn.execute(
+            "INSERT INTO pr_state (number, title, merged_at) VALUES (?1, ?2, NULL)",
+            rusqlite::params![4245_i64, "duty-officer escalation page fallback"],
+        )
+        .unwrap();
+
+        let hits = recently_merged_pr_dedupe_candidates(
+            tmp.path(),
+            "duty-officer escalation page fallback",
+            7,
+            0.65,
+        );
+        assert_eq!(
+            hits.len(),
+            1,
+            "expected exactly one in-window merged near-dup, got {hits:?}"
+        );
+        assert_eq!(hits[0].0, 4242, "wrong PR flagged: {hits:?}");
+        assert!(hits[0].3 >= 0.65, "score below threshold: {hits:?}");
+    }
+
+    #[test]
+    fn recently_merged_pr_degrades_to_empty_when_cache_absent() {
+        // No .chump/github_cache.db → advisory helper returns empty and never
+        // errors, so a missing cache can never block a legitimate reserve.
+        let tmp = tempfile::tempdir().unwrap();
+        let hits = recently_merged_pr_dedupe_candidates(
+            tmp.path(),
+            "some brand new gap title with no dup",
+            7,
+            0.65,
+        );
+        assert!(
+            hits.is_empty(),
+            "expected empty on absent cache, got {hits:?}"
+        );
+    }
+
     #[test]
     fn shipped_gap_dedupe_candidates_surfaces_old_shipped_gap() {
         let dir = tempfile::tempdir().unwrap();
@@ -7856,6 +10743,72 @@ meta:
         let gap = store.get(&id).unwrap().unwrap();
         assert_eq!(gap.closed_pr, Some(1234));
         assert_eq!(gap.status, "done");
+    }
+
+    // ZERO-WASTE-059: ship-time dedup + AC-hygiene check
+    #[test]
+    fn queue_hygiene_check_on_ship_flags_duplicate_and_vague_ac() {
+        let (store, _dir) = test_store();
+        let shipped = store
+            .reserve("ZERO-WASTE", "fix the flaky queue drain", "P2", "s")
+            .unwrap();
+        // Near-duplicate still open in the queue after the original ships.
+        let dup = store
+            .reserve("ZERO-WASTE", "fix the flaky queue drain job", "P2", "s")
+            .unwrap();
+        // Unrelated gap in the same domain with no real acceptance criteria.
+        let vague = store
+            .reserve("ZERO-WASTE", "totally unrelated title here", "P2", "s")
+            .unwrap();
+        // A gap with real AC should NOT be flagged.
+        let has_ac = store
+            .reserve("ZERO-WASTE", "another unrelated gap entirely", "P2", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &has_ac,
+                GapFieldUpdate {
+                    acceptance_criteria: Some(r#"["does the real thing"]"#.to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        store.ship(&shipped, "session-x", None).unwrap();
+
+        let report = store
+            .queue_hygiene_check_on_ship(&shipped, "fix the flaky queue drain", "ZERO-WASTE", 0.5)
+            .unwrap();
+
+        assert!(
+            report.dup_candidates.iter().any(|(id, ..)| id == &dup),
+            "expected near-duplicate open gap to be flagged: {:?}",
+            report.dup_candidates
+        );
+        let vague_ids: Vec<&String> = report.vague_ac_gaps.iter().map(|(id, _)| id).collect();
+        assert!(
+            vague_ids.contains(&&vague),
+            "expected vague-AC gap to be flagged: {:?}",
+            report.vague_ac_gaps
+        );
+        assert!(
+            !vague_ids.contains(&&has_ac),
+            "gap with real AC should not be flagged as vague"
+        );
+        assert!(!report.is_clean());
+    }
+
+    #[test]
+    fn queue_hygiene_check_on_ship_clean_when_nothing_to_flag() {
+        let (store, _dir) = test_store();
+        let shipped = store
+            .reserve("ZERO-WASTE", "a perfectly unique ship", "P2", "s")
+            .unwrap();
+        store.ship(&shipped, "session-x", None).unwrap();
+        let report = store
+            .queue_hygiene_check_on_ship(&shipped, "a perfectly unique ship", "ZERO-WASTE", 0.5)
+            .unwrap();
+        assert!(report.is_clean());
     }
 
     // INFRA-1149: title_jaccard similarity tests
@@ -8198,6 +11151,53 @@ meta:
         assert_eq!(si["integration_id"], "integration-2026-05-29-1500");
         assert_eq!(si["merge_sha"], "babe0022");
     }
+
+    // ── CREDIBLE-1094: list_by_status_ordered monotonic-by-closed_at ──────────
+
+    #[test]
+    fn list_by_status_ordered_is_monotonic_by_closed_at() {
+        let (store, _dir) = test_store();
+        let a = store.reserve("INFRA", "gap a", "P2", "s").unwrap();
+        let b = store.reserve("INFRA", "gap b", "P2", "s").unwrap();
+        let c = store.reserve("INFRA", "gap c", "P2", "s").unwrap();
+
+        // Ship out of ID order with explicit closed_at timestamps so the
+        // ordering under test can only come from the closed_at column, not
+        // from insertion/ID order.
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='done', closed_at=?1 WHERE id=?2",
+                params![300_i64, a],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='done', closed_at=?1 WHERE id=?2",
+                params![100_i64, b],
+            )
+            .unwrap();
+        store
+            .conn
+            .execute(
+                "UPDATE gaps SET status='done', closed_at=?1 WHERE id=?2",
+                params![200_i64, c],
+            )
+            .unwrap();
+
+        let ordered = store.list_by_status_ordered("done").unwrap();
+        let ids: Vec<&str> = ordered.iter().map(|g| g.id.as_str()).collect();
+        assert_eq!(ids, vec![b.as_str(), c.as_str(), a.as_str()]);
+
+        let closed_ats: Vec<i64> = ordered.iter().map(|g| g.closed_at.unwrap()).collect();
+        let mut sorted = closed_ats.clone();
+        sorted.sort_unstable();
+        assert_eq!(
+            closed_ats, sorted,
+            "returned vector must be monotonic by closed_at"
+        );
+    }
 }
 
 // ── INFRA-2137: bisect_quarantined + requeue tests ────────────────────────────
@@ -8518,5 +11518,273 @@ mod quarantine_tests {
             )
             .unwrap();
         assert_eq!(store.get_artifact_type(&id).unwrap(), "code");
+    }
+
+    // ── INFRA-3002 AC #3: claim self-heals a gap missing from the local
+    //    worktree's state.db by syncing the single row from state.sql ────────
+
+    #[test]
+    fn sync_gap_from_state_sql_inserts_missing_row() {
+        let (store, dir) = test_store();
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(
+            &sql_path,
+            r#"gaps:
+  - id: INFRA-9001
+    domain: INFRA
+    title: a gap that only exists on origin/main
+    priority: P1
+    effort: s
+    status: open
+"#,
+        )
+        .unwrap();
+
+        // Not present in this worktree's freshly-opened state.db.
+        assert!(store.get("INFRA-9001").unwrap().is_none());
+
+        let found = store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-9001")
+            .unwrap();
+        assert!(found, "gap present in state.sql should be found+synced");
+
+        let row = store.get("INFRA-9001").unwrap().expect("row now present");
+        assert_eq!(row.title, "a gap that only exists on origin/main");
+        assert_eq!(row.status, "open");
+    }
+
+    #[test]
+    fn sync_gap_from_state_sql_returns_false_when_absent() {
+        let (store, dir) = test_store();
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(
+            &sql_path,
+            r#"gaps:
+  - id: INFRA-9002
+    domain: INFRA
+    title: unrelated gap
+    priority: P1
+    effort: s
+    status: open
+"#,
+        )
+        .unwrap();
+
+        let found = store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-NONEXISTENT")
+            .unwrap();
+        assert!(!found, "gap absent from state.sql must not be synthesized");
+        assert!(store.get("INFRA-NONEXISTENT").unwrap().is_none());
+    }
+
+    #[test]
+    fn sync_gap_from_state_sql_does_not_touch_other_rows() {
+        let (store, dir) = test_store();
+        let id_existing = store
+            .reserve("INFRA", "pre-existing gap", "P1", "s")
+            .unwrap();
+
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(
+            &sql_path,
+            format!(
+                r#"gaps:
+  - id: {id_existing}
+    domain: INFRA
+    title: CLOBBERED — should never be written
+    priority: P1
+    effort: s
+    status: open
+  - id: INFRA-9003
+    domain: INFRA
+    title: the only gap claim actually needs
+    priority: P1
+    effort: s
+    status: open
+"#
+            ),
+        )
+        .unwrap();
+
+        store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-9003")
+            .unwrap();
+
+        // Targeted sync must leave the unrelated pre-existing row untouched,
+        // unlike restore_from_state_sql's full-table replace.
+        let untouched = store.get(&id_existing).unwrap().unwrap();
+        assert_eq!(untouched.title, "pre-existing gap");
+
+        let synced = store.get("INFRA-9003").unwrap().unwrap();
+        assert_eq!(synced.title, "the only gap claim actually needs");
+    }
+
+    #[test]
+    fn claim_fails_fast_when_gap_and_state_sql_both_lack_it() {
+        // Regression guard for the "genuine missing gap" case (AC #6): if the
+        // gap truly does not exist anywhere, sync_gap_from_state_sql must
+        // report false and claim() must still fail — the self-heal path must
+        // never silently fabricate a claimable row.
+        let (store, dir) = test_store();
+        let sql_path = dir.path().join("state.sql");
+        std::fs::write(&sql_path, "gaps: []\n").unwrap();
+
+        let found = store
+            .sync_gap_from_state_sql(&sql_path, "INFRA-GHOST")
+            .unwrap();
+        assert!(!found);
+        let err = store
+            .claim("INFRA-GHOST", "session-x", "wt-x", 3600)
+            .unwrap_err();
+        assert!(err.to_string().contains("not found in state.db"));
+    }
+}
+
+// ── EFFECTIVE-038: A2A L2 waiting_operator suspend/respond tests ─────────────
+#[cfg(test)]
+mod waiting_operator_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_store() -> (GapStore, tempfile::TempDir) {
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    #[test]
+    fn waiting_operator_is_a_known_status() {
+        let (store, _dir) = test_store();
+        let statuses = store.known_statuses().unwrap();
+        assert!(statuses.iter().any(|s| s == "waiting_operator"));
+    }
+
+    #[test]
+    fn suspend_then_respond_resumes_from_prior_status() {
+        let (store, _dir) = test_store();
+        let id = store
+            .reserve("EFFECTIVE", "suspend test", "P1", "s")
+            .unwrap();
+        store
+            .set_fields(
+                &id,
+                GapFieldUpdate {
+                    status: Some("claimed".to_string()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        store
+            .suspend_waiting(
+                &id,
+                "input_required",
+                "which backend should this target?",
+                Some(r#"{"progress":"70%"}"#),
+            )
+            .unwrap();
+
+        let g = store.get(&id).unwrap().unwrap();
+        assert_eq!(g.status, "waiting_operator");
+        let payload = store.get_waiting_payload(&id).unwrap().unwrap();
+        assert!(payload.contains("input_required"));
+        assert!(payload.contains("70%"));
+
+        let resumed = store.respond_gap(&id, r#"{"backend":"claude"}"#).unwrap();
+        assert_eq!(resumed, "claimed");
+        let g = store.get(&id).unwrap().unwrap();
+        assert_eq!(g.status, "claimed");
+        assert!(g.notes.contains("operator response"));
+        assert!(g.notes.contains(r#"{"backend":"claude"}"#));
+        assert!(store.get_waiting_payload(&id).unwrap().is_none());
+    }
+
+    #[test]
+    fn auth_required_suspends_instead_of_silent_death() {
+        // RESILIENT-054: a missing credential must suspend, not die silently.
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "auth test", "P1", "s").unwrap();
+
+        store
+            .suspend_waiting(&id, "auth_required", "missing GH_TOKEN", None)
+            .unwrap();
+
+        let g = store.get(&id).unwrap().unwrap();
+        assert_eq!(g.status, "waiting_operator");
+        let payload = store.get_waiting_payload(&id).unwrap().unwrap();
+        assert!(payload.contains("auth_required"));
+    }
+
+    #[test]
+    fn respond_without_pending_suspension_errors() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "no suspend", "P1", "s").unwrap();
+        let err = store.respond_gap(&id, r#"{"x":1}"#).unwrap_err();
+        assert!(err.to_string().contains("not waiting_operator"));
+    }
+
+    #[test]
+    fn cannot_suspend_a_done_gap() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "done test", "P1", "s").unwrap();
+        store.ship(&id, "session-x", Some(1)).unwrap();
+        let err = store
+            .suspend_waiting(&id, "input_required", "q?", None)
+            .unwrap_err();
+        assert!(err.to_string().contains("already done"));
+    }
+
+    #[test]
+    fn suspend_rejects_unknown_kind() {
+        let (store, _dir) = test_store();
+        let id = store.reserve("EFFECTIVE", "bad kind", "P1", "s").unwrap();
+        let err = store
+            .suspend_waiting(&id, "bogus_kind", "q?", None)
+            .unwrap_err();
+        assert!(err.to_string().contains("kind must be"));
+    }
+}
+
+#[cfg(test)]
+mod meta555_effect_verify_tests {
+    use crate::extract_verify_commands;
+
+    // ANTI-WEDGE (META-555): an acceptance-criteria list with no `verify:` line
+    // yields no commands, so evaluate_effect_verification returns NoLiveCriterion
+    // and ship() is left untouched — ordinary gap closures can never block.
+    #[test]
+    fn no_verify_line_yields_no_commands() {
+        assert!(extract_verify_commands("[]").is_empty());
+        assert!(extract_verify_commands(r#"["do the thing","and another"]"#).is_empty());
+        assert!(extract_verify_commands("not valid json").is_empty());
+    }
+
+    #[test]
+    fn extracts_single_verify_command() {
+        assert_eq!(
+            extract_verify_commands(r#"["verify: true"]"#),
+            vec!["true".to_string()]
+        );
+    }
+
+    #[test]
+    fn verify_prefix_case_insensitive_and_trimmed() {
+        assert_eq!(
+            extract_verify_commands(r#"["VERIFY:   mycmd --flag  "]"#),
+            vec!["mycmd --flag".to_string()]
+        );
+    }
+
+    #[test]
+    fn only_verify_items_match_when_mixed_with_plain_ac() {
+        assert_eq!(
+            extract_verify_commands(r#"["set up the thing","verify: check --live","more prose"]"#),
+            vec!["check --live".to_string()]
+        );
+    }
+
+    #[test]
+    fn empty_verify_command_is_ignored() {
+        assert!(extract_verify_commands(r#"["verify:   "]"#).is_empty());
     }
 }

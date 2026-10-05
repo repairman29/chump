@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-035
+  domain: ZERO-WASTE
+  title: "RESCUE lap spends an agent even when an open PR/recent commit already fixes the problem: drive_task_directed has NO dedup (unlike chump improve's dedup_check). Before running the agent, scan the target's open PRs + recent commits; for a CI-rescue, defer if any open PR already makes required_check green (reuse grade_checks_strict on PR heads — semantic, not keyword-fuzzy). Emit redundant_work_skipped"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"drive_task_directed has NO dedup (unlike chump improve's dedup_check). Before running the agent, scan the target's open PRs + recent commits; for a CI-rescue, defer if any open PR already makes required_check green (reuse grade_checks_strict on PR heads — semantic, not keyword-fuzzy). Emit redundant_work_skipped\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

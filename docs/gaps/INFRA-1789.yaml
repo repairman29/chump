@@ -1,8 +1,10 @@
 - id: INFRA-1789
   domain: INFRA
   title: "ZERO-WASTE: chump preflight runs subcommand --help regression check locally — INFRA-1246 catches stale CLI surfaces (INFRA-1762 Tier C #3)"
-  status: open
+  status: done
   priority: P2
   effort: s
+  closed_date: '2026-10-04'
+  closed_pr: 5025
   outcome_id: MISSION-010
 

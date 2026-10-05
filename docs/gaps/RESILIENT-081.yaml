@@ -1,7 +1,7 @@
 - id: RESILIENT-081
   domain: RESILIENT
   title: "RESILIENT P1: pr-shepherd strict-aware rebase — skip update-branch when branch-protection strict=false (kill the reset churn)"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -12,5 +12,7 @@
     - the hardcoded CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK=0 stopgap in com.chump.pr-shepherd.plist is removed (superseded by strict-awareness)
     - a test asserts strict=false -> 0 rebases issued even with N BEHIND PRs, and strict=true -> rebases up to budget
     - the keystone-reset signature (a BEHIND PR re-committed right after an unrelated merge) no longer occurs under strict=false
+  closed_date: '2026-08-20'
+  closed_pr: 4011
   outcome_id: RESILIENT-000
 

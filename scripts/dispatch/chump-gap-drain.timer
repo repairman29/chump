@@ -1,0 +1,20 @@
+# Pairs with chump-gap-drain.service (EFFECTIVE-464). Runs the drain loop every
+# 20 minutes so the cheap DeepSeek floor always has a fresh supply of surgical,
+# flash-landable gaps to claim — never starves, never re-spins on the same
+# un-groundable ones (the enrich step carries a 24h per-gap attempt cooldown).
+[Unit]
+Description=Run the Chump gap-drain loop every 20 minutes (keep the DeepSeek floor fed — EFFECTIVE-464)
+
+[Timer]
+OnBootSec=8min
+OnUnitActiveSec=20min
+# RESILIENT-1455: OnUnitInactiveSec pairs with OnUnitActiveSec so this Type=oneshot
+# timer self-perpetuates. A oneshot goes inactive after each run, leaving OnUnitActiveSec
+# with no live "active" anchor -> NextElapse goes n/a and the timer fires once, never again.
+# OnUnitInactiveSec re-arms from the inactive edge (the anchor a oneshot has). Mirrors the
+# chump-farmer.timer fix (#4808 / RESILIENT-313).
+OnUnitInactiveSec=20min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

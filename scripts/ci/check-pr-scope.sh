@@ -157,6 +157,74 @@ _revert_count="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null \
 has_revert_commit=0
 [[ "$_revert_count" -gt 0 ]] && has_revert_commit=1
 
+# INFRA-1861 slice (AC #2, false-positive fix for PR #2418): the PR body
+# can also explicitly acknowledge a deleted file — either as a markdown
+# link "[label](path/to/file)" / "[path/to/file](path/to/file)" or as a
+# plain-text mention of the filename/basename. Previously ONLY an explicit
+# "Revert" commit subject satisfied this rule, so a PR that deleted a file
+# and called it out in prose still false-positived.
+#
+# CREDIBLE-1483: the original lookup was a bare `gh pr view --json body`,
+# which relies on gh inferring the PR # from the current checkout. In the
+# Actions pull_request checkout (detached merge ref) gh cannot infer the
+# PR, the call fails, and `|| true` swallowed the error silently — so
+# PR_BODY_FOR_B was ALWAYS empty in CI and the body-mention bypass could
+# never pass. Fix: resolve an explicit PR number (env PR_NUMBER, else
+# .pull_request.number from GITHUB_EVENT_PATH) and pass it to `gh pr view`
+# explicitly; fall back to reading .pull_request.body straight from
+# GITHUB_EVENT_PATH (works with no API call, but won't see a body edited
+# after the push on a re-run since the event payload is replayed as-is).
+# Warn — don't silently swallow — if neither path yields a body.
+PR_BODY_FOR_B=""
+_pr_body_source=""
+if [[ -n "${PR_BODY_OVERRIDE:-}" ]]; then
+    PR_BODY_FOR_B="$PR_BODY_OVERRIDE"
+    _pr_body_source="env:PR_BODY_OVERRIDE"
+elif command -v gh &>/dev/null; then
+    _pr_num_for_b="${PR_NUMBER:-}"
+    if [[ -z "$_pr_num_for_b" && -n "${GITHUB_EVENT_PATH:-}" && -f "${GITHUB_EVENT_PATH:-}" ]] \
+        && command -v jq &>/dev/null; then
+        _pr_num_for_b="$(jq -r '.pull_request.number // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+    fi
+    if [[ -n "$_pr_num_for_b" && -n "${GITHUB_REPOSITORY:-}" ]]; then
+        PR_BODY_FOR_B="$(gh pr view "$_pr_num_for_b" --repo "$GITHUB_REPOSITORY" \
+            --json body -q .body 2>/dev/null || true)"
+        [[ -n "$PR_BODY_FOR_B" ]] && _pr_body_source="gh:pr=$_pr_num_for_b"
+    fi
+    if [[ -z "$PR_BODY_FOR_B" ]]; then
+        # Bare fallback — works locally against a branch with an open PR.
+        PR_BODY_FOR_B="$(gh pr view --json body -q .body 2>/dev/null || true)"
+        [[ -n "$PR_BODY_FOR_B" ]] && _pr_body_source="gh:bare"
+    fi
+    unset _pr_num_for_b
+fi
+if [[ -z "$PR_BODY_FOR_B" && -n "${GITHUB_EVENT_PATH:-}" && -f "${GITHUB_EVENT_PATH:-}" ]] \
+    && command -v jq &>/dev/null; then
+    PR_BODY_FOR_B="$(jq -r '.pull_request.body // empty' "$GITHUB_EVENT_PATH" 2>/dev/null || true)"
+    [[ -n "$PR_BODY_FOR_B" ]] && _pr_body_source="event_path"
+fi
+if [[ -z "$PR_BODY_FOR_B" ]]; then
+    warn "Rule B: could not read PR body (no PR_NUMBER/GITHUB_EVENT_PATH/gh match) — body-mention bypass unavailable this run"
+else
+    info "Rule B: PR body resolved via $_pr_body_source"
+fi
+unset _pr_body_source
+file_mentioned_in_pr_body() {
+    local f="$1"
+    [[ -z "$PR_BODY_FOR_B" ]] && return 1
+    local base; base="$(basename "$f")"
+    # Markdown link form: [...](path) or [...](.../path) — match on basename
+    # so a relative-vs-absolute path style difference still hits.
+    if echo "$PR_BODY_FOR_B" | grep -qE "\]\([^)]*${base//./\\.}\)"; then
+        return 0
+    fi
+    # Plain-text mention: the full path or just the basename appears in prose.
+    if echo "$PR_BODY_FOR_B" | grep -qF "$f" || echo "$PR_BODY_FOR_B" | grep -qF "$base"; then
+        return 0
+    fi
+    return 1
+}
+
 if [[ "$has_revert_commit" -eq 1 ]]; then
     pass "Rule B: explicit Revert commit detected — silent-revert check N/A"
 elif [[ -n "$deleted_files" ]] && command -v gh &>/dev/null; then
@@ -167,6 +235,10 @@ elif [[ -n "$deleted_files" ]] && command -v gh &>/dev/null; then
     now_secs="$(date +%s)"
     while IFS= read -r f; do
         [[ -z "$f" ]] && continue
+        # PR body already acknowledges this deletion — not silent.
+        if file_mentioned_in_pr_body "$f"; then
+            continue
+        fi
         # Get last commit on origin/main that touched this file
         last_sha="$(git log "origin/${BASE_BRANCH}" --pretty=format:%H --follow -- "$f" 2>/dev/null | head -1 || true)"
         [[ -z "$last_sha" ]] && continue
@@ -277,6 +349,7 @@ elif [[ "$WARN_ONLY" -eq 1 ]]; then
     exit 0
 else
     fail "CREDIBLE-026/CREDIBLE-041: $VIOLATIONS violation(s). Fix scope or update PR title."
+    fail "How to bypass cleanly: retitle to feat:/fix: (Rule A), add a commit titled 'Revert: <reason>' OR mention the affected filename in the PR body as a markdown link or plain text (Rule B), or add PR label 'intentional-bundle' with a comment explaining the bundle (Rule C)"
     gate_emit_result "CREDIBLE-026" "fail" "scope-violation" "$VIOLATIONS PR scope violation(s)"
     exit 1
 fi

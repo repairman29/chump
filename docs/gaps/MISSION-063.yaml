@@ -1,20 +1,11 @@
 - id: MISSION-063
   domain: MISSION
-  title: 'agent identity: Chump loop commits authored by named agents (provable zero-touch)'
+  title: "agent identity: Chump loop commits authored by named agents (provable zero-touch)"
   status: done
   priority: P0
   effort: m
   acceptance_criteria:
-  - 'Make the improve loop''s commits provably attributable to a NAMED Chump agent so ''zero-human-touch'' is measurable,
-    not asserted (today every BEAST merge is authored+merged by repairman29 = indistinguishable from Jeff). (1) agent_identity()
-    in src/improve.rs returns {codename,name,email,node}: codename from CHUMP_AGENT_NAME env, else a stable pick from a fun
-    workshop roster (Sprocket/Bolt/Gizmo/Rivet/Cog/Ratchet/Widget/Gasket/Piston/Tinker) by hash(hostname); name=''Chump ·
-    <codename>''; email from CHUMP_AGENT_EMAIL else ''<codename>@<node>.chump.fleet''. (2) implement_gap + fix_pr set GIT_AUTHOR_NAME/EMAIL
-    + GIT_COMMITTER_NAME/EMAIL on the spawned claude Command from the identity -> every commit the loop makes (and the squash-merge
-    commit) is AUTHORED by the agent, not Jeff. (3) append a ''Chump-Agent: <codename>@<node>'' trailer instruction to the
-    implement + fix prompts (grep-able audit). (4) add an ''agent'' field to improve ambient events + print the identity at
-    loop start. Register CHUMP_AGENT_NAME/CHUMP_AGENT_EMAIL in env-vars-internal.txt. Verify: a loop-authored commit''s ''git
-    log --format=%an <%ae>'' shows ''Chump · <name>'' not ''Jeff Adkins''/''repairman29''; unit tests for roster stability
-    + env override + email default. This is the credibility keystone for MISSION-010 ①.'
+    - "Make the improve loop's commits provably attributable to a NAMED Chump agent so 'zero-human-touch' is measurable, not asserted (today every BEAST merge is authored+merged by repairman29 = indistinguishable from Jeff). (1) agent_identity() in src/improve.rs returns {codename,name,email,node}: codename from CHUMP_AGENT_NAME env, else a stable pick from a fun workshop roster (Sprocket/Bolt/Gizmo/Rivet/Cog/Ratchet/Widget/Gasket/Piston/Tinker) by hash(hostname); name='Chump · <codename>'; email from CHUMP_AGENT_EMAIL else '<codename>@<node>.chump.fleet'. (2) implement_gap + fix_pr set GIT_AUTHOR_NAME/EMAIL + GIT_COMMITTER_NAME/EMAIL on the spawned claude Command from the identity -> every commit the loop makes (and the squash-merge commit) is AUTHORED by the agent, not Jeff. (3) append a 'Chump-Agent: <codename>@<node>' trailer instruction to the implement + fix prompts (grep-able audit). (4) add an 'agent' field to improve ambient events + print the identity at loop start. Register CHUMP_AGENT_NAME/CHUMP_AGENT_EMAIL in env-vars-internal.txt. Verify: a loop-authored commit's 'git log --format=%an <%ae>' shows 'Chump · <name>' not 'Jeff Adkins'/'repairman29'; unit tests for roster stability + env override + email default. This is the credibility keystone for MISSION-010 ①."
   closed_date: '2026-07-25'
   closed_pr: 3295
+

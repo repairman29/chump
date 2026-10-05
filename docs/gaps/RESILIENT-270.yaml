@@ -1,0 +1,18 @@
+- id: RESILIENT-270
+  domain: RESILIENT
+  title: decide the DEFAULT transport for fleet-to-human messages (Discord is the interim answer; the default must not be a cargo feature)
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "OPERATOR'S DIRECTION, 2026-08-09: keep the discord CARGO FEATURE opt-in, but the fleet must ALWAYS have a working way to reach a human. Discord is the interim choice. This gap decides the durable default"
+    - "THE GOOD NEWS THAT SHAPES THIS: outbound ALREADY works in the default build and needs no feature at all. scripts/coord/lib/notify-operator.sh is pure bash + curl — no cargo feature, no chump binary — and src/discord_dm.rs is plain REST compiled into the default build. Proven live 2026-08-09: three DMs delivered, including a 4,959-char message chunked into 3 parts. So 'fleet messages reach humans' is ALREADY the default; what is opt-in is humans REPLYING (gateway, --features discord, +6.2MB and 14m27s cold build — measured, and the reason it stays opt-in)"
+    - SO THE REAL QUESTION IS NOT 'which channel' BUT 'what happens when the channel is unreachable'. Discord being the default is fine until Discord is down, the token is revoked, or the operator is somewhere Discord is not. Define the fallback ORDER and prove each rung, rather than assuming one channel is enough
+    - "WHAT IS ALREADY AVAILABLE, verified by presence check (names only, no values): DISCORD_TOKEN present + CHUMP_READY_DM_USER_ID present (working today); TELEGRAM_BOT_TOKEN present but TELEGRAM_CHAT_ID ABSENT so that path is built (src/telegram.rs, MessagingAdapter) and NOT addressable — setting one env var makes it a real fallback; web push exists (INFRA-1340) and needs a subscription; operator-recall (INFRA-665) supports terminal-notifier/slack/pushover but its handler has been DEAD since 2026-05-08 (RESILIENT-262). No WhatsApp/Twilio/Pushover/Slack credentials exist anywhere in the fleet"
+    - "MAKE THE DEFAULT A CONFIG CHOICE, NOT A COMPILE-TIME ONE. A default that depends on a cargo feature is a default that silently is not there — exactly how the gateway ended up compiled out and nobody noticed. src/platform_router.rs's MessagingAdapter is the right seam: transport selection belongs in config (~/.chump/ or .env), resolved at runtime, with Discord as the shipped default"
+    - EVERY RUNG MUST BE PROVEN BY A REAL SEND, not a mock. The operator-recall handler passed its own checks for three months while dead. Any transport that has not delivered a real message to a real device is UNVERIFIED and must be labelled so in whatever doc results
+    - "FAILURE OF THE TRANSPORT MUST ITSELF BE DETECTABLE: if the primary send fails, fall through to the next rung AND record the failure. A notifier that silently fails over is only marginally better than one that silently dies — the operator must be able to see that Discord was down at 3am"
+    - "SCOPE NOTE: this is a DEFAULT-SELECTION and FALLBACK gap. It does not block RESILIENT-266 (gateway daemon) or RESILIENT-265 (approval loop); both proceed on Discord. Do not let this become a blocker for work that is already moving"
+  depends_on: [CREDIBLE-266]
+  outcome_id: CHUMPOS
+

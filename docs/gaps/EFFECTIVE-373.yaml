@@ -1,0 +1,12 @@
+- id: EFFECTIVE-373
+  domain: EFFECTIVE
+  title: "COTG AC-judge (EFFECTIVE-367 slice 2 / EFFECTIVE-372 brain): LLM per-bullet MET/UNMET/PARTIAL over the diff"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"LLM per-bullet MET/UNMET/PARTIAL over the diff\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3495
+

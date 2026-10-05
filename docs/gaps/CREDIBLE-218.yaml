@@ -1,0 +1,18 @@
+- id: CREDIBLE-218
+  domain: CREDIBLE
+  title: "CREDIBLE: gap-status reconciliation blind to non-open + pre-200-commit merges → 18 ghosts accumulated"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"gap-status reconciliation blind to non-open + pre-200-commit merges → 18 ghosts accumulated\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3506
+  outcome_id: COTG
+  evidence: |
+    COMMAND: ship-queue reconciliation sweep of 18 stalled gaps (ready_to_ship/in_review/in_flight, 0 open PRs) 2026-08-07.
+    OUTPUT: 10 of 18 were already merged on origin/main (verified SHAs e.g. INFRA-1811=31b11a22 #3318, META-094=7ce29ab7 #2503, INFRA-1032=5b5bfdda #1790) but status never reconciled. chump gap ship could NOT fix any: its UPDATE matches status='open' only (these were intermediate statuses) AND its merge-proof scans only git log main -n 200 (pre-July merges fall outside the window). Had to reconcile via chump gap set --status done --closed-pr N after independent SHA verification.
+    THEORY: gap-status reconciliation has two structural blind spots — (a) only status='open' is reconcilable, so a gap that merges while ready_to_ship/in_review/in_flight is orphaned; (b) the 200-commit proof window silently fails for older merges. Together they guarantee ghost accumulation, which is the same status-provenance hole the hands-free merge loop (docs design) must not have — on merge, status must flip reliably regardless of prior status or merge age.
+    ALT: widen chump gap ship to accept any non-terminal status + prove merge by gh/commit-grep over full history (not -n 200), OR drive reconciliation from the merge webhook (github_cache.db) so status flips at merge time and ghosts never form. Rejected leaving it manual — that is what produced 18 ghosts.
+

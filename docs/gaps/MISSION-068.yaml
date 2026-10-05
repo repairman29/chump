@@ -1,0 +1,12 @@
+- id: MISSION-068
+  domain: MISSION
+  title: "MISSION: Implement Hetzner substrate configuration (MISSION-065 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Hetzner-specific infrastructure constants and config structures are defined
+    - Substrate provider logic is integrated into the MISSION initialization path
+    - Configuration can be toggled via environment variable or config file
+  outcome_id: CHUMPOS
+

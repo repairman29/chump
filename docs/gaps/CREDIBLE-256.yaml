@@ -1,0 +1,10 @@
+- id: CREDIBLE-256
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker deregistration on ship/exit (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - Worker presence record is removed from the NATS-KV bucket on ship/exit
+    - Heartbeat file is removed on ship/exit
+

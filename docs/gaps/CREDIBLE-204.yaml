@@ -1,0 +1,14 @@
+- id: CREDIBLE-204
+  domain: CREDIBLE
+  title: "CREDIBLE: INFRA-154 auto-close missed twice in 24h — merged doc PRs left gaps open until manual gap-ship"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    INFRA-154 auto-close registered during bot-merge but did not close the gap after merge, twice in 24h: DOC-079 (PR #3478) and DOC-083 (PR #3485) both merged and stayed status:open until a manual chump gap ship --closed-pr. Both times the manual ship was additionally blocked by stale-main friction (behind-threshold gate, AUTO-FETCH refusing on a dirty/parked checkout — see RESILIENT-236, ZERO-WASTE-042), so the fallback costs several minutes of reconciliation each time. Open-with-merged-PR skews the mission-ship ratio and the audit-priorities anomaly counts. Rough shape: find why the auto-close step exits without closing (both runs printed 'auto-close targeting state.db' then died into watchdog sleeps); make it idempotent-retryable from the trunk-sentinel or deliberator so a missed close self-heals within a cycle.
+  acceptance_criteria:
+    - auto-close failure root-caused with the two receipts
+    - a merged PR with a registered auto-close cannot stay open past one daemon cycle
+    - mission-ship ratio unaffected by bookkeeping lag in the next scoreboard
+  outcome_id: CREDIBLE-000
+

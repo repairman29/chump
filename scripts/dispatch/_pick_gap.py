@@ -60,9 +60,52 @@ import os
 import re
 import sys
 import time
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _dep_resolution import MalformedDepList, parse_dep_list, unresolved_deps  # noqa: E402
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
+
+# EFFECTIVE-1543: pickable = genuinely-open work ONLY.
+# The queue was spinning on done work (1,943 open, 0 closed/90min while worker
+# PRs kept merging): the picker trusted the JSON `status` field alone, but
+# `chump gap list --json` can hand back stale / split-brain rows (the gap store
+# has multiple drifting reps; observed EFFECTIVE-449 status=already_satisfied +
+# closed_pr=4381 re-picked into a DUPLICATE PR). A gap is pickable ONLY when its
+# status is open/ready AND it carries NO linked PR (closed_pr) and NO shipped_in
+# marker. Anything already done/shipped/closed/in-flight is excluded here so a
+# lying status field can never resurrect done work.
+PICKABLE_STATUSES = {"open", "ready"}
+_DONE_LIKE_STATUSES = {
+    "already_satisfied", "done", "shipped", "superseded", "closed",
+    "closed_not_a_bug", "duplicate", "wont_fix", "wontfix", "blocked",
+    "in_progress", "in-progress", "in_review", "in_flight", "perpetual",
+    "ready_to_ship",
+}
+
+
+def _is_pickable_open(g: dict) -> bool:
+    """True only for genuinely-open, un-shipped, un-linked gaps.
+
+    Belt-and-suspenders against a stale/split-brain status field: a gap that
+    already has a closed_pr or shipped_in is done regardless of what `status`
+    claims, and must never be re-picked.
+    """
+    status = (g.get("status") or "").strip().lower()
+    if status not in PICKABLE_STATUSES:
+        return False
+    cp = g.get("closed_pr")
+    if cp not in (None, "", 0, "0"):
+        return False
+    shipped = g.get("shipped_in")
+    if isinstance(shipped, str):
+        shipped = shipped.strip()
+    if shipped not in (None, "", 0, "0"):
+        return False
+    return True
+
 
 # MISSION-011: default active mission outcome when no explicit override is set.
 _DEFAULT_ACTIVE_MISSION = "MISSION-010"
@@ -378,7 +421,64 @@ def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
         pass
 
 
+def _sync_overhead_guard() -> int | None:
+    """CREDIBLE-167: refuse to pick when automated coherence syncs crowd the
+    last 50 commits past SYNC_OVERHEAD_CEILING (0.0-1.0; unset/invalid = off).
+
+    Commit subjects come from SYNC_OVERHEAD_LOG_FILE (one subject per line;
+    used by tests) or `git log -n 50` in CHUMP_REPO. Mirrors
+    GapBriefing::sync_overhead_ratio in src/briefing.rs. Returns 1 to abort the
+    pick, None to continue.
+    """
+    raw = os.environ.get("SYNC_OVERHEAD_CEILING", "").strip()
+    if not raw:
+        return None
+    try:
+        ceiling = float(raw)
+    except ValueError:
+        return None
+    log_file = os.environ.get("SYNC_OVERHEAD_LOG_FILE")
+    try:
+        if log_file:
+            with open(log_file) as f:
+                subjects = f.read().splitlines()[:50]
+        else:
+            import subprocess
+
+            out = subprocess.run(
+                ["git", "-C", os.environ.get("CHUMP_REPO", os.getcwd()),
+                 "log", "-n", "50", "--format=%s"],
+                capture_output=True, text=True, timeout=30, check=True,
+            )
+            subjects = out.stdout.splitlines()
+    except Exception:
+        return None
+    if not subjects:
+        return None
+    ratio = sum("coherence sync" in s.lower() for s in subjects) / len(subjects)
+    if ratio > ceiling:
+        print(
+            f"Sync overhead {ratio * 100:.0f}% exceeds ceiling {ceiling * 100:.0f}%",
+            file=sys.stderr,
+        )
+        return 1
+    return None
+
+
 def main() -> int:
+    # INFRA-1737: loop-stop sentinel — checked at the top of every invocation
+    # so an operator can halt the dispatch loop within one cycle by touching
+    # this file, without needing to kill the worker process.
+    repo_root_for_stop = os.environ.get("CHUMP_REPO", os.getcwd())
+    stop_sentinel = os.path.join(repo_root_for_stop, ".chump-locks", "loop-stop-requested")
+    if os.path.exists(stop_sentinel):
+        print("stop requested: .chump-locks/loop-stop-requested exists, exiting", file=sys.stderr)
+        return 0
+
+    overhead_rc = _sync_overhead_guard()
+    if overhead_rc is not None:
+        return overhead_rc
+
     gap_file = os.environ.get("GAP_JSON_FILE")
     if not gap_file or not os.path.exists(gap_file):
         return 0
@@ -446,7 +546,7 @@ def main() -> int:
         # blow through preflight (already-done = bail), and waste a cycle.
         # Observed in 2026-05-02 fleet logs: 6 workers each picking the
         # same closed INFRA-340 within 90s.
-        if g.get("status") != "open":
+        if not _is_pickable_open(g):
             continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by a more general gap and should never be picked up by
@@ -514,27 +614,15 @@ def main() -> int:
         # empty-deps shape was silently filtered out and the picker
         # returned nothing — making it look like the queue was empty
         # while open gaps sat unpicked.
-        deps_raw = g.get("depends_on")
-        if isinstance(deps_raw, str):
-            try:
-                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
-            except json.JSONDecodeError:
-                # Malformed depends_on — skip to be safe.
-                continue
-        elif isinstance(deps_raw, list):
-            dep_list = deps_raw
-        else:
-            dep_list = []
+        try:
+            dep_list = parse_dep_list(g.get("depends_on"))
+        except MalformedDepList:
+            # Malformed depends_on — skip to be safe.
+            continue
         if dep_list:  # any non-empty dep array
             # INFRA-398: check if all dependencies are satisfied
             # (done or active) before skipping the gap.
-            unresolved = [d for d in dep_list if d not in active]
-            # Find which unresolved deps are actually done in the gap list
-            for gap in gaps:
-                if gap.get("id") in unresolved and gap.get("status") == "done":
-                    unresolved.remove(gap.get("id"))
-            # Skip only if there are unresolved dependencies
-            if unresolved:
+            if unresolved_deps(dep_list, gaps, active):
                 continue
         # INFRA-206: skip gaps whose notes start with "SUPERSEDED" — they have
         # been superseded by another gap and should not be auto-picked.

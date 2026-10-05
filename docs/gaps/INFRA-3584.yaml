@@ -1,0 +1,12 @@
+- id: INFRA-3584
+  domain: INFRA
+  title: Integrate Invoicing System
+  status: wontfix
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The invoicing system is integrated and can retrieve invoice data.
+    - The system displays a list of all tracked invoices
+  notes: EFFECTIVE-425 self-verify smoke test artifact — not real work, closing
+  outcome_id: COTG
+

@@ -1,0 +1,18 @@
+# Chump pr-book settle — scores the PR-book's P(merge) predictions against realized
+# merge/close outcomes and REWRITES ~/.chump/pr-book-calibration.log (per-prediction
+# {predicted,outcome} rows + a trailing brier summary) so the calibration_brier vital
+# sign and the faculty know_score read an HONEST, fresh Brier every beat (paired with
+# the .timer). Without this, the ledger records predictions but nothing ever scores
+# them, and the sign reads UNKNOWN (the board could be lying and no one would know).
+# Deployed/host-rewritten (/root/ -> run-user HOME, User=root -> run-user) by
+# scripts/setup/install-helsinki-atc.sh, same as every other organ.
+[Unit]
+Description=Chump pr-book settle — score PR predictions vs outcomes, refresh Brier calibration
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/pr-book.sh --settle'

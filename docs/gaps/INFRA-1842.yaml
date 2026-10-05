@@ -2,7 +2,7 @@
   domain: INFRA
   title: "CREDIBLE: vendor BEAST-MODE AuditLogger pattern for Chump compliance and audit gating (lib/enterprise/auditLogger.js)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Read BEAST-MODE/lib/enterprise/auditLogger.js locally and document the structured-entry shape (action, userId, timestamp, resource, changes, result, metadata, queryable by userId and action) in docs/arsenal/cross-pollination/CP-010-beast-mode-audit-logger.md

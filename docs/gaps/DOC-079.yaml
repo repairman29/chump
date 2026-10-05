@@ -1,0 +1,16 @@
+- id: DOC-079
+  domain: DOC
+  title: "CREDIBLE: software-factory layer matrix — Chump audited against the 8-layer factory model (doc)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Ship docs/strategy/SOFTWARE_FACTORY_MATRIX_2026-08-05.md — layer-by-layer audit of Chump/ChumpOS against the operator's 8-layer software-factory model (essay 2026-08-05): matrix of factory layers vs Chump capability with receipts, phase-roadmap mapping, and the three missing chairs (L1 intake EFFECTIVE-357, L3 design EFFECTIVE-358, L7 growth EFFECTIVE-356). Sources: CODEBASE_REALITY_MAP.md, MISSION.md, ROADMAP.md, live mission-scoreboard run 2026-08-05 (① YES, 4/10 zero-touch BEAST merges). Status legend follows REALITY_MAP §0 claimed-vs-verified discipline.
+  acceptance_criteria:
+    - doc lands in docs/strategy/ with a receipt per status claim
+    - cross-links EFFECTIVE-356/357/358
+    - status legend distinguishes outcome-verified from claimed capability per REALITY_MAP §0
+  closed_date: '2026-08-05'
+  closed_pr: 3478
+  outcome_id: CHUMPOS
+

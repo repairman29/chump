@@ -2,12 +2,9 @@
   domain: INFRA
   title: flake detection + auto-quarantine — refile against INFRA-2346 BLOCKED_FLAKE branch
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Flaky tests are detected across reruns and auto-quarantined into a BLOCKED_FLAKE state so they stop reddening unrelated PRs; a known flaky test is quarantined automatically.
   outcome_id: MISSION-010
 

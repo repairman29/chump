@@ -105,4 +105,51 @@ chairs, filed 2026-08-05, in fill-order:
    user-facing tools. Deliberately last: only matters once external products
    flow through the front door.
 
-_Filed 2026-08-05 under DOC-079. Companion gaps: EFFECTIVE-356/357/358._
+## 4. Scope note — this matrix is DELIVERY, not the whole business (CREDIBLE-231)
+
+L0-L8 above is a rigorous audit, but it audits one thing: **problem in, shipped
+diff out.** A `grep -Eic` sweep of this file (2026-08-07) for the words a
+business that *runs* a shipped tool would need returns **zero** hits for:
+support, service, pricing, revenue, finance, legal, licens\*, complian\*,
+sales, billing. The single hit for "security" (L2, above) is fleet-internal
+tool-governance/WASM-sandbox — security *for the factory*, not product
+security for a customer. The matrix isn't wrong; its scope was never stated,
+so it reads as the whole business when it is half of one.
+
+**Concrete proof the scope gap is live:** the 2026-08-07 session designed an
+entire support organ end-to-end — holler intake, an almanac-grounded answer
+agent, handoff-as-event rather than a confidence threshold — entirely outside
+this table. That's a factory chair with no row here.
+
+The good news: most of the missing chairs are already **partly answered
+elsewhere as artifacts and gates**, just not wired into an org-chart row —
+the same built-not-wired shape as ZERO-WASTE-036, one level up:
+
+| Business chair | What exists | Status | Receipt |
+|---|---|---|---|
+| **Support** (post-ship help) | [`docs/strategy/RUN_THE_BUSINESS_2026-08-09.md`](./RUN_THE_BUSINESS_2026-08-09.md) names it as a dormant department (holler intake is inbound-only, no answer/handoff loop shipped) | ❌ | RUN_THE_BUSINESS "Customer success / support" row — status ❌, keystone = knowledge-base + support agent, nothing driving it yet |
+| **Money** (pricing / revenue / cost-to-serve / margin) | Cost governor + waste taxonomy exist for *our own* token spend (L6 above); no pricing, revenue, or margin model for anything we ship | 🟠 fleet-internal only | `FLEET_SLOS.md` L2-SLO-2 (waste); RUN_THE_BUSINESS "Sales" + "Finance / billing" rows — both ❌, "new" |
+| **Legal / licensing / compliance** | [`docs/business/LICENSE_STRATEGY.md`](../business/LICENSE_STRATEGY.md) — a real, operator-signed decision (AGPLv3 + Apache-2.0 split, INFRA-1506 closed) | 🟡 built, one decision, not a standing role | LICENSE_STRATEGY.md "Status: DECIDED"; no ongoing compliance/legal-review chair beyond the one license call |
+| **Customer-facing security** | `revoke-before-publish` gate + product-PR tap gate exist and run today, per [`docs/CHUMPOS_OPERATIONAL_PLAN.md`](../CHUMPOS_OPERATIONAL_PLAN.md) "Secure boundaries" row | 🟡 PARTIAL — a gate, not a chair | CHUMPOS_OPERATIONAL_PLAN.md: "product-PR tap gate + revoke-before-publish exist; double-actor hazard (Mac); oauth/farmer freshness flaky" |
+
+Grain note worth preserving (from §2 above): stage-specialization wins where
+the artifact is a **diff**; job-title specialization matters at the
+boundaries where the artifact is a **decision**. Every missing business chair
+above is a decision-artifact chair (a pricing call, a support reply, a
+compliance sign-off) — predicting they need role shape, not stage shape,
+same as L1/L3/L7 did.
+
+**What this section is not:** a redo of RUN_THE_BUSINESS_2026-08-09.md, which
+already inventories Support/Sales/Finance/Analytics/Growth/Operations as
+dormant departments with its own status legend and dogfood-order plan — read
+that doc for the department-by-department worklist. This section's job is
+narrower: state, with the same audit rigor as §1, that **this matrix's
+scope is delivery**, so "autonomous software COMPANY" (essay phase 6, §2
+above, marked ❌ overall) is graded against the full org — delivery (L0-L8,
+this doc) *and* running the business (`RUN_THE_BUSINESS_2026-08-09.md`) —
+not the delivery half alone.
+
+_Filed 2026-08-05 under DOC-079. Companion gaps: EFFECTIVE-356/357/358.
+§4 scope note filed 2026-09-03 under CREDIBLE-231; see also
+[`docs/strategy/RUN_THE_BUSINESS_2026-08-09.md`](./RUN_THE_BUSINESS_2026-08-09.md)
+and [`docs/strategy/FACTORY_ORG_MODEL_2026-08-08.md`](./FACTORY_ORG_MODEL_2026-08-08.md)._

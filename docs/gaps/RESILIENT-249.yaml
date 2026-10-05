@@ -1,0 +1,16 @@
+- id: RESILIENT-249
+  domain: RESILIENT
+  title: "pr-rescue.sh exits 2 from a git worktree before processing any PR, and reports RESCUED after a rebase that printed 'fatal: invalid upstream'"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - TWO SEPARATE PRE-EXISTING DEFECTS found while shipping RESILIENT-248. Neither was introduced by it; both were A/B'd against unmodified origin/main
+    - "DEFECT 1 — worktree fragility. Running 'bash scripts/coord/pr-rescue.sh' from a git worktree (/tmp/chump-<id>) exits 2 immediately after logging 'main HEAD: <sha>', before any PR is processed. Trace ends at cache_lookup_pr for the first PR. From the main checkout the same script exits 0 and processes all three open PRs. PROOF IT IS PRE-EXISTING: 'git show origin/main:scripts/coord/pr-rescue.sh' written into the worktree and run there reproduces exit 2 identically. Note CHUMP_GITHUB_CACHE_RUST was unset, so this is the BASH cache path at scripts/coord/lib/github_cache.sh:237, not the Rust shim at :46"
+    - "WHY IT MATTERS BEYOND TIDINESS: every chump claim produces a worktree, so any session that tries to exercise or debug pr-rescue from its own claim cannot run it at all. That is very likely part of why the zero-CI-runs blind spot (RESILIENT-248) survived so long — the instrument is hard to run anywhere except the one checkout the fleet is actively using"
+    - "DEFECT 2 — false RESCUED. In the same main-checkout run, PR #3499 logged 'rescue candidate — rebasing onto main', then 'fatal: invalid upstream origin/main', and then 'PR #3499: rebased + re-armed. RESCUED.' with the final tally 'rescued=1 skipped=2 failed=0'. The rebase FAILED and the script counted it as a success. Its own summary line is therefore unreliable, which is the 'signal is not outcome' rule broken inside the tool meant to enforce it"
+    - The auto-merge re-arm in that same run was a no-op ('already armed'), so the observable harm was limited to the false count — but a rescue loop that reports success on a failed rebase will mask real stuck PRs indefinitely
+    - "FIX BOTH: make the rebase failure propagate to the RESCUED/FAILED tally rather than being swallowed, and make the script runnable from a worktree (or fail loudly with a clear message naming the reason instead of a bare exit 2)"
+    - VERIFY by running from a worktree AND from the main checkout, and by forcing a rebase failure and asserting the tally reports failed=1
+  outcome_id: MISSION-010
+

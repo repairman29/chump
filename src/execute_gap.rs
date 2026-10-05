@@ -338,12 +338,29 @@ struct FreeTierProviderSpec {
 }
 
 /// Parse `CHUMP_FREE_TIER_PROVIDERS` (format: `model@base_url:KEY_ENV,...`)
-/// or return the built-in Groq → Cerebras → NVIDIA default order.
+/// or return the built-in worker-floor default order.
+///
+/// EFFECTIVE-445: the worker FLOOR is DeepSeek-primary, not free-first. Free
+/// tiers (nemotron:free / groq gpt-oss) 429 under sustained worker load, so a
+/// free-first floor STALLS. The funded OpenRouter DeepSeek paid rungs
+/// (deepseek-v4-flash → -pro, ~$0.01/gap, no rate cap) lead; the free tiers
+/// stay ONLY as a last cheap escalation BEHIND DeepSeek. This default is the
+/// fresh-checkout fallback; each node's providers.env sets the same order.
+///
+/// RESILIENT-1002: Cerebras sits immediately behind the two DeepSeek rungs.
+/// When OpenRouter's balance runs dry, DeepSeek returns HTTP 402 on both
+/// flash and pro — the rotation loop (see `execute_gap`'s free-tier branch)
+/// cascades on `should_cascade_on_error_string`, so a bare DeepSeek-only
+/// floor would run straight out of rungs and surface as
+/// `BillingExhausted` (exit 75). Cerebras is a separate account (its own
+/// `CEREBRAS_API_KEY`), so a DeepSeek 402 never touches it.
 fn parse_free_tier_providers() -> Vec<FreeTierProviderSpec> {
     const DEFAULTS: &str = concat!(
-        "llama-3.3-70b-versatile@https://api.groq.com/openai/v1:GROQ_API_KEY,",
-        "llama-3.3-70b@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
-        "meta/llama-3.3-70b-instruct@https://integrate.api.nvidia.com/v1:NVIDIA_API_KEY"
+        "deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "qwen-3-235b-a22b-instruct-2507@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
+        "nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY"
     );
     let raw = std::env::var("CHUMP_FREE_TIER_PROVIDERS").unwrap_or_else(|_| DEFAULTS.to_string());
     raw.split(',')
@@ -718,7 +735,9 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
         .map(|o| !o.stdout.is_empty())
         .unwrap_or(false);
     if dirty {
-        eprintln!("[execute-gap] EFFECTIVE-312: uncommitted agent changes — auto-committing");
+        eprintln!(
+            "[execute-gap] EFFECTIVE-312 (restored): {gap_id} left a dirty tree, auto-committing the real edit instead of discarding it"
+        );
         let _ = tokio::process::Command::new("git")
             .args(["add", "-A"])
             .current_dir(repo_root)
@@ -732,7 +751,7 @@ async fn free_tier_ship(gap_id: &str, repo_root: &std::path::Path) -> Result<()>
                 "user.email=fleet@chump.local",
                 "commit",
                 "-m",
-                &format!("{gap_id}: agent changes (auto-committed — model skipped git_commit)"),
+                &format!("{gap_id}: agent changes (auto-committed, model skipped git_commit)"),
             ])
             .current_dir(repo_root)
             .status()
@@ -964,6 +983,12 @@ fn emit_subagent_heartbeat(gap_id: &str, pid: u32, last_action: &str, iter_count
 pub async fn execute_gap(gap_id: &str) -> Result<String> {
     validate_gap_id(gap_id).with_context(|| format!("validating gap id {gap_id:?}"))?;
 
+    // EFFECTIVE-448: this command is expected to PRODUCE an edit. Signal the
+    // agent loop (iteration_controller) to fire the force-edit nudge when a
+    // (weak) model investigates but never applies a str_replace, instead of
+    // Completing into an empty diff that free_tier_ship then rejects.
+    std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+
     // Mirror the contract in dispatch.rs: subagents must not recursively
     // dispatch. The orchestrator sets CHUMP_DISPATCH_DEPTH=1 in the env;
     // we honor it as a tripwire here too (defensive — if a chump-local
@@ -1111,10 +1136,47 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
                 Ok(outcome) => {
                     ft_hb_cancel.cancel();
                     let _ = ft_hb_handle.await;
-                    free_tier_ship(gap_id, &repo_root)
-                        .await
-                        .with_context(|| format!("free-tier ship step failed for gap {gap_id}"))?;
-                    return Ok(outcome.reply);
+                    match free_tier_ship(gap_id, &repo_root).await {
+                        Ok(()) => return Ok(outcome.reply),
+                        Err(ship_err) => {
+                            let se = format!("{ship_err:#}");
+                            // EFFECTIVE-465: the agent "ran" but shipped nothing —
+                            // the verify gate rejected an EMPTY DIFF (the model
+                            // investigated and never applied a str_replace). Do NOT
+                            // abort here: ESCALATE up the free-tier ladder (this list
+                            // IS the escalation ladder — deepseek-v4-flash →
+                            // deepseek-v4-pro → …). A stronger rung may make the edit
+                            // the current one wouldn't. Only when the whole ladder has
+                            // empty-diffed do we surface the failure (a real finding:
+                            // "even flash+pro couldn't edit this"). Non-empty-diff ship
+                            // failures (verify-FAIL, push error) are NOT escalated —
+                            // those are genuine rejections, not "wrong model".
+                            let is_empty_diff =
+                                se.contains("empty diff") || se.contains("changed nothing");
+                            let is_skipped_commit =
+                                se.contains("dirty tree") || se.contains("skipped git_commit");
+                            if (is_empty_diff || is_skipped_commit) && offset + 1 < total {
+                                let reason = if is_empty_diff {
+                                    "EMPTY DIFF"
+                                } else {
+                                    "SKIPPED GIT_COMMIT"
+                                };
+                                eprintln!(
+                                    "[execute-gap] EFFECTIVE-465: {} produced an {reason} \
+                                     for {gap_id} (agent never edited) — escalating to next \
+                                     model rung",
+                                    spec.model
+                                );
+                                last_err = Some(ship_err.context(format!(
+                                    "free-tier ship step failed for gap {gap_id}"
+                                )));
+                                continue;
+                            }
+                            return Err(ship_err).with_context(|| {
+                                format!("free-tier ship step failed for gap {gap_id}")
+                            });
+                        }
+                    }
                 }
                 Err(e) => {
                     ft_hb_cancel.cancel();
@@ -1123,8 +1185,17 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
                     if crate::provider_cascade::should_cascade_on_error_string(&e_str)
                         && offset + 1 < total
                     {
+                        // RESILIENT-1002: name the reason code explicitly so a
+                        // DeepSeek 402 -> Cerebras fallback is greppable from
+                        // the cycle log, not just inferable from the raw error.
+                        let reason_code =
+                            if crate::provider_cascade::is_billing_exhausted_error_string(&e_str) {
+                                "402"
+                            } else {
+                                "cascade"
+                            };
                         eprintln!(
-                            "[execute-gap] free-tier rotation: {} exhausted ({e_str:.120}), \
+                            "[execute-gap] free-tier rotation: {} exhausted (reason={reason_code}, {e_str:.120}), \
                              trying next provider",
                             spec.model
                         );
@@ -2089,22 +2160,66 @@ mod tests {
 
     #[test]
     #[serial(free_tier_env)]
-    fn effective002_parse_defaults_returns_three_providers() {
-        // Without CHUMP_FREE_TIER_PROVIDERS set the default list has 3 entries.
+    fn effective445_parse_defaults_deepseek_primary() {
+        // EFFECTIVE-445: the worker FLOOR default must be DeepSeek-primary
+        // (funded OpenRouter paid rungs first), NOT free-first — free tiers 429
+        // under sustained worker load and stall the floor.
         std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let specs = parse_free_tier_providers();
-        assert_eq!(specs.len(), 3, "default rotation must have 3 providers");
+        assert_eq!(specs.len(), 5, "default rotation must have 5 providers");
+        assert_eq!(
+            specs[0].model, "deepseek/deepseek-v4-flash",
+            "slot 1 must be deepseek-v4-flash (the DeepSeek floor)"
+        );
+        assert_eq!(
+            specs[1].model, "deepseek/deepseek-v4-pro",
+            "slot 2 must be deepseek-v4-pro"
+        );
+        // RESILIENT-1002: Cerebras sits immediately behind DeepSeek so a
+        // DeepSeek 402 (OpenRouter balance exhausted) falls to a provider
+        // on a completely separate account, not another OpenRouter model.
+        assert_eq!(
+            specs[2].model, "qwen-3-235b-a22b-instruct-2507",
+            "slot 3 must be Cerebras, directly behind the DeepSeek rungs"
+        );
+        assert_eq!(specs[2].base_url, "https://api.cerebras.ai/v1");
+        assert_eq!(specs[2].api_key_env, "CEREBRAS_API_KEY");
+        // Free tiers only AFTER DeepSeek — never ahead of it.
         assert!(
-            specs[0].base_url.contains("groq.com"),
-            "first default must be Groq"
+            specs[3].model.contains(":free"),
+            "free tiers must sit behind the DeepSeek rungs"
+        );
+    }
+
+    #[test]
+    fn resilient1002_deepseek_402_cascades_toward_cerebras() {
+        // AC1/AC3: a DeepSeek HTTP 402 must be classified as cascade-worthy
+        // (so the rotation loop advances rather than aborting), and the
+        // reason it classifies on is the billing-exhausted (402) class —
+        // the same discriminator the fallback log line reports.
+        let deepseek_402 = "Local API error 402 Payment Required: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens.\",\"code\":402}}";
+        assert!(
+            crate::provider_cascade::should_cascade_on_error_string(deepseek_402),
+            "DeepSeek 402 must be cascade-worthy so rotation falls to Cerebras"
         );
         assert!(
-            specs[1].base_url.contains("cerebras.ai"),
-            "second default must be Cerebras"
+            crate::provider_cascade::is_billing_exhausted_error_string(deepseek_402),
+            "DeepSeek 402 must classify as billing-exhausted (reason code 402)"
         );
-        assert!(
-            specs[2].base_url.contains("nvidia.com"),
-            "third default must be NVIDIA"
+
+        // AC2: Cerebras is reachable as the very next rung behind both
+        // DeepSeek slots in the default rotation (see
+        // effective445_parse_defaults_deepseek_primary for the full order).
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
+        let specs = parse_free_tier_providers();
+        let deepseek_last_idx = specs
+            .iter()
+            .rposition(|s| s.model.starts_with("deepseek/"))
+            .expect("default rotation must contain a deepseek slot");
+        assert_eq!(
+            specs[deepseek_last_idx + 1].base_url,
+            "https://api.cerebras.ai/v1",
+            "Cerebras must be the immediate fallback rung after DeepSeek exhausts"
         );
     }
 

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: wizard-daemon Step 7 auto-wedge-file (META-118 sub-gap 2) — consume kind=wedge_class_detected and auto-create P1/xs gap with title='detected wedge: <signature>', AC stub, wedge_auto_filed:true tag"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - "wizard-daemon (scripts/coord/wizard-daemon.sh or chump-wizard-daemon binary) Step 7 added — consumes ambient kind=wedge_class_detected events; for each event, calls chump gap reserve --domain INFRA --priority P1 --effort xs --title \"auto-filed wedge: <sample_test_name> sig <signature_hash>\" + chump gap set adding AC stub"

@@ -1,0 +1,18 @@
+- id: CREDIBLE-196
+  domain: CREDIBLE
+  title: "CREDIBLE: first branch-proving bench track — DECOMPOSE (prove the self-improving job-loop's decompose branch fires on a too-big task)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"first branch-proving bench track — DECOMPOSE (prove the self-improving job-loop's decompose branch fires on a too-big task)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3469
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: almanac_search(chump, 'decompose a gap into sub-gaps LLM engine') at head 69f2922e.
+    OUTPUT: the decompose engine ALREADY EXISTS — crates/chump-gap-store/src/maintenance/architect.rs:45 ('model selection, prompt generation... decomposing gaps... parsing LLM responses, validating required fields for sub-gap data') + the CLI binary crates/chump-gap-store/src/bin/chump-gap-architect.rs ('GAP ID decomposition') + 'chump gap decompose <ID>' (two-phase decomposition, CLAUDE.md). MINE-BEFORE-BUILD: reuse architect.rs, do NOT rebuild a decomposer.
+    THEORY: the V1.5 ladder needs 4 branch-proving tracks (decompose/acquire/escalate/page) proving the job-loop MISSION-075 mapped actually fires each branch. DECOMPOSE track = a task too big for one lap whose acceptance PASSES only if the OS decomposes it into sub-work. Design (keep DETERMINISTIC + cheap, avoid the agent-flail/slow-cascade problem seen in the 1909s CREDIBLE-190 lap): add a DECOMPOSE mode to the bench that drives the existing architect engine on a big task and scores whether it produced >=N valid sub-units — no live coding agent needed, so the branch-proof is fast + repeatable. Slices: (a) bench schema+drive for mode DECOMPOSE calling architect (temp-gap or task-scoped, with cleanup so it doesn't pollute the canonical registry); (b) author e2e/chumpbench/decompose-*.yaml + DEPTH.md note; (c) parse test + one live lap proving >=2 sub-units. 
+    ALT: (a) start with a different branch (page = OS detects impossibility + parks/pages, also deterministic) — decompose is the most-built (architect exists) so highest-leverage first; (b) wire a full agent decompose->sub-lap loop (bigger, and inherits the agent-reliability/slowness problem — defer). Prereq awareness: agent reliability (CREDIBLE-190/EFFECTIVE-351) — keep this track engine-driven not agent-driven so it isn't blocked by the flail.
+

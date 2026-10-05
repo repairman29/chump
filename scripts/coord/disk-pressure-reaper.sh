@@ -52,6 +52,21 @@ if [[ -z "$free_gb" ]]; then
 fi
 free_gb="${free_gb:-999}"
 
+# RESILIENT-1045: proactive, cap-based reap of the shared cargo build cache
+# (~/.cargo/chump-shared-target). Runs unconditionally, even on the ≥50GB
+# early-exit path below — the old reactive-only path (disk-critical-reactor's
+# quiesce_and_reclaim) only ever touches this dir at tier-4 disk pressure, so
+# the cache could grow past its own cap for weeks on a box that otherwise has
+# plenty of headroom. Idle + no-active-build guarded; dry-run unless --execute.
+SHARED_TARGET_REAPER="$REPO_ROOT/scripts/coord/shared-target-cache-reaper.sh"
+if [[ -x "$SHARED_TARGET_REAPER" ]]; then
+  if [[ "$DRY_RUN" -eq 1 ]]; then
+    "$SHARED_TARGET_REAPER" 2>&1 | tail -3
+  else
+    "$SHARED_TARGET_REAPER" --execute 2>&1 | tail -3
+  fi
+fi
+
 if [[ -n "$TIER_OVERRIDE" ]]; then
   tier="$TIER_OVERRIDE"
   info "tier $tier forced via --tier (disk free ${free_gb}GB)"
@@ -132,8 +147,15 @@ if [[ "$tier" -ge 2 ]]; then
   # INFRA-2188: also invoke ops/cargo-target-reaper which covers
   # ~/.cache/chump-runner/cargo-target (the 40-60GB runner path that
   # target-dir-reaper misses entirely).
+  #
+  # PRODUCT-256: this does NOT cover ~/.cargo/chump-shared-target (the
+  # shared CARGO_TARGET_DIR most workers actually build into, 156G
+  # observed 2026-08-09). That path is reaped separately by
+  # shared-target-cache-reaper.sh, invoked unconditionally above at the
+  # top of this script's every tick — see the RESILIENT-1045 block near
+  # the top of this file.
   if [[ -x "$CARGO_TARGET_REAPER_OPS" ]]; then
-    info "tier $tier: invoking ops/cargo-target-reaper (covers ~/.cache/chump-runner)"
+    info "tier $tier: invoking ops/cargo-target-reaper (covers ~/.cache/chump-runner only; chump-shared-target reaped separately above)"
     if [[ "$DRY_RUN" -eq 1 ]]; then
       "$CARGO_TARGET_REAPER_OPS" 2>&1 | tail -5
     else

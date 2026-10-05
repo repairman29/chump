@@ -1,0 +1,15 @@
+- id: EFFECTIVE-318
+  domain: EFFECTIVE
+  title: "preflight --full: reproduce CI audit shards locally (close the 61/152 mirror gap) so failures surface in one local pass"
+  status: done
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "The change described by \"reproduce CI audit shards locally (close the 61/152 mirror gap) so failures surface in one local pass\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3340
+  outcome_id: CHUMPOS
+  evidence: |
+    MISSION-045 session 2026-07-27: landing one anti-bloat gate took 3 full CI rounds (~20min each) because failures surfaced serially, not up front. Preflight mirrors only 61 of 152 CI gates (INFRA-1867 output); a full-parity 'chump preflight --full' would have caught all ~6 failures in one local run instead of 3 CI rounds. Highest-ROI anti-friction lever.
+

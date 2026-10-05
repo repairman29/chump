@@ -86,3 +86,34 @@ chump gap show <GAP-ID>
 - Auto-rescue (`pr_rescue_triggered`) fires within 10 min via `scripts/coord/opus-curator.sh`
 - If `pr_rescue_failed`: the gap is unblocked but the PR needs manual push; check the rescue log
 - Persistent stuck cluster (> 1h) → drop fleet to 2 workers and file an INFRA gap for root cause
+
+## Observability (INFRA-2942) {#observability-infra-2942}
+
+`scripts/coord/pr-stuck-cluster-detector.sh` emits `kind=pr_stuck_cluster_detector_run`
+on **every** invocation (no_op, dry_run, cluster_filed, help, bad_args,
+gap_id_extract_failed, gap_reserve_failed, error) via a `trap ... EXIT` — not just
+the cluster-detected path. Fields: `outcome`, `stuck_pr_count`, `duration_ms`,
+`gap_reserve_calls`, `failure_class`. Registered in
+[`docs/observability/EVENT_REGISTRY.yaml`](../observability/EVENT_REGISTRY.yaml).
+
+**Cost tracking.** `gap_reserve_calls` counts gap-reserve mutations performed
+during that run (0 unless a gap was actually filed). This event itself has no
+per-kind cost row in `chump waste-tally` (falls through to the 0 default) — it's
+a free run-level audit trail. The billed signal is the sibling `pr_stuck_cluster`
+kind (5,000 tokens/incident), which `chump waste-tally` sums and `fleet-brief`
+surfaces. Read `gap_reserve_calls` directly off `ambient.jsonl` when auditing
+detector mutation cost specifically:
+```bash
+grep '"kind":"pr_stuck_cluster_detector_run"' .chump-locks/ambient.jsonl | tail -1
+```
+
+**Failure-class taxonomy** (INFRA-2906), defined in
+`scripts/coord/pr-stuck-cluster-detector.sh:_pscd_failure_class`:
+- `none` — not a failure (`no_op` / `dry_run` / `cluster_filed` / `help`)
+- `transient` — retry may succeed as-is (`gap_id_extract_failed` / `error`)
+- `permanent` — retry repeats until root cause fixed (`gap_reserve_failed` / `bad_args`)
+
+**Smoke test:** `scripts/ci/test-pr-stuck-cluster-observability.sh` (standalone
+runnable; covers `no_op`/`dry_run`/`bad_args` outcome paths and asserts
+`failure_class` on each). Wired into `chump preflight` via
+`crates/chump-preflight/src/preflight.rs` (INFRA-2925).

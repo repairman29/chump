@@ -4,7 +4,7 @@
 # you must delete one. Raising it requires operator sign-off + a reason below.
 # Baseline 2026-06-03 (was 113 when INFRA-2525 was filed — the climb to here is
 # exactly what this ceiling now reverses). Ratchet DOWN as gates are culled.
-234
+216
 
 # 233 → 234 (2026-06-04): CREDIBLE-085 introduced CHUMP_SCCACHE_HIT_RATE_CHECK
 # as a cold-cache escape valve for the new sccache hit-rate gate. Cold-cache
@@ -52,3 +52,123 @@
 # Net documented debt 238 -> 234 (down 4) even while admitting 2 real vars.
 # RESILIENT-298 tracks the deeper residual: the count is still string-mention based,
 # so a var named in a comment ANYWHERE outside these two meta-files inflates it.
+
+# 234 -> 232 (2026-08-15, INFRA-3625 P0): a ratchet-DOWN via dead-bypass CULL, not a
+# bump. Main sat AT the ceiling (234=234, zero headroom), jamming every PR that added
+# even one var (audit-shard(4) 235>234). Audited all CHUMP_*_(BYPASS|SKIP|IGNORE|CHECK|NO_)
+# vars; removed SIX with ZERO functional reads anywhere in scripts/src/crates (verified via
+# env::var/${...}/getenv grep):
+#   - CHUMP_GAP_SHIP_STALE_CHECK      (env-vars-internal.txt only; read by nothing)
+#   - CHUMP_WORKTREE_BUILD_CACHE_SKIP (superseded — code was renamed to ..._DISABLED per
+#                                       INFRA-2453; the _SKIP registry line was a stale leftover)
+#   - CHUMP_OPENCODE_SKIP_SIZE_GUARD  (declared for #3646/RESILIENT-203, which merged the guard
+#                                       WITHOUT ever wiring a skip — registry-only no-op)
+#   - CHUMP_CROSS_PR_CONTRACT_BYPASS  (phantom: the only mentions were comments literally stating
+#                                       "There is NO ... env var" — the act of documenting its
+#                                       ABSENCE counted it as present)
+#   - CHUMP_META118_SKIP              (documented kill-switch never implemented — 0 reads)
+#   - CHUMP_FLEET_BOOTSTRAP_CHECK     (documented =0 bypass never implemented — 0 reads)
+# True live count 234 -> 228. New ceiling 232 = 228 + headroom for TWO in-flight LEGIT feature
+# toggles landing on the backlog (CHUMP_PR_AUTO_REBASE_NO_THROTTLE #3806, CHUMP_ROT_REAPER_
+# REQUIRED_CHECKS #3809) with 2 slack remaining so the gate stops being a zero-headroom tripwire
+# (INFRA-3625 AC#4). Recurring cull tracked by INFRA-3625.
+
+# 232 -> 221 (2026-08-17, INFRA-2525): the umbrella gap that originally spawned this whole
+# ceiling+cull mechanism (filed when the raw count was 113/131) finally lands its own DEAD-bucket
+# cull. Audited every "grandfathered gap: TBD" entry in bypass-env-var-allowlist.txt — the
+# Category A vars nobody ever wired to a real gate — and removed 12 with ZERO functional
+# read-sites anywhere in scripts/src/crates/docs (verified per-var via full-repo
+# `grep -rn '\bVAR\b'`; no env::var, no ${...} shell expansion, no os.environ.get, nothing):
+#   CHUMP_AUDIT_BYPASS, CHUMP_AUTOPILOT_SKIP, CHUMP_BYPASS, CHUMP_CLAIM_SKIP,
+#   CHUMP_CLUSTER_MESH_SKIP, CHUMP_DRIFT_SKIP, CHUMP_FLEET_DOCTOR_SKIP, CHUMP_GAP_SHIP_SKIP,
+#   CHUMP_GEN_SKIP, CHUMP_POLICY_SKIP, CHUMP_PR_AUTO_REBASE_SKIP, CHUMP_SKIP
+# (CHUMP_AUDIT_BYPASS's stray env-vars-internal.txt registry line was removed too.) The
+# remaining Category A "gap: TBD" entries (CHUMP_AMBIENT_INSTALL_SKIP, CHUMP_AUTOARM_SKIP,
+# CHUMP_BOT_MERGE_AUTH_PROBE_SKIP, CHUMP_DOCTOR_SKIP, CHUMP_GH_PROBE_SKIP, CHUMP_IGNORE_INBOX,
+# CHUMP_NO_BYPASS, CHUMP_OPERATOR_CONSENSUS_BYPASS, CHUMP_PR_DEDUP_BYPASS, CHUMP_RL_GATE_SKIP,
+# CHUMP_UNBLOCK_SKIP, CHUMP_WEDGE_CLASSIFIER_SKIP, CHUMP_WEDGE_STATE_MACHINE_SKIP) all have live
+# read-sites guarding real gates — GENUINE bucket, left in place; each needs its own
+# fix-the-gate-then-delete-the-bypass follow-up rather than a blanket deletion (INFRA-2525 RULE:
+# never delete a bypass while its gate still hard-blocks). True live count 232 -> 221 with zero
+# headroom spent (no new vars added this pass). Recurring cull tracked by INFRA-3625.
+
+# 221 -> 222 (2026-08-22, INFRA-3639): operator sign-off for ONE genuine new escape hatch.
+# CHUMP_SKIP_ALMANAC_REFRESH — bypass for scripts/setup/refresh-almanac-binary.sh's
+# self-revive rebuild+reindex (INFRA-3639). GENUINE, wired use-site: the script reads
+# it at refresh-almanac-binary.sh (`if [[ "${CHUMP_SKIP_ALMANAC_REFRESH:-0}" == "1" ]]`),
+# emits a BYPASS log line, and exits 0. Not phantom prose — a real operator toggle to
+# stop the almanac auto-rebuild on nodes that manage it out-of-band.
+# Main sat AT the ceiling (221=221, zero headroom), so this single legit var tripped
+# audit-shard(4) with 222>221 — the exact zero-headroom tripwire this file's history keeps
+# hitting. Admitting it is the sanctioned "only way up" (operator edit + reason).
+# NET DEBT still falling: two concurrently-jammed sibling PRs (INFRA-3660, INFRA-3659)
+# had ORPHANED phantom registry lines removed in the same unjam pass (net -2 real-count),
+# and the recurring dead-bypass cull that restores standing headroom is tracked by INFRA-3625.
+
+# 222 → 223 (2026-08-23): INFRA-3677 introduces CHUMP_NODE_SKIP_ARTIFACT_PULL as a
+# legit operator toggle in scripts/ops/node-refresh-chump.sh — forces the local
+# cargo-build path (skips pulling the prebuilt GH-CI artifact) on nodes that manage
+# their binary out-of-band. Main sat AT the ceiling (222=222, zero headroom), so this
+# single legit var tripped audit-shard bypass-lint with 223>222 — the recurring
+# zero-headroom tripwire. Operator sign-off (incident revival 2026-08-23; the PR was
+# false-closed by pr-failure-auto-rescue on this real red). Standing-headroom cull is
+# tracked by INFRA-3625.
+
+# 223 → 224 (2026-08-28, INFRA-3679): EFFECTIVE-450 (#4284, 66aa197) introduced
+# CHUMP_BINARY_NO_FETCH — a GENUINE, wired operator toggle in
+# scripts/setup/chump-node-install.sh (read at :477,
+# `[ "${CHUMP_BINARY_NO_FETCH:-0}" = 1 ] && ... build-from-source`) that forces
+# the clean-install to skip the prebuilt-binary fetch on nodes managing their
+# binary out-of-band — but it merged WITHOUT ratcheting this ceiling, so main
+# sat AT the ceiling (224>223) and audit-shard(4) bypass-lint jammed the ENTIRE
+# queue (#4283/#4286/#4287 all BLOCKED). Same recurring zero-headroom tripwire
+# this file's history keeps hitting. Admitting the legit already-merged var is
+# the sanctioned "only way up" (operator edit + reason). NET DEBT still owed:
+# the standing dead-bypass cull that restores headroom is tracked by INFRA-3625.
+
+# 224 -> 218 (2026-08-31, RESILIENT-298, relanded #4161 -> this PR): HONEST-INSTRUMENT
+# fix, not a bump. The counter (in test-no-new-bypass-env-vars.sh) matched bare
+# var-name STRINGS, so it counted PHANTOMS that are not functional bypass vars:
+# registry-only lines, tests that assert a DELETED var is ABSENT (documenting an
+# absence counted it as present), a string-concat fragment of a removed name, an
+# include-guard sentinel (_CHUMP_DISK_CHECK_LOADED), and out-of-scope toggles read
+# only in web/ (localStorage CHUMP_NO_TOAST) or .github/ Actions repo-vars
+# (CHUMP_SELF_HOSTED_FAST_CHECKS). The counter now requires a FUNCTIONAL READ-SITE
+# (shell $VAR/${VAR}, inline VAR=, or an env accessor incl. this repo's env_trim_eq/
+# env_flags/env_bool helpers) — which cannot hide a real bypass (the per-PR diff-scanner
+# still blocks any NEW unallowlisted var at add-time), it only stops counting phantoms.
+# This PR (#4161, closed by rot-reaper for a stale-branch merge conflict) was written
+# against an older main sitting at ceiling 221 (true read-backed 211, proposed 214 =
+# 211+3 headroom). Main has since taken THREE more genuine bumps (221->224: INFRA-3639,
+# INFRA-3677, INFRA-3679) that were each themselves stuck on this same phantom-inflated
+# zero-headroom tripwire (root cause this fix removes). Re-measured on today's main with
+# the read-site fix applied: true read-backed count = 215 (211 + the 3 genuine bumps
+# admitted since -1 net cull along the way). New ceiling 218 = true 215 + 3 doctrine
+# headroom (same formula the original PR used). Net honest debt still FALLS: no real
+# bypass var added or hidden, enforcement unchanged, but the ceiling no longer measures
+# string-mentions — so the exact zero-headroom jam that closed #4161's siblings
+# (INFRA-3639/3677/3679 audit-shard trips) cannot recur on a phantom.
+
+# 218 -> 216 (2026-09-13, INFRA-6073 / RESILIENT-298 residual): HONEST-INSTRUMENT fix,
+# not a bump. RESILIENT-298 made the counter require a functional read-site, but it tested
+# that read-site against a RAW haystack that still contained COMMENT lines — so a
+# read-SHAPED string sitting inside a comment still matched and counted as a phantom.
+# That is the self-defeating failure INFRA-6073 tracks: PR #4637 (a rot-reaper fix) tripped
+# `count 219 > ceiling 218` PURELY by naming CHUMP_ROT_REAPER_SPARE_RECOVERABLE in a code
+# comment — the gate blocking the very debt-reducing fix that mentioned the var. The counter
+# (in test-no-new-bypass-env-vars.sh) now strips comments before the read-site test — full-line
+# comments (#, //, *, /*, > markdown-quote) and trailing inline # / // comments — via the shared
+# _count_bypass_debt() helper, and also excludes the allowlist file, env-vars-internal.txt, and
+# docs/*.md from its own input. Two comment-only phantoms fall out of the count:
+#   - CHUMP_PR_SCOPE_CHECK          (only mention: a `#`-comment EXAMPLE of gate_emit_result in
+#                                     scripts/ci/lib/gate-emit.sh — `CHUMP_PR_SCOPE_CHECK=0` in prose)
+#   - CHUMP_SKIP_SPIKE_ISOLATION_CHECK (only read-shaped mention: a `# Bypass: ...=1` comment in
+#                                     scripts/ci/test-spike-isolation.sh; its other two mentions are
+#                                     a string-presence grep + an echo, neither an env read)
+# True read-backed count 218 -> 216. Enforcement is UNCHANGED and NOT weakened: the gate still caps
+# real read-backed bypass debt, and the per-PR diff-scanner still blocks any NEW unallowlisted var at
+# add-time (it already skipped comment lines; that path is untouched). NOTE: scripts/ci/test-*.sh are
+# deliberately NOT excluded from the count — in this repo those ARE the real CI gate implementations
+# (this file; test-silent-failure-tax.sh reads CHUMP_SILENT_FAILURE_TAX_BYPASS as a genuine gate), so
+# their bypass reads are real debt. New ceiling 216 = the honest count, a ratchet-DOWN with no headroom
+# added. Recurring dead-bypass cull for standing headroom stays tracked by INFRA-3625.

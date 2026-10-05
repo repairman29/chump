@@ -1,0 +1,13 @@
+- id: MISSION-071
+  domain: MISSION
+  title: "MISSION: Integrate scaling formula into worker manager (MISSION-065 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker manager calls the scaling formula on a defined interval
+    - System triggers scale-up/down actions based on formula output
+    - Scaling actions are logged for observability
+  depends_on: [MISSION-070]
+  outcome_id: CHUMPOS
+

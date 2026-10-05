@@ -1,0 +1,16 @@
+- id: CREDIBLE-211
+  domain: CREDIBLE
+  title: "done-auditor miss: INFRA-3287 'decompose 18K-line main.rs god-switchboard' closed done (PR 3185) with main.rs unchanged at 18,808 LOC — closed on pattern-landed, not work-done"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "Root cause named: INFRA-3287's ACs described the dispatch PATTERN (commands::*::try_dispatch exists) rather than the OUTCOME (main.rs shrinks). Only slice 1 (INFRA-3289, external-repo commands) actually extracted; PR 3185 closed the parent anyway"
+    - "SECOND CONFIRMED INSTANCE, different false-close mechanism (found 2026-08-07): INFRA-1687 'decompose src/main.rs (6k LOC) via inventory-style subcommand self-registration' was closed status=superseded by the 2026-07-26 gap-bankruptcy sweep with the stated reason 'work already merged to origin/main (gap-ID in a merged commit)'. That reason is demonstrably FALSE — main.rs was 6k LOC when the gap was filed and 18,830 LOC after the close. The sweep matched a gap-ID appearing in a commit message and inferred completion. Sibling INFRA-1748 (the decomposition PILOT) was closed wontfix by the same sweep as 'stale, never actioned'. So the class has TWO distinct proxy signals, not one: (a) INFRA-3287 closed on pattern-landed, (b) INFRA-1687 closed on gap-ID-appears-in-a-merged-commit. Any fix must cover both."
+    - "STAKES ARE HIGHER THAN BOOKKEEPING: .gitattributes lines 80-95 record that main.rs decomposition is the named 'real fix' for a P0 — on 2026-05-23, 5+ PRs (#2350 #2351 #2356) SILENTLY DROPPED mod declarations during auto-rebase because the append-only merge driver mishandled the file. The mitigation in place is plain 3-way merge as 'the lesser evil'. Four gaps (INFRA-1687 superseded, INFRA-1748 wontfix, INFRA-3287 done-but-undone, INFRA-1965 open) have now been opened against this one problem and three were closed without it being fixed, while the file tripled. The false-close pattern is what kept a P0 root cause alive for months — that is the cost this gap exists to stop."
+    - "Reproduce the miss: run done_auditor (src/done_auditor.rs) against INFRA-3287 and confirm it passes today — if it does not flag a gap whose title says '18K-line' while the file is still 18,808 LOC, that is the defect"
+    - "done_auditor gains a numeric-claim check: when a closed gap's title or ACs contain a measurable assertion about a file (LOC count, file size, count of N), re-measure it at close time and flag divergence >20%"
+    - "Backfill scan: run the new check over the last 200 closed gaps and report how many other 'done' gaps have unmet numeric claims; that count is the receipt for whether this is a one-off or a class"
+    - INFRA-3287 is reopened or explicitly superseded by the re-scoped INFRA-1965 — it does not stay 'done' while its stated work is undone
+    - "No new false positives: the check does not flag closed gaps whose numeric claim was about a target that legitimately moved (verify against 20 hand-checked samples)"
+

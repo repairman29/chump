@@ -2,7 +2,7 @@
   domain: INFRA
   title: META-225 daemon-activator extension — git-show fallback for BOT scripts (not just installers) when local copy missing
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   description: |
     META-225 cascade demonstrated a gap on first live run: when a freshly-merged install-*.sh script references a BOT script (e.g. install-ghost-pr-closer.sh references scripts/coord/ghost-pr-closer.sh), the installer's own preflight 'BOT_SCRIPT not found — must land first' guard exits 2 BEFORE the daemon-activator's git-show extraction fallback (AC #1) can run. Result: install-ghost-pr-closer.sh + install-main-worktree-drift-detector.sh both FAILed on 2026-05-30 18:55Z cascade despite META-225 having merged at 18:46Z. Manual workaround: shepherd ran git show origin/main:scripts/coord/<botname>.sh into the worktree, then re-ran installers — both succeeded. The auto-fix: daemon-activator should ALSO extract referenced bot scripts when missing, OR the installers themselves should switch from 'exit 2 if not found' to 'git show origin/main:<path> > <local>' on missing.

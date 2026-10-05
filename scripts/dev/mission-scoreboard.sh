@@ -203,6 +203,14 @@ elif [ "$beast" -gt 0 ]; then
 else
   echo "     ❌ NO  (BEAST merges last 7d: 0)  ← the mission is NOT yet achieved"
 fi
+
+# MISSION-066: persist ① so repeatability (not just a single lucky run) can be
+# verified across runs via `chump kpi report --mission-binary`, mirroring the
+# mission_grade ambient pattern used for pillar history.
+mkdir -p .chump-locks 2>/dev/null || true
+printf '{"ts":"%s","kind":"mission_binary_check","repo":"%s","beast_merges_7d":%d,"beast_zero_touch_7d":%d}\n' \
+  "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BEAST" "$beast" "$beast_zt" \
+  >> .chump-locks/ambient.jsonl 2>/dev/null || true
 echo
 
 # ── ② Mission-ship ratio (24h) ──────────────────────────────────────────────
@@ -226,19 +234,37 @@ echo
 bin="$(command -v chump 2>/dev/null || echo /opt/homebrew/bin/chump)"
 # ~/.local/bin/chump is a symlink; un-resolved stat reads its creation date, not the build.
 bin="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
-binep=$(stat -L -f %m "$bin" 2>/dev/null || stat -L -c %Y "$bin" 2>/dev/null || echo 0)
+# GNU stat's `-f` means "report on the filesystem" (prints unrelated fields,
+# exit 0) rather than erroring, so it must NOT be tried first or the `-c %Y`
+# (GNU mtime) fallback never fires on Linux — try GNU form first, then BSD.
+binep=$(stat -L -c %Y "$bin" 2>/dev/null || stat -L -f %m "$bin" 2>/dev/null || echo 0)
 binbuilt=$(date -u -r "$binep" +%Y-%m-%dT%H:%MZ 2>/dev/null || date -u -d "@$binep" +%Y-%m-%dT%H:%MZ 2>/dev/null || echo '?')
-# Structural signal: do merges auto-deploy? Tied to MISSION-012's status, NOT a fuzzy
-# mtime diff (main commits constantly, so binary-mtime < latest-commit is almost always
-# true and meaningless). The real question is whether an auto-deploy path exists at all.
+# CREDIBLE-293: FRESHNESS SLA, not an instant snapshot. Comparing the running
+# binary against origin/main's tip at the exact instant this script runs
+# false-positives on ordinary auto-deploy lag: main moves every ~10-20 min,
+# the auto-deploy cycle runs every ~20 min, so main is "ahead" of the last
+# deploy most of the time by design — that isn't a regression. Only flag a
+# real regression when the binary has been behind for LONGER than one
+# deploy-cadence-plus-build-time window (default 30 min; override via
+# MISSION_SCOREBOARD_DEPLOY_SLA_SECONDS).
+DEPLOY_SLA_SECONDS="${MISSION_SCOREBOARD_DEPLOY_SLA_SECONDS:-1800}"
+main_ref="origin/main"
+git rev-parse --verify "$main_ref" >/dev/null 2>&1 || main_ref="main"
+git rev-parse --verify "$main_ref" >/dev/null 2>&1 || main_ref="HEAD"
+main_moved_epoch=$(git log -1 --format=%ct "$main_ref" 2>/dev/null || echo 0)
+lag_since_main_move=$(( now - main_moved_epoch ))
 autodeploy=0
-chump gap show MISSION-012 --json 2>/dev/null | grep -qiE '"status":[[:space:]]*"(done|closed|shipped)"' && autodeploy=1
+if [ "$binep" -ge "$main_moved_epoch" ]; then
+  autodeploy=1   # binary already built at/after the latest main-move: current.
+elif [ "$lag_since_main_move" -le "$DEPLOY_SLA_SECONDS" ]; then
+  autodeploy=1   # main moved recently; within the normal auto-deploy cadence window.
+fi
 echo "③ Deploy — do merged fixes reach the running binary automatically?  (binary built $binbuilt)"
 if [ "$autodeploy" -eq 1 ]; then
-  echo "     ✅ auto-deploy in place (MISSION-012 done)"
+  echo "     ✅ within freshness SLA (deploy-lag ${lag_since_main_move}s ≤ ${DEPLOY_SLA_SECONDS}s cadence window)"
   stale=0
 else
-  echo "     ❌ NO auto-deploy (MISSION-012 open) — merges are inert until a manual rebuild. THE MULTIPLIER."
+  echo "     ❌ STALE — deploy-lag ${lag_since_main_move}s exceeds ${DEPLOY_SLA_SECONDS}s SLA — merges are inert until redeploy. THE MULTIPLIER."
   stale=1
 fi
 echo
@@ -248,6 +274,83 @@ lm=$(gh pr list --state merged --limit 1 --json mergedAt --jq '.[0].mergedAt' 2>
 lmep=$(iso_to_epoch "$lm"); agem=$(( (now - lmep) / 60 ))
 ships=$(gh pr list --state merged --search "merged:>=$day" --json number --jq 'length' 2>/dev/null)
 echo "④ Fleet liveness: last merge ${agem}m ago | merges last 24h: ${ships:-?}"
+echo
+
+# ── ⑤ BEAST-MODE prerequisite readiness (MISSION-066) ───────────────────────
+# MISSION-019 through MISSION-024 (the MISSION-015 slice) are individual
+# "verify fleet can <pipeline step>" gaps that prove Chump can actually pick,
+# clone, commit, push, PR, and monitor against $BEAST. Each is tagged
+# external_repo:$BEAST, which the picker (crates/chump-coord/src/worker/
+# capability.rs, INFRA-2113) skips unless CHUMP_EXTERNAL_REPO_PICK_OK=1 is
+# set in the claiming session's env. If that gate never opens, these gaps
+# rot open with 0 implementation commits and ① above can never turn YES on
+# its own — this section makes that stall visible instead of eyeballed.
+prereq_open=0
+prereq_no_commits=0
+prereq_stuck_ids=""
+if command -v sqlite3 >/dev/null 2>&1 && [[ -f .chump/state.db ]]; then
+    while IFS= read -r gid; do
+        [[ -z "$gid" ]] && continue
+        prereq_open=$((prereq_open+1))
+        commit_count=$(git log --oneline --grep "^${gid}:" -E 2>/dev/null | wc -l | tr -d ' ')
+        if [[ "${commit_count:-0}" -eq 0 ]]; then
+            prereq_no_commits=$((prereq_no_commits+1))
+            prereq_stuck_ids="${prereq_stuck_ids}${prereq_stuck_ids:+, }${gid}"
+        fi
+    done < <(sqlite3 .chump/state.db \
+        "SELECT id FROM gaps WHERE skills_required LIKE '%external_repo:${BEAST}%' AND status='open' ORDER BY id;" 2>/dev/null)
+fi
+pick_gate="closed"
+[[ "${CHUMP_EXTERNAL_REPO_PICK_OK:-0}" == "1" ]] && pick_gate="open"
+
+# Consecutive-cycle stall streak: walk beast_prereq_check history in
+# ambient.jsonl backwards from the most recent entry and count how many
+# runs in a row reported zero_commit>0. This turns "MISSION ① = NO for the
+# Nth consecutive cycle" (previously an eyeballed claim in gap titles) into
+# a derived, testable number. Bash-3.2-safe: no mapfile/associative arrays.
+AMBIENT_FILE=".chump-locks/ambient.jsonl"
+prereq_streak=0
+if [[ -f "$AMBIENT_FILE" ]] && command -v tac >/dev/null 2>&1; then
+    while IFS= read -r zc; do
+        [[ -z "$zc" ]] && continue
+        [[ "$zc" -gt 0 ]] || break
+        prereq_streak=$((prereq_streak+1))
+    done < <(tac "$AMBIENT_FILE" 2>/dev/null | grep -F '"kind":"beast_prereq_check"' \
+        | sed -n 's/.*"zero_commit":\([0-9]*\).*/\1/p')
+elif [[ -f "$AMBIENT_FILE" ]]; then
+    # macOS/BSD has no tac by default; fall back to tail -r.
+    while IFS= read -r zc; do
+        [[ -z "$zc" ]] && continue
+        [[ "$zc" -gt 0 ]] || break
+        prereq_streak=$((prereq_streak+1))
+    done < <(tail -r "$AMBIENT_FILE" 2>/dev/null | grep -F '"kind":"beast_prereq_check"' \
+        | sed -n 's/.*"zero_commit":\([0-9]*\).*/\1/p')
+fi
+# This run's own result extends (or breaks) the streak read from history.
+if [[ "$prereq_no_commits" -gt 0 ]]; then
+    prereq_streak=$((prereq_streak+1))
+else
+    prereq_streak=0
+fi
+
+echo "⑤ BEAST-MODE prerequisite readiness (MISSION-019..024 slice):"
+echo "     open=$prereq_open  zero-commit=$prereq_no_commits  pick-gate=$pick_gate (CHUMP_EXTERNAL_REPO_PICK_OK)"
+if [[ "$prereq_no_commits" -gt 0 ]]; then
+    echo "     ⚠️  stuck (0 implementation commits): $prereq_stuck_ids"
+    echo "     streak: $prereq_streak consecutive cycle(s) with zero-commit stall"
+    if [[ "$pick_gate" == "closed" ]]; then
+        echo "     → root cause: CHUMP_EXTERNAL_REPO_PICK_OK is unset here; standard fleet workers skip external_repo: tagged gaps (INFRA-2113)."
+    fi
+    if [[ "$prereq_streak" -ge 10 ]]; then
+        echo "     🚨 ESCALATION: stall has persisted $prereq_streak consecutive cycles with no root-cause fix — refiling MISSION-066 without opening the pick-gate or reassigning the prerequisite work will not move MISSION ①."
+    fi
+else
+    echo "     streak: 0 (no zero-commit prerequisites this cycle)"
+fi
+mkdir -p .chump-locks 2>/dev/null || true
+printf '{"ts":"%s","kind":"beast_prereq_check","open":%d,"zero_commit":%d,"pick_gate":"%s","streak":%d}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$prereq_open" "$prereq_no_commits" "$pick_gate" "$prereq_streak" \
+    >> .chump-locks/ambient.jsonl 2>/dev/null || true
 echo
 
 # ── Verdict ─────────────────────────────────────────────────────────────────

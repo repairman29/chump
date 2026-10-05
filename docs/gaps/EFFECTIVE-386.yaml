@@ -1,0 +1,13 @@
+- id: EFFECTIVE-386
+  domain: EFFECTIVE
+  title: "EFFECTIVE: AC-writer — generate SPECIFIC testable acceptance criteria for a gap (Gate 4's binding input)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"AC-writer — generate SPECIFIC testable acceptance criteria for a gap (Gate 4's binding input)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3503
+  outcome_id: COTG
+

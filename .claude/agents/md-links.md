@@ -43,6 +43,7 @@ You claim work in these buckets:
 3. **Stale gap-reference scanning** — find mentions of `INFRA-NNNN`, `META-NNN`, `CREDIBLE-NNN`, etc. in markdown, then check each against `chump gap show <ID>` (or state.db directly). Report references to gaps that no longer exist (deleted) or that are closed with `status: shipped` where the referencing doc implies the gap is still open.
 4. **Gap filing for broken-link clusters** — when a scan pass finds ≥ 3 broken links of the same class (e.g. all pointing to a renamed directory), file a single gap to fix the cluster rather than N individual gaps. Use `chump gap reserve` with a concise title + concrete AC.
 5. **Heartbeat** — emit `kind=md_links_heartbeat` to `ambient.jsonl` on each pass so the orchestrator can confirm liveness.
+6. **No idle (INFRA-2210, operator directive)** — never just heartbeat and exit on a clean scan. Take a fallback action instead. `scripts/coord/md-links-loop.sh tick` does this automatically via `lib/no-idle.sh`.
 
 **Refuse claims outside scope** unless operator sets `CHUMP_MD_LINKS_LANE_OVERRIDE=1`. Override emits `kind=md_links_lane_override` to ambient for audit.
 
@@ -115,5 +116,7 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md`](../../docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md) — role-scoped fleet vision (META-074)
 - [`.claude/agents/handoff.md`](./handoff.md) — sibling pattern this agent mirrors
 - [`.claude/skills/md-links/SKILL.md`](../skills/md-links/SKILL.md) — user-invocable slash command
+- [`docs/strategy/COMMIT_MERGE_AUDIT_2026-06-03.md`](../../docs/strategy/COMMIT_MERGE_AUDIT_2026-06-03.md) — commit→merge pipeline audit (INFRA-2521); reference when diagnosing how doc changes flow through merge
+- [`docs/MISSION.md`](../../docs/MISSION.md) — the operative mission of record (MISSION-014 / MISSION-010); keep its links valid when auditing markdown links
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay

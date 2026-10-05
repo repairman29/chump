@@ -43,7 +43,7 @@ _emit() {
 }
 
 # Default scan set: ambient.jsonl + any *.json file under .chump-locks/.
-declare -a SCAN_PATHS
+declare -a SCAN_PATHS=()
 if [[ "${CHUMP_SCRUB_PATHS:-}" != "" ]]; then
   read -r -a SCAN_PATHS <<< "$CHUMP_SCRUB_PATHS"
 else

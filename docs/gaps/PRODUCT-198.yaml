@@ -1,0 +1,23 @@
+- id: PRODUCT-198
+  domain: PRODUCT
+  title: "[olive][external_repo:repairman29/olive] Guard scan job to skip Dependabot PRs (app_id secret unavailable → blocks all dep PRs)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"repairman29/olive] Guard scan job to skip Dependabot PRs (app_id secret unavailable → blocks all dep PRs)\" is implemented in the relevant PRODUCT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    PROBLEM: .github/workflows/upshift-app-scan.yml 'scan' job fails on every Dependabot PR with 'Error: Input required and not supplied: app_id' — Dependabot PRs do not receive repo secrets (APP_ID/APP_PRIVATE_KEY), so the tibdex/github-app-token step errors. This blocks all open dependency PRs (#2,#3,#4) from merging.
+    
+    FIX (minimal, workflow-only): guard the scan job so it does not run on Dependabot-triggered PRs, e.g. add job-level 'if: ${{ github.actor != 'dependabot[bot]' }}' to the scan job in .github/workflows/upshift-app-scan.yml.
+    
+    ACCEPTANCE CRITERIA:
+    1. The scan job is skipped (not failed) on Dependabot PRs.
+    2. The scan job still runs unchanged on human/non-Dependabot PRs (no security coverage lost).
+    3. Only .github/workflows/upshift-app-scan.yml changes; no secrets added/committed; no other workflow behavior altered.
+    4. yaml remains valid.
+  closed_pr: 8
+  outcome_id: CHUMPOS
+

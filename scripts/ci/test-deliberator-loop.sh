@@ -33,6 +33,15 @@ AMBIENT_FILE="$TMPDIR_TEST/ambient.jsonl"
 LOCK_DIR="$TMPDIR_TEST/locks"
 mkdir -p "$LOCK_DIR"
 
+# CREDIBLE-179: _consensus_src() in deliberator-loop.sh prefers FEEDBACK_LOG
+# over AMBIENT when FEEDBACK_LOG exists (default: .chump-locks/feedback.jsonl
+# in whatever repo the script runs from). Without an explicit override this
+# test silently read the real repo's production feedback.jsonl instead of
+# the seeded fixture below — point it at a path that doesn't exist so the
+# script's own fallback-to-AMBIENT logic kicks in.
+CHUMP_FEEDBACK_LOG="$TMPDIR_TEST/feedback-unused.jsonl"
+export CHUMP_FEEDBACK_LOG
+
 _now_iso() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 
 # Timestamps: proposals 20h ago (within 24h window).
@@ -173,15 +182,19 @@ else
     echo "PASS: idempotency guard held"
 fi
 
-# Feature flag off: run tick without flag, assert no new results.
+# Feature flag explicitly off (CHUMP_FLEET_RECV_SIDE_V0=0): run tick, assert
+# no new results. CREDIBLE-179 flipped this flag to default-ON (opt-out)
+# matching `chump vote`'s polarity, so the meaningful negative case is now
+# "explicitly disabled", not merely "unset".
 echo
-echo "=== Feature flag off: tick without CHUMP_FLEET_RECV_SIDE_V0 ==="
+echo "=== Feature flag explicitly off (CHUMP_FLEET_RECV_SIDE_V0=0) ==="
 AMBIENT_FLAGOFF="$TMPDIR_TEST/ambient-flagoff.jsonl"
 cp "$AMBIENT_FILE" "$AMBIENT_FLAGOFF"
 # Remove the already-emitted results so we'd detect if tick wrongly emits new ones.
 grep -v '"kind":"consensus_result"' "$AMBIENT_FLAGOFF" > "$TMPDIR_TEST/stripped.jsonl" || true
 cp "$TMPDIR_TEST/stripped.jsonl" "$AMBIENT_FLAGOFF"
 
+CHUMP_FLEET_RECV_SIDE_V0=0 \
 CHUMP_AMBIENT_LOG="$AMBIENT_FLAGOFF" \
 CHUMP_SESSION_ID="test-deliberator-flag-$$" \
 CHUMP_PROPOSAL_WINDOW_HOURS=24 \
@@ -190,12 +203,39 @@ CHUMP_PROPOSAL_WINDOW_HOURS=24 \
 flagoff_count="$(grep -c '"kind":"consensus_result"' "$AMBIENT_FLAGOFF" 2>/dev/null || true)"
 flagoff_count="${flagoff_count//[$'\t\r\n ']}"
 flagoff_count="${flagoff_count:-0}"
-echo "consensus_result count (flag off): ${flagoff_count} (expected 0)"
+echo "consensus_result count (flag=0): ${flagoff_count} (expected 0)"
 if [[ "${flagoff_count}" -ne 0 ]]; then
-    echo "FAIL: feature flag off but consensus_result was emitted" >&2
+    echo "FAIL: feature flag=0 but consensus_result was emitted" >&2
     FAIL=1
 else
-    echo "PASS: feature flag off — no consensus_result emitted"
+    echo "PASS: feature flag=0 — no consensus_result emitted"
+fi
+
+# Feature flag UNSET (CREDIBLE-179 default): run tick, assert it DOES do
+# real work — this is the exact regression this gap fixes (a session that
+# never sets CHUMP_FLEET_RECV_SIDE_V0 must still get real tallying, not a
+# silent heartbeat-only no-op).
+echo
+echo "=== Feature flag unset (CREDIBLE-179 default-on) ==="
+AMBIENT_DEFAULT="$TMPDIR_TEST/ambient-default.jsonl"
+cp "$TMPDIR_TEST/stripped.jsonl" "$AMBIENT_DEFAULT"
+
+env -u CHUMP_FLEET_RECV_SIDE_V0 \
+CHUMP_AMBIENT_LOG="$AMBIENT_DEFAULT" \
+CHUMP_SESSION_ID="test-deliberator-default-$$" \
+CHUMP_PROPOSAL_WINDOW_HOURS=24 \
+CHUMP_FEEDBACK_LOG="$CHUMP_FEEDBACK_LOG" \
+    bash "$LOOP_SCRIPT" tick || true
+
+default_count="$(grep -c '"kind":"consensus_result"' "$AMBIENT_DEFAULT" 2>/dev/null || true)"
+default_count="${default_count//[$'\t\r\n ']}"
+default_count="${default_count:-0}"
+echo "consensus_result count (flag unset): ${default_count} (expected 2)"
+if [[ "${default_count}" -ne 2 ]]; then
+    echo "FAIL: flag unset should default ON and tally real proposals, got ${default_count}" >&2
+    FAIL=1
+else
+    echo "PASS: flag unset — default-on tallied real proposals"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

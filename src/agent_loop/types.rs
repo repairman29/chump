@@ -449,10 +449,13 @@ pub fn parse_text_tool_calls(text: &str, tools: &[Tool]) -> Option<Vec<ToolCall>
 }
 
 fn strip_prefix_caseless<'a>(s: &'a str, prefix: &str) -> Option<&'a str> {
-    if s.len() >= prefix.len() && s[..prefix.len()].eq_ignore_ascii_case(prefix) {
-        Some(&s[prefix.len()..])
-    } else {
-        None
+    // Char-boundary-safe: `s.get(..n)` returns None when `n` lands inside a
+    // multibyte UTF-8 char (or past the end) instead of panicking like a raw
+    // `s[..n]` slice would (INFRA-3678: a multibyte char at the boundary -- e.g.
+    // a greek alpha in model/file text -- crashed the whole execute-gap, exit 101).
+    match s.get(..prefix.len()) {
+        Some(head) if head.eq_ignore_ascii_case(prefix) => Some(&s[prefix.len()..]),
+        _ => None,
     }
 }
 
@@ -605,6 +608,18 @@ pub struct BatchOutcome {
     pub success_count: usize,
     pub fail_count: usize,
     pub last_failed_tool: Option<String>,
+    /// EFFECTIVE-448: number of tool calls in this batch that applied a real
+    /// edit (a successful `str_replace` / `write_file` / `patch_file`). The
+    /// iteration controller sums this across batches to know whether the run
+    /// has produced ANY edit — a run that investigates but never edits gets
+    /// pushed to apply one (bounded) instead of Completing into an empty diff.
+    pub edits_applied: usize,
+    /// EFFECTIVE-918: number of `git_commit` tool calls in this batch
+    /// (regardless of success/failure). The iteration controller tracks this
+    /// across batches to detect a `git_commit` storm — the model repeatedly
+    /// invoking `git_commit` without any intervening successful edit — and
+    /// aborts the run rather than burning the iteration budget.
+    pub git_commit_calls: usize,
 }
 
 impl BatchOutcome {
@@ -626,6 +641,25 @@ pub fn is_failed_tool_result(result: &str) -> bool {
     result.starts_with("DENIED:")
         || result.starts_with("Tool error:")
         || result.starts_with("tool timed out")
+}
+
+/// EFFECTIVE-448: tools whose success mutates a file in the working tree, i.e.
+/// the ones that can turn into a git diff. `str_replace` is the primary edit
+/// affordance forced on weak/open models (EFFECTIVE-355/360/361); `write_file`
+/// and `patch_file` also mutate. Kept separate from `is_write_tool` (which
+/// also counts git/CLI side-effects) because here we care specifically about
+/// "did the model change a file", not "did it touch external state".
+pub fn is_edit_tool(name: &str) -> bool {
+    matches!(name, "str_replace" | "write_file" | "patch_file")
+}
+
+/// EFFECTIVE-448: true when a tool result represents a SUCCESSFUL edit that
+/// actually changed a file. A failed/refused edit (e.g. `str_replace` that
+/// couldn't find its anchor, or REFUSED on a missing file) does NOT count —
+/// so the force-edit nudge keeps firing until a real edit lands, and a model
+/// can't "escape" it by emitting a broken no-op edit.
+pub fn edit_was_applied(name: &str, result: &str) -> bool {
+    is_edit_tool(name) && !is_failed_tool_result(result) && !result.starts_with("REFUSED:")
 }
 
 // ── Tests ─────────────────────────────────────────────────────────────
@@ -683,6 +717,22 @@ mod parse_text_tool_call_tests {
             Some("create")
         );
     }
+
+    #[test]
+    fn multibyte_char_at_prefix_boundary_does_not_panic() {
+        // INFRA-3678 regression: a line whose bytes put a multibyte UTF-8 char
+        // straddling a candidate prefix's byte length used to panic in
+        // `strip_prefix_caseless` (`s[..prefix.len()]` sliced mid-char, exit 101).
+        // Here the greek alpha (2 bytes) sits across the "call " (len 5) boundary.
+        let tools = tools_task_only();
+        let text = "callα task";
+        // Must return cleanly (no panic); a garbled line yields no tool call.
+        let calls = parse_text_tool_calls(text, &tools);
+        assert!(
+            calls.is_none(),
+            "garbled multibyte line should not parse a call"
+        );
+    }
 }
 
 #[cfg(test)]
@@ -736,6 +786,8 @@ mod batch_outcome_tests {
             success_count: 0,
             fail_count: 3,
             last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 0,
         };
         assert!(o.all_failed());
         assert_eq!(o.total(), 3);
@@ -756,6 +808,8 @@ mod batch_outcome_tests {
             success_count: 1,
             fail_count: 4,
             last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 0,
         };
         assert!(!o.all_failed());
         assert_eq!(o.total(), 5);

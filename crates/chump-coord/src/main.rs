@@ -8,6 +8,10 @@
 //!   ping                       — check NATS reachability (exit 0 = up)
 //!   claim <gap-id>             — atomic claim (exit 0 = won, 1 = lost to another session)
 //!   release <gap-id>           — release claim
+//!   merge-lock <sub> [args …]  — INFRA-7714 (INFRA-2252 slice): local-merge-queue CAS lock
+//!                                 (acquire <holder>|release|status)
+//!                                 exit 0 = acquired/released, 1 = held by another holder,
+//!                                 2 = usage error, 3 = NATS unreachable
 //!   status                     — show all active claims + recent events
 //!   emit <type> [key=value …]  — publish a structured event
 //!   watch                      — stream live events (ctrl-c to stop)
@@ -205,6 +209,98 @@ async fn main() -> Result<()> {
             }
         }
 
+        // ── merge-lock ────────────────────────────────────────────────────────
+        // INFRA-7714 (INFRA-2252 slice): NATS KV CAS lock serializing the local
+        // merge queue across worker machines on the mesh.
+        //
+        // Exit codes:
+        //   0  acquire: lock won | release: cleared | status: printed
+        //   1  acquire: lock held by another holder (CAS conflict — expected)
+        //   2  usage error
+        //   3  NATS unreachable — distinct from (1) so callers can tell
+        //      "someone else is merging" from "can't reach the coordination
+        //      layer at all" and fall back to file-lock accordingly.
+        "merge-lock" => {
+            let sub = args.get(2).map(|s| s.as_str()).unwrap_or_else(|| {
+                eprintln!("Usage: chump-coord merge-lock {{acquire <holder>|release|status}}");
+                std::process::exit(2);
+            });
+            match sub {
+                "acquire" => {
+                    let holder = args.get(3).map(|s| s.as_str()).unwrap_or_else(|| {
+                        eprintln!("Usage: chump-coord merge-lock acquire <holder>");
+                        std::process::exit(2);
+                    });
+                    match CoordClient::connect().await {
+                        Err(e) => {
+                            eprintln!("[chump-coord] merge-lock: NATS unreachable: {}", e);
+                            std::process::exit(3);
+                        }
+                        Ok(c) => match c.try_acquire_merge_lock(holder).await {
+                            Ok(true) => {
+                                println!("[chump-coord] merge-lock ACQUIRED by {}", holder);
+                                std::process::exit(0);
+                            }
+                            Ok(false) => {
+                                let who = c
+                                    .merge_lock_holder()
+                                    .await
+                                    .ok()
+                                    .flatten()
+                                    .map(|h| h.holder)
+                                    .unwrap_or_else(|| "unknown".to_string());
+                                eprintln!("[chump-coord] merge-lock CONFLICT: held by '{}'", who);
+                                std::process::exit(1);
+                            }
+                            Err(e) => {
+                                eprintln!("[chump-coord] merge-lock: NATS unreachable: {}", e);
+                                std::process::exit(3);
+                            }
+                        },
+                    }
+                }
+                "release" => match CoordClient::connect().await {
+                    Err(e) => {
+                        eprintln!("[chump-coord] merge-lock: NATS unreachable: {}", e);
+                        std::process::exit(3);
+                    }
+                    Ok(c) => match c.release_merge_lock().await {
+                        Ok(()) => {
+                            println!("[chump-coord] merge-lock RELEASED");
+                            std::process::exit(0);
+                        }
+                        Err(e) => {
+                            eprintln!("[chump-coord] merge-lock: NATS unreachable: {}", e);
+                            std::process::exit(3);
+                        }
+                    },
+                },
+                "status" => match CoordClient::connect().await {
+                    Err(e) => {
+                        eprintln!("[chump-coord] merge-lock: NATS unreachable: {}", e);
+                        std::process::exit(3);
+                    }
+                    Ok(c) => match c.merge_lock_holder().await {
+                        Ok(Some(h)) => {
+                            println!(
+                                "[chump-coord] merge-lock HELD by {} since {}",
+                                h.holder, h.acquired_at
+                            );
+                        }
+                        Ok(None) => println!("[chump-coord] merge-lock UNLOCKED"),
+                        Err(e) => {
+                            eprintln!("[chump-coord] merge-lock: NATS unreachable: {}", e);
+                            std::process::exit(3);
+                        }
+                    },
+                },
+                _ => {
+                    eprintln!("Usage: chump-coord merge-lock {{acquire <holder>|release|status}}");
+                    std::process::exit(2);
+                }
+            }
+        }
+
         // ── whois ─────────────────────────────────────────────────────────────
         // INFRA-274: per-gap NATS-side claim lookup. Returns the holding
         // session_id on stdout (so shell can capture it), or empty string
@@ -360,6 +456,123 @@ async fn main() -> Result<()> {
                             );
                         } else {
                             println!("{}: {}", subject, payload);
+                        }
+                    }
+                }
+            }
+        }
+
+        // ── react ─────────────────────────────────────────────────────────────
+        // RESILIENT-334: subscribe to the bus and ACT on WORK_POSTED events as
+        // the primary coordination path (atomic claim triggered by the event,
+        // not by polling `work-board list` on a timer).
+        //
+        // Usage:
+        //   chump-coord react [--task-class <class>] [--once] [--timeout-secs N]
+        //
+        //   --task-class <class>  only claim subtasks whose requirement.task_class
+        //                         matches exactly (default: claim any open subtask)
+        //   --once                exit after the first successful claim (or timeout)
+        //   --timeout-secs N      give up waiting for an event after N seconds
+        //                         (default: run forever)
+        "react" => {
+            use chump_coord::nats_primary::{subscribe_events_with_session, EventFilter};
+            use chump_coord::worker::{react_to_event, ReactOutcome};
+
+            let mut task_class: Option<String> = None;
+            let mut once = false;
+            let mut timeout_secs: Option<u64> = None;
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--task-class" => {
+                        i += 1;
+                        task_class = args.get(i).cloned();
+                    }
+                    "--once" => once = true,
+                    "--timeout-secs" => {
+                        i += 1;
+                        timeout_secs = args.get(i).and_then(|s| s.parse().ok());
+                    }
+                    _ => {}
+                }
+                i += 1;
+            }
+
+            let sess = session_id();
+            let client = match CoordClient::connect_or_skip().await {
+                Some(c) => c,
+                None => {
+                    eprintln!("[chump-coord react] NATS unavailable — cannot react to bus events");
+                    std::process::exit(1);
+                }
+            };
+
+            // WORK_POSTED only ever reaches JetStream, never ambient.jsonl
+            // (work_board has no file-fallback mirror — see work_board.rs
+            // module docs), so the file-only default (CHUMP_A2A_LAYER=0)
+            // would silently never see it. Force the NATS-primary path
+            // unless the caller already opted in explicitly.
+            if env::var("CHUMP_A2A_LAYER").is_err() {
+                env::set_var("CHUMP_A2A_LAYER", "1");
+            }
+
+            // NATS subject filtering for `EventFilter::Kind` assumes the
+            // one-segment `chump.events.<kind>` convention; work-board events
+            // publish on the multi-segment `chump.events.work_board.posted`
+            // subject, so subscribe to everything and post-filter by kind
+            // (react_to_event already ignores anything that isn't WORK_POSTED).
+            let mut stream = subscribe_events_with_session(EventFilter::All, Some(sess.clone()))
+                .await
+                .map_err(|e| anyhow::anyhow!("subscribe failed: {e}"))?;
+
+            println!(
+                "[chump-coord react] session={sess} listening for WORK_POSTED (task_class={})",
+                task_class.as_deref().unwrap_or("any")
+            );
+
+            loop {
+                let next = match timeout_secs {
+                    Some(secs) => {
+                        match tokio::time::timeout(
+                            std::time::Duration::from_secs(secs),
+                            stream.next(),
+                        )
+                        .await
+                        {
+                            Ok(v) => v,
+                            Err(_) => {
+                                eprintln!("[chump-coord react] timed out after {secs}s, exiting");
+                                break;
+                            }
+                        }
+                    }
+                    None => stream.next().await,
+                };
+
+                let Some(event) = next else {
+                    eprintln!("[chump-coord react] event stream closed, exiting");
+                    break;
+                };
+
+                let task_class_ref = task_class.as_deref();
+                let outcome = react_to_event(&client, &event, &sess, |subtask| {
+                    task_class_ref.is_none_or(|tc| subtask.requirement.task_class == tc)
+                })
+                .await?;
+
+                match outcome {
+                    ReactOutcome::Ignored | ReactOutcome::Skipped => {}
+                    ReactOutcome::LostRace => {
+                        println!("[chump-coord react] lost claim race, still listening");
+                    }
+                    ReactOutcome::Claimed(subtask) => {
+                        println!(
+                            "[chump-coord react] CLAIMED {} (parent_gap={}) via bus event",
+                            subtask.subtask_id, subtask.parent_gap
+                        );
+                        if once {
+                            break;
                         }
                     }
                 }
@@ -1181,6 +1394,71 @@ ENVIRONMENT
   CHUMP_SCRATCH_DIR  override storage dir (default: .chump-locks/scratch/)
 "#
                     );
+                }
+            }
+        }
+
+        // ── lease-store (EFFECTIVE-1134) ────────────────────────────────────────
+        // CRUD over a lease record via the unified chump_agent_lease::LeaseStore
+        // abstraction, backed by SQLite. Exercises the Store trait from a real
+        // CLI entry point rather than only from tests.
+        "lease-store" => {
+            use chump_agent_lease::store::sqlite::SqliteLeaseStore;
+            use chump_agent_lease::{LeaseRecord, LeaseStore};
+
+            let db_path = args.get(2).map(|s| s.as_str()).unwrap_or_else(|| {
+                eprintln!(
+                    "Usage: chump-coord lease-store <db-path> <create|read|update|delete> <id> [session_id] [paths_csv] [expires_at]"
+                );
+                std::process::exit(2);
+            });
+            let sub = args.get(3).map(|s| s.as_str()).unwrap_or("");
+            let id = args.get(4).map(|s| s.as_str()).unwrap_or_else(|| {
+                eprintln!("Usage: chump-coord lease-store <db-path> {} <id> ...", sub);
+                std::process::exit(2);
+            });
+
+            let store = SqliteLeaseStore::open(db_path)?;
+            match sub {
+                "create" | "update" => {
+                    let sess = args.get(5).cloned().unwrap_or_else(session_id);
+                    let paths: Vec<String> = args
+                        .get(6)
+                        .map(|s| s.split(',').map(|p| p.trim().to_string()).collect())
+                        .unwrap_or_default();
+                    let expires_at = args
+                        .get(7)
+                        .cloned()
+                        .unwrap_or_else(|| chump_agent_lease::now_rfc3339());
+                    let record = LeaseRecord {
+                        id: id.to_string(),
+                        session_id: sess,
+                        paths,
+                        expires_at,
+                    };
+                    if sub == "create" {
+                        store.create(&record)?;
+                    } else {
+                        store.update(&record)?;
+                    }
+                    println!("{}", serde_json::to_string(&record)?);
+                }
+                "read" => match store.read(id)? {
+                    Some(record) => println!("{}", serde_json::to_string(&record)?),
+                    None => {
+                        eprintln!("[chump-coord] lease-store: no record for id={}", id);
+                        std::process::exit(1);
+                    }
+                },
+                "delete" => {
+                    store.delete(id)?;
+                }
+                other => {
+                    eprintln!(
+                        "Usage: chump-coord lease-store <db-path> <create|read|update|delete> <id> ... (got {:?})",
+                        other
+                    );
+                    std::process::exit(2);
                 }
             }
         }

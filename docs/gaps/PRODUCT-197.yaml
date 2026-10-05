@@ -1,0 +1,14 @@
+- id: PRODUCT-197
+  domain: PRODUCT
+  title: "[almanac] reference-library manifest + refs sync — make external prior art a fleet asset"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - A checked-in manifest (refs.yaml or similar) records domain, repo URL, pinned rev, SPDX license, and why-we-read-it for each external reference repo
+    - "A sync command restores the whole reference library on any machine from the manifest, so refs stop being accidental local artifacts (only 3 exist today: anyhow, codebase-memory-mcp, chatwoot)"
+    - Adding a ref is a reviewable diff rather than an untracked local act
+    - Because refs register as ordinary repos, indexed refs surface in normal search-fleet results — document that this is the compounding property, and that it only holds for parsed languages (see the Ruby/PHP adapter gap)
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

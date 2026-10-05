@@ -14,6 +14,8 @@ metadata: {}
 **I want to verify against runtime state via multiple independent signals before filing a "missing-X" gap**,
 **so that I don't waste 30+ minutes of picker time and erode operator trust by filing misdiagnoses**.
 
+## When to Use
+
 ## When this skill applies
 
 Trigger this skill whenever you are about to:
@@ -21,6 +23,12 @@ Trigger this skill whenever you are about to:
 - Conclude a feature shipped under one gap ID but the gap "doesn't exist"
 - Reference a function/route/command in AC that you haven't directly grep-confirmed
 - Trust a `... | tail | grep | echo $?` chain as evidence of non-existence
+
+## Quick Reference
+
+Before filing a "missing X" gap: run gap-ID lookup, symbol lookup, and
+runtime-surface checks (or `scripts/dev/verify-existence.sh`) — only file on
+`confirmed_absent`.
 
 ## Procedure
 

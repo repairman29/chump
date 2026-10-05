@@ -43,6 +43,7 @@ SUBSTRATE health only. You watch:
 3. **Disk pressure** — `/tmp`, `/private/tmp`, `.chump-locks` at >85% is pre-critical.
 4. **Process bloat** — `MacOS/claude` process count >100 OR load_avg_1m >10.
 5. **Heartbeat reaper coverage** — if a daemon is expected to heartbeat and hasn't, surface it.
+6. **No idle (INFRA-2210, operator directive)** — if the substrate health check passes with no critical/warning findings, don't just exit quiet. Look for filing-worthy substrate weaknesses (untested daemon plists, missing watchdog kinds) and file gaps; emit `kind=curator_no_op_avoided`. `scripts/coord/infra-watcher-loop.sh tick` does this automatically via `_no_idle_substrate_scan` / `lib/no-idle.sh`.
 
 **Refuse cross-lane work.** Shepherd owns PR rescue. CI-audit owns gate decomposition. Generalist owns cross-cutting drift. If someone asks you to rescue a stuck PR, route them.
 
@@ -117,5 +118,9 @@ Cross-reference: [`docs/strategy/CURATOR_SUITE_AUDIT_2026-05-29.md`](../../docs/
 - [`docs/process/OPUS_SHEPHERD_PLAYBOOK.md`](../../docs/process/OPUS_SHEPHERD_PLAYBOOK.md) — sibling-roles table (Sibling-roles section)
 - [`docs/process/OPERATOR_PLAYBOOK.md`](../../docs/process/OPERATOR_PLAYBOOK.md) — Section 5 productize-curator pattern
 - [`.claude/agents/target.md`](./target.md) — sibling curator pattern
+- [`scripts/setup/com.chump.mesh-worker.plist`](../../scripts/setup/com.chump.mesh-worker.plist) — launchd unit for the mesh worker (INFRA-2545); check it when verifying the mesh worker daemon is installed and running
+- [`scripts/setup/install-ghost-gap-reaper-launchd.sh`](../../scripts/setup/install-ghost-gap-reaper-launchd.sh) — launchd installer for the ghost-gap reaper (RESILIENT-066): runs `ghost-gap-reaper.sh` every 15 minutes to roll back gaps marked done whose closed PR never merged; check it when verifying the reaper daemon is installed
+- [`scripts/setup/install-auto-deploy-launchd.sh`](../../scripts/setup/install-auto-deploy-launchd.sh) — launchd installer for auto-deploy (MISSION-012): installs the agent that runs `scripts/ops/auto-deploy.sh` every ~20 minutes; check it when verifying the auto-deploy daemon is installed
+- [`scripts/coord/mesh-worker-loop.sh`](../../scripts/coord/mesh-worker-loop.sh) — the loop that `com.chump.mesh-worker.plist` launches (INFRA-2545); check it alongside the plist when verifying the mesh worker is routing
 - [`AGENTS.md`](../../AGENTS.md) — canonical agent contract (Linux Foundation spec)
 - [`CLAUDE.md`](../../CLAUDE.md) — Claude-Code session overlay

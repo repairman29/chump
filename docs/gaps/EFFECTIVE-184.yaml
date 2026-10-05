@@ -1,13 +1,12 @@
 - id: EFFECTIVE-184
   domain: EFFECTIVE
-  title: 'EFFECTIVE: Wire MISSION-031.yaml into role curator-opus-target'
+  title: "EFFECTIVE: Wire MISSION-031.yaml into role curator-opus-target"
   status: done
   priority: P2
   effort: xs
   acceptance_criteria:
-  - '1. Edit the role-doc for curator-opus-target to reference MISSION-031.yaml (shipped in commit d4a140982eeb) — add it
-    to the Lane scope section or the Cross-references table. 2. Verify with: grep -l ''MISSION-031.yaml'' .claude/agents/*.md
-    CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh.'
-  outcome_id: EFFECTIVE-000
+    - "1. Edit the role-doc for curator-opus-target to reference MISSION-031.yaml (shipped in commit d4a140982eeb) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l 'MISSION-031.yaml' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
   closed_date: '2026-07-25'
   closed_pr: 3268
+  outcome_id: EFFECTIVE-000
+

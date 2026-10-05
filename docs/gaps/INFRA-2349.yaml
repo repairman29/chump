@@ -1,7 +1,7 @@
 - id: INFRA-2349
   domain: INFRA
   title: "auto-processor policy fix: trunk-red gate too defensive — 17 PRs sat for 24h while gate held"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
@@ -9,5 +9,7 @@
     - "TODO: how cost tracked and reported to operator"
     - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
     - "TODO: smoke test command to verify observability"
+    - "receipt 2026-08-19: fix already shipped in #3855 (89267ece, merged 2026-08-16), which added CHUMP_CASCADE_MAX_HOLD_MINUTES (default 120m) to scripts/coord/pr-shepherd-daemon.sh, time-bounding the trunk-red cascade gate so admin-merges/rebases release instead of holding indefinitely. state.db never converged to the yaml mirror (open/no closed_pr); ran chump gap ship --closed-pr 3855 to reconcile."
   outcome_id: MISSION-010
+  closed_pr: 3855
 

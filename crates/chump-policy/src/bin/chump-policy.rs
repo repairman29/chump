@@ -289,6 +289,26 @@ fn cmd_check(args: &[&str]) -> anyhow::Result<()> {
     let lane = parse_lane_flag(args)?;
     let chain = PolicyChain::load(&repo_root(), &home_dir(), lane)?;
     let ts = chrono_like_now();
+
+    // EFFECTIVE-086: the graduated autonomy dial is a *ceiling* layered on
+    // top of this same chain, not a parallel auto-merge mechanism. Levels
+    // 0-2 (STOP/OBSERVE/ASSIST) never auto-merge regardless of what the
+    // fleet/operator/repo/lane policy says; levels 3-5
+    // (SUPERVISED/AUTONOMOUS/UNLEASHED) defer entirely to the chain below.
+    let level = chump_atomic_claim::autonomy_level::current_autonomy_level();
+    if !level.allows_auto_merge() {
+        println!(
+            "{{\"ts\":\"{ts}\",\"kind\":\"auto_merge_policy_blocked\",\
+\"lane\":\"{}\",\"failure_class\":\"autonomy_level_ceiling\",\
+\"reason\":\"AUTONOMY_LEVEL={} ({}) does not permit auto-merge (requires >= 3 SUPERVISED)\",\
+\"contributing\":[]}}",
+            chain.lane_kind.as_str(),
+            i64::from(level),
+            level.name(),
+        );
+        std::process::exit(1);
+    }
+
     match chain.require_auto_merge_allowed() {
         Ok(()) => {
             println!(

@@ -33,6 +33,9 @@ git -C "$FAKE_MAIN" init -q -b main
 git -C "$FAKE_MAIN" config user.email t@t.com
 git -C "$FAKE_MAIN" config user.name t
 cp "$PICKER" "$FAKE_MAIN/scripts/dispatch/"
+# RESILIENT-1114: the picker imports the shared dep-resolution module, so it
+# must travel alongside the picker into the synthetic repo.
+cp "$REPO_ROOT/scripts/dispatch/_dep_resolution.py" "$FAKE_MAIN/scripts/dispatch/"
 git -C "$FAKE_MAIN" add . >/dev/null
 git -C "$FAKE_MAIN" commit -q -m seed
 

@@ -1,0 +1,13 @@
+- id: EFFECTIVE-336
+  domain: EFFECTIVE
+  title: Wire COMPREHEND-mode engine-drive into ChumpBench
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - drive_engine gains a COMPREHEND arm invoking the comprehend engine on the track's repo
+    - a COMPREHEND --apply lap drives instead of bailing 'not wired'
+    - "bench:: nextest tests stay green"
+  closed_date: '2026-07-30'
+  closed_pr: 3424
+

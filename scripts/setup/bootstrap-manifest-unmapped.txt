@@ -47,7 +47,6 @@ install-gap-doctor-cron-launchd.sh                         # 2026-05-24 seed: tr
 install-gh-token-rotate-launchd.sh                         # 2026-05-24 seed: triage pending (operator-secret-dependent)
 install-github-cache-reconcile-launchd.sh                  # 2026-05-24 seed: triage pending
 install-lint-storm-detector-launchd.sh                     # 2026-05-24 seed: triage pending
-install-mission-grade-launchd.sh                           # 2026-05-24 seed: triage pending
 install-operator-leverage-launchd.sh                       # 2026-05-24 seed: triage pending
 install-overnight-research-launchd.sh                      # 2026-05-24 seed: triage pending (opt-in research mode)
 install-pid-invariant-launchd.sh                           # 2026-05-24 seed: triage pending
@@ -71,3 +70,5 @@ install-target-reaper-launchd.sh                           # 2026-05-24 seed: tr
 install-transient-retrigger-launchd.sh                     # 2026-05-24 seed: triage pending (INFRA-1899 sibling)
 install-webhook-receiver-launchd.sh                        # 2026-05-24 seed: triage pending (operator-secret-dependent)
 install-weekly-digest-launchd.sh                           # 2026-05-24 seed: triage pending (opt-in cadence)
+install-bootstrap-auto-launchd.sh                           # INFRA-1808: covered via REQUIRED_DAEMONS in chump-fleet-bootstrap.sh, not the manifest.yaml `install:` pattern this gate scans for
+install-installer-audit-launchd.sh                          # INFRA-2394: opt-in weekly installer-wiring audit, not a fresh-bootstrap requirement

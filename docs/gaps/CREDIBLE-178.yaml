@@ -1,0 +1,13 @@
+- id: CREDIBLE-178
+  domain: CREDIBLE
+  title: "CREDIBLE: gap auto-close doesn't check AC coverage → gaps flip to done while scoped work partial (label drift: INFRA-3490/3489/3516)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"gap auto-close doesn't check AC coverage → gaps flip to done while scoped work partial (label drift: INFRA-3490/3489/3516)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3411
+

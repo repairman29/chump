@@ -2,7 +2,7 @@
   domain: META
   title: "META: Set Up Admin-Merge Ratio Monitoring (META-131 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - A dashboard or report exists to track the admin-merge ratio for the `main` branch.

@@ -6,6 +6,12 @@
 //!
 //! ## Gates (ALL must pass to merge)
 //!
+//! 0. **Comprehension organs (opt-in, INFRA-3470)** — when
+//!    `CHUMP_VERIFY_COMPREHEND_GATE=1`, runs the comprehend organs
+//!    (`crate::comprehend_gate`) against the PR head and HELDs on any
+//!    high-severity structured finding (DRIFT / MISSING / zero-coverage
+//!    organ). Fails open when the comprehend binary isn't installed.
+//!
 //! 1. **Repo CI green** — polls the PR head SHA's check-runs until ALL
 //!    non-advisory checks reach a **terminal** conclusion, then judges:
 //!    - All SUCCESS / SKIPPED / NEUTRAL → PASS.
@@ -176,6 +182,25 @@ fn run_inner(args: &[String]) -> anyhow::Result<i32> {
 
     ensure_clone(&clone_dir, &opts.repo, &opts.gh_bin)?;
     fetch_refs(&clone_dir, &base_sha, &head_sha)?;
+
+    // ── Gate 0 (opt-in): comprehension organs ────────────────────────────
+    // INFRA-3470: structured findings from the comprehend organs can HELD a
+    // merge before the expensive test gates run. Opt-in
+    // (CHUMP_VERIFY_COMPREHEND_GATE=1) and fails open when the comprehend
+    // binary isn't installed — an absent organ is a coverage gap, not a
+    // reason to block every external_repo PR.
+    if crate::comprehend_gate::gate_enabled() {
+        println!("\n[verify-merge] Gate 0: comprehension organs (opt-in) ...");
+        git_checkout_detach(&clone_dir, &head_sha)?;
+        if let Some(reason) = crate::comprehend_gate::run_gate(&clone_dir)? {
+            println!("  FAIL: {reason}");
+            emit_held(&opts, &reason);
+            println!("\nVerdict: HELD(comprehend)");
+            println!("  {reason}");
+            return Ok(1);
+        }
+        println!("  PASS: no high-severity organ findings");
+    }
 
     // ── Gate 2: Anti-cosmetic test gate ──────────────────────────────────
     println!("\n[verify-merge] Gate 2: Anti-cosmetic test gate ...");
@@ -625,6 +650,10 @@ fn print_usage() {
     println!("in the response body. Proves the LIVE outcome, not just the repo checkout.");
     println!("Never gates the merge (already happened); emits");
     println!("kind=outcome_probe_verified / outcome_probe_failed to ambient.jsonl.");
+    println!("Set CHUMP_OUTCOME_PROBE_RENDER=1 to render the URL through headless");
+    println!("Chromium (--dump-dom) instead of a raw curl fetch, so the substring");
+    println!("check sees post-JS DOM content (needed for SPAs). Falls back to curl");
+    println!("automatically if no Chromium binary is found or the render fails.");
     println!();
     println!("Kill-switch: CHUMP_EXTERNAL_VERIFY_MERGE_DISABLED=1");
     println!("Deps timeout: CHUMP_VERIFY_DEPS_TIMEOUT_SECS (default 600)");
@@ -1789,11 +1818,24 @@ fn synth_ac_for_pr(opts: &Opts) -> Option<Vec<String>> {
         .args(["pr", "diff", &pr, "--repo", &opts.repo])
         .output()
         .ok()?;
-    let diff_ctx: String = String::from_utf8_lossy(&diff.stdout)
-        .chars()
-        .take(40_000)
-        .collect();
-    crate::pr_ac_coverage::generate_ac(title, body, &diff_ctx)
+    let full_diff = String::from_utf8_lossy(&diff.stdout).into_owned();
+    let diff_ctx: String = full_diff.chars().take(40_000).collect();
+    let mut bullets =
+        crate::pr_ac_coverage::generate_ac(title, body, &diff_ctx).unwrap_or_default();
+    // PEER-VERI-08 (INFRA-3655) AC#1: a diff touching a systemd unit, install
+    // script, or deploy path gets a PROVEN-BY bullet injected even when the
+    // LLM writer didn't think to add one — liveness can't be skipped by
+    // omission. Scanned against the FULL diff (not the 40k-char-truncated
+    // LLM context) so a proof target beyond the truncation point is still
+    // found. Docs-only diffs (no service surface touched) get none.
+    if let Some(proof) = crate::pr_ac_coverage::maybe_inject_proof_ac(&full_diff, &bullets) {
+        bullets.push(proof);
+    }
+    if bullets.is_empty() {
+        None
+    } else {
+        Some(bullets)
+    }
 }
 
 // ── Post-merge LIVE outcome probe (CREDIBLE-COTG-3.1) ───────────────────────
@@ -1837,6 +1879,95 @@ fn fetch_url_for_probe(url: &str, curl_bin: &str) -> anyhow::Result<String> {
     Ok(String::from_utf8_lossy(&out.stdout).into_owned())
 }
 
+// ── CREDIBLE-COTG-3.1 finish: real-CDP outcome probe ────────────────────────
+//
+// `fetch_url_for_probe` (curl) only sees the server's initial response body —
+// on a JS-rendered SPA the `--outcome-probe-contains` substring may only
+// exist in the client-rendered DOM, never in the raw HTML curl sees. That
+// makes the probe blind to the exact class of "shipped but doesn't actually
+// work live" bug it exists to catch on modern frontends. Promote to a real
+// headless-Chromium render (`--dump-dom`, same CDP-backed engine src/browser.rs
+// already shells out to for screenshots) so the probe sees what a user's
+// browser would. Opt-in (CHUMP_OUTCOME_PROBE_RENDER=1) and falls back to curl
+// on any failure (missing binary, timeout, non-zero exit) so a broken/absent
+// Chromium never turns a passing probe into a false HELD — the merge has
+// already happened, so a fetch failure must never be silently treated as
+// probe failure when a working fallback exists.
+
+/// Locate a headless-Chromium-family binary, honoring `CHUMP_CHROMIUM_BIN`
+/// as an override. Returns `None` if nothing usable is on PATH.
+fn find_chromium_bin() -> Option<String> {
+    if let Ok(bin) = std::env::var("CHUMP_CHROMIUM_BIN") {
+        if !bin.is_empty() {
+            return Some(bin);
+        }
+    }
+    [
+        "chromium",
+        "chromium-browser",
+        "google-chrome",
+        "google-chrome-stable",
+    ]
+    .iter()
+    .find(|b| {
+        Command::new("which")
+            .arg(b)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false)
+    })
+    .map(|b| b.to_string())
+}
+
+/// Render `url` through headless Chromium and return the post-JS DOM as text
+/// (`--dump-dom`). Real CDP-backed rendering — same engine as `simple_screenshot`
+/// in `src/browser.rs`, no chromiumoxide dep needed for this text-only use case.
+fn render_url_via_chromium(
+    url: &str,
+    chromium_bin: &str,
+    timeout_secs: u64,
+) -> anyhow::Result<String> {
+    let mut child = Command::new(chromium_bin)
+        .args([
+            "--headless=new",
+            "--no-sandbox",
+            "--disable-gpu",
+            "--virtual-time-budget=8000",
+            "--dump-dom",
+            url,
+        ])
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|e| anyhow::anyhow!("failed to spawn {chromium_bin}: {e}"))?;
+
+    let deadline = std::time::Duration::from_secs(timeout_secs);
+    let start = std::time::Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(status)) => {
+                let out = child.wait_with_output()?;
+                if !status.success() {
+                    anyhow::bail!(
+                        "{chromium_bin} --dump-dom exited {}: {}",
+                        status,
+                        String::from_utf8_lossy(&out.stderr)
+                    );
+                }
+                return Ok(String::from_utf8_lossy(&out.stdout).into_owned());
+            }
+            Ok(None) => {
+                if start.elapsed() >= deadline {
+                    let _ = child.kill();
+                    anyhow::bail!("{chromium_bin} --dump-dom timed out after {timeout_secs}s");
+                }
+                std::thread::sleep(std::time::Duration::from_millis(200));
+            }
+            Err(e) => anyhow::bail!("{chromium_bin} wait error: {e}"),
+        }
+    }
+}
+
 /// Runs the post-merge outcome probe if configured; no-ops if the opts don't
 /// carry `outcome_probe_url` + `outcome_probe_contains`. Never returns an
 /// error to the caller — a probe failure is logged + emitted to ambient, but
@@ -1847,16 +1978,65 @@ fn run_outcome_probe(opts: &Opts) {
         return;
     };
 
-    println!("\n[verify-merge] Outcome probe: fetching {url} ...");
-    let curl_bin = std::env::var("CHUMP_CURL_BIN").unwrap_or_else(|_| "curl".to_string());
-    match fetch_url_for_probe(url, &curl_bin) {
+    // CREDIBLE-COTG-3.1: opt-in CDP-rendered fetch, falling back to curl.
+    let render_enabled = std::env::var("CHUMP_OUTCOME_PROBE_RENDER").as_deref() == Ok("1");
+    let render_timeout: u64 = std::env::var("CHUMP_OUTCOME_PROBE_RENDER_TIMEOUT_SECS")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(30);
+
+    let curl_fallback = |reason: Option<&str>| -> anyhow::Result<String> {
+        if let Some(r) = reason {
+            println!(
+                "\n[verify-merge] Outcome probe: {r} — falling back to curl fetch of {url} ..."
+            );
+        } else {
+            println!("\n[verify-merge] Outcome probe: fetching {url} ...");
+        }
+        let curl_bin = std::env::var("CHUMP_CURL_BIN").unwrap_or_else(|_| "curl".to_string());
+        fetch_url_for_probe(url, &curl_bin)
+    };
+
+    let mut method = "curl";
+    let body_result: anyhow::Result<String> = if render_enabled {
+        match find_chromium_bin() {
+            Some(bin) => {
+                println!(
+                    "\n[verify-merge] Outcome probe: rendering {url} via headless Chromium ({bin}) ..."
+                );
+                match render_url_via_chromium(url, &bin, render_timeout) {
+                    Ok(dom) => {
+                        method = "browser";
+                        Ok(dom)
+                    }
+                    Err(e) => curl_fallback(Some(&format!("browser render failed ({e:#})"))),
+                }
+            }
+            None => curl_fallback(Some(
+                "CHUMP_OUTCOME_PROBE_RENDER=1 but no Chromium binary found",
+            )),
+        }
+    } else {
+        curl_fallback(None)
+    };
+
+    match body_result {
         Ok(body) => {
             if outcome_probe_matches(&body, expected) {
-                println!("  PASS: live outcome confirmed (found {expected:?} at {url})");
-                emit_outcome_probe(opts, url, true, "match found");
+                println!(
+                    "  PASS: live outcome confirmed via {method} (found {expected:?} at {url})"
+                );
+                emit_outcome_probe(opts, url, true, &format!("match found via {method}"));
             } else {
-                println!("  FAIL: live outcome NOT confirmed — {expected:?} not found at {url}");
-                emit_outcome_probe(opts, url, false, "substring not found in probe response");
+                println!(
+                    "  FAIL: live outcome NOT confirmed via {method} — {expected:?} not found at {url}"
+                );
+                emit_outcome_probe(
+                    opts,
+                    url,
+                    false,
+                    &format!("substring not found in probe response (method={method})"),
+                );
             }
         }
         Err(e) => {
@@ -2978,5 +3158,67 @@ exit 0
         // No url/contains configured — must not attempt any I/O or panic.
         let opts = make_opts("gh");
         run_outcome_probe(&opts);
+    }
+
+    // ── CREDIBLE-COTG-3.1: real-CDP render promotion ────────────────────────
+
+    #[test]
+    #[serial_test::serial]
+    fn find_chromium_bin_honors_env_override() {
+        std::env::set_var("CHUMP_CHROMIUM_BIN", "/opt/custom/my-chromium");
+        let found = find_chromium_bin();
+        std::env::remove_var("CHUMP_CHROMIUM_BIN");
+        assert_eq!(found.as_deref(), Some("/opt/custom/my-chromium"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn find_chromium_bin_empty_override_falls_through_to_path_search() {
+        // An empty override must not be treated as "found" — fall through to
+        // the PATH search (which may legitimately find nothing on CI boxes).
+        std::env::set_var("CHUMP_CHROMIUM_BIN", "");
+        let found = find_chromium_bin();
+        std::env::remove_var("CHUMP_CHROMIUM_BIN");
+        // Whatever the PATH search returns, it must never be the empty string.
+        if let Some(bin) = found {
+            assert!(!bin.is_empty());
+        }
+    }
+
+    #[test]
+    fn render_url_via_chromium_errors_on_missing_binary() {
+        let err = render_url_via_chromium(
+            "https://example.com",
+            "__chump_nonexistent_chromium_xyz__",
+            5,
+        )
+        .unwrap_err();
+        assert!(err.to_string().contains("failed to spawn"));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn run_outcome_probe_render_falls_back_to_curl_when_no_chromium() {
+        let tmp = tempfile::tempdir().expect("tmpdir");
+        std::env::set_var("CHUMP_OUTCOME_PROBE_RENDER", "1");
+        std::env::set_var("CHUMP_CHROMIUM_BIN", "");
+        std::env::set_var("CHUMP_CURL_BIN", "__chump_nonexistent_curl_xyz__");
+        std::env::set_var(
+            "CHUMP_AMBIENT_IN_PROMPT",
+            tmp.path().join("ambient.jsonl").to_string_lossy().as_ref(),
+        );
+
+        let mut opts = make_opts("gh");
+        opts.outcome_probe_url = Some("https://example.com".to_string());
+        opts.outcome_probe_contains = Some("hello".to_string());
+
+        // Must not panic even though both the render path and the curl
+        // fallback are unavailable — a probe failure is logged/emitted, never
+        // a crash (the merge already happened by the time this runs).
+        run_outcome_probe(&opts);
+
+        std::env::remove_var("CHUMP_OUTCOME_PROBE_RENDER");
+        std::env::remove_var("CHUMP_CHROMIUM_BIN");
+        std::env::remove_var("CHUMP_CURL_BIN");
     }
 }

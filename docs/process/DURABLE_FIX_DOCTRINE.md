@@ -145,6 +145,118 @@ If any box is empty, you are not done.
 
 ---
 
+## Case study: the docs/gaps YAML-rewrite cycle (EFFECTIVE-219)
+
+The 2026-06-05 RESILIENT-110 ship attempt hit a variant of the same lie in a
+different guise: it kept getting forced into a `docs/gaps/<ID>.yaml` rewrite
+cycle mid-ship. The proximate cause looked like "some background daemon is
+deleting the YAML mirror between reserve and claim" — a band-aid response
+would have been to just keep re-running `chump gap dump --per-file` to paper
+over the churn every time it happened, never asking why the file kept
+disappearing.
+
+The durable-fix investigation (EFFECTIVE-219) surveyed every drift-repair
+surface that touches `docs/gaps/*.yaml` — `scripts/coord/gap-doctor.py`
+safe-sweep, `crates/chump-gap-store/src/sync.rs`,
+`crates/chump-gap-store/src/maintenance/doctor.rs` — and found that **none
+of them ever deleted an orphaned mirror file**; bucket 4 (YAML present, no
+`state.db` row) was always ALERT-only. The actual root cause of the
+YAML-rewrite churn was upstream and had already been fixed by **ZERO-WASTE-020**
+(#3215, landed 2026-07-20): `chump gap reserve` used to write the per-file
+mirror at reserve time and only commit the DB row afterward, leaving a real
+window where a sibling sweep could see "YAML with no DB row yet" and treat it
+as bucket 4. ZERO-WASTE-020 retired the reserve-time YAML write entirely —
+state.db is the sole write target at reserve, closing the window at the
+source instead of teaching every reader to tolerate it.
+
+EFFECTIVE-219's own contribution was defense-in-depth for the *general*
+class, not just this one instance: `gap-doctor.py safe-sweep` gained an
+opt-in `--prune-orphans` mode that deletes bucket-4 files, but only after a
+**fresh** `state.db` re-check performed immediately before each delete — if
+a row has appeared since the sweep's snapshot, the file is rewritten from
+state.db instead of deleted, and a `kind=yaml_orphan_pruned` ambient event
+records every actual delete. STATE WINS is now enforced in code, not just
+asserted in this doc. See `scripts/ci/test-yaml-orphan-prune-state-aware.sh`
+for the regression guard.
+
+---
+
+## Case study: the AUTH_DEAD-spam sequence (RESILIENT-113)
+
+The 2026-06-05 AUTH_DEAD-spam incident is a sharper teaching example of the
+same lesson as the sccache case study: **agents stop at the first plausible
+theory and run with it.** The session shipped three wrong theories before
+finding the durable fix — each one a band-aid that would have unblocked *this*
+session while leaving the real breakage for the next agent.
+
+**Theory 1 (band-aid, filed as RESILIENT-115 #3089):** "farmer.sh should do a
+shallow auth check and tell the operator to work around it." Filed from 4 lines
+of source — a surface-level patch that routes *around* the failure instead of
+fixing it. The DURABLE_FIX_DOCTRINE.md self-check would have caught this at
+theory 1 if the session had actually run it.
+
+**Theory 2 (wrong diagnosis):** "Keychain has no Claude entry." Refuted by
+running `security dump-keychain | grep -i claude` — the entries were present
+and valid. The session jumped to a Keychain theory without verifying the
+premise.
+
+**Theory 3 (wrong diagnosis):** "Rename Keychain service from `Claude
+Code-credentials` to `Claude Safe Storage`." Refuted by reading the 24-char
+base64 blob — it was Electron's `safeStorage` encryption key, not OAuth tokens.
+The session was about to mutate Keychain state based on a misread of the data.
+
+**Theory 4 (the durable fix, RESILIENT-113 #3090):** "`farmer.sh check_auth`
+doesn't know about the `api-key` fallback path." Empirically verified: the
+check only probed OAuth, so a valid `ANTHROPIC_API_KEY` in `.env` was ignored
+and the script reported auth dead. The durable fix taught `check_auth` to try
+the API-key path when OAuth is absent, closing the gap at the source instead of
+patching around it.
+
+**The lesson:** All four theories were *plausible*. The first three were wrong.
+The session shipped each one as a fix without verifying the causal chain — the
+same pattern as `RUSTC_WRAPPER=` in the sccache incident. A pre-workaround
+self-check at Theory 1 would have forced the session to ask "does this fix the
+cause, or hide it?" and "who inherits the breakage?" — and the answer would
+have been "every other agent whose auth check silently ignores the API-key
+fallback."
+
+**Cross-ref:** Durable fix — [RESILIENT-113 #3090](https://github.com/example/resilient-113/pull/3090).
+Band-aid (closed, superseded) — [RESILIENT-115 #3089](https://github.com/example/resilient-115/pull/3089).
+Regression guard: `scripts/ci/test-farmer-check-auth.sh`.
+
+---
+
+## Case study: the single-transient-error sccache band-aid (CREDIBLE-117)
+
+On 2026-06-05 (~23:35Z) a subagent shipping CREDIBLE-107 (Gate 1 of the
+diagnose-before-file hardening, CREDIBLE-106) hit one `sccache: encountered
+fatal error` during a local build and unblocked itself with `RUSTC_WRAPPER=''`
+— the verbatim band-aid from the sccache incident at the top of this doc, applied
+by the very work meant to prevent it.
+
+**Reality-check (REFUTED):** `sccache --show-stats` over the session showed
+2242 hits / 4175 misses / 8122 requests, and the ambient stream held zero
+fleet-wide sccache failure events in its last 100 lines. sccache was healthy;
+one transient error was promoted to a root-cause theory and "fixed" by
+disabling the tool.
+
+**Why Gate 1 would not have caught it:** Gate 1 (`gap reserve --evidence`)
+guards gap *filings*. This band-aid was a workaround applied in a build/CI
+path, never filed as a gap, so no evidence prompt ever fired.
+
+**Coverage lesson:** the hard-gate set needs two more pieces beyond Gate 1:
+- **Gate 2** (CREDIBLE-108, halt-class-emit wrapper) for alarm-class emitters, and
+- **Gate 4 — workaround-application audit:** applying a known band-aid
+  (`RUSTC_WRAPPER=''`, `--no-verify`, re-run-until-green, disabling a cache) must
+  itself require a recorded diagnosis (stats, logs, a reproduction) or a
+  bypass trailer. Without it, workarounds remain an unguarded surface.
+
+**The lesson:** one error is an observation, not a diagnosis. Before any
+workaround, run the pre-workaround test (above) and check whether the failure
+reproduces and is fleet-wide.
+
+---
+
 ## See also
 
 - [`REALITY_CHECK.md`](./REALITY_CHECK.md) (CREDIBLE-090) — signal ≠ outcome; the

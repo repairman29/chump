@@ -198,6 +198,14 @@ PY
   log "  stage 2 PR: $pr_url"
 }
 
+action_advance_to_design_pass() {
+  log "STAGE design-pass: CI job placeholder for design-pass (EFFECTIVE-358 slice)"
+  emit "stage_design_pass" "started" "placeholder gate — no spec produced"
+  echo "design-pass: no spec produced — this CI job is a placeholder pending EFFECTIVE-358 design-pass stage implementation" >&2
+  emit "stage_design_pass" "failed_placeholder" "no spec produced"
+  return 1
+}
+
 action_advance_to_acp_smoke() {
   log "STAGE 3: pushing migration PR for ACP smoke (editor-integration.yml)"
   emit "stage_3_migrate_acp_smoke" "started" "pushing PR"
@@ -343,6 +351,7 @@ case "${1:-}" in
   --status) cmd_status ;;
   --reset)  rm -f "$STATE_FILE"; echo "reset to stage_0";;
   -h|--help) sed -n '2,/^$/p' "$0" | sed 's/^# \?//'; exit 0 ;;
+  design-pass) action_advance_to_design_pass ;;
   "")       tick ;;
   *)        echo "Unknown arg: $1"; exit 1 ;;
 esac

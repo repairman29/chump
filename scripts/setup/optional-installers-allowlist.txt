@@ -3,9 +3,15 @@
 # intentional: situational daemons, dev-convenience tools, or opt-in runners.
 # Operator audits this list; to promote, add to REQUIRED_DAEMONS in
 # chump-fleet-bootstrap.sh. To remove, move to deprecated-installers-allowlist.txt.
+install-a2a-dead-letter-reaper-launchd.sh
 install-active-target-reaper-launchd.sh
 install-allowlist-audit-launchd.sh
+install-almanac-organ.sh
+install-almanac-summarize-watchdog.sh
+install-index-almanac-timer.sh
+install-fleet-clone-index-timer.sh
 install-ambient-hooks.sh
+install-gap-substrate.sh
 install-ambient-rotate-launchd.sh
 install-api-cost-digest-launchd.sh
 install-audit-bypass-launchd.sh
@@ -14,6 +20,7 @@ install-autonomous-mode-launchd.sh
 install-binary-refresh-launchd.sh
 install-branch-protection-drift-launchd.sh
 install-cargo-target-reaper-launchd.sh
+install-chump-consensus-launchd.sh
 install-chump-fleet-daemon.sh
 install-chump-planner-launchd.sh
 install-ci-flake-rerun-launchd.sh
@@ -79,6 +86,10 @@ install-stale-gap-lock-reaper-launchd.sh
 install-stale-pr-reaper-launchd.sh
 install-stale-pr-rebase-bot.sh
 install-stale-worktree-reaper-launchd.sh
+# RESILIENT-1444: Linux-node counterpart to install-stale-worktree-reaper-launchd.sh
+# (systemd user timer). Opt-in per Linux coordinator node (e.g. CJ) so abandoned
+# rc=1 worktrees actually get reaped — the launchd-only installer never runs there.
+install-stale-worktree-reaper-systemd.sh
 install-stuck-pr-filer-launchd.sh
 install-syspolicyd-doctor-launchd.sh
 install-system-invariants-launchd.sh
@@ -92,6 +103,7 @@ install-distill-pr-skills-launchd.sh
 install-oracle-refresh-launchd.sh
 install-pr-pulse-consumer-launchd.sh
 install-refresh-runner-binary-launchd.sh
+install-refresh-almanac-binary-launchd.sh
 install-fleet-autopilot-launchd.sh
 install-cluster-detector-launchd.sh
 install-wedge-state-machine-launchd.sh
@@ -102,6 +114,7 @@ install-post-push-integrity-launchd.sh
 install-wizard-daemon-launchd.sh
 install-fleet-recorder-launchd.sh
 install-fleet-server.sh
+install-fleet-server-node.sh
 install-chump-integrator-launchd.sh
 install-post-integration-prune-launchd.sh
 install-auto-merge-rearm-daemon.sh
@@ -117,6 +130,7 @@ install-checkout-sync-launchd.sh
 install-node-refresh-systemd.sh
 install-opencode-harness.sh
 install-armed-pr-rebaser-launchd.sh
+install-keep-mergeable-organ-launchd.sh
 install-conflict-resolution-consumer-launchd.sh
 install-discord-gateway.sh
 # reason: RESILIENT-256 — writes PreToolUse hooks into USER-scope
@@ -138,3 +152,48 @@ install-fast-linker.sh
 # docs/process/LINUX_NODE_ONBOARDING.md when standing up/rebuilding the
 # primary shipping node.
 install-helsinki-atc.sh
+
+# reason: INFRA-2394 — weekly re-run of the installer-wiring audit
+# (scripts/audit/audit-launchd-installers.sh). Situational/opt-in: useful
+# on any machine that wants a standing WIRED/DOCUMENTED/UNWIRED report, but
+# not required for fresh-bootstrap correctness.
+install-installer-audit-launchd.sh
+
+# reason: RESILIENT-315 / RESILIENT-318 — Linux/systemd installer for the
+# Batched Merge Train (chump-integrator). Node-specific bring-up, not a
+# fresh-bootstrap requirement: the primary node gets it via the ATC roster
+# (install-helsinki-atc.sh SYSTEM_UNITS + organ-manifest.txt), and a laptop
+# dev checkout has no business enabling it. Run manually per
+# docs/process/SCALING.md / LINUX_NODE_ONBOARDING.md to install it standalone.
+install-integrator-daemon-systemd.sh
+install-ceo-shadow-launchd.sh
+install-node-housekeeping.sh
+
+# RESILIENT-410 (AC-C): Linux-node OAuth token freshness refresher (systemd user timer).
+# Opt-in per Linux node (e.g. CJ) so the fleet survives the Mac powering off.
+install-oauth-refresh-systemd.sh
+# reason: RESILIENT-403 — situational almanac clone/build/install; called
+# on-demand by install-almanac-organ.sh when a node has no checkout yet, not
+# a universal fresh-bootstrap requirement (a node without almanac still
+# functions, gap-reserve dedupe just degrades gracefully).
+install-almanac.sh
+# RESILIENT-1052 — anti-Memento fleet-health sentinel --user timer (per-node organ; also lands via chump-node-install common_organs)
+install-fleet-health-sentinel.sh
+# INFRA-7303 (INFRA-6804 / INFRA-3631 slice) — situational PostgREST
+# binary+conf install, called on-demand by install-gap-substrate.sh's
+# broader postgres+postgrest provisioning flow, not a universal
+# fresh-bootstrap requirement.
+install-postgrest.sh
+
+# RESILIENT-1436 — systemd --user supervision for CJ's hand-placed
+# ~/cj-worker-run.sh / cj-disk-monitor-run.sh / cj-sync-run.sh, a
+# host-specific asset per organ-manifest.txt's file: requires= idiom. Skips
+# cleanly (no-op) on any node where those run-scripts don't exist, so it is
+# situational/opt-in, not a universal fresh-bootstrap requirement.
+install-cj-core-organs.sh
+
+# INFRA-1495 — hourly state-db-yaml-sync.sh cadence. Defaults to --dry-run
+# (report-only); the operator opts into --apply once the sweep has run clean
+# for a while (CHUMP_STATE_DB_YAML_SYNC_MODE). Not a universal fresh-bootstrap
+# requirement — YAML mirrors are optional post-INFRA-760.
+install-state-db-yaml-sync-launchd.sh

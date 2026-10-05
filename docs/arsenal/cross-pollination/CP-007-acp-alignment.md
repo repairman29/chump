@@ -1,229 +1,186 @@
-# CP-007: Align Chump coord layer with Agent Client Protocol (ACP)
+# CP-007: ACP (Agent Client Protocol) alignment audit
 
-**Target:** Chump coord layer (`crates/chump-coord/`, INFRA-1118/1119/1120/1121 A2A
-layers, INFRA-1758/1759/1761/1802/1803 in-flight foundation slices)
-**Arsenal match:** `repairman29/registry` — a stale fork of
-`agentclientprotocol/registry`, the Zed-led editor↔agent standard
-**Recommended route:** **(c) Ignore — continue independent path, with one
-narrow exception** (file a follow-up to add an ACP shim *as an inbound
-adapter*, not as the coord layer's wire shape)
-**Status:** proposed (2026-05-23, INFRA-1822)
+**Source repo:** [`agentclientprotocol/registry`](https://github.com/agentclientprotocol/registry) (upstream)
+**Fork under audit:** [`repairman29/registry`](https://github.com/repairman29/registry)
+**Parent gap:** INFRA-1822 (verdict recorded in `docs/arsenal/HARVEST_ROADMAP.md:134`)
+**This slice:** INFRA-5876 — fork-status verification + spec-surface documentation
 
----
+## 1. Fork status vs. upstream HEAD
 
-## The Target
-
-Chump is building an **agent-to-agent (A2A) coordination layer** in
-`crates/chump-coord/`. Today the crate has 9 source modules and 11 integration
-tests:
+Verified live via `gh api` (no local clone exists on this machine — `local_clone: null` in `GLOBAL_ARSENAL.json`):
 
 ```
-crates/chump-coord/src/
-  lib.rs           — CoordClient (NATS connect, atomic gap claims, event emit)
-  events.rs        — A2A Layer 1a pub/sub (INFRA-1758, foundation slice 1/4)
-  rpc.rs           — A2A Layer 2b RPC (INFRA-1759, foundation slice 1/4)
-  capability.rs    — A2A Layer 2c capability manifest (INFRA-1760, slice 1/4)
-  scratchpad.rs    — A2A Layer 3d shared KV scratchpad (INFRA-1761, slice 1/4)
-  assign.rs        — push-routing daemon (FLEET-034)
-  work_board.rs    — FLEET-008 shared subtask queue
-  help_request.rs  — FLEET-010 help-seeking protocol
+$ gh api repos/repairman29/registry --jq '{fork, parent: .parent.full_name, archived, pushed_at}'
+{"fork": true, "parent": "agentclientprotocol/registry", "archived": true, "pushed_at": "2026-05-16T01:46:54Z"}
+
+$ gh api repos/agentclientprotocol/registry/compare/main...repairman29:registry:main --jq '{ahead_by, behind_by, status}'
+{"ahead_by": 0, "behind_by": 1164, "status": "behind"}
 ```
 
-The wire shape is **NATS-native** (JetStream subjects, KV buckets) with file
-fallback (`.chump-locks/ambient.jsonl`) when NATS is unreachable. The problem
-domain is *fleet-internal*: many Opus/Sonnet/Haiku worker sessions on one
-operator's box (and eventually a Pi mesh) racing to claim gaps, posting help
-requests, propagating lessons, sharing scratchpad state. There is no
-"editor" in the picture.
+| Field | Value |
+|---|---|
+| `repairman29/registry.main` vs. `agentclientprotocol/registry.main` | **0 ahead / 1164 behind** |
+| Fork `archived` | `true` |
+| Fork last push | 2026-05-16T01:46:54Z |
+| Upstream last push | 2026-09-25T15:44:23Z (still active — hourly auto-update cron per upstream README) |
 
-In flight right now (5 active sibling leases): foundation slices 1/4 for
-Layers 1a, 2b, 2c, and 3d (all type-only stubs) plus push-routing.
+**Note on the gap's stated numbers:** INFRA-5876's acceptance criteria (and the
+INFRA-1822 harvest notes) recorded **276 behind** as of the original scan
+(~2026-05-23). The fork's `main` branch has been static since 2026-05-16
+(it is `archived`, so it can no longer receive pushes), while upstream has
+kept advancing on its hourly version-bump cron. The literal "0 ahead / 276
+behind" snapshot is stale by construction — re-running the same compare today
+yields **1164 behind**, and that number will keep growing every hour the fork
+stays archived. Treat "behind count" as a live metric, not a fixed fact:
+re-run the `gh api .../compare/...` call above before citing a number.
 
-## The Arsenal Match (and the upstream ACP standard)
+**Verdict is unchanged despite the drift:** the fork is a dead, read-only
+snapshot (GitHub archives forks; you cannot push to `repairman29/registry`
+main). It tracks zero local commits ahead of upstream — i.e. it was never
+used to stage independent registry changes on `main`. Any actual outbound
+contribution work happened on **branches**, not `main` (see §4).
 
-The Harvester catalog flagged `repairman29/registry`. Investigation reveals:
+## 2. Upstream repo shape (as of 2026-09-25)
 
-- **Fork status:** confirmed fork of `agentclientprotocol/registry` (parent
-  in API response: `agentclientprotocol/registry`, id 1118231591).
-- **Divergence direction (correction):** the catalog claim of *"276 commits
-  ahead, 0 behind"* is inverted. `gh api repos/agentclientprotocol/registry/compare/agentclientprotocol:main...repairman29:main`
-  returns `status: behind, ahead_by: 0, behind_by: 276, total_commits: 0`.
-  Jeff's fork sits at commit `bcc37d4` (2026-04-16T01:46Z, "Update
-  github-copilot-cli to 1.0.28") with **zero original commits**. Upstream
-  marched 276 commits after the fork point — almost all hourly cron updates
-  ("Update <agent> to <version>") plus a few release/CI tweaks (e.g.
-  `55b484c` "Include registry-for-jetbrains.json in GitHub release").
-- **Net:** there is no Jeff-authored divergence to harvest. The fork was
-  taken once and never touched.
-
-Upstream **ACP** itself (the protocol, repo `agentclientprotocol/agent-client-protocol`,
-3.2k stars, 254 forks, Rust, last updated 2026-05-23) is well-described by its
-own README banner from `zed.dev/img/acp/banner-dark.webp`:
-
-> "The Agent Client Protocol (ACP) standardizes communication between
-> *code editors* (interactive programs for viewing and editing source code)
-> and *coding agents* (programs that use generative AI to autonomously
-> modify code)."
-
-The protocol is **JSON-RPC 2.0 over stdio**. The method surface from
-`schema/meta.json` (v1):
+Root contents relevant to the spec surface:
 
 ```
-agentMethods:   initialize, authenticate, logout,
-                session/new, session/load, session/resume, session/list,
-                session/prompt, session/cancel, session/close,
-                session/set_config_option, session/set_mode
-clientMethods:  fs/read_text_file, fs/write_text_file,
-                session/request_permission, session/update,
-                terminal/create, terminal/output, terminal/wait_for_exit,
-                terminal/kill, terminal/release
+agent.schema.json       # per-agent entry schema (draft-07 JSON Schema)
+registry.schema.json    # aggregated registry index schema
+FORMAT.md               # registry format + preview-channel semantics
+AUTHENTICATION.md       # auth method requirements (Agent Auth / Terminal Auth)
+CONTRIBUTING.md         # registration flow + CI validation rules
+quarantine.json         # agents temporarily excluded from the build (id -> reason)
+<agent-id>/agent.json   # one directory per registered agent
+<agent-id>/icon.svg      # 16x16 monochrome icon, currentColor only
 ```
 
-The `registry` repo just lists agents that *implement* this protocol (current
-membership: claude-acp, codex-acp, gemini, cursor, opencode, goose, github-copilot,
-auggie, factory-droid, kimi, kilo, qwen-code, etc., each as a directory with
-metadata). The registry distributes binaries (`darwin-aarch64`, `linux-x86_64`,
-…), `npx` packages, or `uvx` packages — entries shaped by `agent.schema.json`:
-`{id, name, version, description, distribution: {binary|npx|uvx}}`.
+~50 agent directories present (claude-acp, codex-acp, gemini, goose, cursor,
+github-copilot, opencode, qwen-code, etc.) plus a `quarantine.json` holding
+7 agents currently excluded from the built registry (auth failures, missing
+deps, postinstall issues, timeouts).
 
-The two auth methods accepted by the registry (per `AUTHENTICATION.md`) are
-**Agent Auth** (OAuth flow with local HTTP callback) and **Terminal Auth**
-(interactive TUI handshake).
+## 3. Capability / agent schema (`agent.schema.json`)
 
-## Side-by-side comparison
+Each registered agent is a JSON object validated against draft-07 JSON
+Schema. Required top-level fields: `id`, `name`, `version`, `description`,
+`distribution`; `license_url` is additionally required unless `id ==
+"dimcode"` (schema encodes this as an `if/else` exemption).
 
-| Concern | ACP (Zed standard) | Chump coord (in flight) | Overlap? |
-|---|---|---|---|
-| **Problem domain** | Editor ↔ coding agent (1:1 subprocess) | Worker ↔ worker (N:M fleet) | None |
-| **Transport** | JSON-RPC 2.0 over stdio | NATS JetStream + KV + file fallback | None |
-| **Connection lifecycle** | Editor spawns agent subprocess, holds it for the session | Workers are long-lived daemons; no spawner | None |
-| **Auth model** | Agent Auth (OAuth browser flow) / Terminal Auth (TUI) | Operator-side: ANTHROPIC_API_KEY / CLAUDE_CODE_OAUTH_TOKEN (INFRA-622) | None — different actors |
-| **Capability advertisement** | `agentCapabilities` returned from `initialize` (loadSession, promptCapabilities, mcpCapabilities) | `CapabilityManifest` in `chump_capabilities` KV bucket (skills, model_tier, gpu, machine, harness) | **Conceptual overlap** — both are "what can this agent do?" but the field sets are disjoint |
-| **Session model** | One persistent conversation, `session/prompt` per user turn, `session/update` stream for progress | No sessions; gaps are the unit of work, claims are atomic, events are pub/sub broadcast | None |
-| **Tool calls** | Permission-gated via `session/request_permission`, results streamed via `session/update` | No central tool gateway; each worker runs its own Claude-Code/opencode-bigpickle/etc. harness | None |
-| **Filesystem** | `fs/read_text_file` / `fs/write_text_file` going *from agent back to client* | Direct fs access in each worker's process; no remote-fs RPC | None |
-| **Registry** | `registry.json` listing agents with binary/npx/uvx distribution targets | `chump-binary` distribution is a single Cargo workspace; no agent registry needed | None |
-| **A2A discovery** | Not modeled — ACP assumes 1 client + 1 agent | `subscribe_events` (Layer 1a) + capability KV (Layer 2c) for who's-online queries | **None** — ACP is silent on this |
-| **RPC between peers** | Not modeled — ACP is client→agent only | `call_rpc` / `serve_rpc` (Layer 2b) for ask-eta/ask-overlap/ask-handoff/ask-progress/ask-capability | **None** — ACP doesn't have peer↔peer |
-| **Shared state** | None | `chump_scratch` KV bucket with seed keys + CAS/LWW/MergeWithFn conflict policy (Layer 3d) | None |
+| Field | Type | Notes |
+|---|---|---|
+| `id` | string, `^[a-z][a-z0-9-]*$` | must match the containing directory name |
+| `name` | string | display name |
+| `version` | string, `^\d+\.\d+\.\d+$` | stable-channel semver, no prerelease suffix allowed |
+| `description` | string | non-empty |
+| `repository` / `website` | string (URI) | optional |
+| `authors` | string[] | optional |
+| `license` | string | SPDX id or `"proprietary"` |
+| `license_url` | string (URI) | required (see exemption above) |
+| `icon` | string | set automatically by the build from `icon.svg`, not hand-authored |
+| `distribution` | object, `minProperties: 1` | one or more of `binary` / `npx` / `uvx`, `additionalProperties: false` |
+| `preview` | object | optional unstable-channel block (see §5) |
 
-**The overlap is one field: capability advertisement.** Even that overlap is
-shallow — ACP's `agentCapabilities` describe what an agent can do *for an
-editor* (load sessions, accept image prompts, speak MCP), while Chump's
-`CapabilityManifest` describes what a worker can do *for the fleet* (which
-skills, which model tier, which machine, which GPU). The two answer
-different questions about different actors.
+### Distribution types
 
-## The Verdict
+| Type | Shape | Notes |
+|---|---|---|
+| `binary` | map of platform id → `{archive, cmd, args?, env?, sha256?}` | platforms: `darwin-aarch64`, `darwin-x86_64`, `linux-aarch64`, `linux-x86_64`, `windows-aarch64`, `windows-x86_64`. Archive formats: `.zip`, `.tar.gz`, `.tgz`, `.tar.bz2`, `.tbz2`, or raw binary — installer formats (`.dmg`/`.pkg`/`.deb`/`.rpm`/`.msi`/`.appimage`) are explicitly rejected. `sha256` is optional but recommended. |
+| `npx` | `{package, args?, env?}` | npm package, resolved via `npx <package> [args]` |
+| `uvx` | `{package, args?, env?}` | PyPI package, resolved via `uvx <package> [args]` |
 
-**(c) Ignore — continue independent path.**
+Validation additionally enforces (per `CONTRIBUTING.md`, checked in CI, not
+in the JSON Schema itself): version-string match between the top-level
+`version` and each distribution's pinned package/URL version, no `latest`
+tags anywhere, and HTTP-200 reachability for every distribution URL.
 
-Rationale:
+## 4. Registration flow
 
-1. **No domain overlap.** ACP solves editor↔agent integration; Chump coord
-   solves worker↔worker coordination. These are orthogonal problems with no
-   shared primitives beyond the word "agent." Forcing ACP onto Chump's coord
-   layer would be like making `kubectl` speak Language Server Protocol —
-   plausible at the syntactic level, useless at the semantic level.
+1. Fork the repo, create a directory named exactly `<id>/`.
+2. Add `<id>/agent.json` (schema above) and `<id>/icon.svg` (16×16,
+   monochrome, `fill`/`stroke` restricted to `currentColor` / `none` /
+   `inherit` — hardcoded colors fail validation).
+3. Open a PR. CI runs `build_registry.py` (schema + ID + version +
+   distribution + URL-reachability + icon validation) and
+   `verify_agents.py --auth-check` (see §6).
+4. On merge, a build step assembles the aggregated `registry.json` /
+   `registry-for-jetbrains.json` / `registry-for-jetbrains-preview.json`
+   index files and stamps the `icon` field.
+5. **Post-registration**, an hourly cron auto-bumps `version` (and the
+   pinned distribution refs) by polling npm / PyPI / GitHub Releases for
+   each registered agent and committing directly to `main`. Agents without
+   a GitHub `repository` URL fall back to manual version-bump PRs.
 
-2. **The "276 commits ahead" framing was the misleading premise of this
-   investigation.** With that corrected to "276 commits *behind* with zero
-   original work," the apparent strategic urgency dissolves. There is no
-   Chump-authored ACP IP to align around.
+**Chump-specific finding (not in the original gap's scope, but directly
+relevant to the "should we align" question INFRA-1822 asks):** two prior
+attempts exist to register Chump itself in the upstream registry:
 
-3. **Alignment cost would be high, benefit thin.** Wrapping the in-flight
-   Layer 1a/2b/2c/3d work in ACP method names (`initialize`,
-   `session/prompt`, …) would require either (a) reinterpreting fleet
-   primitives as 1:1 editor↔agent sessions (a semantic mismatch — there is
-   no editor) or (b) bolting NATS pub/sub onto a JSON-RPC stdio transport
-   (a category mismatch). Either path delivers an "ACP-compatible" coord
-   layer that no actual ACP client can use because the underlying problem
-   has no client.
+- PR [`agentclientprotocol/registry#240`](https://github.com/agentclientprotocol/registry/pull/240)
+  "Add Chump agent" — opened 2026-04-16, **closed** (not merged) 2026-05-23.
+- PR [`agentclientprotocol/registry#308`](https://github.com/agentclientprotocol/registry/pull/308)
+  "feat: add Chump to ACP Registry" — opened 2026-05-16, still **open**,
+  `mergeable: UNKNOWN` (stale — needs a CI re-run/rebase against current
+  upstream `main` before it can move).
+- Two abandoned branches remain on the fork itself: `add-chump` and
+  `add-chump-agent`, each carrying a `chump/agent.json` + `chump/icon.svg`
+  pair (id `chump`, binary distributions for darwin/linux via GitHub
+  Releases `v0.1.2` tarballs, MIT license). These predate both PRs and were
+  likely their staging branches.
 
-4. **Interop value is captured elsewhere.** ACP's real win is "any editor
-   can drive any coding agent." Chump *participates* in that ecosystem by
-   running ACP-speaking agents (claude-acp, opencode, codex-acp, goose) as
-   workers — that integration sits in `chump-claude-impl` and
-   `scripts/dispatch/worker.sh`, not in the coord layer.
+This means the "should Chump register in the upstream ACP registry"
+question already has live, unmerged artifacts — any follow-up decision
+should start from PR #308, not from scratch.
 
-### The narrow exception — file follow-ups, not alignment
+## 5. Versioning model
 
-Two follow-up gaps are warranted to capture the *real* opportunities the
-investigation surfaced:
+- **Stable channel:** `version` field, always plain `X.Y.Z` (a prerelease
+  suffix here is a validation error).
+- **Preview channel (optional):** an agent may add a `preview: {version,
+  distribution}` block. `preview.version` matches `X.Y.Z-preview.N` (1-based
+  counter) **or** a plain `X.Y.Z` release — the schema/format doc treats
+  "preview" as "newest known version," not strictly "prerelease," so a
+  preview block can legitimately hold a stable release that's ahead of the
+  declared stable channel.
+- **Highest-of-both-channels wins** for the JetBrains preview index
+  (`registry-for-jetbrains-preview.json`): if stable overtakes the preview
+  line, the stable value is served and the stale preview block self-heals
+  on the next hourly build rather than failing.
+- `preview` is **stripped** from the standard `registry.json` and
+  `registry-for-jetbrains.json` outputs — it only surfaces (as an ordinary
+  entry, values substituted wholesale) in the dedicated
+  `registry-for-jetbrains-preview.json` index.
+- Preview distributions are restricted to `npx`/`uvx` (no `binary` preview)
+  and are **never** auth-checked, reachability-probed, or included in the
+  nightly protocol matrix — preview is explicitly "unverified, best-effort."
 
-- **INFRA-NEW-ACP-INBOUND-SHIM (EFFECTIVE, P2, s).** Implement an inbound
-  ACP adapter so Chump can be driven *as an ACP agent by an editor* (e.g.
-  Zed user spawns `chump --acp` and asks it to ship gaps). Wire shape:
-  small `crates/chump-acp/` that translates a subset of `session/prompt` →
-  `chump --execute-gap`, with `session/update` notifications backed by
-  ambient stream tail. **This is NOT alignment; it's a new ingress.**
-  Scope: ~300 LOC, no impact on coord layer.
+## 6. Authentication model
 
-- **INFRA-NEW-CHUMP-IN-ACP-REGISTRY (EFFECTIVE, P3, xs).** If the inbound
-  shim ships and is useful, submit a `chump` entry to `agentclientprotocol/registry`
-  via the `CONTRIBUTING.md` flow (a `chump/` directory with `agent.schema.json`-shaped
-  metadata). This is the only place Jeff's existing fork might come in
-  handy — but submitting upstream via PR is cleaner than maintaining a
-  long-lived divergent registry.
+Per `AUTHENTICATION.md`, an agent must support **at least one** of two
+methods to be listed (the broader ACP spec defines more, e.g. Environment
+Variable Auth, but the registry only currently accepts these two):
 
-### What we do NOT need to do
+| Method | Flow |
+|---|---|
+| **Agent Auth** (default, `type: "agent"` or omitted) | Agent runs its own OAuth flow end-to-end: opens a local HTTP server for the callback, opens the user's browser to the provider's auth URL, exchanges the code for tokens, stores credentials itself. |
+| **Terminal Auth** (`type: "terminal"`) | Client re-launches the agent binary with auth-specific `args`/`env` (e.g. `--setup`) that **replace** (not merge with) the normal invocation, presenting an interactive TUI login; once done, the client resumes normal ACP invocation. |
 
-- Do NOT rebase or supersede INFRA-1758, INFRA-1759, INFRA-1760, INFRA-1761,
-  INFRA-1802, INFRA-1803. The in-flight foundation slices remain correct
-  in shape (NATS-native A2A, file fallback, schema versioning).
-- Do NOT introduce ACP method names into `crates/chump-coord/`. The
-  `CoordEvent` / `RpcRequest` / `CapabilityManifest` / `SeedKey` types
-  stay as designed.
-- Do NOT take a dependency on the `agent-client-protocol` Rust crate from
-  the coord workspace. (`chump-acp` ingress crate may take it; coord may
-  not.)
-- Do NOT spend further investigation cycles on the stale `repairman29/registry`
-  fork — it has no Jeff-authored content and the upstream registry is
-  hourly-bot-maintained.
+CI enforces this at registration and on every hourly rebuild via
+`python3 .github/workflows/verify_agents.py --auth-check`, which performs a
+live ACP `initialize` handshake against the agent and asserts the response's
+`authMethods` includes at least one entry with `type: "agent"` or
+`type: "terminal"`. Agents that fail this (or other CI checks) land in
+`quarantine.json` (id → human-readable failure reason) and are excluded
+from the built registry index until fixed — 7 agents were quarantined as of
+this scan (postinstall-script failures, missing native deps, `initialize`
+timeouts/crashes on specific point releases).
 
-## Bridge Strategy (if verdict had been (a) or (b))
+## 7. Bottom line for INFRA-1822's "sequencing trap" question
 
-Listed only for completeness so the verdict can be reconsidered if domain
-assumptions change (e.g. if Chump pivots to *being* an editor-side host
-for ACP agents, which would re-introduce ACP semantics natively).
-
-For (a) full alignment: would require renaming `CoordEvent` → ACP
-notifications, `RpcRequest` → ACP methods, `CapabilityManifest` →
-`agentCapabilities`, and replacing NATS with stdio per-peer. Cost: full
-rewrite of 5 in-flight crates; benefit: zero (no editor exists to drive it).
-
-For (b) ACP shim atop existing coord: would mean two API surfaces (NATS-native
-+ ACP-shaped) maintained in lockstep, with the ACP surface only ever
-exercised by a hypothetical editor. Cost: ~2× coord-layer surface area;
-benefit: theoretical interop with no concrete consumer.
-
-Neither pencils out today. Revisit if/when an ACP client appears that wants
-to drive a Chump fleet.
-
-## Lineage / Risk
-
-- **What could break this verdict:** Agentic AI Foundation extending ACP into
-  agent↔agent semantics (e.g. a Layer 2c-equivalent `peer/capabilities`
-  method). Monitor `agentclientprotocol/agent-client-protocol/issues` and
-  `rfds/` quarterly. The schema currently has `version: 1` with stable
-  wire format, so any extension would be additive within the same major.
-- **What could change the calculus on the inbound shim:** demonstrated demand
-  from a Zed user wanting `chump --acp`. Until that demand exists, INFRA-NEW-ACP-INBOUND-SHIM
-  is P2 — file but don't pick.
-- **Re-evaluate when:** (a) META-061 layers 1a/2b/2c/3d ship full impl and
-  someone proposes adding "ACP compat" as a layer 4 — at that moment the
-  empirical question becomes "is anyone asking for it?" If yes, build it
-  as an inbound adapter (see exception above), not as a wire-shape rewrite.
-- **Re-evaluate when:** (b) goose's coord layer adopts an A2A spec. Goose
-  is in the ACP registry and an Anthropic-adjacent project; if they ship
-  fleet-internal coord primitives, harvest *their* shape rather than the
-  client↔agent ACP shape. File a parallel CP brief at that point.
-
-## What this brief does *not* do
-
-It does not commit. It does not modify `crates/chump-coord/`. It does not
-file INFRA-NEW-ACP-INBOUND-SHIM or INFRA-NEW-CHUMP-IN-ACP-REGISTRY — those
-filings are the PM's call on whether the exception is worth pursuing now.
-It does not rebase or stop the 5 active sibling leases on `crates/chump-coord/*`.
-It records a deliberate non-alignment decision for INFRA-1822's
-acceptance criterion (c).
+This slice only extends the existing verdict recorded in
+`docs/arsenal/HARVEST_ROADMAP.md:134` — it does not overturn it. The registry
+fork is a dead, archived read-only snapshot with no independent commits of
+its own; the live, actionable ACP surface for Chump is the two upstream PRs
+(#240 closed, #308 open-stale) already targeting `agentclientprotocol/registry`
+directly. If/when the operator wants to revisit ACP registry listing, the
+next slice is "rebase and revive PR #308," not "re-fork and re-author from
+the `repairman29/registry` snapshot."

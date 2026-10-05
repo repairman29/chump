@@ -27,6 +27,17 @@
 #     if theirs_tail contained an incomplete step. GitHub Actions rejects such files
 #     outright — zero CI jobs run. Fixed: validate_step_bodies() checks every
 #     '- name:' in theirs_tail is followed by 'run:' or 'uses:' before writing.
+#
+# INFRA-1482: last-resort YAML-aware fallback.
+#   - All the strategies above are line/text heuristics; the reported failure
+#     (rebase of #2088) was an INTERLEAVED addition — ours inserts a step
+#     between two steps that theirs also added to the same job — which none
+#     of the line-based paths can safely resolve. Before giving up (rc=1),
+#     try scripts/git/ci-yml-yaml-merge.py: it parses ours/theirs/ancestor as
+#     YAML (line-accurate, no re-dump) and unions each shared job's `steps:`
+#     keyed by step name, anchored to base position. If it also can't
+#     resolve, emit kind=merge_driver_fallback so operators can measure how
+#     often manual conflict resolution is still needed, then exit 1.
 
 set -euo pipefail
 
@@ -35,6 +46,35 @@ OURS="$2"
 THEIRS="$3"
 # CONFLICT_MARKER_LEN="$4"  # not used
 MERGE_FILE="$OURS"  # Modify ours in-place
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+YAML_FALLBACK="$SCRIPT_DIR/ci-yml-yaml-merge.py"
+
+_emit_ambient() {
+  local kind="$1" reason="$2"
+  local repo amb
+  repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
+  [[ -z "$repo" ]] && return 0
+  amb="${CHUMP_AMBIENT_LOG:-$repo/.chump-locks/ambient.jsonl}"
+  [[ -w "$(dirname "$amb")" ]] 2>/dev/null || return 0
+  printf '{"ts":"%s","kind":"%s","ours":"%s","theirs":"%s","reason":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$OURS" "$THEIRS" "$reason" \
+    >> "$amb" 2>/dev/null || true
+}
+
+# Last resort before giving up: try the YAML-aware step-union merge. On
+# success it rewrites $OURS in place and we exit 0. On failure, emit the
+# fallback-measurement event and exit 1 (unchanged historical behavior).
+give_up() {
+  local reason="$1"
+  if [[ -x "$YAML_FALLBACK" || -f "$YAML_FALLBACK" ]] && command -v python3 > /dev/null 2>&1; then
+    if python3 "$YAML_FALLBACK" "$ANCESTOR" "$OURS" "$THEIRS" 2>/dev/null; then
+      exit 0
+    fi
+  fi
+  _emit_ambient "merge_driver_fallback" "$reason"
+  exit 1
+}
 
 # Sanity checks
 if [[ ! -f "$ANCESTOR" ]] || [[ ! -f "$OURS" ]] || [[ ! -f "$THEIRS" ]]; then
@@ -47,7 +87,7 @@ theirs_lines=$(wc -l < "$THEIRS")
 
 # Both branches must have at least as many lines as ancestor (no deletions).
 if [[ $ours_lines -lt $ancestor_lines ]] || [[ $theirs_lines -lt $ancestor_lines ]]; then
-  exit 1
+  give_up "line_count_shrunk"
 fi
 
 # Pure-append check: the first ancestor_lines of ours and theirs must be
@@ -69,7 +109,7 @@ _pure_append=$(( _pure_ours & _pure_theirs ))
 # git's 3-way merge handle it — applying theirs' diff to ours would insert
 # theirs' mid-file content into ours (corruption, INFRA-1205 regression).
 if [[ $_pure_ours -eq 1 && $_pure_theirs -eq 0 ]]; then
-  exit 1
+  give_up "theirs_edited_shared_prefix"
 fi
 
 if [[ $_pure_append -eq 0 ]]; then
@@ -94,7 +134,7 @@ if [[ $_pure_append -eq 0 ]]; then
   if [[ "$_dels" -gt 0 ]]; then
     # Theirs has real edits/deletes; can't safely patch.
     rm -f "$_diff_theirs"
-    exit 1
+    give_up "theirs_has_deletes"
   fi
   # ADD-ONLY diff. Try two strategies in order:
   #   (a) patch --fuzz=3 — handles case where ours+theirs added at different
@@ -110,7 +150,7 @@ if [[ $_pure_append -eq 0 ]]; then
   else
     # git merge-file --union ALSO returned non-zero (true failure).
     rm -f "$_diff_theirs"
-    exit 1
+    give_up "patch_and_union_both_failed"
   fi
   _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
   if [[ -n "$_repo" ]]; then
@@ -163,15 +203,8 @@ validate_step_bodies() {
 if ! validate_step_bodies "$theirs_tail"; then
   # INFRA-1199: theirs_tail has a '- name:' step without 'run:'/'uses:'.
   # Emit ambient event for auditability, then fall back to standard 3-way merge.
-  _repo=$(git rev-parse --show-toplevel 2>/dev/null || echo "")
-  if [[ -n "$_repo" ]]; then
-    _amb="${CHUMP_AMBIENT_LOG:-$_repo/.chump-locks/ambient.jsonl}"
-    if [[ -w "$(dirname "$_amb")" ]]; then
-      printf '{"ts":"%s","kind":"ci_yml_merge_driver_abort","ours":"%s","theirs":"%s"}\n' \
-        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$OURS" "$THEIRS" >> "$_amb" 2>/dev/null || true
-    fi
-  fi
-  exit 1
+  _emit_ambient "ci_yml_merge_driver_abort" "orphan_step_no_body"
+  give_up "orphan_step_no_body"
 fi
 
 # Safe to merge: append theirs' new steps to ours.

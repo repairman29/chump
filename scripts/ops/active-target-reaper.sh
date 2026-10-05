@@ -96,11 +96,12 @@ for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
 
     if [[ -e "$wt/.chump-no-reap" ]]; then
         echo "SKIP $wt — .chump-no-reap present"
+        emit_reaper_event "target_reap_skipped" "$target" "no_reap_marker"
         SKIPPED=$((SKIPPED + 1))
         continue
     fi
 
-    target_mtime=$(stat -f %m "$target" 2>/dev/null || stat -c %Y "$target" 2>/dev/null || echo 0)
+    target_mtime=$(stat -c %Y "$target" 2>/dev/null || stat -f %m "$target" 2>/dev/null || echo 0)
     age=$((NOW - target_mtime))
 
     if [[ $age -lt $AGE_SECONDS ]]; then
@@ -147,6 +148,7 @@ for wt in "${CANDIDATE_DIRS[@]+"${CANDIDATE_DIRS[@]}"}"; do
     if command -v lsof >/dev/null 2>&1; then
         if lsof -F n +D "$wt" 2>/dev/null | grep -q .; then
             echo "SKIP $wt — process has files open inside"
+            emit_reaper_event "target_reap_skipped" "$target" "active_build"
             SKIPPED=$((SKIPPED + 1))
             continue
         fi

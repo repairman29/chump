@@ -1,0 +1,13 @@
+- id: EFFECTIVE-387
+  domain: EFFECTIVE
+  title: "EFFECTIVE: synth-AC at the gate — when a PR has no acceptance criteria, generate them so Gate 4 judges instead of skipping"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"synth-AC at the gate — when a PR has no acceptance criteria, generate them so Gate 4 judges instead of skipping\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3504
+  outcome_id: COTG
+

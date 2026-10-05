@@ -1,0 +1,13 @@
+- id: RESILIENT-233
+  domain: RESILIENT
+  title: "RESILIENT: cascade agent-run crashes (exit 101) on provider 402/429 instead of degrading to next slot / Ollama"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - On provider 402 (out-of-credit) or 429 (rate-limited), the execute-gap cascade degrades to the NEXT provider instead of crashing the agent-run with exit 101
+    - should_cascade_on_error_string in src/provider_cascade.rs treats 402/429 as cascade-eligible
+    - "Proven: a forced 402/429 from provider N triggers a cascade transition to N+1 in the log; the run completes or exhausts the cascade gracefully, never exit 101 on 402/429"
+  notes: |
+    DROPPED (not shipped) 2026-08-05: redundant. The real fleet cascade already has 9 configured slots (Cerebras/Groq/Nvidia/Hyperbolic-Qwen-Coder-480B/Gemini/OpenRouter/...) and cascades across them on provider failure. My 'default fallback to local Ollama' duplicated that. Root cause of the exit-101s I saw was NOT missing fallback — it was running 'chump improve' ad-hoc WITHOUT sourcing the fleet .env (so only 1 broke provider was visible). The real path sources ~/Projects/chump/.env (run-fleet.sh:172, set -a). Kill the WIP branch, keep the gap open only if a SINGLE-slot-config hardening is later wanted.
+

@@ -1,0 +1,20 @@
+- id: CREDIBLE-240
+  domain: CREDIBLE
+  title: "CREDIBLE: the capabilities catalog is 11 weeks stale and now INDEXED — almanac will serve May's fleet with a path:line receipt"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    Two deliverables. (1) REGENERATE: run scripts/ops/generate-capabilities-registry.sh against chump itself and commit the result, so the catalog describes the fleet that exists — 38 crates, 7 mcp-server crates, 6 wired servers including github and almanac. (2) KEEP IT HONEST, which matters more: schedule the generator (CI on merge to main is the natural trigger, since the catalog only changes when code does) AND make staleness self-reporting — the file carries generated_at, so anything reading it can compare against a threshold and say so. A catalog that can silently age three months is the same defect class as the curator exiting 78 for twelve days with nobody noticing. Bonus once fresh: it becomes the answer to 'which provider does this tool front', since the registry holds tools and privateer's charter.json holds providers and today neither references the other.
+  acceptance_criteria:
+    - CAPABILITIES_REGISTRY.json regenerated against current chump and committed — mcp_tools includes github and almanac, crate_apis reflects 38 crates, and calculator is either present-and-wired or dropped
+    - the generator runs on a trigger (CI on merge to main, or a scheduled job) and commits when the content actually changes — no trigger means this recurs
+    - "staleness is self-reporting: something compares generated_at against a threshold and says so out loud where a reader will see it, so the next three-month drift surfaces in days"
+    - a test or check proves a deliberately-backdated generated_at is flagged, not silently trusted
+    - the relationship to privateer/charter.json is noted in at least one direction, so 'which provider does this tool front' has an answer
+  closed_date: '2026-08-09'
+  closed_pr: 3542
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: python3 -c 'json.load(open(docs/CAPABILITIES_REGISTRY.json))' ; ls -d crates/*/ crates/mcp-servers/*/ ; grep -rl CAPABILITIES_REGISTRY.json .github/workflows/  |  OUTPUT: generated_at=2026-05-23T16:33:55Z, generator_version=dev — eleven weeks old. It claims 5 mcp_tools (filesystem, git, gaps, memory, calculator) and 17 crate_apis. Reality on 2026-08-08: 7 mcp-server crates, 6 wired in chump-mcp.json (github and almanac appear in neither list; calculator is wired nowhere), and 38 crates. FOUR scripts reference the file — scripts/ops/generate-capabilities-registry.sh (a working wrapper over scripts/dev/build-capabilities-registry.sh), scripts/dev/build-capabilities-registry.sh, plus a CI smoke test and a test — and grep across .github/workflows/ returns NOTHING. No workflow, no cron, no launchd job runs any of them.  |  THEORY: the generator was built for 'chump ingest <repo>' (INFRA-1729, Quartermaster) to produce a catalog for an ARBITRARY repo, and was never turned on chump itself. The file was generated once and committed. Until 2026-08-08 this was invisible and therefore harmless — JSON was unindexed. Indexing it (commit 8ffbef3, at the operator's request) converted a stale file into a CONFIDENT WRONG ANSWER: almanac now serves May's capability list with a path:line citation, which is strictly worse than 'I don't know'. Almanac made the staleness visible; it did not cause it.  |  ALT: considered un-indexing JSON to remove the wrong answer — rejected: that hides the problem and throws away the catalogs that ARE current (posse/targets.json, privateer/charter.json, chump-mcp.json). Considered regenerating once by hand — rejected as the same one-shot that produced this: a catalog that can go stale silently is the curator-dead-12-days defect class, and the fix is the freshness gate, not another manual run.
+

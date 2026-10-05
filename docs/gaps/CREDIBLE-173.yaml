@@ -1,0 +1,58 @@
+- id: CREDIBLE-173
+  domain: CREDIBLE
+  title: capability inventory self-audit — catch negative-space blind spots before manual rediscovery
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Context (operator conversation, 2026-07-29, no code written): walked through what
+    ChumpOS is vs. a pile of tools. Grounded in docs/CODEBASE_REALITY_MAP.md's §2
+    capability map (8 named areas: multi-agent coordination, LLM infra, AI-native
+    work/planning, autonomous CI/ship firewall, agent memory, observability, dev
+    surfaces, external-repo automation) and its §3 "negative space" — a SEPARATE
+    manual sweep found ~8 more real clusters (cognitive-architecture/consciousness
+    ~7.9K LOC, eval/adversarial harness, tool-governance/WASM sandbox, PR-review
+    intelligence, omni-channel messaging, skills registry, HITL/operator-modeling,
+    device control) that the tidy 8-area scan missed entirely, because "a capability
+    scan finds what it's told to look for."
+    
+    The operator's point: Chump's own tools need to be good enough that they don't
+    miss — right now the negative-space catch was a one-time manual sweep
+    (2026-07-05 dated), not a mechanism. Nothing stops the map from rotting as new
+    modules land, or the next capability audit from tunnel-visioning on whatever
+    buckets it started with and missing a whole new category again.
+    
+    Rough shape (per two-phase decomposition doctrine — decompose at claim time,
+    not now):
+    (a) Turn the §2 + §3 bucket list into a structured registry (yaml/json) mapping
+        module/crate path glob -> capability bucket name.
+    (b) A scan step diffs the actual module/crate tree (src/**, crates/*/src/**)
+        against that registry and flags LOC clusters above a threshold with no
+        bucket attribution — i.e. detects the next "we didn't know this existed"
+        category before a human has to manually rediscover it.
+    (c) Wire into an EXISTING cadence (quartermaster shelfware-audit or harvester
+        arsenal refresh) rather than standing up a new one-off daemon —
+        Rust-first / no-duplicate-daemon doctrine (META-063/064) applies.
+    (d) Emits an ambient event kind on drift found; does NOT auto-file a gap
+        (MISSION-045 "signals are not work" anti-bloat doctrine — a flagged
+        blind spot is a SIGNAL an operator/curator triages, not automatic backlog).
+    (e) This is the CREDIBLE-090 signal≠outcome doctrine applied reflexively to
+        Chump's own self-inventory: the Reality Map's claimed capability map should
+        not be trusted as complete just because it exists and has a gap ID — same
+        discipline the doc itself demands of every other module.
+    
+    Related, do not duplicate: MISSION-067 (kernel ABI, blocked) and INFRA-3287
+    (monolith decompose, done 2026-07-21) are the MECHANISTIC unlocks that turn the
+    8+8 areas into one coherent OS. This gap is the CREDIBILITY backstop so that
+    "coherence" claim doesn't quietly regress the way fleet ship/lease counters
+    have lied before. See docs/CODEBASE_REALITY_MAP.md and
+    docs/strategy/CREWAI_PRIOR_ART_2026-07-28.md (OS-vs-framework invariant) for
+    full context — this gap exists so the synthesis isn't lost to a chat transcript.
+  acceptance_criteria:
+    - a structured capability-bucket registry exists (module/crate glob -> bucket name) covering all 16 areas currently named in docs/CODEBASE_REALITY_MAP.md §2+§3
+    - a scan (script or existing cadence hook) diffs the real module/crate tree against the registry and flags unattributed LOC clusters above a defined threshold
+    - the flag emits an ambient event kind (per EVENT_REGISTRY.yaml discipline) rather than auto-filing a gap, per MISSION-045
+    - docs/CODEBASE_REALITY_MAP.md's provenance note is updated to reference the mechanized check instead of describing only a one-time manual sweep
+  closed_date: '2026-07-30'
+  closed_pr: 3407
+

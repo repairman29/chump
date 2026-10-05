@@ -1,0 +1,11 @@
+- id: PRODUCT-184
+  domain: PRODUCT
+  title: "PRODUCT: Add Rate Limiting to Voice Endpoint (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Endpoint implements rate limiting per voice key to prevent abuse
+    - Exceeding limit returns a spoken 'too many requests' hint
+  depends_on: [PRODUCT-178]
+

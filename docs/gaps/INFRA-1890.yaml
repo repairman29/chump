@@ -1,9 +1,26 @@
 - id: INFRA-1890
   domain: INFRA
   title: "RESILIENT: detector escalation tier — when same ambient signature fires N times in M hours without resolution, auto-file ONE follow-up gap (dedup via title hash + respect META-063 redundancy gate); turns silent detectors into actionable gaps"
-  status: open
+  status: done
+  closed_pr: 3713
   priority: P1
   effort: m
+  notes: |
+    Verification receipt (2026-08-19): YAML/state.db were stale — this gap
+    already shipped 2026-08-13 in commit f21f0089 / PR #3713
+    ("INFRA-1890: detector escalation tier — auto-file follow-up gap on
+    repeated unresolved ambient signature"). scripts/coord/escalation-tier.sh
+    (377 LOC) implements all 8 AC items: 4 seeded rules (gap_failed stuck,
+    pr_auto_rebase_failed stuck, dirty_pr_unresolvable hot-file contention,
+    novel-kind uncategorized triage), title-hash + META-063 dedup gates,
+    hourly launchd plist (scripts/launchd/com.chump.escalation.plist),
+    escalation_fired/escalation_dedup_hit/escalation_meta063_blocked/
+    escalation_uncategorized ambient kinds, and operator suppression via
+    `chump fleet escalation --suppress-rule`. Re-ran
+    scripts/ci/test-escalation-tier.sh live: 5/5 passed (exactly one filing
+    on first run, dedup_hit not a re-filing on second run). Re-closing to
+    sync the registry; no code changes needed. Same pattern as INFRA-1865 /
+    INFRA-1811 stale-state syncs.
   acceptance_criteria:
     - "1. New module crates/chump-coord/src/escalation.rs (or wherever detector daemons live) defines EscalationRule { signature_kind: String, threshold_count: u32, window_hours: u32, resolution_check: fn(event) -> bool, gap_title_template: String, gap_priority: Priority, gap_effort: Effort }"
     - "2. Initial rule set seeded with 4 signatures derived from 2026-05-23 triage scan — (a) kind=gap_failed same gap_id >=10x in 24h AND chump gap show <id> returns status=open AND no commit on branch since first event → file gap titled 'RESILIENT: <gap-id> stuck — N gap_failed events without recovery'; (b) kind=pr_auto_rebase_failed same PR >=3x in 24h AND PR mergeStateStatus still DIRTY → file gap; (c) kind=dirty_pr_unresolvable same conflict_files across >=3 distinct PRs in 24h → file gap titled 'RESILIENT: hot-file <path> blocking N PRs — rebase contention pattern'; (d) any novel kind (no rule yet) → emit kind=escalation_uncategorized + log to .chump/triage/uncategorized.jsonl for operator review only"

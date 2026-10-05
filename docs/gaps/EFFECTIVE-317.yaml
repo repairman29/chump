@@ -1,0 +1,13 @@
+- id: EFFECTIVE-317
+  domain: EFFECTIVE
+  title: ChumpBar per-node pause/resume controls + paused-state display (AUTONOMY_LEVEL kill switch)
+  status: superseded
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"ChumpBar per-node pause/resume controls + paused-state display (AUTONOMY_LEVEL kill switch)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-26T23:55:25Z] shipped in #3329 (ChumpBar pause/resume controls merged)
+

@@ -1,0 +1,16 @@
+- id: CREDIBLE-181
+  domain: CREDIBLE
+  title: CREDIBLE-174 has no real call site to wire CHUMP_REVIEW_CLASS_DISPATCH into — build one or retarget the gate
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"CREDIBLE-174 has no real call site to wire CHUMP_REVIEW_CLASS_DISPATCH into — build one or retarget the gate\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decision (2026-07-30, operator-directed): option (a) — build a native review-only agent-dispatch path in this Rust binary, NOT retarget onto code-reviewer-agent.sh's Claude Code session. Rationale: (a) reuses CREDIBLE-174's already-built+tested tool-gate mechanism; (b) applies uniformly to any future in-process agentic analysis feature, not just PR review; (c) Claude-Code-only tool-allowlisting would only cover one harness and depends on ANTHROPIC_API_KEY/claude CLI, already flagged as fragile elsewhere (INFRA-3457, INFRA-3474); (d) aligns with this repo's harness-agnostic, offline/local-LLM-first direction.
+  closed_date: '2026-07-30'
+  closed_pr: 3423
+  outcome_id: CREDIBLE-000
+

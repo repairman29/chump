@@ -1,0 +1,13 @@
+- id: INFRA-3453
+  domain: INFRA
+  title: "CREDIBLE: auto-deploy self-verifies its tools — run agent-tool-smoke post-deploy (the loop testing itself)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"auto-deploy self-verifies its tools — run agent-tool-smoke post-deploy (the loop testing itself)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3352
+  outcome_id: MISSION-010
+

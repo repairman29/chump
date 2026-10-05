@@ -1,7 +1,8 @@
 - id: INFRA-1765
   domain: INFRA
   title: "EFFECTIVE: cross-agent lesson propagation — CI failure patterns land in memory_db + auto-injected into next session briefing (Initiative 2)"
-  status: open
+  status: done
+  closed_pr: 3685
   priority: P1
   effort: m
   acceptance_criteria:

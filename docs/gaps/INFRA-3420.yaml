@@ -1,15 +1,11 @@
 - id: INFRA-3420
   domain: INFRA
-  title: 'CI streamline: shared restore-only trunk cache key (warm first-PR compiles)'
+  title: "CI streamline: shared restore-only trunk cache key (warm first-PR compiles)"
   status: done
   priority: P1
   effort: m
   acceptance_criteria:
-  - 'CI recompiles the chump dep-graph cold on every first PR run because the Swatinem Rust-cache prefix-key is scoped per-PR
-    (''v1-pr-${PR number}'', ci.yml L1218-1222/L1286-1290) — most fleet PRs pass on run #1, so the cache never hits when it
-    matters. Change to a SHARED trunk key (keyed on main''s Cargo.lock hash) with save-if restricted to refs/heads/main (RESTORE-ONLY
-    on PRs) so a bad PR can''t poison trunk cache. Keep the per-run CARGO_TARGET_DIR for isolation but let the cache RESTORE
-    from trunk. Est saving: turns first-PR-run clippy+cargo-test+fast-checks from cold->warm, big chunk of the ~26 compile-min/PR.
-    Effort xs (few lines). Verify: a fresh PR''s clippy job restores a trunk cache (non-cold) in its first run.'
+    - "CI recompiles the chump dep-graph cold on every first PR run because the Swatinem Rust-cache prefix-key is scoped per-PR ('v1-pr-${PR number}', ci.yml L1218-1222/L1286-1290) — most fleet PRs pass on run #1, so the cache never hits when it matters. Change to a SHARED trunk key (keyed on main's Cargo.lock hash) with save-if restricted to refs/heads/main (RESTORE-ONLY on PRs) so a bad PR can't poison trunk cache. Keep the per-run CARGO_TARGET_DIR for isolation but let the cache RESTORE from trunk. Est saving: turns first-PR-run clippy+cargo-test+fast-checks from cold->warm, big chunk of the ~26 compile-min/PR. Effort xs (few lines). Verify: a fresh PR's clippy job restores a trunk cache (non-cold) in its first run."
   closed_date: '2026-07-25'
   closed_pr: 3299
+

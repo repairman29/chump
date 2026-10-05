@@ -1,0 +1,15 @@
+- id: INFRA-3541
+  domain: INFRA
+  title: "pre-push CI-regression guard crashes with 'GUARD_SCRIPTS[@]: unbound variable' — it fails open on exactly the pushes it guards"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "OBSERVED 2026-08-08 pushing a ci.yml change to chump/effective-396-claim. The hook printed '[ci-regression-guard] ci.yml changed in this push — checking CI-Regression-Guard trailers.' and then immediately 'scripts/git-hooks/pre-push-ci-regression-guard.sh: line 172: GUARD_SCRIPTS[@]: unbound variable'. The push SUCCEEDED"
+    - "THE FAILURE MODE IS FAIL-OPEN, WHICH IS THE WORST ONE FOR A GUARD: it announces that it is checking, crashes, and lets the push through anyway. Anyone reading the output sees the reassuring first line. The guard has therefore been inert on ci.yml pushes for however long this has been broken, while appearing to run"
+    - "CAUSE is almost certainly bash 'set -u' plus an EMPTY array — in bash < 4.4 (and macOS ships 3.2) an empty array expanded as  is treated as unbound rather than empty. Fix with ${GUARD_SCRIPTS[@]+\"${GUARD_SCRIPTS[@]}\"} or by seeding the array, at scripts/git-hooks/pre-push-ci-regression-guard.sh:172"
+    - DECIDE FAIL-OPEN VS FAIL-CLOSED DELIBERATELY and write the choice into the script as a comment. A guard that cannot run should probably block the push and say so, but that is a judgement call about developer friction — the current behaviour is not a choice, it is an accident
+    - "VERIFY on both bash 3.2 (macOS default, /bin/bash) and bash 5.x: push a ci.yml change with no CI-Regression-Guard trailer and assert the guard actually evaluates rather than crashing. A regression test belongs in scripts/ci/ alongside the other hook tests"
+    - "Found while unblocking PR #3509 (EFFECTIVE-396). Not filed as part of that PR because it is an unrelated pre-existing defect in a different script"
+  outcome_id: MISSION-010
+

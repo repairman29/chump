@@ -129,21 +129,29 @@ print(t.strftime('%Y-%m-%dT%H:%M:%SZ'))
 # Stub gh for runner ghost-online test
 if [[ "\$*" == *"actions/runners"* ]]; then
     printf '{"runners":[{"id":1,"name":"mac-runner-1","status":"online","busy":false}]}\n'
-elif [[ "\$*" == *"run list"* ]]; then
-    printf '[{"databaseId":9001,"createdAt":"${ten_min_ago}","status":"queued"}]\n'
+elif [[ "\$*" == *"actions/runs"*"status=queued"* ]]; then
+    # INFRA-2464: REST actions/runs response, filtered via --jq '.workflow_runs'
+    printf '[{"id":9001,"created_at":"${ten_min_ago}","status":"queued"}]\n'
 else
     printf '[]\n'
 fi
 EOF
     chmod +x "${stub_dir}/gh"
 
-    # Also stub git remote get-url for repo name derivation
+    # Also stub git remote get-url for repo name derivation. `command -p`
+    # (not plain `command`) is required for the fallback: this stub sits
+    # earlier on PATH than the real git, so a bare `command git` re-resolves
+    # via the SAME PATH and finds this same stub again — infinite self-
+    # recursion on any git subcommand other than "remote get-url" (bit us
+    # when INFRA-1798's inbox-glance step added a `git rev-parse` call to
+    # the check-runners path, which previously never shelled out to git at
+    # all). `command -p` searches the system default PATH instead.
     cat > "${stub_dir}/git" <<'EOF'
 #!/usr/bin/env bash
 if [[ "$*" == *"remote get-url"* ]]; then
     printf 'https://github.com/repairman29/Chump.git\n'
 else
-    command git "$@"
+    command -p git "$@"
 fi
 EOF
     chmod +x "${stub_dir}/git"
@@ -219,6 +227,66 @@ EOF
 
     rm -rf "$testdir"
     unset CHUMP_PGREP_BIN
+}
+
+# ── Case 6: disk headroom trending toward critical (INFRA-7890) ──────────────
+test_disk_headroom_warning() {
+    local testdir
+    testdir="$(_setup_env)"
+
+    # Stub df -k $HOME to report 25GB free — inside the default warn_floor
+    # (critical=20GB + margin=15GB = 35GB) but not yet below the 20GB
+    # critical floor itself.
+    local stub_dir="${testdir}/stubs"
+    mkdir -p "$stub_dir"
+    cat > "${stub_dir}/df" <<'EOF'
+#!/usr/bin/env bash
+printf 'Filesystem     1K-blocks      Used Available Use%% Mounted on\n'
+printf '/dev/sda1      153092000 126280000  26214400  83%% /\n'
+EOF
+    chmod +x "${stub_dir}/df"
+    export CHUMP_DF_BIN="${stub_dir}/df"
+
+    _run_loop "$testdir" check-disk-headroom 2>/dev/null || true
+
+    _assert_finding \
+        "${testdir}/.chump-locks/ambient.jsonl" \
+        "disk_headroom" \
+        "Case 6: 25GB free (below warn_floor=35GB, above critical=20GB) → disk_headroom warning"
+
+    rm -rf "$testdir"
+    unset CHUMP_DF_BIN
+}
+
+# ── Case 7: disk headroom below the reaper's critical floor ──────────────────
+test_disk_headroom_critical() {
+    local testdir
+    testdir="$(_setup_env)"
+
+    # Stub df -k $HOME to report 10GB free — below the 20GB critical floor.
+    local stub_dir="${testdir}/stubs"
+    mkdir -p "$stub_dir"
+    cat > "${stub_dir}/df" <<'EOF'
+#!/usr/bin/env bash
+printf 'Filesystem     1K-blocks      Used Available Use%% Mounted on\n'
+printf '/dev/sda1      153092000 142680000  10485760  93%% /\n'
+EOF
+    chmod +x "${stub_dir}/df"
+    export CHUMP_DF_BIN="${stub_dir}/df"
+
+    _run_loop "$testdir" check-disk-headroom 2>/dev/null || true
+
+    if grep -q '"category":"disk_headroom".*"severity":"critical"' "${testdir}/.chump-locks/ambient.jsonl" 2>/dev/null; then
+        printf 'PASS: %s\n' "Case 7: 10GB free (below critical=20GB) → disk_headroom critical"
+        PASS=$((PASS + 1))
+    else
+        printf 'FAIL: %s\n' "Case 7: 10GB free (below critical=20GB) → disk_headroom critical" >&2
+        cat "${testdir}/.chump-locks/ambient.jsonl" >&2
+        FAIL=$((FAIL + 1))
+    fi
+
+    rm -rf "$testdir"
+    unset CHUMP_DF_BIN
 }
 
 # ── Case 5: all-green — no findings ───────────────────────────────────────────
@@ -301,6 +369,8 @@ fi
 test_daemon_plist_missing_interval
 test_runner_ghost_online
 test_disk_pressure
+test_disk_headroom_warning
+test_disk_headroom_critical
 test_process_bloat
 test_all_green
 

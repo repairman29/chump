@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 # scripts/coord/pr-shepherd-daemon.sh — META-181 / META-180 slice 1
-# META-182: cache-first tick via cache_query_open_prs + CHUMP_GH_CALL_CRITICALITY=background
+# META-182: background-criticality-tagged tick (CHUMP_GH_CALL_CRITICALITY=background)
+#           so the queue-wide gh pr list yields the GH bucket under quota pressure.
+#           NOTE (INFRA-2464 audit): the field set this tick needs
+#           (statusCheckRollup, headRefOid, ...) is GraphQL-only / not stored
+#           by the webhook-fed sqlite cache, so this call is NOT cache-first —
+#           see the comment on the gh pr list call in cmd_tick for why.
 # META-183: classification engine — classifies each PR into BEHIND/MERGEABLE/ARMED/DIRTY/BLOCKED/UNKNOWN
 #           and emits one pr_classified ambient event per PR.
 # META-184: action engine — for each BEHIND PR, calls gh pr update-branch --rebase;
@@ -22,6 +27,11 @@
 #   CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK   — max rebases per tick (default 3)
 #   CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK      — max arm_auto_merge actions per tick (default 5)
 #   CHUMP_PR_SHEPHERD_MAX_GAPS_PER_TICK      — max file_followup_gap actions per tick (default 2)
+#   CHUMP_CASCADE_MAX_HOLD_MINUTES           — INFRA-2349: max minutes the trunk-red cascade
+#                                               gate holds admin-merges/rebases before releasing
+#                                               (default 120; trunk-sentinel pages the operator
+#                                               by 60m so this is belt-and-suspenders, not the
+#                                               primary safety net)
 #
 # Usage:
 #   bash scripts/coord/pr-shepherd-daemon.sh tick           # one tick
@@ -36,6 +46,11 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # Defense-in-depth: if the env var is absent (manual invocation), fall back to
 # the computed path as before.
 AMBIENT="${CHUMP_AMBIENT_PATH:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+# INFRA-2362: keep scripts/coord/lib/github.sh's chump_gh telemetry pointed at
+# the same ambient file as the rest of this daemon's events (it defaults to a
+# git-toplevel-derived path, which can diverge from AMBIENT above under the
+# same stale-/tmp-worktree condition META-248 fixed for AMBIENT itself).
+export CHUMP_AMBIENT_OVERRIDE="$AMBIENT"
 DRY_RUN="${CHUMP_PR_SHEPHERD_DRY_RUN:-}"
 MAX_REBASES="${CHUMP_PR_SHEPHERD_MAX_REBASES_PER_TICK:-3}"
 MAX_ARMS="${CHUMP_PR_SHEPHERD_MAX_ARMS_PER_TICK:-5}"
@@ -56,12 +71,59 @@ FILED_GAPS_FILE="$REPO_ROOT/.chump/pr-shepherd-filed-gaps.jsonl"
 # INFRA-2346: persistent per-PR state for flake-rerun cap and wedged-DM debounce.
 FLAKE_RERUN_FILE="${CHUMP_FLAKE_RERUN_FILE:-$REPO_ROOT/.chump-locks/flake-rerun-count.json}"
 WEDGED_SIGNAL_FILE="${CHUMP_WEDGED_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-wedged-signaled.json}"
+# META-189: per-PR/head-SHA debounce for the MERGEABLE vote-request broadcast
+# so a re-broadcast only fires when the PR gets a new commit (new head SHA),
+# not on every 60s tick.
+VOTE_REQUEST_SIGNAL_FILE="${CHUMP_VOTE_REQUEST_SIGNAL_FILE:-$REPO_ROOT/.chump-locks/pr-vote-request-signaled.json}"
 SAFE_MODE_STATE_FILE="${CHUMP_SAFE_MODE_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-shepherd-safe-mode.json}"
+# META-141: local sqlite db that tags tests as flakes once the SAME error
+# fingerprint recurs on 3+ consecutive check runs for that test.
+FLAKE_DB="${CHUMP_FLAKE_DB:-$REPO_ROOT/.chump/flake.db}"
+# INFRA-2349: trunk-sentinel's own state file (red_since_epoch) — authoritative
+# source for how long trunk has actually been red, so the cascade gate can be
+# time-bounded instead of holding forever off a single stale RED transition.
+TRUNK_SENTINEL_STATE_FILE="${CHUMP_TRUNK_SENTINEL_STATE_FILE:-$REPO_ROOT/.chump/trunk-sentinel-state.json}"
+# INFRA-2349: cascade gate max-hold ceiling. Beyond this many minutes of
+# continuous TRUNK_RED, the gate stops blocking CLEAN_GREEN admin-merges and
+# rebases — trunk-sentinel itself has already paged the operator via
+# trunk_red_operator_recall by 60 min (see trunk-sentinel-daemon.sh), so a
+# second, silent, unbounded hold on top of that just starves the queue
+# without adding safety. Distinguishes transient (self-healing, <cap) from
+# permanent (needs operator, >=cap) trunk-red per the INFRA-2349 taxonomy.
+CASCADE_MAX_HOLD_MINUTES="${CHUMP_CASCADE_MAX_HOLD_MINUTES:-120}"
 
-# Cache-first reads (INFRA-1081): source cache lib so cmd_tick can use
-# cache_query_open_prs instead of burning raw GraphQL quota.
+# RESILIENT-081: strict-aware rebase. Under branch-protection strict=false,
+# BEHIND PRs merge fine without a rebase — issuing one anyway is pure churn
+# (new head SHA -> full CI reset -> self-hosted runner pool drowns in
+# re-runs). Skip update-branch --rebase unless strict=true or a merge queue
+# is the gate. Cached (REST, not GraphQL) so a 60s tick doesn't hammer the
+# branch-protection endpoint.
+REPO="${GITHUB_REPOSITORY:-$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null | sed -E 's#.*[:/]([^/]+/[^/.]+)(\.git)?$#\1#')}"
+STRICT_CACHE_FILE="${CHUMP_PR_SHEPHERD_STRICT_CACHE_FILE:-$REPO_ROOT/.chump/pr-shepherd-strict-cache.json}"
+STRICT_CACHE_TTL_S="${CHUMP_PR_SHEPHERD_STRICT_CACHE_TTL_S:-300}"
+
+# Cache-first reads (INFRA-1081): sourced so cache_lookup_pr/cache_query_*
+# helpers are available in this process. cmd_tick's queue-wide list call
+# is NOT cache-first today — see the INFRA-2464 audit note on that call
+# site for why a like-for-like cache read isn't safe here yet.
 # shellcheck source=scripts/coord/lib/github_cache.sh
 source "$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+# INFRA-2464: run-id lookups (flake-rerun path) via REST-backed cache instead
+# of raw `gh run list` (GraphQL — top API burner).
+# shellcheck source=scripts/coord/lib/run-cache.sh
+source "$REPO_ROOT/scripts/coord/lib/run-cache.sh"
+
+# INFRA-2362: source the gh telemetry lib (function-only — CHUMP_GH_NO_PATH_INJECT
+# skips the transparent PATH shim so only the explicit chump_gh calls below are
+# recorded) and route every mutating gh call the auto-processor makes
+# (admin-merge, flake-rerun, arm-auto-merge) through chump_gh so it emits
+# kind=github_api_call. Without this, the auto-processor's API cost was
+# invisible to scripts/dev/api-cost-leaderboard.sh even though every action
+# it takes is already audited via pr_queue_auto_action.
+CHUMP_GH_NO_PATH_INJECT=1
+# shellcheck source=scripts/coord/lib/github.sh
+source "$REPO_ROOT/scripts/coord/lib/github.sh"
 
 emit_tick() {
   local count="$1"
@@ -175,6 +237,109 @@ else:
     print('UNKNOWN')
 " 2>/dev/null || echo "UNKNOWN")
   echo "$state"
+}
+
+# _trunk_red_minutes — minutes since trunk went red, per trunk-sentinel's own
+# state file (red_since_epoch, sticky on first RED tick — see
+# trunk-sentinel-daemon.sh). Returns 0 if the state file is absent/unreadable
+# or red_since_epoch is unset — callers must not treat 0 as "just went red"
+# without also checking trunk state is actually RED.
+# scanner-anchor: kind=pr_queue_cascade_gate_expired (INFRA-2349)
+_trunk_red_minutes() {
+  [[ -f "$TRUNK_SENTINEL_STATE_FILE" ]] || { echo 0; return 0; }
+  python3 - "$TRUNK_SENTINEL_STATE_FILE" << 'PYEOF' 2>/dev/null || echo 0
+import json, sys, time
+path = sys.argv[1]
+try:
+    with open(path) as f:
+        data = json.load(f)
+    red_since = int(data.get('red_since_epoch', 0) or 0)
+    if red_since <= 0:
+        print(0)
+    else:
+        print(max(0, int((time.time() - red_since) / 60)))
+except Exception:
+    print(0)
+PYEOF
+}
+
+# _emit_pr_queue_cascade_gate_expired — emitted when the cascade gate would
+# have held (trunk RED) but red_minutes >= CASCADE_MAX_HOLD_MINUTES, so the
+# gate releases and CLEAN_GREEN/rebase actions proceed. Distinguishes
+# "transient trunk-red" (gate holds, self-heals within the cap) from
+# "permanent trunk-red" (gate expires, operator is already paged by
+# trunk-sentinel's own 60-min escalation — see trunk_red_operator_recall).
+# scanner-anchor: kind=pr_queue_cascade_gate_expired (INFRA-2349)
+_emit_pr_queue_cascade_gate_expired() {
+  local red_minutes="$1"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"pr_queue_cascade_gate_expired","red_minutes":%d,"max_hold_minutes":%d,"dry_run":%s}\n' \
+    "$ts" "$red_minutes" "$CASCADE_MAX_HOLD_MINUTES" "$dry" >> "$AMBIENT"
+}
+
+# _merge_queue_active — returns "true"/"false". Merge-queue mode is the other
+# gate under which rebasing BEHIND PRs is meaningful (queue serializes CI, no
+# per-rebase reset). Env override mirrors auto-merge-armer.sh's
+# _detect_merge_queue so the two daemons agree without a live API round-trip
+# in the common (unset) case.
+_merge_queue_active() {
+  if [[ "${CHUMP_MERGE_QUEUE_ENABLED:-}" == "1" ]]; then
+    echo "true"; return 0
+  fi
+  echo "false"
+}
+
+# _pr_shepherd_strict_enabled — RESILIENT-081. Returns "true"/"false" for the
+# live branch-protection strict flag (required_status_checks.strict on
+# `main`), REST not GraphQL, TTL-cached so a 60s tick doesn't hit the API
+# every time. When strict=false, a BEHIND PR merges fine without a rebase —
+# the daemon should skip update-branch --rebase entirely (that's pure CI-reset
+# churn). Fails safe: an unreadable/failed live check returns "true" (preserve
+# today's rebase behavior) rather than silently going quiet on a repo that
+# actually has strict=true.
+_pr_shepherd_strict_enabled() {
+  local now cached
+  now="$(date +%s)"
+  if [[ -f "$STRICT_CACHE_FILE" ]]; then
+    cached="$(python3 -c "
+import json
+try:
+    d = json.load(open('$STRICT_CACHE_FILE'))
+    age = $now - int(d.get('ts', 0))
+    if age < $STRICT_CACHE_TTL_S:
+        print(str(d.get('strict', 'true')).lower())
+except Exception:
+    pass
+" 2>/dev/null)"
+    if [[ -n "$cached" ]]; then
+      echo "$cached"
+      return 0
+    fi
+  fi
+
+  local live strict_val
+  live="$(CHUMP_GH_CALL_CRITICALITY=background gh api "repos/${REPO}/branches/main/protection/required_status_checks" 2>/dev/null)" || true
+  if [[ -n "$live" ]]; then
+    strict_val="$(printf '%s' "$live" | python3 -c "
+import json, sys
+try:
+    print(str(json.load(sys.stdin).get('strict', True)).lower())
+except Exception:
+    print('true')
+" 2>/dev/null)"
+    [[ -n "$strict_val" ]] || strict_val="true"
+  else
+    strict_val="true"
+  fi
+
+  mkdir -p "$(dirname "$STRICT_CACHE_FILE")" 2>/dev/null || true
+  python3 -c "
+import json
+json.dump({'ts': $now, 'strict': '$strict_val'}, open('$STRICT_CACHE_FILE', 'w'))
+" 2>/dev/null || true
+  echo "$strict_val"
 }
 
 # _pr_has_active_claim — returns 0 (true/skip) if gap_id matches any active claim lease
@@ -303,6 +468,23 @@ _emit_pr_queue_auto_action() {
   if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
   printf '{"ts":"%s","kind":"pr_queue_auto_action","pr":%d,"action":"%s","reason":"%s","author":"%s","mergeStateStatus":"%s","dry_run":%s}\n' \
     "$ts" "$pr_num" "$action" "$reason" "$author" "$merge_state" "$dry" >> "$AMBIENT"
+}
+
+# _emit_flake_rerun_capped — INFRA-2361: emitted whenever a PR hits the
+# per-PR flake-rerun cap on checks that are ALL known-flake-classified. This
+# is the detection signal consumed by scripts/coord/flake-auto-quarantine.sh
+# to spot checks that keep flaking across many *distinct* PRs (a candidate
+# for auto-quarantine into KNOWN_FLAKES.yaml `check_flakes:`) rather than
+# just noisily filing one gap per capped PR.
+# Args: $1=pr_num $2=check_names_csv $3=author
+# scanner-anchor: kind=flake_rerun_capped (INFRA-2361)
+_emit_flake_rerun_capped() {
+  local pr_num="$1" check_names="$2" author="$3"
+  local ts dry
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  printf '{"ts":"%s","kind":"flake_rerun_capped","pr":%d,"check_names":"%s","author":"%s","dry_run":%s}\n' \
+    "$ts" "$pr_num" "$check_names" "$author" "$dry" >> "$AMBIENT"
 }
 
 # _emit_pr_queue_skipped_trunk_red — single-event sentinel emitted once per
@@ -452,6 +634,102 @@ _is_blocked_flake() {
   return 0
 }
 
+# _sql_escape — escape single quotes for inline sqlite3 string literals.
+_sql_escape() {
+  printf '%s' "$1" | sed "s/'/''/g"
+}
+
+# _flake_db_init — create flake.db tables if missing (META-141).
+_flake_db_init() {
+  mkdir -p "$(dirname "$FLAKE_DB")"
+  sqlite3 "$FLAKE_DB" <<'SQL'
+CREATE TABLE IF NOT EXISTS flake_runs (
+  test_name TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  consecutive_count INTEGER NOT NULL,
+  updated_at TEXT NOT NULL
+);
+CREATE TABLE IF NOT EXISTS flakes (
+  test_name TEXT PRIMARY KEY,
+  fingerprint TEXT NOT NULL,
+  status TEXT NOT NULL,
+  first_flagged_at TEXT NOT NULL,
+  last_seen_at TEXT NOT NULL
+);
+SQL
+}
+
+# _flake_fingerprint — error fingerprint for a check/test name (META-141 AC #4).
+# Reuses extract_job() from scripts/ci/test-half-impl-detector.sh (sourced by
+# extracting just that function's body — the rest of that script runs a full
+# smoke-test suite on load, which we don't want here) to pull the check's job
+# YAML section out of .github/workflows/*.yml, then hashes it. Falls back to
+# hashing the raw check name when no workflow job section matches it (e.g. a
+# dynamic/matrix job name).
+_flake_fingerprint() {
+  local check_name="$1"
+  eval "$(sed -n '/^extract_job()/,/^}/p' "$REPO_ROOT/scripts/ci/test-half-impl-detector.sh")"
+  local wf job_section=""
+  for wf in "$REPO_ROOT"/.github/workflows/*.yml; do
+    [[ -f "$wf" ]] || continue
+    WF="$wf"
+    job_section="$(extract_job "$check_name" 2>/dev/null)" || job_section=""
+    [[ -n "$job_section" ]] && break
+  done
+  [[ -z "$job_section" ]] && job_section="$check_name"
+  printf '%s' "$job_section" | sha256sum | awk '{print $1}'
+}
+
+# _flake_track — record one observed (test_name, fingerprint) run. Tags the
+# test as a flake in the `flakes` table once the SAME fingerprint has recurred
+# on 3+ consecutive runs; a differing fingerprint resets the streak to 1.
+# Args: $1=test_name $2=fingerprint
+_flake_track() {
+  local test_name="$1" fingerprint="$2"
+  local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  _flake_db_init
+  local esc_name esc_fp prev_fp prev_count new_count
+  esc_name="$(_sql_escape "$test_name")"
+  esc_fp="$(_sql_escape "$fingerprint")"
+  prev_fp=$(sqlite3 "$FLAKE_DB" "SELECT fingerprint FROM flake_runs WHERE test_name = '${esc_name}';" 2>/dev/null || echo "")
+  prev_count=$(sqlite3 "$FLAKE_DB" "SELECT consecutive_count FROM flake_runs WHERE test_name = '${esc_name}';" 2>/dev/null || echo "")
+  new_count=1
+  if [[ -n "$prev_fp" && "$prev_fp" = "$fingerprint" ]]; then
+    new_count=$(( ${prev_count:-0} + 1 ))
+  fi
+  sqlite3 "$FLAKE_DB" "INSERT INTO flake_runs (test_name, fingerprint, consecutive_count, updated_at)
+    VALUES ('${esc_name}', '${esc_fp}', ${new_count}, '${ts}')
+    ON CONFLICT(test_name) DO UPDATE SET fingerprint=excluded.fingerprint, consecutive_count=excluded.consecutive_count, updated_at=excluded.updated_at;"
+  if [[ "$new_count" -ge 3 ]]; then
+    sqlite3 "$FLAKE_DB" "INSERT INTO flakes (test_name, fingerprint, status, first_flagged_at, last_seen_at)
+      VALUES ('${esc_name}', '${esc_fp}', 'flake', '${ts}', '${ts}')
+      ON CONFLICT(test_name) DO UPDATE SET fingerprint=excluded.fingerprint, status='flake', last_seen_at=excluded.last_seen_at;"
+  fi
+}
+
+# _flake_track_check_names — split a CSV of failing check names (as produced
+# by the BLOCKED_REAL_FAIL classifier) and track each one's fingerprint.
+# Args: $1=fail_check_names_csv
+_flake_track_check_names() {
+  local fail_names="$1"
+  [[ -z "$fail_names" ]] && return 0
+  local IFS=','
+  local name
+  for name in $fail_names; do
+    name="${name# }"; name="${name% }"
+    [[ -z "$name" ]] && continue
+    _flake_track "$name" "$(_flake_fingerprint "$name")"
+  done
+}
+
+# cmd_query_flakes — print each currently-tagged flake's test name and error
+# fingerprint, one per line, tab-separated (META-141 AC #2).
+cmd_query_flakes() {
+  _flake_db_init
+  sqlite3 -separator "$(printf '\t')" "$FLAKE_DB" \
+    "SELECT test_name, fingerprint FROM flakes WHERE status = 'flake' ORDER BY test_name;" 2>/dev/null
+}
+
 # _flake_rerun_count — get/inc per-PR rerun counter
 # Args: $1=pr_num [$2=inc|read]  — default read
 # Outputs: integer count to stdout. Initializes file on first use.
@@ -527,6 +805,44 @@ with open(path, 'w') as f:
 PYEOF
 }
 
+# _vote_request_already_sent — returns 0 if a vote-request was already
+# broadcast for this exact PR/head_sha (debounce: only re-fire on new commits).
+# Args: $1=pr_num $2=head_sha
+_vote_request_already_sent() {
+  local pr_num="$1" head_sha="$2"
+  [[ -f "$VOTE_REQUEST_SIGNAL_FILE" ]] || return 1
+  python3 - "$VOTE_REQUEST_SIGNAL_FILE" "$pr_num" "$head_sha" << 'PYEOF'
+import json, sys
+path, pr_num, head_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    sys.exit(1)
+sys.exit(0 if data.get(pr_num) == head_sha else 1)
+PYEOF
+}
+
+# _record_vote_request_sent — mark this PR/head_sha as vote-request-broadcast
+# Args: $1=pr_num $2=head_sha
+_record_vote_request_sent() {
+  local pr_num="$1" head_sha="$2"
+  mkdir -p "$(dirname "$VOTE_REQUEST_SIGNAL_FILE")"
+  [[ -f "$VOTE_REQUEST_SIGNAL_FILE" ]] || echo '{}' > "$VOTE_REQUEST_SIGNAL_FILE"
+  python3 - "$VOTE_REQUEST_SIGNAL_FILE" "$pr_num" "$head_sha" << 'PYEOF'
+import json, sys
+path, pr_num, head_sha = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    with open(path) as f:
+        data = json.load(f)
+except Exception:
+    data = {}
+data[pr_num] = head_sha
+with open(path, 'w') as f:
+    json.dump(data, f)
+PYEOF
+}
+
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
   # META-184: also fetch headRefOid (head SHA) for debounce keying.
@@ -537,6 +853,21 @@ cmd_tick() {
   # INFRA-2346: include author, baseRefName, updatedAt for new tiers (CLEAN_GREEN
   # admin-merge needs author for trust check + baseRefName for base=main guard;
   # WEDGED_24H needs updatedAt to detect 12h-no-commit staleness).
+  #
+  # INFRA-2464 audit: the full field set above (statusCheckRollup, headRefOid,
+  # ...) isn't stored by the webhook-fed sqlite cache — pr_state only carries
+  # the fields upserted from `pull_request` webhook payloads, and
+  # statusCheckRollup is GraphQL-only. A like-for-like cache read can't
+  # replace this call without a schema extension (tracked separately; see
+  # gap notes). Deliberately NOT adding a "skip when cache_query_open_prs is
+  # empty" short-circuit here: this daemon is the only reader of
+  # mergeStateStatus/statusCheckRollup for the whole open-PR queue, and a
+  # stale or unpopulated cache (webhook receiver down, fresh checkout, DB
+  # reset) would silently starve every PR in the queue with no fallback —
+  # exactly the kind of silent-daemon wedge the fleet pages on. The call
+  # already carries CHUMP_GH_CALL_CRITICALITY=background (INFRA-1080) so it
+  # yields the GH bucket to ship-blocking writes under quota pressure, which
+  # is the safe mitigation for this call site.
   local prs_json
   prs_json=$(CHUMP_GH_CALL_CRITICALITY=background gh pr list --state open --limit 200 \
     --json number,title,mergeStateStatus,autoMergeRequest,createdAt,headRefOid,statusCheckRollup,author,baseRefName,headRefName,updatedAt 2>/dev/null || echo "[]")
@@ -729,11 +1060,39 @@ for p in prs:
   # rebased onto a broken main inherits the failure → wastes runners. Wait
   # for trunk-sentinel to emit TRUNK_GREEN before resuming rebases.
   # Classification + ARMED handling continue unchanged; only rebase action holds.
+  #
+  # INFRA-2349: time-bounded. An unbounded hold self-perpetuates — while the
+  # gate blocks admin-merges/rebases, fewer commits land on main, so
+  # trunk-sentinel gets fewer fresh CI runs to observe a recovery, so the
+  # gate never sees TRUNK_GREEN and never releases (17 PRs sat 24h on this
+  # exact deadlock). Once trunk has been continuously RED for
+  # CASCADE_MAX_HOLD_MINUTES, release the gate — trunk-sentinel has already
+  # escalated to the operator by the 60-min mark, so nothing is lost.
   local trunk_state cascade_held=0
   trunk_state=$(_get_trunk_state)
   if [ "$trunk_state" = "RED" ]; then
-    cascade_held=1
-    echo "[pr-shepherd-daemon] cascade held — trunk red" >&2
+    local red_minutes
+    red_minutes=$(_trunk_red_minutes)
+    if [ "$red_minutes" -ge "$CASCADE_MAX_HOLD_MINUTES" ]; then
+      echo "[pr-shepherd-daemon] cascade gate expired — trunk red ${red_minutes}m >= cap ${CASCADE_MAX_HOLD_MINUTES}m, releasing" >&2
+      _emit_pr_queue_cascade_gate_expired "$red_minutes"
+    else
+      cascade_held=1
+      echo "[pr-shepherd-daemon] cascade held — trunk red (${red_minutes}m, cap ${CASCADE_MAX_HOLD_MINUTES}m)" >&2
+    fi
+  fi
+
+  # RESILIENT-081: strict-aware rebase gate. Computed once per tick (cached
+  # underneath, see _pr_shepherd_strict_enabled) — rebasing is only
+  # meaningful when strict=true (BEHIND blocks the merge) or a merge queue
+  # is the gate (queue serializes CI, no per-rebase reset). Under
+  # strict=false with no merge queue, BEHIND PRs merge fine as-is, so
+  # rebasing them is pure CI-reset churn.
+  local rebase_gate_open=0
+  if [ "$(_pr_shepherd_strict_enabled)" = "true" ] || [ "$(_merge_queue_active)" = "true" ]; then
+    rebase_gate_open=1
+  else
+    echo "[pr-shepherd-daemon] strict=false, no merge queue — rebase gate closed this tick" >&2
   fi
 
   local rebase_count=0
@@ -766,6 +1125,12 @@ for p in prs:
       fail_check_names=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin).get('fail_check_names',''))" 2>/dev/null || echo "")
       _emit_pr_classified "$pr_num" "$c" "$gap_id" "$age"
 
+      # META-141: flake detection — track consecutive identical-fingerprint
+      # failures per test/check name; tags 'flake' in flake.db after 3+ in a row.
+      if [ "$c" = "BLOCKED_REAL_FAIL" ]; then
+        _flake_track_check_names "$fail_check_names"
+      fi
+
       # ─── INFRA-2346 tier A: CLEAN_GREEN → auto-admin-merge ──────────────────
       # Independent of META-184/186 paths: a PR can be MERGEABLE or BLOCKED_GREEN
       # AND also be a trusted-author admin-merge target. Run this BEFORE the
@@ -789,7 +1154,7 @@ for p in prs:
         else
           echo "[pr-shepherd-daemon] admin-merging PR #${pr_num} (author=${author}, ${c})" >&2
           local merge_exit=0
-          gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
+          chump_gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
           if [ "$merge_exit" -eq 0 ]; then
             _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
             admin_merge_count=$((admin_merge_count + 1))
@@ -838,6 +1203,7 @@ for p in prs:
         cur_count=$(_flake_rerun_count "$pr_num" read)
         if [ "$cur_count" -ge "$MAX_FLAKE_RERUNS_PER_PR" ]; then
           _emit_pr_queue_auto_action "$pr_num" "flake_rerun_skipped" "capped" "$author" "$c"
+          _emit_flake_rerun_capped "$pr_num" "$fail_check_names" "$author"
           # Fall through to gap-filing path below (don't continue).
         else
           if [ -n "$DRY_RUN" ]; then
@@ -848,11 +1214,12 @@ for p in prs:
             continue
           else
             # Look up the latest run-id for this PR's head branch.
-            # gh run list --branch <head_ref> --limit 1 --json databaseId
+            # INFRA-2464: REST-backed cached lookup instead of raw
+            # `gh run list` (GraphQL — top API burner per INFRA-1081 audit).
             local run_id rerun_exit=0
-            run_id=$(gh run list --branch "$head_ref" --limit 1 --json databaseId --jq '.[0].databaseId' 2>/dev/null || echo "")
+            run_id=$(run_cache_lookup_run_id "$head_ref" 2>/dev/null || echo "")
             if [ -n "$run_id" ]; then
-              gh run rerun "$run_id" --failed 2>&1 || rerun_exit=$?
+              chump_gh run rerun "$run_id" --failed 2>&1 || rerun_exit=$?
               if [ "$rerun_exit" -eq 0 ]; then
                 _flake_rerun_count "$pr_num" inc >/dev/null
                 _emit_pr_queue_auto_action "$pr_num" "flake_rerun" "known_flake" "$author" "$c"
@@ -872,6 +1239,14 @@ for p in prs:
 
       # META-184: action phase — only for BEHIND PRs
       if [ "$c" = "BEHIND" ]; then
+        # Guard -1 (RESILIENT-081): strict=false + no merge queue — BEHIND
+        # PRs merge fine without a rebase, so issuing one is pure CI-reset
+        # churn. Skip before any of the more expensive guards below.
+        if [ "$rebase_gate_open" -eq 0 ]; then
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "not_strict" "$gap_id"
+          continue
+        fi
+
         # Guard 0: cascade gate — trunk-sentinel says main is red, hold the queue
         if [ "$cascade_held" -eq 1 ]; then
           _emit_pr_action_taken "$pr_num" "rebase_skipped" "cascade_held" "$gap_id"
@@ -933,6 +1308,14 @@ for p in prs:
 
       # META-186: BLOCKED_GREEN → arm auto-merge (idempotent)
       elif [ "$c" = "BLOCKED_GREEN" ]; then
+        # Guard: only arm auto-merge for trusted authors. This repo is public, main requires
+        # zero approvals and one aggregate check, and merged main deploys to the fleet's nodes.
+        # Without this guard the daemon would arm auto-merge on a stranger's green fork PR.
+        # Same list as the admin-merge tier; an empty author fails closed.
+        if ! _is_trusted_author "$author"; then
+          _emit_pr_action_taken "$pr_num" "arm_auto_merge_skipped" "untrusted_author" "$gap_id"
+          continue
+        fi
         # Guard: trunk-red safe-mode
         if [ "$trunk_red_active" -eq 1 ]; then
           _emit_pr_action_taken "$pr_num" "arm_auto_merge_skipped" "trunk_red" "$gap_id"
@@ -951,7 +1334,7 @@ for p in prs:
         else
           echo "[pr-shepherd-daemon] arming auto-merge PR #${pr_num} (${gap_id})" >&2
           local arm_exit=0
-          gh pr merge "$pr_num" --auto --squash 2>&1 || arm_exit=$?
+          chump_gh pr merge "$pr_num" --auto --squash 2>&1 || arm_exit=$?
           if [ "$arm_exit" -eq 0 ]; then
             _emit_pr_action_taken "$pr_num" "arm_auto_merge" "" "$gap_id"
             arm_count=$((arm_count + 1))
@@ -1024,6 +1407,27 @@ print(m.group(0) if m else '')
             gap_file_count=$((gap_file_count + 1))
           fi
         fi
+
+      # META-189: MERGEABLE (clean, not yet armed, not a trusted-author
+      # admin-merge target — those short-circuit above) → broadcast a
+      # FEEDBACK kind=vote-request so the fleet casts consensus votes,
+      # corr_id=pr-N so `chump vote pr-N +1|-1|0` and `chump consensus-tally
+      # --corr-id pr-N` land on the same tally bucket.
+      elif [ "$c" = "MERGEABLE" ]; then
+        if _vote_request_already_sent "$pr_num" "$head_sha"; then
+          _emit_pr_action_taken "$pr_num" "vote_request_skipped" "debounce" "$gap_id"
+        elif [ -n "$DRY_RUN" ]; then
+          echo "[pr-shepherd-daemon] DRY_RUN: would broadcast vote-request for PR #${pr_num}" >&2
+          _emit_pr_action_taken "$pr_num" "vote_request_broadcast" "" "$gap_id"
+          _record_vote_request_sent "$pr_num" "$head_sha"
+        else
+          echo "[pr-shepherd-daemon] broadcasting vote-request for PR #${pr_num}" >&2
+          bash "$REPO_ROOT/scripts/coord/broadcast.sh" FEEDBACK vote-request "pr-${pr_num}" \
+            "PR #${pr_num} is MERGEABLE — cast a consensus vote: chump vote pr-${pr_num} +1|-1|0 --reason '<why>'" \
+            >/dev/null 2>&1 || true
+          _emit_pr_action_taken "$pr_num" "vote_request_broadcast" "" "$gap_id"
+          _record_vote_request_sent "$pr_num" "$head_sha"
+        fi
       fi
     done <<< "$classified"
   fi
@@ -1038,12 +1442,13 @@ print(m.group(0) if m else '')
 
 case "${1:-}" in
   tick) cmd_tick ;;
+  query-flakes) cmd_query_flakes ;;
   --help|-h)
     sed -n '1,40p' "$0"
     exit 0
     ;;
   *)
-    echo "Usage: $0 tick | --help" >&2
+    echo "Usage: $0 tick | query-flakes | --help" >&2
     exit 2
     ;;
 esac

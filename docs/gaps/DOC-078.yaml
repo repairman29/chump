@@ -1,0 +1,12 @@
+- id: DOC-078
+  domain: DOC
+  title: "COTG matrix: mark INFRA-3485 edit-verify gate CLOSED (by INFRA-3516) — remove stale 'hole open' discrepancy note that would mislead pickers into rebuilding a done gate"
+  status: done
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"mark INFRA-3485 edit-verify gate CLOSED (by INFRA-3516) — remove stale 'hole open' discrepancy note that would mislead pickers into rebuilding a done gate\" is implemented in the relevant DOC code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3471
+

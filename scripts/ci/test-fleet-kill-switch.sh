@@ -88,13 +88,13 @@ run_claim_check() {
     local label="$1"
     # Use a non-existent gap ID so claim fails fast; what matters is *why*.
     HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-        "$CHUMP_BIN" claim RESILIENT-073-TEST-FAKE 2>&1 || true
+        "$CHUMP_BIN" claim RESILIENT-073-TEST-FAKE --role fleet-test 2>&1 || true
 }
 
 # ── Test 1: AUTONOMY_LEVEL=0 → claim refuses ─────────────────────────────────
 echo "0" > "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE --role fleet-test 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     ok "Test 1: AUTONOMY_LEVEL=0 → claim refused with 'fleet stopped'"
 else
@@ -104,7 +104,7 @@ fi
 # ── Test 2: File missing → claim refuses (fail-closed) ───────────────────────
 rm -f "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE --role fleet-test 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     ok "Test 2: AUTONOMY_LEVEL missing → claim refused (fail-closed)"
 else
@@ -114,7 +114,7 @@ fi
 # ── Test 3: File corrupt → claim refuses (fail-closed) ───────────────────────
 echo "banana" > "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE --role fleet-test 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     ok "Test 3: AUTONOMY_LEVEL=corrupt → claim refused (fail-closed)"
 else
@@ -126,7 +126,7 @@ fi
 # fail with "fleet stopped".
 echo "5" > "$AL_FILE"
 _out="$(HOME="$FAKE_HOME" CHUMP_AMBIENT_LOG="$FAKE_AMBIENT" \
-    "$CHUMP_BIN" claim RESILIENT-073-FAKE 2>&1 || true)"
+    "$CHUMP_BIN" claim RESILIENT-073-FAKE --role fleet-test 2>&1 || true)"
 if echo "$_out" | grep -q "fleet stopped"; then
     fail "Test 4: AUTONOMY_LEVEL=5 → kill-switch fired (should not have)"
 else
@@ -189,6 +189,31 @@ if ambient_has_kind "fleet_stopped_kill_switch"; then
     ok "Test 8: AUTONOMY_LEVEL=0 → fleet_stopped_kill_switch emitted to ambient"
 else
     fail "Test 8: fleet_stopped_kill_switch not found in ambient stream"
+fi
+
+# ── Test 9: refresh/provision scripts must never write AUTONOMY_LEVEL ────────
+# RESILIENT-321: a refresh/provision path clobbered ~/.chump/AUTONOMY_LEVEL to
+# 0 on 2026-08-14, silently halting the fleet 6h. These scripts run
+# unattended (systemd timer / node provisioning) and must never write to the
+# kill-switch file — only explicit operator commands (`chump fleet
+# start|stop|level|down`) may. Static guard: neither script may contain a
+# redirect into AUTONOMY_LEVEL.
+_refresh_provision_scripts=(
+    "$REPO_ROOT/scripts/ops/node-refresh-chump.sh"
+    "$REPO_ROOT/scripts/setup/install-node-refresh-systemd.sh"
+    "$REPO_ROOT/scripts/setup/provision-chumpd-host.sh"
+    "$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+)
+_write_offenders=""
+for _script in "${_refresh_provision_scripts[@]}"; do
+    if [[ -f "$_script" ]] && grep -vE '^\s*#' "$_script" | grep -E '>[^>=].*AUTONOMY_LEVEL|AUTONOMY_LEVEL.*[^<]<' >/dev/null 2>&1; then
+        _write_offenders="${_write_offenders} $_script"
+    fi
+done
+if [[ -z "$_write_offenders" ]]; then
+    ok "Test 9: refresh/provision scripts contain no AUTONOMY_LEVEL write"
+else
+    fail "Test 9: found a write into AUTONOMY_LEVEL in:${_write_offenders} — refresh/provision must never clobber the operator's kill switch"
 fi
 
 # ── Summary ───────────────────────────────────────────────────────────────────

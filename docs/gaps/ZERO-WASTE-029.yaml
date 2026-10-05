@@ -1,0 +1,17 @@
+- id: ZERO-WASTE-029
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: fleet launcher overrides CARGO_TARGET_DIR, forking a 2nd 54G target dir"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Root cause of the 2026-07-26 disk-100% incident. worker.sh:158 defaults CARGO_TARGET_DIR to $HOME/.cargo/chump-shared-target (canonical, asserted by test-cargo-target-dir.sh), but the run-fleet launcher that started the 05:35 session set CARGO_TARGET_DIR=~/Projects/Chump/target explicitly, overriding it. Result: TWO live target dirs for one project — Chump/target (54G, debug/deps=40G) + ~/.cargo/chump-shared-target (27G) = ~81G. Interactive/curator builds from the main checkout also default to Chump/target. Fix converges ALL build entrypoints (fleet launcher, curators, interactive) on the one shared target so the per-repo target stops regenerating.
+  acceptance_criteria:
+    - grep the fleet launcher (run-fleet.sh / scripts/dispatch/*) for any CARGO_TARGET_DIR export that overrides worker.sh's shared default; remove or point it at chump-shared-target
+    - all fleet+curator entrypoints resolve to a single CARGO_TARGET_DIR (~/.cargo/chump-shared-target) — verified by launching a worker and confirming builds land there, not in Chump/target
+    - test-cargo-target-dir.sh extended to assert the launcher does not re-override the shared path
+    - after convergence, Chump/target is safe to delete and does not regenerate under fleet load
+  notes: |
+    [2026-07-26T19:30:09Z] [gap-bankruptcy 2026-07-26] test fixture / malformed gap pollution. Reversible via `chump gap requeue ZERO-WASTE-029`.
+  closed_pr: 3551
+

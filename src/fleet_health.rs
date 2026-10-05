@@ -1139,22 +1139,37 @@ pub fn check_slos(repo_root: &Path) -> Vec<SloResult> {
         ),
     });
 
-    // L2-SLO-6: bisect_quarantined count <= 5 (INFRA-2137 / INFRA-2142)
-    // More than 5 gaps stuck awaiting operator review indicates saturation.
-    let quarantined_count = if let Ok(store) = crate::gap_store::GapStore::open(repo_root) {
-        store.count_bisect_quarantined().unwrap_or(0)
+    // L2-SLO-6: bisect_quarantine rate < 5% (META-124/C14, INFRA-2137 emitter,
+    // INFRA-2132 event kinds). A high quarantine rate means batched-mode is
+    // producing too many failed integration cycles — either the cycle
+    // thresholds are too aggressive (cycles too big) or upstream gap quality
+    // dropped. Rate = bisect_quarantine events / integration_cycle_started
+    // events over a 7d rolling window. With 0 cycles in the window there is
+    // no signal either way — reported as "no data", never a breach.
+    let cycles_7d = count_kind_since(&contents, "integration_cycle_started", week_ago);
+    let quarantines_7d = count_kind_since(&contents, "bisect_quarantine", week_ago);
+    let quarantine_rate_pct = if cycles_7d == 0 {
+        0.0
     } else {
-        0
+        (quarantines_7d as f64) / (cycles_7d as f64) * 100.0
     };
     results.push(SloResult {
         id: "L2-SLO-6",
-        target: "bisect_quarantined count ≤ 5",
-        current: format!("{}", quarantined_count),
-        breached: quarantined_count > 5,
-        detail: format!(
-            "{} gap(s) in bisect_quarantined (target: ≤5; use `chump gap requeue <ID>` to release)",
-            quarantined_count
-        ),
+        target: "bisect-quarantine rate < 5%",
+        current: if cycles_7d == 0 {
+            "no data".into()
+        } else {
+            format!("{:.1}%", quarantine_rate_pct)
+        },
+        breached: cycles_7d > 0 && quarantine_rate_pct >= 5.0,
+        detail: if cycles_7d == 0 {
+            "0 integration cycles in last 7d — cannot compute quarantine rate".into()
+        } else {
+            format!(
+                "{} quarantines / {} cycles in 7d ({:.1}%, target: <5%)",
+                quarantines_7d, cycles_7d, quarantine_rate_pct
+            )
+        },
     });
 
     // L4-SLO-1: paramedic heartbeat freshness (INFRA-1397 AC §7)
@@ -1677,6 +1692,90 @@ mod tests {
              the operator to ignore it): {:?}",
             l5_2
         );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    // INFRA-2142: L2-SLO-6 bisect-quarantine rate < 5% — 4 cases per AC.
+    fn l2_slo6_ambient_lines(cycles: u64, quarantines: u64) -> Vec<String> {
+        let now = now_iso();
+        let mut lines = Vec::new();
+        for _ in 0..cycles {
+            lines.push(format!(
+                r#"{{"kind":"integration_cycle_started","ts":"{}"}}"#,
+                now
+            ));
+        }
+        for _ in 0..quarantines {
+            lines.push(format!(r#"{{"kind":"bisect_quarantine","ts":"{}"}}"#, now));
+        }
+        lines
+    }
+
+    fn find_l2_slo6(results: &[SloResult]) -> &SloResult {
+        results
+            .iter()
+            .find(|r| r.id == "L2-SLO-6")
+            .expect("L2-SLO-6 present")
+    }
+
+    #[test]
+    fn test_l2_slo6_zero_cycles_zero_quarantines_no_breach_inconclusive() {
+        let tmp = tempdir();
+        // No ambient data at all — 0 cycles, 0 quarantines.
+        write_ambient(&tmp, &[]);
+
+        let results = check_slos(&tmp);
+        let l2_6 = find_l2_slo6(&results);
+        assert!(
+            !l2_6.breached,
+            "0/0 must not breach (no signal either way): {:?}",
+            l2_6
+        );
+        assert!(
+            l2_6.detail.contains("cannot compute") || l2_6.current == "no data",
+            "0/0 must be reported as inconclusive, not a passing rate: {:?}",
+            l2_6
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_l2_slo6_one_of_twenty_breaches_at_exact_threshold() {
+        let tmp = tempdir();
+        let lines = l2_slo6_ambient_lines(20, 1);
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+
+        let results = check_slos(&tmp);
+        let l2_6 = find_l2_slo6(&results);
+        assert!(
+            l2_6.breached,
+            "1/20 = 5% must breach (threshold is inclusive): {:?}",
+            l2_6
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_l2_slo6_one_of_thirty_does_not_breach() {
+        let tmp = tempdir();
+        let lines = l2_slo6_ambient_lines(30, 1);
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+
+        let results = check_slos(&tmp);
+        let l2_6 = find_l2_slo6(&results);
+        assert!(!l2_6.breached, "1/30 = 3.3% must not breach: {:?}", l2_6);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn test_l2_slo6_five_of_fifty_breaches() {
+        let tmp = tempdir();
+        let lines = l2_slo6_ambient_lines(50, 5);
+        write_ambient(&tmp, &lines.iter().map(String::as_str).collect::<Vec<_>>());
+
+        let results = check_slos(&tmp);
+        let l2_6 = find_l2_slo6(&results);
+        assert!(l2_6.breached, "5/50 = 10% must breach: {:?}", l2_6);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 

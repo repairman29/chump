@@ -1,0 +1,12 @@
+- id: EFFECTIVE-346
+  domain: EFFECTIVE
+  title: "Green rescue-beast-ci: autonomous fix + ship to BEAST-MODE (task-directed + push/PR/merge gated on live CI)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"autonomous fix + ship to BEAST-MODE (task-directed + push/PR/merge gated on live CI)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-01'
+

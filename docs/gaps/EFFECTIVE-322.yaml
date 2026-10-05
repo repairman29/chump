@@ -1,0 +1,14 @@
+- id: EFFECTIVE-322
+  domain: EFFECTIVE
+  title: "decompose inherits outcome: gap slices auto-trace to the parent gap's outcome (affordance for MISSION-045 close-gate)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"gap slices auto-trace to the parent gap's outcome (affordance for MISSION-045 close-gate)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: decomposing MISSION-065 into slices 068-074 produced 6 UNTRACED P1 gaps (no outcome_id). The MISSION-045 close-gate then requires outcome_id at ship, so those slices — the entire Phase-0 pickable lane — would bounce the fleet at ship time. Manually linked all 6 to CHUMPOS as the fix, but the durable fix is an AFFORDANCE: 'chump gap decompose' (and any slice-creating path) must propagate the parent's outcome_id to each slice, so the close-gate never bounces decompose output. First concrete instance of EFFECTIVE-321 (affordances over gates): the gate is fine; it was missing the affordance that keeps its precondition satisfied by default.
+

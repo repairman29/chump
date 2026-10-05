@@ -1,0 +1,11 @@
+- id: EFFECTIVE-338
+  domain: EFFECTIVE
+  title: "Bootstrap: Build me a CLI that renames photos in a folder by the date each was taken."
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "1. Repository at /Users/jeffadkins/.chump/external/bootstrap:photo-renamer/clone has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Build me a CLI that renames photos in a folder by the date each was taken.\"\n3. Sub-gaps filed for core feature areas"
+  notes: |
+    BENCH-LAP ARTIFACT (no PR) — auto-filed by CREATE proof lap create-photo-renamer --apply. Closed via CHUMP_BYPASS_CLOSED_PR_GUARD (legit no-PR case). Root cause tracked in EFFECTIVE-339.
+

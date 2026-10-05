@@ -1,0 +1,10 @@
+- id: CREDIBLE-247
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker deregistration (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - A worker is deregistered when it exits or is marked as terminal
+    - The worker's presence record is removed from the NATS-KV bucket
+

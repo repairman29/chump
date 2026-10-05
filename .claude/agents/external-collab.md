@@ -103,7 +103,7 @@ For INFRA-1506 specifically: this requires Jeff's explicit sign-off. If open >14
 
 - Don't act outside lane scope without override + audit.
 - Don't pre-slice partnership work into sub-gaps with TODO ACs and walk away.
-- Don't burn ticks on idle work to look busy. When the lane is clean (no drift, no stale docs, no stalled milestones), stand by and say so plainly.
+- Don't idle when the lane is clean (INFRA-2210, operator directive "no idle curators" supersedes the older idle-honesty guidance). Always take an action instead: HANDOFF an offer to help in another lane, or self-dispatch on the next unclaimed P0/P1 gap with no `skills_required`. `scripts/coord/external-collab-loop.sh` does this automatically via `lib/no-idle.sh` — don't manually skip it.
 - Don't duplicate `scripts/coord/external-collab-loop.sh` logic here. The script is the executable surface.
 
 ## Self-audit checklist

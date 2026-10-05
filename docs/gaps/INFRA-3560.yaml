@@ -1,0 +1,10 @@
+- id: INFRA-3560
+  domain: INFRA
+  title: "INFRA: Document findings and proposed fix in docs/process/SELF_HOSTED_RUNNERS.md (INFRA-1655 slice)"
+  status: open
+  priority: P3
+  effort: xs
+  acceptance_criteria:
+    - Findings are clearly documented
+    - Proposed fix is outlined
+

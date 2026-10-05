@@ -1,0 +1,14 @@
+- id: INFRA-3492
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-2.4] reactive coordination bus (react to events; stop polling)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-2.4] reactive coordination bus (react to events; stop polling)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY transport COMPLETE, reactions BUILT-NOT-WIRED -> FINISH. crates/chump-coord/src/{events,nats_primary,jetstream_consumer}.rs (flag + offline-degrade real). Add pr.merged->ship and test.failed->pr-rescue reaction handlers (wiring, not plumbing).
+  outcome_id: COTG
+

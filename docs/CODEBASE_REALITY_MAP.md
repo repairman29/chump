@@ -133,7 +133,10 @@ harder to replicate than any single module, and the connective tissue for everyt
 
 Two unglamorous moves gate almost everything above:
 
-1. **Decompose the monolith (`INFRA-3287`).** Until `main.rs`/`web_server.rs` and the
+1. **Decompose the monolith (`INFRA-3287`)** — *update: INFRA-3287 closed done
+   2026-07-21 (#3185); this is no longer the binding blocker, and the remaining
+   per-command slices should be re-verified against the repo before being claimed
+   complete.* Originally: until `main.rs`/`web_server.rs` and the
    root crate are broken into the workspace crates that already exist, *no* capability
    in §2 can become a standalone product, and every change pays the recompile + test-
    coupling tax. **Do it in tiny per-command sub-slices** — big-arm moves shatter the

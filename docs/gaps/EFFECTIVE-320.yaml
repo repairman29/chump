@@ -1,0 +1,16 @@
+- id: EFFECTIVE-320
+  domain: EFFECTIVE
+  title: "gate-authoring recipe + scaffold: adding an enforcement gate should emit gate+test+empty-fixture-skip+preflight-mirror+CI-step in one consistent shape"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"adding an enforcement gate should emit gate+test+empty-fixture-skip+preflight-mirror+CI-step in one consistent shape\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-28'
+  closed_pr: 3341
+  outcome_id: CHUMPOS
+  evidence: |
+    MISSION-045 session 2026-07-27: landing one anti-bloat gate took 3 full CI rounds (~20min each) because failures surfaced serially, not up front. Adding the MISSION-045 gate re-derived live: bypass-var hits EFFECTIVE-094 ceiling -> empty-fixture-skip pattern -> mandatory gate test (keystone shipped with ZERO coverage until forced) -> preflight mirror -> INFRA-1867 first-line-run caveat. All known constraints, rediscovered by hitting them. Doctrine doc + optional 'chump gap add-gate' scaffold + a 'new enforcement path -> must-have gate test' check (sibling to test-lag).
+

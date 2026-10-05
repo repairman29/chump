@@ -1,7 +1,8 @@
 - id: INFRA-1386
   domain: INFRA
   title: "ZERO-WASTE: e2e-battle-sim disposition — PROMOTE to required or KEEP-ADVISORY (nightly-only)"
-  status: open
+  status: shipped
+  closed_pr: 4081
   priority: P2
   effort: s
   acceptance_criteria:

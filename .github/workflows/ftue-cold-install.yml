@@ -1,0 +1,102 @@
+name: FTUE cold-install (bare node -> working node)
+
+# RESILIENT-1050 — the STANDING recurring proof for Node Fabric #3 (`chump node up`).
+#
+# Runs scripts/ci/ftue-cold-install.sh on every change to the node bring-up path.
+# The harness boots a CLEAN Ubuntu 22.04 systemd container (a fresh, no-chump
+# userland matching the real Oracle nodes), runs the REAL cold bring-up
+# (chump-node-install.sh --role muscle + the refresh timer + the /healthz organ)
+# end-to-end from zero, ASSERTS zero-touch convergence (worker unit active,
+# fleet-server /healthz, refresh timer installed, binary PULLed not cold-built,
+# ZERO out-of-role/cruft units — the 28-unit class the mugman incidents fixed),
+# then tears the container down.
+#
+# WHY GATED, not on every PR: the container fidelity layer is only relevant when
+# the bring-up scripts change, so `paths` scopes it to those files — it never
+# bloats a docs- or Rust-only PR (INFRA-682 path-filter discipline).
+#
+# TWO STEPS, one job:
+#   1. GATE  — `--selfcheck` (host-agnostic: static bring-up contract + a REAL
+#      chump-fleet-server /healthz up→curl→teardown). Deterministic and verified;
+#      this is the check that decides the job's conclusion. It does NOT depend on
+#      systemd-in-docker, so it is green on any runner posture.
+#   2. FIDELITY (advisory) — `--engine docker` boots a clean Ubuntu 22.04 systemd
+#      container and runs the REAL end-to-end bring-up. This is `continue-on-error`
+#      at the STEP level so its result is VISIBLE + continuous but never blocks the
+#      merge: the container-convergence layer still needs hardening (RESILIENT-1051)
+#      and an unverified/partially-converging container run must not false-red every
+#      install-path PR (the "a test that can't land is worthless" rule + the
+#      CLAUDE_GOTCHAS.md § Auto-merge rollup-FAILURE trap). Its logs drive the
+#      hardening; once it converges green in CI it can be promoted to gating.
+# The real-disposable-box variant (docs/process/COTG_NODE_INSTALL.md) is the
+# periodic bare-metal fidelity run.
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - 'scripts/setup/chump-node-install.sh'
+      - 'scripts/setup/install-node-refresh-systemd.sh'
+      - 'scripts/setup/install-fleet-server-node.sh'
+      - 'scripts/setup/install-node-housekeeping.sh'
+      - 'scripts/ops/organ-reconcile.sh'
+      - 'scripts/ops/organ-manifest.txt'
+      - 'scripts/ops/node-refresh-chump.sh'
+      - 'scripts/ops/node-refresh-fleet-server.sh'
+      - 'scripts/dispatch/worker.sh'
+      - 'scripts/ci/ftue-cold-install.sh'
+      - 'crates/chump-fleet-server/**'
+      - '.github/workflows/ftue-cold-install.yml'
+  pull_request:
+    branches: [main, master]
+    paths:
+      - 'scripts/setup/chump-node-install.sh'
+      - 'scripts/setup/install-node-refresh-systemd.sh'
+      - 'scripts/setup/install-fleet-server-node.sh'
+      - 'scripts/setup/install-node-housekeeping.sh'
+      - 'scripts/ops/organ-reconcile.sh'
+      - 'scripts/ops/organ-manifest.txt'
+      - 'scripts/ops/node-refresh-chump.sh'
+      - 'scripts/ops/node-refresh-fleet-server.sh'
+      - 'scripts/dispatch/worker.sh'
+      - 'scripts/ci/ftue-cold-install.sh'
+      - 'crates/chump-fleet-server/**'
+      - '.github/workflows/ftue-cold-install.yml'
+  schedule:
+    # Weekly continuous proof even without a bring-up change (Mon 05:33 UTC).
+    - cron: '33 5 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ftue-cold-install-${{ github.event_name == 'pull_request' && github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: true
+
+jobs:
+  cold-install:
+    # ubuntu-22.04 — matches CI's pinned floor + the real Oracle nodes' userland.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+
+      # ── GATE: host-agnostic contract + real /healthz (decides the job) ──────
+      # Inline `run:` (not a `| ` block) so the parity smoke (INFRA-1867) reads
+      # the harness path as the gate command — it is allowlisted by
+      # scripts/ci/preflight-ci-parity-exceptions.txt (`ftue-cold-install.sh`).
+      # GitHub runs `run:` with bash -eo pipefail by default.
+      - name: cold-install FTUE — contract + live /healthz (gate)
+        run: bash scripts/ci/ftue-cold-install.sh --selfcheck
+
+      # ── FIDELITY (advisory): clean Ubuntu 22.04 systemd container bring-up ──
+      # Visible + continuous, never blocks the merge (see header). RESILIENT-1051
+      # hardens this to full convergence, after which it can be promoted to gating.
+      - name: cold-install FTUE — clean container bring-up (advisory fidelity)
+        continue-on-error: true
+        env:
+          # The install path PULLs a prebuilt binary; a token lets the fetch
+          # path authenticate if the harness exercises a real artifact pull.
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash scripts/ci/ftue-cold-install.sh --engine docker

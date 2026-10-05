@@ -31,7 +31,8 @@ Less-used directories (small scope):
 | `git/` | Low-level git utilities |
 | `plists/` | Raw launchd plist fragments (consumed by `setup/`) |
 | `qa/` | Manual QA checklists and scripts |
-| `release/` | Homebrew formula + changelog tooling |
+| `release/` | `cargo publish` orchestration ([owner + manual-run note](./release/README.md)) |
+| `archived/` | Retired scripts kept for history/reference, no active callers ([`spike/`](./archived/spike/), [`demo/`](./archived/demo/), [`eval/`](./archived/eval/)) |
 
 ---
 
@@ -56,6 +57,7 @@ Less-used directories (small scope):
 | **Generate registry for foreign repo** | `scripts/ops/generate-capabilities-registry.sh <repo-path>` | Column A `chump ingest` wrapper; writes `<repo-path>/docs/CAPABILITIES_REGISTRY.json` |
 | **Check capabilities freshness** | `scripts/ci/check-capabilities-freshness.sh` | Is the catalog stale? Loud `[STALE]` banner past 30d; `--strict` to block (CREDIBLE-240) |
 | **Which provider fronts a tool** | `scripts/ops/capability-provider-join.sh` | Joins the capabilities registry to `privateer/charter.json` (CREDIBLE-240) |
+| **Sweep for false-done gaps** | `scripts/ops/false-done-sweep.py --multi-close-only --json` | Flags `status:done` gaps whose closing PR shipped no implementation file (CREDIBLE-279); see module docstring for tiers |
 | **Install hooks** | `scripts/setup/install-hooks.sh` | Idempotent; run after worktree add |
 | **Install ambient** | `scripts/setup/install-ambient-hooks.sh` | SessionStart/PreToolUse hooks for matrix wiring |
 | **Fix bare worktree** | `scripts/setup/fix-worktree-show-toplevel.sh` | Heals `core.bare=true` poison (INFRA-810) |
@@ -229,6 +231,9 @@ Research and measurement infrastructure.
 
 | Script | Purpose |
 |---|---|
-| `research-lane-a-smoke.sh` | RESEARCH-018: smoke test for lane A harness (no API) |
-| `run-eval-batch.sh` | Run a batch of gap evaluations |
-| `score-eval.sh` | Score model output against expected |
+| `research-lane-a-smoke.sh` | RESEARCH-018: smoke test for lane A harness (no API); run in CI (`ci.yml` "Research Lane A smoke") |
+| `eval-reflection-ab.sh` | EVAL-008: A/B accuracy comparison, heuristic vs. LLM reflection; reads `fixtures/reflection-episodes.json` by default |
+| `fixtures/` | Data fixtures consumed by `eval/` scripts (e.g. `reflection-episodes.json`) |
+
+Retired `run-study[1-5].sh` and `wedge-h1-smoke.sh` (no CI/script callers, single
+historical commits) moved to [`scripts/archived/eval/`](./archived/eval/).

@@ -2,7 +2,7 @@
   domain: META
   title: "productize admin-merge-by-consensus: flip INFRA-2274 shadow→enforce + add AdminMergeProposal decision type"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     REPLACE operator-in-the-loop admin-merge with consensus-based admin-merge so the fleet itself decides when to bypass required checks. Today's session (2026-05-30) had 6 admin-merges by operator (or claude-as-operator) — each one hid a real CI failure signal and reinforced the bypass-when-blocked habit. The system can't tell us what's brittle if we keep bypassing the signal.
@@ -35,9 +35,6 @@
     
     OPERATOR TRIGGER: file 2026-05-30, action after current PR queue clears. NOT urgent — observation is the precursor.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - INFRA-2274 consensus flag flipped shadow->enforce in config; an AdminMergeProposal decision type is registered and emitted; a synthetic BLOCKED+green PR is merged via consensus tally end-to-end.
   outcome_id: MISSION-010
 

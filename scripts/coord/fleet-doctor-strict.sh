@@ -19,15 +19,61 @@
 #                           launchd daemon has last exit code != 0 → emit
 #                           kind=silent_fleet_death; optional auto-heal via
 #                           CHUMP_DOCTOR_AUTOHEAL=1
+#   9. backlog-sync    — CREDIBLE-292: origin/main's .chump/state.sql must not be
+#                        >CHUMP_BACKLOG_SYNC_STALE_HOURS (default 24) stale — a
+#                        dead backlog-sync --writer is the registry split-brain
+#                        precursor.
+#   13. auth-probe      — CREDIBLE-119: live Anthropic auth-path validity (reuses
+#                        scripts/coord/auth-status.sh, RESILIENT-086) — fails when
+#                        credential PRESENCE checks would report healthy but a
+#                        real authenticated call rejects both paths.
+#   14. organ-roll-call-live — INFRA-3646 (TREK-20): every applicable `enabled`
+#                        organ-manifest.txt line must be `systemctl is-active`
+#                        RIGHT NOW, not just declared. Non-applicable organs
+#                        (unmet requires=) skip; dead organs in an
+#                        organ-reconcile.sh backoff cooldown are distinguished
+#                        from dead-and-unowned ones in the failure detail.
+#   15. self-healer-heartbeat — RESILIENT-1053 (originally scoped as RESILIENT-1052; re-filed to avoid a duplicate-PR collision with #4515): the self-healers watch every
+#                        OTHER organ but nothing watched THEM (chump-organ-
+#                        reconcile.timer is deliberately excluded from
+#                        organ-manifest.txt). FAILs + pages
+#                        (kind=self_healer_heartbeat_stale) if
+#                        organ_watchdog_tick or organ_reconcile_applied/noop
+#                        goes stale past its cadence, or has never ticked at
+#                        all while the other has.
+#   16. tracked-config-drift — RESILIENT-1106 (Track A, RESILIENT-1102 /
+#                        docs/design/DESIGN_GAPS_SELF_RUNNING.md): #4593
+#                        pulled worker self-heal policy into tracked
+#                        scripts/setup/*.env files, but a node's hand-deployed,
+#                        git-UNTRACKED launcher (~/node1-worker-run.sh,
+#                        ~/.chump/providers.env) can still hard-set the SAME
+#                        var to a DIFFERENT value and silently win — exactly
+#                        the class of drift #4593 tried to close. FAILs +
+#                        pages (kind=tracked_config_drift) when a live
+#                        untracked file's literal `VAR=value` assignment
+#                        disagrees with the tracked file's canonical value.
+#                        Skips (not fail) when no untracked override files
+#                        are present on this node — nothing outside git to
+#                        drift from.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
 #   DISK_MIN_GB               default 5    — fail if free disk below N GB
+#   DISK_PRESSURE_PCT         default 90   — fail if REPO_ROOT (or any path in
+#                              CHUMP_DISK_PRESSURE_PATHS) is at/above N percent used
+#   CHUMP_DISK_PRESSURE_PATHS default REPO_ROOT — space-separated extra mounts to check
+#                              (e.g. "/ /mnt/cjdata1" on a CJ coordinator node)
 #   DIRTY_PR_HOURS            default 24   — DIRTY PRs older than N hours are flagged
 #   P0_MAX                    default 5    — fail if more than N open P0 gaps
 #   PILLAR_MIN                default 2    — fail if any pillar has fewer than N pickable gaps
 #   SILENT_DEATH_MERGE_HOURS  default 12   — last-merge older than N hours triggers check 1
 #   CHUMP_DOCTOR_AUTOHEAL     default 0    — set 1 to auto-restore missing scripts + bounce daemons
+#   CHUMP_CONFIG_DRIFT_TRACKED_GLOB  default "scripts/setup/*.env" — tracked
+#                              config-as-code files that hold canonical policy
+#   CHUMP_CONFIG_DRIFT_LIVE_GLOB     default "$HOME/*-worker-run.sh
+#                              $HOME/.chump/providers.env
+#                              $HOME/.chump/chumpd.env" — untracked, node-local
+#                              files that may hand-set the same vars
 #
 # Bypass: CHUMP_FLEET_DOCTOR=0 exits 0 (for scripted contexts that want raw signal).
 #
@@ -163,9 +209,32 @@ check_disk() {
         register_check "disk" "fail" \
             "only ${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB)" \
             "bash $REPO_ROOT/scripts/coord/chump-target-reaper.sh --apply  # or manual cleanup"
+        return
+    fi
+
+    # RESILIENT-1444: percentage-based guard — a large filesystem can clear
+    # the absolute-GB floor above while still being critically full (e.g.
+    # 15 GB free on a 115 GB disk is 87% used). Checks REPO_ROOT plus any
+    # extra mounts in CHUMP_DISK_PRESSURE_PATHS (space-separated).
+    local pressure_pct="${DISK_PRESSURE_PCT:-90}"
+    local pressure_paths="${CHUMP_DISK_PRESSURE_PATHS:-$REPO_ROOT}"
+    local path pct worst_path="" worst_pct=0
+    for path in $pressure_paths; do
+        pct="$(df -k "$path" 2>/dev/null | awk 'NR==2 { gsub(/%/,"",$5); print $5 }')"
+        [[ -z "$pct" || ! "$pct" =~ ^[0-9]+$ ]] && continue
+        if [[ "$pct" -gt "$worst_pct" ]]; then
+            worst_pct="$pct"
+            worst_path="$path"
+        fi
+    done
+
+    if [[ -n "$worst_path" && "$worst_pct" -ge "$pressure_pct" ]]; then
+        register_check "disk" "fail" \
+            "$worst_path is ${worst_pct}% used (threshold: <${pressure_pct}%) — RESILIENT-1444 disk-pressure guard" \
+            "bash $REPO_ROOT/scripts/ops/stale-worktree-reaper.sh --execute  # reap abandoned worktrees, then chump-target-reaper.sh --apply"
     else
         register_check "disk" "pass" \
-            "${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB)" \
+            "${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB); ${worst_path:-$REPO_ROOT} at ${worst_pct}% used (threshold: <${pressure_pct}%)" \
             ""
     fi
 }
@@ -592,6 +661,206 @@ except Exception:
 # corr_id — i.e. the fleet was asked to decide and didn't. Cross-platform (reads
 # the logs, no launchctl dependency). A fresh proposal still inside its grace
 # window does NOT fail (no crying wolf on in-flight votes).
+
+check_almanac_freshness() {
+    # INFRA-3586 slice (a): the nervous-system latch — almanac (fleet memory)
+    # must be provably alive: registry readable, refresh loop recent, and a
+    # known symbol answerable. Operator doctrine 2026-08-15: "it can't be
+    # stale — it needs to be alive itself."
+    local bin="${CHUMP_ALMANAC_BIN:-$HOME/Projects/almanac/target/release/almanac}"
+    local ahome="${ALMANAC_HOME:-$HOME/.almanac}"
+    if [[ ! -x "$bin" ]]; then
+        register_check "almanac-freshness" "skip" "almanac CLI absent at $bin — node carries no local index" ""
+        return
+    fi
+    if ! python3 -c "import json;json.load(open('$ahome/registry.json'))" 2>/dev/null; then
+        register_check "almanac-freshness" "fail" "registry.json unreadable/corrupt at $ahome — fleet memory blind" ""
+        return
+    fi
+    local max_h="${CHUMP_ALMANAC_STALE_HOURS:-3}" age=999
+    if [[ -f "$ahome/refresh.log" ]]; then
+        local mtime
+        mtime="$(stat -c %Y "$ahome/refresh.log" 2>/dev/null || stat -f %m "$ahome/refresh.log" 2>/dev/null || echo 0)"
+        age=$(( ( $(date +%s) - mtime ) / 3600 ))
+    fi
+    if (( age >= max_h )); then
+        register_check "almanac-freshness" "fail" "refresh loop stale: refresh.log ${age}h old (threshold ${max_h}h) — fleet memory rotting" ""
+        return
+    fi
+    local hits
+    hits="$("$bin" search-fleet "gap_store" 2>/dev/null | head -1 | grep -oE '[0-9]+ hits' | grep -oE '^[0-9]+' || true)"
+    if [[ -z "$hits" || "$hits" -eq 0 ]]; then
+        register_check "almanac-freshness" "fail" "smoke query 'gap_store' returned 0 hits — index empty or degraded" ""
+        return
+    fi
+    register_check "almanac-freshness" "pass" "registry ok, refresh ${age}h fresh, smoke query ${hits} hits" ""
+}
+
+#   9. backlog-sync    — CREDIBLE-292: origin/main's .chump/state.sql (the
+#                         backlog-sync --writer's published truth) must not go
+#                         stale >24h. A dead writer is exactly how the
+#                         2026-08-15 registry split-brain went undetected for
+#                         21 days — this makes it RED within hours instead.
+check_backlog_sync_freshness() {
+    local max_h="${CHUMP_BACKLOG_SYNC_STALE_HOURS:-24}"
+    local last_epoch reg_ref="origin/main"
+    # Registry privacy: the writer publishes to the private `registry` remote.
+    # Measure freshness THERE when it is configured; origin/main only carries
+    # the legacy (pre-cutover) file. A configured-but-unfetchable registry is a
+    # FAIL, never a quiet fallback to the frozen legacy copy.
+    if git -C "$REPO_ROOT" remote get-url registry >/dev/null 2>&1; then
+        reg_ref="registry/main"
+        if ! git -C "$REPO_ROOT" fetch --quiet registry main 2>/dev/null; then
+            register_check "backlog-sync-freshness" "fail" \
+                "registry remote is configured but could not be fetched — cannot prove the registry is fresh" \
+                "check the node's registry deploy key / network: git -C $REPO_ROOT fetch registry main"
+            return
+        fi
+    fi
+    last_epoch="$(git -C "$REPO_ROOT" log -1 --format='%ct' "$reg_ref" -- .chump/state.sql 2>/dev/null)"
+    if [[ -z "$last_epoch" ]]; then
+        register_check "backlog-sync-freshness" "fail" \
+            "no commit history for .chump/state.sql on $reg_ref — backlog-sync writer has never published there" \
+            "install the writer organ: sudo bash scripts/setup/install-helsinki-atc.sh (see chump-backlog-sync-writer.timer)"
+        return
+    fi
+    local age_h=$(( ( $(date +%s) - last_epoch ) / 3600 ))
+    if (( age_h >= max_h )); then
+        register_check "backlog-sync-freshness" "fail" \
+            "$reg_ref .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
+            "check: systemctl status chump-backlog-sync-writer.timer; re-arm: sudo bash scripts/setup/install-helsinki-atc.sh"
+        return
+    fi
+    register_check "backlog-sync-freshness" "pass" "$reg_ref .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
+}
+
+#  14. organ-roll-call-live — INFRA-3646 (TREK-20): the static Roll-Call
+#      (test-resilient-366-organ-roll-call.sh) only proves every installed
+#      timer HAS a manifest line — it never asks "is the organ actually
+#      running RIGHT NOW". This check closes that gap: for every `enabled`
+#      organ-manifest.txt line whose `requires=` spec holds on THIS node,
+#      assert `systemctl is-active` — RED with the unit name otherwise.
+#      Non-applicable organs (unmet requires=) report skip, not fail. A dead
+#      organ still inside its organ-reconcile.sh backoff cooldown is reported
+#      distinctly from one that's dead with no backoff record at all — the
+#      difference between "the healer tried and gave up, will retry" and
+#      "nobody's watching this one."
+#
+# Applicability gate — mirrors organ-reconcile.sh's organ_is_applicable():
+# bin:/env:/dep: specs, ALL must hold or the organ is not-applicable on this
+# node. A separate function (rather than inline in check_organ_roll_call_live's
+# loop) so its `local IFS=','` is scoped to THIS call and never leaks into the
+# caller's `while read` manifest parser, which needs whitespace-splitting IFS.
+_organ_roll_call_is_applicable() {
+    local unit="$1" requires="$2" systemctl_bin="$3" reason_var="$4"
+    [[ -z "$requires" ]] && return 0
+    local rtok IFS=','
+    for rtok in $requires; do
+        case "$rtok" in
+            bin:*)
+                command -v "${rtok#bin:}" >/dev/null 2>&1 \
+                    || { printf -v "$reason_var" 'missing_bin:%s' "${rtok#bin:}"; return 1; }
+                ;;
+            env:*)
+                local var="${rtok#env:}"
+                [[ -n "${!var:-}" ]] \
+                    || { printf -v "$reason_var" 'missing_env:%s' "$var"; return 1; }
+                ;;
+            dep:*)
+                "$systemctl_bin" is-active --quiet "${rtok#dep:}" 2>/dev/null \
+                    || { printf -v "$reason_var" 'missing_dep:%s' "${rtok#dep:}"; return 1; }
+                ;;
+            file:*)
+                # RESILIENT-1436: mirrors organ_is_applicable() in
+                # scripts/ops/lib/organ-manifest-lib.sh — the CJ-legacy
+                # chump-cj-worker/disk-monitor/sync organs declare
+                # requires=...,file:~/cj-*-run.sh (a host-specific asset with
+                # no tracked unit file). Before this case existed, `file:`
+                # fell through to the `*)` unknown-spec branch below, which
+                # marked these organs not-applicable and SKIPped them —
+                # invisible to the live roll-call even when systemd-supervised.
+                local fpath="${rtok#file:}"
+                case "$fpath" in
+                    '~/'*)     fpath="${HOME:-/root}/${fpath#\~/}" ;;
+                    '$HOME/'*) fpath="${HOME:-/root}/${fpath#\$HOME/}" ;;
+                esac
+                [[ -e "$fpath" ]] \
+                    || { printf -v "$reason_var" 'missing_file:%s' "$fpath"; return 1; }
+                ;;
+            *)
+                printf -v "$reason_var" 'unknown_requires_spec:%s' "$rtok"; return 1 ;;
+        esac
+    done
+    return 0
+}
+
+check_organ_roll_call_live() {
+    local manifest="${CHUMP_ORGAN_MANIFEST:-$REPO_ROOT/scripts/ops/organ-manifest.txt}"
+    local systemctl_bin="${CHUMP_ORGAN_RECONCILE_SYSTEMCTL_BIN:-systemctl}"
+    local backoff_dir="${CHUMP_ORGAN_RECONCILE_BACKOFF_DIR:-$REPO_ROOT/.chump-locks/organ-backoff}"
+    local backoff_cooldown_s="${CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S:-3600}"
+
+    if [[ ! -f "$manifest" ]]; then
+        register_check "organ-roll-call-live" "skip" "organ-manifest.txt not found at $manifest — skipping live check" ""
+        return
+    fi
+    if ! command -v "$systemctl_bin" >/dev/null 2>&1; then
+        register_check "organ-roll-call-live" "skip" "systemctl unavailable on this node — not a live systemd host" ""
+        return
+    fi
+
+    local state unit rest
+    while read -r state unit rest; do
+        [[ -z "${state:-}" ]] && continue
+        [[ "$state" == \#* ]] && continue
+        [[ "$state" != "enabled" ]] && continue
+
+        # role=/requires= parsing mirrors organ-reconcile.sh's manifest reader.
+        local role="brain" requires="" tok
+        for tok in $rest; do
+            case "$tok" in
+                role=*)     role="${tok#role=}" ;;
+                requires=*) requires="${tok#requires=}" ;;
+            esac
+        done
+
+        local reason=""
+        if ! _organ_roll_call_is_applicable "$unit" "$requires" "$systemctl_bin" reason; then
+            register_check "organ-live:$unit" "skip" "not applicable on this node ($reason, role=$role)" ""
+            continue
+        fi
+
+        if "$systemctl_bin" is-active --quiet "$unit" 2>/dev/null; then
+            register_check "organ-live:$unit" "pass" "active (role=$role)" ""
+            continue
+        fi
+
+        # Dead. Distinguish "in reconcile backoff cooldown" (the healer tried,
+        # gave up, and will retry once the cooldown expires) from "dead and
+        # unowned" (no backoff record at all — nobody is watching/retrying it).
+        local backoff_file="$backoff_dir/${unit}.json"
+        if [[ -f "$backoff_file" ]]; then
+            local since br_reason age_s remain_s
+            since="$(grep -o '"since":[0-9]*' "$backoff_file" 2>/dev/null | head -1 | cut -d: -f2)"
+            br_reason="$(grep -o '"reason":"[^"]*"' "$backoff_file" 2>/dev/null | head -1 | cut -d: -f2 | tr -d '"')"
+            if [[ "$since" =~ ^[0-9]+$ ]]; then
+                age_s=$(( $(date +%s) - since ))
+                if (( age_s < backoff_cooldown_s )); then
+                    remain_s=$(( backoff_cooldown_s - age_s ))
+                    register_check "organ-live:$unit" "fail" \
+                        "$unit is inactive, IN BACKOFF COOLDOWN (healer gave up: ${br_reason:-unknown}, retries in ${remain_s}s, role=$role)" \
+                        "wait for cooldown, or force a retry now: rm $backoff_file && sudo bash scripts/ops/organ-reconcile.sh --apply"
+                    continue
+                fi
+            fi
+        fi
+
+        register_check "organ-live:$unit" "fail" \
+            "$unit is inactive/failed and NOT in backoff — dead and unowned (role=$role)" \
+            "systemctl status $unit; sudo bash scripts/ops/organ-reconcile.sh --apply"
+    done < "$manifest"
+}
+
 check_a2a_consensus() {
     if ! command -v python3 &>/dev/null; then
         register_check "a2a-consensus" "skip" "python3 unavailable — skipping A2A outcome scan" ""
@@ -842,6 +1111,304 @@ print(found)
     register_check "ops-defect" "fail" "$detail" "$remedy"
 }
 
+# ── Check 13 (CREDIBLE-119): Live Anthropic auth-path validity ─────────────────
+#
+# `fleet_doctor_validate()` (src/auth.rs) only checks credential PRESENCE —
+# a 108-char ANTHROPIC_API_KEY and a 3-day-stale OAUTH token both count as
+# "present" even though neither authenticates. That gap let the fleet sit
+# dead for ~46h (2026-06-07) while `chump fleet doctor` reported healthy;
+# only run-fleet's separate INFRA-621 launch-time probe caught it.
+#
+# Reuse the canonical RESILIENT-086 live probe (scripts/coord/auth-status.sh)
+# instead of re-implementing it: it makes a real authenticated call down
+# each credential path (a cheap `claude -p`/REST call) and returns 0 only
+# when the path `claude -p` would actually use is valid. rc=1 means BOTH
+# paths are dead; rc=2 means a valid path exists but isn't the active one
+# (the precedence trap) — both are real failures a worker will hit.
+#
+# No bypass env var: a host with NO credentials configured at all naturally
+# SKIPs (auth-status.sh's "no credentials found" case — that absence is
+# already a distinct, pre-existing signal owned by fleet_doctor_validate()
+# presence checks and the farmer's AUTH_DEAD path). This check's job is
+# narrower — catch CONFIGURED-but-invalid credentials — so it never forces
+# a live network probe on a credential-less CI runner or fresh dev box.
+check_auth_probe() {
+    local probe_script="$REPO_ROOT/scripts/coord/auth-status.sh"
+    if [[ ! -f "$probe_script" ]]; then
+        register_check "auth-probe" "skip" "auth-status.sh not found — skipping live probe" ""
+        return
+    fi
+
+    local probe_out probe_rc
+    probe_rc=0
+    probe_out="$(bash "$probe_script" --quiet 2>&1)" || probe_rc=$?
+
+    if [[ "$probe_rc" -eq 0 ]]; then
+        register_check "auth-probe" "pass" "$probe_out" ""
+    elif [[ "$probe_out" == *"no credentials found"* ]]; then
+        register_check "auth-probe" "skip" \
+            "no credentials configured to probe — $probe_out" ""
+    elif [[ "$probe_rc" -eq 2 ]]; then
+        register_check "auth-probe" "fail" \
+            "auth misconfigured: a valid credential exists but is not the active path — $probe_out" \
+            "bash $probe_script --probe  # shows exact fix; workers fail until the active path is switched"
+    else
+        register_check "auth-probe" "fail" \
+            "auth dead: both paths rejected — $probe_out" \
+            "run 'claude setup-token' for a fresh oauth token, or provide a funded ANTHROPIC_API_KEY; see bash $probe_script --probe"
+    fi
+}
+
+# ── Check 15 (RESILIENT-1053, originally scoped as RESILIENT-1052 — see below): self-healer heartbeat — is anyone paging when
+#    the self-healers themselves go dark? ──────────────────────────────────
+#
+# organ-watchdog.sh and organ-reconcile.sh heal every OTHER organ, but
+# nothing in this file checked THEM: organ-roll-call-live (check 14) reads
+# organ-manifest.txt, and chump-organ-reconcile.timer is *intentionally*
+# excluded from that manifest (see the NOTE in organ-manifest.txt — its
+# liveness was left to install-helsinki-atc.sh, which only runs on deploy or
+# boot, not continuously). If either healer's timer silently stops ticking
+# between deploys, every organ it protects rots unattended and nothing
+# pages — the exact meta-failure this check closes.
+#
+# Both healers emit an unconditional per-run ambient event on every
+# successful cycle:
+#   organ-watchdog.sh   -> kind=organ_watchdog_tick        (every ~5 min)
+#   organ-reconcile.sh  -> kind=organ_reconcile_applied OR
+#                          kind=organ_reconcile_noop        (every ~3 min)
+# Treat the newest of those as a heartbeat: if either has never ticked while
+# the OTHER has (proof ambient logging works on this node), or either has
+# gone stale past its cadence + buffer, FAIL and emit a paging ambient event
+# (kind=self_healer_heartbeat_stale) so the silence itself becomes visible.
+# If NEITHER has ever ticked, this isn't the primary node (or a fresh
+# checkout with no ambient history) — skip rather than false-alarm.
+#
+# Thresholds (override via env)
+#   SELF_HEALER_WATCHDOG_STALE_S   default 1200 (20min) — watchdog cadence is 5min
+#   SELF_HEALER_RECONCILE_STALE_S  default 1200 (20min) — reconcile cadence is 3min
+check_self_healer_heartbeat() {
+    local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    if [[ ! -f "$amb" ]]; then
+        register_check "self-healer-heartbeat" "skip" "no ambient.jsonl present — nothing to check" ""
+        return
+    fi
+    if ! command -v python3 &>/dev/null; then
+        register_check "self-healer-heartbeat" "skip" "python3 unavailable — skipping self-healer heartbeat scan" ""
+        return
+    fi
+
+    local watchdog_max_s="${SELF_HEALER_WATCHDOG_STALE_S:-1200}"
+    local reconcile_max_s="${SELF_HEALER_RECONCILE_STALE_S:-1200}"
+
+    local result
+    result="$(python3 -c '
+import sys, json, datetime
+def epoch(ts):
+    try: return int(datetime.datetime.strptime(ts.replace("Z","+0000"),"%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception: return 0
+last_watchdog = 0
+last_reconcile = 0
+for line in open(sys.argv[1], "r", errors="replace"):
+    try: d = json.loads(line)
+    except Exception: continue
+    k = d.get("kind")
+    e = epoch(d.get("ts", ""))
+    if k == "organ_watchdog_tick":
+        last_watchdog = max(last_watchdog, e)
+    elif k in ("organ_reconcile_applied", "organ_reconcile_noop"):
+        last_reconcile = max(last_reconcile, e)
+print(last_watchdog)
+print(last_reconcile)
+' "$amb" 2>/dev/null)"
+
+    local last_watchdog last_reconcile
+    last_watchdog="$(printf '%s' "$result" | sed -n 1p)"; last_watchdog="${last_watchdog:-0}"
+    last_reconcile="$(printf '%s' "$result" | sed -n 2p)"; last_reconcile="${last_reconcile:-0}"
+
+    if [[ "$last_watchdog" -eq 0 && "$last_reconcile" -eq 0 ]]; then
+        register_check "self-healer-heartbeat" "skip" \
+            "no organ_watchdog_tick or organ_reconcile_applied/noop events in ambient.jsonl — self-healers have never ticked on this node (fresh checkout or not the primary node)" ""
+        return
+    fi
+
+    local now_ts
+    now_ts="$(date -u +%s)"
+    local fails=()
+
+    if [[ "$last_watchdog" -eq 0 ]]; then
+        fails+=("chump-organ-watchdog.timer has NEVER ticked (no organ_watchdog_tick event) while organ-reconcile has — the watchdog is dead and unowned")
+    else
+        local watchdog_age=$(( now_ts - last_watchdog ))
+        if (( watchdog_age >= watchdog_max_s )); then
+            fails+=("chump-organ-watchdog.timer silent for ${watchdog_age}s (threshold ${watchdog_max_s}s) — stopped ticking")
+        fi
+    fi
+
+    if [[ "$last_reconcile" -eq 0 ]]; then
+        fails+=("chump-organ-reconcile.timer has NEVER ticked (no organ_reconcile_applied/noop event) while organ-watchdog has — the reconcile is dead and unowned")
+    else
+        local reconcile_age=$(( now_ts - last_reconcile ))
+        if (( reconcile_age >= reconcile_max_s )); then
+            fails+=("chump-organ-reconcile.timer silent for ${reconcile_age}s (threshold ${reconcile_max_s}s) — stopped ticking")
+        fi
+    fi
+
+    if [[ "${#fails[@]}" -gt 0 ]]; then
+        local detail
+        detail="$(printf '%s; ' "${fails[@]}")"
+        detail="${detail%; }"
+        # Write directly rather than routing through ambient-emit.sh: its
+        # INFRA-101 schema gate only recognizes a small legacy "event" enum
+        # and rejects brand-new kinds outright (silently, via the caller's
+        # `|| true`) unless CHUMP_AMBIENT_SCHEMA_CHECK=0 is threaded through —
+        # exactly the kind of silent paging failure this check exists to
+        # eliminate, so it must not depend on that path.
+        local detail_json
+        detail_json="$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"self_healer_heartbeat_stale","detail":"%s","source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$detail_json" >> "$amb" 2>/dev/null || true
+        register_check "self-healer-heartbeat" "fail" "$detail" \
+            "systemctl status chump-organ-watchdog.timer chump-organ-reconcile.timer; sudo systemctl restart chump-organ-watchdog.timer chump-organ-reconcile.timer; sudo bash scripts/setup/install-helsinki-atc.sh"
+        return
+    fi
+
+    register_check "self-healer-heartbeat" "pass" \
+        "organ-watchdog ticked $(( now_ts - last_watchdog ))s ago, organ-reconcile ticked $(( now_ts - last_reconcile ))s ago (thresholds ${watchdog_max_s}s/${reconcile_max_s}s)" ""
+}
+
+#  16. tracked-config-drift — RESILIENT-1106: #4593 moved worker self-heal
+#      policy into tracked scripts/setup/*.env config-as-code files so it
+#      could be reviewed and reproduced in git. But a node's hand-deployed,
+#      git-UNTRACKED launcher (~/node1-worker-run.sh) or machine-local
+#      ~/.chump/providers.env can still hard-set the same var name to a
+#      DIFFERENT literal value and silently win at runtime — the exact
+#      "nothing in git could review, reproduce, or heal the policy" failure
+#      mode #4593 closed for the UNSET case, but not for the OVERRIDDEN case.
+#      This check diffs each tracked file's canonical value against any live
+#      untracked file's literal (non-`:=`) assignment of the same var.
+check_tracked_config_drift() {
+    if ! command -v python3 &>/dev/null; then
+        register_check "tracked-config-drift" "skip" "python3 unavailable — skipping config-drift scan" ""
+        return
+    fi
+
+    local tracked_glob="${CHUMP_CONFIG_DRIFT_TRACKED_GLOB:-$REPO_ROOT/scripts/setup/*.env}"
+    local -a tracked_files=()
+    # shellcheck disable=SC2206
+    tracked_files=( $tracked_glob )
+    if [[ ! -e "${tracked_files[0]:-}" ]]; then
+        register_check "tracked-config-drift" "skip" "no tracked config-as-code files match '$tracked_glob'" ""
+        return
+    fi
+
+    local live_glob="${CHUMP_CONFIG_DRIFT_LIVE_GLOB:-$HOME/*-worker-run.sh $HOME/.chump/providers.env $HOME/.chump/chumpd.env}"
+    local -a live_files=()
+    local pattern
+    for pattern in $live_glob; do
+        # shellcheck disable=SC2206
+        local -a expanded=( $pattern )
+        [[ -e "${expanded[0]:-}" ]] && live_files+=( "${expanded[@]}" )
+    done
+    if [[ "${#live_files[@]}" -eq 0 ]]; then
+        register_check "tracked-config-drift" "skip" \
+            "no untracked live override files present (checked: $live_glob) — nothing outside git to drift from" ""
+        return
+    fi
+
+    local drift_out
+    drift_out="$(python3 -c '
+import re, sys, json
+
+tracked_paths = sys.argv[1].split("\x1e")
+live_paths = sys.argv[2].split("\x1e")
+
+# Canonical values from tracked config-as-code: both plain "VAR=value" and
+# bash default-assignment ": \"${VAR:=value}\"" forms.
+canon = {}
+canon_src = {}
+default_re = re.compile(r"^\s*:\s*\"\$\{(\w+):=([^}]*)\}\"")
+plain_re = re.compile(r"^\s*(?:export\s+)?(\w+)=([^\s#]*)")
+for p in tracked_paths:
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.rstrip("\n")
+                m = default_re.match(line)
+                if not m:
+                    m = plain_re.match(line)
+                if m:
+                    var, val = m.group(1), m.group(2).strip()
+                    canon[var] = val
+                    canon_src[var] = p
+    except OSError:
+        continue
+
+# Live overrides: only HARD assignments (no ":=") count as an override that
+# silently wins over the tracked default. Last assignment in a file wins,
+# mirroring shell semantics.
+live = {}
+live_src = {}
+for p in live_paths:
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if ":=" in line:
+                    continue
+                m = plain_re.match(line)
+                if m:
+                    var, val = m.group(1), m.group(2).strip()
+                    live[var] = val
+                    live_src[var] = p
+    except OSError:
+        continue
+
+drifted = []
+for var, cval in canon.items():
+    if var in live and live[var] != cval:
+        drifted.append({
+            "var": var, "tracked_value": cval, "live_value": live[var],
+            "tracked_file": canon_src[var], "live_file": live_src[var],
+        })
+
+print(json.dumps({"checked": len(canon), "drifted": drifted}))
+' "$(IFS=$'\x1e'; echo "${tracked_files[*]}")" "$(IFS=$'\x1e'; echo "${live_files[*]}")" 2>/dev/null)"
+
+    if [[ -z "$drift_out" ]]; then
+        register_check "tracked-config-drift" "skip" "config-drift scan produced no output (parse error?)" ""
+        return
+    fi
+
+    local checked_count drift_count
+    checked_count="$(printf '%s' "$drift_out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checked"])' 2>/dev/null || echo 0)"
+    drift_count="$(printf '%s' "$drift_out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["drifted"]))' 2>/dev/null || echo 0)"
+
+    if [[ "$drift_count" -gt 0 ]]; then
+        local detail
+        detail="$(printf '%s' "$drift_out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["drifted"]
+parts = []
+for x in d:
+    parts.append("%s: tracked=%r (%s) vs live=%r (%s)" % (x["var"], x["tracked_value"], x["tracked_file"], x["live_value"], x["live_file"]))
+print("; ".join(parts))
+' 2>/dev/null)"
+        local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        local detail_json
+        detail_json="$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"tracked_config_drift","detail":"%s","source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$detail_json" >> "$amb" 2>/dev/null || true
+        register_check "tracked-config-drift" "fail" "$detail" \
+            "reconcile the live override to match the tracked value, or if the live value is intentional, update the tracked scripts/setup/*.env file and ship it so the policy is reviewable in git"
+        return
+    fi
+
+    register_check "tracked-config-drift" "pass" \
+        "$checked_count tracked var(s) checked against ${#live_files[@]} live file(s) — no drift" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -859,8 +1426,14 @@ check_p0_budget
 check_pillar_coverage
 check_silent_fleet_death
 check_a2a_consensus
+check_almanac_freshness
+check_backlog_sync_freshness
+check_organ_roll_call_live
 check_required_status_checks
 check_ops_defect_selfdiag
+check_auth_probe
+check_self_healer_heartbeat
+check_tracked_config_drift
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

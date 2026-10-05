@@ -1,14 +1,15 @@
 - id: INFRA-919
   domain: INFRA
-  title: 'RESILIENT: bot-merge orphan lease cleanup — delete lease file when worktree is removed on test failure'
+  title: "RESILIENT: bot-merge orphan lease cleanup — delete lease file when worktree is removed on test failure"
   status: done
   priority: P2
   effort: xs
   acceptance_criteria:
-  - 'TODO: what events emitted on success/failure/timeout'
-  - 'TODO: how cost tracked and reported to operator'
-  - 'TODO: failure-class taxonomy (distinguish transient vs permanent)'
-  - 'TODO: smoke test command to verify observability'
-  outcome_id: MISSION-010
+    - "TODO: what events emitted on success/failure/timeout"
+    - "TODO: how cost tracked and reported to operator"
+    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
+    - "TODO: smoke test command to verify observability"
   closed_date: '2026-07-25'
   closed_pr: 3236
+  outcome_id: MISSION-010
+

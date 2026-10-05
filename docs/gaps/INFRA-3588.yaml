@@ -1,0 +1,12 @@
+- id: INFRA-3588
+  domain: INFRA
+  title: Create User Guide
+  status: wontfix
+  priority: P3
+  effort: l
+  acceptance_criteria:
+    - The user guide is clear and concise.
+    - All essential features are covered in the guide
+  notes: EFFECTIVE-425 self-verify smoke test artifact — not real work, closing
+  outcome_id: COTG
+

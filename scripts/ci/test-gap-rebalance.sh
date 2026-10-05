@@ -18,6 +18,12 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# shellcheck source=scripts/coord/lib/test-sandbox.sh
+# INFRA-2088: canonical sandbox primitive — single source of truth for the
+# full CHUMP_HOME/CHUMP_REPO/CHUMP_REPO_ROOT/CHUMP_STATE_DB/CHUMP_LOCK_DIR
+# isolation set, so this test can't silently bleed into the real state.db.
+source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
+
 echo "=== INFRA-635 gap rebalance test ==="
 echo
 
@@ -54,7 +60,6 @@ reserve_gap() {
         --title "$title" --quiet --force-duplicate --no-outcome-required 2>/dev/null
 }
 
-export CHUMP_HOME="$(mktemp -d)"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1
@@ -68,7 +73,7 @@ export CHUMP_GAP_RESERVE_NO_EVIDENCE=1
 
 # ── Scenario 1: over-budget P0 (>5) ─────────────────────────────────────────
 echo "[scenario 1: over-budget P0]"
-TMP1="$(mktemp -d)"; export CHUMP_REPO="$TMP1"
+TMP1="$(mktemp -d)"; chump_test_sandbox_setup "$TMP1"
 
 # 6 P0 gaps (one over budget)
 for i in $(seq 1 6); do
@@ -100,12 +105,12 @@ else
     fail "after --apply, P0 count should be ≤ 5 (got $P0_AFTER)"
 fi
 
-rm -rf "$TMP1"
+chump_test_sandbox_cleanup "$TMP1"
 
 # ── Scenario 2: pillar skew (one dominates >50%) ─────────────────────────────
 echo
 echo "[scenario 2: pillar skew]"
-TMP2="$(mktemp -d)"; export CHUMP_REPO="$TMP2"
+TMP2="$(mktemp -d)"; chump_test_sandbox_setup "$TMP2"
 
 # 10 EFFECTIVE P1 gaps — EFFECTIVE dominates; other pillars starved
 for i in $(seq 1 10); do
@@ -125,12 +130,12 @@ else
     fail "pillar-skew should suggest corrective action — got: $OUT2"
 fi
 
-rm -rf "$TMP2"
+chump_test_sandbox_cleanup "$TMP2"
 
 # ── Scenario 3: all clean ────────────────────────────────────────────────────
 echo
 echo "[scenario 3: all clean]"
-TMP3="$(mktemp -d)"; export CHUMP_REPO="$TMP3"
+TMP3="$(mktemp -d)"; chump_test_sandbox_setup "$TMP3"
 
 # 2 per pillar → balanced, no P0s
 for p in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
@@ -158,12 +163,12 @@ else
     fail "--json clean should be true — got: $JSON3"
 fi
 
-rm -rf "$TMP3"
+chump_test_sandbox_cleanup "$TMP3"
 
 # ── Scenario 4: no-action-needed (exactly at floor, P0=0) ───────────────────
 echo
 echo "[scenario 4: no-action-needed]"
-TMP4="$(mktemp -d)"; export CHUMP_REPO="$TMP4"
+TMP4="$(mktemp -d)"; chump_test_sandbox_setup "$TMP4"
 
 # Exactly 2 per pillar, 0 P0s → no action
 for p in EFFECTIVE CREDIBLE RESILIENT ZERO-WASTE; do
@@ -178,12 +183,12 @@ else
     fail "no-action-needed should have 0 actions (got $ACTIONS)"
 fi
 
-rm -rf "$TMP4"
+chump_test_sandbox_cleanup "$TMP4"
 
 # ── --json required keys ──────────────────────────────────────────────────────
 echo
 echo "[--json required keys]"
-TMP5="$(mktemp -d)"; export CHUMP_REPO="$TMP5"
+TMP5="$(mktemp -d)"; chump_test_sandbox_setup "$TMP5"
 _j5_out="$(mktemp)"
 "$BIN" gap rebalance --json > "$_j5_out" 2>/dev/null || true
 JSON5="$(cat "$_j5_out")"; rm -f "$_j5_out"
@@ -194,7 +199,7 @@ for key in p0_count p0_budget total_pickable actions applied clean; do
         fail "JSON key '$key' missing — got: $JSON5"
     fi
 done
-rm -rf "$TMP5"
+chump_test_sandbox_cleanup "$TMP5"
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="

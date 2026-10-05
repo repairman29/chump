@@ -42,6 +42,11 @@ MAX_PER_PR="${AUTO_RESCUE_MAX_PER_PR:-3}"
 # this age, is closed + its gap reopened for a clean redo. Conservative on purpose.
 PR_TERMINAL_HOURS="${PR_TERMINAL_HOURS:-6}"
 PR_TERMINAL_ENABLED="${PR_TERMINAL_ENABLED:-1}"
+# RESILIENT-379 (alert-not-reap): default 0 = NEVER close an auto-merge-armed PR;
+# alert the operator and leave it open instead (an armed PR is vouched-for work;
+# reaping it on a real-but-trivially-fixable red destroyed #4173/#4175 on 2026-08-23).
+# Set to 1 only to opt back into the legacy close+refile for genuinely-abandoned rot.
+PR_TERMINAL_CLOSE_ARMED="${PR_TERMINAL_CLOSE_ARMED:-0}"
 # RESILIENT-296: freshness gate mirroring the reaper's INFRA-1195 window — skip
 # the terminal close if the PR was updated (a fix pushed, CI re-kicked) more
 # recently than this many minutes ago, even if the cumulative-red age looks
@@ -414,8 +419,39 @@ else:
         return 1
     fi
 
+    # RESILIENT-379 (alert-not-reap, incident 2026-08-23): an auto-merge-ARMED PR is
+    # one the fleet/operator VOUCHED for. Summarily CLOSING it on a real-but-usually-
+    # trivially-fixable required-check red destroys vouched-for work — exactly how
+    # #4173 (RESILIENT-376, the Pixel $0 worker) and #4175 (INFRA-3677) were reaped:
+    # each red was a genuine 1-line CI-hygiene failure (#4173 preflight-parity
+    # allowlist, #4175 bypass-var ceiling), NOT shared and NOT flaky, so the
+    # systemic-shared-red guard above never fired (it needs the SAME check red on >=2
+    # OTHER open PRs, and here the two PRs failed DIFFERENT checks). The reaper cannot
+    # tell "trivially-fixable" from "genuinely dead," and the DISPOSE path only ever
+    # reaches here for ARMED PRs (see the python gate: armed and blocked and red).
+    # So the safe default disposition for a vouched-for PR no handler could clear is
+    # to ALERT a human and LEAVE IT OPEN — never to reap it. Closing stays available
+    # behind an explicit opt-in (PR_TERMINAL_CLOSE_ARMED=1) for genuinely-abandoned
+    # armed rot, but the default is alert-only.
+    if [[ "${PR_TERMINAL_CLOSE_ARMED:-0}" != "1" ]]; then
+        say "  → terminal: PR #$pr ALERT-NOT-REAP (RESILIENT-379) — armed+red[$red] ${age}h, no handler cleared it; leaving OPEN and escalating (close is opt-in via PR_TERMINAL_CLOSE_ARMED=1)"
+        emit_event "pr_terminal_alert_not_reaped" "\"pr\":$pr,\"red\":\"$red\",\"age_h\":${age},\"branch\":\"$branch\""
+        if [[ $DRY_RUN -ne 1 ]]; then
+            local on_main_a="unknown" first_red_a
+            first_red_a="$(echo "$red" | tr ',' '\n' | head -1 | sed 's/^ *//;s/ *$//')"
+            if [[ -n "$first_red_a" ]]; then
+                on_main_a="$(gh run list --branch main --limit 15 --json conclusion,name \
+                    --jq "[.[] | select(.name==\"${first_red_a}\")][0].conclusion // \"no-recent-run\"" \
+                    2>/dev/null || echo "lookup-failed")"
+            fi
+            notify_operator "$(printf '⚠️ **Armed PR #%s needs you — LEFT OPEN, not reaped** (RESILIENT-379 alert-not-reap)\n\nAuto-merge was armed but required check(s) `%s` stayed RED for **%sh** and no auto-handler cleared it.\n`%s` on main right now: **%s**\nBranch: `%s`\n\nhttps://github.com/repairman29/chump/pull/%s\n\nThis PR was vouched-for (armed), so auto-rescue is escalating instead of closing. If the red is a trivial CI-hygiene failure (parity allowlist / bypass ceiling / fmt), push the 1-line fix and it lands. If it is genuinely dead, close it by hand.' \
+                "$pr" "${red:-?}" "$age" "${first_red_a:-?}" "$on_main_a" "${branch}" "$pr")" || true
+        fi
+        return 1
+    fi
+
     if [[ $DRY_RUN -eq 1 ]]; then
-        say "  → TERMINAL (dry-run): PR #$pr armed+red[$red] ${age}h ≥ ${PR_TERMINAL_HOURS}h — WOULD close + reopen gap ${gap:-<unparsed:$branch>}"
+        say "  → TERMINAL (dry-run): PR #$pr armed+red[$red] ${age}h ≥ ${PR_TERMINAL_HOURS}h — WOULD close + reopen gap ${gap:-<unparsed:$branch>} (PR_TERMINAL_CLOSE_ARMED=1 opt-in)"
         return 1   # dry-run never acts
     fi
 

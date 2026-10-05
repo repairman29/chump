@@ -2,7 +2,7 @@
   domain: META
   title: "META: Extend Stub Pattern to All Lane Checks for Path-Filtering (META-131 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - All lane checks (audit, test, ACP, fast-checks, clippy, cargo-test, e2e-pwa) are modified.

@@ -1,0 +1,13 @@
+- id: EFFECTIVE-405
+  domain: EFFECTIVE
+  title: "build-speed: extract src/bench.rs (2508L) → crates/chump-bench (Wave-1)"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"extract src/bench.rs (2508L) → crates/chump-bench (Wave-1)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3518
+  outcome_id: CHUMPOS
+

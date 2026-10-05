@@ -1,11 +1,12 @@
-//! META-271 / INFRA-2367 / INFRA-2368 / INFRA-2370 — Fleet Inventory + Tech-Debt Audit DB.
+//! META-271 / INFRA-2367 / INFRA-2368 / INFRA-2369 / INFRA-2370 — Fleet Inventory + Tech-Debt Audit DB.
 //!
 //! **REVIEW-ONLY tier 0 default.** Every detector lands findings at tier=0
-//! (surface-only). No gap-filing, no removal, no auto-action in this PR's
-//! scope. The operator promotes a finding_class from tier 0 → 2 via
+//! (surface-only). No gap-filing, no removal, no auto-action for tier-0
+//! classes. The operator promotes a finding_class from tier 0 → 2 via
 //! `chump inventory promote <class>` only after calibration via
-//! `chump inventory review`. Tier-2 auto-file machinery is deferred to
-//! INFRA-2374.
+//! `chump inventory review`. Once promoted, tier-2 auto-file machinery
+//! (INFRA-2369) files a gap via `chump gap reserve` for every *subsequent*
+//! finding in that class — see [`maybe_auto_file_gap`].
 //!
 //! Storage: `.chump/inventory.db` (separate from canonical state.db so
 //! schema churn doesn't risk the canonical fleet DB).
@@ -22,7 +23,7 @@
 //!   9. event-kind-zero-emit      — EVENT_REGISTRY kind has zero ambient occurrences in 30d
 //!
 //! Every detector emits `kind=tech_debt_finding` to ambient.jsonl AND inserts
-//! into `tech_debt_findings`. NEVER files a gap.
+//! into `tech_debt_findings`. Only tier=2 classes ever file a gap.
 //!
 //! Acceptance criteria (META-271):
 //!   AC1 — schema applied via migrations/inventory_v1.sql
@@ -188,6 +189,27 @@ fn emit_tech_debt_finding_event(
     }
 }
 
+// ─── strategy-doc rot (INFRA-1772) ────────────────────────────────────────────
+
+/// Why an `UnreferencedStrategyDoc` archive-move failed. `None` on the event
+/// means the move succeeded (or wasn't attempted because the doc was skipped).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum FailureClass {
+    /// Retryable — e.g. permission denied on the archive move.
+    Transient,
+    /// Not retryable — e.g. the source file is gone by the time we tried to move it.
+    Permanent,
+}
+
+/// Emitted once per `docs/strategy/` doc that is >90 days stale (by mtime)
+/// with zero gap references. Carries the outcome of the archive-move attempt.
+#[derive(Debug, Clone)]
+pub struct UnreferencedStrategyDocEvent {
+    pub path: String,
+    pub staleness_days: i64,
+    pub failure_class: Option<FailureClass>,
+}
+
 // ─── finding insert (the only write path) ────────────────────────────────────
 
 #[derive(Debug, Clone)]
@@ -234,7 +256,111 @@ pub fn insert_finding(conn: &Connection, f: &Finding) -> Result<i64> {
         f.gap_id.as_deref(),
         &f.detail,
     );
+
+    maybe_auto_file_gap(conn, id, &f.finding_class, &f.detail);
+
     Ok(id)
+}
+
+// ─── tier-2 auto-file machinery (INFRA-2369) ─────────────────────────────────
+
+/// Max auto-filed gaps per finding_class per rolling 24h window.
+pub const AUTO_FILE_RATE_LIMIT_PER_DAY: i64 = 5;
+
+/// Look up a finding_class's current_tier. Defaults to 0 (surface-only) if
+/// the class has no row yet (should not happen post-migration seed, but a
+/// missing row must never be treated as tier=2).
+fn get_current_tier(conn: &Connection, finding_class: &str) -> i64 {
+    conn.query_row(
+        "SELECT current_tier FROM finding_class_tiers WHERE finding_class = ?1",
+        params![finding_class],
+        |r| r.get(0),
+    )
+    .optional()
+    .ok()
+    .flatten()
+    .unwrap_or(0)
+}
+
+/// Count findings of this class already auto-filed in the last 24h.
+fn auto_files_in_window(conn: &Connection, finding_class: &str, since: i64) -> i64 {
+    conn.query_row(
+        "SELECT COUNT(*) FROM tech_debt_findings
+         WHERE finding_class = ?1 AND auto_fix_filed_gap_id IS NOT NULL AND detected_at >= ?2",
+        params![finding_class, since],
+        |r| r.get(0),
+    )
+    .unwrap_or(0)
+}
+
+/// Extract `"id":"<value>"` from a `chump gap reserve --json` stdout line
+/// (`{"id":"INFRA-1234","yaml_path":"..."}`) without pulling in a JSON dep
+/// just for this one field.
+fn extract_reserved_gap_id(stdout: &str) -> Option<String> {
+    let key = "\"id\":\"";
+    let start = stdout.find(key)? + key.len();
+    let rest = &stdout[start..];
+    let end = rest.find('"')?;
+    Some(rest[..end].to_string())
+}
+
+/// Tier-2 auto-file machinery (INFRA-2369, follow-up to META-271). Only
+/// activates when:
+///   - `finding_class` has `current_tier=2` in `finding_class_tiers`
+///     (operator-promoted, per-class — see [`promote_class`])
+///   - `CHUMP_INVENTORY_AUTO_FILE` is not set to "0" (bypass)
+///   - fewer than [`AUTO_FILE_RATE_LIMIT_PER_DAY`] gaps have already been
+///     auto-filed for this class in the trailing 24h
+///
+/// Files a gap via `chump gap reserve` and writes the resulting gap ID back
+/// into `tech_debt_findings.auto_fix_filed_gap_id`. Never blocks or fails
+/// the caller — filing errors are swallowed (warn-only), matching
+/// `insert_finding`'s existing "observability must not block detector flow"
+/// contract for its ambient emit.
+fn maybe_auto_file_gap(conn: &Connection, finding_id: i64, finding_class: &str, detail: &str) {
+    if std::env::var("CHUMP_INVENTORY_AUTO_FILE").as_deref() == Ok("0") {
+        return;
+    }
+    if get_current_tier(conn, finding_class) != 2 {
+        return;
+    }
+    let since = now_secs() - 86_400;
+    if auto_files_in_window(conn, finding_class, since) >= AUTO_FILE_RATE_LIMIT_PER_DAY {
+        return;
+    }
+
+    let mut title = format!("{}: {}", finding_class, detail);
+    title.truncate(200);
+
+    let chump_bin = std::env::var("CHUMP_BIN").unwrap_or_else(|_| "chump".to_string());
+    let out = Command::new(&chump_bin)
+        .args([
+            "gap",
+            "reserve",
+            "--domain",
+            "INFRA",
+            "--title",
+            &title,
+            "--priority",
+            "P2",
+            "--effort",
+            "s",
+            "--json",
+        ])
+        .current_dir(repo_root())
+        .output();
+
+    let gap_id = match out {
+        Ok(o) if o.status.success() => extract_reserved_gap_id(&String::from_utf8_lossy(&o.stdout)),
+        _ => None,
+    };
+
+    if let Some(gap_id) = gap_id {
+        let _ = conn.execute(
+            "UPDATE tech_debt_findings SET auto_fix_filed_gap_id = ?1 WHERE finding_id = ?2",
+            params![gap_id, finding_id],
+        );
+    }
 }
 
 // ─── collectors ──────────────────────────────────────────────────────────────
@@ -1739,7 +1865,170 @@ fn detect_unreferenced_gaps(conn: &Connection, root: &Path) -> Result<usize> {
             n += 1;
         }
     }
+
+    // ─── Third signal: strategy-doc rot (INFRA-1772) ─────────────────────────
+    n += detect_unreferenced_strategy_docs(conn, root)?.len();
+
     Ok(n)
+}
+
+/// Strategy-doc rot gate: any `docs/strategy/*.md` (excluding the `archive/`
+/// subdir) whose mtime is >90 days old AND which zero gaps reference gets an
+/// `UnreferencedStrategyDoc` event + finding, and is archived out of the way.
+/// Docs that are either fresh (<=90d) or referenced by >=1 gap are left alone
+/// and emit nothing.
+fn detect_unreferenced_strategy_docs(
+    conn: &Connection,
+    root: &Path,
+) -> Result<Vec<UnreferencedStrategyDocEvent>> {
+    const STALENESS_GATE_DAYS: i64 = 90;
+
+    let strategy_dir = root.join("docs/strategy");
+    let gaps_dir = root.join("docs/gaps");
+    let mut events = Vec::new();
+
+    let entries = match fs::read_dir(&strategy_dir) {
+        Ok(it) => it,
+        Err(_) => return Ok(events),
+    };
+
+    let now = now_secs();
+    for entry in entries.filter_map(|e| e.ok()) {
+        let path = entry.path();
+        if path.is_dir() {
+            continue; // skips docs/strategy/archive/
+        }
+        if path.extension().and_then(|s| s.to_str()) != Some("md") {
+            continue;
+        }
+        let rel_path = path
+            .strip_prefix(root)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+
+        let mtime_secs = match fs::metadata(&path).and_then(|m| m.modified()) {
+            Ok(t) => t
+                .duration_since(UNIX_EPOCH)
+                .map(|d| d.as_secs() as i64)
+                .unwrap_or(now),
+            Err(_) => continue,
+        };
+        let staleness_days = (now - mtime_secs) / 86400;
+        if staleness_days <= STALENESS_GATE_DAYS {
+            continue;
+        }
+        if count_gap_references(&gaps_dir, &rel_path) > 0 {
+            continue;
+        }
+
+        let failure_class = archive_strategy_doc(root, &rel_path);
+        let event = UnreferencedStrategyDocEvent {
+            path: rel_path.clone(),
+            staleness_days,
+            failure_class,
+        };
+        emit_unreferenced_strategy_doc_event(&event);
+
+        let f = Finding {
+            finding_class: "unreferenced-strategy-doc".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some(rel_path.clone()),
+            pr_number: None,
+            gap_id: None,
+            detail: format!(
+                "Strategy doc {rel_path} is {staleness_days}d stale with zero gap references"
+            ),
+            evidence_json: failure_class.map(|fc| format!(r#"{{"failure_class":"{:?}"}}"#, fc)),
+        };
+        insert_finding(conn, &f)?;
+        events.push(event);
+    }
+
+    Ok(events)
+}
+
+/// Count `docs/gaps/*.yaml` files whose body mentions the doc (by full
+/// relative path or bare filename).
+fn count_gap_references(gaps_dir: &Path, rel_path: &str) -> usize {
+    let basename = Path::new(rel_path)
+        .file_name()
+        .and_then(|f| f.to_str())
+        .unwrap_or(rel_path);
+
+    let entries = match fs::read_dir(gaps_dir) {
+        Ok(it) => it,
+        Err(_) => return 0,
+    };
+
+    entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().extension().and_then(|s| s.to_str()) == Some("yaml"))
+        .filter(|e| {
+            fs::read_to_string(e.path())
+                .map(|text| text.contains(rel_path) || text.contains(basename))
+                .unwrap_or(false)
+        })
+        .count()
+}
+
+/// Classify a std::io::Error raised while archiving a strategy doc.
+fn classify_archive_io_error(e: &std::io::Error) -> FailureClass {
+    match e.kind() {
+        std::io::ErrorKind::NotFound => FailureClass::Permanent,
+        _ => FailureClass::Transient,
+    }
+}
+
+/// Move `root/rel_path` into `docs/strategy/archive/`. Returns `None` on
+/// success, `Some(FailureClass)` on failure — `Permanent` when the source is
+/// already gone, `Transient` for everything else (e.g. permission denied).
+fn archive_strategy_doc(root: &Path, rel_path: &str) -> Option<FailureClass> {
+    let src = root.join(rel_path);
+    if !src.exists() {
+        return Some(FailureClass::Permanent);
+    }
+
+    let archive_dir = root.join("docs/strategy/archive");
+    if let Err(e) = fs::create_dir_all(&archive_dir) {
+        return Some(classify_archive_io_error(&e));
+    }
+
+    let file_name = match Path::new(rel_path).file_name() {
+        Some(f) => f,
+        None => return Some(FailureClass::Permanent),
+    };
+    let dest = archive_dir.join(file_name);
+
+    match fs::rename(&src, &dest) {
+        Ok(()) => None,
+        Err(e) => Some(classify_archive_io_error(&e)),
+    }
+}
+
+/// Append a `kind=unreferenced_strategy_doc` event line to ambient.jsonl.
+/// Fails silently (warn-only) — observability must not block detector flow.
+fn emit_unreferenced_strategy_doc_event(event: &UnreferencedStrategyDocEvent) {
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let mut json = String::new();
+    json.push_str(&format!(
+        r#"{{"ts":"{}","kind":"unreferenced_strategy_doc","path":"{}","staleness_days":{}"#,
+        ts,
+        json_escape(&event.path),
+        event.staleness_days,
+    ));
+    if let Some(fc) = event.failure_class {
+        json.push_str(&format!(r#","failure_class":"{:?}""#, fc));
+    }
+    json.push('}');
+
+    let path = ambient_log_path();
+    if let Some(parent) = path.parent() {
+        let _ = fs::create_dir_all(parent);
+    }
+    if let Ok(mut f) = fs::OpenOptions::new().create(true).append(true).open(&path) {
+        let _ = writeln!(f, "{}", json);
+    }
 }
 
 /// Detector 7: long-undormant-substrate — artifact whose
@@ -2222,6 +2511,62 @@ pub fn class_stats(conn: &Connection) -> Result<Vec<ClassStats>> {
     Ok(out)
 }
 
+// ─── live_pct (CREDIBLE-1047 / CREDIBLE-356 slice) ─────────────────────────
+//
+// Crit-weighted "how much of this class is actually running" signal, built
+// from the two axes already in the schema: a finding's `severity` (the Crit
+// weight) and its artifact's `activation_state` (the stage). Kept as a pure
+// function — no DB/ambient coupling — so it composes into `class_stats` (or
+// any future consumer) without dragging in the wider Debt Index machinery.
+
+/// Stage an artifact's `activation_state` must reach to count as "running".
+const LIVE_PCT_STAGE_RUNNING: i64 = 2;
+
+/// Crit weight for a finding's `severity` — high=3, med=2, low=1, info=0.
+fn live_pct_severity_weight(severity: &str) -> f64 {
+    match severity {
+        "high" => 3.0,
+        "med" => 2.0,
+        "low" => 1.0,
+        _ => 0.0, // "info" and any unrecognized severity
+    }
+}
+
+/// Stage number for an artifact's `activation_state` —
+/// referenced=2 (running), dormant=1, orphan/unknown=0.
+fn live_pct_activation_stage(activation_state: &str) -> i64 {
+    match activation_state {
+        "referenced" => 2,
+        "dormant" => 1,
+        _ => 0, // "orphan" | "unknown"
+    }
+}
+
+/// Crit-weighted fraction of `findings` whose artifact stage is
+/// `>= LIVE_PCT_STAGE_RUNNING`. Each `(severity, activation_state)` pair
+/// contributes its severity weight to the denominator, and that same
+/// weight to the numerator only if its stage has reached running. Returns
+/// `0.0` (never `NaN`) for an empty input or when every finding weighs 0.
+pub fn compute_live_pct<'a, I>(findings: I) -> f64
+where
+    I: IntoIterator<Item = (&'a str, &'a str)>,
+{
+    let mut total_weight = 0.0_f64;
+    let mut live_weight = 0.0_f64;
+    for (severity, activation_state) in findings {
+        let w = live_pct_severity_weight(severity);
+        total_weight += w;
+        if live_pct_activation_stage(activation_state) >= LIVE_PCT_STAGE_RUNNING {
+            live_weight += w;
+        }
+    }
+    if total_weight == 0.0 {
+        0.0
+    } else {
+        live_weight / total_weight
+    }
+}
+
 /// Aggregate counts for rebuild summary.
 pub fn meta_counts(conn: &Connection) -> Result<(i64, i64, i64)> {
     let prs: i64 = conn
@@ -2442,7 +2787,10 @@ mod tests {
         }
         promote_class(&conn, "orphan-artifact", "operator").unwrap();
 
-        // INFRA-2374 NOT shipped — auto_fix_filed_gap_id MUST be NULL.
+        // `promote_class` itself never files gaps or touches
+        // auto_fix_filed_gap_id — only a *subsequent* insert_finding() call
+        // (via maybe_auto_file_gap) can do that. All 10 findings above were
+        // inserted before promotion, so none should carry a gap ID.
         let count_with_gap: i64 = conn
             .query_row(
                 "SELECT COUNT(*) FROM tech_debt_findings
@@ -2453,8 +2801,151 @@ mod tests {
             .unwrap();
         assert_eq!(
             count_with_gap, 0,
-            "tier-2 machinery deferred to INFRA-2374; no finding should have auto_fix_filed_gap_id set"
+            "promote_class must not itself file gaps or set auto_fix_filed_gap_id"
         );
+    }
+
+    /// Writes a fake `chump` executable to `dir` that mimics
+    /// `gap reserve --json`'s stdout contract so tests never shell out to
+    /// the real binary (which needs a live state.db, farmer status, etc.).
+    fn write_fake_chump_bin(dir: &Path, gap_id: &str) -> PathBuf {
+        let script_path = dir.join("fake-chump");
+        let body = format!(
+            "#!/bin/sh\necho '{{\"id\":\"{}\",\"yaml_path\":\"\"}}'\nexit 0\n",
+            gap_id
+        );
+        std::fs::write(&script_path, body).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script_path, perms).unwrap();
+        }
+        script_path
+    }
+
+    #[test]
+    #[serial]
+    fn auto_file_fires_for_tier_2_class_and_skips_tier_0() {
+        let (tmp, conn) = setup_test_db();
+        let fake_bin = write_fake_chump_bin(tmp.path(), "INFRA-9999");
+        std::env::set_var("CHUMP_BIN", &fake_bin);
+        std::env::remove_var("CHUMP_INVENTORY_AUTO_FILE");
+
+        // Promote orphan-artifact to tier=2 via calibration + promote.
+        for i in 0..10 {
+            let f = Finding {
+                finding_class: "orphan-artifact".to_string(),
+                severity: "low".to_string(),
+                artifact_path: Some(format!("scripts/cal{}.sh", i)),
+                pr_number: None,
+                gap_id: None,
+                detail: format!("calibration #{}", i),
+                evidence_json: None,
+            };
+            let id = insert_finding(&conn, &f).unwrap();
+            review_finding(&conn, id, "REAL_POSITIVE", None).unwrap();
+        }
+        promote_class(&conn, "orphan-artifact", "operator").unwrap();
+
+        // tier=2 class: auto-file must fire.
+        let tier2_finding = Finding {
+            finding_class: "orphan-artifact".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/post-promote.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "post-promote orphan".to_string(),
+            evidence_json: None,
+        };
+        let tier2_id = insert_finding(&conn, &tier2_finding).unwrap();
+        let auto_fix: Option<String> = conn
+            .query_row(
+                "SELECT auto_fix_filed_gap_id FROM tech_debt_findings WHERE finding_id = ?1",
+                params![tier2_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            auto_fix,
+            Some("INFRA-9999".to_string()),
+            "tier=2 finding_class must auto-file and record the gap id"
+        );
+
+        // tier=0 class (dormant-script never promoted): auto-file must be skipped.
+        let tier0_finding = Finding {
+            finding_class: "dormant-script".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/never-called.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "dormant script".to_string(),
+            evidence_json: None,
+        };
+        let tier0_id = insert_finding(&conn, &tier0_finding).unwrap();
+        let auto_fix_tier0: Option<String> = conn
+            .query_row(
+                "SELECT auto_fix_filed_gap_id FROM tech_debt_findings WHERE finding_id = ?1",
+                params![tier0_id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            auto_fix_tier0, None,
+            "tier=0 finding_class must NOT auto-file"
+        );
+
+        std::env::remove_var("CHUMP_BIN");
+    }
+
+    #[test]
+    #[serial]
+    fn auto_file_bypass_env_disables_even_tier_2() {
+        let (tmp, conn) = setup_test_db();
+        let fake_bin = write_fake_chump_bin(tmp.path(), "INFRA-8888");
+        std::env::set_var("CHUMP_BIN", &fake_bin);
+        std::env::set_var("CHUMP_INVENTORY_AUTO_FILE", "0");
+
+        for i in 0..10 {
+            let f = Finding {
+                finding_class: "orphan-artifact".to_string(),
+                severity: "low".to_string(),
+                artifact_path: Some(format!("scripts/cal{}.sh", i)),
+                pr_number: None,
+                gap_id: None,
+                detail: format!("calibration #{}", i),
+                evidence_json: None,
+            };
+            let id = insert_finding(&conn, &f).unwrap();
+            review_finding(&conn, id, "REAL_POSITIVE", None).unwrap();
+        }
+        promote_class(&conn, "orphan-artifact", "operator").unwrap();
+
+        let f = Finding {
+            finding_class: "orphan-artifact".to_string(),
+            severity: "low".to_string(),
+            artifact_path: Some("scripts/bypassed.sh".to_string()),
+            pr_number: None,
+            gap_id: None,
+            detail: "bypassed orphan".to_string(),
+            evidence_json: None,
+        };
+        let id = insert_finding(&conn, &f).unwrap();
+        let auto_fix: Option<String> = conn
+            .query_row(
+                "SELECT auto_fix_filed_gap_id FROM tech_debt_findings WHERE finding_id = ?1",
+                params![id],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            auto_fix, None,
+            "CHUMP_INVENTORY_AUTO_FILE=0 must bypass auto-file even at tier=2"
+        );
+
+        std::env::remove_var("CHUMP_BIN");
+        std::env::remove_var("CHUMP_INVENTORY_AUTO_FILE");
     }
 
     #[test]
@@ -2504,5 +2995,169 @@ mod tests {
             extract_gap_id("CREDIBLE-002 something"),
             Some("CREDIBLE-002".to_string())
         );
+    }
+
+    // ─── compute_live_pct (CREDIBLE-1047 / CREDIBLE-356 slice) ─────────────
+
+    #[test]
+    fn live_pct_empty_input_is_zero() {
+        assert_eq!(compute_live_pct(std::iter::empty()), 0.0);
+    }
+
+    #[test]
+    fn live_pct_all_running_is_one() {
+        let findings = vec![("high", "referenced"), ("low", "referenced")];
+        assert_eq!(compute_live_pct(findings), 1.0);
+    }
+
+    #[test]
+    fn live_pct_none_running_is_zero() {
+        let findings = vec![("high", "orphan"), ("med", "dormant")];
+        assert_eq!(compute_live_pct(findings), 0.0);
+    }
+
+    #[test]
+    fn live_pct_crit_weighting_dominates() {
+        // high (weight 3) running, low (weight 1) not: 3.0 / 4.0 = 0.75
+        let findings = vec![("high", "referenced"), ("low", "orphan")];
+        assert!((compute_live_pct(findings) - 0.75).abs() < f64::EPSILON);
+    }
+
+    #[test]
+    fn live_pct_info_severity_contributes_no_weight() {
+        // "info" findings weigh 0 either way, so the fraction is driven
+        // entirely by the weighted (non-info) findings.
+        let findings = vec![("info", "orphan"), ("med", "referenced")];
+        assert_eq!(compute_live_pct(findings), 1.0);
+    }
+
+    #[test]
+    fn live_pct_dormant_is_not_running() {
+        // "dormant" is stage 1, below LIVE_PCT_STAGE_RUNNING (2) — does not count as live.
+        let findings = vec![("high", "dormant")];
+        assert_eq!(compute_live_pct(findings), 0.0);
+    }
+
+    // ─── detect_unreferenced_gaps — strategy-doc rot (INFRA-1772) ──────────
+
+    /// Set a file's mtime to `days_ago` days in the past.
+    fn set_mtime_days_ago(path: &Path, days_ago: i64) {
+        let target = SystemTime::now() - std::time::Duration::from_secs((days_ago * 86400) as u64);
+        let file = std::fs::OpenOptions::new().write(true).open(path).unwrap();
+        let times = std::fs::FileTimes::new().set_modified(target);
+        file.set_times(times).unwrap();
+    }
+
+    /// Build a fake project root with `docs/strategy/` and `docs/gaps/` dirs.
+    fn setup_strategy_root() -> TempDir {
+        let tmp = TempDir::new().expect("tempdir");
+        fs::create_dir_all(tmp.path().join("docs/strategy")).unwrap();
+        fs::create_dir_all(tmp.path().join("docs/gaps")).unwrap();
+        tmp
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_emits_unreferenced_strategy_doc_event() {
+        let (_db_tmp, conn) = setup_test_db();
+        let root = setup_strategy_root();
+        let doc = root.path().join("docs/strategy/OLD_PLAN.md");
+        fs::write(&doc, "# stale plan").unwrap();
+        set_mtime_days_ago(&doc, 120);
+
+        let events = detect_unreferenced_strategy_docs(&conn, root.path()).unwrap();
+        assert_eq!(events.len(), 1);
+        assert_eq!(events[0].path, "docs/strategy/OLD_PLAN.md");
+        assert!(events[0].staleness_days > 90);
+        assert_eq!(events[0].failure_class, None);
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_archives_unreferenced_strategy_doc() {
+        let (_db_tmp, conn) = setup_test_db();
+        let root = setup_strategy_root();
+        let doc = root.path().join("docs/strategy/OLD_PLAN.md");
+        fs::write(&doc, "# stale plan").unwrap();
+        set_mtime_days_ago(&doc, 120);
+
+        detect_unreferenced_strategy_docs(&conn, root.path()).unwrap();
+
+        assert!(!doc.exists(), "original path must be removed");
+        assert!(
+            root.path()
+                .join("docs/strategy/archive/OLD_PLAN.md")
+                .exists(),
+            "doc must be moved into docs/strategy/archive/"
+        );
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_skips_fresh_strategy_doc() {
+        let (_db_tmp, conn) = setup_test_db();
+        let root = setup_strategy_root();
+        let doc = root.path().join("docs/strategy/FRESH_PLAN.md");
+        fs::write(&doc, "# fresh plan").unwrap();
+        set_mtime_days_ago(&doc, 10); // well under the 90d gate
+
+        let events = detect_unreferenced_strategy_docs(&conn, root.path()).unwrap();
+        assert!(events.is_empty());
+        assert!(doc.exists(), "fresh doc must not be moved");
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_skips_strategy_doc_with_gap_reference() {
+        let (_db_tmp, conn) = setup_test_db();
+        let root = setup_strategy_root();
+        let doc = root.path().join("docs/strategy/REFERENCED_PLAN.md");
+        fs::write(&doc, "# referenced plan").unwrap();
+        set_mtime_days_ago(&doc, 120);
+        fs::write(
+            root.path().join("docs/gaps/INFRA-9999.yaml"),
+            "id: INFRA-9999\nnotes: see docs/strategy/REFERENCED_PLAN.md\n",
+        )
+        .unwrap();
+
+        let events = detect_unreferenced_strategy_docs(&conn, root.path()).unwrap();
+        assert!(events.is_empty());
+        assert!(doc.exists(), "referenced doc must not be moved");
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_failure_class_permanent_when_source_absent() {
+        // Exercise archive_strategy_doc directly: the source file was never
+        // written, so the move must fail Permanent (nothing to retry).
+        let root = setup_strategy_root();
+        let failure = archive_strategy_doc(root.path(), "docs/strategy/GHOST.md");
+        assert_eq!(failure, Some(FailureClass::Permanent));
+    }
+
+    #[test]
+    #[serial]
+    fn detect_unreferenced_gaps_failure_class_transient_on_permission_denied() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = setup_strategy_root();
+        let doc = root.path().join("docs/strategy/LOCKED_PLAN.md");
+        fs::write(&doc, "# locked plan").unwrap();
+
+        // Make docs/strategy/ read-only so create_dir_all("archive/") fails
+        // with a permissions error rather than the source being missing.
+        let strategy_dir = root.path().join("docs/strategy");
+        let mut perms = fs::metadata(&strategy_dir).unwrap().permissions();
+        perms.set_mode(0o500);
+        fs::set_permissions(&strategy_dir, perms).unwrap();
+
+        let failure = archive_strategy_doc(root.path(), "docs/strategy/LOCKED_PLAN.md");
+
+        // Restore perms so TempDir can clean itself up.
+        let mut restore = fs::metadata(&strategy_dir).unwrap().permissions();
+        restore.set_mode(0o755);
+        fs::set_permissions(&strategy_dir, restore).unwrap();
+
+        assert_eq!(failure, Some(FailureClass::Transient));
     }
 }

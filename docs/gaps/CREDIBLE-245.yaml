@@ -1,0 +1,10 @@
+- id: CREDIBLE-245
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement register_worker_rpc_handlers (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The register_worker_rpc_handlers function is implemented to register a worker session
+    - The function returns a success response when a worker is registered
+

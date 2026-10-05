@@ -1,0 +1,15 @@
+- id: CREDIBLE-198
+  domain: CREDIBLE
+  title: "CREDIBLE: verify-before-execute gate in chump improve — read-only LLM check if AC already satisfied, auto-close already_satisfied, no fix-agent (CREDIBLE-197 slice 2)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"verify-before-execute gate in chump improve — read-only LLM check if AC already satisfied, auto-close already_satisfied, no fix-agent (CREDIBLE-197 slice 2)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3462
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: Recon design on main @5aefd5b1. OUTPUT: slice 1 (#3461) shipped the already_satisfied disposition; slice 2 is the DETECTION. Insert a gate in src/improve.rs run_pipeline ~L280 (after dedup PASS 276-279, before implement_gap 308; clone exists from prepare_shared_clone L229; picked.acceptance_criteria_draft available). New verify_already_satisfied() mirrors bench.rs:198 spirit_judge: read-only repo context + chump llm-complete (main.rs:1421) prompt (is each AC already satisfied? make NO changes; VERDICT: SATISFIED|NOT-SATISFIED - file:line), parse via parse_spirit_verdict copy. SATISFIED -> emit already_satisfied_skipped + close via CREDIBLE-197 disposition + return Ok(0) (skip agent). NOT-SATISFIED/gateway-down -> FAIL-OPEN to execute (never false-close real work). THEORY: makes chump safe to drink from the Scout/Holler firehose; LLM-grounded superset of keyword dedup_check (improve.rs:598). ALT: agent self-report (wastes run + false-green risk); keyword-only (misses out-of-band fixes).
+

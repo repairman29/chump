@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: publish chump-agent-events-v1 schema spec — public cross-framework observability schema (depends on INFRA-1973 ambient index; Bet 3 follow-on, moat play)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Publish docs/specs/CHUMP_AGENT_EVENTS_V1.md — a public cross-framework observability schema for multi-agent coordination events. First-mover moat play per MARKET_POSITIONING_2026-05-27.md Bet 3 (the OpenTelemetry-for-multi-agent gap).

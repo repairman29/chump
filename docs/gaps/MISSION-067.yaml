@@ -1,0 +1,14 @@
+- id: MISSION-067
+  domain: MISSION
+  title: "CHUMPOS Phase 2: kernel ABI — design-time contract enforcement via A2A consensus"
+  status: blocked
+  priority: P1
+  effort: xl
+  acceptance_criteria:
+    - "The change described by \"kernel ABI — design-time contract enforcement via A2A consensus\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    #3331 (MISSION-045) collided with 4+ fleet invariants (INFRA-979 file-gaps, INFRA-635 rebalance, INFRA-2429 bypass-ceiling, MISSION-028 picker), each surfacing only at CI several features late. No design-time contract layer; the fleet fights itself, driving the 24% mission-ship ratio.
+

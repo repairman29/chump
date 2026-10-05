@@ -1,7 +1,7 @@
 - id: INFRA-3403
   domain: INFRA
   title: "RESILIENT: restore remaining self-hosted runner lanes (AUDIT/COVERAGE/E2E_GOLDEN_PATH/TAURI) one at a time"
-  status: open
+  status: done
   priority: P2
   effort: m
   description: |
@@ -23,4 +23,6 @@
     Do not batch — if one lane flakes, you need to know which.
   acceptance_criteria:
     - "1. Confirm RUNNER_E2E_PWA canary has run clean (no CANCELLED/checkout-fail) across >=3 PR cycles\n2. Restore RUNNER_AUDIT, wait one clean PR cycle\n3. Restore RUNNER_COVERAGE, wait one clean PR cycle\n4. Restore RUNNER_E2E_GOLDEN_PATH and RUNNER_TAURI_COWORK_E2E, wait one clean PR cycle\n5. Update docs/process/SELF_HOSTED_RUNNERS.md \"Repo variable state\" table to reflect final state\n6. Emit ambient kind=runner_health_restored on full restoration"
+  closed_date: '2026-08-31'
+  closed_pr: 4337
 

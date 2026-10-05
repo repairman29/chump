@@ -1,0 +1,15 @@
+- id: INFRA-3485
+  domain: INFRA
+  title: "CREDIBLE: [COTG-1.3] pre-commit edit-verification gate (destructive + validity)"
+  status: shipped
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-1.3] pre-commit edit-verification gate (destructive + validity)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:22Z] DISCOVERY NOT-STARTED ~10% -> BUILD (small). reuse src/patch_apply.rs parse-validity; add destructive-diff + JSON/TOML/YAML validity as a pre-commit gate.
+  closed_pr: 3377
+  outcome_id: COTG
+

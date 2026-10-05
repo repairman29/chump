@@ -7,6 +7,7 @@
 #   2. All success → passed=[all], rollup exits 0
 #   3. cargo-test=cancelled, no other failure → treated as real_failure, rollup exits 1
 #   4. fast-checks=failure, clippy=cancelled, cargo-test=cancelled → both cascade_cancels
+#   5. All shards cancelled, no real failure → supersedure_cancel, rollup exits 0
 
 set -euo pipefail
 
@@ -32,7 +33,16 @@ for r in "\$fast" "\$clippy" "\$test" "\$hygiene"; do
   [ "\$r" = "failure" ] && any_real_failure=1
 done
 
-real_failures="" cascade_cancels="" passed="" skipped_list=""
+# Pass 1.5: detect workflow supersedure (INFRA-1527).
+total_shards=4
+cancelled_count=0
+for r in "\$fast" "\$clippy" "\$test" "\$hygiene"; do
+  [ "\$r" = "cancelled" ] && cancelled_count=\$((cancelled_count + 1))
+done
+supersedure=0
+[ "\$any_real_failure" = "0" ] && [ "\$cancelled_count" = "\$total_shards" ] && supersedure=1
+
+real_failures="" cascade_cancels="" supersedure_cancels="" passed="" skipped_list=""
 classify() {
   local name="\$1" result="\$2"
   case "\$result" in
@@ -42,6 +52,8 @@ classify() {
     cancelled)
       if [ "\$any_real_failure" = "1" ]; then
         cascade_cancels="\${cascade_cancels:+\$cascade_cancels,}\$name"
+      elif [ "\$supersedure" = "1" ]; then
+        supersedure_cancels="\${supersedure_cancels:+\$supersedure_cancels,}\$name"
       else
         real_failures="\${real_failures:+\$real_failures,}\$name"
       fi
@@ -54,7 +66,7 @@ classify "clippy"       "\$clippy"
 classify "cargo-test"   "\$test"
 classify "pr-hygiene"   "\$hygiene"
 
-echo "real_failures=[\${real_failures:-none}] cascade_cancels=[\${cascade_cancels:-none}] passed=[\${passed:-none}]"
+echo "real_failures=[\${real_failures:-none}] cascade_cancels=[\${cascade_cancels:-none}] supersedure_cancels=[\${supersedure_cancels:-none}] passed=[\${passed:-none}]"
 if [ -n "\$real_failures" ]; then exit 1; else exit 0; fi
 SHELL
 }
@@ -126,5 +138,20 @@ else
     fail "Test 4: expected cascade_cancels=[clippy,cargo-test] (got: $OUT4)"
 fi
 
+# ── Test 5: all shards cancelled, no failure → workflow supersedure ────────────
+EXIT5=0; OUT5=$(run_rollup "cancelled" "cancelled" "cancelled" "cancelled" 2>/dev/null) || EXIT5=$?
+
+if echo "$OUT5" | grep -q "supersedure_cancels=\[fast-checks,clippy,cargo-test,pr-hygiene\]"; then
+    pass "Test 5: all shards classified as supersedure_cancel"
+else
+    fail "Test 5: expected supersedure_cancels=[fast-checks,clippy,cargo-test,pr-hygiene] (got: $OUT5)"
+fi
+
+if [[ "$EXIT5" -eq 0 ]]; then
+    pass "Test 5: all-supersedure rollup exits 0 (benign)"
+else
+    fail "Test 5: all-supersedure should exit 0 (got $EXIT5)"
+fi
+
 echo ""
-echo "All INFRA-1002 cascade-cancel classification checks passed (7/7)."
+echo "All INFRA-1002 cascade-cancel classification checks passed (8/8)."

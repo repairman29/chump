@@ -1,0 +1,15 @@
+- id: CREDIBLE-229
+  domain: CREDIBLE
+  title: "[almanac] registry has no ollama_url — summarization silently falls back to the 'dead' local Mac Ollama"
+  status: open
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - Set ollama_url (almanac init --ollama-url already persists it machine-wide) so summarization resolves to helsinki like embeddings do
+    - "Make the fallback LOUD: summarize states which host it resolved and why, so a silent downgrade to a flaky local box is never mistaken for normal operation"
+    - "'ollama list' on this Mac shows exactly one model (llama3.2:3b) — nomic-embed-text is NOT pulled locally, so embeddings have no local fallback if helsinki is unreachable. Either pull it or record the hard dependency in DEPTH.md"
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: python3 -c "import json;d=json.load(open('~/.almanac/registry.json'));print([k for k in d if k!='repos'])" OUTPUT: ['embed_url'] — ollama_url and rerank_url absent. THEORY: per crates/almanac-core/src/summarize.rs:63-74 an absent ollama_url falls back to http://localhost:11434, the box chump .env line 20 calls 'dead local ollama' (INFRA-3451); observed consequence is the markdown re-summarize wave running ~20s/file on local llama3.2:3b for hours while helsinki and 13 cloud slots idled. ALT: the fallback is intended and helsinki is only meant for embeddings — refuted by DEPTH.md, which documents the summarizer as running on helsinki.
+

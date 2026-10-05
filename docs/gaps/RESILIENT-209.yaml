@@ -1,0 +1,14 @@
+- id: RESILIENT-209
+  domain: RESILIENT
+  title: "RESILIENT: wire tool-provisioning into the OS runtime — tool_routing detects missing tools (11/34) but only LOGS; auto-install core belt at load + missing tools as-needed in-flight, not a one-shot human-run bootstrap-toolkit.sh"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"wire tool-provisioning into the OS runtime — tool_routing detects missing tools (11/34) but only LOGS; auto-install core belt at load + missing tools as-needed in-flight, not a one-shot human-run bootstrap-toolkit.sh\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3402
+  outcome_id: COTG
+

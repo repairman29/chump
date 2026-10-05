@@ -1,0 +1,33 @@
+- id: PRODUCT-143
+  domain: PRODUCT
+  title: "[olive] Meal and budget search modes silently fail ($0.00 / \"not found\") -- only plain grocery-list mode works"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of shopolive.xyz (Scout, stranger tier -- no prior product knowledge, no source access, screen-only, ~10 min bounded session).
+    
+    The landing page's own "Try her right now" box advertises three input modes verbatim in its FAQ copy: a list ("milk, eggs, coffee"), a meal ("chicken tacos for four"), or a budget ("$40 for the week"). Only the list mode actually works.
+    
+    Repro:
+    - "milk, eggs, bread, chicken breast" -> WORKS: real priced products from a real nearby store (auto-detected by IP, e.g. "King Soopers - Westside Uintah, Colorado Springs"), running total ~$8.96. Entering ZIP 90210 correctly re-pointed to "Ralphs Fresh Fare - Beverly Doheny, West Hollywood".
+    - "$40 for the week for two people" -> FAILS: "not found here", total $0.00
+    - "chicken tacos for four" (the page's own quoted example) -> FAILS: "not found here", total $0.00
+    
+    A first-time visitor trying the page's own advertised example gets a silently broken result with no messaging distinguishing "not live yet" from "broken."
+    
+    Operator note: flagged as possibly already known -- filing anyway per Scout/holler dogfood test (first real stranger-tier finding routed through report-holler.mjs since the Scout extraction).
+    
+    context: {"url":"https://shopolive.xyz","tier":"stranger","source":"scout-stranger-agent","operator_note":"possibly already known, filed for pipeline test","session_bounds":"~10-15 look-act cycles, no account/payment/PII per protocol"}
+    source: holler feedback_events, dedupe 60f6e5a7277634b8
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    REAL-PATH TEST 2026-08-05 (current binary + full 9-slot cascade, correct env): routing✓ picked PRODUCT-143 (not GREEN-FIRST), grounding✓ agent went to the RIGHT file src/lib/agent/orchestrator.ts, cascade✓ routed to nvidia slot. FAILURE: the weak model CLOBBERED orchestrator.ts (overwrote 14083 bytes with 467 / +4-168) instead of a surgical edit. Guard✓ COTG-1.3 verify_staged_edit REJECTED the clobber — no false-green shipped. REAL remaining gap = weak-model write_file clobber (should force patch_file / steer diffs, RESILIENT-187 area), NOT routing/grounding/provider (all work).
+  source_doc: "holler:feedback_events"
+  closed_date: '2026-08-06'
+  closed_pr: 3479
+  skills_required: "external_repo:repairman29/olive"
+

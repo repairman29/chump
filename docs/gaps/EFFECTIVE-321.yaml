@@ -1,0 +1,16 @@
+- id: EFFECTIVE-321
+  domain: EFFECTIVE
+  title: "Principle: affordances over gates — promote high-firing gates into defaults; gate-firing-rate is a backlog signal against the OS's own affordances"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"affordances over gates — promote high-firing gates into defaults; gate-firing-rate is a backlog signal against the OS's own affordances\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-28'
+  closed_pr: 3341
+  outcome_id: CHUMPOS
+  evidence: |
+    Operator observation 2026-07-27 (Jeff): the fleet has ~150 gates (detection, lagging) and few affordances (generation, leading), because a gate is the cheapest response to an incident and an affordance is 10x the work — so gates accreted and nobody graduates them into defaults. Symptom: landing ONE gate (MISSION-045) took 3 CI rounds of gate-bounces. Doctrine to establish: (1) a gate that fires often is a MISSING AFFORDANCE wearing a warning label; (2) the OS is measured by how little bad output gets produced (right thing = path of least resistance), not how much its gates reject; (3) lifecycle = gate-first (stop the bleeding) THEN promote to affordance once the pattern is clear — the fleet does step 1 well and step 2 rarely; (4) reframe a near-term roadmap phase as 'wire the affordances, retire the friction' with EFFECTIVE-318/319/320 as its first instances and gate-firing-rate as the tracked metric. Companion: EFFECTIVE-320 (gate scaffold), 318 (preflight==CI), 319 (chump impact), CREDIBLE-169, RESILIENT-201.
+

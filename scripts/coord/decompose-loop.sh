@@ -62,6 +62,11 @@ SESSION_ID="${CHUMP_SESSION_ID:-decompose-loop-$$}"
 cmd=${1:-help}
 [ $# -gt 0 ] && shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "decompose" || true
+fi
+
 # ── helpers ────────────────────────────────────────────────────────────────
 
 require_chump() {
@@ -408,6 +413,14 @@ cmd_tick() {
         echo "[decompose-loop] tick: actionable items found"
         return 0
     fi
+
+    # INFRA-2210: no-idle fallback before declaring quiet.
+    # shellcheck source=/dev/null
+    if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "decompose"; then
+        echo "[decompose-loop] tick: no-op avoided — took fallback action instead of idling"
+        return 0
+    fi
+
     echo "[decompose-loop] tick: quiet — no actionable inbox or feedback items"
     return 1
 }

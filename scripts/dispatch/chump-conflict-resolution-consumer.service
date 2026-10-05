@@ -1,0 +1,24 @@
+# RESILIENT-360 — tracks the conflict-resolution consumer as a systemd organ.
+# The launchd installer (install-conflict-resolution-consumer-launchd.sh,
+# RESILIENT-301) only wired this on Mac/helsinki; on CJ nothing consumed
+# armed_pr_needs_conflict_resolution, so REAL-conflict DIRTY fix-class PRs
+# rotted with no owner (#4033/4036/4037/4040/4041). This unit is the Linux
+# port so every node drains real-conflict orphans hands-off.
+#
+# Runs scripts/coord/conflict-resolution-consumer.sh: picks up PRs flagged via
+# armed_pr_needs_conflict_resolution PLUS green-but-DIRTY-unarmed PRs, attempts
+# a plain rebase then conflict-resolver-agent.sh (INFRA-1488) for real conflicts.
+#
+# CHUMP_REPO_ROOT is REQUIRED: the script default $HOME/Projects/Chump is
+# capital-C and does not exist on case-sensitive Linux. install-helsinki-atc.sh
+# (RESILIENT-353) rewrites /root + User for the target node on install.
+[Unit]
+Description=Chump conflict-resolution consumer — drain real-conflict DIRTY PRs (RESILIENT-360/301)
+After=network-online.target
+Wants=network-online.target
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/coord/conflict-resolution-consumer.sh'
+TimeoutStartSec=1200

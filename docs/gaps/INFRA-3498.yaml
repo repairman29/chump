@@ -1,0 +1,14 @@
+- id: INFRA-3498
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-4.1] divergent solve for hard gaps (N approaches -> judge -> synthesize)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-4.1] divergent solve for hard gaps (N approaches -> judge -> synthesize)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY NOT-STARTED ~15% -> BUILD. building blocks only: src/adversary_llm.rs (reuse as judge), src/speculative_execution.rs. Add generate-N/synthesize.
+  outcome_id: COTG
+

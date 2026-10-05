@@ -1,0 +1,44 @@
+- id: RESILIENT-212
+  domain: RESILIENT
+  title: diagnose why consensus_result has never fired once, despite RESILIENT-061 (the blocking bug) marked done
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - determine whether chump-coord worker (subscribe side) is supposed to run as a persistent daemon and, if so, why it isn't running on this box -- check for a missing/uninstalled launchd plist vs. a deliberate manual-start design
+    - start it (or fix the daemon-install gap) and observe at least one real FEEDBACK proposal go through vote to tally
+    - either observe a real consensus_result event fire (count 0 -> >=1) or determine the alternate explanation (event renamed, or no quorum-eligible proposal exists yet) and document which
+    - "test: after this gap ships, grep -c consensus_result .chump-locks/ambient.jsonl returns >=1, or a documented reason explains why that's not yet the correct check"
+  closed_date: '2026-07-30'
+  closed_pr: 3409
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: grep -c "consensus_result" .chump-locks/ambient.jsonl
+    OUTPUT: 0
+    
+    COMMAND: ps aux | grep "chump-coord worker" | grep -v grep
+    OUTPUT: (empty -- subscribe-side daemon not running)
+    
+    COMMAND: launchctl getenv CHUMP_A2A_LAYER; launchctl getenv CHUMP_FLEET_RECV_SIDE_V0
+    OUTPUT: 1
+    1
+    (both flags ARE on at the launchd level, contradicting docs/design/A2A_MASTER_PLAN_2026-06-03.md's
+    "never set" claim -- that claim is now stale, not false-at-the-time)
+    
+    COMMAND: chump gap show RESILIENT-061
+    OUTPUT: status: done (this is the deliberator-loop.sh bad-shell-arithmetic crash bug that
+    A2A_MASTER_PLAN_2026-06-03.md's SS5 M1 callout identified as the actual blocker: "the last
+    mile is one bug + one flag, not a flag-flip alone... GATE: consensus_result count goes 0 -> >=1")
+    
+    THEORY: the fix (RESILIENT-061) shipped, and the flags are on, but the subscribe-side daemon
+    (chump-coord worker) that would actually consume messages and let a deliberator tick run
+    against a live proposal isn't currently running -- so the gate the plan's own authors defined
+    has never actually been exercised end-to-end, even though every named component shows done.
+    Classic component-done-but-system-unproven gap, same class as the INFRA-3485/INFRA-3516
+    discrepancy found in the same session (2026-07-30).
+    
+    ALT: could also be that consensus_result is real but named differently after a later refactor
+    (event-kind rename), or that no proposal has reached quorum-eligible state to tally in the
+    first place (a "no real input" explanation, not a "broken pipe" one) -- this gap's job is to
+    distinguish these, not assume the worst.
+

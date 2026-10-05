@@ -19,3 +19,25 @@
 # Example:
 #   # reason: multi-worker race condition on the same .chump-locks lease
 #   scripts/ci/test-multi-worker-lease-race.sh
+
+# reason: INFRA-1882 CLI end-to-end smoke (fixture git repo + spawned chump
+# binary + sqlite assertion on the TARGET repo's own .chump/state.db,
+# CHUMP_REPO-isolated ambient stream) — genuine multi-process/filesystem
+# integration, matches the ingest_librarian precedent.
+scripts/ci/test-chump-scan.sh
+
+# reason: INFRA-2472 multi-machine lease race — spawns two simulated
+# sessions against the separate chump-coord binary (NATS KV CAS), which the
+# lint's own regex intends to exclude but false-matches on the substring
+# "target/debug/chump-coord" (word-boundary after "chump" fires regardless
+# of the "-coord" suffix). Genuine cross-process race test, not chump-binary
+# logic that belongs in cargo test.
+scripts/ci/test-multi-machine-lease.sh
+
+# reason: INFRA-1604 deep claim-collision detection — end-to-end `chump
+# claim` CLI test needing a synthesized fixture git repo (init + self-remote
+# + worktree add) plus multiple `.chump-locks/*.json` sibling lease files on
+# disk. Mirrors the INFRA-1394 precedent (test-claim-hot-file-overlap.sh,
+# grandfathered pre-gate) — genuine filesystem/CLI integration, not unit
+# logic that belongs in cargo test.
+scripts/ci/test-deep-claim-collision.sh

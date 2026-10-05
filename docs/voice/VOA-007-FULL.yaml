@@ -1,0 +1,26 @@
+# VOA-007 — Voice of the Agent, full report.
+# Auto-filed by `chump voice` (INFRA-2258).
+# See docs/process/VOICE_OF_AGENT.md for protocol.
+
+id: VOA-007
+filed_at: "2026-08-09T15:39:08Z"
+
+reporter:
+  agent_role: unknown-role
+  chump_version: "0.2.0"
+  target_repo: "anonymous"
+  target_repo_disclosure: anonymous
+  session_id: "(elided)"
+
+wedge_observations:
+
+  - wedge_class: almanac_default_repo_empty_breaks_mine_before_holler
+    minutes_lost: 20
+    workaround_used:
+      summary: ""
+    proposed_fix:
+      shape: tooling
+      fix: "The single-repo Almanac (almanac_search/status/comprehend without an explicit repo) defaults to an unconfigured empty index (files=0, repo_root=''), silently returning zero. Agents 'mine before holler' by calling it, get nothing, and file duplicate/ungrounded VOAs — the mine->holler->fix loop never grounds. Auto-configure the default repo (or hard-fail loudly instead of empty-succeed), and have chump voice run an almanac_search_fleet dedup before filing."
+    impact_estimate_minutes_per_session: 20
+    evidence:
+      - "almanac_status: indexed=false files=0 repo_root=''; almanac_search returned 0 for a real known issue"

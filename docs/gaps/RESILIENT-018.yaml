@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "PREVENTER: gh-api-in-ci must guard on GH_TOKEN presence — any test/script that calls gh api or gh pr from inside a GitHub Actions workflow must check GH_TOKEN is set and skip-with-WARN if not (precedent: e2e-pwa fails persistently because chump::github_rate_limit calls gh api rate_limit and CI workflow doesn't set GH_TOKEN, see INFRA-1846; affected #2508 + every PR touching code paths e2e-pwa exercises)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "New scripts/ci/lib/ci-guards.sh helper exports check_gh_token_or_skip with single-line use: source the lib then call check_gh_token_or_skip "

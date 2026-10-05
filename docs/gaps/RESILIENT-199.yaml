@@ -1,0 +1,12 @@
+- id: RESILIENT-199
+  domain: RESILIENT
+  title: "MISSION-012 auto-deploy is DEAD: com.chump.auto-deploy disabled in launchd override DB + refresh-runner-binary failing → installed chump drifts stale, hook fixes stay inert"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The MISSION-012 'auto-deploy in place' mechanism — meant to rebuild + install /opt/homebrew/bin/chump tracking origin/main every 30min so hook-invoked fixes go live (RESILIENT-172/CREDIBLE-151) — is DEAD. Evidence (2026-07-26): (1) 'launchctl print-disabled gui/<uid>' shows com.chump.auto-deploy => disabled (explicitly disabled in the override DB, which survives reinstalls per infra-watcher-loop.sh); (2) com.chump.refresh-runner-binary is loaded but last-exit-status=1 (failing); (3) .chump-locks/auto-deploy-logs stop at 2026-07-05 — the last run FAILED: 'cargo build --release' was Terminated:15 (SIGTERM/timeout) at refresh-runner-binary.sh line ~126 after ~26min, then binary_auto_deploy_failed. Consequence: the installed binary drifts stale (served the CREDIBLE-168 55x fleet-brief lie for days; every hook/daemon runs old code; merged preflight/hook fixes are inert until a manual cp+codesign). This is the ROOT of the recurring staleness class. Fix: (a) re-enable the agent: launchctl enable gui/<uid>/com.chump.auto-deploy && launchctl bootstrap gui/<uid> <plist>; (b) fix the build timeout at refresh-runner-binary.sh line ~126 — the 26min release build exceeds the kill window on this M-series under load (raise timeout, use the shared warm target dir instead of a cold /tmp worktree, or nice/ionice); (c) pairs with RESILIENT-198 (the install must codesign, else even a successful refresh produces a hanging binary); (d) add a liveness check (infra-watcher) that flags when installed-binary SHA lags origin/main by >N hours OR the agent is disabled. Verify: installed chump --version SHA tracks origin/main within ~1h; auto-deploy log shows recent successful runs; agent enabled + last-exit 0."
+  closed_date: '2026-07-27'
+  closed_pr: 3332
+  outcome_id: MISSION-012
+

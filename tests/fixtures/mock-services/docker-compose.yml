@@ -1,0 +1,55 @@
+# Vendoring lineage: Dockerfiles/JS in this directory are vendored from
+# repairman29/mock-services at commit 8ce1577686a23b0b51391d6926cdf846e5a23c3f
+# (CP-009, INFRA-1841). This compose file itself is Chump-authored — it builds
+# images locally from the vendored Dockerfiles rather than pulling pre-built
+# images from a registry (bootstrap path (ii) from CP-009, since the upstream
+# repo is private and no GHCR publish exists yet).
+version: "3.8"
+services:
+  mock-openai:
+    build:
+      context: .
+      dockerfile: Dockerfile.openai
+    ports:
+      - "4010:4010"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4010/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  mock-anthropic:
+    build:
+      context: .
+      dockerfile: Dockerfile.anthropic
+    ports:
+      - "4011:4011"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4011/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  mock-supabase:
+    build:
+      context: .
+      dockerfile: Dockerfile.supabase
+    ports:
+      - "4012:4012"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4012/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15
+
+  mock-stripe:
+    build:
+      context: .
+      dockerfile: Dockerfile.stripe
+    ports:
+      - "4013:4013"
+    healthcheck:
+      test: ["CMD", "node", "-e", "require('http').get('http://localhost:4013/health', r => process.exit(r.statusCode === 200 ? 0 : 1))"]
+      interval: 2s
+      timeout: 3s
+      retries: 15

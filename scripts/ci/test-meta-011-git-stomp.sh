@@ -63,6 +63,20 @@ mkdir -p "$RESULTS_DIR"
 # file, and (3) commits. With the index mutex they serialize. Without it, agent
 # B's `git reset HEAD -- file-A.txt` (the "unstage extra files" guard inside
 # chump-commit.sh) would silently drop agent A's staged file.
+#
+# DETERMINISM (RESILIENT-303): CHUMP_AUTO_LEASE_FROM_MSG=0 is REQUIRED here.
+# chump-commit.sh's INFRA-085 auto-lease block greps the commit message for
+# gap-IDs and runs `chump claim <ID>` for each — and it runs INSIDE the index
+# mutex's critical section (after flock acquire, before `git commit`). Our
+# commit message "feat(META-011-test): ..." contains the literal "META-011",
+# which matches the gap-ID regex, so every agent spawned a real `chump claim`
+# subprocess (spawns children, touches git, can hit the network) while holding
+# the 30s-bounded flock. Under CI load those serialized claims pushed the last
+# agent past `flock -w 30` → it exited non-zero → intermittent
+# "Passed: 4  Failed: 1". This is a hermetic mutex test; real gap-claiming is
+# orthogonal noise (same reason we already disable AMBIENT_GLANCE / LEASE_CHECK
+# / WRONG_WORKTREE / PATH_CASE below). Disabling it makes the critical section
+# pure git ops, so the test is deterministic.
 
 for i in 1 2 3 4; do
     (
@@ -79,6 +93,7 @@ for i in 1 2 3 4; do
         CHUMP_AMBIENT_GLANCE=0 \
         CHUMP_WRONG_WORKTREE_CHECK=0 \
         CHUMP_LEASE_CHECK=0 \
+        CHUMP_AUTO_LEASE_FROM_MSG=0 \
         "$REPO_ROOT/scripts/coord/chump-commit.sh" \
             "$SANDBOX/file-$i.txt" \
             -m "feat(META-011-test): agent-$i commit" \
@@ -153,6 +168,7 @@ CHUMP_PATH_CASE_CHECK=0 \
 CHUMP_AMBIENT_GLANCE=0 \
 CHUMP_WRONG_WORKTREE_CHECK=0 \
 CHUMP_LEASE_CHECK=0 \
+CHUMP_AUTO_LEASE_FROM_MSG=0 \
 CHUMP_INDEX_LOCK=0 \
 "$REPO_ROOT/scripts/coord/chump-commit.sh" \
     "$SANDBOX/file-1.txt" \

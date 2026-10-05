@@ -1,0 +1,20 @@
+- id: RESILIENT-248
+  domain: RESILIENT
+  title: "pr-rescue is blind to the zero-CI-runs case: teach it to detect and re-fire, with an App token (GITHUB_TOKEN cannot)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "CONTROL MEASUREMENT, same repo same day: PR #3524 (DOC-089, also doc-only) went created 16:49:41Z -> merged 16:57:13Z = 7m32s with CI firing immediately. Same shape, same required checks, 21x spread. The pipeline is not slow; the trigger failed. Do NOT respond to this by tuning checks"
+    - "PR-RESCUE IS BLIND ON TWO INDEPENDENT COUNTS and would never have caught it: scripts/coord/pr-rescue.sh:221 selects '.conclusion == \"failure\"' so a PR with ZERO check_runs has no failures and is skipped; and :209 skips anything younger than PR_RESCUE_STALE_HOURS (default 4) while DOC-085 stalled 2h35m. RESILIENT-006 built it to rebase PRs whose CI went red and has since passed on main — it hunts for RED, and this PR was BLANK"
+    - "THE TRAP THAT WOULD MAKE A NAIVE FIX SILENTLY USELESS: pr-rescue.yml runs with GH_TOKEN=secrets.GITHUB_TOKEN, and GitHub does not create workflow runs from events triggered by GITHUB_TOKEN. A close/reopen performed with it would produce EXACTLY the zero-run state it is trying to cure, while logging success. This is worse than not fixing it because the instrument would report healthy. Use a GitHub App token — the pattern is already proven in this repo at .github/workflows/queue-driver.yml:48-56 via actions/create-github-app-token@v3 with QUEUE_DRIVER_APP_ID / QUEUE_DRIVER_APP_PRIVATE_KEY"
+    - "DETECT ON THE SPECIFIC SIGNATURE, not on age: an OPEN, non-draft PR with ZERO check_runs on its head SHA more than ~20-30 min after creation. Do not reuse the 4h stale threshold — for a total-CI-absence the whole point is catching it in minutes. Keep it a separate code path from the failure-rebase path so the two thresholds stay independent"
+    - "RE-ARM AUTO-MERGE AFTER REOPEN. Close/reopen DROPS auto-merge — verified on #3489, its timeline shows auto_merge_disabled at 00:22:42 and a fresh auto_squash_enabled at 00:23:17 only because it was re-armed by hand. A re-fire that does not re-arm converts a stalled PR into a green PR that sits forever, which is a quieter failure than the one being fixed"
+    - "GUARDS ARE MANDATORY, this script closes and reopens real PRs in a loop on a 2h cron: (a) act only on the zero-check_runs signature, (b) cap re-fires per run, (c) idempotent — never re-fire the same head SHA twice, so a PR whose CI is genuinely broken cannot be flapped repeatedly, (d) a dry-run mode that logs intent without touching PRs, exercised in review"
+    - "PROVE IT ON A FIXTURE, not on the incident: the bug is not reproducible on demand, so assert the DETECTOR against a synthetic PR-like payload with zero check_runs and confirm it fires, plus one with checks present and confirm it does not. A detector that cannot be shown to fire is the EFFECTIVE-407 failure class again"
+  closed_date: '2026-08-09'
+  closed_pr: 3525
+  outcome_id: MISSION-010
+  evidence: |
+    COMMAND: gh api repos/repairman29/Chump/issues/3489/timeline + gh run list --branch doc-085-almanac-doctrine | OUTPUT: PR #3489 (DOC-085) created 2026-08-06T21:47:37Z, auto_squash_enabled 21:52:46, then NOTHING until closed 00:22:42 and reopened 00:22:44 — at which point 6 workflow runs were created at 00:22:44-46 and it merged 00:31:22. The FIRST run on that branch is 2h35m after open. End-to-end 2h44m of which ~9m was pipeline | THEORY: the pull_request 'opened' webhook did not create workflow runs. Not a draft (no draft filters exist in ci.yml or audit.yml), not a bot author (repairman29), not a base-branch filter (base was main). Close/reopen re-fired it deterministically | ALT: considered and rejected — (a) runs existed but were cancelled: no, cancelled runs still appear in gh run list and there are zero rows before 00:22; (b) GITHUB_TOKEN authorship suppression: does not apply, a human account opened it; (c) queued-not-started: no, queued runs appear as status=queued
+

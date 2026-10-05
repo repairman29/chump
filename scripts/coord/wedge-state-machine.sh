@@ -230,6 +230,42 @@ _remediate() {
                 "\"action\":\"check pr_auto_rebase logs; CLEAN+armed >1h likely needs operator nudge\"" \
                 "\"detail\":\"$detail\""
             ;;
+        W-014)
+            # Toolchain-ratchet (INFRA-2036): a toolchain-defining file
+            # (rust-toolchain.toml/.cargo/config.toml/clippy.toml) changed
+            # and multiple open PRs are now failing fmt/clippy unrelated to
+            # their own diff. Advisory only — auto-fixing main via
+            # clippy --fix is a state-mutation too risky to run unattended.
+            _emit "wedge_remediation_requested" \
+                "\"class\":\"$class\"" \
+                "\"action\":\"advisory: bulk cargo fmt/clippy --fix pass on main needed; see docs/process/WEDGE_CLASS_CATALOG.md W-014\"" \
+                "\"detail\":\"$detail\""
+            if [[ "$DRY_RUN" != "1" ]] && [[ -x "$BROADCAST_URGENT" ]]; then
+                bash "$BROADCAST_URGENT" \
+                    --urgency WARN \
+                    --from "wedge_state_machine" \
+                    "W-014 toolchain-ratchet: $detail — file a bulk fmt/clippy fix gap" \
+                    >&2 2>&1 || true
+            fi
+            ;;
+        W-015)
+            # Systemic-red shared-check wedge (RESILIENT-337): >=3 open PRs
+            # failing the IDENTICAL named check. Advisory only — could be a
+            # flake (restart daemon) or a genuine regression (fix the gate);
+            # the detector's suspected_cause field guides triage but doesn't
+            # decide it, so no auto-mutation here.
+            _emit "wedge_remediation_requested" \
+                "\"class\":\"$class\"" \
+                "\"action\":\"advisory: triage shared check (flake vs regression); see docs/process/WEDGE_CLASS_CATALOG.md W-015\"" \
+                "\"detail\":\"$detail\""
+            if [[ "$DRY_RUN" != "1" ]] && [[ -x "$BROADCAST_URGENT" ]]; then
+                bash "$BROADCAST_URGENT" \
+                    --urgency WARN \
+                    --from "wedge_state_machine" \
+                    "W-015 systemic-red: $detail — triage flake vs regression, see ambient wedge_detected for check + pr_numbers" \
+                    >&2 2>&1 || true
+            fi
+            ;;
         W-AGG)
             # Aggregate signature: ≥3 BLOCKED PRs — REAL: emit cluster_detection_requested
             # so cluster-detector (INFRA-1987) can apply IDENTICAL-check discrimination

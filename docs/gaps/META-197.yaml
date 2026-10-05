@@ -2,12 +2,9 @@
   domain: META
   title: "META-131 sub: add actionlint to CI — catch broken rustup component/apt-get/etc at PR time"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - actionlint runs as a CI check on every PR touching .github/workflows/**; a workflow with a broken rustup-component/apt-get step fails the check.
   outcome_id: MISSION-010
 

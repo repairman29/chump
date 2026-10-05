@@ -36,6 +36,22 @@ pub struct AgentSegment {
     pub event_count: i64,
 }
 
+/// A per-node fleet-health heartbeat row (RESILIENT-1055).
+///
+/// `payload` is the raw heartbeat JSON exactly as the sentinel POSTed it; the
+/// route layer re-parses it so newly-added heartbeat fields (e.g. the
+/// `failed_units` / `healers` organ detail) surface without a DB migration.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct NodeHeartbeat {
+    pub node: String,
+    /// Epoch seconds stamped by the node when it wrote the heartbeat.
+    pub epoch: i64,
+    /// Server wall-clock (ms) when this heartbeat was ingested.
+    pub received_ms: i64,
+    /// The raw heartbeat JSON body as received.
+    pub payload: String,
+}
+
 /// Thread-safe wrapper around a SQLite connection.
 pub struct FleetStore {
     conn: Mutex<Connection>,
@@ -46,6 +62,13 @@ impl FleetStore {
     /// exists even if INFRA-2174 hasn't run yet, so the server starts cleanly
     /// on a fresh or fixture DB.
     pub fn open(path: &Path) -> Result<Self> {
+        if let Some(parent) = path
+            .parent()
+            .filter(|parent| !parent.as_os_str().is_empty())
+        {
+            std::fs::create_dir_all(parent)
+                .with_context(|| format!("creating fleet db directory {}", parent.display()))?;
+        }
         let conn = Connection::open(path)
             .with_context(|| format!("opening fleet db at {}", path.display()))?;
 
@@ -88,6 +111,23 @@ impl FleetStore {
                 ON agent_segments(session_id, start_ts_ms);",
         )
         .context("creating agent_segments table")?;
+
+        // RESILIENT-1055: per-node fleet-health heartbeats pushed by each node's
+        // fleet-health-sentinel (`POST /api/sentinel-heartbeat`). One row per
+        // node (latest wins) so `GET /api/fleet/nodes` can report cross-node
+        // organ health as a server-side API read instead of an SSH crawl.
+        // `payload` holds the full heartbeat JSON verbatim (node/epoch/failed/
+        // healed/unhealed/healers_down + the enriched failed_units/healers
+        // detail), so new heartbeat fields surface without a schema change.
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS node_heartbeats (
+                node        TEXT PRIMARY KEY,
+                epoch       INTEGER NOT NULL,
+                received_ms INTEGER NOT NULL,
+                payload     TEXT NOT NULL
+            );",
+        )
+        .context("creating node_heartbeats table")?;
 
         Ok(FleetStore {
             conn: Mutex::new(conn),
@@ -260,6 +300,50 @@ impl FleetStore {
         Ok(rows)
     }
 
+    // ── node heartbeats (RESILIENT-1055) ──────────────────────────────────────
+
+    /// Upsert a node's fleet-health heartbeat (latest wins, keyed by node).
+    pub fn upsert_node_heartbeat(
+        &self,
+        node: &str,
+        epoch: i64,
+        received_ms: i64,
+        payload: &str,
+    ) -> Result<()> {
+        let conn = self.conn.lock().unwrap();
+        conn.execute(
+            "INSERT INTO node_heartbeats (node, epoch, received_ms, payload)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(node) DO UPDATE SET
+                 epoch       = excluded.epoch,
+                 received_ms = excluded.received_ms,
+                 payload     = excluded.payload",
+            params![node, epoch, received_ms, payload],
+        )?;
+        Ok(())
+    }
+
+    /// Return every node's latest heartbeat, ordered by node name.
+    pub fn list_node_heartbeats(&self) -> Result<Vec<NodeHeartbeat>> {
+        let conn = self.conn.lock().unwrap();
+        let mut stmt = conn.prepare(
+            "SELECT node, epoch, received_ms, payload
+               FROM node_heartbeats
+              ORDER BY node ASC",
+        )?;
+        let rows = stmt
+            .query_map([], |r| {
+                Ok(NodeHeartbeat {
+                    node: r.get(0)?,
+                    epoch: r.get(1)?,
+                    received_ms: r.get(2)?,
+                    payload: r.get(3)?,
+                })
+            })?
+            .collect::<std::result::Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
     /// Return all distinct session_ids that have events.
     pub fn all_session_ids(&self) -> Result<Vec<String>> {
         let conn = self.conn.lock().unwrap();
@@ -308,4 +392,28 @@ pub fn now_ms() -> i64 {
         .duration_since(std::time::UNIX_EPOCH)
         .map(|d| d.as_millis() as i64)
         .unwrap_or(0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::FleetStore;
+
+    #[test]
+    fn open_creates_a_missing_db_parent_directory() {
+        let temp = tempfile::tempdir().expect("tempdir");
+        let path = temp
+            .path()
+            .join("fresh")
+            .join(".chump")
+            .join("fleet_events.db");
+
+        let store = FleetStore::open(&path).expect("fresh fleet store opens");
+
+        assert!(
+            path.is_file(),
+            "fleet DB should be created: {}",
+            path.display()
+        );
+        assert!(store.all_session_ids().expect("read fresh db").is_empty());
+    }
 }

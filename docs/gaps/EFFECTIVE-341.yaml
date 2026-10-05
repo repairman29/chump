@@ -1,0 +1,25 @@
+- id: EFFECTIVE-341
+  domain: EFFECTIVE
+  title: CREATE laps implement-after-bootstrap (agent-run) — vision to working tool, zero-touch
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Turn CREATE bench laps from 'scaffold only' into 'vision to working tool, zero-touch' — the core ChumpOS V1 proof. Today the CREATE arm drives chump bootstrap (scaffold) then scores; the acceptance fails because nothing implements the tool. Add an implement step.
+    
+    Engine: chump agent-run --cwd <scaffold-dir> --prompt-file <f> (src/main.rs:1472) runs an unattended coding agent rooted at the dir; its edits land there.
+    
+    Rough shape (slice this at claim time with chump gap decompose):
+    (a) FIRST SLICE (this session): add --implement flag to chump bench run (src/bench.rs run()); thread to drive_engine(track, implement); in the CREATE arm, after bootstrap succeeds, if implement: write the TASK (the vision, NOT the acceptance command — no teaching to the test) to a prompt file and run chump agent-run --cwd <dir>. Agent-run failure must not fail the drive (score anyway). Gate behind the flag so the default lap stays fast + deterministic.
+    (b) Acceptance/vision alignment: the photo-renamer acceptance hard-codes 'rename_photos.py', which the vision doesn't specify — either make track acceptances implementation-agnostic (runnable entrypoint that renames) or add an interface contract to the vision. Surfaced honestly rather than teaching-to-test.
+    (c) Budget enforcement: honor track.budget.max_wall_clock_min (timeout the agent-run) + max_human_touches (0).
+    (d) Extend to FINISH (implement the stub) once CREATE proven.
+    
+    Key constraint: agent-run needs ANTHROPIC_API_KEY/OAUTH (fleet auth). Live proof is slow/nondeterministic — ship the wiring first, prove live separately.
+  acceptance_criteria:
+    - "The change described by \"CREATE laps implement-after-bootstrap (agent-run) — vision to working tool, zero-touch\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3429
+

@@ -1,0 +1,7 @@
+- id: RESILIENT-261
+  domain: RESILIENT
+  title: "RESILIENT: [self-heal COTG-2.1] deterministic-gate-failure — 3 human intervention(s) in last 24h; make the gate auto-fix its own deterministic failure so no bypass is needed"
+  status: open
+  priority: P2
+  effort: s
+

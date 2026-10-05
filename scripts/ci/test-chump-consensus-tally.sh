@@ -95,16 +95,34 @@ assert_contains "verdict=NO_QUORUM" "$OUTPUT2"
 
 echo "[test-chump-consensus-tally] PASS — NO_QUORUM confirmed for 2 votes"
 
-# --- Tertiary test: feature flag unset → vote command prints message ---
+# --- Tertiary test: CREDIBLE-179 — vote is enabled BY DEFAULT (flag unset) ---
 echo ""
-echo "[test-chump-consensus-tally] tertiary: chump vote with flag unset prints message"
+echo "[test-chump-consensus-tally] tertiary: chump vote with flag unset records a real vote (CREDIBLE-179 default-on)"
 unset CHUMP_FLEET_RECV_SIDE_V0
-VOTE_OUT="$("$CHUMP_BIN" vote META-999 +1 --reason "test" 2>&1 || true)"
-if ! echo "$VOTE_OUT" | grep -qF "feature flag off"; then
-    echo "FAIL: expected 'feature flag off' message, got: $VOTE_OUT"
+AMBIENT_DEFAULT="$TMPDIR_TEST/ambient-default-on.jsonl"
+export CHUMP_AMBIENT_LOG="$AMBIENT_DEFAULT"
+VOTE_OUT="$("$CHUMP_BIN" vote default-on-proof-$$ +1 --reason "test" 2>&1 || true)"
+if echo "$VOTE_OUT" | grep -qF "feature flag off"; then
+    echo "FAIL: vote was skipped with flag unset — CREDIBLE-179 regression (should default ON)"
     exit 1
 fi
-echo "[test-chump-consensus-tally] PASS — feature flag off message confirmed"
+if ! grep -qF '"kind":"vote"' "$AMBIENT_DEFAULT"; then
+    echo "FAIL: expected a kind=vote line in ambient.jsonl with flag unset, got: $(cat "$AMBIENT_DEFAULT")"
+    exit 1
+fi
+echo "[test-chump-consensus-tally] PASS — vote recorded by default with CHUMP_FLEET_RECV_SIDE_V0 unset"
+
+# --- Quaternary test: CHUMP_FLEET_RECV_SIDE_V0=0 remains the explicit opt-out ---
+echo ""
+echo "[test-chump-consensus-tally] quaternary: chump vote with flag=0 prints message (explicit opt-out)"
+export CHUMP_FLEET_RECV_SIDE_V0=0
+VOTE_OUT_OFF="$("$CHUMP_BIN" vote META-999 +1 --reason "test" 2>&1 || true)"
+if ! echo "$VOTE_OUT_OFF" | grep -qF "feature flag off"; then
+    echo "FAIL: expected 'feature flag off' message with flag=0, got: $VOTE_OUT_OFF"
+    exit 1
+fi
+unset CHUMP_FLEET_RECV_SIDE_V0
+echo "[test-chump-consensus-tally] PASS — feature flag off message confirmed for explicit opt-out"
 
 # --- CREDIBLE-082: vote-weighting smoke test ---
 # Scenario: 1 original FEEDBACK proposal + 5 reactions with parent_corr_id set.

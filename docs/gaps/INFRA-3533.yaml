@@ -1,0 +1,12 @@
+- id: INFRA-3533
+  domain: INFRA
+  title: "SCOUT: stranger-bot edge-sweep nav can't route around interior obstacles — false 'stuck' on human-navigable rooms (realm forest_east water-pool), inflating deep-milestone 0/N"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "[\"On realm-of-shadows forest_east, a repeat.mjs 5-run sweep completes >=3/5 (a human-navigable water-pool room must not read as 0/5 stuck)\",\"The around-an-interior-obstacle exit class is traversed by the stranger bot (not just screen-edge exits)\",\"Re-measure the deep milestones after the nav fix: cavern_entrance and forest_west sweeps reflect real reachability, not nav-limit noise\"]"
+  notes: |
+    The Scout stranger-agent navigates by sweeping SCREEN EDGES to find area exits (adapters/realm-of-shadows.mjs edge-sweep). When an exit requires routing AROUND an interior obstacle, the bot gets stuck. MEASURED 2026-08-04 (live repeat.mjs on canonical ~/Projects/games/realm-of-shadows): realm forest_east (depth 1, human-trivial — a large central WATER POOL with the east exit a narrow strip reached by pathing around the pool) = 0/5 completed, ALL 'stuck' at maxProgress 3, deaths ~0. Pure navigation failure, NOT lethality. This is the ACTUAL blocker behind the deep milestones (cavern_entrance 0/5, forest_west 0/3) — it produced false GAME-004/005 gaps blaming lethality (a lethality/aggro/difficulty fix was built + measured + REVERTED: cavern still 0/5; DEPTH.md corroborates: Easy 0.7x -> deep 0/3, warm-start adjacent -> 3/3). Fix direction: obstacle-aware pathing for the stranger bot — detect the walkable corridor / route around water+walls toward a candidate exit, instead of pure edge-sweep. A human reads these rooms instantly; the bot shouldn't score 0/5 on them. Blocks GAME-004/005 (realm deep milestones). Evidence run dirs: scout/runs/repeat-realm-of-shadows-2026-08-04T15-37-51* (forest_east 0/5).
+  skills_required: [external_repo:repairman29/scout]
+

@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement Flake Detection and Tagging Logic (META-131 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - The aggregator service can detect when a test fails 3+ times consecutively across PRs with the same error fingerprint.

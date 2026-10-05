@@ -1,0 +1,20 @@
+- id: PRODUCT-187
+  domain: PRODUCT
+  title: "[smuggler] 375 of 450 server/services files do not parse — automated edits committed broken code at scale"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: operator_verified -- a human or session directly investigated and confirmed this before filing -- high confidence.
+    
+    node --check fails on 375/450 files in server/services/ at current GitHub HEAD (verified against GitHub contents API, not just local mirror). Signature differs from slidemate: botched structural edits, e.g. multiAgentGMService.js:40-42 has ternary "? getSupabaseClient({ requireService: true });" terminated with a semicolon then an orphaned ")" — the server cannot boot from HEAD. Likely the repo own self-improvement/fix-generator services committed mangled edits. Affects every support-AI asset inventoried tonight (ragSupportBot.js, aiSupportAgentService.js, supportBotLearningService.js, llmService.js) — designs are real but current state is unbuildable. Fix path: git bisect/log to find when parse-rate collapsed, revert the bot commits; add a parse-check CI gate. Found 2026-08-06 during fleet routing-systems inventory.
+    
+    context: {"repo":"smuggler"}
+    source: holler feedback_events, dedupe fdd3e4d541a6f7b9
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/smuggler"
+

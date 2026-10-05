@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: kill curator-loop idle-gates — operator directive 'no idle curators, ship aggressively for 12h, conserve OFF'. Patch ci-audit-loop.sh + handoff-loop.sh + infra-watcher-loop.sh to always do work (advance claim / claim next / cascade-merge / cross-lane HANDOFF) instead of 'quiet no actionable'"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "1. scripts/coord/ci-audit-loop.sh: when 'tick: quiet — no actionable items' fires, instead (a) broadcast HANDOFF offering help in another lane, (b) check stuck-PR convoy and trigger rescue dispatch if any BLOCKED >2h, (c) self-dispatch on next P0/P1 in INFRA domain"

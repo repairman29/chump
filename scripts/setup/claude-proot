@@ -1,0 +1,5 @@
+#!/data/data/com.termux/files/usr/bin/bash
+# Termux-side shim named to stand in for `claude`: runs the glibc claude build
+# inside proot-distro debian on the Anthropic subscription. Preserves CWD,
+# stdin (prompt pipe), args, and exit code.
+exec proot-distro login debian -- bash /data/data/com.termux/files/home/.chumpnode/bin/claude-proot-guest.sh "$PWD" "$@"

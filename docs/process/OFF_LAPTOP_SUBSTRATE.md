@@ -175,6 +175,28 @@ cutover checklist above is written as *stop-then-start*, not
 immediately after flipping the remote host active (step 4), never run both
 in active mode intentionally, even briefly.
 
+### Worker file-access sandbox on the remote host (RESILIENT-178)
+
+`chumpd`'s worker file-access sandbox (`crates/chumpd/src/file_sandbox.rs`)
+is chumpd-side, not laptop-side: since chumpd is the process that spawns
+every worker, the same `spawn_worker` chokepoint — and the same profile —
+applies wherever chumpd runs, remote host included. No extra cutover step
+is required to carry the protection over.
+
+**Caveat: macOS-only in v1.** The profile is built via `sandbox-exec`
+(`/usr/bin/sandbox-exec`), which does not exist on Linux. If the remote
+host candidate from §2 is Linux (not macOS), `file_sandbox::detect_runtime()`
+returns `None`, `worker_sandbox_enabled()` is `false`, and workers on that
+host run with the unrestricted host-fs view again — the exact regression
+this gap exists to prevent, just relocated. There is no TCC-prompt risk on
+a headless Linux host (no Desktop/iCloud session to prompt), but the
+same broad find/grep can still touch anything readable by the host user, so
+treat "remote host is Linux" as carrying this risk back until a
+Linux-native sandbox (namespaces / bubblewrap / firejail — same follow-up
+class already flagged in `src/sandbox.rs`) lands. Verify before trusting the
+guarantee: `chumpd` logs `chumpd_worker_spawned` with a `file_sandboxed`
+field each spawn (`grep chumpd_worker_spawned .chump-locks/ambient.jsonl | tail -1`).
+
 ---
 
 ## 6. Rollback

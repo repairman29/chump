@@ -1,0 +1,15 @@
+- id: ZERO-WASTE-046
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: mine-before-build as a preflight step — surface fleet prior art before an agent claims a gap"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Shop rule 5 (mine before build) and rule 6 (evidence before build) are doctrine an agent has to remember at exactly the moment it is eager to start. Mechanize it: 'chump gap preflight <ID>' runs almanac_search_fleet on the gap title across the 103 registered repos and prints prior art with repo:path:line before the claim proceeds. The fleet-survey skill already encodes the hardened multi-pass method (built 2026-08-06 after a one-pass survey was refuted on its biggest claim) — this is that method fired automatically at the one moment it changes a decision. Pairs with ZERO-WASTE-045 (dedupe against GAPS); this one dedupes against CODE.
+  acceptance_criteria:
+    - "chump gap preflight <ID> prints fleet-wide prior art for the gap title with repo:path:line citations, or states plainly that it found none"
+    - the search follows the fleet-survey skill's multi-pass discipline (not a single keyword pass) — a one-pass zero-result must not print as 'no prior art exists'
+    - "degradation is loud: if almanac is unreachable or coverage for a repo is keyword-only, the output says which repos were searched shallowly (cf CREDIBLE-214)"
+    - non-blocking by design — preflight reports, the human or agent decides; the result is recorded on the gap so a later reviewer can see what prior art was known at claim time
+    - a test proves a gap whose title matches existing fleet code surfaces that code
+

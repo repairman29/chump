@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT P1 STRUCTURAL: chump test-sandbox primitive — single canonical sandbox setup that all CI test scripts use (kills INFRA-2080 class where CHUMP_REPO_ROOT vs CHUMP_HOME drift causes silent test-vs-real-state.db bleed)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "New shell helper scripts/coord/lib/test-sandbox.sh — exports two bash functions: (a) chump_test_sandbox_setup <sandbox-dir> [--seed-yaml <fixture-yaml>] — creates sandbox-dir with .chump/state.db (seeded via chump gap import if fixture given) + sets ALL of CHUMP_HOME=$sandbox CHUMP_REPO=$sandbox CHUMP_STATE_DB=$sandbox/.chump/state.db CHUMP_LOCK_DIR=$sandbox/.chump-locks CHUMP_REPO_ROOT=$sandbox correctly; (b) chump_test_sandbox_cleanup <sandbox-dir> — removes everything atomically"

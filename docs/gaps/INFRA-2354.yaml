@@ -2,7 +2,7 @@
   domain: INFRA
   title: "META-269 sub-5: subprocess-auth smoke — verify claude -p auth before subprocess"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     META-269 sub-5: subprocess-auth smoke. Verifies claude -p subprocess auth path before dispatching fix-trunk Sonnet.

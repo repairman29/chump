@@ -1,0 +1,15 @@
+- id: INFRA-3678
+  domain: INFRA
+  title: main is RED on the CSS token-discipline smoke — #4275 (INFRA-1711) added ~13 raw status/chart colors to web/v2/app.js that were never baselined, blocking the entire merge queue; baseline them to restore main-green and file tokenization as follow-up
+  status: in_progress
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "ROOT CAUSE: #4275 (INFRA-1711, PWA content-bots view) introduced raw hex + rgba() color literals into web/v2/app.js (iOS system colors for the toggle switches + a chart palette) that are NOT in .css-discipline-baseline.txt. The css-token-discipline smoke (INFRA-1590) runs with --all (whole-repo scan), so from ee5046c onward every PR inherits a RED fast-checks -> RED `verified` -> nothing can merge. Confirmed: main runs on ee5046c7 and 764fdc81 are RED on this exact test; the prior three main commits were green."
+    - "FIX (un-red now, sanctioned mechanism): add the 13 new violation keys to .css-discipline-baseline.txt — the file that exists precisely to whitelist pre-existing violations so CI passes. scripts/ci/test-css-token-discipline.sh goes 3-passed/1-failed -> 4-passed/0-failed. This restores main-green and unblocks the queue without half-tokenizing another feature's UI blind."
+    - "PERMANENT FIX (follow-up, owner INFRA-1711): tokenize web/v2/app.js's status/chart colors to var(--token) (or add data-viz tokens for the chart palette) and remove the baseline entries in the same change, WITH PWA visual verification. Baselining is the stop-the-line unblock, not the end state."
+    - "VERIFY: scripts/ci/test-css-token-discipline.sh exits 0; the added keys are exactly the 13 currently-unbaselined web/v2/app.js violations and nothing else."
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: gh run list --branch main --workflow=CI --limit 5 (conclusion headSha) | OUTPUT: failure ee5046c7 / failure 764fdc81 / success 7b8d88fd / success 8b80f4a9 / success 8408d06a — main went red at 764fdc8 (#4275) and stayed red | THEORY: --all whole-repo scan means one feature's un-baselined colors red the shared gate for every subsequent PR (systemic-red, the class RESILIENT-337/CREDIBLE-291 track) | ALT: rejected 'tokenize app.js in this PR' — needs the feature owner + live PWA visual check; leaving main red blocks the whole fleet meanwhile, so baseline-now + tokenize-follow-up is the correct ordering
+  closed_pr:

@@ -1,0 +1,663 @@
+# ChumpOS organ manifest — desired systemd state on the PRIMARY node (helsinki).
+#
+# The single repo-declared source of truth for which ChumpOS organs must be
+# RUNNING and which auto-pagers must stay OFF. scripts/ops/organ-reconcile.sh
+# reads this file and makes the node's live systemd state match it — the first
+# slice of reproducible-deploy (RESILIENT-305 / RESILIENT-000 self-healing).
+#
+# WHY THIS FILE EXISTS (2026-08-13 incident): auto-pager DM spam kept
+# resurrecting because failed organs were hand-managed and install-helsinki-atc
+# re-enabled them every 5 min; the fix landed as HOST-LEVEL systemd drop-ins
+# (/etc/systemd/system/*.d/zz-autopage-off.conf) — a NEW snowflake invisible to
+# the repo, and the deploy mirror's `git reset --hard origin/main` silently
+# reverts any working-tree fix. Declaring desired state HERE, in the repo, and
+# having the reconcile re-apply it on a timer converges the node to the repo
+# automatically and survives the reset.
+#
+# Format: one directive per line, "<state>  <unit>  [role=ROLE] [requires=SPEC,SPEC,...]".
+# Blank lines and lines beginning with '#' are ignored. Two states:
+#
+#   enabled     <unit>  → this organ must be enabled AND active. The reconcile
+#                         runs `systemctl enable --now <unit>` if it is not
+#                         already active. (A no-op when it already is.)
+#
+#   paging_off  <unit>  → this is an auto-pager that MUST stay silent. The
+#                         reconcile installs a repo-declared drop-in
+#                         (/etc/systemd/system/<unit>.d/zz-organ-reconcile-pager-off.conf)
+#                         that neuters ExecStart to /bin/true, then stops the
+#                         service if it is running. The drop-in wins over the
+#                         tracked/host unit's ExecStart, survives
+#                         install-helsinki-atc.sh's `cp -f` of the base unit
+#                         (the .d/ dir is untouched) AND survives the mirror's
+#                         `git reset --hard` (its content is re-applied from
+#                         this repo, not a one-time host edit).
+#
+# RESILIENT-347 (per-node-applicable reconcile): `enabled` lines may declare
+# two optional fields, space-separated after the unit name:
+#
+#   role=brain|muscle|data|janitor|trust
+#                            LOAD-BEARING classification that scopes per-role
+#                            bring-up (RESILIENT-746 / RESILIENT-1055). A fresh
+#                            `chump-node-install --role brain` places+enables
+#                            every organ tagged brain,data,janitor,trust; a
+#                            `--role muscle` node runs ONLY the muscle-tagged
+#                            worker (the coordinator/merge organs are brain, so a
+#                            muscle node never spins up a SECOND merge driver —
+#                            the single-driver invariant RESILIENT-1054 fought
+#                            for). CJ's own timer reconcile is unfiltered (whole
+#                            manifest) so the tag never changes what a live node
+#                            already runs — it only shapes fresh bring-up.
+#                            brain=decision/coordination/merge, muscle=builds
+#                            gaps, data=publishes state, janitor=housekeeping,
+#                            trust=calibration. Also surfaced on every
+#                            applicability/backoff ambient event. Defaults to
+#                            "brain" if omitted.
+#
+#   requires=SPEC,SPEC,...   Comma-separated preconditions that must ALL hold
+#                            on THIS node before the reconcile will even
+#                            attempt to enable the organ. Missing a
+#                            precondition is NOT an error — it means the organ
+#                            is simply not applicable to this node (e.g. a
+#                            Rust helper binary that isn't built there yet),
+#                            and the reconcile skips it silently (one
+#                            organ_reconcile_not_applicable event, no retry
+#                            churn). Supported spec kinds:
+#                              bin:<name>   `command -v <name>` must succeed
+#                              env:<VAR>    $VAR must be a non-empty env var
+#                              dep:<unit>   another systemd unit must already
+#                                           be active
+#                              file:<path>  a file/dir must exist on this node
+#                                           (RESILIENT-1055; a leading ~/ or
+#                                           $HOME/ expands against the effective
+#                                           HOME). For organs that only apply
+#                                           where a host-specific asset lives —
+#                                           e.g. the CJ-legacy hand-installed
+#                                           chump-cj-* units, whose ExecStart
+#                                           points at a /home/<user>/cj-*-run.sh
+#                                           that exists only on that one box and
+#                                           has no tracked unit file, so a fresh
+#                                           `--role` bring-up must SKIP them
+#                                           (not `enable --now` a file-less unit
+#                                           into an eternal backoff).
+#
+# INFRA-7764 (docs/strategy/ONE_COMMAND_INSTALL.md section 1, one-command-
+# install BOM unification, INFRA-7756): `enabled` lines may also carry
+#
+#   platforms=SUPERVISOR,SUPERVISOR,...
+#                            Comma-separated list of supervisors this organ
+#                            applies to: systemd|launchd|runit. Omitted means
+#                            "platforms=systemd" — the implicit assumption
+#                            every line in this file carried before this
+#                            field existed, so no pre-existing line's
+#                            behavior changes. organ-reconcile.sh (systemd
+#                            only) filters ENABLED to lines whose platforms
+#                            include "systemd" before doing anything else,
+#                            via organ_platform_matches()/organ_current_
+#                            platform() in organ-manifest-lib.sh. This is
+#                            what lets bootstrap-manifest.yaml's macOS-only
+#                            capabilities (curator/self-doctor/paramedic/
+#                            conductor/etc, INFRA-7765) fold into THIS file
+#                            as platforms=launchd lines — visible in the one
+#                            declared roster instead of a second file nobody
+#                            diffs against the first — without this
+#                            reconcile ever attempting to `systemctl enable`
+#                            a unit name that only ever existed as a launchd
+#                            plist.
+#
+# INFRA-7766 (docs/strategy/ONE_COMMAND_INSTALL.md section 1, same slice):
+# `enabled` lines may also carry
+#
+#   housekeeping=<script>|<cadence>|<args>
+#                            Pipe-separated triple identifying this organ as
+#                            one of install-node-housekeeping.sh's supervised
+#                            loop-services: <script> is the repo-relative
+#                            path it runs, <cadence> is the sleep interval in
+#                            seconds (0 = the script self-loops, e.g. the
+#                            orchestrator), <args> (may be empty) are extra
+#                            CLI args appended to the script invocation.
+#                            scripts/ops/lib/node-housekeeping-roster-lib.sh's
+#                            housekeeping_organs_from_manifest() reads this
+#                            token from every `enabled` line to derive
+#                            install-node-housekeeping.sh's install roster —
+#                            so THIS file, not a hardcoded heredoc in that
+#                            script, is the one declared source for which
+#                            organs it installs. Omitted means the line is
+#                            not a housekeeping organ (most `enabled` lines
+#                            aren't — housekeeping= only tags the janitor/
+#                            brain subset install-node-housekeeping.sh
+#                            supervises). If the manifest is missing OR
+#                            carries zero housekeeping= lines, the roster lib
+#                            WARNs on stderr and falls back to its built-in
+#                            10-organ roster rather than silently installing
+#                            nothing — deliberately fail-open where the
+#                            parser/renderer (platforms= above) fail closed.
+#                            Two organs (pr-lander, rot-reaper) are a
+#                            documented carve-out NOT given housekeeping=
+#                            tokens here — see node-housekeeping-roster-lib.sh
+#                            and INFRA-7772 for the unit-name collision this
+#                            avoids.
+#
+# See docs/ops/ORGAN_MANIFEST_BOM.md for the full unified-BOM usage guide:
+# how the three consumers (this reconcile, render-organ-roster.sh,
+# install-node-housekeeping.sh) read this ONE file, and how to add a new
+# organ / new platform / new housekeeping organ to it.
+
+# Applicability is the FIRST gate (blast-all -> per-node-applicable, was
+# RESILIENT-347's core ask). If an organ IS applicable but `enable --now`
+# either fails outright or the unit is not verified active a few seconds
+# later, the reconcile does NOT leave it to fail identically every single
+# cycle (the pre-347 churn that re-installed 4 broken units every 5 minutes
+# on CJ: integrator/sla-scorecard/backlog-sync-writer/farmer). Instead it
+# disables the unit and records a cooldown backoff
+# ($CHUMP_ORGAN_RECONCILE_BACKOFF_DIR/<unit>.json, default 1h via
+# CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S) so the SAME broken unit is only
+# retried once the cooldown expires, not every tick.
+
+# --- Auto-pagers that must stay OFF (2026-08-13 operator DM-spam loop) --------
+# heartbeat-monitor pages node_heartbeat_incomplete for the (known) closetjunky
+# -down condition; sla-scorecard + board-ceo-briefing page merge-SLA/CEO beats.
+# All three are neutered until re-enabled deliberately in this manifest.
+paging_off  chump-heartbeat-monitor.service
+paging_off  chump-sla-scorecard.service
+paging_off  chump-board-ceo-briefing.service
+
+# --- Organs that must be running ---------------------------------------------
+# chump-discord-gateway: the two-way operator channel (must not go dark).
+# chump-pr-lander.timer: arms green PRs so they merge (RESILIENT-288).
+# NOTE: chump-organ-reconcile.timer (this reconcile's own beat) is intentionally
+# NOT self-listed here — its liveness is install-helsinki-atc.sh's job (run on
+# every deploy + boot), same as every other ATC timer. Clean separation: the
+# installer keeps the timer alive, the timer runs the reconcile, the reconcile
+# enforces this manifest.
+enabled     chump-discord-gateway.service  role=brain
+enabled     chump-pr-lander.timer  role=brain requires=bin:gh
+# chump-ci-flake-rerun.timer: the CI-flake self-heal organ (RESILIENT-306).
+# Reruns known-flaky red required-checks on open fleet PRs so a flaky test
+# (e.g. credible218) cannot jam the merge queue; escalates real failures once
+# instead of looping. Declared here so reconcile re-arms it if it drifts/fails
+# (it sat in `failed` all night on 2026-08-13 — a SIGPIPE bug, now fixed).
+enabled     chump-ci-flake-rerun.timer  role=brain requires=bin:gh
+# chump-pr-approval.timer: the approve-from-phone SURFACER (RESILIENT-265).
+# Detects OS-authored PRs on external product repos (default repairman29/olive)
+# that need Jeff's approval and DMs each to his phone with ✅ Merge / ❌ Reject
+# buttons; the gateway acts on the tap. Declared here so reconcile re-arms it if
+# it drifts or fails. (Detection only — it NEVER merges without a real tap.)
+enabled     chump-pr-approval.timer  role=brain requires=bin:gh
+# chump-farmer.timer: the persistent farmer runner (RESILIENT-313). Fires the
+# farmer tick every 30s so the worker-gate heartbeat (RESILIENT-069) never crosses
+# its 120s stale threshold — the fix for the recurring silent fleet-stall. Retires
+# the fragile, hand-installed transient `chump-farmer-bridge` unit. Declared here
+# so organ-reconcile re-arms it if it drifts or fails.
+enabled     chump-farmer.timer  role=brain requires=bin:chump
+# chump-rot-reaper.timer: the CONFLICTING-PR drain (RESILIENT-324). Closes open
+# PRs that are genuinely CONFLICTING and older than the age gate — the ones the
+# armed-rebaser CANNOT rebase — and re-queues their gaps to be redone on fresh
+# main. Without it the back-pressure breaker's stuck-pile drains only to 4–5 and
+# the fleet stays halted in the hysteresis dead-zone with no auto-recovery (the
+# 2026-08-14 hours-long deadlock). Declared here so organ-reconcile re-arms it if
+# it drifts or fails.
+enabled     chump-rot-reaper.timer  role=brain requires=bin:gh
+# chump-trunk-recovery-reviver.timer: the RECOVERY counterpart to the rot-reaper's
+# RESILIENT-1188 systemic-red HOLD. On a trunk RED→GREEN recovery it reopens the
+# PRs that were reaped as victims of the just-ended trunk-red window (closed
+# in-window, reaper-marked `rot-reaped` / pr_reaped, green-underneath NOW) and
+# re-arms their auto-merge — legacy trunk-red victims + any non-trunk-aware
+# closer's casualties the 1188 hold could not have spared. Bounded (cap per run)
+# + idempotent (state file). Declared here so organ-reconcile re-arms it if it
+# drifts or fails, and so it survives reconcile (non-manifest units are reaped).
+enabled     chump-trunk-recovery-reviver.timer  role=brain requires=bin:gh
+# chump-integrator.timer: the Batched Merge Train (RESILIENT-318 / INFRA-2130).
+# Batches up to 5 ready_to_ship gaps through a preflight gate into ONE
+# integration branch so CI runs once per batch instead of once per gap
+# (~7 -> ~35 PRs/hr). A Mac-launchd-only organ ported to systemd. Runs DRY-RUN
+# (CHUMP_INTEGRATOR_LIVE=0 in the unit): it selects + preflights + logs what it
+# WOULD ship, no push/PR — SAFE to keep enabled while the fleet is paused.
+# Flipping LIVE is a separate operator decision gated on trunk-GREEN
+# (docs/process/SCALING.md). Declared here so organ-reconcile re-arms it if it
+# drifts or fails.
+enabled     chump-integrator.timer  role=brain requires=bin:chump-integrator
+
+# chump-backlog-sync-writer.timer: the registry single-writer (CREDIBLE-292,
+# design RESILIENT-194). Publishes .chump/state.sql to origin/main every
+# 15 min so every node's `--reader` and the cluster-unique reserve() check
+# (fetch-origin-before-git-history-check) see current truth. Designed but
+# never installed on any node until CREDIBLE-292 — a dead writer here is
+# exactly how the 2026-08-15 registry split-brain (duplicate IDs across
+# helsinki/mac) went undetected for 21 days. Freshness is independently
+# checked by fleet-doctor-strict.sh's backlog-sync-freshness check (RED if
+# origin/main .chump/state.sql goes >24h stale). Declared here so
+# organ-reconcile re-arms it if it drifts or fails.
+enabled     chump-backlog-sync-writer.timer  role=data requires=bin:git,bin:chump
+
+# chump-organ-watchdog.timer: the healer itself (INFRA-3595). RESILIENT-356:
+# the watchdog heals every OTHER organ (reset-failed + restart on failure) but
+# nothing watched the watchdog — on 2026-08-20 it self-immolated on a single
+# unhealable organ and sat dead 16h, unwatched, while the merge train rotted.
+# That self-immolation bug is fixed (the watchdog now exits 0 on a per-unit
+# heal failure), but a *supervisor* is still needed for the case where the
+# watchdog's own timer/unit goes inactive or disabled for an unrelated reason
+# (a bad manual edit, a botched reinstall, systemd state drift). Declaring it
+# here closes that loop: chump-organ-reconcile.timer is an INDEPENDENT peer
+# organ on its own cadence — if it ever finds chump-organ-watchdog.timer not
+# active, it re-enables + starts it, the same "peer heartbeat" mechanism every
+# other organ in this manifest already relies on. This is the "watchdog itself
+# is supervised... so the healer can never stay dead" half of RESILIENT-356.
+enabled     chump-organ-watchdog.timer  role=brain
+
+# chump-apex-watchdog.timer (RESILIENT-1098): the apex layer ABOVE
+# organ-watchdog/organ-reconcile. Both of those self-heal ON the node they
+# heal — a whole-node wedge (this node's own systemd/reconcile loop gone
+# dark) has no in-band healer. apex-watchdog is the cross-node peer
+# heartbeat check: it watches OTHER fleet nodes (docs/fleet/nodes/*.json),
+# not this one, so a peer node still notices and pages within one cycle even
+# if this node's entire self-heal chain is dead. Declared role=brain here
+# (same scope as organ-watchdog) so organ-reconcile keeps it alive on the
+# coordination-role nodes; requires=bin:curl since the peer probe is an HTTP
+# health check.
+enabled     chump-apex-watchdog.timer  role=brain requires=bin:curl
+
+# chump-process-organ-heal.timer: the process-level sibling of
+# chump-organ-watchdog.timer (INFRA-3650, PEER-HEAL-03). organ-watchdog heals
+# chump-*.service/.timer SYSTEMD units; nothing revived a raw background bash
+# proc that was never wrapped as a unit at all (almanac-vision-keeper, the
+# "eyes"). This organ pgreps scripts/ops/process-organ-registry.txt every 5
+# minutes and nohup-respawns anything missing. Declared here so
+# organ-reconcile re-arms it if it drifts or fails, same peer-heartbeat
+# mechanism every other organ in this manifest relies on.
+enabled     chump-process-organ-heal.timer  role=brain
+
+# chump-conflict-resolution-consumer.timer: drains REAL-conflict DIRTY PRs
+# (RESILIENT-360, Linux port of RESILIENT-301). armed_pr_needs_conflict_
+# resolution signals previously had NO consumer on CJ/Linux — the launchd
+# installer only wired the Mac side — so real-conflict DIRTY fix-class PRs
+# rotted with no owner (#4033/4036/4037/4040/4041, 2+ conflict files each).
+# RESILIENT-357's armed-pr-rebaser adopts+drains the trivial/BEHIND orphans;
+# this organ drains the real-conflict ones via conflict-resolver-agent.sh.
+# Declared here so organ-reconcile re-arms it if it drifts or fails — the
+# same peer-heartbeat mechanism every other organ in this manifest relies on.
+enabled     chump-conflict-resolution-consumer.timer  role=brain requires=bin:gh
+
+# chump-outcome-verify-heal-consumer.timer: the standing consumer for
+# kind=outcome_probe_failed (external_verify_merge.rs) and
+# kind=ac_coverage_proof_miss (pr_ac_coverage.rs) (INFRA-3654, PEER-VERI-07).
+# Both had emitters and no consumer — a PR's claimed live outcome could be
+# mechanically proven false post-merge with nothing holding the gap open or
+# telling anyone. This organ holds/reopens the named gap and pages the duty
+# officer via notify-operator, deduped per (kind, gap) within a 1h window.
+# Declared here so organ-reconcile re-arms it if it drifts or fails — the
+# same peer-heartbeat mechanism every other organ in this manifest relies on.
+enabled     chump-outcome-verify-heal-consumer.timer  role=brain requires=bin:chump,bin:git
+
+# chump-gap-closure-reconcile.timer: close open-but-merged gaps from GitHub truth (INFRA-303).
+# Backstop for the fragile bot-merge auto-close; without it the gap store drifts from GitHub.
+enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
+
+# RESILIENT-366: chump-armed-rebaser.timer and chump-board-cycle.timer are both
+# in install-helsinki-atc.sh's SYSTEM_TIMERS roster but, until this line, were
+# MISSING from this manifest — meaning organ-reconcile could never revive
+# either one if it went dark, exactly the "designed coherence loop silently
+# disabled, nothing detects it" disease that let chump-backlog-sync-writer.timer
+# (CREDIBLE-292) sit inactive/disabled for 21 days undetected. Roll-Call
+# completeness (scripts/ci/test-resilient-366-organ-roll-call.sh) now fails CI
+# if a roster timer is ever added to the installer without a matching line
+# here, so this class of drift cannot recur silently again.
+# RESILIENT-1054: chump-armed-rebaser.timer REMOVED from the desired roster.
+# The cross-node rebaser swarm (armed-rebaser / armed-pr-rebaser / pr-auto-rebase
+# + worker pr-repair-rebase) force-pushed open PRs faster than the `verified`
+# aggregator finishes = the merge-race that stalled ships to zero. The shepherd
+# neutered them via zz-shepherd-disable.conf drop-ins on all nodes; enforcing them
+# in the roster would durably re-create the race. chump-merge-serializer.timer
+# (RESILIENT-372, below) is the SOLE merge driver. Do NOT re-add this line.
+# disabled    chump-armed-rebaser.timer  role=muscle requires=bin:gh
+
+# chump-merge-serializer.timer: RESILIENT-372 native-merge-queue substitute.
+# Native GitHub merge queue is Team/Enterprise-only and unavailable on this
+# personal-account repo (docs/process/MERGE_QUEUE_SETUP.md). This serializes the
+# FINAL merge step: rebase the OLDEST viable armed PR onto latest origin/main,
+# wait for ITS `verified` to go green undisturbed, squash-merge, loop. It rebases
+# only the ONE PR it drives, so other PRs verified is not reset (the aging cure).
+# Supersedes armed-rebaser for the clean-rebase case; where BOTH run, prefer
+# disabling chump-armed-rebaser.timer so it stops resetting verified on main moves.
+enabled     chump-merge-serializer.timer  role=brain requires=bin:gh
+enabled     chump-board-cycle.timer  role=brain
+# RESILIENT-274: the duty-officer — reads firing health signals, routes
+# T1 auto-heal / T2 runbook / T3 page (the no-human incident responder).
+enabled     chump-duty-officer.timer  role=brain
+# RESILIENT-376: the DISCORD DIGEST organ — twice-daily phone-readable
+# factory pulse (SHIPPED/THE NUMBER/STUCK/NEEDS-YOUR-CALL) to the operator
+# Discord DM. role=data (publishes state, no muscle). Deterministic state
+# read, no LLM. Must be manifest-declared or it stays dark after a reset.
+enabled     chump-digest.timer  role=data
+
+
+# --- Owned-node factory organs (TREK-16 / INFRA-3642, install-a-Trek-from-0) -
+# CJ is the first owned MUSCLE+DATA node (COTG). Until this line, its worker,
+# coherence-sync, and self-hosted gap-store/postgrest organs ran only as
+# hand-installed units with no organ-manifest.txt entry — the exact
+# "designed/installed but never wired into the revivable gate" blind spot
+# RESILIENT-366 closed for armed-rebaser/board-cycle above (a dead unit stays
+# dead forever, since organ-reconcile only ever acts on lines in THIS file).
+# chump-farmer.timer above already covers the farmer organ folded in from
+# CJ's hand-placed /home/jeff/cj-farmer-run.sh — same repo-tracked unit name
+# (scripts/dispatch/chump-farmer.service + chump-farmer-run.sh), so no new
+# line is needed for it here.
+#
+# Node-neutral naming (RESILIENT-347's requires= gate is what makes "one line
+# covers CJ and any future muscle node" true — a node without the dependency
+# binary is skipped, not force-installed):
+#   chump-cj-worker.service  — CJ's concrete worker (muscle) unit: the organ
+#     that actually claims and works gaps on this owned node (cj-worker-run.sh).
+#     node-orchestrator.sh auto-scales the cj-worker2/cj-worker3 peers off this
+#     base, and its CHUMP_ORCH_WORKER_UNIT env var defaults to this same name.
+#     The node-neutral chump-worker@<N>.service template
+#     (scripts/dispatch/chump-worker@.service) that organ-watchdog.sh keys off
+#     is NOT instantiated on CJ; unifying the two naming schemes (retire the
+#     cj-worker name for the @N template fleet-wide) is known follow-up debt,
+#     not resolved here. This row declares the unit that is GENUINELY running so the
+#     manifest matches node reality — it previously said chump-worker@1.service,
+#     a name never installed on CJ, so merged-not-running read a false red
+#     (corrected 2026-08-22).
+#   chump-cj-sync.service   — CJ's concrete name for the coherence-sync organ
+#     (cj-sync-run.sh keeps the node's state.db synced from origin/main so its
+#     coherence with main doesn't silently drift, per RESILIENT-345). It is a
+#     long-running Type=simple service, NOT a .timer: the manifest previously
+#     declared chump-cj-sync.timer — a unit that does not exist on CJ — so
+#     merged-not-running read a false red; corrected to the running unit name
+#     2026-08-22. A future muscle node installs its own analogous
+#     chump-<host>-sync.service until a templated form is written.
+#   chump-postgrest.service — the self-hosted gap-store's PostgREST facade,
+#     installed idempotently by scripts/setup/install-gap-substrate.sh
+#     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
+#     not host-suffixed).
+enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file:~/cj-worker-run.sh
+# RESILIENT-1083 (worker-orphan class, PERMANENT fix — SUPERSEDES #4533, CLOSES
+# RESILIENT-1081 "organ-manifest is CJ-shaped"): a non-CJ
+# muscle node's concrete worker (mugman's chump-node1-worker.service from
+# ~/node1-worker-run.sh, plus any future node's worker and its node-orchestrator
+# autoscale peers) NO LONGER needs a per-node line here. organ-reconcile.sh's
+# organ_is_node_local now treats every worker unit (chump-*worker*) as node-local
+# and NEVER reaps it — the general replacement for the CJ-shaped per-node
+# reap-protection lines. The earlier hardcoded `chump-node1-worker.service
+# role=muscle` line (#4533) was node-specific and, being TRACKED, was reverted by
+# every `git reset --hard origin/main` — which un-declared the worker and let the
+# drift-removal pass reap it (mugman went dark 2026-09-08 ~30s after a manifest
+# reset). The worker is installed by chump-node-install.sh / node-orchestrator
+# (node-local), not this manifest, so it does not belong here. The chump-cj-worker
+# line above is retained only as belt-and-suspenders for the load-bearing CJ node.
+enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df,file:~/cj-disk-monitor-run.sh
+enabled     chump-cj-sync.service  role=data requires=bin:git,file:~/cj-sync-run.sh
+enabled     chump-postgrest.service  role=data requires=bin:postgrest
+# RESILIENT-318: disk-hygiene reapers on the MUSCLE (worker) nodes. Worker
+# nodes accumulate linked worktrees (.claude/worktrees/*, /tmp/chump-*) and
+# cargo build targets far faster than any other node — they are the ones that
+# claim gaps and build. Without a reaper kept alive on a cadence the disk fills
+# and the worker re-hits disk_critical and stalls, re-showing `timeout` under
+# disk pressure. VERIFIED on mugman 2026-09-08: disk 92% / 78 worktrees, worker
+# un-churned but re-stalling; the muscle-scoped organ-reconcile was DRIFT-REMOVE'ing
+# a hand-enabled chump-stale-worktree-reaper.timer within the hour because it was
+# absent from this manifest (present-but-out-of-role). Tagged role=muscle so the
+# muscle reconcile ENABLES + KEEPS them (an unfiltered brain/primary reconcile
+# enables every `enabled` line regardless of role, so disk hygiene still lands
+# there too). The .timer's paired oneshot .service is covered by reconcile's
+# sibling-protection. Unit files are placed on owned nodes by the fleet's
+# launchd->systemd porter from the in-repo launchd plists + scripts/ops/
+# {stale-worktree-reaper,cargo-target-reaper}.sh; on a node lacking the unit,
+# organ-reconcile's enable step WARNs + backs off (harmless). Both scripts are
+# safe by construction (lease/lsof/log-freshness/age-min guards + .chump-no-reap).
+enabled     chump-stale-worktree-reaper.timer  role=muscle requires=bin:git
+enabled     chump-cargo-target-reaper.timer  role=muscle requires=bin:git
+
+# chump-node-converge.timer: RESILIENT-1189 — the node auto-converge organ. Every
+# 10 min it fetches origin/main and `converge_mirror_hard_reset origin/main` so
+# this node's SOURCE checkout is byte-for-byte current with main. THE fix for the
+# #1 systemic wound (merged != deployed): node-refresh-chump.sh's binary-SHA
+# idempotency short-circuit (RESILIENT-200) `exit 0`s BEFORE the source converge
+# whenever the installed `chump` binary already matches green-main — so a merged
+# BASH-only fix (the rot-reaper fix #4637, any scripts/*.sh edit) that never bumps
+# the binary SHA is treated as "already current" and the source checkout is never
+# reset, leaving every `bash scripts/…/foo.sh` organ running a stale script (CJ's
+# /home/jeff/Projects/chump had to be hand `git reset --hard`'d for exactly this).
+# Auth-INDEPENDENT (a public-repo fetch needs no gh/creds, so it can never degrade
+# the way node-refresh's gh-dependent green-lookup does) and active-worker-safe (it
+# resets only the main checkout; worker gap worktrees under .claude/worktrees/*
+# have their own HEAD + are gitignored, and gitignored runtime state survives the
+# reset; it DEFERS if a rebase/merge is in progress). Tagged role=muscle for the
+# same reason as the reapers above: the muscle nodes (CJ, mugman) are the
+# documented victims of stale-bash organs, so a fresh muscle bring-up must get it,
+# while an unfiltered brain/primary reconcile enables every `enabled` line
+# regardless of role so it lands on the coordination node too. requires=bin:git
+# (NOT gh — the whole point is gh-independence). Declared here so organ-reconcile
+# re-arms it if it drifts and Roll-Call (scripts/ci/test-resilient-366-organ-roll-
+# call.sh) never lets it rot silently.
+enabled     chump-node-converge.timer  role=muscle requires=bin:git
+
+# chump-fleet-server (INFRA-2175): the metric-gauge API + bat-phone intake.
+# Serves /api/dashboard-summary etc on 127.0.0.1:7070 from the local repo
+# data (github_cache.db, ambient.jsonl, claim leases). ~48 gauges stayed
+# dark until this served them. Unit + SYSTEM_UNITS roster entry land together
+# (RESILIENT-376: manifest-only never installs the file).
+enabled     chump-fleet-server.service  role=data requires=bin:git platforms=systemd,launchd  # INFRA-7765: widened -- fleet-server-launchd (bootstrap-manifest.yaml) is a confirmed exact match (same HTTP+WS query server on 127.0.0.1:7070), not a separate organ; see docs/ops/ORGAN_ROSTER_AUDIT.md
+
+# chump-almanac-liveness.timer: systemd complement to the macOS-only
+# almanac-summarize-watchdog (RESILIENT-354/launchd) — covers almanac binary
+# presence + index freshness on the Linux owned-node factory (INFRA-3643 /
+# TREK-17). Declared here so organ-reconcile re-arms it if it drifts or fails,
+# the same peer-heartbeat mechanism every other organ in this manifest relies
+# on; also closes the Roll-Call gap (scripts/ci/test-resilient-366-organ-roll-
+# call.sh) that would otherwise fire the moment this timer was added to
+# install-helsinki-atc.sh's SYSTEM_UNITS without a matching manifest line.
+enabled     chump-almanac-liveness.timer  role=data requires=bin:git
+enabled     chump-jeff-bus-ingest.timer  role=data requires=bin:python3  # META-900: conversation-bus inbound ingester (Claude Code transcripts -> chump_web_messages)
+enabled     chump-faculty-collector.timer  role=data requires=bin:gh,bin:jq
+enabled     chump-pr-book-settle.timer     role=trust requires=bin:gh,bin:jq
+# CREDIBLE-296: chump-race-control.timer — hourly merge-mix board (user-value%
+# / self-maintenance% / reconcile-waste%). Emits kind=race_control_mix every
+# tick and kind=race_control_waste_alarm (non-zero exit) when reconcile-waste%
+# exceeds CHUMP_RACE_WASTE_THRESHOLD, so the duty-officer/board see the signal
+# instead of nobody watching the tape. Declared here so organ-reconcile
+# revives it and Roll-Call (scripts/ci/test-resilient-366-organ-roll-call.sh)
+# never lets it silently rot the way chump-backlog-sync-writer.timer did.
+enabled     chump-race-control.timer  role=data requires=bin:gh
+
+# chump-organ-deploy.timer: RESILIENT-374 — the root-privileged self-deploy
+# organ. On owned nodes (CJ=jeff) chump-organ-reconcile and chump-organ-watchdog
+# run as the repo-owning user and cannot write /etc/systemd/system, so merged
+# chump-*.service/.timer files stayed DARK (declared here, never installed in
+# systemd) — the merged-not-running disease. This organ runs install-helsinki-
+# atc.sh --auto AS ROOT so every merged organ actually gets installed + enabled.
+# It is User=root by design (install-helsinki-atc _KEEP_ROOT_ORGANS), the one
+# organ exempt from the host de-privilege rewrite. Declared here so Roll-Call
+# (scripts/ci/test-resilient-366-organ-roll-call.sh) sees a manifest line for
+# the tracked unit files and organ-watchdog re-arms it if it drifts.
+enabled     chump-organ-deploy.timer  role=janitor requires=bin:git
+
+# chump-gap-drain.timer: EFFECTIVE-464 — the DRAIN LOOP. GATE 2 toward the
+# ribbon. The cheap DeepSeek floor (EFFECTIVE-445) lands SURGICAL single-change
+# gaps first-try but SPINS on vague gaps and FAILS verify on broad/multi-file
+# ones — so this organ continuously converts the OPEN backlog into landable
+# surgical gaps: thin gaps get ENRICHED in place (Almanac file:line +
+# deepseek-v4-pro concrete spec, anti-bloat — never manufactures gaps), and
+# broad (effort m/l or AC-heavy) gaps get DECOMPOSED into xs/s sub-gaps (one
+# file, one edit, one testable AC each). Both LLM calls route to deepseek-v4-pro
+# (~$0.0035/enrich) via OPENAI_API_BASE=openrouter, NOT the contended local
+# ollama that owns the cascade's slot 0 on CJ. requires the enricher binary +
+# almanac; a node without them is skipped, not force-installed. Declared here so
+# organ-reconcile re-arms it if it drifts and Roll-Call
+# (scripts/ci/test-resilient-366-organ-roll-call.sh) never lets it rot silently.
+enabled     chump-gap-drain.timer  role=brain requires=bin:chump-gap-enricher,bin:almanac
+
+# chump-next-best-action.timer: OS-HAS-NO-NERVOUS-SYSTEM — the ADVISORY
+# next-best-action router. scripts/coord/next-best-action.sh recomputes an
+# EV-ranked (value x P(success)) list of next-best-actions from the sighted
+# organs that already price work (pr-book P(merge), the faculty self-portrait,
+# journey odds, open gaps, failed organs) and writes ~/.chump/
+# next-best-action.json + emits kind=next_best_action. Recommend-only: it never
+# dispatches, merges, or restarts. The engine existed but its output was
+# computed ONCE and left to rot (8 days stale) — dark. This timer keeps the NBA
+# ranking FRESH so the nervous system (duty-officer, board, operator) reads a
+# current picture, not a week-old file. Cheap (no LLM call). Declared here so
+# organ-reconcile re-arms it on drift and Roll-Call never lets it rot silently.
+enabled     chump-next-best-action.timer  role=data requires=bin:gh,bin:jq
+
+# chump-nba-dispatch.timer: EFFECTIVE-509 (+ conservative first cut of
+# EFFECTIVE-510) - the AUTO-DISPATCH CONSUMER that closes the next-best-action
+# loop so the OS can aim ITSELF between human check-ins. The producer above is
+# ADVISORY (writes the ranking, never acts); this consumer reads the TOP bet and
+# takes a SAFE, REVERSIBLE, ALLOW-LISTED action only - heal a DEAD organ
+# (reset-failed+restart; a relapse escalates to the human, never loops), ensure
+# worker/farmer muscle is building (respects the fleet-paused sentinel), or a
+# wait_ci no-op. EVERYTHING else (merge PRs, cut PRs, resolve/rebase,
+# raise_faculty, any unknown action-type) DEFERS: records a needs-human item +
+# emits kind=nba_deferred_to_human for Jeff's digest. Idempotent (30-min bet
+# cooldown). Safe-by-default. Declared here so organ-reconcile re-arms it on
+# drift and Roll-Call never lets it rot silently. role=brain (it decides+acts).
+enabled     chump-nba-dispatch.timer  role=brain requires=bin:jq
+# chump-cascade-unblock-detector.timer: RESILIENT-418 (INFRA-2070). When a
+# wedge_auto_fix PR merges, fans the fix out to every open PR whose CI failed
+# on the same failure signature by calling `gh pr update-branch` on each safe
+# match. Existed only as a Mac-launchd daemon (install-meta-118-daemons.sh)
+# until this line — on CJ nothing consumed the signal, so blocked PRs sat
+# stale until a human manually re-ran update-branch after a gate fix landed.
+# Declared here so organ-reconcile re-arms it if it drifts or fails, the same
+# peer-heartbeat mechanism every other organ in this manifest relies on.
+enabled     chump-cascade-unblock-detector.timer  role=brain requires=bin:gh
+
+# chump-gap-store-single-source-check.timer: RESILIENT-1058 — schedules the
+# RESILIENT-1057 gap-store split-brain guard (scripts/coord/gap-store-
+# single-source-check.sh) as a live organ instead of a script only ever run
+# by hand. Fails LOUD (non-zero exit -> failed unit) the moment the CLI and
+# canonical sqlite state.db disagree, or a non-empty dormant postgrest store
+# diverges from state.db — the exact silent split-brain that cost hours
+# before this guard existed. Declared here so organ-reconcile re-arms it if
+# it drifts or fails, the same peer-heartbeat mechanism every other organ in
+# this manifest relies on. role=data (it observes/reports, no writes).
+enabled     chump-gap-store-single-source-check.timer  role=data requires=bin:sqlite3,bin:chump
+
+# chump-rca-reflex.timer: the INFRA-249 recurring-gap-pattern-detector, wired
+# as a live organ (RESILIENT-365). Was DARK — 0 organ units, only a human-
+# facing ALERT line — while 44 symptom PRs shipped in one night against 0
+# root-cause gaps (the evidence for this gap). The detector itself still
+# gates its auto-file-a-root-gap + auto-block-symptoms half behind
+# CHUMP_RCA_REFLEX_ENABLED (default OFF, see chump-rca-reflex.service and
+# docs/process/CAPABILITY_DECISIONS.md) — this manifest line only guarantees
+# the detection + ambient ALERT sweep itself stays alive and self-heals like
+# every other organ here.
+enabled     chump-rca-reflex.timer  role=brain requires=bin:chump
+
+# chump-organ-success-verifier.timer (RESILIENT-1108, umbrella RESILIENT-1103):
+# the organ that verifies organs actually RAN and SUCCEEDED — reads each
+# enabled organ's last-run systemctl Result/ExecMainStatus and pages on any
+# FAILED run (200/CHDIR, non-zero exit). Exists because the all-night CHDIR
+# incident hid indefinitely: every organ died at chdir(2) before ExecStart
+# while `systemctl is-active <timer>` — the only thing reconcile/watchdog
+# checked — stayed green. Declared here so organ-reconcile re-arms it if it
+# drifts or fails, the same peer-heartbeat mechanism every other organ relies
+# on (and so the verifier is itself verified).
+enabled     chump-organ-success-verifier.timer  role=brain
+
+# chump-effect-verifier.timer (RESILIENT-1109, umbrella RESILIENT-1103): the
+# sibling of chump-organ-success-verifier.timer that catches the OTHER
+# blind spot — an organ that exits 0 and reports success every run, yet
+# produces no effect (the farmer ticking a non-empty pickable queue and
+# claiming nothing). Result=success is not "the organ did its job"; this
+# organ compares heartbeat volume against effect volume directly. Declared
+# here so organ-reconcile re-arms it if it drifts or fails.
+enabled     chump-effect-verifier.timer  role=brain
+
+# --- Model routing config (RESILIENT-1009, a RESILIENT-596 slice) -----------
+# The default floor model, cost-tiered escalation ladder, and free-tier
+# provider list (with API-key env-var NAMES, never values) are single-sourced
+# at scripts/setup/model-escalation-ladder.env, NOT declared as directives in
+# this file — this manifest's parser (scripts/ops/lib/organ-manifest-lib.sh)
+# only understands the `enabled` / `paging_off` organ states above, so model
+# config lives in its own tracked file rather than growing a second grammar
+# here. scripts/dispatch/worker.sh sources that manifest directly (last, so
+# it wins over machine-local ~/.chump/providers.env or a launcher override —
+# RESILIENT-1009 AC2). Reproducible installer templates
+# (scripts/setup/provision-chumpd-host.sh's chumpd.env) reference the same
+# manifest rather than hand-copying the ladder values, so there is exactly
+# ONE place to edit to change the fleet's floor model or ladder.
+
+# --- macOS-only capabilities folded in from bootstrap-manifest.yaml (INFRA-7765,
+# docs/strategy/ONE_COMMAND_INSTALL.md section 1, one-command-install BOM
+# unification INFRA-7756). Every id below either MATCHES an existing line
+# above (platforms= widened in place, no new line) or gets exactly ONE new
+# platforms=launchd line here — even where NO Linux port exists yet — so the
+# Linux gap is visible in this single declared roster instead of silently
+# absent from a second file nobody diffs against the first. Full audit with
+# ExecStart/script citations: docs/ops/ORGAN_ROSTER_AUDIT.md. These lines are
+# inert on a systemd host: organ-reconcile.sh's platform filter (INFRA-7764)
+# excludes any line whose platforms= does not include "systemd" from ENABLED
+# before anything else runs, so none of the confirmed-absent entries below is
+# ever `systemctl enable`'d here — zero runtime behavior change, pure
+# visibility. requires=bin:chump is the common floor (every one of these
+# needs the CLI); a few also declare bin:gh where the underlying script is
+# gh-dependent, matching bootstrap-manifest.yaml's own installer.
+enabled     chump-opus-curator.timer  role=brain requires=bin:chump platforms=systemd,launchd  # curator-launchd: P0 demotion/vague-AC-fill/pillar rebalance. Linux port: tracked scripts/dispatch/chump-opus-curator.{service,timer} (oneshot bash scripts/coord/opus-curator.sh every 10min), placed+host-rewritten by chump-node-install.sh place_role_unit_files.
+enabled     chump-self-doctor.timer  role=brain requires=bin:chump platforms=systemd,launchd  # self-doctor-launchd: `fleet doctor --heal` every 5min. Linux port: tracked scripts/dispatch/chump-self-doctor.{service,timer} (oneshot `chump fleet doctor --heal --json` every 5min; heal gated by CHUMP_FLEET_SELF_DOCTOR_HEAL, diagnose-only by default), placed+host-rewritten by place_role_unit_files.
+enabled     chump-paramedic.timer  role=brain requires=bin:chump platforms=systemd,launchd  # paramedic-launchd: stuck-PR rescue every 10min. Linux port: tracked scripts/dispatch/chump-paramedic.{service,timer} (oneshot `chump paramedic execute` — one triage+execute pass every 10min), placed+host-rewritten by place_role_unit_files.
+enabled     chump-conductor.timer  role=brain requires=bin:chump platforms=systemd,launchd  # conductor-launchd: self-rescue consensus proposal every 30min. Linux port: tracked scripts/dispatch/chump-conductor.{service,timer} (oneshot `chump self-rescue-loop` every 30min; dry-run unless CHUMP_CONDUCTOR_ACT=1), placed+host-rewritten by place_role_unit_files.
+enabled     chump-github-liaison.timer  role=data requires=bin:chump,bin:gh platforms=launchd  # github-liaison-launchd: refreshes .chump/github_cache.db every 60s. Not traced to a Linux unit by name or script match; treat as absent per ONE_COMMAND_INSTALL.md finding 4 until proven otherwise. Linux port: TODO.
+enabled     chump-quartermaster-audit.timer  role=data requires=bin:chump,bin:git platforms=launchd  # quartermaster-audit-launchd: 5-min shelfware-audit scanning merged artifacts against curator docs. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-ghost-pr-closer.timer  role=janitor requires=bin:chump,bin:gh platforms=launchd  # ghost-pr-closer-launchd: closes DIRTY/CONFLICTING PRs whose gap is already done. Not traced to a Linux unit (distinct from chump-gap-closure-reconcile.timer, which closes gaps from GitHub truth, not PRs from gap truth). Linux port: TODO.
+enabled     chump-trunk-sentinel.timer  role=brain requires=bin:chump,bin:gh platforms=launchd  # trunk-sentinel-launchd: 60s trunk-red watcher escalating fix-class actions. Distinct from chump-trunk-recovery-reviver.timer (that one reopens rot-reaped PRs after a red->green recovery; this one watches + escalates DURING red). Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-pr-shepherd.timer  role=brain requires=bin:chump,bin:gh platforms=systemd,launchd  # pr-shepherd-daemon-launchd: 60s PR classifier/auto-rebaser/auto-armer (distinct from chump-pr-lander.timer, which only arms already-green PRs). Linux port: tracked scripts/dispatch/chump-pr-shepherd.{service,timer} (oneshot bash scripts/coord/pr-shepherd-daemon.sh every 60s), placed+host-rewritten by place_role_unit_files.
+enabled     chump-daemon-activator.timer  role=janitor requires=bin:chump,bin:git platforms=launchd  # daemon-activator-launchd: 5-min auto-loader for new install-*.sh/*.plist since last checkpoint. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-main-worktree-drift-detector.timer  role=data requires=bin:chump,bin:git platforms=launchd  # main-worktree-drift-detector-launchd: 30-min untracked-yaml/behind-origin drift alarm. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-fleet-recorder.service  role=data requires=bin:chump platforms=launchd  # fleet-recorder-launchd: captures NATS+ambient events to .chump/fleet_events.db, feeds fleet-server's query API. Not traced to a Linux unit distinct from chump-fleet-server.service itself (which serves, but does not capture, the events). Linux port: TODO.
+enabled     chump-planner.timer  role=data requires=bin:chump-plan platforms=launchd  # chump-planner-launchd: hourly gap-priority.json writer (INFRA-1257), consumed by the fleet picker. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-queue-health-monitor.timer  role=data requires=bin:chump platforms=launchd  # queue-health-monitor-launchd: hourly .chump/health.jsonl + ambient ALERT writer. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-stale-branch-reaper.timer  role=janitor requires=bin:chump,bin:git platforms=launchd  # stale-branch-reaper-launchd: daily reaper for remote branches 14+ days stale with no open PR. Distinct from chump-stale-worktree-reaper.timer (worktrees, not branches). Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-pr-watch-shepherd.timer  role=brain requires=bin:chump,bin:gh platforms=systemd,launchd  # pr-watch-shepherd-launchd: 10-min sweep auto-recovering DIRTY-after-arm PRs from a clean ephemeral worktree. Linux port: tracked scripts/dispatch/chump-pr-watch-shepherd.{service,timer} (oneshot bash scripts/ops/pr-watch-shepherd.sh every 10min), placed+host-rewritten by place_role_unit_files.
+enabled     chump-distill-pr-skills.timer  role=data requires=bin:chump platforms=launchd  # distill-pr-skills-launchd: hourly distiller of shipped PRs into chump_improvement_targets rows. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-ci-health-gate.timer  role=brain requires=bin:chump platforms=systemd,launchd  # ci-health-gate-launchd: 5-min auto-pause when CI is jammed (>=50% BLOCKED) or an SLO breaches. Linux port: tracked scripts/dispatch/chump-ci-health-gate.{service,timer} (oneshot bash scripts/coord/ci-health-gate.sh every 5min), placed+host-rewritten by place_role_unit_files.
+enabled     chump-auto-deploy.timer  role=janitor requires=bin:chump,bin:git platforms=launchd  # auto-deploy-launchd: 20-min binary-tracks-main deploy daemon via refresh-runner-binary.sh. ONE_COMMAND_INSTALL.md finding 4 explicitly rules OUT chump-organ-deploy.timer as a match (that one places unit files as root; this one rebuilds/redeploys the binary). Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-almanac-code-intel.timer  role=data requires=bin:chump platforms=launchd  # almanac-code-intel: wires almanac_* MCP tools into chump-mcp.json + indexes the working repo. RENAMED-ORGAN, PARTIAL/UNCONFIRMED: install-almanac-organ.sh already self-installs as systemd --user on Linux TODAY (ONE_COMMAND_INSTALL.md section 2d groups it with install-oauth-refresh-systemd.sh/install-fleet-health-sentinel.sh as already-rootless-systemd installers) -- but that --user unit is NOT organ-manifest.txt-tracked, and is a DIFFERENT capability from chump-almanac-liveness.timer below (which is itself the systemd complement to a THIRD, not-in-bootstrap-manifest launchd organ, almanac-summarize-watchdog/RESILIENT-354 -- freshness-checking, not indexing/MCP-wiring). Left platforms=launchd-only (not widened to systemd) rather than force a 1:1 merge with either existing organ pending a dedicated reconciliation follow-up; zero behavior change preserved either way since this line was never reconcile-visible before.
+enabled     chump-coord-assign.service  role=brain requires=bin:chump-coord platforms=systemd,launchd  # coord-assign-launchd: FLEET-034 push-routing daemon publishing WorkEnvelopes. Linux port: tracked scripts/dispatch/chump-coord-assign.service (Type=simple daemon `chump-coord assign`, fail-open when NATS unreachable), placed+host-rewritten by place_role_unit_files. requires=bin:chump-coord so a node without that binary is cleanly skipped (not force-enabled into backoff).
+enabled     chump-a2a-dead-letter-reaper.timer  role=janitor requires=bin:chump platforms=launchd  # a2a-dead-letter-reaper-launchd: 30-min dead-letter reaper for unread dormant-inbox A2A messages. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-decomposition-hint-tracker.timer  role=data requires=bin:chump platforms=launchd  # decomposition-hint-tracker-launchd: daily analytics on PR-decomposition-hint heeded-rate. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-refresh-model-prices.timer  role=data requires=bin:chump platforms=launchd  # refresh-model-prices-launchd: weekly diff of model_rates.yaml/model_registry.yaml against LiteLLM upstream. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-fleet-version-skew-detect.timer  role=data requires=bin:chump,bin:git platforms=launchd  # fleet-version-skew-detect-launchd: 6h ALERT when working-tree worker.sh drifts from origin/main unrelaunched. Not traced to a Linux unit. Linux port: TODO.
+enabled     chump-mission-grade.timer  role=data requires=bin:chump platforms=launchd  # mission-grade-cron: emits kind=mission_grade via `chump mission-grade` on a 30-min cadence. Genuinely cross-platform BY DESIGN (delegates to `chump cron install`, which renders launchd on macOS and a systemd --user timer of this EXACT name on Linux, INFRA-2057) -- but the Linux side is --user scope, outside this system-scope organ-reconcile's reach until slice B's rootless --user rendering lands, so platforms= stays launchd-only here to avoid this reconcile attempting a system-scope `systemctl enable` against a unit that only ever exists at --user scope. Not a Linux GAP like the lines above (the Linux mechanism already exists); a scoping mismatch slice B resolves.
+
+# --- install-node-housekeeping.sh's 10-organ roster, folded in (INFRA-7766,
+# docs/strategy/ONE_COMMAND_INSTALL.md section 1, one-command-install BOM
+# unification INFRA-7756). These are NOT rendered by organ-reconcile in the
+# usual "place the unit file" sense -- install-node-housekeeping.sh still
+# writes + installs its own generic loop-runner systemd units directly (its
+# write_runner()/install_systemd() functions, unchanged by this slice) — but
+# it now READS the (name, script, cadence) triple for each organ from the
+# `housekeeping=<script>|<cadence>|<args>` token on the matching line below
+# instead of a second hardcoded ORGANS= heredoc (scripts/ops/lib/node-
+# housekeeping-roster-lib.sh), so there is exactly ONE declared roster.
+# `requires=file:~/.chump/organs/<name>.sh` is deliberate: that per-organ
+# runner script only exists on a node where install-node-housekeeping.sh has
+# actually run (its write_runner() writes it), so organ-reconcile.sh SKIPS
+# these entirely (never attempts an `enable`) on any node that hasn't
+# installed the housekeeping suite — exactly the file: idiom the CJ-legacy
+# chump-cj-* lines above already use to keep a host-specific organ from
+# being force-installed into an eternal backoff on a node where it doesn't
+# apply (see this file's header). On a node where housekeeping HAS run,
+# `systemctl enable --now` on an already-enabled-and-active unit is a
+# documented no-op (this file's header), so this only ADDS the self-heal
+# peer-heartbeat every other organ in this manifest already relies on — it
+# changes nothing observable today. Verified live on CJ (2026-09-20): all 8
+# of these unit names are ALREADY `active running` systemd services there.
+#
+# pr-lander and rot-reaper are DELIBERATELY EXCLUDED from this roll-call:
+# install-node-housekeeping.sh's fixed chump-$name.service naming collides
+# with two OTHER, older organs that already own those exact unit names
+# (chump-pr-lander.timer's sibling .service / RESILIENT-288, and a
+# standalone RESILIENT-324 chump-rot-reaper.service) — adding an `enabled`
+# line here would make organ-reconcile start enabling a unit name that's
+# ambiguous between two unrelated capabilities, a NEW behavior this
+# zero-behavior-change slice must not introduce. See node-housekeeping-
+# roster-lib.sh's own comment and INFRA-7772 (filed) for the fix.
+enabled     chump-node-orchestrator.service  role=brain requires=file:~/.chump/organs/node-orchestrator.sh housekeeping=scripts/ops/node-orchestrator.sh|0|
+enabled     chump-worktree-reaper.service  role=janitor requires=file:~/.chump/organs/worktree-reaper.sh housekeeping=scripts/ops/stale-worktree-reaper.sh|900|--execute
+enabled     chump-disk-monitor.service  role=janitor requires=file:~/.chump/organs/disk-monitor.sh housekeeping=scripts/ops/disk-health-monitor.sh|300|
+enabled     chump-main-health-watchdog.service  role=brain requires=file:~/.chump/organs/main-health-watchdog.sh housekeeping=scripts/ops/main-health-watchdog.sh|600|
+enabled     chump-cargo-sweep-gc.service  role=janitor requires=file:~/.chump/organs/cargo-sweep-gc.sh housekeeping=scripts/ops/cargo-sweep-gc.sh|3600|
+enabled     chump-reviver.service  role=brain requires=file:~/.chump/organs/reviver.sh housekeeping=scripts/coord/post-push-integrity-watch.sh|60|
+enabled     chump-pr-stuck-live-scan.service  role=brain requires=file:~/.chump/organs/pr-stuck-live-scan.sh housekeeping=scripts/ops/stuck-pr-filer.sh|3600|
+enabled     chump-pr-stuck-cluster-detector.service  role=brain requires=file:~/.chump/organs/pr-stuck-cluster-detector.sh housekeeping=scripts/coord/pr-stuck-cluster-detector.sh|1800|--apply

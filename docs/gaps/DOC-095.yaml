@@ -1,0 +1,11 @@
+- id: DOC-095
+  domain: DOC
+  title: "DOC: fleet build-speed plan-of-record + update DISK_AWARE_FLEET/ROADMAP (disk-bounded, receipts)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Create docs/strategy/FLEET_BUILD_SPEED_2026-08-09.md as plan-of-record. MUST capture: (a) ROOT CAUSE = target-dir precedence bug — INFRA-2183 per-worktree isolation (crates/chump-atomic-claim/src/worktree_build_cache.rs) is silently overridden because worker.sh:171-180 exports CARGO_TARGET_DIR and cargo reads env-var before .cargo/config.toml target-dir; (b) DISK REALITY — Mac /System/Volumes/Data is 96%% full, 20GB free, shared target already 72GB, so per-worker dirs would BLOW the Mac disk => per-worker only viable on hosts WITH headroom; Mac levers = free-disk + linker + offload; (c) sccache OFF for measured 0%% hit (ZERO-WASTE-021: worktree paths poison rustc arg hashes) not just the RESILIENT-112 wedge; needs --remap-path-prefix first; (d) TIERS: 1 reconcile target-dir per-host-disk, 2 linker (lld Mac needs brew install, mold Linux — currently MISSING), 3 cargo-hakari, 4 sccache-after-remap, 5 revive helsinki(online,0/10 on junk gaps)+closetjunky(prep-only); (e) DISPATCH is built-not-wired: preferred_machine field + chump-coord assign daemon exist but assign daemon not running. "
+    - " Cross-link + update docs/strategy/DISK_AWARE_FLEET_2026-05-29.md and docs/ROADMAP.md to point at this plan."
+  outcome_id: FLEET-BUILD-SPEED
+

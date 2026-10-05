@@ -1,0 +1,16 @@
+- id: RESILIENT-197
+  domain: RESILIENT
+  title: "RESILIENT: unstick RESILIENT-196 disk-floor guard (PR #3303, DIRTY ~25h)"
+  status: superseded
+  priority: P1
+  effort: m
+  description: |
+    The ONE preventive fix for the disk-full class — RESILIENT-196 'preflight disk-floor guard: refuse a build below headroom' — is stuck in PR #3303, DIRTY for ~25h as of the 2026-07-26 incident. Reactive reapers merged; the preventive guard did not, so builds march into a full disk until ambient writes truncate mid-line. The guard commit (2423d34a6) is already on origin/chump/resilient-196-disk-floor; the branch just needs rebase/update-branch to clear DIRTY, then land. Verify PR #3303 real mergeState (cache-first) before acting; it may already be rebasable.
+  acceptance_criteria:
+    - "verify PR #3303 current mergeStateStatus via github_cache.db (cache-first, not raw gh)"
+    - rebase/update-branch chump/resilient-196-disk-floor onto main to clear DIRTY
+    - "land PR #3303 so the disk-floor guard is active in preflight"
+    - confirm a below-headroom build is actually refused by the merged guard (not just present)
+  notes: |
+    [2026-07-26T23:55:25Z] moot: RESILIENT-196 disk-floor guard merged (#3303)
+

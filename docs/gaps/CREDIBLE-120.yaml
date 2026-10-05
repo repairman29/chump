@@ -2,7 +2,7 @@
   domain: CREDIBLE
   title: "CREDIBLE: fleet-brief banner ignores chump health --slo-check exit code — reports 'healthy' while L2/L3 SLOs are actively breached"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - "Reproducer: when chump health --slo-check returns exit code != 0 (one or more SLOs breached), bash scripts/dispatch/fleet-brief.sh still prints '✓ No urgent actions — fleet looks healthy'"

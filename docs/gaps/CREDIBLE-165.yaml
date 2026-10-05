@@ -1,0 +1,16 @@
+- id: CREDIBLE-165
+  domain: CREDIBLE
+  title: "CREDIBLE: phantom-ref Test 5 flags the guarded EFFECTIVE-097 sccache self-heal as a bug"
+  status: superseded
+  priority: P2
+  effort: m
+  description: |
+    test-shared-target-phantom-ref.sh Test 5 fails on clean main. Its assertion (pre-push must not contain RUSTC_WRAPPER=) predates INFRA-2184/EFFECTIVE-097, which added a GUARDED self-heal: pre-push disables the sccache wrapper ONLY when the binary is missing/unresponsive (gate still runs uncached — true signal, never false fail). Test 5's broad grep now flags those guarded _PREPUSH_WRAPPER_OVERRIDE lines and fails. Not a hook bug — the heal is correct per durable-fix doctrine. Narrow the test to fail only on UNCONDITIONAL disabling.
+  acceptance_criteria:
+    - "Test 5 allows the guarded _PREPUSH_WRAPPER_OVERRIDE heal (excludes those lines + the RUSTC_WRAPPER:- probe)"
+    - Test 5 still fails on an unconditional 'unset RUSTC_WRAPPER' or bare top-level RUSTC_WRAPPER=
+    - bash scripts/ci/test-shared-target-phantom-ref.sh exits 0
+    - no change to scripts/git-hooks/pre-push
+  notes: |
+    [2026-07-26T19:29:43Z] [gap-bankruptcy 2026-07-26] work already merged to origin/main (gap-ID in a merged commit); closing ghost-open gap. Reversible via `chump gap requeue CREDIBLE-165`.
+

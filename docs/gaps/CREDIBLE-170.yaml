@@ -1,0 +1,16 @@
+- id: CREDIBLE-170
+  domain: CREDIBLE
+  title: "verify gate in execute_gap ship path: a fix must be CONFIRMED to accomplish the gap before merge (cheap draft + skeptical verify)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"a fix must be CONFIRMED to accomplish the gap before merge (cheap draft + skeptical verify)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-28'
+  closed_pr: 3343
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: devstral (free-tier) drafted a fix for CREDIBLE-169 that LOOKED right (added gate_script_paths + is_mirrored checking all paths) but was a SHADOWED DUPLICATE of the existing is_mirrored — dead code, no behavior change. CI would likely pass (nothing broke), so a plausible NON-FIX would merge + close the gap. That is worse than no fix (green != covered / signals != outcomes, applied to the fleet's own output). Build a verify step: after the agent commits, before bot-merge, a skeptical reviewer (model, CHUMP_VERIFY_MODEL upgradeable to a stronger tier) judges the DIFF against the gap AC — PASS/FAIL, failing no-ops / dead code / shadowed defs / changes that don't wire into the real path. FAIL aborts the ship + emits a signal + leaves the gap open for retry. This is the cheap-draft+smart-verify architecture that makes the $10/mo fleet ship CORRECT fixes.
+

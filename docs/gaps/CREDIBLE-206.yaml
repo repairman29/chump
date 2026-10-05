@@ -1,0 +1,18 @@
+- id: CREDIBLE-206
+  domain: CREDIBLE
+  title: "CREDIBLE: dependency and quota ledger — every lighthouse surface names what it runs on, the tier, and what happens at the limit"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Build the per-surface dependency/quota ledger for the three lighthouses (arcade/games, upshift CLI+platform, olive) — the bucket-GO half of READY-GATE. Rough shape: (a) one truth doc (suggest ~/Projects/VENDOR_LEDGER.md, sibling of SITES.md/DOMAINS.md) with one row per external dependency per surface: service, tier (free/trial/paid), quota numbers, key owner/location, cost curve at 10/100/1000 users, and VERIFIED at-limit behavior; (b) gather via Supabase MCP (list_projects, get_project), Vercel MCP (list_projects, deployments), porkbun-domains skill, and in-repo env/client scans — never print key VALUES, only names+owners; (c) beast-mode.dev dead-hostname class gets a standing detector: a posse/stranger-gate probe hits each surface's auth+primary endpoints on the nightly sweep (wire with EFFECTIVE-368); (d) same-session doc-update rule applies — ledger updates land with the change that alters live state. infra-cartographer is the standing agent for the sweep.
+  acceptance_criteria:
+    - ledger exists with all three lighthouse surfaces complete, every row receipted
+    - at-limit behavior VERIFIED not assumed for each free/trial dependency
+    - no secret values in the doc, key names and owners only
+    - release-auditor checklist gains a bucket-GO line reading this ledger
+    - shared-mega-DB blast radius for the arcade explicitly quantified
+  outcome_id: READY-GATE
+  evidence: |
+    COMMAND: browser pass on beast-mode.dev (2026-08-04, in TODO.md) + almanac dependency probes of upshift and games (2026-08-06). OUTPUT: beast-mode.dev's both primary CTAs 307-redirect to a DEAD Supabase hostname (fsmibduqvwnfyvypuaie.supabase.co) — invited strangers hit a corpse; the arcade's only backend touches are shared-mega-DB Supabase (games:shared/feedback-widget.js:25, shared/leaderboard.js:21) so one popular game browns out the tier everything else lives on; upshift's AI layer is metered in code (upshift:skills/upshiftai/index.js loadPricingTierCredits/trackAIUsage) but the underlying buckets are free/trial per the operator; olive stacks Kroger OAuth + AI + Supabase. THEORY: no single truth doc lists per-surface external dependencies with tier/quota/key-owner/cost-at-N-users/at-limit behavior, so readiness is a feeling and dead-bucket rot is discovered by strangers. ALT: SITES.md/DOMAINS.md already cover this — refuted: they cover domains and hosting, not service tiers, quotas, or degradation behavior.
+

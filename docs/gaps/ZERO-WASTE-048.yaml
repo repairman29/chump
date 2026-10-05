@@ -1,0 +1,19 @@
+- id: ZERO-WASTE-048
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: ground the 89 opportunity dossiers against live code — 202 indexed files of analysis nobody re-checks"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    opportunity-library is registered and indexed (202 files as of 2026-08-07): 89 per-repo dossiers plus strategy docs, representing real analysis effort already spent. It is static prose. Nothing checks whether a dossier's claims still hold — whether the engine it describes still exists, is still wired, still has tests, or was archived out from under the analysis. Turn it into a live asset register by pointing claim-grounding at it: for each dossier, extract the capability claims and verify each against the described repo's own index and organs (does the symbol exist, is it wired per WIRING, is it tested per the repo's suites). This is CREDIBLE-209's fluff-audit machinery aimed inward at our own analysis rather than outward at READMEs — file that gap first and reuse it rather than building a second extractor. Depends on CREDIBLE-209.
+  acceptance_criteria:
+    - each dossier's capability claims are extracted and verified against the described repo's index, producing grounded / ungrounded / unverifiable per claim with citations
+    - reuses the CREDIBLE-209 claim-grounding path rather than a parallel implementation — if the shapes genuinely differ, the difference is written down
+    - a dossier describing a repo that no longer exists, was archived, or is unregistered is reported as such rather than silently scoring zero
+    - output ranks repos by how much of their claimed value is still grounded, which is the actual asset register
+    - zero network beyond local inference
+  depends_on: [CREDIBLE-209]
+  notes: |
+    GRADE RUN 2026-08-07, CORRECTED. My first pass reported four repos LOST (akamod8-local, fucked-local, jarvis-android, twenty1-local). That was WRONG and the operator caught it by asking 'are you sure'. All four exist. Three compounding errors, all mine: case-sensitive globs (the dirs are AKAMOD8, Twenty1, Fucked), depth-1 search only (jarvis-android is nested INSIDE pixel-edge), and misreading the '-local' dossier suffix as evidence of loss when it just means local-only-never-pushed. This violated almanac's own trust rule #1 — 'a zero-hit is a claim, not a fact' — hours after I wrote that line into docs/ALMANAC.md. CORRECTED NUMBERS: 89 dossiers, 83 repos were registered, 6 were not, and 3 of those 6 are now registered (fucked 64f/606s, twenty1 13f/91s, house-sit-form-helper 10f/22s — fleet 103 -> 107). Of 28 cited gem files: 27 present, ZERO vanished. COMBO C keystone FULLY VERIFIED and now searchable: fucked holds scripts/openfec_http.py, scripts/mlx_extract_entities.py, scripts/money_map_review_alerts.py, all cited by name in COMBINATIONS.md. COMBO A keystone EXISTS on disk (pixel-edge/jarvis-android/app/src/main/java/com/d6/jarvis/HttpApiServer.kt + LlmEngine.kt) and is already inside pixel-edge's crawl, but its 835 Kotlin files are LANGUAGE-BLIND — pixel-edge's index holds zero Kotlin rows. That is CREDIBLE-210 with a real cost now attached: the portfolio's strongest combination play has an unreadable keystone. Only genuinely ungroundable dossier: AKAMOD8, whose directory now holds 2 files (an index.html prototype and a cursor hook json) — thin, not lost.
+  skills_required: "external_repo:repairman29/almanac"
+

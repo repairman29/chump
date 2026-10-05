@@ -1,0 +1,15 @@
+- id: CREDIBLE-168
+  domain: CREDIBLE
+  title: session-start fleet-brief banner reports ~50x real ship count (691/24h vs live 13/24h) — stale injection misleads operator + agents
+  status: superseded
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "ROOT CAUSE CONFIRMED (2026-07-26): the session-start operator banner comes from 'chump fleet brief' (Rust, src/main.rs:5369 handler), invoked by scripts/coord/ambient-context-inject.sh (global ~/.claude/settings.json SessionStart hook). At src/main.rs:5444 it computes 'let ships = count_event(\"commit\")' — counting ambient.jsonl events with event==commit in the 24h window. Every fleet worker WIP commit + auto-commit across every worktree/session emits a 'commit' ambient event, so this over-counts ACTUAL merges ~55x: banner showed 'Ships: 720 (~30/hr) "
+    - " last 1h: 112' while git rev-list --count --since=24h origin/main = 13 (last 1h = 3). The shell fleet-brief.sh (scripts/dispatch/fleet-brief.sh) is CORRECT — it counts git log origin/main --after. The number also GROWS between session-starts (691->720) because ambient.jsonl accumulates commit events. FIX PART 1 (banner): in src/main.rs brief handler replace count_event(\"commit\") for both ships and ships_1h with a real-merge count of origin/main in the window (git log --format=%H --since=<cutoff-iso> origin/main "
+    - " count), matching the shell script; the '/hr' rate and 'fleet looks healthy' verdict derive from it. Then rebuild + reinstall to /opt/homebrew/bin/chump (RESILIENT-172/CREDIBLE-151: hooks run the installed binary; a source fix stays inert until copied). Verify: chump fleet brief ship count is within 2x of git rev-list --count --since=24h origin/main. FIX PART 2 (attribution — from the 2026-07-26 throughput audit): 56% of 7d ships (61/108) carried NO driver trailer, so fleet-vs-hand-vs-which-model can't be attributed from the commit record; and squash-merge attributes all PRs to the merger (repairman29), not the driver. Require a driver trailer on every ship (e.g. 'Shipped-By: fleet-sonnet"
+    - opus-interactive
+    - "hand' or preserve Co-Authored-By through squash) so 'who/what shipped this' is never a guess. Add a self-check that flags ships lacking a driver trailer. Precedent: CREDIBLE-090 signal-vs-outcome — a dashboard that inflates the outcome (ship rate) 55x is worse than none; it conditioned 'healthy 30/hr autonomous' when reality is ~0.5/hr, mostly self-maintenance, and today mostly hand-driven."
+  notes: |
+    [2026-07-26T19:29:43Z] [gap-bankruptcy 2026-07-26] work already merged to origin/main (gap-ID in a merged commit); closing ghost-open gap. Reversible via `chump gap requeue CREDIBLE-168`.
+

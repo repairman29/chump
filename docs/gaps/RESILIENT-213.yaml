@@ -1,0 +1,28 @@
+- id: RESILIENT-213
+  domain: RESILIENT
+  title: agent-dispatch-guardrail.sh resolves REPO_ROOT from script location, not caller cwd — always checks main's branch from a worktree
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Found live 2026-07-30 while following RESILIENT-060's own mandatory pre-dispatch
+    guardrail before an Agent tool call. scripts/coord/agent-dispatch-guardrail.sh:27
+    sets REPO_ROOT="${CHUMP_REPO_ROOT:-$(cd "$SCRIPT_DIR/../.." && pwd)}" -- when
+    invoked via absolute path from a worktree (the normal pattern: cd /tmp/chump-X &&
+    bash /Users/jeffadkins/Projects/Chump/scripts/coord/agent-dispatch-guardrail.sh),
+    SCRIPT_DIR resolves to the MAIN repo's scripts/coord, so REPO_ROOT is always the
+    main checkout, never the worktree the orchestrator actually cd'd into. Every
+    branch/lease check silently validates against main's branch ("main") instead of
+    the worktree's real branch (e.g. chump/credible-174-claim), producing a false
+    BLOCKED on every worktree-based dispatch unless the caller happens to already
+    know to set CHUMP_REPO_ROOT explicitly -- which nothing in
+    docs/process/SUBAGENT_DISPATCH.md's usage example mentions.
+    
+    Workaround used: CHUMP_REPO_ROOT=/tmp/chump-<gap> bash .../agent-dispatch-guardrail.sh ...
+  acceptance_criteria:
+    - the guardrail auto-detects REPO_ROOT from the invoking shell's cwd (git rev-parse --show-toplevel from PWD) when CHUMP_REPO_ROOT is unset, instead of from the script's own file location
+    - docs/process/SUBAGENT_DISPATCH.md's usage example is updated to show the correct invocation (either the auto-fix above, or an explicit CHUMP_REPO_ROOT= if auto-detect isn't the chosen fix)
+    - "test: running the guardrail via its absolute path while cwd is a worktree correctly detects the worktree's branch, not main's"
+  closed_date: '2026-08-02'
+  closed_pr: 3442
+

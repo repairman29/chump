@@ -201,7 +201,12 @@ pub fn task_list(status_filter: Option<&str>) -> Result<Vec<TaskRow>> {
         }
         Some("done") => format!("{} WHERE status = 'done'{}", TASK_SELECT, TASK_ORDER),
         Some("abandoned") => format!("{} WHERE status = 'abandoned'{}", TASK_SELECT, TASK_ORDER),
-        _ => format!(
+        Some(other) => {
+            anyhow::bail!(
+                "unknown status filter '{other}' (expected one of: open, blocked, in_progress, done, abandoned)"
+            );
+        }
+        None => format!(
             "{} WHERE status IN ('open', 'blocked', 'in_progress'){}",
             TASK_SELECT, TASK_ORDER
         ),

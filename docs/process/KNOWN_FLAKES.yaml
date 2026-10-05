@@ -104,6 +104,22 @@ flakes:
     added: "2026-05-15"
     last_observed: "2026-05-15"
     max_reruns: 1
+
+  # RESILIENT-306 (2026-08-13): credible218 proof-of-merge fixture flaked AGAIN
+  # on GitHub-hosted runners even after CREDIBLE-282/#3694's hermetic-git
+  # hardening — it went red on the fast-checks `gap-store proof-of-merge guard`
+  # (INFRA-1392) across every open PR and jammed the whole fleet (a human had
+  # to dispatch an un-jam agent). The fixture builds 206 empty commits and its
+  # residual nondeterminism is not yet root-caused (tracked by CREDIBLE-283).
+  # Cataloguing it lets the in-lane flake-autorerun wrapper recover it WITHIN
+  # the same CI run and lets the ci-flake-rerun organ recognise it post-hoc.
+  # Runner-only: rock-solid on the fleet's self-hosted Linux boxes.
+  - test: proof_of_merge_tests::credible218_merge_older_than_200_commits_is_proven
+    reason: "GHA-hosted-runner-only flake; 206-empty-commit fixture has residual nondeterminism CREDIBLE-282's hermetic-git hardening did not fully kill; passes on rerun"
+    tracking_gap: CREDIBLE-283
+    added: "2026-08-13"
+    last_observed: "2026-08-13"
+    max_reruns: 2
 # INFRA-763 fixed the canonical case
 # (failure_catalog::tests::infra647_catalog_len_matches_entries).
 # Add new entries here ONLY with an open tracking_gap. Examples of what

@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE P1: META-128/C3 install-chump-disk-inventory-launchd.sh + KeepAlive plist (INFRA-2182-correct pattern)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - install-launchd script for the disk-inventory daemon installs a KeepAlive plist; `launchctl print` shows it active.
   outcome_id: MISSION-010
 

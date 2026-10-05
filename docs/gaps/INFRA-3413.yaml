@@ -1,11 +1,12 @@
 - id: INFRA-3413
   domain: INFRA
   title: "MISSION-ZERO-WASTE: pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-23"
-  status: open
-  priority: P1
+  status: done
+  priority: P3
   effort: s
   acceptance_criteria:
-    - "The change described by \"pillar starved — only 0 pickable xs/s/m gaps as of 2026-07-23\" is implemented in the relevant INFRA code path(s)."
-    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - The gap-picker surfaces at least one pickable xs/s/m gap for the ZERO-WASTE pillar, clearing the starvation alert.
+  notes: |
+    INFRA-1435 dup-archive (similarity 100%): keeping INFRA-3401; reason: MISSION-ZERO-WASTE queue scrub 2026-08-20 (Jeff directive: no waste): archive exact-duplicate auto-filed gaps; keep lowest ID canonical; depends_on rewired; archived+recoverable
+  closed_date: '2026-08-19'
 

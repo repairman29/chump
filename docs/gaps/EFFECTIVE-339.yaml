@@ -1,0 +1,21 @@
+- id: EFFECTIVE-339
+  domain: EFFECTIVE
+  title: CREATE bench laps must not pollute canonical state.db (bootstrap files a real umbrella gap + arch-decision ignores track stack)
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Surfaced by the EFFECTIVE-335/337 CREATE proof lap (create-photo-renamer --apply). Two side-effects make CREATE bench laps unsafe to run repeatedly:
+    
+    (1) REGISTRY POLLUTION: the CREATE arm drives `chump bootstrap`, which files a REAL umbrella gap into canonical .chump/state.db every lap (EFFECTIVE-338 this run). Repeated laps pollute the pickable queue with 'Bootstrap: <task>' gaps the fleet may try to build. Fix: isolate lap side-effects — point bootstrap at a throwaway state.db/gaps dir (CHUMP_STATE_DB override) in the bench CREATE arm, or clean up the umbrella gap after scoring.
+    
+    (2) STACK MISMATCH: the CREATE arm passes --skip-arch-decision, which forces ArchOutput::default_rust() → a Rust scaffold even when the track says stack: python (create-photo-renamer wants python3 rename_photos.py). Fix: pass --template <track.stack> (bootstrap already supports rust|python|node) so the scaffold language matches the acceptance command.
+    
+    Neither blocks the drive (it fires + scaffolds in ~5s); both are correctness refinements to make CREATE laps re-runnable + honest. Files: src/bench.rs drive_engine CREATE arm; src/commands/bootstrap.rs (template/arch).
+  acceptance_criteria:
+    - "The change described by \"CREATE bench laps must not pollute canonical state.db (bootstrap files a real umbrella gap + arch-decision ignores track stack)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3427
+

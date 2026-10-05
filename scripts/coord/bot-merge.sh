@@ -31,7 +31,7 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 # full pre-merge checklist, pushes to origin, and opens (or updates) a GitHub PR.
 #
 # Usage:
-#   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--lane internal|user-facing|critical] [--skip-tests] [--dry-run] [--no-merge-driver]
+#   scripts/coord/bot-merge.sh [--gap GAP-ID ...] [--stack-on PREV-GAP-ID] [--auto-merge] [--lane internal|user-facing|critical] [--skip-tests] [--fast] [--no-local-build] [--dry-run] [--no-merge-driver]
 #                              [--branch-prefix PREFIX] [--pr-template PATH] [--required-checks CHECK1,CHECK2,...]
 #
 #   --stack-on PREV-GAP-ID
@@ -54,7 +54,26 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 #                  agent-driven shipping fits inside the ~10-15 min subagent
 #                  task budget. Implies --skip-tests. Default OFF; pass
 #                  explicitly when running from chump dispatch / Agent tool /
-#                  any context with a tight task budget. (INFRA-252)
+#                  any context with a tight task budget. (INFRA-252) NOTE:
+#                  --fast still runs a short local `cargo clippy --bin chump
+#                  --fix` pre-flight (a real compile) — see --no-local-build
+#                  below if even that is too heavy for the caller's box.
+#   --no-local-build
+#                  RESILIENT-1407 (the lean-on-CI land path): skip EVERY local
+#                  cargo invocation, including the `cargo clippy --fix`
+#                  pre-flight that --fast still runs. Implies --fast and
+#                  --skip-tests. push → GitHub Actions CI builds/verifies →
+#                  the pr-lander/verified organ lands it. Use this on a loaded
+#                  coordinator (e.g. CJ) where even a short compile risks
+#                  swap-thrashing. `cargo fmt --all` still runs locally (no
+#                  compile, just formatting) and CI remains the real gate for
+#                  clippy/tests — auto-merge will not land a red PR.
+#                  Automatically implied when CHUMP_DISPATCH_DEPTH=1 (dispatched
+#                  subagents never compile locally by default); pass explicitly
+#                  for manual/human invocations on a loaded box. Env mode
+#                  selector (not a skip/bypass flag — INFRA-2429):
+#                  CHUMP_BOT_MERGE_LAND_MODE=ci   (equivalent to --no-local-build)
+#                  CHUMP_BOT_MERGE_LAND_MODE=local (default; current behavior)
 #   --dry-run      Print every step without executing git push or gh commands.
 #   --no-merge-driver
 #                  Disable custom git merge drivers (INFRA-310) during rebase.
@@ -109,6 +128,15 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/discover-flock.sh"
 
 set -euo pipefail
 
+# RESILIENT-132 AC#1: bind stdin to /dev/null for the whole run. bot-merge is
+# invoked headlessly (fleet workers, subagent dispatch) with no tty attached;
+# any child process (git, gh) that unexpectedly probes stdin for a credential
+# prompt or confirmation blocks forever with no children and no network
+# activity visible — the exact silent hang observed shipping CREDIBLE-128
+# (failure mode 9). Every internal `while read` loop in this script already
+# redirects its own input (`< file` / `<<<`), so this is safe: it only
+# changes behavior for commands that would otherwise inherit a live tty/pipe.
+exec </dev/null
 
 # INFRA-956: default harness to a schema-valid value (kills missing_attribution noise).
 export CHUMP_AGENT_HARNESS="${CHUMP_AGENT_HARNESS:-manual}"
@@ -222,6 +250,9 @@ _bm_emit_step_stalled() {
     printf '\033[0;31m[bot-merge]   kind=bot_merge_step_stalled emitted to ambient.\033[0m\n' >&2
     printf '\033[0;31m[bot-merge]   Override timeout: CHUMP_BOT_MERGE_STEP_TIMEOUT_S=<seconds>\033[0m\n' >&2
     printf '\033[0;31m[bot-merge]   See: docs/process/SHIP_ASSIST_PLAYBOOK.md §1 Class 4\033[0m\n' >&2
+    # RESILIENT-132 AC#4: see _emit_hang_alert — same recoverable-timeout
+    # contract applies to per-step gtimeout stalls.
+    _BM_TIMEOUT_EXIT=1
 }
 
 # Run a command with per-step gtimeout + progress ledger update.
@@ -332,13 +363,72 @@ _bm_sigterm_handler() {
         >> "$_ambient" 2>/dev/null || true
     printf '\033[0;31m[bot-merge] TIMEOUT (INFRA-2426): SIGTERM received at phase="%s" elapsed=%ds — kind=bot_merge_timeout emitted to ambient.\033[0m\n' \
         "$_step" "$_elapsed" >&2 || true
-    _BM_LEASE_VACUUM_OK=1   # INFRA-3455: killed → vacuum the phantom lease
+    # RESILIENT-132 AC#4: a budget-watchdog timeout is a recoverable stall, not
+    # a give-up — the caller (fleet worker / operator) typically retries the
+    # SAME claim rather than re-claiming from scratch. Previously this handler
+    # set _BM_LEASE_VACUUM_OK=1 (vacuuming the state.db lease row) exactly like
+    # a deliberate ctrl-C kill, and the outer EXIT trap unconditionally deleted
+    # the on-disk lease file too — so every stage timeout released the lease,
+    # which is what forced the re-claim path (worktree/branch-exists,
+    # ghost-NATS-KV-claim) documented in this gap. Leave _BM_LEASE_VACUUM_OK
+    # unset here so _bm_cleanup's default (lease survives) applies, and set
+    # _BM_TIMEOUT_EXIT so the outer EXIT trap skips its own lease-file rm.
+    _BM_TIMEOUT_EXIT=1
     _bm_cleanup
     exit 1
 }
 trap '_bm_sigterm_handler' TERM
 # INFRA-3455: ctrl-C is a kill → vacuum the phantom lease (recoverable EXIT does not).
 trap '_BM_LEASE_VACUUM_OK=1; _bm_cleanup; exit 1' INT
+
+# RESILIENT-052: bot-merge runs under `set -euo pipefail` (line 110) but,
+# until now, had NO `ERR` trap — so any command that died non-zero (most
+# notoriously a `gh` sub-process crashing on SIGURG, exit 128+16=144; see
+# INFRA-2688) killed the whole script silently: `set -e` propagates the raw
+# child exit code straight out with zero stderr output and zero ambient
+# trace. Only the TERM/INT paths above were ever loud. This trap makes EVERY
+# `set -e` death loud: it prints the failing command, its exit code (and the
+# signal name when the exit code encodes one, i.e. rc > 128), and the
+# in-flight step/phase — then emits an ambient event so fleet monitors catch
+# it too. It intentionally does not change the propagated exit code (callers
+# scripted against specific codes keep working); it only removes the silence.
+# scanner-anchor: "kind":"bot_merge_uncaught_error"
+_bm_err_handler() {
+    local _rc="$1" _cmd="${2:-unknown}" _line="${3:-0}"
+    local _ts _step _ambient _gap_label _sig _signame=""
+    _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _step="${_BM_NAMED_STEP:-${__STAGE_LABEL:-unknown}}"
+    _gap_label="${GAP_IDS[*]:-${GAP_ID:-unknown}}"
+    _ambient="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
+    if [[ "$_rc" -gt 128 ]]; then
+        _sig=$(( _rc - 128 ))
+        _signame="$(kill -l "$_sig" 2>/dev/null || echo "SIG$_sig")"
+    fi
+    printf '{"ts":"%s","kind":"bot_merge_uncaught_error","gap":"%s","step":"%s","exit_code":%d,"signal":"%s","line":%d,"cmd":"%s","note":"RESILIENT-052: set -e death now loud (was silent, e.g. exit 144)"}\n' \
+        "$_ts" "$_gap_label" "$_step" "$_rc" "$_signame" "$_line" "${_cmd//\"/\\\"}" \
+        >> "$_ambient" 2>/dev/null || true
+    printf '\033[0;31m[bot-merge] UNCAUGHT FAILURE (RESILIENT-052): step="%s" exit_code=%d%s at line %d\033[0m\n' \
+        "$_step" "$_rc" "${_signame:+ (signal=$_signame)}" "$_line" >&2 || true
+    printf '\033[0;31m[bot-merge]   failing command: %s\033[0m\n' "$_cmd" >&2 || true
+    printf '\033[0;31m[bot-merge]   kind=bot_merge_uncaught_error emitted to ambient.\033[0m\n' >&2 || true
+}
+trap '_bm_err_handler "$?" "$BASH_COMMAND" "$LINENO"' ERR
+_BM_ERR_TRAP_CMD='_bm_err_handler "$?" "$BASH_COMMAND" "$LINENO"'
+
+# CREDIBLE-295: `set +e` does NOT suppress the ERR trap above — only wrapping
+# a command as the non-final member of a `||` list (e.g. `cmd || true`) is
+# exempt from both errexit AND the ERR trap. Any best-effort region that
+# instead captures `$?` manually after a bare `set +e ... cmd ... set -e`
+# (the auto-close-gap stage's `chump gap ship` call, INFRA-1030) still fires
+# the ERR trap on the very failure it's deliberately handling — a false
+# bot_merge_uncaught_error even though the rc is captured and handled below.
+#
+# To suppress it for such a region, write `trap - ERR` / `trap "$_BM_ERR_TRAP_CMD" ERR`
+# INLINE at the call site — do NOT wrap those two commands in a helper
+# function. Bash saves and restores the ERR (and DEBUG/RETURN) trap around
+# every function call unless `set -o functrace` is active, so a `trap - ERR`
+# executed inside a function silently reverts the instant that function
+# returns, leaving the outer trap re-armed and the "suspend" a no-op.
 
 # ── META-156: per-step ambient observability ─────────────────────────────────
 # Emit kind=bot_merge_step_started / kind=bot_merge_step_done to ambient.jsonl
@@ -454,6 +544,19 @@ if [[ "${CHUMP_DISPATCH_DEPTH:-0}" == "1" ]]; then
     export GIT_AUTHOR_EMAIL="${GIT_AUTHOR_EMAIL:-chump-dispatch@chump.bot}"
     export GIT_COMMITTER_NAME="${GIT_COMMITTER_NAME:-Chump Dispatched}"
     export GIT_COMMITTER_EMAIL="${GIT_COMMITTER_EMAIL:-chump-dispatch@chump.bot}"
+    # RESILIENT-1406 set FAST=1 here, but the "── Flags ──" block below
+    # unconditionally re-initialized FAST=0 (and SKIP_TESTS=0), silently
+    # clobbering this before a single arg was parsed — dispatched agents kept
+    # compiling locally exactly as before, which is why RESILIENT-1406 landed
+    # as a false-done no-op. RESILIENT-1407: set the full lean-on-CI trio here
+    # (FAST + SKIP_TESTS + the new NO_LOCAL_BUILD, which additionally skips
+    # the `cargo clippy --fix` pre-flight that --fast alone still ran) and
+    # have the Flags block below read these back with ${VAR:-0} instead of
+    # stomping them, so a dispatched agent never triggers a local cargo build
+    # unless it opts back in.
+    FAST=1
+    SKIP_TESTS=1
+    NO_LOCAL_BUILD=1
 fi
 
 # ── INFRA-209: ensure pre-commit hooks are installed in this worktree ────────
@@ -489,9 +592,30 @@ if [[ "${CHUMP_AUTO_INSTALL_HOOKS:-1}" != "0" ]]; then
 fi
 
 # ── Flags ────────────────────────────────────────────────────────────────────
+# RESILIENT-1407: read pre-set values back with ${VAR:-0} rather than
+# unconditionally assigning 0 — the CHUMP_DISPATCH_DEPTH=1 block above may
+# already have set FAST/SKIP_TESTS/NO_LOCAL_BUILD before this block runs, and
+# a bare `FAST=0` here silently discarded that (the RESILIENT-1406 bug).
 AUTO_MERGE=0
-SKIP_TESTS=0
-FAST=0
+SKIP_TESTS=${SKIP_TESTS:-0}
+FAST=${FAST:-0}
+# RESILIENT-1407: --no-local-build / CHUMP_BOT_MERGE_LAND_MODE=ci — skip
+# every local cargo invocation (including the `cargo clippy --fix` pre-flight
+# that --fast alone still runs). push → CI builds/verifies → pr-lander lands.
+# INFRA-2429: CHUMP_BOT_MERGE_LAND_MODE is a MODE SELECTOR (ci|local), not a
+# skip/bypass-shaped var — an earlier attempt named the env override with a
+# "no-local-build"-style suffix and was correctly bounced by the bypass-debt-
+# ceiling gate (that suffix reads as skip-class even though the semantics are
+# a legitimate mode choice, not a safety-gate bypass). Only derive from the
+# env var when the caller hasn't already pre-set NO_LOCAL_BUILD (e.g. the
+# CHUMP_DISPATCH_DEPTH=1 block above).
+if [[ -z "${NO_LOCAL_BUILD:-}" ]]; then
+    if [[ "${CHUMP_BOT_MERGE_LAND_MODE:-local}" == "ci" ]]; then
+        NO_LOCAL_BUILD=1
+    else
+        NO_LOCAL_BUILD=0
+    fi
+fi
 DRY_RUN=0
 NO_MERGE_DRIVER=0
 # INFRA-193: speculative execution opt-in. With --speculative, chump claim
@@ -582,6 +706,7 @@ for arg in "$@"; do
         --auto-merge)         AUTO_MERGE=1; AUTO_MERGE_EXPLICIT=1 ;;
         --skip-tests)         SKIP_TESTS=1 ;;
         --fast)               FAST=1; SKIP_TESTS=1 ;;
+        --no-local-build)     NO_LOCAL_BUILD=1; FAST=1; SKIP_TESTS=1 ;;  # RESILIENT-1407
         --dry-run)            DRY_RUN=1 ;;
         --speculative)        SPECULATIVE=1 ;;
         --no-merge-driver)    NO_MERGE_DRIVER=1 ;;
@@ -862,6 +987,11 @@ fi
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 
+# INFRA-6128: shared execution logging (start/end/step) to a central log.
+# shellcheck source=../lib/orchestrator-log.sh
+source "$SCRIPT_DIR/../lib/orchestrator-log.sh"
+orch_log_start "bot-merge.sh" "$@"
+
 # ── INFRA-305: hot-file rebase-loop expectation list ─────────────────────────
 # Files that every parallel agent appends to (CI test list, pre-commit guard
 # list, coordination scripts, top-level docs). PRs touching these almost
@@ -929,11 +1059,11 @@ fi
 # Long stages use `stage_start <label>` → `stage_done` which prints the
 # elapsed seconds. Silent intervals >30s are the symptom INFRA-026 was
 # filed about; banners make them attributable.
-green()  { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
-red()    { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
-yellow() { printf '\033[0;33m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; }
+green()  { printf '\033[0;32m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; orch_log_step "$*"; }
+red()    { printf '\033[0;31m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; orch_log_step "$*"; }
+yellow() { printf '\033[0;33m[bot-merge %s] %s\033[0m\n' "$(date +%H:%M:%S)" "$*"; orch_log_step "$*"; }
 warn()   { yellow "$*"; }
-info()   { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; }
+info()   { printf '[bot-merge %s] %s\n' "$(date +%H:%M:%S)" "$*"; orch_log_step "$*"; }
 
 # INFRA-590: print error + doc link, then exit 1.
 die_with_help() {
@@ -1070,6 +1200,14 @@ stage_start() {
     # INFRA-1422: launch per-stage budget watchdog. Fires after CHUMP_BOT_MERGE_STAGE_BUDGET_S
     # seconds if the stage hasn't called stage_done(). Emits botmerge_wedged + kills bot-merge.
     if [[ -n "${__STAGE_BUDGET_PID:-}" ]]; then
+        # INFRA-2641: `kill` only terminates the watchdog subshell wrapper — its
+        # `sleep "$budget"` grandchild (still running, e.g. 300-1200s) gets
+        # reparented to init and keeps holding whatever fds it inherited (stdout/
+        # stderr, and any pipe from a caller's command substitution) open until
+        # it naturally expires. `pkill -P` first reaps that grandchild, same
+        # fix already applied to _bm_cleanup's EXIT trap (EFFECTIVE-312) but
+        # missing here — every stage_start/stage_done transition orphaned one.
+        pkill -P "$__STAGE_BUDGET_PID" 2>/dev/null || true
         kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
         __STAGE_BUDGET_PID=""
     fi
@@ -1094,7 +1232,12 @@ stage_start() {
 
 stage_done() {
     # INFRA-1422: cancel the per-stage budget watchdog — normal completion.
+    # INFRA-2641: pkill -P first to reap the `sleep "$budget"` grandchild — see
+    # matching comment in stage_start(); `kill` alone orphans it for up to
+    # $budget seconds, holding any inherited pipe fd (e.g. a caller's command
+    # substitution) open and hanging the reader.
     if [[ -n "${__STAGE_BUDGET_PID:-}" ]]; then
+        pkill -P "$__STAGE_BUDGET_PID" 2>/dev/null || true
         kill "$__STAGE_BUDGET_PID" 2>/dev/null || true
         __STAGE_BUDGET_PID=""
     fi
@@ -1212,6 +1355,11 @@ _emit_hang_alert() {
     local now gap_label
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     gap_label="${GAP_IDS[0]:-none}"
+    # RESILIENT-132 AC#4: any phase-timeout (fmt/clippy/test/push/rebase/...)
+    # is recoverable, not a give-up — the outer EXIT trap checks this flag
+    # and skips releasing the on-disk lease file so a retry can resume the
+    # same claim instead of re-claiming from scratch.
+    _BM_TIMEOUT_EXIT=1
     _ambient_write "$ambient" \
         "$(printf '{"ts":"%s","session":"bot-merge-%d","event":"ALERT","kind":"bot_merge_hang","phase":"%s","timeout_secs":%s,"gap_id":"%s","note":"bot-merge phase timed out after %ss — possible hang (INFRA-587)"}' \
             "$now" "$_BM_PID" "$phase" "$timeout_secs" "$gap_label" "$timeout_secs")"
@@ -1435,6 +1583,17 @@ _bm_health_init() {
 # visible to siblings. queue-health-monitor.sh reads from the main repo path.
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"
+# RESILIENT-138: bare `chump` invocations below (gap show/preflight/set/ship
+# etc.) resolve their state.db path via `repo_path::repo_root()`, which falls
+# back to CWD when CHUMP_REPO/CHUMP_HOME are unset and no `.env` is found —
+# in a linked worktree that CWD has no `.chump/state.db` of its own, so a
+# freshly reserved+claimed gap looks "not found in state.db" until an
+# operator manually exports CHUMP_REPO. MAIN_REPO (just resolved above via
+# --git-common-dir) is always correct regardless of env/`.env` state, so
+# default CHUMP_REPO to it for the rest of this script. Respect an
+# explicitly-set CHUMP_REPO (e.g. multi-repo test harnesses) rather than
+# clobbering it.
+export CHUMP_REPO="${CHUMP_REPO:-$MAIN_REPO}"
 # INFRA-2744: lease_session_from_statedb — resolve a gap's claim session from the
 # canonical state.db leases table (interactive `chump claim` writes no JSON sidecar).
 # shellcheck source=../lib/lease.sh
@@ -1601,7 +1760,14 @@ fi
 # loop that appended "⏳ alive — step=<stale>" to the cycle log every 30s
 # forever (30+ ghost processes on chumpd-eu masqueraded as init hangs).
 # Chain _bm_cleanup here instead of clobbering it.
-trap '_bm_cleanup; [[ "${DRY_RUN:-0}" -eq 0 && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true' EXIT
+# RESILIENT-132 AC#4: this rm used to fire unconditionally, so ANY stage
+# timeout (budget-watchdog SIGTERM, per-step gtimeout, git-push stall) threw
+# away the lease file even though _emit_hang_alert / _bm_sigterm_handler
+# treat those as recoverable stalls, not a give-up. Skip the rm when
+# _BM_TIMEOUT_EXIT is set so the lease survives and a retry can resume the
+# same claim instead of re-claiming from scratch (root cause of the
+# worktree/branch-exists + ghost-NATS-KV-claim cascade in this gap).
+trap '_bm_cleanup; [[ "${DRY_RUN:-0}" -eq 0 && "${_BM_TIMEOUT_EXIT:-0}" != "1" && -n "${CHUMP_SESSION_ID:-}" ]] && rm -f "${LOCK_DIR:-$REPO_ROOT/.chump-locks}/${CHUMP_SESSION_ID}.json" 2>/dev/null || true; orch_log_end "bot-merge.sh" "$?"' EXIT
 
 BRANCH="$(git rev-parse --abbrev-ref HEAD)"
 if [[ "$BRANCH" == "HEAD" ]]; then
@@ -1639,6 +1805,29 @@ fi
 
 BASE_BRANCH="${BASE_BRANCH:-main}"
 REMOTE="${REMOTE:-origin}"
+
+# ── INFRA-2252: offline mode — route to the local merge queue ────────────────
+# When CHUMP_GITHUB_MODE=offline, none of the GitHub-facing machinery below
+# (API probe, gh pr create, gh pr merge --auto) can work — there is no
+# network. Enqueue + drain through scripts/coord/local-merge-queue.sh instead
+# (docs/design/OFFLINE_FIRST.md §2 / §4). The online path below this block
+# is unchanged for every other CHUMP_GITHUB_MODE value.
+if [[ "${CHUMP_GITHUB_MODE:-full}" == "offline" ]]; then
+    info "CHUMP_GITHUB_MODE=offline — routing ${GAP_IDS[*]:-$BRANCH} through local-merge-queue.sh"
+    _lmq="$(dirname "$0")/local-merge-queue.sh"
+    _lmq_gap="${GAP_IDS[0]:-$BRANCH}"
+    if ! bash "$_lmq" enqueue "$_lmq_gap" "$BRANCH" >/dev/null; then
+        red "local-merge-queue enqueue failed for $_lmq_gap"
+        exit 1
+    fi
+    if bash "$_lmq" process; then
+        green "$_lmq_gap merged locally via local-merge-queue.sh (offline mode)."
+        exit 0
+    else
+        red "local-merge-queue process reported a failure — see kind=local_merge_blocked in ambient.jsonl"
+        exit 1
+    fi
+fi
 
 # ── INFRA-119: start health monitoring now that REPO_ROOT is set ──────────────
 _bm_health_init "$REPO_ROOT/.chump-locks"
@@ -1950,12 +2139,42 @@ fi
 # class). Verify the integrator binary + daemon health; if it can't actually
 # drain, fail open to per-PR auto-merge (Mode B), which always lands.
 _BM_INTEGRATOR_HEALTHY_CACHE=""
+# (INFRA-6988) systemd probe, split out so it's independently testable: the
+# Linux coordinator (CJ) runs the Batched Merge Train as
+# chump-integrator.{service,timer} via install-integrator-daemon-systemd.sh,
+# not launchd. Before this, _bm_integrator_healthy only understood launchd,
+# so on the systemd coordinator it fell through to the
+# ~/.cargo/bin/chump-integrator existence check, then failed the launchctl
+# probe (launchctl doesn't exist on Linux) and ALWAYS reported unhealthy —
+# permanently fail-opening Mode A -> Mode B even after --live, defeating the
+# go-live.
+_bm_integrator_healthy_systemd() {
+    local rc=0
+    command -v systemctl >/dev/null 2>&1 || return 1
+    # (1) timer present + active (mirrors the launchd "loaded" check).
+    systemctl is-active --quiet chump-integrator.timer 2>/dev/null || rc=1
+    # (2) binary present at the unit's ExecStart path (absent unit -> empty, falls back).
+    local _bin
+    _bin="$(systemctl cat chump-integrator.service 2>/dev/null \
+        | grep -oE '/[^ ]*chump-integrator' | head -1)"
+    [[ -n "$_bin" ]] || _bin="/root/.cargo/bin/chump-integrator"
+    [[ -x "$_bin" ]] || rc=1
+    # (3) last service run didn't hard-fail (absent=never run yet=ok; non-zero=errored).
+    local _result
+    _result="$(systemctl show chump-integrator.service -p Result --value 2>/dev/null)"
+    [[ -z "$_result" || "$_result" == "success" ]] || rc=1
+    return "$rc"
+}
 _bm_integrator_healthy() {
     [[ -n "$_BM_INTEGRATOR_HEALTHY_CACHE" ]] && return "$_BM_INTEGRATOR_HEALTHY_CACHE"
     local rc=0
     # Test hook (mirrors the watchdog MOCK_* pattern): 1=healthy, 0=unhealthy.
     if [[ -n "${CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH:-}" ]]; then
         [[ "$CHUMP_BOT_MERGE_MOCK_INTEGRATOR_HEALTH" == "1" ]] && rc=0 || rc=1
+        _BM_INTEGRATOR_HEALTHY_CACHE="$rc"; return "$rc"
+    fi
+    if [[ -f /etc/systemd/system/chump-integrator.service ]]; then
+        _bm_integrator_healthy_systemd; rc=$?
         _BM_INTEGRATOR_HEALTHY_CACHE="$rc"; return "$rc"
     fi
     # (1) integrator binary present at the daemon plist's ProgramArguments path?
@@ -2187,8 +2406,10 @@ if [[ ${#GAP_IDS[@]} -gt 0 ]]; then
     # Write gap claim to lease file (replaces YAML in_progress edit — no merge conflicts).
     # INFRA-193: under `set -u`, an empty bash array can't be safely expanded with
     # "${arr[@]}". Build the optional flag as a string, then word-split via $arr.
-    _claim_extra=""
-    [[ "$SPECULATIVE" == "1" ]] && _claim_extra="--speculative"
+    # INFRA-5486 made --role mandatory on `chump claim`; bot-merge's
+    # re-claim is a ship-pipeline operation, not a role-specific one.
+    _claim_extra="--role bot-merge"
+    [[ "$SPECULATIVE" == "1" ]] && _claim_extra="$_claim_extra --speculative"
     for gid in "${GAP_IDS[@]}"; do
         if [[ $DRY_RUN -eq 0 ]]; then
             # INFRA-1901: if we are already sitting inside the worktree that
@@ -2342,8 +2563,12 @@ _grade_rebase_clean="null"
 # list, take a "$FLOCK_BIN" on each (one per file). Held until this script exits.
 # Prevents two bot-merges from racing on the same shared file, which is what
 # drives bot_merge_hot_file emissions (META-055 audit: 71.5% of token waste).
+# INFRA-2641: skip under --dry-run — it never pushes, so it can't produce the
+# rebase-race this lock guards against, and it's not worth blocking a dry-run
+# caller (e.g. the integration test chump preflight runs) on a repo-wide,
+# cross-worktree lock for up to 600s while real bot-merges elsewhere hold it.
 _HF_HELPER="${REPO_ROOT}/scripts/coord/hot-file-lock.sh"
-if [[ -r "$_HF_HELPER" ]]; then
+if [[ "$DRY_RUN" != "1" && -r "$_HF_HELPER" ]]; then
     # shellcheck source=./hot-file-lock.sh
     source "$_HF_HELPER"
     if declare -F hot_file_lock_acquire >/dev/null 2>&1; then
@@ -2392,12 +2617,16 @@ if [[ "$BEHIND" -gt 0 ]]; then
         red "git rebase failed or timed out — resolve conflicts or retry."
         _grade_rebase_clean="false"
 
-        # ── INFRA-1657: dispatch conflict-resolver-agent (closes INFRA-1488 loop) ──
+        # ── INFRA-1657/INFRA-3767: dispatch conflict-resolver-agent (closes INFRA-1488 loop) ──
         # If we detect conflict markers in the worktree (i.e. rebase failed because
         # of a true merge conflict, not a timeout / fetch error), invoke the
-        # opt-in conflict-resolver-agent. Default OFF: the agent script self-skips
-        # with exit 0 when CHUMP_CONFLICT_RESOLVER_ENABLED!=1, in which case we
-        # fall through to the original `_bm_fail "rebase"` handoff path below.
+        # conflict-resolver-agent unconditionally — no --opt-in flag required here.
+        # The agent self-gates on confidence (INFRA-3767 AC #3): it only follows
+        # through unattended on textual/AST scenarios it has a confidence pattern
+        # for, and skips (exit 0, rebase still mid-flight) otherwise, in which case
+        # we fall through to the original `_bm_fail "rebase"` handoff path below.
+        # CHUMP_CONFLICT_RESOLVER_ENABLED=0 remains a hard operator override to
+        # disable the agent entirely; =1 forces it past the confidence gate.
         #
         # Exit-code contract from conflict-resolver-agent.sh:
         #   0 — resolved + `git rebase --continue` already ran; resume normal flow
@@ -2407,14 +2636,15 @@ if [[ "$BEHIND" -gt 0 ]]; then
         _cr_gap="${GAP_IDS[0]:-${GAP_ID:-}}"
         _cr_conflicted_count="$(git diff --name-only --diff-filter=U 2>/dev/null | wc -l | tr -d ' ')"
         if [[ -x "$_cr_agent" && -n "$_cr_gap" && "$_cr_conflicted_count" -gt 0 ]]; then
-            info "Dispatching conflict-resolver-agent (gap=$_cr_gap, files=$_cr_conflicted_count) — CHUMP_CONFLICT_RESOLVER_ENABLED=${CHUMP_CONFLICT_RESOLVER_ENABLED:-0}"
+            info "Dispatching conflict-resolver-agent (gap=$_cr_gap, files=$_cr_conflicted_count) — CHUMP_CONFLICT_RESOLVER_ENABLED=${CHUMP_CONFLICT_RESOLVER_ENABLED:-auto}"
             if "$_cr_agent" "$_cr_gap"; then
-                # Agent returned 0: either feature-flag-off (rebase still mid-flight,
-                # fall through to _bm_fail) or resolved-and-continued (rebase done,
-                # carry on with the rest of bot-merge). Distinguish via .git/rebase-*
+                # Agent returned 0: either skipped (no conflicts / disabled /
+                # low-confidence scenario — rebase still mid-flight, fall through
+                # to _bm_fail) or resolved-and-continued (rebase done, carry on
+                # with the rest of bot-merge). Distinguish via .git/rebase-*
                 # state directories.
                 if [[ -d "$REPO_ROOT/.git/rebase-merge" || -d "$REPO_ROOT/.git/rebase-apply" ]]; then
-                    info "conflict-resolver-agent skipped (disabled) — falling through to existing handoff."
+                    info "conflict-resolver-agent skipped (disabled or low-confidence) — falling through to existing handoff."
                 else
                     info "conflict-resolver-agent resolved + continued rebase — resuming bot-merge flow."
                     # Fall through to the existing post-rebase success block
@@ -2489,6 +2719,7 @@ if [[ -n "$_changed_files" ]]; then
             SKIP_TESTS=1
             info "[bot-merge] auto-skip: shell/doc-only diff — skipping cargo test (INFRA-920)"
         fi
+        info "[bot-merge] Auto-applied --skip-tests (shell/doc-only diff, INFRA-920)"
         info "[bot-merge] DOC_ONLY=1 — clippy will be skipped (INFRA-1042/INFRA-1061)"
         # Emit so fleet-brief / waste-tally credit the saved cycles.
         _doc_amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT:-.}/.chump-locks/ambient.jsonl}"
@@ -2498,6 +2729,19 @@ if [[ -n "$_changed_files" ]]; then
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${BRANCH:-unknown}" \
             "${_doc_filecount:-0}" \
             >> "$_doc_amb" 2>/dev/null || true
+        # INFRA-920 AC#2: dedicated success event (distinct from the
+        # generic fastpath event above) via the ambient_emit CLI wrapper —
+        # `pr_number` isn't known yet at this point in the flow (PR create
+        # happens later), so the gap id is the identifier available here;
+        # consumers join on branch/gap to a later `bot_merge_completed`
+        # event if the PR number is needed.
+        # scanner-anchor: "kind":"bot_merge_skip_tests_applied"
+        if command -v chump >/dev/null 2>&1; then
+            chump ambient emit bot_merge_skip_tests_applied \
+                --gap "${GAP_IDS[*]:-unknown}" \
+                --field "branch=${BRANCH:-unknown}" \
+                >/dev/null 2>&1 || true
+        fi
     fi
 fi
 
@@ -2639,6 +2883,14 @@ _run_cargo_with_lock_detect() {
 # a 1-line README diff before this gate landed).
 if [[ "${DOC_ONLY:-0}" -eq 1 ]]; then
     info "[bot-merge] DOC_ONLY=1 — skipping cargo clippy entirely (INFRA-1042)"
+elif [[ $NO_LOCAL_BUILD -eq 1 ]]; then
+    # RESILIENT-1407: --no-local-build (or CHUMP_DISPATCH_DEPTH=1) means even
+    # the --fast pre-flight below is too heavy — `cargo clippy --fix --bin
+    # chump` still compiles the bin, which is exactly the synchronous local
+    # build that swap-thrashes a loaded coordinator. Skip it entirely; the
+    # branch pushes as-is and GitHub Actions CI clippy is the sole gate
+    # (auto-merge refuses to land a red PR either way).
+    info "[bot-merge] --no-local-build — skipping ALL local cargo clippy (including --fast pre-flight); CI clippy is the sole gate"
 elif [[ $FAST -eq 1 ]]; then
     # 2026-05-07: Even in --fast mode, run a `cargo clippy --fix` auto-correction
     # pass. This catches the wave of fleet PRs that ship doc-list-overindented /
@@ -3003,7 +3255,13 @@ fi
 # `git push --force-with-lease` failures and `gh pr merge` races.  Acquire a
 # per-repo file lock so only one bot-merge is in the push/PR/merge critical
 # section at a time.  Timeout = 60s; logs contention if wait > 5s.
-if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
+# INFRA-2641: --dry-run never pushes or merges (it's read-only), so it has no
+# business contending for this repo-wide, cross-worktree mutex. On a machine
+# with real bot-merge activity in other worktrees (the fleet's normal state),
+# a dry-run caller — e.g. scripts/ci/test-system-integration.sh's Assertion 3,
+# which chump preflight's integration-test gate runs — could block here for up
+# to 60s waiting on a lock it will never need, inflating or timing out preflight.
+if [[ "$DRY_RUN" != "1" && "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     _bm_lock_dir="${CHUMP_BOT_MERGE_LOCK_DIR:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}}"
     _bm_lock_file="${_bm_lock_dir}/bot-merge.lock"
     mkdir -p "$_bm_lock_dir" 2>/dev/null || true
@@ -3056,28 +3314,52 @@ if [[ "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
 fi
 # FD 200 stays open; "$FLOCK_BIN" released automatically when the script process exits.
 
-# ── INFRA-995: pre-push staleness gate ───────────────────────────────────────
+# ── INFRA-995: pre-push staleness gate + RESILIENT-325 auto-rebase ─────────
 # Belt-and-suspenders for the CLAUDE.md rule "rebase if your branch is more than
 # 15 commits behind main". The earlier rebase block (§1) already rebases above
 # 0 behind, but main may have moved during cargo clippy/test (often a 5-15 min
-# window). Re-fetch and refuse to push if we are now > STALE_REBASE_THRESHOLD
-# commits behind — pushing would burn a CI cycle on a stale base and then sit
-# in BEHIND state waiting on queue-driver.
+# window) — that drift is exactly the conflict-rot window RESILIENT-325 closes:
+# rather than pushing stale and letting the PR land CONFLICTING on GitHub
+# (needing a manual/armed-rebaser rescue later), re-fetch and rebase onto fresh
+# origin/main immediately before push so the conflict window shrinks to ~0.
+# Only bail out (no auto-rebase attempt) when we're pathologically stale —
+# > STALE_REBASE_THRESHOLD commits behind means main moved enough that an
+# unattended rebase here is risky and likely wants human eyes.
 STALE_REBASE_THRESHOLD="${CHUMP_BOT_MERGE_STALE_THRESHOLD:-15}"
 if [[ $DRY_RUN -eq 0 ]]; then
     run_timed_hb "git fetch (pre-push freshness)" 60 \
         git fetch "$REMOTE" "$BASE_BRANCH" --quiet 2>/dev/null || true
     BEHIND_NOW=$(git rev-list --count "HEAD..${REMOTE}/${BASE_BRANCH}" 2>/dev/null || echo 0)
+    _amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
     if [[ "$BEHIND_NOW" -gt "$STALE_REBASE_THRESHOLD" ]]; then
         red "INFRA-995: branch is $BEHIND_NOW commits behind $REMOTE/$BASE_BRANCH (threshold ${STALE_REBASE_THRESHOLD})."
-        red "  main moved while we built/tested. Pushing now would queue a stale base for CI."
+        red "  main moved while we built/tested — too stale to auto-rebase safely."
         red "  Recover: git fetch && git rebase $REMOTE/$BASE_BRANCH && rerun bot-merge."
-        _amb_path="${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}/ambient.jsonl"
         mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
         printf '{"ts":"%s","kind":"stale_branch_blocked","branch":"%s","behind":%d,"threshold":%d,"phase":"pre-push"}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" "$STALE_REBASE_THRESHOLD" \
             >> "$_amb_path" 2>/dev/null || true
         _bm_fail "stale-branch" 3 "branch $BEHIND_NOW commits behind > threshold ${STALE_REBASE_THRESHOLD}"
+    elif [[ "$BEHIND_NOW" -gt 0 ]]; then
+        info "RESILIENT-325: $BEHIND_NOW commit(s) behind $REMOTE/$BASE_BRANCH — rebasing onto fresh base immediately before push"
+        _pp_rebase_args=("${REMOTE}/${BASE_BRANCH}")
+        if [[ "$NO_MERGE_DRIVER" == "1" ]]; then
+            _pp_rebase_args+=(-c merge.ci-yml-add-row.driver= -c merge.pre-commit-add-guard.driver= -c merge.chump-state-sql-regen.driver=)
+        fi
+        if ! run_timed_hb "git rebase (pre-push, RESILIENT-325)" 60 git rebase "${_pp_rebase_args[@]}"; then
+            git rebase --abort >/dev/null 2>&1 || true
+            red "RESILIENT-325: pre-push rebase onto $REMOTE/$BASE_BRANCH hit a conflict — resolve manually and rerun bot-merge."
+            mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+            printf '{"ts":"%s","kind":"pre_push_rebase_conflict","branch":"%s","behind":%d,"phase":"pre-push"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" \
+                >> "$_amb_path" 2>/dev/null || true
+            _bm_fail "pre-push-rebase" 3 "conflict rebasing onto fresh $REMOTE/$BASE_BRANCH immediately before push"
+        fi
+        mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"pre_push_rebase_applied","branch":"%s","behind":%d,"phase":"pre-push"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$BEHIND_NOW" \
+            >> "$_amb_path" 2>/dev/null || true
+        info "RESILIENT-325: pre-push rebase clean — branch now up to date with $REMOTE/$BASE_BRANCH"
     fi
 fi
 
@@ -3355,11 +3637,33 @@ if [[ -z "$EXISTING_PR" ]]; then
     # ergonomics rather than adding a second, contradictory local-check path.
     _DOR_GATE="$REPO_ROOT/scripts/coord/definition-of-ready-gate.sh"
     if [[ $FAST -eq 0 && -x "$_DOR_GATE" && "${CHUMP_DOR_DISABLE:-0}" != "1" ]]; then
-        stage_start "definition-of-ready gate (chump preflight)"
+        # RESILIENT-132 AC#2: same mismatch class as RESILIENT-133 (clippy/test
+        # above) — this stage shells out to `chump preflight`, which falls back
+        # to raw `cargo fmt/clippy/check` when the `chump` binary isn't already
+        # built (cold worktree). Under fleet build contention that cold
+        # compile alone can exceed the 300s stage-watchdog default even though
+        # `chump preflight`'s own internal budget is far larger, so the
+        # watchdog fired mid-compile rather than on a genuine gate failure.
+        # Match the 900s budget already used for the clippy/test stages.
+        stage_start "definition-of-ready gate (chump preflight)" 900
         if ! "$_DOR_GATE" "${GAP_ID:-}"; then
             _bm_fail "pr-create" 21 "CREDIBLE-270 definition-of-ready gate refused — chump preflight not green locally"
         fi
         stage_done
+    fi
+
+    # CREDIBLE-215: mechanical stub detection — advisory REACHES/TEST-ONLY/
+    # UNRELATED check before pr_create, so a stub-shaped diff (the
+    # EFFECTIVE-354/CREDIBLE-200 pattern: cascade ships a green, empty PR)
+    # is flagged locally instead of costing a full CI round + human read.
+    # Never blocks the ship — UNRELATED is a review signal, not a gate.
+    if [[ -n "${GAP_ID:-}" ]]; then
+        _REACHES_DIFF_FILE="$(mktemp)"
+        git diff --name-only "${REMOTE}/${BASE_BRANCH}...HEAD" > "$_REACHES_DIFF_FILE" 2>/dev/null || true
+        if [[ -s "$_REACHES_DIFF_FILE" ]]; then
+            chump verify-reaches --gap "$GAP_ID" --diff "$_REACHES_DIFF_FILE" 2>/dev/null || true
+        fi
+        rm -f "$_REACHES_DIFF_FILE"
     fi
 
     stage_start "gh pr create"
@@ -3429,6 +3733,16 @@ $([ $SKIP_TESTS -eq 0 ] && echo "- [x] \`cargo test\` passed" || echo "- [ ] tes
 🤖 Opened by bot-merge.sh
 EOF
 )"
+    fi
+
+    # INFRA-7880: publish guard, REPORT-ONLY, over the text that is about to become
+    # a public PR title and body (commit subjects, gap line, spliced plan file).
+    # Runs in dry-run too. It logs findings (stderr + a publish_guard_report ambient
+    # event) and never blocks: the wrapper always exits 0 and we ignore it as well.
+    _pg_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    if [[ -f "$_pg_root/scripts/publish-guard/report_only.py" ]] && command -v python3 >/dev/null 2>&1; then
+        printf '%s\n\n%s\n' "$PR_TITLE" "$_pr_body" \
+            | python3 "$_pg_root/scripts/publish-guard/report_only.py" text pr-title-and-body || true
     fi
 
     if [[ $DRY_RUN -eq 1 ]]; then
@@ -4286,9 +4600,44 @@ except Exception:
             info "INFRA-526: auto-close targeting state.db at $_autoclose_main_repo/.chump/state.db (binary: $_autoclose_chump)"
             for _gid in "${GAP_IDS[@]}"; do
                 stage_start "auto-close gap $_gid via PR #$TARGET_PR (INFRA-154)"
+
+                # PEER-VERI-08 (INFRA-3655) AC#2: an unproven proof-AC live
+                # outcome BLOCKS the close outright when CHUMP_VERIFY_LIVE_BLOCKING=1
+                # (default off, ratchet on — see docs/process/CAPABILITY_DECISIONS.md),
+                # instead of being swallowed by the CREDIBLE-178 advisory note
+                # below. Checked BEFORE `chump gap ship` so a blocked gap never
+                # reaches status=done. Non-proof misses are unaffected — this
+                # only fires when `chump pr ac-coverage` itself decided to
+                # report "miss" under the live-blocking flag (AC#3 fail-open
+                # is unchanged for everything else).
+                if [[ "${CHUMP_VERIFY_LIVE_BLOCKING:-0}" == "1" ]] && command -v chump &>/dev/null; then
+                    _ac_pre="$(CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
+                        chump pr ac-coverage "$TARGET_PR" 2>&1 || true)"
+                    if grep -q '"status":"miss"' <<<"$_ac_pre"; then
+                        _ac_pre_misses="$(grep -oE '"misses":\[[0-9,]*\]' <<<"$_ac_pre")"
+                        red "[PEER-VERI-08] BLOCKING: $_gid PR #$TARGET_PR has an unproven proof-AC live outcome (${_ac_pre_misses:-misses}) and CHUMP_VERIFY_LIVE_BLOCKING=1 — refusing to auto-close. Verify the live outcome, then close manually: chump gap ship $_gid --closed-pr $TARGET_PR --update-yaml"
+                        CHUMP_REPO="$_autoclose_main_repo" CHUMP_REAL_BINARY="$_autoclose_chump" \
+                            chump gap set "$_gid" --add-note "PEER-VERI-08: auto-close BLOCKED — PR #$TARGET_PR merged but a proof AC's live outcome is unverified (${_ac_pre_misses:-}). CHUMP_VERIFY_LIVE_BLOCKING=1 held the close; verify manually then run chump gap ship." >/dev/null 2>&1 || true
+                        _bmu_amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                        printf '{"ts":"%s","kind":"ac_coverage_live_blocking_held_close","gap_id":"%s","pr":%s}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_gid" "$TARGET_PR" \
+                            >> "$_bmu_amb" 2>/dev/null || true
+                        unset _ac_pre _ac_pre_misses _bmu_amb
+                        continue
+                    fi
+                    unset _ac_pre _ac_pre_misses
+                fi
+
                 # INFRA-469 / INFRA-587: run_timed_hb captures output + has 60s timeout.
+                # CREDIBLE-295: suspend the ERR trap for this call — `set +e`
+                # alone does not stop it firing on a non-zero rc that we are
+                # about to capture and handle deliberately (see comment on
+                # _BM_ERR_TRAP_CMD above). Inline, NOT via a helper function —
+                # a `trap - ERR` inside a called function reverts the moment
+                # that function returns.
                 _tmpship=$(mktemp)
                 set +e
+                trap - ERR
                 CHUMP_REPO="$_autoclose_main_repo" \
                 CHUMP_REAL_BINARY="$_autoclose_chump" \
                 run_timed_hb "gap ship $_gid" 60 \
@@ -4296,6 +4645,7 @@ except Exception:
                         --closed-pr "$TARGET_PR" \
                         --update-yaml > "$_tmpship" 2>&1
                 _autoclose_rc=$?
+                trap "$_BM_ERR_TRAP_CMD" ERR
                 set -e
                 _autoclose_err=$(cat "$_tmpship")
                 rm -f "$_tmpship"

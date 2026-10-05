@@ -256,6 +256,22 @@ impl ArchOutput {
 // ── Entry point ───────────────────────────────────────────────────────────────
 
 pub fn run(args: &[String]) -> i32 {
+    // ── --reserve-umbrella <GAP-ID>: file sub-gaps for core feature areas ────
+    // (EFFECTIVE-596) Separate from the classic/template bootstrap flow —
+    // this mode just slices an existing umbrella gap into placeholder
+    // sub-gap files under gaps/<domain>/<number>/ and exits.
+    if let Some(pos) = args.iter().position(|a| a == "--reserve-umbrella") {
+        return match args.get(pos + 1) {
+            Some(gap_id) => reserve_umbrella_subgaps(gap_id),
+            None => {
+                eprintln!(
+                    "chump bootstrap: --reserve-umbrella requires a value (e.g. EFFECTIVE-136)"
+                );
+                2
+            }
+        };
+    }
+
     let bootstrap_args = match BootstrapArgs::from_argv(args) {
         Ok(a) => a,
         Err(e) if e == "__help__" => {
@@ -866,6 +882,70 @@ fn write_scaffold(
             Ok("Cargo.toml".to_string())
         }
     }
+}
+
+/// `chump bootstrap --reserve-umbrella <GAP-ID>` (EFFECTIVE-596): file sub-gap
+/// placeholder files for core feature areas under `gaps/<domain>/<number>/`.
+/// Idempotent — if the directory already has >= 3 `core-feature-*` files,
+/// this is a no-op.
+fn reserve_umbrella_subgaps(gap_id: &str) -> i32 {
+    let (domain, number) = match gap_id.split_once('-') {
+        Some((d, n)) if !d.is_empty() && !n.is_empty() => (d.to_lowercase(), n),
+        _ => {
+            eprintln!("chump bootstrap: invalid gap id '{gap_id}' — expected format DOMAIN-NUMBER (e.g. EFFECTIVE-136)");
+            return 2;
+        }
+    };
+
+    let dir = PathBuf::from("gaps").join(&domain).join(number);
+    if let Err(e) = std::fs::create_dir_all(&dir) {
+        eprintln!("chump bootstrap: cannot create {}: {e}", dir.display());
+        return 1;
+    }
+
+    let existing = std::fs::read_dir(&dir)
+        .map(|entries| {
+            entries
+                .filter_map(|e| e.ok())
+                .filter(|e| {
+                    e.file_name()
+                        .to_str()
+                        .is_some_and(|n| n.starts_with("core-feature-"))
+                })
+                .count()
+        })
+        .unwrap_or(0);
+
+    if existing >= 3 {
+        println!(
+            "chump bootstrap: {} already has {existing} core-feature-* sub-gap(s), skipping (idempotent)",
+            dir.display()
+        );
+        return 0;
+    }
+
+    let slugs = ["core-feature-a", "core-feature-b", "core-feature-c"];
+    let mut created = 0;
+    for slug in slugs {
+        let path = dir.join(format!("{slug}.md"));
+        if path.exists() {
+            continue;
+        }
+        let content = format!(
+            "---\neffort: xs\ntitle: \"{gap_id}: {slug}\"\nstatus: open\n---\n\nPlaceholder sub-gap for core feature area `{slug}` under the {gap_id} umbrella.\n"
+        );
+        if let Err(e) = std::fs::write(&path, content) {
+            eprintln!("chump bootstrap: cannot write {}: {e}", path.display());
+            return 1;
+        }
+        created += 1;
+    }
+
+    println!(
+        "chump bootstrap: created {created} core-feature-* sub-gap file(s) in {}",
+        dir.display()
+    );
+    0
 }
 
 /// Run `chump gap reserve --domain INFRA --title <title>` and return the gap IDs.

@@ -1,34 +1,23 @@
 - id: INFRA-1479
   domain: INFRA
-  title: 'RESILIENT: flaky-test detection + retry-aware sandbox health check'
+  title: "RESILIENT: flaky-test detection + retry-aware sandbox health check"
   status: done
   priority: P2
   effort: m
-  description: 'Audit miss from 2026-05-15. Persona-1 Phase-2-graduation criteria: ''In a 35-engineer startup, our CI pipeline
-    has flaky integration tests. If Chump fails a worktree because of a known flaky test, it needs the intelligence to recognize
-    it, retry, or isolate it without wasting hours of compute or throwing a false alarm to the human supervisor.'' Today an
-    agent that hits a test failure has no concept of flake-vs-real; it commits the broken state, opens a PR, and operator
-    manually sorts truth from noise. RESILIENT pillar because the value is preventing waste cycles + false-positive operator
-    interrupts, not delivering a user-facing feature.
-
-    '
+  description: |
+    Audit miss from 2026-05-15. Persona-1 Phase-2-graduation criteria: 'In a 35-engineer startup, our CI pipeline has flaky integration tests. If Chump fails a worktree because of a known flaky test, it needs the intelligence to recognize it, retry, or isolate it without wasting hours of compute or throwing a false alarm to the human supervisor.' Today an agent that hits a test failure has no concept of flake-vs-real; it commits the broken state, opens a PR, and operator manually sorts truth from noise. RESILIENT pillar because the value is preventing waste cycles + false-positive operator interrupts, not delivering a user-facing feature.
   acceptance_criteria:
-  - Agent's sandbox run-test wrapper detects test runs that fail then pass on retry within N attempts (default 3); marks those
-    as 'flaky' rather than 'failed'
-  - Repo-scoped flaky-test registry (sqlite or jsonl) that accumulates known-flaky test identifiers over multiple fleet runs
-  - Subsequent agent runs read the registry; tests flagged as flaky get auto-retry budget and don't immediately fail the worktree
-  - 'Threshold: a test must flake at least K times across J fleet runs before being added to the registry (avoid spurious
-    classification)'
-  - Operator can browse + edit + reset the flaky registry via cockpit
-  - chump fleet doctor reports flake rate per repo (% of failures that retry-passed) over rolling window
-  - 'CI test: synthetic flaky test that fails 50% of the time; verify agent retries, classifies, registers, and doesn''t blow
-    the worktree'
-  - 'Concurrency-class validation: when agent''s diff touches async/concurrent code paths (Promise.all, channels, locks, AWS
-    SDK batch ops, mutex/RwLock), sandbox runs a synthetic-load test before declaring worktree green — N concurrent invocations
-    against changed code path, verify no memory growth, no duplicate processing, no resource leaks'
-  - Concurrency-test heuristic-detection from file content + AST + operator hints in .chump/concurrency-validation.toml
-  - 'CI test: agent introduces a known closure-race-in-Promise.all bug (the Marcus SQS-batch-delete class); verify concurrency-validation
-    catches it and fails the worktree before PR opens'
-  outcome_id: MISSION-010
+    - Agent's sandbox run-test wrapper detects test runs that fail then pass on retry within N attempts (default 3); marks those as 'flaky' rather than 'failed'
+    - Repo-scoped flaky-test registry (sqlite or jsonl) that accumulates known-flaky test identifiers over multiple fleet runs
+    - Subsequent agent runs read the registry; tests flagged as flaky get auto-retry budget and don't immediately fail the worktree
+    - "Threshold: a test must flake at least K times across J fleet runs before being added to the registry (avoid spurious classification)"
+    - Operator can browse + edit + reset the flaky registry via cockpit
+    - chump fleet doctor reports flake rate per repo (% of failures that retry-passed) over rolling window
+    - "CI test: synthetic flaky test that fails 50% of the time; verify agent retries, classifies, registers, and doesn't blow the worktree"
+    - "Concurrency-class validation: when agent's diff touches async/concurrent code paths (Promise.all, channels, locks, AWS SDK batch ops, mutex/RwLock), sandbox runs a synthetic-load test before declaring worktree green — N concurrent invocations against changed code path, verify no memory growth, no duplicate processing, no resource leaks"
+    - Concurrency-test heuristic-detection from file content + AST + operator hints in .chump/concurrency-validation.toml
+    - "CI test: agent introduces a known closure-race-in-Promise.all bug (the Marcus SQS-batch-delete class); verify concurrency-validation catches it and fails the worktree before PR opens"
   closed_date: '2026-07-25'
   closed_pr: 3236
+  outcome_id: MISSION-010
+

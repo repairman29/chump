@@ -1,0 +1,28 @@
+- id: EFFECTIVE-425
+  domain: EFFECTIVE
+  title: "EFFECTIVE: wire chump roadmap-from-vision --apply — vision string to >=1 outcome-linked gap (COTG spine slice 1; Phase-1 contract already built at contracts.rs:753)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Running 'chump roadmap-from-vision \"<vision>\" --domain INFRA --outcome <existing-id> --max-gaps 3 --apply' (a) calls provider_cascade::build_provider() with RoadmapFromVisionContract::prompt() [contracts.rs:753-1081, ALREADY BUILT+tested], (b) extracts+parses+validates a Roadmap via existing chump_handoff::extract_json_block + Roadmap::validate(), (c) shells out to 'chump gap reserve --outcome ...' for >=1 GapDraft (NOT GapStore::reserve_verified direct — must inherit MISSION-045/pillar/similarity gates, mirror bootstrap.rs:871-931 reserve_umbrella_gap), (d) chump gap show <filed-id> confirms outcome_id set. No dry-run/truncation/bootstrap-wiring in this slice — follow-ons."
+    - "--apply is opt-in; bare invocation only prints the validated Roadmap JSON."
+    - max_gaps clamped client-side (never trust model compliance).
+  outcome_id: COTG
+  closed_date: '2026-09-03'
+  closed_pr: 3584
+  evidence: |
+    COMMAND: git log --oneline -- src/commands/roadmap_from_vision.rs. OUTPUT: 36c08f92
+    "EFFECTIVE-425: wire chump roadmap-from-vision --apply (#3584)" (landed 2026-08-10),
+    refined by 662685d3 "EFFECTIVE-503: accept --vision <string> flag ... (EFFECTIVE-425
+    slice) (#4240)". src/commands/roadmap_from_vision.rs on origin/main already satisfies
+    all 3 AC: (a) run() builds the RoadmapFromVisionInput and calls
+    crate::provider_cascade::build_provider() with RoadmapFromVisionContract::prompt();
+    (b) parses via chump_handoff::extract_json_block + Roadmap::validate(); (c) reserve_gap()
+    shells out to `chump gap reserve --outcome <id> --json` per GapDraft (not
+    GapStore::reserve_verified direct), and verify_outcome_linked() confirms via
+    `chump gap show --json`; (d) --apply is opt-in, bare invocation only prints Roadmap
+    JSON; max_gaps is clamped client-side via `.clamp(1, 20)`. This session's worktree
+    HEAD (72bd1b40) == origin/main with zero diff — this gap's state.db row in this
+    session's checkout never reflected the close. Doc-only sync, no code change.
+

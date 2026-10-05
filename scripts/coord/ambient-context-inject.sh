@@ -17,6 +17,7 @@
 #   CHUMP_AMBIENT_INJECT=0  disable (emits empty additionalContext)
 #   CHUMP_AMBIENT_LOG       override ambient.jsonl path
 #   CHUMP_AMBIENT_DEBUG=1   echo the rendered context to stderr
+#   CHUMP_REACT_COOLDOWN_M  --tick-preamble per-role react cooldown, minutes (default: 30, RESILIENT-036)
 
 set -euo pipefail
 
@@ -46,6 +47,15 @@ _AMBIENT_PROBE="${CHUMP_AMBIENT_LOG:-$_LOCK_DIR_PROBE/ambient.jsonl}"
 # Usage:  scripts/coord/ambient-context-inject.sh --tick-preamble <role>
 # Output: 0..5 lines, one per relevant event. Empty if nothing relevant.
 # Exit:   always 0 (failures degrade silently so the calling loop doesn't crash).
+#
+# RESILIENT-036: per-role react-cooldown (anti wire-storm / echo-chamber).
+# Curator A broadcasts FEEDBACK -> B reacts + broadcasts -> A reacts -> loop.
+# corr_id threading (EFFECTIVE-028) links the chain but nothing dedupes a
+# role reacting to the *same* root corr_id twice within a cooldown window.
+# Sentinel: .chump-locks/<role>-reacted/<root_corr_id>.sentinel — first
+# surfacing of a corr_id (or its root, chasing parent_corr_id links) creates
+# the sentinel; any re-surfacing within CHUMP_REACT_COOLDOWN_M minutes
+# (default 30) is suppressed from the digest.
 if [[ "${1:-}" == "--tick-preamble" ]]; then
     ROLE="${2:-}"
     if [[ -z "$ROLE" ]]; then
@@ -58,9 +68,42 @@ if [[ "${1:-}" == "--tick-preamble" ]]; then
     if [[ "$TOTAL" -gt "$LAST" ]]; then
         START=$((LAST + 1))
         sed -n "${START},\$p" "$_AMBIENT_PROBE" 2>/dev/null | \
-            ROLE="$ROLE" python3 -c "
-import json, os, sys
+            ROLE="$ROLE" \
+            REACT_SENTINEL_DIR="$_LOCK_DIR_PROBE/${ROLE}-reacted" \
+            REACT_COOLDOWN_M="${CHUMP_REACT_COOLDOWN_M:-30}" \
+            AMBIENT_FULL="$_AMBIENT_PROBE" \
+            python3 -c "
+import json, os, sys, time
 role = os.environ.get('ROLE', '')
+sentinel_dir = os.environ.get('REACT_SENTINEL_DIR', '')
+try:
+    cooldown_s = float(os.environ.get('REACT_COOLDOWN_M', '30')) * 60.0
+except ValueError:
+    cooldown_s = 30 * 60.0
+
+# Chase parent_corr_id links (best-effort) to find each corr_id's root, so a
+# reply-to-a-reply chain still dedupes against the original broadcast.
+parent_map = {}
+try:
+    with open(os.environ.get('AMBIENT_FULL', ''), 'r', errors='replace') as f:
+        for line in f:
+            try:
+                d = json.loads(line)
+            except Exception:
+                continue
+            cid = d.get('corr_id')
+            pcid = d.get('parent_corr_id')
+            if cid and pcid:
+                parent_map[cid] = pcid
+except Exception:
+    pass
+
+def root_corr_id(cid, depth=0):
+    while cid in parent_map and depth < 20:
+        cid = parent_map[cid]
+        depth += 1
+    return cid
+
 out = []
 for line in sys.stdin:
     try:
@@ -75,6 +118,23 @@ for line in sys.stdin:
     if to and to not in ('fleet-wide', 'operator-76c22455'):
         if f'curator-opus-{role}' not in to:
             continue
+    corr_id = d.get('corr_id') or ''
+    if corr_id and sentinel_dir:
+        root = root_corr_id(corr_id)
+        safe_root = ''.join(c if c.isalnum() or c in '-_.' else '_' for c in root)
+        sentinel = os.path.join(sentinel_dir, safe_root + '.sentinel')
+        try:
+            mtime = os.path.getmtime(sentinel)
+            if (time.time() - mtime) < cooldown_s:
+                continue  # already reacted to this corr_id chain within cooldown
+        except OSError:
+            pass  # no sentinel yet -- first react
+        try:
+            os.makedirs(sentinel_dir, exist_ok=True)
+            with open(sentinel, 'a'):
+                os.utime(sentinel, None)
+        except OSError:
+            pass
     sender = (d.get('session') or d.get('from') or '?')[:30]
     body = (d.get('reason') or d.get('gap') or d.get('corr_id') or '')[:120].replace(chr(10), ' ')
     ts = (d.get('ts') or '?')[11:19]
@@ -756,6 +816,87 @@ if hook == "SessionStart":
     if brief_out:
         lines_out.append(brief_out)
         lines_out.append("")
+
+# INFRA-2367 (META-271 follow-up): SessionStart only — inventory health digest.
+# Surfaces tier-0 surface volume, top-3 high-volume finding classes, unreviewed
+# >30d backlog, and promotion eligibility from `chump inventory class-stats` so
+# the tech-debt review queue doesn't silently age out of visibility. Only shown
+# when the inventory DB was touched in the last 24h (stale DB = stale digest,
+# not worth the noise). Toggle: CHUMP_SESSION_INVENTORY_DIGEST=0
+if hook == "SessionStart" and os.environ.get("CHUMP_SESSION_INVENTORY_DIGEST", "1") != "0":
+    import subprocess, shutil, time
+    _inv_repo = os.environ.get("REPO_ROOT", ".")
+    _inv_db = os.environ.get(
+        "CHUMP_INVENTORY_DB", os.path.join(_inv_repo, ".chump", "inventory.db")
+    )
+    _inv_fresh = False
+    try:
+        _inv_fresh = (time.time() - os.path.getmtime(_inv_db)) < 24 * 3600
+    except OSError:
+        _inv_fresh = False
+    _chump_bin = shutil.which("chump") if _inv_fresh else None
+    if _chump_bin:
+        _inv_env = {**os.environ, "CHUMP_REPO": _inv_repo}
+        _class_stats = []
+        try:
+            _res = subprocess.run(
+                [_chump_bin, "inventory", "class-stats", "--json"],
+                capture_output=True, text=True, timeout=15, env=_inv_env,
+            )
+            if _res.returncode == 0 and _res.stdout.strip():
+                _class_stats = json.loads(_res.stdout).get("classes", [])
+        except Exception:
+            _class_stats = []
+        _unreviewed_30d = 0
+        try:
+            _res = subprocess.run(
+                [_chump_bin, "inventory", "review-queue", "--limit", "1000", "--json"],
+                capture_output=True, text=True, timeout=15, env=_inv_env,
+            )
+            if _res.returncode == 0 and _res.stdout.strip():
+                _rq_findings = json.loads(_res.stdout).get("findings", [])
+                _cutoff = time.time() - 30 * 86400
+                _unreviewed_30d = sum(
+                    1 for _f in _rq_findings
+                    if isinstance(_f, dict) and (_f.get("detected_at") or 0) < _cutoff
+                )
+        except Exception:
+            _unreviewed_30d = 0
+        if _class_stats:
+            _tier0_total = sum(
+                int(c.get("total_findings", 0)) for c in _class_stats
+                if int(c.get("current_tier", 0)) == 0
+            )
+            _top3 = sorted(
+                _class_stats, key=lambda c: int(c.get("total_findings", 0)), reverse=True
+            )[:3]
+            _eligible = [c.get("finding_class", "?") for c in _class_stats if c.get("eligible_for_promotion")]
+            _inv_lines = ["═══ Inventory health (META-271, chump inventory class-stats) ═══"]
+            _inv_lines.append(
+                "tier-0 surface findings: {t0}  |  unreviewed >30d: {u30}  |  classes tracked: {n}".format(
+                    t0=_tier0_total, u30=_unreviewed_30d, n=len(_class_stats)
+                )
+            )
+            if _top3:
+                _inv_lines.append("Top-3 high-volume classes:")
+                for c in _top3:
+                    _inv_lines.append(
+                        "  - {cls}  tier={tier}  total={total}  reviewed={rev}  RP%={rp:.0f}".format(
+                            cls=c.get("finding_class", "?"),
+                            tier=c.get("current_tier", "?"),
+                            total=c.get("total_findings", 0),
+                            rev=c.get("reviewed_count", 0),
+                            rp=float(c.get("real_positive_ratio", 0.0)) * 100.0,
+                        )
+                    )
+            _inv_lines.append(
+                "Eligible for promotion: " + (", ".join(_eligible) if _eligible else "none")
+            )
+            _inv_lines.append(
+                "Review: chump inventory review-queue | Full stats: chump inventory class-stats"
+            )
+            lines_out.append("\n".join(_inv_lines))
+            lines_out.append("")
 
 lines_out.append("=== Ambient stream (FLEET-019 matrix wiring, hook=" + hook + ") ===")
 lines_out.append(

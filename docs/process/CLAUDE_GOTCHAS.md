@@ -332,9 +332,15 @@ Linked worktrees under `.claude/worktrees/` are the main **disk** risk on agent-
 
 Manual escape hatch from the **main** checkout: `git worktree remove .claude/worktrees/<name>` when you are sure nothing has that directory as its cwd.
 
+**`.chump-no-reap` is the standard escape hatch (RESILIENT-107 precedent, hardened RESILIENT-116).** Any script that provisions a worktree and then runs a long build should `touch <worktree>/.chump-no-reap` immediately after `git worktree add`, before the build starts — `scripts/setup/refresh-runner-binary.sh` did exactly this (RESILIENT-107, commit `63a4e768`) after a 10-12 min release build in `/tmp/chump-binary-refresh-<PID>/` got its `target/release/deps/` deleted mid-compile by a reaper race. All three worktree/target reapers — `active-target-reaper.sh`, `stale-worktree-reaper.sh`, and `cargo-target-reaper.sh` (the latter hardened in RESILIENT-116; it previously had no sentinel check on its `/tmp/chump-*` orphan-scan or lease+auto-merge classes) — honor the marker. A `trap ... EXIT` that tears down the worktree removes the sentinel along with it, so there's no cleanup step to remember.
+
+**Audit-emit invariant (RESILIENT-116):** every time a reaper bypasses a delete because of the sentinel or a detected in-flight build (open file handle, `.cargo-lock` present, or fresh `target/` mtime), it must emit `kind=target_reap_skipped` to `ambient.jsonl` with a `reason` field of `no_reap_marker` or `active_build`. This makes the "reaper raced a fresh worktree build" failure class observable instead of silently avoided-or-not. See `docs/observability/EVENT_REGISTRY.yaml` for the full contract and `scripts/ci/test-target-reaper-cold-build-safety.sh` for the regression fixture.
+
 **Cold-build cost (INFRA-202, 2026-05-02).** Disk reclaim doesn't help the *time* tax: every fresh worktree pays a 5–15 min cold `cargo check` / `clippy` because each `target/` starts empty. Observed 2026-05-01: `bot-merge.sh` hit a 900s clippy timeout on a freshly-created worktree. Fix is **sccache as a rustc wrapper** — install once per machine with `scripts/setup/install-sccache.sh` (idempotent: `brew install sccache` + writes `.cargo/config.toml` with `rustc-wrapper = "sccache"` and a 10G cache). The first worktree to build a given crate version populates the cache; every subsequent worktree gets it in <60s. `.cargo/config.toml` is `.gitignore`d so each machine controls its own cache config (CI runners without sccache won't break). Opt out with `rm .cargo/config.toml`.
 
 **Shared CARGO_TARGET_DIR phantom fingerprint error (INFRA-1138, 2026-05-14).** `install-sccache.sh` (INFRA-481) sets `target-dir = "/Users/.../Chump/target"` in `.cargo/config.toml` so all linked worktrees share a single target directory (saving disk). Side-effect: cargo's fingerprint cache is also shared. If worktree A compiled `tests/cli_fleet_coord.rs` and stored the fingerprint in the shared target, worktree B (which may not have that test file on its branch) reads the cached fingerprint and tries to verify the file — failing with `couldn't read tests/cli_fleet_coord.rs: No such file or directory`. **Fix (INFRA-1138):** the pre-push test gate sets `CARGO_TARGET_DIR="$REPO_ROOT_T/.cargo-test-target"` (per-worktree) for the `cargo test` invocation. sccache (configured via `rustc-wrapper` in `.cargo/config.toml`) still provides cross-worktree object-code caching — only the fingerprint/incremental data is isolated. The `.cargo-test-target` directory lives inside each linked worktree and is cleaned up when the worktree is deleted. **Symptom:** `Test-Gate-Bypass: phantom fingerprint from sibling worktree` trailers on commits from before INFRA-1138.
+
+**Per-N-worker CARGO_TARGET_DIR closes the fleet-loop half of the gap (INFRA-3662, 2026-08-22).** INFRA-1138 above only fixed the pre-push *test gate*'s `cargo test` invocation — the persistent fleet worker loop (`worker.sh`'s `cargo check`/`clippy` calls, driven by `run-fleet.sh`) still exported one `CARGO_TARGET_DIR` to every pane, so the same sibling-worktree fingerprint clobbering could still hit fleet workers outside the test gate. Fix: `run-fleet.sh` now splits workers into groups of `CHUMP_CARGO_TARGET_GROUP_SIZE` (default 2) and gives each group its own `CARGO_TARGET_DIR` under `CHUMP_CARGO_TARGET_ROOT` (autodetects a mounted USB/`cjdata*` data disk the same way `install-sccache.sh` does, INFRA-3660) — bounded to `FLEET_SIZE/N` distinct dirs rather than one-per-worker, keeping disk footprint close to the old single-dir baseline. sccache (`rustc-wrapper` in `.cargo/config.toml`) still shares compiled object code across every group, so cache hit-rate is unaffected — only fingerprint/incremental state is now group-local instead of fleet-global. Override the group root with `CHUMP_CARGO_TARGET_ROOT`; override group size with `CHUMP_CARGO_TARGET_GROUP_SIZE`.
 
 **Reaper visibility — heartbeat + ambient events (INFRA-120, 2026-05-01).** All three reapers (`stale-pr-reaper.sh`, `stale-worktree-reaper.sh`, `stale-branch-reaper.sh`) emit a `kind=reaper_run` event into `.chump-locks/ambient.jsonl` on every run with `status=ok|fail` and per-reaper counts. They also stamp `/tmp/chump-reaper-<name>.heartbeat` (`pr` / `worktree` / `branch`). Each reaper rotates its own `/tmp/chump-stale-*-reaper.{out,err}.log` to a single `.1` archive at 5MB so logs never grow unbounded.
 
@@ -446,6 +452,8 @@ scripts/dev/rust-first-bypass-audit.sh --json    # JSON-only
 Emits one `kind=rust_first_bypass_audit` per violating file with `{path, violations, has_bypass, has_acknowledgment, loc}`. Useful for prioritizing port-to-Rust work — files with multiple violations and no acknowledgment are the highest-value Rust ports.
 
 Test: `scripts/ci/test-rust-first-bypass-gate.sh` covers (a) clean glue accepted, (b) narrative-only on a bad daemon rejected, (c) full-ack on the same daemon accepted, (d) partial-ack still rejected.
+
+**MODIFIED-file audit mode (INFRA-1651, re-do of INFRA-1580):** everything above only ever looks at NEW files (`git diff --cached --diff-filter=A`). An existing, already-Rust-first-clean shell file can cross the same thresholds via a plain EDIT (grows past 200 LOC, gains a state-mutating line) and the ADD-only gate never sees it. `pre-commit-rust-first.sh` now separately scans `--diff-filter=M` files in the same hot-path dirs and emits `kind=rust_first_modified_audit` (`{files, reasons}`) when a MODIFIED file meets the criteria — **audit-only, it never blocks the commit**, mirroring the warn-only default the NEW-file gate already runs under (INFRA-2522). Use this signal to prioritize port-to-Rust candidates that drifted in after their initial commit, not as an enforcement surface. Test coverage: `scripts/ci/test-rust-first-gate.sh` tests 11-12 (threshold-crossing MODIFIED file inside a hot-path dir emits the audit event; a MODIFIED file outside hot-path dirs emits nothing).
 
 ## Dispatched-subagent backend (COG-025, 2026-04-19)
 
@@ -756,6 +764,79 @@ cd .claude/worktrees/<name>
 scripts/coord/gap-claim.sh <GAP-ID>
 # Bootstrap escape hatch (short-lived solo work only):
 CHUMP_ALLOW_MAIN_WORKTREE=1 scripts/coord/gap-claim.sh <GAP-ID>
+```
+
+<a id="atomic-claim-collision"></a>
+### atomic-claim-collision — two live leases on the same gap_id (INFRA-1608)
+
+**Symptom:** `.chump-locks/*.json` (or `chump gap show <GAP-ID>`) shows two
+different sessions both holding a live lease for the same gap_id at once —
+e.g. the INFRA-1602 case that motivated this gap: `claim-infra-1602-26392-…`
+and `claim-infra-1602-47300-…` both within TTL simultaneously. No
+`kind=lease_overlap` event in `ambient.jsonl` despite the visible collision.
+
+**Root cause:** `check_gap_id_uniqueness` (in
+`crates/chump-atomic-claim/src/atomic_claim.rs`) was a scan-then-decide
+read, not a lock — two sessions could both pass it before either's
+per-session lease file was written, because the durable write happens only
+after several seconds of `git worktree add` / gitdir-repair setup. Classic
+TOCTOU. Full forensic writeup: `docs/audits/lease-collision-2026-05-17.md`.
+
+**Fix (shipped, INFRA-1608):** `reserve_gap_claim_marker()` reserves a
+gap-keyed marker file via `create_new` (O_EXCL) — a kernel-atomic operation
+— BEFORE worktree setup runs, closing the race window. The loser emits
+`kind=lease_overlap` with `{gap_id, winner_session, loser_session,
+paths_attempted}`.
+
+**Diagnosis steps if you suspect a relapse:**
+```bash
+# Confirm exactly one live lease per gap_id:
+for f in .chump-locks/claim-*.json .chump-locks/*.json; do
+  jq -r 'select(.gap_id) | "\(.gap_id) \(.session_id) \(.expires_at)"' "$f" 2>/dev/null
+done | sort | awk '{print $1}' | uniq -d
+# Any gap_id printed above has >1 live lease — a relapse.
+grep '"kind":"lease_overlap"' .chump-locks/ambient.jsonl | tail -5
+```
+
+**Test command:**
+```bash
+cargo test -p chump-atomic-claim gap_claim_marker_tests   # unit + 50-thread race
+bash scripts/ci/test-atomic-claim-collision.sh            # full regression script
+```
+
+---
+
+<a id="deep-claim-collision"></a>
+### deep-claim-collision — declared lease paths[] intersect a sibling's (INFRA-1604)
+
+**Symptom:** `chump claim <GAP-ID> --paths <CSV>` exits 15 with
+`[claim] INFRA-1604: LEASE PATH COLLISION with sibling session … (gap …) —
+overlapping paths: …`.
+
+**Root cause:** INFRA-1394 only blocks when a gap's AC *text* mentions one of
+5 hardcoded hot files. Real collisions happen across dozens of files that
+never get named in AC text, but ARE declared in each lease's `paths[]` field
+(INFRA-1240) — that's what the lease system's `--paths` flag exists for.
+INFRA-1604 computes the actual set intersection of this claim's declared
+paths against every sibling lease's declared paths, with glob (`src/foo/*.rs`
+overlaps `src/foo/bar.rs`) and directory-prefix (`docs/` overlaps
+`docs/gaps/X.yaml`) matching — structural, not heuristic. The INFRA-1394
+AC-text scan still runs too, as a secondary defense-in-depth check for leases
+whose `paths[]` is incomplete or omitted.
+
+**Recovery:**
+```bash
+# See exactly which paths collide and with whom (printed to stderr, and in
+# ambient.jsonl as kind=lease_path_collision):
+grep '"kind":"lease_path_collision"' .chump-locks/ambient.jsonl | tail -5
+# If the overlap is real and you still need to proceed (e.g. the sibling's
+# work is stale, or you've coordinated a merge-driver split):
+chump claim <GAP-ID> --role <role> --paths <CSV> --force-overlap
+```
+
+**Test command:**
+```bash
+bash scripts/ci/test-deep-claim-collision.sh
 ```
 
 ---
@@ -1441,6 +1522,118 @@ even on failure, so `statusCheckRollup.state` stays `SUCCESS`.
 - `changes` — `dorny/paths-filter` can fail transiently (network/runner issue); COE makes failure neutral so downstream jobs safely skip rather than blocking
 - `test-e2e` — aggregates e2e shards (which already have COE); COE here guards against runner errors in the aggregator itself
 
+## `chump-chat` selector confirmed NOT stale — it's an app-init timing/routing race (INFRA-1433 / INFRA-4301, 2026-09-04)
+
+Definitive answer to the open question in INFRA-1433 ("dead selector, renamed
+to `chat-room`? OR app fails to mount in CI's xvfb env?"): **the selector is
+current, not renamed.** `customElements.define('chump-chat', ChumpChat)` still
+lives at `web/v2/chat.js:417`, and `e2e-tauri/run.mjs:116` still waits on
+`By.css('chump-chat')` — same string, both sides. Grepping `web/v2/` for
+`chat-room` or any other candidate rename turns up nothing; there is no
+renamed element to point the test at.
+
+**Actual root cause: two competing initial-view mechanisms race on boot,**
+and the outcome depends on script-execution order rather than a single
+declared default:
+
+1. `<chump-nav>` (`web/v2/app.js:456` `connectedCallback`) resolves an
+   *initial cadence* (URL `?cadence=` > URL `?view=` map > `chumpPrefs`
+   `last_cadence` > `'now'`) and, for the `'now'` cadence, its
+   `default_view` is `'cockpit'` (`web/v2/app.js:378`) — **not** `'chat'`.
+   It dispatches `chump:navigate` with `detail: 'cockpit'`
+   (`web/v2/app.js:571`) synchronously from inside its `connectedCallback`,
+   which fires the instant `customElements.define('chump-nav', ChumpNav)`
+   runs (`web/v2/app.js:593`) and upgrades the already-parsed `<chump-nav>`
+   element.
+2. Separately, the `DOMContentLoaded` handler at `web/v2/app.js:5330`
+   defaults to `'chat'` (`chumpPrefs.get('last-view', 'chat')`) and appends
+   `VIEWS.chat()` (`<chump-view-chat>`, which mounts `<chump-chat>`) directly
+   into `#main-content`.
+
+The `document.addEventListener('chump:navigate', …)` router listener itself
+isn't registered until `web/v2/app.js:5314` — **after** the `ChumpNav` class
+body and its `customElements.define` call (line 593) earlier in the same
+file. So step 1's synchronous `'cockpit'` dispatch fires into a
+document with no listener yet attached and is silently dropped; step 2's
+`DOMContentLoaded`-time append (which runs after all module scripts,
+including the listener registration, have executed) is what actually lands
+in `#main-content`. On a normal-speed machine this ordering is stable and
+`<chump-chat>` does appear — which is why the flake reproduces on **slow**
+CI VMs specifically (per the existing INFRA-1342 note on 18+ `type="module"`
+scripts delaying `DOMContentLoaded`), not on every run: the race is between
+"listener registration + `DOMContentLoaded` append" finishing, vs. anything
+downstream (a stored `chumpPrefs.last-view` other than `'chat'`, a `?view=`
+URL param, or the cadence nav's own default reasserting itself, e.g. via a
+prefs write from a *previous* CI run's leftover `localStorage` state, or a
+user-set cadence in local dev) resolving to a non-chat view before that
+`DOMContentLoaded` append happens. **In a genuinely fresh browser profile
+(no `localStorage`, no URL params) — which is what CI's xvfb session and
+`tauri-driver` provide by default — `'chat'` wins and `<chump-chat>` mounts;
+the flake class is state-carryover / ordering-sensitivity, not a missing
+element.** This is consistent with `RESILIENT-016`'s decision to move
+`tauri-cowork-e2e` off the PR-blocking path to nightly-only
+(`.github/workflows/ci.yml:291`, `if: false` with a comment pointing at
+`ci-nightly.yml`) rather than treating it as a hard app regression.
+
+No selector rename is needed. If this class of flake resurfaces, the fix
+belongs in the boot sequence (e.g. register the `chump:navigate` listener
+*before* `customElements.define('chump-nav', …)` so the cadence nav's
+initial dispatch isn't silently dropped, and make `'chat'` vs. `'cockpit'`
+agree as the single source of truth for the default view) — not in the
+e2e test's selector.
+
+**INFRA-5211 re-verification (2026-09-07):** re-checked both AC items against
+current `main` and both are already answered by the analysis above —
+`customElements.define('chump-chat', ChumpChat)` (`web/v2/chat.js:417`) still
+matches `By.css('chump-chat')` (`e2e-tauri/run.mjs:116`) verbatim, and
+`tauri-cowork-e2e` is still `if: false` (PR-blocking disabled) per
+`RESILIENT-016` (`.github/workflows/ci.yml:291-296`). The wait itself was
+raised to `120_000` ms for the element-located step and `60_000` ms for the
+shadow-root step in `e2e-tauri/run.mjs` (no longer a flat 60 s), consistent
+with the timing-race diagnosis — not a missing/renamed selector. No new
+repro was needed beyond what's captured above; see also INFRA-4636 (closed
+not-a-bug for the sibling "update the selector" slice).
+
+**INFRA-6338 root-cause pinpointed (2026-09-14):** live `ci-nightly.yml` run
+`34817040814` confirmed the app *does* mount in xvfb — `#app-title` locates
+in seconds, no fatal D-Bus/X11/WebKit error, only cosmetic AT-SPI/DRI3
+warnings. `<chump-chat>` only exists in the DOM while the Chat sub-tab of the
+"Now" cadence is active; since commit `f9a21b6d` (PRODUCT-132 / PR #2066,
+2026-05-15) the "now" cadence's `default_view` is `'cockpit'`, not `'chat'`
+(`web/v2/app.js:378`). `e2e-tauri/run.mjs` loads the app fresh and waits on
+`chump-chat` without ever clicking the Chat sub-tab, so the wait times out
+every run — silently broken since 2026-05-15. Fix (left as a follow-up,
+not shipped here): have `e2e-tauri/run.mjs` click `[data-view="chat"]`
+before waiting on `chump-chat`, mirroring `e2e/tests/api-and-pwa.spec.ts`'s
+Playwright pattern. Full writeup:
+`docs/audits/INFRA-6338-chump-chat-selector-investigation.md`.
+
+**INFRA-6916 re-verification (2026-09-16):** re-checked against current
+`main` two days after INFRA-6338 landed — no drift. `chump-chat` is still
+defined at `web/v2/chat.js:417`, the "now" cadence's `default_view` is still
+`'cockpit'` (`web/v2/app.js:378`), and `tauri-cowork-e2e` is still `if: false`
+(`.github/workflows/ci.yml:296`). Separately, the same selector appears in
+three Playwright specs (`e2e/tests/api-and-pwa.spec.ts`,
+`e2e/tests/daily-driver-llm.spec.ts`) that never execute on the PR-blocking
+path: the `PWA shell` / `PWA mobile viewport` / `Chat /task path` describe
+blocks are gated behind `CHUMP_E2E_INCLUDE_FLAKES=1` (INFRA-1332 quarantine,
+only set in the non-blocking `e2e-pwa-flakes` advisory job in
+`integrations.yml`), and the LLM-reply test is gated behind
+`CHUMP_E2E_LLM=1` (unset in CI). So the selector's absence from ordinary CI
+logs has two independent, already-diagnosed causes — the Tauri/Selenium
+timing race above, and these Playwright specs being intentionally skipped —
+neither a rename nor a headless-mount failure. No code change needed; this
+gap re-confirms INFRA-6338's diagnosis still holds.
+
+**INFRA-7412 shipped the fix (2026-09-18):** `e2e-tauri/run.mjs` now clicks
+`[data-view="chat"]` before waiting on `chump-chat` (`e2e-tauri/run.mjs:114-115`),
+mirroring the Playwright specs. **INFRA-5525 re-verification (2026-09-25):**
+re-checked all three AC branches (stale selector / app-init failure / missing
+X11-D-Bus dep) — no drift, all still ruled out per the analysis above, and
+confirmed the fix holds: live `ci-nightly.yml` run `36104297256`
+(2026-09-25T06:45Z) shows `tauri-cowork-e2e` job-level `conclusion: success`.
+Full writeup: `docs/audits/INFRA-5525-chump-chat-selector-investigation.md`.
+
 **Ongoing enforcement:** `scripts/ci/test-rollup-not-blocked-by-flaky-job.sh` parses
 `ci.yml` and asserts every non-required job has either `continue-on-error: true` or
 a PR-trigger exclusion. Run it after any ci.yml change.
@@ -2093,3 +2286,48 @@ bypasses that mask CI state.
 **Related staleness layers** — same doc covers state.db ↔ YAML drift (`chump gap sync`, INFRA-2053), chump binary drift (`chump --rebuild-if-stale`, INFRA-2054), launchd plist drift (`chump cron health`, INFRA-2046).
 
 **Session-bound vs fleet-durable scheduling** — if a CronCreate or ScheduleWakeup is dying at session close when it should persist, you have a layer mismatch. See [`docs/process/SCHEDULING_LAYERS.md`](./SCHEDULING_LAYERS.md) for the decision rule, anti-pattern catalog, and migration guide (DOC-058).
+
+## Rust test flakes (INFRA-2152, 2026-08-14)
+
+**Symptom**: `cargo test` panics intermittently on a NATS-backed integration test (e.g. `chump-coord::ambient_distribution::emit_round_trips_to_subscriber`) with "did not observe published event within 5s" or similar, but passes on rerun.
+
+**Real cause**: `nats.subscribe()` returns as soon as the SUB frame is *sent*, not once the server has registered it. A `publish()` issued immediately after can race the SUB frame server-side and the event is silently dropped — no error, just a timeout on the subscriber side.
+
+**Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
+
+**Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
+
+## Decisions queue — `/api/decisions` contract (INFRA-1563, 2026-09-25)
+
+Sibling to `/api/roadmap` (INFRA-1338): `web/v2/app.js`'s `<chump-view-decisions>`
+component calls `GET /api/decisions` to render the operator-decision queue —
+the human-in-loop surface for the Phase 3 Orchestrator MVP (operator confirms
+decisions the orchestrator/picker/bot-merge can't make unilaterally).
+
+**Source of truth**: `.chump-locks/ambient.jsonl`, not a database table. Any
+fleet code that needs an operator call — demoting/promoting a gap's priority,
+approving a merge, clarifying scope — emits:
+
+```json
+{"ts":"...","kind":"operator_decision_needed","id":"dec-<unique>","decision_kind":"gap_demote|gap_promote|merge_approval|scope_clarify","gap_id":"INFRA-1234","pr_number":4821,"summary":"...","priority":"P1"}
+```
+
+`GET /api/decisions` (`src/routes/decisions.rs`) scans the ambient stream for
+`operator_decision_needed` events and excludes any whose `id` already has a
+matching `operator_decision_resolved` event later in the stream. It does
+**not** cache — reads the whole file per request, same cost model as
+`operator_recall`'s ambient scans.
+
+**Resolving a decision**: `POST /api/decisions/{id}/resolve` with any JSON
+body appends `{"kind":"operator_decision_resolved","id":"<id>","response":<body>}`
+to ambient.jsonl. There is no mutation of the original `operator_decision_needed`
+line — resolution is purely additive, same append-only discipline as the rest
+of the ambient stream.
+
+**Both event kinds are registered** in `docs/observability/EVENT_REGISTRY.yaml`
+— an emitter that fires `operator_decision_needed` without registering it
+trips the emit-without-register CI gate (`scripts/ci/test-event-registry-coverage.sh`).
+
+**Smoke test**: `scripts/ci/test-decisions-endpoint.sh` — emits a synthetic
+`operator_decision_needed` line, asserts it's in the GET response, resolves
+it, asserts it disappears.

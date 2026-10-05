@@ -1,0 +1,12 @@
+- id: INFRA-3585
+  domain: INFRA
+  title: Develop User Interface
+  status: wontfix
+  priority: P3
+  effort: l
+  acceptance_criteria:
+    - The user interface is visually appealing and easy to navigate.
+    - All essential features are accessible through the UI
+  notes: EFFECTIVE-425 self-verify smoke test artifact — not real work, closing
+  outcome_id: COTG
+

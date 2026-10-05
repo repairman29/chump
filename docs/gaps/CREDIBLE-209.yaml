@@ -1,0 +1,19 @@
+- id: CREDIBLE-209
+  domain: CREDIBLE
+  title: "CREDIBLE: almanac fluff-audit — extract a repo's README/doc claims and ground each against its own index"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The textual half of the bullshit boss: 'almanac audit <repo>' extracts checkable claims from a repo's README/docs (capability statements, named commands/APIs/features) and grounds each against that repo's OWN index — claim names a symbol/command/endpoint: does it exist at path:line? claim says 'X works': is there a test touching X? Output: grounded / ungrounded / unverifiable per claim with citations, machine-readable (--json) so the mop-and-bucket sweep (EFFECTIVE-374) can file ungrounded claims to holler. Method receipts: this is REALITY_MAP par.0's claimed-vs-verified discipline mechanized, and the exact move that busted the v1 fleet survey (DOC-084). Prior art in-repo: capability-drift-scan.py (chump) for the bucket-vs-tree diff pattern; almanac api (the anti-hallucination lookup) for exact-symbol grounding. Claim extraction can run on the local cascade (summarizer models already configured); grounding is pure index lookups.
+  acceptance_criteria:
+    - "almanac audit <repo> --json emits per-claim verdicts with path:line citations for grounded ones"
+    - run against BEAST-MODE it flags the enterprise-platform class of claim as ungrounded
+    - run against almanac itself it passes its own README
+    - zero network beyond local inference
+    - DEPTH.md updated same commit
+  notes: |
+    Bumped P2->P1 2026-08-07: MOP-BUCKET is 0% (both children parked below the picker's P1 threshold), so the portfolio de-bullshitting campaign had a design and no motion. Outcome linkage to MOP-BUCKET pre-existed this bump — not a MISSION-045 side-door promotion (cf CREDIBLE-213). EFFECTIVE-374 (the sweep) deliberately STAYS P2 until this instrument exists: a sweep with no audit tool is just scheduling.
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: MOP-BUCKET
+

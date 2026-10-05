@@ -82,8 +82,32 @@ Defined in [`bots.yaml`](bots.yaml). Each entry:
 | Follow-up (TBF) | Dispatcher script (`scripts/content-bots/run-bot.sh`) + ambient event registration |
 | Follow-up (TBF) | Pipeline orchestrator (PMM → DocuBot/Evangelist → CopyBot) |
 | Follow-up (TBF) | Fleet integration via `WORKER_SKILLS=content-bot,<bot_id>` |
-| Follow-up (TBF) | PWA toggle UI with per-bot daily cost estimate |
+| [INFRA-1711](../../gaps/INFRA-1711.yaml) | PWA toggle UI (`web/v2/content-bots.js`) — 4 per-bot on/off switches wired to `/api/content-bots` |
+| [INFRA-1712](../../gaps/INFRA-1712.yaml) | Cost-tally + outcome accounting (this PR): `record_content_bot_outcome` in `crates/chump-waste-tally/src/waste_tally.rs` emits `content_bot_run.completed`/`.failed`/`.timed_out` (failed/timed-out runs carry `failure_class: transient\|permanent`), paired with a `content_bot.cost_report` event (`bot_id`, `estimated_cost_ms`, `cost_floor_ms`, `tally_id`) on every outcome |
 | Productization umbrella | [META-066](../../gaps/META-066.yaml) |
+
+### PWA `Run all enabled` button (planned)
+
+Companion control to the per-bot toggles in `web/v2/content-bots.js`: one
+button that triggers **all currently-enabled** bots exactly once (not a
+recurring dispatch), then surfaces each bot's result inline — cost
+(`estimated_cost_ms` vs. `cost_floor_ms` from `content_bot.cost_report`) and
+outcome (`completed` / `failed` / `timed_out`, with `failure_class` shown for
+non-completed runs). Backed by the same `content_bot_run.*` +
+`content_bot.cost_report` event pair documented above; no new backend
+plumbing needed beyond wiring the button to invoke each enabled bot_id.
+
+### Observability smoke test
+
+```bash
+bash scripts/ci/test-pwa-cost-ceiling.sh
+```
+
+Structural + live checks: PWA cost-ceiling UI wiring, plus (INFRA-1712) the
+content-bot cost-tally path — asserts `record_content_bot_outcome` emits a
+paired `content_bot.cost_report` on every outcome and that timed-out runs are
+classified `permanent`. Run this before shipping any change to
+`crates/chump-waste-tally/src/waste_tally.rs` or the content-bots PWA view.
 
 ## Provenance
 

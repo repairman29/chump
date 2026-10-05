@@ -248,6 +248,41 @@ impl RoutingTable {
         }
         self.default_candidates.clone()
     }
+
+    /// ZERO-WASTE-060 — effort tiers the routing policy has decided the
+    /// free/local cascade can serve on its own (see the `xs`/`s` route
+    /// comments in `docs/dispatch/routing.yaml`: "sonnet is the floor... and
+    /// saves nothing on a flat subscription" applies to the *worker* model,
+    /// not to whether the dispatch backend should ever fall through to a
+    /// paid `claude` candidate). `m`/`l`/`xl` and the `cognition`/`research`
+    /// task classes are deliberately excluded — those routes intentionally
+    /// prefer `claude` for quality reasons and are not a waste regression.
+    pub const FREE_TIER_ONLY_EFFORTS: [&'static str; 2] = ["xs", "s"];
+
+    /// ZERO-WASTE-060 — "the fleet never pays when a free tier can serve the
+    /// job": for every priority × [`Self::FREE_TIER_ONLY_EFFORTS`] combination
+    /// (task_class = None, i.e. ordinary gaps), every candidate the router
+    /// would hand out must be [`DispatchBackend::ChumpLocal`]. Returns one
+    /// human-readable violation string per offending (priority, effort)
+    /// pair that contains a `claude` (paid) candidate; empty means the
+    /// policy holds.
+    pub fn free_tier_policy_violations(&self) -> Vec<String> {
+        let mut violations = Vec::new();
+        for priority in ["P0", "P1", "P2", "P3"] {
+            for effort in Self::FREE_TIER_ONLY_EFFORTS {
+                let cands = self.select(priority, effort, None);
+                if cands.iter().any(|c| c.backend == DispatchBackend::Claude) {
+                    violations.push(format!(
+                        "priority={priority} effort={effort} routes to a paid `claude` \
+                         candidate, but effort={effort} is policy-designated free-tier-only \
+                         (docs/dispatch/routing.yaml): {:?}",
+                        cands.iter().map(|c| c.signature()).collect::<Vec<_>>()
+                    ));
+                }
+            }
+        }
+        violations
+    }
 }
 
 #[cfg(test)]
@@ -426,5 +461,61 @@ routes:
             msg.contains("ollama-direct") || msg.to_lowercase().contains("backend"),
             "expected backend-rejection error, got: {msg}"
         );
+    }
+
+    // ── ZERO-WASTE-060: never pay when a free tier can serve the job ──────
+
+    fn workspace_root() -> std::path::PathBuf {
+        std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .parent()
+            .and_then(|p| p.parent())
+            .expect("workspace root")
+            .to_path_buf()
+    }
+
+    #[test]
+    fn zero_waste_060_production_routing_yaml_never_pays_for_free_tier_efforts() {
+        let table = RoutingTable::load(&workspace_root()).expect("load production routing.yaml");
+        let violations = table.free_tier_policy_violations();
+        assert!(
+            violations.is_empty(),
+            "docs/dispatch/routing.yaml routes a policy-designated free-tier-only \
+             effort to a paid `claude` candidate — the fleet must never pay when a \
+             free tier can serve the job: {violations:#?}"
+        );
+    }
+
+    #[test]
+    fn zero_waste_060_hardcoded_fallback_never_pays_for_free_tier_efforts() {
+        let violations = RoutingTable::hardcoded_fallback().free_tier_policy_violations();
+        assert!(
+            violations.is_empty(),
+            "hardcoded fallback table violates free-tier-first policy: {violations:#?}"
+        );
+    }
+
+    #[test]
+    fn zero_waste_060_detects_a_regression_that_routes_xs_to_claude() {
+        let dir = tempfile::tempdir().unwrap();
+        write_yaml(
+            dir.path(),
+            r#"
+default_candidates:
+  - { backend: chump-local, model: openai/gpt-oss-120b, provider_pfx: GROQ, why: free-default }
+
+routes:
+  - match: { effort: xs }
+    why: regression — someone added claude to the xs cascade
+    candidates:
+      - { backend: claude, why: oops-this-costs-money }
+"#,
+        );
+        let table = RoutingTable::load(dir.path()).unwrap();
+        let violations = table.free_tier_policy_violations();
+        assert!(
+            !violations.is_empty(),
+            "expected a violation for an xs route that pays for claude"
+        );
+        assert!(violations.iter().any(|v| v.contains("effort=xs")));
     }
 }

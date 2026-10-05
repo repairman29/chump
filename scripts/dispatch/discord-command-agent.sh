@@ -24,11 +24,22 @@
 #     outside that allowlist instead of hanging on absent stdin.
 #   - --max-budget-usd caps spend per invocation (per-message cost cap, AC).
 #
+# RESILIENT-1497: this is now the two-way ANSWER half of the free Opus peer.
+# Pointed at Opus (was sonnet) and the allowlist is loosened past pure-read:
+# the peer can file gaps, dispatch, and reprioritize in response to an
+# operator DM, not just report status. The per-message budget cap is
+# unchanged on purpose (AC: "keep the per-message budget cap") and the
+# GATED-action categories (repo visibility, spend, credentials, deletes,
+# outward sends) are still structurally absent from the allowlist below and
+# from --tools — the peer is never an approver of its own risky actions
+# (META-901, see lib/peer-guardrails.sh for the canonical list both this
+# script and duty-officer-loop.sh judgment-tick agree on).
+#
 # Usage: discord-command-agent.sh "<operator free-text command>"
 # Env:
 #   CHUMP_DISCORD_AGENT_TIMEOUT_S   wall-clock bound (default 240s)
 #   CHUMP_DISCORD_AGENT_BUDGET_USD  per-message cost cap (default 0.50)
-#   CHUMP_DISCORD_AGENT_MODEL       model override (default sonnet)
+#   CHUMP_DISCORD_AGENT_MODEL       model override (default opus)
 set -uo pipefail
 
 SELF_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -43,7 +54,7 @@ fi
 
 TIMEOUT_S="${CHUMP_DISCORD_AGENT_TIMEOUT_S:-240}"
 BUDGET_USD="${CHUMP_DISCORD_AGENT_BUDGET_USD:-0.50}"
-MODEL="${CHUMP_DISCORD_AGENT_MODEL:-sonnet}"
+MODEL="${CHUMP_DISCORD_AGENT_MODEL:-opus}"
 
 ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 log() { printf '[discord-command-agent %s] %s\n' "$(ts)" "$*"; }
@@ -78,14 +89,20 @@ ScheduleWakeup):
 list' / 'chump gap view <id>'), open PRs (cache-first per CLAUDE.md — read \
 .chump/github_cache.db before any 'gh' call), or ambient.jsonl / state.db, \
 whichever the command actually needs.
-2. If the command is a request to file a gap, use 'chump gap reserve' to file \
-it (P2 default unless the command clearly states urgency). If it is a status/ \
-question/report request, just read and answer — do not file anything.
-3. You have READ tools and a narrow Bash allowlist only — no Edit/Write tools \
-exist in this session and no destructive Bash commands are permitted. Do not \
-attempt to push code, merge PRs, or mutate gap state beyond filing new gaps.
+2. You may ACT on non-gated fleet work, not just report: file a gap ('chump \
+gap reserve', P2 default unless the command clearly states urgency), \
+reprioritize an existing gap ('chump gap set'), or dispatch work ('chump \
+dispatch'). If the command is a status/question request, just read and \
+answer — do not mutate anything it didn't ask for.
+3. GUARDRAIL (non-negotiable, enforced by your tool allowlist, not just this \
+prompt): you have NO path to repo-visibility changes, spend/billing, \
+credential rotation, deletes, or merges/pushes — those commands are not in \
+your allowlist and Edit/Write/NotebookEdit tools do not exist in this \
+session. If the operator's command asks for one of those, say so in your \
+reply and note it needs Jeff/first-mate approval — you are never the \
+approver of your own risky action (META-901).
 4. Compose a terse, useful reply (a few lines max) and send it to the operator \
-via: 'source scripts/coord/lib/notify-operator.sh && CHUMP_NOTIFY_KIND=discord_command_reply notify_operator \"<reply>\"'. \
+via this EXACT single-command form (do NOT use 'source' + '&&' -- that compound is denied by --permission-mode dontAsk): 'CHUMP_NOTIFY_KIND=discord_command_reply scripts/coord/lib/notify-operator.sh \"<reply>\"'. \
 This is the ONLY way your answer reaches the operator — you MUST call it \
 before stopping, even if the command was unclear (reply saying so).
 5. Append exactly one line to .chump-locks/ambient.jsonl (via printf, JSON-\
@@ -100,13 +117,35 @@ saying so — a silent failure is worse than an honest one."
 # itself; this comment is the pairing anchor the registry gate scans for
 # since the literal above lives inside an escaped-quote bash string).
 
-ALLOWED_TOOLS='Bash(git log*) Bash(git status*) Bash(git diff*) Bash(git fetch*) Bash(gh pr list*) Bash(gh pr view*) Bash(gh issue list*) Bash(sqlite3*) Bash(chump gap list*) Bash(chump gap view*) Bash(chump gap reserve*) Bash(chump --briefing*) Bash(cat*) Bash(tail*) Bash(source scripts/coord/lib/notify-operator.sh*) Bash(scripts/coord/lib/notify-operator.sh*) Bash(printf*) Bash(echo*)'
+# Ops fix 2026-08-13: ARRAY, not a space-joined string. The old string was
+# passed unquoted as `--allowedTools $ALLOWED_TOOLS`, so word-splitting
+# exposed `--briefing*)` (from `Bash(chump --briefing*)`) to claude's arg
+# parser as a bogus option -> `error: unknown option '--briefing*)'` and
+# claude exited 1 before running. The advisor script already used an array;
+# this mirrors it. Also swaps the reply entry to the DIRECT notify-operator
+# form (see PROMPT + INFRA-3602).
+# RESILIENT-1497: added 'chump gap set' (reprioritize) and 'chump dispatch'
+# (dispatch) past the original read+file-gap set, so the peer can ACT on an
+# operator DM, not just answer it. Deliberately absent: anything that edits
+# repo visibility, touches billing/credentials, deletes, or pushes/merges —
+# those stay outside the allowlist as the structural guardrail (see
+# lib/peer-guardrails.sh for the same category list enforced on the
+# judgment-tick side).
+ALLOWED_TOOLS=(
+    'Bash(git log*)' 'Bash(git status*)' 'Bash(git diff*)' 'Bash(git fetch*)'
+    'Bash(gh pr list*)' 'Bash(gh pr view*)' 'Bash(gh issue list*)' 'Bash(sqlite3*)'
+    'Bash(chump gap list*)' 'Bash(chump gap view*)' 'Bash(chump gap reserve*)'
+    'Bash(chump gap set*)' 'Bash(chump dispatch*)'
+    'Bash(chump --briefing*)' 'Bash(cat*)' 'Bash(tail*)'
+    'Bash(CHUMP_NOTIFY_KIND=discord_command_reply scripts/coord/lib/notify-operator.sh*)'
+    'Bash(scripts/coord/lib/notify-operator.sh*)' 'Bash(printf*)' 'Bash(echo*)'
+)
 
 cycle_output=""
 cycle_rc=0
 CLAUDE_ARGS=(-p "$PROMPT"
     --tools "Read,Grep,Glob,Bash"
-    --allowedTools $ALLOWED_TOOLS
+    --allowedTools "${ALLOWED_TOOLS[@]}"
     --disallowedTools "Edit,Write,NotebookEdit"
     --permission-mode dontAsk
     --max-budget-usd "$BUDGET_USD"

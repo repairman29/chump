@@ -2,12 +2,9 @@
   domain: INFRA
   title: 21 dead daemons cluster — exit=78 (config errors) + exit=1 (script errors); refresh-runner-binary broken explains the perpetually-stale chump binary
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - The 21 dead daemons (exit=78 config errors and exit=1 script errors) are diagnosed and either fixed to run or removed; `launchctl` shows no lingering failed instances from this cluster.
   outcome_id: MISSION-010
 

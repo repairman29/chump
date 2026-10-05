@@ -131,6 +131,11 @@
             "type": "string",
             "description": "CREDIBLE-240. Repo-relative path to src/lib.rs, src/main.rs, or Cargo.toml — whichever the crate actually has. Primitives cite this instead of assuming src/lib.rs, which produced dangling receipts for binary crates."
           },
+          "ecosystem": {
+            "type": "string",
+            "enum": ["rust", "js_ts", "python"],
+            "description": "INFRA-3469. Which ecosystem adapter produced this entry. Defaults to 'rust' for entries written before this field existed. js_ts entries are discovered via package.json + main/module/types entry resolution; python entries via top-level __init__.py packages."
+          },
           "public_items": {
             "type": "array",
             "items": {

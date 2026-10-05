@@ -1,19 +1,11 @@
 - id: MISSION-061
   domain: MISSION
-  title: 'improve: GREEN-FIRST over own open held PRs before picking new work'
+  title: "improve: GREEN-FIRST over own open held PRs before picking new work"
   status: done
   priority: P0
   effort: m
   acceptance_criteria:
-  - 'EXTERNAL PR SHEPHERD (Move 1 of CI/PR-boss). Before Stage-1 PICK, chump improve --apply sweeps the loop''s OWN open PRs
-    on the repo and drives each to terminal BEFORE new work (dep-bound: a prior cycle''s held/behind PR may block this cycle''s
-    work). COMPOSES what we shipped: 059 remediate_held (classify->rerun/escalate-fix/close) + 063 agent identity as the OWNERSHIP
-    FILTER (only touch PRs whose commits are authored by a *.chump.fleet agent — never a human''s PR) + a rebase-if-BEHIND
-    step (port queue-driver''s rebase). Refactor remediate_held to take gap_title:&str (not &ProposedGap) so the sweep can
-    reuse it for prior-cycle PRs. Bounded: CHUMP_IMPROVE_SWEEP_MAX (default 3) candidates/cycle so the sweep can''t starve
-    new work; CHUMP_IMPROVE_SHEPHERD=0 disables. Ownership filter: gh pr view --json commits, latest author email ends with
-    CHUMP_AGENT_EMAIL_DOMAIN (default chump.fleet). Verify: an open red/behind agent-authored PR from a prior cycle is rebased+remediated
-    (merged or closed) before a new gap is implemented; a human-authored open PR is NEVER touched; unit tests for the ownership
-    filter + sweep cap.'
+    - "EXTERNAL PR SHEPHERD (Move 1 of CI/PR-boss). Before Stage-1 PICK, chump improve --apply sweeps the loop's OWN open PRs on the repo and drives each to terminal BEFORE new work (dep-bound: a prior cycle's held/behind PR may block this cycle's work). COMPOSES what we shipped: 059 remediate_held (classify->rerun/escalate-fix/close) + 063 agent identity as the OWNERSHIP FILTER (only touch PRs whose commits are authored by a *.chump.fleet agent — never a human's PR) + a rebase-if-BEHIND step (port queue-driver's rebase). Refactor remediate_held to take gap_title:&str (not &ProposedGap) so the sweep can reuse it for prior-cycle PRs. Bounded: CHUMP_IMPROVE_SWEEP_MAX (default 3) candidates/cycle so the sweep can't starve new work; CHUMP_IMPROVE_SHEPHERD=0 disables. Ownership filter: gh pr view --json commits, latest author email ends with CHUMP_AGENT_EMAIL_DOMAIN (default chump.fleet). Verify: an open red/behind agent-authored PR from a prior cycle is rebased+remediated (merged or closed) before a new gap is implemented; a human-authored open PR is NEVER touched; unit tests for the ownership filter + sweep cap."
   closed_date: '2026-07-25'
   closed_pr: 3296
+

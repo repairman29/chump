@@ -1,0 +1,12 @@
+- id: EFFECTIVE-361
+  domain: EFFECTIVE
+  title: "EFFECTIVE: implement escalates through ALL cascade providers until one lands a real fix (use every option)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"implement escalates through ALL cascade providers until one lands a real fix (use every option)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3487
+

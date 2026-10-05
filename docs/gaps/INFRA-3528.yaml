@@ -1,0 +1,13 @@
+- id: INFRA-3528
+  domain: INFRA
+  title: "proof-of-merge: external_repo gaps should verify against the registered repo's main, not chump's"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    External-repo gaps (skills_required external_repo:owner/repo) cannot complete the ship lifecycle: (1) INFRA-1392 proof-of-merge only inspects chump's own local main, so a fix commit on the registered repo's main (subject carrying the gap ID) is invisible; (2) INFRA-402 closed-pr guard requires a numeric PR, but solo external repos ship direct commits. Concrete case: GAME-001 — fix landed+verified on repairman29/realm-of-shadows main d1b9802, surveyor acceptance PASS, yet unshippable without bypasses. Wanted: ship path that checks the registered external repo's main (clone exists in repos registry) and accepts commit-hash proof where no PR workflow exists.
+  acceptance_criteria:
+    - chump gap ship succeeds for an external_repo gap whose fix commit (subject carrying the gap ID) is on the registered repo's main
+    - no bypass env vars required
+    - GAME-001 shippable as the worked example
+

@@ -226,6 +226,9 @@ TARGET GAP\n\
 DESCRIPTION (filer's context — may be stale):\n\
 {desc}\n\
 \n\
+ACCEPTANCE CRITERIA (concrete, testable bullets — use these to shape sub-gaps):\n\
+{ac}\n\
+\n\
 EXISTING OPEN GAPS (sample) — do NOT propose duplicates:\n\
 {opens}\n\
 \n\
@@ -249,6 +252,11 @@ Each sub-gap must be picked + shipped independently of the others.\n",
                 "(no description — proceed from title + existing gaps)"
             } else {
                 row.description.as_str()
+            },
+            ac = if row.acceptance_criteria.trim().is_empty() {
+                "(none — proceed from title + description)"
+            } else {
+                row.acceptance_criteria.as_str()
             },
             opens = open_summaries.join("\n"),
         );

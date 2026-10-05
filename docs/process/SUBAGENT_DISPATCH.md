@@ -55,6 +55,13 @@ lints). Each round-trip costs 5-10 min of CI time. Every Sonnet brief should
 include this checklist for the subagent to run **before** `git push`:
 
 ```
+[ ] 0. Verify you're on the right branch: `chump verify-claim-branch ||
+    exit 1` (INFRA-1649, re-do of INFRA-1598). Catches the class where a
+    linked worktree's gitdir back-references the wrong session and
+    `git push origin HEAD` resolves onto a different session's branch
+    (INFRA-1427: PR opened on the parent worktree's branch, required
+    manual close + reopen). Run this BEFORE any other check below.
+
 [ ] New event kinds in EVENT_REGISTRY.yaml? → grep YOUR diff for new
     `kind:` entries. For each, verify the emit site contains a literal
     `"X"` or `"X".to_string()` pattern the audit grep can detect.
@@ -110,6 +117,33 @@ description:
 This single addition is responsible for the majority of the expected ship-rate
 improvement. The hesitation / clarifying-question mode is the most common
 subagent failure pattern after ship-stage wedges.
+
+---
+
+## The Glance phase (INFRA-1798, A2A_MASTER_PLAN Tier-0 0.3 — paste into every subagent prompt)
+
+Add this immediately after the no-clarifying-questions block, before the task
+description. `chump-inbox.sh read` must be the FIRST shell command of the
+session — before claiming, before picking work:
+
+```
+## Glance phase (mandatory, run first)
+
+1. Run `scripts/coord/chump-inbox.sh read --json` NOW, before anything else.
+2. ACT on every drained item — read-without-act does not count:
+   - HANDOFF / STUCK addressed to you → ack the sender:
+     `scripts/coord/broadcast.sh --to <sender> DONE <gap> "glance-ack"`.
+   - Every open `FEEDBACK kind=proposal` you have not yet voted on → cast
+     `chump vote <corr_id> +1|-1|0 --reason '<why>'`. Abstain (`0`) with a
+     one-line reason if it's out of lane — that still counts toward quorum.
+3. `chump-inbox.sh read` itself advances your cursor and emits
+   `kind=inbox_advance` — no extra step needed for that part.
+```
+
+`scripts/coord/lib/inbox-glance.sh` (`chump_inbox_glance <role>`) is the
+reusable implementation every `scripts/coord/*-loop.sh` curator wires in as
+its literal first step; a dispatched Sonnet doesn't have a loop wrapper
+around it, so the prompt block above is how the same discipline reaches it.
 
 ---
 
@@ -322,6 +356,24 @@ scripts/coord/chump-edit-replay.sh INFRA-NNN /private/tmp/chump-INFRA-NNN
 
 Patches are stored in `.chump-plans/<GAP-ID>/` in the main repo. They are
 cleaned up automatically 7 days after the gap ships.
+
+## Worktree-cleanup contract — pair with lease cleanup on every exit path (INFRA-1931)
+
+Any dispatcher that creates a temporary worktree at `/tmp/chump-<gap-id>`
+(e.g. `spawn_gap_workflow_inner` in `src/web_server.rs`) **must** call both
+`cleanup_lease(gap_id, &repo_root)` and `cleanup_worktree(gap_id)` on
+**every terminal exit branch** — success and failure alike (preflight
+reject, claim failure/error, ship failure/error), not just the happy path.
+
+Before INFRA-1931, only the ship-success branch called `cleanup_worktree`;
+every failure/error return left `/tmp/chump-<gap-id>/` on disk, leaking a
+full worktree per failed dispatch. `cleanup_lease` alone frees the lease
+lock but not the worktree directory — the two calls are not substitutes
+for each other and both are required.
+
+When adding a new terminal `return`/`Err` arm to a dispatch workflow, grep
+for the existing `cleanup_lease` calls in the same function and add the
+matching `cleanup_worktree` call alongside each one.
 
 ## Timeout rescue path — find WIP on the branch (INFRA-525)
 

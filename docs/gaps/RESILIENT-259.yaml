@@ -1,0 +1,12 @@
+- id: RESILIENT-259
+  domain: RESILIENT
+  title: "RESILIENT: operating practices belong in AGENTS.md (canonical, harness-agnostic), NOT CLAUDE.md — fleet/mistral agents read AGENTS.md; promote mine-almanac + holler + ship-discipline there, thin CLAUDE.md to Claude-Code-only mechanics, worker injects the RIGHT file per harness"
+  status: open
+  priority: P3
+  effort: m
+  description: |
+    RECEIPTS (2026-08-09): AGENTS.md mentions almanac x1, holler/voice x0 — the canonical harness-agnostic file the non-Claude fleet reads is nearly practice-free. The practices live in CLAUDE.md, which its OWN header calls the 'Claude-Code-specific overlay' — so mistral/codex/opencode fleet workers never see them. worker.sh injects a mix of AGENTS.md + CLAUDE.md + briefing (lines 335/945/1011/1045). Rough shape: (a) move the WHAT-every-agent-does content (mine almanac before build/holler, chump voice friction, the 4 pillars, ship discipline, reality-check) from CLAUDE.md into AGENTS.md; (b) thin CLAUDE.md to Claude-Code-ONLY mechanics (Agent-tool dispatch, OAUTH paths, .claude/ conventions); (c) worker.sh injects AGENTS.md (not CLAUDE.md) for non-Claude harnesses; (d) pairs with RESILIENT-258 (briefing advertises per-gap). Root: agents don't use our tools because the how-we-work manual is in the wrong file for them (Jeff 2026-08-09).
+  acceptance_criteria:
+    - agent operating practices live in AGENTS.md (harness-agnostic canonical source) and CLAUDE.md points to it rather than duplicating, so fleet/mistral agents read the same doctrine.
+  outcome_id: COTG
+

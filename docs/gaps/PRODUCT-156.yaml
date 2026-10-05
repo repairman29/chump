@@ -1,0 +1,20 @@
+- id: PRODUCT-156
+  domain: PRODUCT
+  title: "[mytrove.app] Privacy Policy link is a dead href=\"#\" placeholder (confirmed: /privacy also 404s)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Directly verified 2026-08-05, not from the crawler this time (it missed this -- see below): the footer "Privacy" link is href="#", and navigating directly to /privacy returns HTTP 404. No reachable privacy policy on a product asking for accounts.
+    
+    Note on tooling: posse's crawl.mjs currently routes href="#" links through the click-tier detector instead of the simple dead-link check, and the click tier marked this "alive" because some unrelated network request fired during the observation window -- a real false-negative class, not specific to this site. Confirmed this finding by direct fetch, not by trusting the automated scan.
+    
+    context: {"url":"https://mytrove.app","note":"crawl.mjs missed this due to a routing gap, fixed by direct fetch verification","source":"manual-verification"}
+    source: holler feedback_events, dedupe (computed, see holler-to-chump.mjs stableHash)
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/trove-web"
+

@@ -2,7 +2,7 @@
   domain: META
   title: "META UMBRELLA: plumbing-priority forcing function — fleet picks structural-wiring gaps at a guaranteed rate; idle umbrellas auto-decompose; CLAUDE.md doctrine-delta injection so agents see what just shipped"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
     - "docs/process/PLUMBING_PRIORITY.md exists: codifies the forcing function — when structural-PR-rate (% of last-N shipped PRs that closed gaps with effort=l OR title containing UMBRELLA/META/IGNITION/SUBSTRATE) drops below 25% rolling 14d, fleet pickability bias FLIPS toward plumbing for the next 7d."

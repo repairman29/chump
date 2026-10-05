@@ -1,0 +1,18 @@
+- id: PRODUCT-175
+  domain: PRODUCT
+  title: "[almanac] Fleet summarize backfill runs as session-spawned nohup workers - machine sleep kills it every night"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    The summary backfill (llama3.2:3b via Mac+helsinki Ollama, queue/lockdir design in ~/.almanac: summarize-queue.txt, summarize-locks/, summarize-worker.sh with the 2026-08-02 health gate) is launched via nohup+caffeinate from interactive sessions. caffeinate -i does not survive lid-close: rounds 1-3 all died to Saturday-evening sleep and needed manual relaunch. The worker script is already idempotent and resumable - it just needs a durable owner. Fix: a launchd job (or the existing cron layer) that runs N workers when the queue has unclaimed entries, so the backfill and future re-summarize sweeps survive sleep/reboot without a human relaunching them.
+    
+    context: {"source":"claude-triage/backfill-ops-2026-08-04"}
+    source: holler feedback_events, dedupe 4700768795085213
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/almanac"
+

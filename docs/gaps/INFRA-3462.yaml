@@ -1,0 +1,14 @@
+- id: INFRA-3462
+  domain: INFRA
+  title: "EFFECTIVE: route the code-reviewer through the shared LLM service — gateway --model + reviewer uses chump llm-complete (PR-2, the proof; kills the OAuth-only reviewer bug at the root, not the skip band-aid)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"route the code-reviewer through the shared LLM service — gateway --model + reviewer uses chump llm-complete (PR-2, the proof; kills the OAuth-only reviewer bug at the root, not the skip band-aid)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Decomposed into 5 slices: INFRA-3568, INFRA-3569, INFRA-3570, INFRA-3571, INFRA-3572
+  outcome_id: MISSION-010
+

@@ -1,0 +1,17 @@
+- id: ZERO-WASTE-041
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: repo-root scratch clutter + untracked .chump runtime state need .gitignore entries or removal"
+  status: done
+  priority: P3
+  effort: xs
+  description: |
+    Repo-root scratch files (f.txt, out.txt, append.txt, path, migration.sql, schema_migration.sql — audit 2026-08-05) plus recurring untracked .chump/ runtime state (farmer-heartbeat, pr-stuck-state.json, trunk-sentinel-state.json) and the new .chump/stranded/ archive dir keep git status noisy, which trains agents to ignore dirt — the exact habit that let the Phase D residue sit invisible for days (see ZERO-WASTE-039). Rough shape: (a) gitignore .chump/ runtime state paths + .chump/stranded/; (b) per root scratch file: delete if orphaned, or relocate/justify if load-bearing (check nothing sources them first); (c) end state: git status on a fresh session shows nothing unexplained.
+  acceptance_criteria:
+    - git status clean on an idle checkout
+    - each removed root file verified unreferenced (grep scripts/ src/) before deletion
+    - .chump runtime state and stranded/ archives ignored
+    - no tracked file removed without its own receipt
+  closed_date: '2026-08-07'
+  closed_pr: 3483
+  outcome_id: ZERO-WASTE-000
+

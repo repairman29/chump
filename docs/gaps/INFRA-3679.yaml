@@ -1,0 +1,14 @@
+- id: INFRA-3679
+  domain: INFRA
+  title: main is RED on audit-shard(4) bypass-lint — EFFECTIVE-450 (#4284) added the genuine wired toggle CHUMP_BINARY_NO_FETCH without ratcheting the debt-ceiling, so main sits at 224>223 and jams the whole merge queue; sanctioned operator +1 reconcile
+  status: in_progress
+  priority: P1
+  effort: xs
+  acceptance_criteria:
+    - "ROOT CAUSE: the no-new-bypass-env-vars gate (INFRA-2429 / EFFECTIVE-094) counts distinct CHUMP_*_(BYPASS|SKIP|IGNORE|CHECK|NO_) vars across scripts/src/crates against a debt-ceiling. #4284 (EFFECTIVE-450, 66aa197) introduced CHUMP_BINARY_NO_FETCH — a real wired toggle in scripts/setup/chump-node-install.sh:477 (forces build-from-source) — but merged WITHOUT ratcheting the ceiling. Main went 223→224 while ceiling stayed 223, so audit-shard(4) reds every PR (confirmed: #4283/#4286/#4287 all BLOCKED; main Audit red at 66aa197 vs green at 1df5cead). The recurring zero-headroom tripwire this ceiling file's history documents repeatedly."
+    - "FIX (sanctioned 'only way up' per the ceiling file + its 222→223 / 221→222 precedents): operator raises scripts/ci/bypass-var-ceiling.txt 223→224 with a dated reason attributing the legit already-merged CHUMP_BINARY_NO_FETCH, so count 224 ≤ ceiling 224 passes. bash scripts/ci/test-no-new-bypass-env-vars.sh no longer reds. Unblocks the whole queue."
+    - "NET DEBT still owed: this is a +1 admit of a genuine var, not a cull. The standing dead-bypass cull that restores headroom (so the gate stops being a zero-headroom tripwire) remains tracked by INFRA-3625 — this reconcile does not close it."
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: gh run list --branch main --workflow=Audit --limit 3  +  git show 66aa197 | grep '^+' bypass-pattern | OUTPUT: main Audit failure @66aa197 (03:36) after success @1df5cead (03:03); the sole new bypass-pattern token in 66aa197 is CHUMP_BINARY_NO_FETCH (wired read at chump-node-install.sh:477) | THEORY: EFFECTIVE-450 landed a legit toggle but didn't pay the addition tax (delete-one-or-raise-ceiling), so main sat at 224>223 and jammed the shared audit gate for every PR | ALT: rejected 'cull an unrelated bypass to stay at 223' — the remaining allowlist vars all guard live gates (INFRA-2525 RULE: never delete a bypass while its gate still hard-blocks); admitting the genuine merged var is the documented sanctioned path, with INFRA-3625 owning the real headroom-restoring cull
+  closed_pr:

@@ -1,0 +1,53 @@
+- id: EFFECTIVE-409
+  domain: EFFECTIVE
+  title: "inference tender: a scheduled job that indexes live model metadata, verifies limits, and ranks slots by MEASURED fitness per task class"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "BORROW THE INDEX, DO NOT BUILD ONE. OpenRouter's live API (https://openrouter.ai/api/v1/models — we already hold a key, it is slot 11) returns 400 models with context_length, pricing, per_request_limits, expiration_date, knowledge_cutoff, architecture, reasoning and supported_parameters. Verified live 2026-08-07. That is the maintained model registry; the tender consumes it rather than reimplementing it"
+    - "TOOL-CAPABILITY IS QUERYABLE AND DIRECTLY FIXES THE MEASURED FAILURE: supported_parameters contains 'tools'. Measured 2026-08-07: 17 free-priced models, 14 tool-capable. EFFECTIVE-366 escalates to Claude because 'the free/sub models all avoid str_replace' — but slot selection today never checks whether a model advertises tool support at all. Filter on it before blaming the model"
+    - "CAPABILITY-CLASS ROUTING, the thing Jeff actually asked for: rank slots per TASK CLASS, not one global order. Chump already carries the taxonomy (work / cursor_improve / doc_hygiene / battle_qa / research / opportunity / discovery) and the routing machinery (CascadeStrategy::TaskAware and provider_bandit Thompson Sampling) — both built, both OFF by default (strategy falls back to Priority). Wire the tender's rankings into them rather than adding a third mechanism"
+    - "RANK ON MEASURED FITNESS, NOT ADVERTISED SPECS: provider_quality.rs already records success/failure/latency and TOOL-CALL success per slot and drives demotion. Join that observed record to the indexed metadata. A model that advertises tools but fails tool-calls in practice must rank below one that succeeds — advertised capability is a claim, tool_call_result is an outcome"
+    - "VERIFY LIMITS, REPORT DRIFT, NEVER AUTO-EDIT .env — folds in CREDIBLE-227: probe rate-limit headers and /v1/models per configured slot, compare against declared RPM/RPD/CONTEXT_K, and file disagreement as a finding. Receipt for why: slots 4 and 8 both declare model=gemini-2.5-flash yet differ 57x on RPD (86400 vs 1500), and slots 12-15 declare no limits at all"
+    - "DEPRECATION + CONNECTIVITY WATCH: expiration_date and model presence in /v1/models catch a configured model that has been retired; a dead key or moved base URL surfaces the same way. Today a retired model fails silently at call time, mid-task"
+    - "BIG-CONTEXT ROUTING IS FREE MONEY LEFT ON THE TABLE: free tool-capable models exist at 1,000,000 context (nvidia/nemotron-3-ultra-550b:free) and several at 262,144. Nothing today routes 'this task needs a huge window' to them — the cascade orders by priority and rate limit only"
+    - "OUTPUT IS A RANKED, DATED ARTIFACT the fleet and a human can both read, refreshed on a schedule (launchd per SCHEDULING_LAYERS.md — it must survive session close). Not a one-shot script someone remembers to run: see ZERO-WASTE-036, this fleet's most repeated failure is the built-and-never-scheduled instrument"
+  notes: |
+    [2026-08-08T15:20:12Z] CORRECTION 2026-08-07 — operator: 'we're not just using open router... you can't default to that. I use A LOT of providers and we will take from them until they turn off the faucet.'
+    
+    My first draft made OpenRouter the registry. Wrong. OpenRouter only knows what OpenRouter routes; the direct Cerebras/Groq/Gemini/Mistral keys have their own catalogs, their own free tiers, and better limits than going through an aggregator. OpenRouter is ONE slot of 13, useful as a cross-provider metadata source (it is the only one exposing supported_parameters incl. tools), NOT the source of truth.
+    
+    MEASURED per-provider discovery, all 8 distinct configured endpoints, 2026-08-07 — GET {BASE}/models with the configured key:
+      gemini      generativelanguage.google      59 models  ok
+      openrouter  openrouter.ai/api/v1          400 models  ok
+      nvidia      integrate.api.nvidia.com      100 models  ok
+      mistral     api.mistral.ai/v1              54 models  ok
+      cerebras    api.cerebras.ai/v1             403 Forbidden
+      groq        api.groq.com/openai/v1         403 Forbidden
+      hyperbolic  api.hyperbolic.xyz/v1          403 Forbidden
+      opencode    opencode.ai/zen/v1             403 Forbidden
+    
+    So catalog polling covers only half the fleet's providers. DO NOT read the 403s as dead keys — listing may simply be out of the key's scope while completions still work. The tender must DISTINGUISH those two cases, because they demand opposite actions (re-key vs ignore).
+    
+    REVISED DESIGN:
+    1. Per-provider catalog where /v1/models answers (4 of 8 today) — authoritative for that provider's models, context, deprecation.
+    2. Liveness/limit probe where listing is refused — a minimal completion, capturing rate-limit response headers. This doubles as the CREDIBLE-227 limit verification and is the ONLY signal available for the 403 half.
+    3. OpenRouter as a supplementary metadata join (tools/context/pricing across models we reach directly elsewhere), never as the default.
+    
+    PRIMARY VALUE, per the operator's actual strategy: the point is not a pretty catalog — it is DETECTING THE FAUCET TURNING OFF and re-ranking around it within one cycle. A free model vanishing from a catalog, a 200 becoming 401/403/429-always, a free tier silently repriced. That detection is worth more than the ranking, because today a cut-off tier fails silently at call time mid-task and the cascade only learns via quality demotion after repeated failures.
+    [2026-08-08T15:23:43Z] OPERATOR DIRECTION 2026-08-07: 'No probing. Set up fail catches and file gaps to fix/review them. I WANT ALL OF THIS. 100% PLANNED USE OF AVAILABLE INFERENCE. IT DOES NOT NEED TO BE FOR CHUMP TO WRITE ALL CODE & SHIP PRS. THE INFERENCE SHOULD BE AVAILABLE TO THE FLEET/SOFTWARE FACTORY.'
+    
+    NO SYNTHETIC PROBES — supersedes the probe design in my earlier note. Probing scarce slots spends the budget being measured (gemini-2.5-pro is ~50/day). Instead classify failure KIND on real traffic: 401/403 (auth or scope), 429 (rate), model-not-found (deprecation), tool-call-refused. provider_quality.rs already records success/failure/latency/tool-call outcomes per slot and already drives demotion — extend it to record the kind, not just the fact. A faucet turning off is a CHANGE IN A SLOT'S FAILURE SIGNATURE, detectable from real traffic with zero extra requests. On a signature change: file a gap and let the cascade re-rank; a human only decides the re-key.
+    
+    SCOPE IS THE WHOLE SOFTWARE FACTORY, not chump's code path. Full vision: opportunity-library/INFERENCE_AS_ATTENTION.md.
+    
+    Reframe that shapes the design: we do not have a cheap Claude, we have a CROWD. The measured failure is narrow (free/sub models avoid str_replace) and that is one job. The crowd is the fleet's EYES — perceive, classify, summarize, watch, vote, draft. Claude is the HANDS — decide, edit, ship.
+    
+    ALLOCATOR, not just a ranker: 'planned use' means a daily budget across standing jobs with floors (continuous comprehension; sweeps and watching; queue curation) and the remainder spent opportunistically. Quotas RESET — unused free inference evaporates rather than banking, which makes idle capacity a ZERO-WASTE-000 violation ('no shelved capability') and probably the largest single item on it. Reserve scarce high-context slots (2M ctx at ~50/day) for jobs that need whole-repo reads instead of whoever asks first.
+    
+    READY CONSUMERS, all already filed and all starving on attention rather than capability: almanac's markdown summarize backfill (currently a local 3B at ~20s/file), organ sweeps across ~95 repos (EFFECTIVE-389), the 211-flag drift triage (CREDIBLE-222), 74 template ACs (EFFECTIVE-407, currently specced at opus), fleet CI watching (CREDIBLE-220), PR-rot detection (RESILIENT-247), holler triage/consolidate (ZERO-WASTE-049), and tracemap over 4,394 unread ambient events incl. 769 unclassified farmer_auth_dead (EFFECTIVE-397).
+    
+    QUALITY MECHANISM IS REDUNDANCY, NOT PROMPTING: N independent models; unanimous = accept as candidate, split = escalate to Claude or a human. Disagreement is the signal and must not be averaged away. Mirrors the Chatwoot lesson already recorded in SHAPE_SCAN_support.md — count observable acts, never a model's self-reported confidence.
+  outcome_id: CHUMPOS
+

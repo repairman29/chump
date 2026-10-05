@@ -1,0 +1,26 @@
+# VOA-003 — Voice of the Agent, full report.
+# Auto-filed by `chump voice` (INFRA-2258).
+# See docs/process/VOICE_OF_AGENT.md for protocol.
+
+id: VOA-003
+filed_at: "2026-08-09T15:33:33Z"
+
+reporter:
+  agent_role: unknown-role
+  chump_version: "0.2.0"
+  target_repo: "anonymous"
+  target_repo_disclosure: anonymous
+  session_id: "(elided)"
+
+wedge_observations:
+
+  - wedge_class: auth_dead_false_positive
+    minutes_lost: 20
+    workaround_used:
+      summary: ""
+    proposed_fix:
+      shape: gate
+      fix: "Gate the farmer_auth_dead / auth-dead alert on the RESILIENT-086 validity probe (auth-status.sh) + a recent-merge ship-check BEFORE it emits. It fires while auth is valid and the fleet can transact — the #1 documented false-positive (CLAUDE.md has a whole section). Broken alerting is sloppy ops; make the alert honest or don't emit it."
+    impact_estimate_minutes_per_session: 20
+    evidence:
+      - "auth-status.sh output 'AUTH OK'; ambient farmer_auth_dead event 2026-08-09 while valid"

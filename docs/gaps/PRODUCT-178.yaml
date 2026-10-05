@@ -1,0 +1,13 @@
+- id: PRODUCT-178
+  domain: PRODUCT
+  title: "PRODUCT: Implement Voice Key Validation & Revocation Logic (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Endpoint validates {key} against a database of minted device keys
+    - Request is rejected if key is revoked or unknown
+    - Fallback to environment-key is implemented with an orphan-account existence check
+    - Invalid keys return a specific error payload for 'spoken reconnect hint'
+  outcome_id: EFFECTIVE-000
+

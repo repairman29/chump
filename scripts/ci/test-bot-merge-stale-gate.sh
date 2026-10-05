@@ -83,6 +83,7 @@ REMOTE=origin
 BASE_BRANCH=main
 BRANCH=test/stale-fixture
 DRY_RUN=0
+NO_MERGE_DRIVER=0
 LOCK_DIR="$AMB_DIR/.chump-locks"
 REPO_ROOT="$AMB_DIR"
 
@@ -97,20 +98,26 @@ EOF
 awk '
     /INFRA-995: pre-push staleness gate/ {grab=1}
     grab {print}
-    /^# ── 5\. Push/ {exit}
+    /^# ── INFRA-993: scratch-commit guard/ {exit}
 ' "$BOT_MERGE" >>"$RUNNER"
 
 chmod +x "$RUNNER"
 
-# Case A: BEHIND = 5 ≤ 15 → block does not fail, no ambient event.
+# Case A: BEHIND = 5 ≤ 15 → block does not fail. Since RESILIENT-325, this no
+# longer silently pushes stale — it auto-rebases onto fresh main and emits
+# pre_push_rebase_applied (NOT stale_branch_blocked). See
+# test-bot-merge-pre-push-rebase.sh for the full auto-rebase coverage; this
+# case just asserts the stale-gate path itself isn't triggered.
 AMB_DIR="$TMP/caseA"
 mkdir -p "$AMB_DIR/.chump-locks"
 PATH="$TMP/fakebin:$PATH" AMB_DIR="$AMB_DIR" TEST_BEHIND=5 bash "$RUNNER"
 rc=$?
 [[ "$rc" -eq 0 ]] || fail "BEHIND=5 should pass, got rc=$rc"
-[[ ! -s "$AMB_DIR/.chump-locks/ambient.jsonl" ]] \
-    || fail "BEHIND=5 should NOT emit, but ambient has: $(cat "$AMB_DIR/.chump-locks/ambient.jsonl")"
-ok "BEHIND=5 (under threshold) → no block, no ambient event"
+if [[ -s "$AMB_DIR/.chump-locks/ambient.jsonl" ]]; then
+    grep -q '"kind":"stale_branch_blocked"' "$AMB_DIR/.chump-locks/ambient.jsonl" \
+        && fail "BEHIND=5 (under threshold) should NOT hit stale_branch_blocked: $(cat "$AMB_DIR/.chump-locks/ambient.jsonl")"
+fi
+ok "BEHIND=5 (under threshold) → no stale-branch block (RESILIENT-325 auto-rebases instead)"
 
 # Case B: BEHIND = 30 > 15 → block exits 3 + emits stale_branch_blocked.
 AMB_DIR="$TMP/caseB"
@@ -135,8 +142,10 @@ PATH="$TMP/fakebin:$PATH" AMB_DIR="$AMB_DIR" TEST_BEHIND=20 \
     CHUMP_BOT_MERGE_STALE_THRESHOLD=25 bash "$RUNNER"
 rc=$?
 [[ "$rc" -eq 0 ]] || fail "BEHIND=20 with threshold=25 should pass, got rc=$rc"
-[[ ! -s "$AMB_DIR/.chump-locks/ambient.jsonl" ]] \
-    || fail "BEHIND=20 under override threshold 25 should NOT emit"
+if [[ -s "$AMB_DIR/.chump-locks/ambient.jsonl" ]]; then
+    grep -q '"kind":"stale_branch_blocked"' "$AMB_DIR/.chump-locks/ambient.jsonl" \
+        && fail "BEHIND=20 under override threshold 25 should NOT hit stale_branch_blocked"
+fi
 ok "CHUMP_BOT_MERGE_STALE_THRESHOLD env override raises threshold"
 
 echo

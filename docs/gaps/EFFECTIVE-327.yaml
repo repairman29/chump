@@ -1,0 +1,12 @@
+- id: EFFECTIVE-327
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [COTG] chump bench runner — score a track lap (schema + ci-green grading + scorecard)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG] chump bench runner — score a track lap (schema + ci-green grading + scorecard)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: COTG
+

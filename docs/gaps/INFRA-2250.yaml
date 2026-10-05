@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1 (META-128 SCALE): ARC (Actions Runner Controller) on K8s — ephemeral self-hosted runners auto-scaling to demand; replaces 4-Mac-mini bottleneck (today: 17 queued steady-state) blocking AI-fleet scaling past ~10 concurrent agents"
   status: open
-  priority: P1
+  priority: P3
   effort: l
   acceptance_criteria:
     - "1. Survey decision: K8s cluster type (kind/minikube for dev validation; GKE/EKS for prod). Recommend GKE Autopilot for AI-fleet-scale (no node mgmt; pay-per-pod-second)."

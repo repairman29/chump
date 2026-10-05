@@ -1,0 +1,22 @@
+- id: PRODUCT-149
+  domain: PRODUCT
+  title: "[mytrove.app] Blog \"Read More\" links to a bare 404 (confirmed on the featured article, likely pattern-wide)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of mytrove.app (Scout, stranger tier, ~10 min bounded session, no account/real data).
+    
+    The featured blog post's "Read More" link ("Welcome to MyTrove") goes to /blog/welcome-to-mytrove, which returns a bare, unstyled Apache-style 404 ("Error: Page not found"). Directly confirmed on this one article only -- the other 5 listed articles were not individually tested, but share the same card/link pattern, so worth checking whether it's systemic.
+    
+    context: {"url":"https://mytrove.app","tier":"stranger","source":"scout-stranger-agent","confidence":"confirmed on 1 of 6 blog links, others untested"}
+    source: holler feedback_events, dedupe 0050e471bdb04dc8
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-08-05T05:02:56Z] Before writing a new fix: repairman29/trove-web PR #5 ('Fix broken blog links and api errors', https://github.com/repairman29/trove-web/pull/5) already implements a dynamic blog route (src/app/blog/[slug]/page.tsx, 536 lines) + a public collections API endpoint, opened over a year ago by a Cursor background agent, never merged, never reviewed. Directly on-topic for this gap -- check whether it still applies cleanly against current master before writing a fresh fix from scratch. Found 2026-08-05 checking open-PR state across repos with active gaps; the holler->chump pipeline has no PR-awareness of its own (see HOLLER_CHUMP_BRIDGE.md).
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/trove-web"
+

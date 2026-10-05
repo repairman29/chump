@@ -2,9 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE: todo-gap"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    - TODO
+    - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
   outcome_id: MISSION-010
 

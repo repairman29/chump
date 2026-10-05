@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT (Cut-Friction): fleet launch blocked by PTY exhaustion (527>511) with no detection/auto-reap or non-tmux fallback"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Part of MISSION-044. run-fleet.sh failed with "create window failed: fork failed: Device not configured" — macOS PTY exhaustion (527 allocated vs kern.tty.ptmx_max=511). No detection, no auto-reap, no non-tmux fallback; the operator cannot raise the cap without sudo. Worked around this session by launching workers standalone (no tmux).

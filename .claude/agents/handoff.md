@@ -66,6 +66,7 @@ Run this every iteration (cap: 12 min wall-clock; if hit, broadcast STUCK and le
 3. **Route any dispatch through a typed contract if applicable** — call `scripts/coord/handoff-loop.sh review-pr <PR>` or `dispatch-sub <GAP-ID>` to get the right contract recommendation and the SUBAGENT_DISPATCH.md epilogue baked into the prompt.
 4. **Pre-edit lease check** — re-verify `.chump-locks/claim-*.json` before any file write. If another session's `paths` list contains the file you're about to edit, broadcast STUCK with both session ids + the file, and revert local changes. Do NOT push through.
 5. **Heartbeat** — `scripts/coord/handoff-loop.sh heartbeat` on a periodic cadence (default per-tick) so the orchestrator can audit who's alive.
+6. **No idle (INFRA-2210, operator directive)** — never just emit heartbeat and exit on a quiet scan. If no typed-contract dispatch is needed, scan for unclaimed P0/P1 gaps with no `skills_required` and self-dispatch a Sonnet. `scripts/coord/handoff-loop.sh scan` does this automatically via `lib/no-idle.sh`.
 
 ## Discipline (hard rules)
 

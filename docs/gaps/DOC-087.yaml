@@ -1,0 +1,17 @@
+- id: DOC-087
+  domain: DOC
+  title: "CREDIBLE: stranger gate + fleet radio inventory-first roadmaps — nearly done, receipts per step (doc)"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Ship docs/strategy/STRANGER_GATE_AND_FLEET_RADIO_2026-08-06.md — the inventory-first roadmaps for the two pointed missions Jeff selected 2026-08-06 (from the novel-tools slate; the games+posse+holler lane confirmed alongside). Format law: every roadmap step is marked EXISTS (with repo:path receipt), WIRE, or BUILD — proving the operator's 'you might find it's nearly done' hypothesis. Records the binding outward NO-GO boundary on posse and the no-service-key drain decision. Implementing umbrellas: EFFECTIVE-368 (stranger gate), EFFECTIVE-369 (fleet radio).
+  acceptance_criteria:
+    - doc lands in docs/strategy with receipts per EXISTS claim
+    - NO-GO boundary and allowlist rule stated verbatim-faithful
+    - cross-links EFFECTIVE-368/369 + outcomes STRANGER-GATE/FLEET-RADIO
+    - EXISTS outnumbers BUILD in both roadmaps or the doc says why not
+  closed_date: '2026-08-07'
+  closed_pr: 3493
+  outcome_id: CHUMPOS
+

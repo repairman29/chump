@@ -21,7 +21,43 @@ docs/arsenal/
     └── CP-NNN-<topic>.md       ← Smart-Harvest briefs, one per integration
 
 scripts/arsenal/build.py        ← regenerates the catalog
+scripts/arsenal/harvest.sh      ← harness-neutral shell CLI (scan/check/brief/deep-scan)
+src/harvester_cli.rs            ← `chump harvest` — the productized CLI (INFRA-1823)
 ```
+
+## CLI (INFRA-1823)
+
+`chump harvest` is the first-class Chump engine surface — usable from any
+harness (Claude Code, opencode, codex, manual), not just the Claude-Code
+`.claude/agents/harvester.md` agent or `harvester` skill. Both of those now
+delegate to this CLI (which itself wraps `scripts/arsenal/harvest.sh` +
+`scripts/arsenal/build.py` — the CLI's job is argument validation and exit
+codes, not duplicating the jq/gh catalog logic).
+
+```bash
+chump harvest scan                       # refresh the catalog from `gh repo list`
+                                          # exit 1 if any high-severity alert is present
+chump harvest check <GAP-ID|topic>       # arsenal overlap report — primitives_index,
+                                          # clusters, repo descriptions, roadmap +
+                                          # CP-brief mentions. Exit 0 on match, 1 on none.
+chump harvest brief <src-repo> <target>  # scaffold a Cross-Pollination Brief (CP-NNN)
+chump harvest deep-scan <cluster>        # list repos in a cluster with health metadata
+chump harvest list-clusters              # print all known cluster names + repo counts
+chump harvest --help                     # full usage + exit-code table
+```
+
+`chump gap decompose <GAP-ID>` calls `chump harvest check` internally as a
+pre-flight (AC4, INFRA-1823) — when the catalog has overlap for the gap's ID
+or title keywords, the citation is printed before the suggested slices and
+written into each filed sub-gap's `notes` field, so the implementing worker
+sees the prior art without re-running the check.
+
+**Scheduled rebuild:** `scripts/launchd/com.chump.harvester-scan.plist` runs
+the catalog rebuild weekly (Sunday 08:00 local, ahead of the Sunday 09:00
+roadmap-update-agent). Every rebuild — scheduled or via `chump harvest
+scan` — emits `kind=arsenal_rebuilt` to `ambient.jsonl` with repo/cluster/
+duplication/alert counts (registered in
+[`docs/observability/EVENT_REGISTRY.yaml`](../observability/EVENT_REGISTRY.yaml)).
 
 ## Rebuild cadence
 
@@ -50,12 +86,79 @@ python3 scripts/arsenal/build.py
 | Field | Meaning |
 |---|---|
 | `metadata` | counts: GH repos, local clones, unmatched local roots |
-| `clusters` | repos grouped by name/desc heuristic (`chump-engine`, `smugglers-rpg`, …) |
-| `duplications` | name-pattern collisions (echeo-*, mythseeker-*, …) → DRY violations |
+| `clusters` | repos grouped by name/desc heuristic (`chump-engine`, `game-services`, …) |
+| `duplications` | name-pattern collisions (product-*, game-*, …) → DRY violations |
 | `alerts` | high-priority findings (credential leaks, stale vendored clones, misplaced .git) |
 | `primitives_index` | label → list of repos that own that primitive (auth, payment, chat, …) |
 | `repos_by_name` | full per-repo record (visibility, language, last push, local_clone, primitives) |
+| `repos_by_name.*.extracted_primitives` | manually-verified, source-cited primitives found by a deep-scan (vs. `primitives`, which is a keyword heuristic on name/description) — populated from [`HARVEST_ROADMAP.md`](./HARVEST_ROADMAP.md)'s Wave 1-3 findings (INFRA-1823 AC7), **plus** automated per-file scan hits (INFRA-1864, see below), merged into the same list as formatted strings so the field stays `list[str]` |
+| `repos_by_name.*.extracted_primitives_by_file` | structured per-file hits from the automated scanner — `{file, line, primitive, match}` — one entry per (file, primitive, pattern) |
 | `unmatched_local_roots` | git roots on disk that don't map to a known repairman29 repo |
+
+### Coverage-push scope boundary (INFRA-7927, post-INFRA-7881)
+
+`extracted_primitives` entries come from `CHUMP_ARSENAL_CURATION`'s
+`extracted_primitives` map (default `~/.chump/arsenal/curation.json`),
+merged by repo name regardless of `CHUMP_ARSENAL_PUBLIC_ONLY`. That means a
+"coverage push" deep-scan pass has two legitimate destinations, and they are
+**not interchangeable**:
+
+- **Public repos** (`chump harvest check`-visible in the committed
+  `GLOBAL_ARSENAL.json`) — curation entries for these are safe to commit
+  here because the repo names and code are already public. See
+  `scripts/arsenal/curation.json.example` for the shape.
+- **Private repos** — findings go into the operator's own
+  `~/.chump/arsenal/curation.json` (outside every git tree, per INFRA-7881)
+  and into the operator-catalog copy of `HARVEST_ROADMAP.md`. Do **not**
+  recreate private repo names + citations in any file under `docs/arsenal/`
+  — that's exactly the leak INFRA-7881 fixed. A coverage-push gap whose AC
+  cites a fleet-wide repo count (e.g. "45 of 76") is scoped against the
+  operator's private catalog for the private slice, and against the
+  committed catalog only for the public repos within it.
+
+### Per-file primitive indexing (INFRA-1864)
+
+CP-002 found a Discovery Failure footprint: `<repo>/src/shredder.rs` had a
+tree-sitter AST-extraction primitive sitting in the arsenal the whole time,
+but nothing surfaced it to a gap that needed one — the catalog only indexed
+at the *repo* level (name/description keyword match), not the *file* level.
+
+`scripts/arsenal/build.py` now closes that gap: for every repo with a local
+clone, `scan_repo_primitives()` walks `<repo>/src` (falling back to the repo
+root if no `src/` dir exists), and regex-matches each source file's lines
+against **`scripts/arsenal/primitive_signatures.json`** — a language-keyed
+table of `{language: {primitive_label: [regex, ...]}}`. A hit is a file +
+line + matched snippet, e.g. `ast: src/shredder.rs:1 (use tree_sitter::Parser;)`.
+
+**The discipline this prevents the next CP-002-class miss:** when you add a
+new integration point that a future gap might duplicate (a new auth
+provider, payment SDK, embeddings store, LLM router — anything a *different*
+repo might independently reinvent), add its signature to
+`primitive_signatures.json` rather than relying on someone remembering to
+grep for it by hand. The scan reruns on every `harvest.sh scan` /
+`chump harvest scan`, so new signatures retroactively light up every repo
+with a local clone the next time the catalog rebuilds — no per-repo manual
+edit required, unlike `EXTRACTED_PRIMITIVES` in `build.py`.
+
+`harvest.sh check <topic>` / `chump harvest check <topic>` reads
+`extracted_primitives_by_file` (in addition to the existing `primitives_index`
++ cluster + description match) and surfaces per-file hits with line refs, so
+"does anything already do X" answers point at an exact file + line instead of
+just a repo name.
+
+Coordination note (INFRA-1823 productization): the Rust port of `chump
+harvest` (`src/harvester_cli.rs`) currently shells out to this script for
+`scan`/`check`. If/when that port inlines the catalog-build logic in Rust
+instead of shelling to `build.py`, the per-file scan step (walk `src/`,
+regex against `primitive_signatures.json`, one hit per file/primitive/pattern)
+should move with it — `primitive_signatures.json` is designed to be
+language-agnostic-format (plain JSON, not Python) specifically so a Rust
+scanner can read it without needing to import `build.py`.
+
+Performance budget: bounded to a single pass over each local clone's `src/`
+tree, first-match-per-pattern only (no exhaustive occurrence listing), with
+a 500 KB per-file skip — keeps a 76-repo fleet scan comfortably under the
+30s target when local clones are already on disk (see AC8 in the gap).
 
 ## Phase 2 — Smart Harvest (3 routes)
 
@@ -152,4 +255,4 @@ Full retrospective: [`docs/process/CURATOR_OPUS_LESSONS_2026-05-23.md`](../proce
 2. Zero commits in last 90 days
 3. No description (or description is template-only)
 
-Any single one — or even two — is insufficient. Wave 2 dropped 6 real Smugglers services as "all dormant" based on uniform `pushed_at` dates. Wave 3 found them. If a repo is in the catalog, it gets a deep-scan read before being declared dormant.
+Any single one — or even two — is insufficient. Wave 2 dropped 6 real services in one product family as "all dormant" based on uniform `pushed_at` dates. Wave 3 found them. If a repo is in the catalog, it gets a deep-scan read before being declared dormant.

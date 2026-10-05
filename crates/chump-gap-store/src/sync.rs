@@ -6,11 +6,11 @@
 //!     row to match YAML where they diverge. Insert NEW rows for YAML
 //!     files without a DB entry. This is the RECOVERY operation for the
 //!     `chump gap reserve` TODO-AC class (INFRA-2022 territory).
-//!   * [`sync_push`] — DB → YAML. For each state.db row with `status` in
-//!     `(open, in-progress)`, regenerate `docs/gaps/{ID}.yaml` from the DB
-//!     row. Uses [`crate::GapStore::dump_per_file_single`] which atomically
-//!     writes a tempfile then renames into place; preserves the canonical
-//!     schema and hand-curated unknown fields (INFRA-208).
+//!   * [`sync_push`] — DB → YAML. For every state.db row, regenerate
+//!     `docs/gaps/{ID}.yaml` from the DB row. Uses
+//!     [`crate::GapStore::dump_per_file_single`] which atomically writes a
+//!     tempfile then renames into place; preserves the canonical schema and
+//!     hand-curated unknown fields (INFRA-208).
 //!   * [`sync_check`] — dry-run diff. NO mutations. Exits non-zero on any
 //!     drift. Reports per-field divergence per gap id.
 //!
@@ -25,6 +25,18 @@
 //! multi-machine sync (file-locking against concurrent state.db writes);
 //! deleting / archiving YAMLs for `done` / `superseded` gaps; rewiring
 //! callers like `chump gap reserve` to internally call `sync_pull`.
+//!
+//! INFRA-3606 — canonical-store split-brain fix: state.db is canonical
+//! (ZERO-WASTE-020; `chump gap ship --update-yaml` is a no-op), but
+//! [`sync_pull`] used to treat YAML as authoritative for every field
+//! including `status`, so a gap shipped via `chump gap ship`/`gap close`
+//! (state.db moves to a terminal status) got silently reverted to `open` by
+//! the very next `sync --pull`, because [`sync_push`] never wrote terminal
+//! statuses back out to keep the YAML mirror fresh. [`sync_pull`] now
+//! refuses to pull *any* field over a state.db row already in a terminal
+//! status (see `is_terminal_status`) and [`sync_push`] now mirrors every
+//! status (not just open/in-progress) so the YAML side converges instead of
+//! staying permanently stale.
 
 use std::collections::{BTreeMap, BTreeSet};
 use std::path::{Path, PathBuf};
@@ -83,6 +95,11 @@ pub struct SyncReport {
     pub inserted: usize,
     pub updated: usize,
     pub skipped: usize,
+    /// INFRA-2227: count of rows where a concrete, enricher/human-authored
+    /// `acceptance_criteria` in state.db was preserved instead of being
+    /// clobbered by a vague/template (`TODO:`/`TBD:`/empty) YAML mirror during
+    /// `sync_pull`. A non-zero value here means the anti-revert guard fired.
+    pub ac_preserved: usize,
     pub changed_ids: Vec<String>,
 }
 
@@ -144,6 +161,7 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
     let snapshot = build_snapshot(store, gaps_dir)?;
     let mut report = SyncReport::default();
     let conn = store.conn_for_sync();
+    let allow_recycle = std::env::var("CHUMP_ALLOW_RECYCLE").as_deref() == Ok("1");
 
     for (id, pair) in &snapshot.by_id {
         let Some(yaml_row) = pair.yaml.as_ref() else {
@@ -161,16 +179,63 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
                 report.changed_ids.push(id.clone());
             }
             Some(db_row) => {
+                // INFRA-3606: state.db is the canonical store (ZERO-WASTE-020;
+                // `chump gap ship --update-yaml` is a documented no-op). Once a
+                // gap reaches a terminal status in state.db, a stale/racing
+                // YAML mirror must not resurrect it. Without this guard,
+                // sync_pull's raw UPDATE
+                // (which deliberately bypasses `set_fields`'s recycled-ID guard)
+                // reverts `chump gap ship`/`gap close` back to open on the next
+                // `--pull`, which is exactly the split-brain this gap fixes.
+                if is_terminal_status(&db_row.status) && !allow_recycle {
+                    eprintln!(
+                        "WARN: sync_pull: {id} is in terminal status '{}' — skipping YAML pull, row left unchanged (INFRA-7824)",
+                        db_row.status
+                    );
+                    report.skipped += 1;
+                    continue;
+                }
                 let diff_fields = compare_fields(db_row, yaml_row);
                 if diff_fields.is_empty() {
                     report.skipped += 1;
                 } else {
-                    if !dry_run {
-                        update_gap_row(conn, yaml_row)
-                            .with_context(|| format!("updating {id} from YAML during sync_pull"))?;
+                    // INFRA-2227: anti-revert guard. The gap-enricher
+                    // (EFFECTIVE-446) writes concrete acceptance_criteria to
+                    // the canonical state.db but does NOT rewrite the
+                    // docs/gaps/<ID>.yaml mirror. A YAML-authoritative pull
+                    // would then overwrite that concrete AC with the stale
+                    // `TODO:`/`TBD:` template on its very next cycle — the CJ
+                    // coherence-sync loop ran this every 5 min, silently
+                    // reverting every enriched gap (~100 of them). The pull's
+                    // legitimate job is to reconcile *status* and other fields
+                    // from the mirror; it must never downgrade a concrete spec
+                    // back to boilerplate. When the YAML AC is vague but the DB
+                    // AC is concrete, keep the DB AC and pull every other field.
+                    let preserve_db_ac =
+                        crate::acceptance_criteria_is_vague(&yaml_row.acceptance_criteria)
+                            && !crate::acceptance_criteria_is_vague(&db_row.acceptance_criteria);
+                    let effective_row = if preserve_db_ac {
+                        let mut merged = yaml_row.clone();
+                        merged.acceptance_criteria = db_row.acceptance_criteria.clone();
+                        report.ac_preserved += 1;
+                        merged
+                    } else {
+                        yaml_row.clone()
+                    };
+                    // Re-diff against the (possibly AC-preserved) row: if the
+                    // only divergence was the AC we just protected, there is
+                    // nothing left to write — skip instead of a no-op UPDATE.
+                    if compare_fields(db_row, &effective_row).is_empty() {
+                        report.skipped += 1;
+                    } else {
+                        if !dry_run {
+                            update_gap_row(conn, &effective_row).with_context(|| {
+                                format!("updating {id} from YAML during sync_pull")
+                            })?;
+                        }
+                        report.updated += 1;
+                        report.changed_ids.push(id.clone());
                     }
-                    report.updated += 1;
-                    report.changed_ids.push(id.clone());
                 }
             }
         }
@@ -179,16 +244,23 @@ pub fn sync_pull(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
     Ok(report)
 }
 
-/// Reconcile DB → YAML. For each state.db row with status in
-/// (`open`, `in_progress`, `in-progress`), regenerate
+/// Reconcile DB → YAML. For every state.db row, regenerate
 /// `docs/gaps/{ID}.yaml` from the DB row. Uses
 /// [`GapStore::dump_per_file_single`] which writes atomically (tempfile +
 /// rename) and merges hand-curated unknown fields (INFRA-208).
 ///
-/// Phase 1 syncs OPEN + IN-PROGRESS only — `done` and `superseded` YAMLs
-/// are intentionally left alone (their lifecycle is owned by
-/// `chump gap ship --update-yaml` and operator review). This keeps the
-/// blast radius small for the first iteration.
+/// Originally (Phase 1) this only synced OPEN + IN-PROGRESS rows, leaving
+/// `done` / `superseded` YAMLs alone under the theory that their lifecycle
+/// was owned by `chump gap ship --update-yaml`. That flag is now a
+/// documented no-op (ZERO-WASTE-020 — state.db is canonical), which left
+/// terminal-status YAMLs permanently stale with no path to reconcile them —
+/// contributing to the INFRA-3606 split-brain (a stale `status: open` YAML
+/// mirror looks like real drift forever). Pushing every status closes the
+/// loop: state.db values flow out to the YAML mirror on the very next
+/// `--push`, so `sync --check` converges to clean instead of staying dirty
+/// on every shipped gap. [`sync_pull`]'s terminal-status guard (see
+/// `is_terminal_status`) is what keeps this direction from being circular —
+/// once a status is terminal, pull will never write it back into state.db.
 pub fn sync_push(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<SyncReport> {
     let snapshot = build_snapshot(store, gaps_dir)?;
     let mut report = SyncReport::default();
@@ -198,10 +270,6 @@ pub fn sync_push(store: &GapStore, gaps_dir: &Path, dry_run: bool) -> Result<Syn
             // DB missing — push is a no-op for YamlOnly drift (pull handles it).
             continue;
         };
-        if !is_pushable_status(&db_row.status) {
-            report.skipped += 1;
-            continue;
-        }
         let needs_write = match pair.yaml.as_ref() {
             None => true, // DbOnly drift — write the missing YAML
             Some(yaml_row) => !compare_fields(db_row, yaml_row).is_empty(),
@@ -421,10 +489,22 @@ fn normalize_list(s: &str) -> Vec<String> {
     items
 }
 
-fn is_pushable_status(status: &str) -> bool {
+/// Terminal statuses that must never be reverted by [`sync_pull`]'s
+/// YAML-is-authoritative UPDATE. Mirrors the guard lists enforced elsewhere
+/// in `state.db` writers: `set_fields`'s INFRA-456 recycled-ID guard (`done`)
+/// and `close`'s valid-reason terminal set (`superseded`, `wontfix`, etc.).
+fn is_terminal_status(status: &str) -> bool {
     matches!(
         status.trim(),
-        "open" | "in_progress" | "in-progress" | "in progress"
+        "done"
+            | "superseded"
+            | "wontfix"
+            | "wont_fix"
+            | "closed"
+            | "closed_not_a_bug"
+            | "already_satisfied"
+            | "obsolete"
+            | "duplicate"
     )
 }
 
@@ -748,6 +828,189 @@ mod tests {
         // Re-check should be clean.
         let recheck = sync_check(&store, &gaps_dir).unwrap();
         assert!(recheck.is_clean(), "post-pull drift: {:?}", recheck.entries);
+    }
+
+    #[test]
+    fn pull_preserves_concrete_db_ac_over_template_yaml() {
+        // INFRA-2227: the exact incident. state.db holds the concrete AC the
+        // gap-enricher wrote (db-only); the docs/gaps/<ID>.yaml mirror still
+        // holds the `TODO:` observability boilerplate. A YAML-authoritative
+        // pull must NOT downgrade the concrete spec back to the template.
+        // This was reverting ~100 enriched gaps every 5 min via the CJ
+        // coherence-sync loop.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        insert_minimal(
+            &store,
+            "INFRA-9020",
+            "Enriched gap",
+            "[\"scripts/ci/test-x.sh passes (3 assertions)\",\"ambient event kind=x_done registered\"]",
+        );
+        let gaps_dir = root.path().join("docs/gaps");
+        // YAML mirror is the stale template — identical everywhere except the
+        // AC, which is the TODO boilerplate.
+        write_yaml(
+            &gaps_dir,
+            "INFRA-9020",
+            "- id: INFRA-9020\n  domain: INFRA\n  title: Enriched gap\n  status: open\n  priority: P1\n  effort: s\n  acceptance_criteria:\n    - 'TODO: what events emitted on success/failure/timeout'\n    - 'TODO: smoke test command to verify observability'\n",
+        );
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(report.ac_preserved, 1, "guard should have fired once");
+        assert_eq!(
+            report.updated, 0,
+            "AC was the only divergence and it was preserved — nothing to write"
+        );
+        let after = store.get("INFRA-9020").unwrap().unwrap();
+        let acs = parse_json_ac_list(&after.acceptance_criteria);
+        assert_eq!(
+            acs,
+            vec![
+                "scripts/ci/test-x.sh passes (3 assertions)".to_string(),
+                "ambient event kind=x_done registered".to_string(),
+            ],
+            "concrete DB acceptance_criteria was reverted to the YAML template"
+        );
+    }
+
+    #[test]
+    fn pull_preserves_concrete_ac_but_still_pulls_other_fields() {
+        // The guard must be surgical: preserve the concrete AC AND still
+        // reconcile the other fields (e.g. title) from the YAML mirror. Only
+        // the AC is protected, not the whole row.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        insert_minimal(
+            &store,
+            "INFRA-9021",
+            "Old DB title",
+            "[\"concrete: run scripts/ci/test-y.sh and assert exit 0\"]",
+        );
+        let gaps_dir = root.path().join("docs/gaps");
+        // YAML has a newer title but only template AC.
+        write_yaml(
+            &gaps_dir,
+            "INFRA-9021",
+            "- id: INFRA-9021\n  domain: INFRA\n  title: New YAML title\n  status: open\n  priority: P1\n  effort: s\n  acceptance_criteria:\n    - 'TBD: figure out the approach'\n",
+        );
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(report.ac_preserved, 1);
+        assert_eq!(report.updated, 1, "title divergence should still be pulled");
+        let after = store.get("INFRA-9021").unwrap().unwrap();
+        assert_eq!(
+            after.title, "New YAML title",
+            "non-AC field should reconcile"
+        );
+        let acs = parse_json_ac_list(&after.acceptance_criteria);
+        assert_eq!(
+            acs,
+            vec!["concrete: run scripts/ci/test-y.sh and assert exit 0".to_string()],
+            "concrete AC must survive even when other fields are pulled"
+        );
+    }
+
+    #[test]
+    fn pull_does_not_revert_done_status() {
+        // INFRA-3606: a gap shipped via `chump gap ship` (status=done in
+        // state.db) must NOT be reverted back to open by a later
+        // `gap sync --pull` just because the YAML mirror on disk is stale
+        // (push never rewrites terminal-status YAMLs — see
+        // `is_pushable_status`). This was the root cause of the P0
+        // canonical-store split-brain: manual closes silently reverted on
+        // the next pull, and re-pick loops burned cycles on already-done work.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        insert_minimal(&store, "INFRA-9010", "Shipped gap", "[\"do thing\"]");
+        // Simulate `chump gap ship`: flip status to done directly in state.db.
+        store
+            .conn_for_sync()
+            .execute("UPDATE gaps SET status='done' WHERE id='INFRA-9010'", [])
+            .unwrap();
+        // Stale YAML mirror still says open (never rewritten post-ship).
+        let gaps_dir = root.path().join("docs/gaps");
+        write_yaml(
+            &gaps_dir,
+            "INFRA-9010",
+            "- id: INFRA-9010\n  domain: INFRA\n  title: Shipped gap\n  status: open\n  priority: P1\n  effort: s\n  acceptance_criteria:\n    - do thing\n",
+        );
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(report.updated, 0, "terminal-status row must not be pulled");
+        assert_eq!(report.skipped, 1);
+        let after = store.get("INFRA-9010").unwrap().unwrap();
+        assert_eq!(
+            after.status, "done",
+            "gap sync --pull reverted a shipped gap"
+        );
+    }
+
+    #[test]
+    fn pull_leaves_terminal_rows_fully_untouched() {
+        // INFRA-7824: sync_pull must skip any row whose status is a member
+        // of `is_terminal_status`, not just `done` — and it must leave the
+        // *entire* row (title, priority, acceptance_criteria, status) as-is,
+        // not just refuse to flip status back to open.
+        let root = tempdir().unwrap();
+        let store = fresh_store(root.path());
+        let gaps_dir = root.path().join("docs/gaps");
+
+        for (gap_id, terminal_status) in [
+            ("INFRA-7824-A", "superseded"),
+            ("INFRA-7824-B", "wontfix"),
+            ("INFRA-7824-C", "duplicate"),
+        ] {
+            insert_minimal(&store, gap_id, "Original title", "[\"original ac\"]");
+            store
+                .conn_for_sync()
+                .execute(
+                    &format!(
+                        "UPDATE gaps SET status='{terminal_status}', priority='P3' WHERE id='{gap_id}'"
+                    ),
+                    [],
+                )
+                .unwrap();
+            write_yaml(
+                &gaps_dir,
+                gap_id,
+                &format!(
+                    "- id: {gap_id}\n  domain: INFRA\n  title: Divergent YAML title\n  status: open\n  priority: P0\n  effort: s\n  acceptance_criteria:\n    - divergent ac\n"
+                ),
+            );
+        }
+
+        let report = sync_pull(&store, &gaps_dir, false).unwrap();
+        assert_eq!(
+            report.updated, 0,
+            "no terminal-status row should be updated"
+        );
+        assert_eq!(
+            report.skipped, 3,
+            "all three terminal rows should be skipped"
+        );
+
+        for (gap_id, terminal_status) in [
+            ("INFRA-7824-A", "superseded"),
+            ("INFRA-7824-B", "wontfix"),
+            ("INFRA-7824-C", "duplicate"),
+        ] {
+            let after = store.get(gap_id).unwrap().unwrap();
+            assert_eq!(
+                after.status, terminal_status,
+                "{gap_id} status must not change"
+            );
+            assert_eq!(
+                after.title, "Original title",
+                "{gap_id} title must not change"
+            );
+            assert_eq!(after.priority, "P3", "{gap_id} priority must not change");
+            let acs = parse_json_ac_list(&after.acceptance_criteria);
+            assert_eq!(
+                acs,
+                vec!["original ac".to_string()],
+                "{gap_id} acceptance_criteria must not change"
+            );
+        }
     }
 
     #[test]

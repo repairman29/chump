@@ -42,6 +42,59 @@ pub fn record_slot_failure(slot_name: &str) {
     }
 }
 
+/// CREDIBLE-227: record a 429 (rate-limited) response for this slot, separate
+/// from generic sanity failures. Called alongside `record_slot_failure` when
+/// the failover reason classifies as "429".
+pub fn record_slot_rate_limited(slot_name: &str) {
+    if slot_name.is_empty() || slot_name == "unknown" {
+        return;
+    }
+    if let Err(e) = db_pool::get().and_then(|conn| {
+        conn.execute(
+            "UPDATE chump_provider_quality SET rate_limited_count = rate_limited_count + 1, last_updated = datetime('now') WHERE slot_name = ?1",
+            rusqlite::params![slot_name],
+        )?;
+        Ok(())
+    }) {
+        tracing::warn!("provider_quality: failed to record rate_limited for {slot_name}: {e}");
+    }
+}
+
+/// CREDIBLE-227 AC #5: close the loop between observed quality signals and
+/// the declared RPD ceiling. `provider_quality` already records 429s
+/// (`rate_limited_count`) but nothing compared that back to the configured
+/// daily cap. A slot that has been 429ing repeatedly while its total
+/// recorded call volume (success + sanity_fail) is well under its declared
+/// RPD is evidence the declared number is wrong (too high) — return a
+/// human-readable finding describing the mismatch so the caller can holler
+/// (ambient event -> gap) instead of silently trusting the declared value.
+pub fn declared_rpd_evidence(slot_name: &str, declared_rpd: u32) -> Option<String> {
+    if declared_rpd == 0 {
+        return None; // 0 = unlimited, nothing to compare against
+    }
+    const MIN_RATE_LIMITED_SAMPLES: i64 = 5;
+    let conn = db_pool::get().ok()?;
+    let (success, sanity_fail, rate_limited): (i64, i64, i64) = conn
+        .query_row(
+            "SELECT success_count, sanity_fail_count, rate_limited_count FROM chump_provider_quality WHERE slot_name = ?1",
+            rusqlite::params![slot_name],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .ok()?;
+    if rate_limited < MIN_RATE_LIMITED_SAMPLES {
+        return None;
+    }
+    let total_calls = success + sanity_fail;
+    let half_declared = (declared_rpd as i64) / 2;
+    if total_calls < half_declared {
+        Some(format!(
+            "slot {slot_name} hit 429 {rate_limited} times while total observed calls ({total_calls}) stayed under half its declared RPD ({declared_rpd}) — declared RPD is likely too high"
+        ))
+    } else {
+        None
+    }
+}
+
 /// True if this slot should be skipped due to high sanity-fail rate (>10%).
 pub fn should_skip_slot(slot_name: &str) -> bool {
     let conn = match db_pool::get() {

@@ -1,0 +1,23 @@
+- id: RESILIENT-409
+  domain: RESILIENT
+  title: farmer gate must not RED-block free-tier/deepseek claims on stale Anthropic-oauth mtime (RESILIENT-069 self-strangle)
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria: |
+    1) In src/farmer_status.rs check_oauth_fresh, when a free-tier cascade is configured (CHUMP_FREE_TIER_PROVIDERS non-empty), a stale ~/.chump/oauth-token.json mtime MUST NOT force oauth_fresh=false; fail-open with an explanatory reason. 2) Unit test: free-tier env + 33-day-old oauth-token.json + no fresh auth-status-cache => oauth_fresh true (GREEN). 3) Regression test: WITHOUT free-tier env, stale token still => RED (unchanged). 4) auth-status-cache rc!=0 BROKEN branch still forces RED even in free-tier mode (real auth failure not masked). 5) farmer status stays local-only, no network, <100ms.
+  evidence: |
+    CJ fleet dark ~31.5h (0 merges since 2026-08-24T16:14Z). All 3 workers logged RESILIENT-069 farmer status RED every 60s. Root: check_oauth_fresh in src/farmer_status.rs falls through to ~/.chump/oauth-token.json mtime>3600s and RETURNS RED, but the execute-gap floor uses the free-tier deepseek cascade (CHUMP_FREE_TIER_PROVIDERS) and never uses the Anthropic oauth token — auth-status.sh returns GREEN. The oauth refresher (install-oauth-refresh-launchd.sh) is macOS-launchd-only so the token file is perpetually stale on Linux/CJ. Recurs every ~OAUTH_TOKEN_MAX_AGE_S. Receipt: fresh chump farmer status under worker env = GREEN once token touched; RED returns ~48min later as mtime re-crosses 3600s.
+
+    RESOLUTION: fix landed on main via PR #4236 (commit ccd9fbdc, merged
+    2026-08-26T02:46:39Z) — `oauth_token_verdict` in src/farmer_status.rs
+    fails open when `free_tier_cascade_active()` (CHUMP_FREE_TIER_PROVIDERS
+    non-empty) even on a stale oauth-token.json mtime, while the
+    auth-status-cache BROKEN branch in `check_oauth_fresh` still forces RED
+    regardless of free-tier mode. Unit tests cover both the free-tier
+    fail-open case and the non-free-tier regression case. This session's
+    checkout never reflected the close in state.db; this commit syncs the
+    tracked gap yaml to done (RESILIENT-408 precedent, PR #4258).
+  closed_date: '2026-08-26'
+  closed_pr: 4236
+  outcome_id: MISSION-010

@@ -2,7 +2,7 @@
   domain: EFFECTIVE
   title: "A2A IGNITION: broadcast.sh persistent fan-out queue — every msg lands in ~/.chump/comms/<recipient>.queue.jsonl, future sessions drain on start (today: 0-lock-files = msg lost forever)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - scripts/coord/broadcast.sh writes EVERY message to ~/.chump/comms/<recipient>.queue.jsonl (one JSONL per recipient) in addition to ambient + curator-lock fan-out. For broadcast --to all-opus, write to ~/.chump/comms/all-opus.queue.jsonl. For broadcast --to <session-id>, write to ~/.chump/comms/<session-id>.queue.jsonl.

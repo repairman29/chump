@@ -1,0 +1,188 @@
+name: Build fleet binaries
+
+# INFRA-3677 (build-speed): build the release `chump` binary ONCE on free
+# GitHub-hosted runners for every commit that lands on main, and publish each
+# target's binary as a per-SHA Actions artifact. Fleet nodes (closetjunky x86_64,
+# the incoming Oracle Ampere A1 aarch64) then PULL the prebuilt artifact for the
+# current green-main SHA instead of spending ~30 min on a local `cargo build
+# --release --bin chump`. The local build stays as a fallback when no artifact
+# exists for a SHA (see scripts/ops/node-refresh-chump.sh).
+#
+# WHY this is separate from release.yml: release.yml is cargo-dist, tag-triggered
+# only, and builds installers/homebrew/checksums for END USERS. This workflow is
+# push-to-main triggered and builds the raw fleet-node binary keyed by commit
+# SHA — a different consumer (our own nodes) with a different addressing scheme
+# (head_sha, not a version tag).
+#
+# COST: repairman29/chump is PUBLIC, so GitHub-hosted runners are $0 and
+# unmetered. Uses GITHUB_TOKEN only — no external secrets. Cargo + target dirs
+# are cached with Swatinem/rust-cache (the same cache convention ci.yml uses) so
+# warm runs are fast.
+#
+# ADDRESSING: each artifact is named `chump-<target>-<full-sha>`. A node that
+# knows the green-main SHA finds this run via
+#   GET /repos/{owner}/{repo}/actions/workflows/build-fleet-binaries.yml/runs?head_sha=<sha>&status=success
+# then `gh run download <run-id> -n chump-<target>-<sha>`.
+#
+# See: scripts/ops/node-refresh-chump.sh (the pull-path consumer), RESILIENT-200
+# (the refresh organ), docs/gaps/INFRA-3677.yaml.
+
+on:
+  push:
+    branches: [main]
+    # Only rebuild when something that can change the binary changes. Doc-only /
+    # workflow-metadata churn on main does not need a fresh binary build.
+    paths:
+      - "src/**"
+      - "crates/**"
+      - "build.rs"
+      - "Cargo.toml"
+      - "Cargo.lock"
+      - ".github/workflows/build-fleet-binaries.yml"
+  workflow_dispatch: {}
+
+# One build per commit; never cancel a running build (an in-flight artifact must
+# finish so the node that is waiting on that SHA can fetch it).
+concurrency:
+  group: build-fleet-binaries-${{ github.sha }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    name: build (${{ matrix.target }})
+    # RESILIENT-1038: pinned, NOT ubuntu-latest. The produced binary dynamically
+    # links against the runner's glibc; ubuntu-latest silently rolls forward
+    # (24.04 -> 26.04 etc.) and its glibc floor keeps climbing past what the
+    # fleet's actual Linux nodes (closetjunky, mugman/Oracle Ampere aarch64,
+    # both confirmed Ubuntu 22.04 / glibc 2.35) ship. VERIFIED: a binary built
+    # on ubuntu-latest (glibc 2.39, as of 2026-09) refuses to even run
+    # (`--version` exits 1: "GLIBC_2.39 not found") on a glibc-2.35 node, so
+    # node-refresh-chump.sh's artifact-pull version-check always rejects it and
+    # falls back to a ~30min local cargo build — CI itself stays green because
+    # its own version-check step runs the native binary on the SAME (newer)
+    # runner, so this breakage is invisible to build-fleet-binaries.yml and
+    # only bites on the real downstream nodes. Pin to the LTS the fleet nodes
+    # actually run so the artifact is runnable where it's pulled.
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # CJ + general x86_64/glibc Linux nodes — native build.
+          - target: x86_64-unknown-linux-gnu
+            cross: false
+          # Oracle Ampere A1 + general aarch64/glibc Linux nodes — cross-compiled
+          # from the x86_64 runner with the aarch64 GNU toolchain.
+          - target: aarch64-unknown-linux-gnu
+            cross: true
+    env:
+      # Force the version-string SHA to the commit we build, independent of any
+      # runner git quirk, so `chump --version` on a node exactly matches the
+      # green-main short SHA the refresh organ compares against (build.rs line 31
+      # prefers CHUMP_BUILD_SHA, else `git rev-parse --short=12 HEAD`).
+      CHUMP_BUILD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+
+      - name: Install Rust toolchain (+ target)
+        run: |
+          set -euo pipefail
+          rustup toolchain install stable --profile minimal --no-self-update
+          rustup default stable
+          rustup target add ${{ matrix.target }}
+
+      - name: Install aarch64 cross toolchain
+        if: ${{ matrix.cross && runner.os == 'Linux' }}
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y gcc-aarch64-linux-gnu
+
+      - name: Cache cargo + target
+        uses: Swatinem/rust-cache@v2
+        with:
+          # Keep x86_64 and aarch64 caches separate — different target dirs.
+          key: fleet-bin-${{ matrix.target }}
+
+      - name: Build --release --bin chump + chump-fleet-server
+        env:
+          # Cross linker for the aarch64 target (no-op / unset for native x86_64).
+          CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
+        run: |
+          set -euo pipefail
+          # RESILIENT-1046: build BOTH fleet-node binaries in one cargo
+          # invocation so they share the warm target dir + rust-cache and land
+          # in the same per-SHA artifact. `chump` is the worker binary (root
+          # package `chump`); the `chump-fleet-server` audit/dashboard organ
+          # lives in a SEPARATE crate (package `chump-fleet-server`) — the "see
+          # everything out" API half of the operating covenant — and must be
+          # PULLABLE prebuilt so a 2-core Oracle node never cargo-builds it
+          # locally (that starves the live fleet).
+          #
+          # `--bin NAME` alone only resolves bins in the default-run package set,
+          # so `--bin chump-fleet-server` failed with "no bin target named
+          # chump-fleet-server in default-run packages" (the eae3bb4b3 breakage).
+          # Select each package explicitly with `-p` so both bins resolve.
+          cargo build --release --target ${{ matrix.target }} \
+            -p chump --bin chump \
+            -p chump-fleet-server --bin chump-fleet-server
+          BIN="target/${{ matrix.target }}/release/chump"
+          FS_BIN="target/${{ matrix.target }}/release/chump-fleet-server"
+          test -x "$BIN" || { echo "::error::$BIN missing after build"; exit 1; }
+          test -x "$FS_BIN" || { echo "::error::$FS_BIN missing after build"; exit 1; }
+          # Sanity: on the native target, prove the binaries run and the worker
+          # binary's version SHA matches the commit we built. (Skipped for the
+          # cross target — an aarch64 ELF cannot execute on the x86_64 runner;
+          # the ARM node validates at pull time.) chump-fleet-server --version
+          # prints only its crate version (no git SHA), so we only assert it runs.
+          if [ "${{ matrix.cross }}" != "true" ]; then
+            VER="$("$BIN" --version)"
+            echo "built: $VER"
+            case "$VER" in
+              *"${GITHUB_SHA:0:12}"*) echo "version SHA matches commit ✓" ;;
+              *) echo "::error::version '$VER' does not embed ${GITHUB_SHA:0:12}"; exit 1 ;;
+            esac
+            FS_VER="$("$FS_BIN" --version)"
+            echo "fleet-server built: $FS_VER"
+          fi
+          sha256sum "$BIN" | tee "$BIN.sha256"
+          sha256sum "$FS_BIN" | tee "$FS_BIN.sha256"
+
+      - name: Stage artifact
+        run: |
+          set -euo pipefail
+          mkdir -p dist
+          cp "target/${{ matrix.target }}/release/chump" "dist/chump"
+          cp "target/${{ matrix.target }}/release/chump.sha256" "dist/chump.sha256"
+          cp "target/${{ matrix.target }}/release/chump-fleet-server" "dist/chump-fleet-server"
+          cp "target/${{ matrix.target }}/release/chump-fleet-server.sha256" "dist/chump-fleet-server.sha256"
+          # Record the exact SHA + target inside the artifact for provenance.
+          printf '%s\n' "${GITHUB_SHA}" > dist/COMMIT_SHA
+          printf '%s\n' "${{ matrix.target }}" > dist/TARGET
+
+      - name: Upload per-SHA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          # Addressed by target + full commit SHA — this is the contract the
+          # node pull-path resolves against.
+          name: chump-${{ matrix.target }}-${{ github.sha }}
+          path: dist/
+          retention-days: 30
+          if-no-files-found: error
+
+      - name: Summary
+        run: |
+          {
+            echo "## chump fleet binaries — ${{ matrix.target }}"
+            echo
+            echo "- commit: \`${GITHUB_SHA}\`"
+            echo "- artifact: \`chump-${{ matrix.target }}-${GITHUB_SHA}\`"
+            echo "- binaries: \`chump\`, \`chump-fleet-server\`"
+            echo "- pull: node fetches this by \`head_sha=${GITHUB_SHA}\`"
+          } >> "$GITHUB_STEP_SUMMARY"

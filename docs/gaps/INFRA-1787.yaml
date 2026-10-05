@@ -1,10 +1,10 @@
 - id: INFRA-1787
   domain: INFRA
-  title: 'ZERO-WASTE: chump preflight runs env-vars-internal-coverage locally — catches CHUMP_* env vars not in env-vars-internal.txt
-    before push (5+ failures this week, INFRA-1762 Tier C #1)'
+  title: "ZERO-WASTE: chump preflight runs env-vars-internal-coverage locally — catches CHUMP_* env vars not in env-vars-internal.txt before push (5+ failures this week, INFRA-1762 Tier C #1)"
   status: done
   priority: P1
   effort: s
-  outcome_id: MISSION-010
   closed_date: '2026-07-25'
   closed_pr: 3288
+  outcome_id: MISSION-010
+

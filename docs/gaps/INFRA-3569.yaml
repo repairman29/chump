@@ -1,0 +1,11 @@
+- id: INFRA-3569
+  domain: INFRA
+  title: "INFRA: Implement the shared LLM service gateway (INFRA-3462 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - The shared LLM service gateway is implemented in the relevant INFRA code path
+    - The gateway is tested with a mock LLM service
+  depends_on: [INFRA-3568]
+

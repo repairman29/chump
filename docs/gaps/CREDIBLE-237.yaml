@@ -1,0 +1,16 @@
+- id: CREDIBLE-237
+  domain: CREDIBLE
+  title: "CI gates assert code LOCATION not behaviour: one refactor tripped 5 path-pinned greps, and one of them then passed vacuously"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "MEASURED 2026-08-08 on PR #3499 (INFRA-1965), which moves the 6,079-LOC gap command group from src/main.rs to src/commands/gap.rs. FIVE independent gates failed, none because anything broke — all because they grep a hardcoded path: test-gap-impact-rating.sh (FLEET-048) 'main.rs: gap rate subcommand missing'; test-open-pr-dup-detection.sh (INFRA-1982) 'expected >= 2 gap_reserve_similarity_warn in main.rs, found 0'; test-gap-audit-ac-open.sh (INFRA-936) 'INFRA-936 not found in src/main.rs'; test-stale-binary-ship-blocked.sh (INFRA-825) 'src/main.rs does not call fail_if_stale_for_destructive'. Every symbol was present in src/commands/gap.rs the whole time"
+    - THE FIFTH IS THE DANGEROUS ONE AND IT DID NOT FAIL — it passed. test-stale-binary-ship-blocked.sh Test 3 asserts gap ship --update-yaml is NOT wired to the staleness guard (ZERO-WASTE-020 removed the write it protected). Pointed at src/main.rs after the move it greps for text that is no longer in that file at all, so it passes VACUOUSLY. A re-introduced unguarded destructive bulk-YAML write would now sail through a green check. A negative assertion pinned to a path silently becomes a no-op the moment the code moves, and nothing reports it
+    - "SO THE FAILURE MODE IS TWO-SIDED: positive assertions false-FAIL on a refactor (noisy, self-announcing, cheap); negative assertions false-PASS (silent, permanent, and exactly the case a guard exists for). The noisy half is what gets noticed; the quiet half is what costs something"
+    - "SWEEP THE REST. Four were found only because one PR happened to move code they pointed at. Grep scripts/ci/ for hardcoded src/*.rs paths and classify each: does it assert behaviour (fine) or location (fix)? Report the count — the useful deliverable here is knowing how many more are one refactor away from lying"
+    - "FIX PATTERN, already applied to the four in PR #3499: resolve the dispatch source at runtime (new home first, old path as fallback) so the gate passes either side of a move. Better where practical: assert against the built binary's behaviour (chump gap <sub> --help) instead of grepping source at all — a grep for a symbol name cannot distinguish 'wired' from 'mentioned in a comment'"
+    - "GUARD AGAINST THE VACUOUS-PASS CLASS SPECIFICALLY: any negative assertion (grep -q ... && fail) must first prove its search target EXISTS somewhere, else the test is asserting nothing. That precondition is what would have caught INFRA-825 Test 3 automatically"
+    - "Filed from the fix session, not speculative: all four repairs and the vacuous-pass analysis are in PR #3499's commit 'unpin four CI gates from src/main.rs'"
+  outcome_id: MISSION-010
+

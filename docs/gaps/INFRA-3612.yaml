@@ -1,0 +1,13 @@
+- id: INFRA-3612
+  domain: INFRA
+  title: Picker must propagate EFFECTIVE priority through depends_on — a blocker inherits the max priority of its transitive dependents (cross-band, not just a within-band tiebreaker)
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - picker computes effective_priority(gap) = min band over {own priority} ∪ {priority of every gap it transitively unblocks} (via chump-planner unblocks()); a P3 that blocks a P0 is picked as P0
+    - effective priority is the PRIMARY sort band, not a within-priority-band tiebreaker (today _pick_gap.py INFRA-1258 planner rank only breaks ties WITHIN a nominal band — crates/chump-planner/src/graph.rs has open_prerequisites/layers/critical_path_days/unblocks already)
+    - "regression test (extend picker_priority_infra3616.rs): a P3 gap that a P0 depends_on is picked before unrelated P1/P2 gaps; no deadlock where a blocked P0 waits behind all P1s while its own P2 prereq sits unworked"
+  notes: |
+    [2026-08-19T13:15:24Z] Jeff 2026-08-19: if P2/P3 items required for something to ship in P0, they are also P0 work. Correct. Machinery exists (unblocks() = transitive dependents); wire it into effective priority. Immediate instance fixed by hand: CREDIBLE-266 P2->P1 (blocks RESILIENT-262/276).
+

@@ -2,7 +2,9 @@
   domain: INFRA
   title: "ZERO-WASTE: pickable"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    1. verify it works
+    - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
+  outcome_id: MISSION-010
+

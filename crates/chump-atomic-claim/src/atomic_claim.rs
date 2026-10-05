@@ -83,6 +83,36 @@ pub struct ClaimArgs {
     /// when `--resume` is also passed (`--resume` wins: same branch, reset
     /// to remote tip).
     pub rename: bool,
+    /// INFRA-5162 (INFRA-1863 slice): optional role hint for the claiming
+    /// session (e.g. "shepherd", "target"). Stored for later validation;
+    /// not yet enforced against a role registry.
+    pub role: Option<String>,
+    /// INFRA-6624 (INFRA-1863 slice): optional scope hint for the claiming
+    /// session (e.g. a module or concern name). Stored for later validation;
+    /// not yet enforced against a scope registry.
+    pub scope: Option<String>,
+    /// INFRA-5775 (INFRA-1863 slice): explicit override allowing `--paths`
+    /// to span more than one top-level directory. Requires `reason` to also
+    /// be set. Without this flag, a multi-top-level-dir `--paths` is
+    /// auto-narrowed to the most-specific common parent directory instead
+    /// of being rejected outright.
+    pub broad: bool,
+    /// INFRA-5775: human-readable justification for a `--broad` claim.
+    /// Mandatory whenever `--broad` is set (enforced at the gate, not at
+    /// parse time, since the requirement only applies when `--paths`
+    /// actually spans multiple top-level directories).
+    pub reason: Option<String>,
+    /// INFRA-5758 (INFRA-1689 slice): optional `<file>::<symbol>` region
+    /// scope, e.g. `src/foo.rs::dispatch_fanout`. Appended to the lease's
+    /// `paths` array alongside any `--paths` CSV entries so overlap
+    /// detection sees it; `ast-crawler::region` (INFRA-5759) later resolves
+    /// the `symbol` half to an AST line range. Mutually exclusive with
+    /// `--no-region`.
+    pub region: Option<String>,
+    /// INFRA-5758: explicit opt-out of region-scoped leasing even when a
+    /// `<file>::<symbol>`-shaped value would otherwise be inferred (e.g.
+    /// forces a plain whole-file lease). Mutually exclusive with `--region`.
+    pub no_region: bool,
 }
 
 impl ClaimArgs {
@@ -92,10 +122,17 @@ impl ClaimArgs {
         for a in args.iter().skip(1) {
             if a == "--help" || a == "-h" {
                 println!(
-                    "Usage: chump claim <GAP-ID> [--paths CSV] [--session ID] [--no-doctor] [--no-import] [--force-recover]\n\n\
+                    "Usage: chump claim <GAP-ID> --role ROLE [--scope SCOPE] [--paths CSV] [--session ID] [--no-doctor] [--no-import] [--force-recover]\n\n\
                      Atomic claim: fetch + verify + (doctor) + worktree + lease for <GAP-ID>.\n\n\
                      Options:\n  \
+                       --role ROLE      (mandatory) Role hint for the claiming session (e.g. shepherd, target)\n  \
+                       --scope SCOPE    (optional) Scope hint for the claiming session (e.g. a module or concern)\n  \
                        --paths CSV      Record path scope (comma-separated globs); enables overlap detection\n  \
+                       --region FILE::SYMBOL  Record a symbol-region scope (e.g. src/foo.rs::my_fn);\n                              \
+                                        merged into the lease's paths array alongside --paths\n  \
+                       --no-region      Opt out of region-scoped leasing (mutually exclusive with --region)\n  \
+                       --broad          Allow --paths to span >1 top-level directory (requires --reason)\n  \
+                       --reason TEXT    Justification for --broad (mandatory when --broad is set)\n  \
                        --session ID     Explicit session ID (default derived from env / pid)\n  \
                        --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
@@ -152,6 +189,12 @@ impl ClaimArgs {
         let mut json = false;
         let mut discard_wip = false;
         let mut rename = false;
+        let mut role: Option<String> = None;
+        let mut scope: Option<String> = None;
+        let mut broad = false;
+        let mut reason: Option<String> = None;
+        let mut region: Option<String> = None;
+        let mut no_region = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -216,8 +259,70 @@ impl ClaimArgs {
                     rename = true;
                     i += 1;
                 }
+                "--role" => {
+                    role = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--role needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
+                "--scope" => {
+                    scope = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--scope needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
+                "--broad" => {
+                    broad = true;
+                    i += 1;
+                }
+                "--reason" => {
+                    reason = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--reason needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
+                "--region" => {
+                    let v = args
+                        .get(i + 1)
+                        .ok_or_else(|| anyhow!("--region needs a value"))?
+                        .to_string();
+                    if !v.contains("::") {
+                        bail!("--region must be <file>::<symbol> (got {v})");
+                    }
+                    region = Some(v);
+                    i += 2;
+                }
+                "--no-region" => {
+                    no_region = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
+        }
+
+        // INFRA-5486 (INFRA-1863 slice): --role is mandatory (AC1/AC2).
+        // Returned as an Err (not a direct process::exit) so unit tests can
+        // assert on it without aborting the test binary; main.rs's caller
+        // inspects the message to pick exit code 1 (AC2) vs the generic
+        // argument-error exit code 2.
+        if role.is_none() {
+            bail!(
+                "missing required flag --role <role>\n\n\
+                 Usage: chump claim <GAP-ID> --role <role> [--scope <module-or-concern>] [--paths CSV]\n\n\
+                 --role is mandatory: a role hint for the claiming session (e.g. shepherd, target).\n  \
+                 --scope is optional: a module or concern name.\n  \
+                 --paths remains optional and advisory (no path validation if omitted)."
+            );
+        }
+
+        if region.is_some() && no_region {
+            bail!("--region and --no-region are mutually exclusive");
         }
 
         let worktree_base = std::env::var("CHUMP_WORKTREE_BASE")
@@ -245,7 +350,26 @@ impl ClaimArgs {
             json,
             discard_wip,
             rename,
+            role,
+            scope,
+            broad,
+            reason,
+            region,
+            no_region,
         })
+    }
+
+    /// INFRA-5758: merge `--paths` CSV with `--region` (if set) into a single
+    /// CSV suitable for the existing paths-array writers, which are agnostic
+    /// to whether an entry is a plain path or a `file::symbol` region. A
+    /// `--no-region` claim (or no `--region` at all) is a pure passthrough.
+    pub fn paths_csv_with_region(&self) -> Option<String> {
+        match (&self.paths, &self.region) {
+            (None, None) => None,
+            (Some(p), None) => Some(p.clone()),
+            (None, Some(r)) => Some(r.clone()),
+            (Some(p), Some(r)) => Some(format!("{p},{r}")),
+        }
     }
 }
 
@@ -403,6 +527,77 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
             Err(e) => {
                 gates.push(GateResult {
                     gate: "gap-id-unique".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
+    // Gate 2b2: INFRA-2472 — shared (NATS KV) registry gap-ID uniqueness.
+    // Local .chump-locks/ only sees leases written on THIS machine; the
+    // shared registry sees claims taken on any machine in the mesh. Skips
+    // cleanly (no gate entry) when CHUMP_NATS_URL is unset — same opt-in
+    // posture as nats_dual_write.
+    if std::env::var("CHUMP_NATS_URL")
+        .map(|v| !v.trim().is_empty())
+        .unwrap_or(false)
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let bypass = std::env::var("CHUMP_CLAIM_ALLOW_DUPLICATE_GAP")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        match check_shared_registry_gap_uniqueness(&args.gap_id, &early_session) {
+            Ok(()) => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique-shared".to_string(),
+                    status: "pass".to_string(),
+                    message: "shared NATS registry holds no live claim from another session"
+                        .to_string(),
+                });
+            }
+            Err(e) if bypass => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique-shared".to_string(),
+                    status: "warn".to_string(),
+                    message: format!("{e} (bypassed via CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1)"),
+                });
+                has_warn = true;
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "gap-id-unique-shared".to_string(),
+                    status: "fail".to_string(),
+                    message: e.to_string(),
+                });
+                has_fail = true;
+            }
+        }
+    }
+
+    // Gate 2c: INFRA-1646 — refuse when this session already holds a live
+    // lease for a DIFFERENT gap (see check_no_active_lease_for_other_gap).
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_co = args.repo_root.join(".chump-locks");
+        match check_no_active_lease_for_other_gap(&lock_dir_co, &args.gap_id, &early_session) {
+            Ok(()) => {
+                gates.push(GateResult {
+                    gate: "active-lease".to_string(),
+                    status: "pass".to_string(),
+                    message: "session holds no live lease for a different gap".to_string(),
+                });
+            }
+            Err(e) => {
+                gates.push(GateResult {
+                    gate: "active-lease".to_string(),
                     status: "fail".to_string(),
                     message: e.to_string(),
                 });
@@ -585,7 +780,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
 
 /// Run the atomic claim. Each step is a separate function so the unit
 /// tests can exercise individual pieces in isolation.
-pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
     // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
     // FIRST: must run BEFORE any state mutation OR any chump op that can
     // fail. Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
@@ -679,6 +874,41 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // INFRA-5775 (INFRA-1863 slice): broad-scope claim guard. A `--paths`
+    // declaration spanning >1 top-level directory either needs an explicit
+    // `--broad --reason '<text>'` override, or gets auto-narrowed to the
+    // most-specific directory common to every declared path.
+    if let Some(paths_csv) = args.paths.clone() {
+        match check_broad_scope_and_narrow(&paths_csv, args.broad, args.reason.as_deref()) {
+            Ok(Some(narrowed)) => {
+                eprintln!(
+                    "[claim] INFRA-5775: --paths '{}' spans >1 top-level directory; \
+                     auto-narrowed to '{}'. Pass --broad --reason '<text>' to keep the \
+                     original scope.",
+                    paths_csv, narrowed
+                );
+                args.paths = Some(narrowed);
+            }
+            Ok(None) => {
+                if args.broad {
+                    let early_session_id = args
+                        .session_id
+                        .clone()
+                        .unwrap_or_else(|| derive_session_id(&args.gap_id));
+                    let ambient_log_early = args.repo_root.join(".chump-locks/ambient.jsonl");
+                    emit_broad_scope_claim(
+                        &ambient_log_early,
+                        &args.gap_id,
+                        &early_session_id,
+                        &paths_csv,
+                        args.reason.as_deref().unwrap_or(""),
+                    );
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
     // INFRA-1885: lease-breadth cap — reject claims of exact top-level dirs
     // without a more specific sub-path. Forces file-level granularity so
     // broad leases don't block other sessions from filing event-registry
@@ -699,6 +929,36 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             &early_session_id,
             &ambient_log_early,
         )?;
+    }
+
+    // INFRA-4996 (INFRA-2434 slice): basic path-overlap detection against
+    // open PRs. The gap-ID-only dedup gates above (INFRA-1982, INFRA-1970)
+    // miss the case where two DIFFERENT gap IDs both touch the same file —
+    // check declared --paths directly against every open PR's real file
+    // list via `gh pr list --json files`.
+    //
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE gates whether an
+    // overlap blocks the claim (`blocking`, default) or merely warns and
+    // lets the claim proceed (`advisory`).
+    if let Some(paths_csv) = &args.paths {
+        if let Some((pr_num, other_gap, overlap_paths)) =
+            check_paths_overlap_open_prs(&args.repo_root, paths_csv)
+        {
+            match overlap_outcome(claim_mode_from_env(), pr_num, &other_gap, &overlap_paths) {
+                OverlapOutcome::Block(msg) => bail!(msg),
+                OverlapOutcome::Warn(msg) => {
+                    eprintln!("[claim] WARN: {msg}");
+                    let ambient_path = args.repo_root.join(".chump-locks/ambient.jsonl");
+                    emit_claim_overlap_advisory_event(
+                        &ambient_path,
+                        &args.gap_id,
+                        pr_num,
+                        &other_gap,
+                        &overlap_paths,
+                    );
+                }
+            }
+        }
     }
 
     // INFRA-1970: Gap-ID uniqueness check — primary lease key is (gap_id, session_id),
@@ -753,6 +1013,97 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                     e
                 );
             }
+        }
+    }
+
+    // INFRA-1608: atomically reserve the gap_id BEFORE the expensive worktree
+    // setup below runs. `check_gap_id_uniqueness` just above is a scan, not a
+    // lock — two sessions can both pass it and then both proceed through
+    // `git worktree add` before either writes its real lease file. This
+    // marker closes that window: only one `create_new` can win per gap_id.
+    // Held via `marker_guard` for the rest of `run_claim`; disarmed once the
+    // real lease file is written (step 7b below), or auto-removed by Drop on
+    // any earlier `bail!`/`?` return.
+    let marker_guard = {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_early = args.repo_root.join(".chump-locks");
+        let allow_dup_gap = std::env::var("CHUMP_CLAIM_ALLOW_DUPLICATE_GAP")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        let mut guard: Option<GapClaimMarkerGuard> = None;
+        if !allow_dup_gap {
+            match reserve_gap_claim_marker(&lock_dir_early, &args.gap_id, &early_session, 900)? {
+                GapClaimMarkerOutcome::Won(path) => {
+                    guard = Some(GapClaimMarkerGuard { path: Some(path) });
+                }
+                GapClaimMarkerOutcome::Lost { winner_session } => {
+                    let ambient_path = lock_dir_early.join("ambient.jsonl");
+                    emit_lease_overlap_event(
+                        &ambient_path,
+                        &args.gap_id,
+                        &winner_session,
+                        &early_session,
+                        args.paths.as_deref().unwrap_or(""),
+                    );
+                    bail!(
+                        "INFRA-1608: gap {} lost the atomic claim race to session {} \
+                         (kind=lease_overlap emitted).\n  \
+                         Options:\n  \
+                         1. Pick a different gap.\n  \
+                         2. Wait for session {} to ship or release its lease.\n  \
+                         3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
+                        args.gap_id,
+                        winner_session,
+                        winner_session,
+                    );
+                }
+            }
+        }
+        guard
+    };
+
+    // INFRA-1646 (re-do of INFRA-1412): refuse the claim when this session
+    // already holds a live lease for a DIFFERENT gap — see
+    // check_no_active_lease_for_other_gap for why the silent-merge
+    // alternative is dangerous (RESILIENT-313).
+    //
+    // Must run at the same point as the INFRA-1970 gate above: before
+    // session_id is finalised and before the worktree is created.
+    //
+    // Bypass: CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1 (emits claim_active_lease_bypassed).
+    {
+        let early_session = args
+            .session_id
+            .clone()
+            .unwrap_or_else(|| derive_session_id(&args.gap_id));
+        let lock_dir_early = args.repo_root.join(".chump-locks");
+        let allow_active_lease = std::env::var("CHUMP_CLAIM_ALLOW_ACTIVE_LEASE")
+            .map(|v| !v.trim().is_empty() && v.trim() != "0")
+            .unwrap_or(false);
+        if let Err(e) =
+            check_no_active_lease_for_other_gap(&lock_dir_early, &args.gap_id, &early_session)
+        {
+            let ambient_path = lock_dir_early.join("ambient.jsonl");
+            emit_claim_active_lease_event(
+                &ambient_path,
+                &args.gap_id,
+                &early_session,
+                &e.to_string(),
+            );
+            if !allow_active_lease {
+                bail!(
+                    "INFRA-1646: {}\n  \
+                     Override: CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1 (emits audit event)",
+                    e
+                );
+            }
+            eprintln!(
+                "[claim] INFRA-1646: WARN — active-lease conflict bypassed via CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1: {}",
+                e
+            );
         }
     }
 
@@ -997,6 +1348,55 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // 5.58. INFRA-1604: Deep claim-collision detection — full path-set
+    // intersection of this claim's declared paths[] against every sibling
+    // lease's declared paths[] (glob + directory-prefix aware). This is the
+    // structural check the lease system's paths[] field was designed for;
+    // the 5.6 (INFRA-1394) AC-text-vs-hot-file-list scan below stays as a
+    // secondary defense-in-depth check (catches the case where a lease's
+    // paths[] is incomplete or omitted entirely).
+    {
+        let own_paths: Vec<String> = claim_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+
+        if !own_paths.is_empty() {
+            let matches =
+                check_lease_path_collision(&lock_dir, &args.gap_id, &session_id, &own_paths);
+
+            for m in &matches {
+                emit_lease_path_collision_event(
+                    &ambient_log,
+                    &args.gap_id,
+                    &m.sibling_gap,
+                    &m.sibling_session,
+                    &m.overlap_paths,
+                );
+                eprintln!(
+                    "[claim] INFRA-1604: LEASE PATH COLLISION with sibling session {} (gap {}) — overlapping paths: {}",
+                    m.sibling_session,
+                    m.sibling_gap,
+                    m.overlap_paths.join(", ")
+                );
+            }
+
+            if !matches.is_empty() {
+                if !args.force_overlap {
+                    eprintln!(
+                        "[claim]   Re-run with --force-overlap to proceed anyway (event still emitted)."
+                    );
+                    std::process::exit(15);
+                } else {
+                    eprintln!(
+                        "[claim]   --force-overlap set; proceeding despite lease path collision."
+                    );
+                }
+            }
+        }
+    }
+
     // 5.6. INFRA-1394: Hot-file collision check vs sibling leases.
     //
     // Before creating the worktree (so we never leave a dangling worktree on
@@ -1048,6 +1448,55 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
                 }
             }
         }
+    }
+
+    // 5.65. INFRA-1763: lease-time predictive collision detection.
+    //
+    // Unlike the 5.6 hot-file check (which matches AC *text* against
+    // declared lease paths[]), this walks every sibling lease's *actual*
+    // worktree and runs a real `git diff` against it — catching in-flight
+    // uncommitted edits that the sibling never declared in paths[] at all.
+    // Best-effort + non-blocking: always emits claim_diff_collision_checked
+    // (cost tracking) and, for any real intersection, collision_predicted
+    // per docs/design/COLLISION_PREDICTION_SCHEMA.md.
+    {
+        let own_paths: Vec<String> = claim_paths
+            .split(',')
+            .map(|s| s.trim().to_string())
+            .filter(|s| !s.is_empty())
+            .collect();
+        let diff_result = check_diff_collision(
+            &lock_dir,
+            &args.worktree_base,
+            &args.gap_id,
+            &session_id,
+            &own_paths,
+        );
+
+        for failure in &diff_result.failures {
+            emit_claim_diff_collision_check_failed_event(&ambient_log, &args.gap_id, failure);
+        }
+
+        for m in &diff_result.matches {
+            emit_collision_predicted_event(&ambient_log, &session_id, &args.gap_id, m);
+            eprintln!(
+                "[claim] INFRA-1763: predicted collision with sibling session {} (gap {}) — shared paths: {}",
+                m.sibling_session,
+                m.sibling_gap,
+                m.shared_paths.join(", ")
+            );
+        }
+
+        emit_claim_diff_collision_checked_event(
+            &ambient_log,
+            &args.gap_id,
+            &session_id,
+            &diff_result,
+        );
+        eprintln!(
+            "[claim] INFRA-1763: diff-collision check done in {}ms ({} siblings checked, {} matches)",
+            diff_result.duration_ms, diff_result.siblings_checked, diff_result.matches.len()
+        );
     }
 
     // 5.7. INFRA-1692: pre-flight team-nugget search.
@@ -1148,6 +1597,18 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         &args.gap_id,
         &ambient_log,
     );
+
+    // 6c-pre3. INFRA-1733: symlink the worktree's .chump/github_cache.db to
+    // the main checkout's copy instead of letting it start out empty. Each
+    // fresh worktree previously got a cold cache (0% hit rate) even though
+    // the main checkout's cache was warm.
+    nugget_prefetch::link_github_cache(&args.repo_root, &worktree_path);
+
+    // 6c-pre4. INFRA-3834: symlink the worktree's .chump/state.db to the
+    // main checkout's copy so `chump gap reserve` run inside the worktree
+    // allocates IDs against the canonical counter instead of a
+    // worktree-local one that can silently collide with main.
+    nugget_prefetch::link_state_db(&args.repo_root, &worktree_path);
 
     // 6c-pre2. INFRA-1730: orphan-branch auto-rename. By this point the
     // 5b stomp-check has already run (above) and would have bailed if an
@@ -1262,12 +1723,16 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         );
     }
 
-    // 7b. Write JSON lease file to .chump-locks/<session>.json.
+    // 7b. Write JSON lease file to .chump-locks/<session>.json. INFRA-5758:
+    // a `--region <file>::<symbol>` value is merged into the same CSV as
+    // `--paths` — the paths-array writers are agnostic to region-suffixed
+    // entries.
+    let paths_csv_with_region = args.paths_csv_with_region();
     let lease_file = match write_or_merge_lease(
         &lock_dir,
         &session_id,
         &args.gap_id,
-        args.paths.as_deref(),
+        paths_csv_with_region.as_deref(),
         14_400, // 4h TTL
         false,
     ) {
@@ -1277,6 +1742,16 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
             return Err(e.context("writing JSON lease file (.chump-locks/)"));
         }
     };
+
+    // INFRA-1608: the real per-session lease file above now carries gap_id
+    // and is itself visible to `check_gap_id_uniqueness`'s scan, so the
+    // short-lived marker has done its job of closing the worktree-setup race
+    // window. Disarm it (skip the Drop-triggered remove_file) — no further
+    // cleanup needed; the marker's own TTL means an un-disarmed one from an
+    // earlier abort simply expires and is ignored.
+    if let Some(guard) = marker_guard {
+        guard.disarm();
+    }
 
     // 7c. Write state.db leases row.
     if let Err(e) = write_db_claim(
@@ -1300,7 +1775,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         &ambient_log,
         &args.gap_id,
         &session_id,
-        args.paths.as_deref().unwrap_or(""),
+        paths_csv_with_region.as_deref().unwrap_or(""),
         14_400, // 4h TTL in seconds
     );
 
@@ -1428,6 +1903,127 @@ fn emit_lease_broad_dir_claim(
 }
 
 // ── end INFRA-1885 ───────────────────────────────────────────────────────────
+
+/// INFRA-5775 (INFRA-1863 slice): return the first path component (the
+/// top-level directory) of a repo-relative path. A bare filename with no
+/// slash counts as its own "directory" for this purpose.
+fn top_level_dir_of(path: &str) -> &str {
+    path.split('/').next().unwrap_or(path)
+}
+
+/// INFRA-5775: check whether `paths_csv` spans more than one top-level
+/// directory (AC1) and, if so, either validate the `--broad --reason`
+/// override or compute an auto-narrowed replacement (AC2).
+///
+/// Returns:
+///   - `Ok(None)` — single top-level directory, or a valid `--broad` +
+///     `--reason` override (caller keeps the original paths).
+///   - `Ok(Some(narrowed_csv))` — no override supplied; caller should
+///     replace the declared paths with `narrowed_csv`.
+///   - `Err(_)` — `--broad` was set without `--reason`.
+fn check_broad_scope_and_narrow(
+    paths_csv: &str,
+    broad: bool,
+    reason: Option<&str>,
+) -> Result<Option<String>> {
+    let paths: Vec<&str> = paths_csv
+        .split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if paths.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut top_dirs: Vec<&str> = paths.iter().map(|p| top_level_dir_of(p)).collect();
+    top_dirs.sort_unstable();
+    top_dirs.dedup();
+    if top_dirs.len() <= 1 {
+        return Ok(None);
+    }
+
+    if broad {
+        let has_reason = reason.map(|r| !r.trim().is_empty()).unwrap_or(false);
+        if !has_reason {
+            bail!(
+                "INFRA-5775: --broad requires --reason '<text>' explaining why a claim \
+                 spanning multiple top-level directories ({dirs}) is necessary.",
+                dirs = top_dirs.join(", ")
+            );
+        }
+        return Ok(None);
+    }
+
+    Ok(Some(common_parent_dir(&paths)))
+}
+
+/// INFRA-5775: compute the most-specific directory common to every path in
+/// `paths` (longest common path-component prefix). Falls back to the repo
+/// root ("." ) when the paths share no common ancestor directory — which is
+/// always the case when their top-level directories already diverge.
+fn common_parent_dir(paths: &[&str]) -> String {
+    let component_lists: Vec<Vec<&str>> = paths.iter().map(|p| p.split('/').collect()).collect();
+    let min_len = component_lists.iter().map(|c| c.len()).min().unwrap_or(0);
+
+    let mut common_len = 0;
+    for i in 0..min_len {
+        let candidate = component_lists[0][i];
+        if component_lists[1..].iter().all(|cl| cl[i] == candidate) {
+            common_len = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    if common_len == 0 {
+        ".".to_string()
+    } else {
+        component_lists[0][..common_len].join("/")
+    }
+}
+
+/// INFRA-5775: emit `kind=broad_scope_claim` to ambient.jsonl when a
+/// `--broad --reason` override is used to keep a multi-top-level-dir
+/// `--paths` claim. Best-effort — silently no-ops if the file isn't
+/// writable.
+// scanner-anchor: "kind":"broad_scope_claim"
+fn emit_broad_scope_claim(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    paths_csv: &str,
+    reason: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"broad_scope_claim\",\
+         \"session_id\":\"{sid}\",\"gap\":\"{gap}\",\
+         \"paths\":\"{paths}\",\"reason\":\"{reason}\"}}\n",
+        ts = ts,
+        sid = json_escape(session_id),
+        gap = json_escape(gap_id),
+        paths = json_escape(paths_csv),
+        reason = json_escape(reason),
+    );
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── end INFRA-5775 ───────────────────────────────────────────────────────────
 
 /// INFRA-1025 AC6: check whether <remote>/<branch> exists on the remote.
 /// Uses `git ls-remote --exit-code` which exits 2 when the ref is absent.
@@ -1990,6 +2586,173 @@ pub fn check_open_pr_for_gap(repo_root: &Path, gap_id: &str) -> Option<(u64, Str
     None
 }
 
+/// INFRA-3765 (INFRA-1688 slice): claim-time path-overlap enforcement mode.
+/// `Blocking` (default) refuses the claim on overlap; `Advisory` lets it
+/// proceed after emitting a warning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimMode {
+    Blocking,
+    Advisory,
+}
+
+/// Reads `CHUMP_CLAIM_MODE` (default `blocking`). Any value other than the
+/// literal `advisory` (case-insensitive) resolves to `Blocking`, so a typo
+/// fails closed rather than silently disabling the overlap guard.
+pub fn claim_mode_from_env() -> ClaimMode {
+    match std::env::var("CHUMP_CLAIM_MODE") {
+        Ok(v) if v.trim().eq_ignore_ascii_case("advisory") => ClaimMode::Advisory,
+        _ => ClaimMode::Blocking,
+    }
+}
+
+/// INFRA-3765 (INFRA-1688 slice): decision outcome for a detected
+/// path-overlap — either a hard block (message for `bail!`) or a warning
+/// (message to log) that lets the claim proceed. Pure/testable: takes the
+/// already-detected overlap tuple rather than re-deriving it.
+pub enum OverlapOutcome {
+    Block(String),
+    Warn(String),
+}
+
+pub fn overlap_outcome(
+    mode: ClaimMode,
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) -> OverlapOutcome {
+    let msg = format!(
+        "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
+        pr_num,
+        other_gap,
+        overlap_paths.join(", "),
+    );
+    match mode {
+        ClaimMode::Blocking => OverlapOutcome::Block(msg),
+        ClaimMode::Advisory => OverlapOutcome::Warn(msg),
+    }
+}
+
+/// INFRA-3765: emit a structured ambient event when an advisory-mode claim
+/// proceeds despite a detected path overlap, so the fleet can audit how
+/// often advisory mode is masking real collisions.
+// scanner-anchor: "kind":"claim_overlap_advisory"
+fn emit_claim_overlap_advisory_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_overlap_advisory\",\
+         \"gap_id\":\"{}\",\"overlap_pr\":{},\"other_gap\":\"{}\",\"paths\":\"{}\"}}\n",
+        json_escape(gap_id),
+        pr_num,
+        json_escape(other_gap),
+        json_escape(&overlap_paths.join(", ")),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+/// INFRA-4996 (INFRA-2434 slice): check whether any file in `paths_csv`
+/// appears in the file list of a currently open PR. Returns the first
+/// overlapping PR as (pr_number, gap_id_parsed_from_title, overlap_paths).
+///
+/// Complements [`check_open_pr_for_gap`] (which matches on gap ID) by
+/// matching on actual file paths — catches two *different* gap IDs whose
+/// declared `--paths` collide on the same file.
+///
+/// Best-effort: `gh` failures or an empty/absent `paths_csv` return None.
+pub fn check_paths_overlap_open_prs(
+    repo_root: &Path,
+    paths_csv: &str,
+) -> Option<(u64, String, Vec<String>)> {
+    let claim_paths: Vec<&str> = paths_csv
+        .split(',')
+        .map(|s| s.trim())
+        .filter(|s| !s.is_empty())
+        .collect();
+    if claim_paths.is_empty() {
+        return None;
+    }
+
+    let out = Command::new("gh")
+        .args([
+            "pr",
+            "list",
+            "--state",
+            "open",
+            "--json",
+            "number,title,files",
+            "--limit",
+            "50",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let arr: Vec<serde_json::Value> = serde_json::from_slice(&out.stdout).unwrap_or_default();
+    for v in &arr {
+        let Some(num) = v["number"].as_u64() else {
+            continue;
+        };
+        let title = v["title"].as_str().unwrap_or("");
+        let pr_paths: Vec<&str> = v["files"]
+            .as_array()
+            .map(|files| files.iter().filter_map(|f| f["path"].as_str()).collect())
+            .unwrap_or_default();
+        let overlap: Vec<String> = claim_paths
+            .iter()
+            .filter(|p| {
+                pr_paths
+                    .iter()
+                    .any(|pr_path| p.eq_ignore_ascii_case(pr_path))
+            })
+            .map(|s| s.to_string())
+            .collect();
+        if !overlap.is_empty() {
+            let other_gap =
+                extract_gap_id_from_title(title).unwrap_or_else(|| "unknown".to_string());
+            return Some((num, other_gap, overlap));
+        }
+    }
+    None
+}
+
+/// Pull the first `LETTERS-DIGITS` token (e.g. `INFRA-1234`) out of a PR
+/// title. Gap-ID conventions in this repo are all-uppercase domain prefix
+/// + hyphen + digits (see `docs/gaps/*.yaml`).
+fn extract_gap_id_from_title(title: &str) -> Option<String> {
+    title
+        .split(|c: char| !(c.is_ascii_alphanumeric() || c == '-'))
+        .find_map(|token| {
+            let (prefix, suffix) = token.split_once('-')?;
+            let is_gap_id = prefix.len() >= 2
+                && prefix.chars().all(|c| c.is_ascii_uppercase())
+                && !suffix.is_empty()
+                && suffix.chars().all(|c| c.is_ascii_digit());
+            is_gap_id.then(|| token.to_string())
+        })
+}
+
 /// Emit kind=claim_open_pr_dup_blocked to ambient.jsonl (INFRA-1982).
 // scanner-anchor: "kind":"claim_open_pr_dup_blocked"
 fn emit_claim_open_pr_dup_blocked(ambient_path: &Path, gap: &str, open_pr: u64) {
@@ -2413,9 +3176,11 @@ fn json_escape(s: &str) -> String {
     out
 }
 
-/// INFRA-1259/1878: Returns true if a single AC entry is a placeholder stub.
-/// Only matches entries that ARE stubs, not entries that mention "TODO" in
-/// meaningful text (e.g. "AC: ensures no TODO in field X" must not match).
+/// INFRA-1259/1878/2984/3259: Returns true if a single AC entry is a
+/// placeholder stub or a non-verifiable filler phrase. Only matches entries
+/// that ARE stubs, not entries that mention "TODO" in meaningful text (e.g.
+/// "AC: ensures no TODO in field X" must not match). Kept in sync with the
+/// canonical copy in src/main.rs.
 fn is_vague_ac_entry(s: &str) -> bool {
     let t = s.trim();
     let upper = t.to_uppercase();
@@ -2429,6 +3194,22 @@ fn is_vague_ac_entry(s: &str) -> bool {
         || upper.starts_with("TBD ")
         || upper.starts_with("<FILL")
         || upper.starts_with("FILL IN")
+        || matches!(
+            upper.as_str(),
+            "VERIFY IT WORKS"
+                | "VERIFY IT"
+                | "VERIFY"
+                | "IT WORKS"
+                | "WORKS"
+                | "MAKE IT WORK"
+                | "SHOULD WORK"
+                | "IT SHOULD WORK"
+                | "TEST IT"
+                | "DONE"
+                | "COMPLETE"
+                | "FIX IT"
+                | "IMPLEMENT IT"
+        )
 }
 
 /// INFRA-1259: Check if acceptance_criteria is vague (empty, all-TODO, or all-TBD).
@@ -2535,6 +3316,16 @@ fn verify_or_seed_gap(repo_root: &Path, gap_id: &str) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-3002 AC#2: `chump gap import` exits 1 whenever ANY row in the yaml
+/// batch is blocked by INFRA-1434 title-similarity — even when the block is
+/// a pre-existing dupe unrelated to the gap this claim is trying to seed.
+/// A nonzero exit whose stderr carries the INFRA-1434 marker is that
+/// (recoverable) class; anything else (parse errors, io errors, etc.) is a
+/// genuine import failure that must still fail the claim.
+fn import_failure_is_similarity_block_only(stderr: &str) -> bool {
+    stderr.contains("blocked by title-similarity (INFRA-1434")
+}
+
 fn run_chump_gap_import(repo_root: &Path) -> Result<()> {
     // Use the same binary that's running this code so we're consistent
     // with the build that may have local edits. argv[0] resolves to it.
@@ -2546,7 +3337,20 @@ fn run_chump_gap_import(repo_root: &Path) -> Result<()> {
         .context("spawning chump gap import")?;
     if !out.status.success() {
         let stderr = String::from_utf8_lossy(&out.stderr);
-        bail!("chump gap import failed: {}", stderr);
+        // Don't fail the claim on the similarity-block class of exit; warn
+        // and let the caller's post-import state.db re-check
+        // (verify_or_seed_gap) decide whether the CLAIMED gap actually made
+        // it in. A genuine block of the claimed gap itself still surfaces
+        // there as "not found in state.db".
+        if import_failure_is_similarity_block_only(&stderr) {
+            eprintln!(
+                "chump claim: chump gap import reported similarity blocks (see \
+                 ambient.jsonl kind=gap_import_similarity_block); proceeding — \
+                 will verify the claimed gap landed:\n{stderr}"
+            );
+        } else {
+            bail!("chump gap import failed: {}", stderr);
+        }
     }
     Ok(())
 }
@@ -2712,6 +3516,65 @@ fn resolve_coord_bin() -> Option<PathBuf> {
         }
     }
     None
+}
+
+/// INFRA-2472: cross-machine lease visibility. `chump-coord whois` (INFRA-274)
+/// reads the NATS KV `chump_gaps` bucket directly — the same bucket
+/// `nats_dual_write` CASes into at claim time — so it sees claims taken on
+/// *other* machines that never touched this machine's `.chump-locks/`.
+///
+/// Returns `None` when NATS is unconfigured, the coord binary is
+/// unavailable, or the gap is unclaimed in the shared registry. `None` is
+/// NOT a green light — it means "no cross-machine signal available", same
+/// fail-open posture as `nats_dual_write`'s `Skipped` outcome. Local checks
+/// (`check_gap_id_uniqueness`, `check_intent_overlap`) remain the
+/// single-machine backstop; this is the mesh-wide addition.
+pub fn shared_registry_whois(gap_id: &str) -> Option<String> {
+    let nats_url = std::env::var("CHUMP_NATS_URL").unwrap_or_default();
+    if nats_url.is_empty() {
+        return None;
+    }
+    let coord_bin = resolve_coord_bin()?;
+    shared_registry_whois_with_bin(&coord_bin, gap_id)
+}
+
+/// Test seam: caller-supplied chump-coord path.
+pub(crate) fn shared_registry_whois_with_bin(coord_bin: &Path, gap_id: &str) -> Option<String> {
+    let out = Command::new(coord_bin)
+        .args(["whois", gap_id])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let session = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if session.is_empty() {
+        None
+    } else {
+        Some(session)
+    }
+}
+
+/// INFRA-2472: gate wrapper around `shared_registry_whois` — fails the claim
+/// when the shared registry shows a LIVE holder for `gap_id` from a
+/// different session. This is what closes the visibility gap AC1 describes:
+/// local `.chump-locks/` shows 0 leases while Sonnets on other machines hold
+/// the gap in NATS KV.
+fn check_shared_registry_gap_uniqueness(gap_id: &str, this_session: &str) -> Result<()> {
+    match shared_registry_whois(gap_id) {
+        Some(holder) if holder != this_session => Err(anyhow!(
+            "gap {} is already claimed by session {} in the shared NATS registry \
+             (invisible to local .chump-locks/ — cross-machine claim, INFRA-2472).\n  \
+             Options:\n  \
+             1. Pick a different gap.\n  \
+             2. Wait for session {} to ship or release its lease.\n  \
+             3. Override: CHUMP_CLAIM_ALLOW_DUPLICATE_GAP=1 (audit event emitted).",
+            gap_id,
+            holder,
+            holder,
+        )),
+        _ => Ok(()),
+    }
 }
 
 fn emit_nats_conflict_event(ambient_log_path: Option<&Path>, gap_id: &str, session_id: &str) {
@@ -2968,6 +3831,223 @@ fn emit_claim_duplicate_gap_event(
         });
 }
 
+// ── INFRA-1608: atomic gap-claim marker (closes the TOCTOU race) ────────────
+//
+// `check_gap_id_uniqueness` above is a plain scan-then-decide check: it reads
+// the lock dir, sees no live competitor, and returns Ok. But the caller does
+// NOT write anything durable at that point — `run_claim` goes on to run `git
+// worktree add`, gitdir repair, and other multi-second setup before the
+// per-session lease file is finally written (`write_or_merge_lease`, step 7b).
+// Two sessions can both pass the scan in that window, both proceed through
+// worktree setup, and both end up with a live lease on the same gap_id — the
+// exact INFRA-1602 double-claim (two leases, claim-infra-1602-26392 and
+// claim-infra-1602-47300, both live in TTL). This was root cause (a) in
+// INFRA-1608: "the CAS check has a race window" — see
+// docs/audits/lease-collision-2026-05-17.md.
+//
+// The fix: reserve a gap-keyed marker file via `create_new` (O_EXCL) — an
+// OS-atomic operation — BEFORE the expensive worktree setup runs. Unlike the
+// scan, two concurrent `create_new` calls on the same path cannot both
+// succeed; the loser gets `ErrorKind::AlreadyExists` immediately and can back
+// off instead of racing all the way through worktree creation.
+//
+// The marker carries the same {gap_id, session_id, expires_at} shape as a
+// normal lease, so it is *also* visible to `check_gap_id_uniqueness`'s scan —
+// no separate reaper wiring needed; a crashed process's orphaned marker
+// expires and is skipped exactly like any other stale lease.
+
+/// Sanitize a gap_id into a filesystem-safe marker filename component.
+fn sanitize_marker_component(gap_id: &str) -> String {
+    gap_id
+        .chars()
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || c == '-' || c == '_' {
+                c
+            } else {
+                '-'
+            }
+        })
+        .collect()
+}
+
+fn gap_claim_marker_path(lock_dir: &Path, gap_id: &str) -> PathBuf {
+    lock_dir.join(format!(
+        "gap-claim-{}.json",
+        sanitize_marker_component(gap_id)
+    ))
+}
+
+/// Outcome of a `reserve_gap_claim_marker` attempt.
+pub(crate) enum GapClaimMarkerOutcome {
+    /// We won the race; holds the marker path so the caller's guard can
+    /// clean it up on abort or disarm it on success.
+    Won(PathBuf),
+    /// Another live session already holds the marker.
+    Lost { winner_session: String },
+}
+
+/// RAII guard: removes the reserved marker file on drop unless `disarm()` was
+/// called. Ensures every early `bail!`/`?` return path in `run_claim` after
+/// reservation still releases the marker for the next claimant.
+pub(crate) struct GapClaimMarkerGuard {
+    path: Option<PathBuf>,
+}
+
+impl GapClaimMarkerGuard {
+    fn disarm(mut self) {
+        self.path = None;
+    }
+}
+
+impl Drop for GapClaimMarkerGuard {
+    fn drop(&mut self) {
+        if let Some(p) = self.path.take() {
+            let _ = std::fs::remove_file(&p);
+        }
+    }
+}
+
+/// Atomically reserve the gap-claim marker for `gap_id`. Uses `create_new`
+/// (O_EXCL) so concurrent callers racing on the same `gap_id` cannot both
+/// win: the filesystem itself is the CAS primitive, not an application-level
+/// read-then-write scan.
+///
+/// A pre-existing, expired marker is treated as an orphan and reclaimed
+/// (single retry after removing it) — this covers case (d) from INFRA-1608's
+/// root-cause list ("a session died mid-claim, leaving an orphaned lease").
+// scanner-anchor: "kind":"lease_overlap"
+pub(crate) fn reserve_gap_claim_marker(
+    lock_dir: &Path,
+    gap_id: &str,
+    session_id: &str,
+    ttl_secs: i64,
+) -> Result<GapClaimMarkerOutcome> {
+    std::fs::create_dir_all(lock_dir)
+        .with_context(|| format!("creating lock dir {}", lock_dir.display()))?;
+    let marker_path = gap_claim_marker_path(lock_dir, gap_id);
+
+    for attempt in 0..2 {
+        let now_secs = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .map(|d| d.as_secs())
+            .unwrap_or(0);
+        let expires_at = now_secs as i64 + ttl_secs;
+        let body = format!(
+            "{{\"gap_id\":\"{}\",\"session_id\":\"{}\",\"taken_at\":\"{}\",\"expires_at\":\"{}\"}}\n",
+            json_escape(gap_id),
+            json_escape(session_id),
+            unix_to_iso8601(now_secs),
+            unix_to_iso8601(expires_at.max(0) as u64),
+        );
+
+        match std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&marker_path)
+        {
+            Ok(mut f) => {
+                use std::io::Write;
+                f.write_all(body.as_bytes())
+                    .with_context(|| format!("writing marker {}", marker_path.display()))?;
+                return Ok(GapClaimMarkerOutcome::Won(marker_path));
+            }
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
+                // Inspect the existing holder.
+                let existing = std::fs::read_to_string(&marker_path).unwrap_or_default();
+                let val: serde_json::Value =
+                    serde_json::from_str(&existing).unwrap_or(serde_json::Value::Null);
+                let holder_session = val
+                    .get("session_id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("unknown")
+                    .to_string();
+                if holder_session == session_id {
+                    // Re-entrant reservation by the same session (retry path) —
+                    // treat as won without touching the existing marker.
+                    return Ok(GapClaimMarkerOutcome::Won(marker_path));
+                }
+                // Conservative default, matching `check_gap_id_uniqueness`:
+                // an unreadable/unparseable marker is treated as LIVE, not
+                // expired. This matters because a marker file that was just
+                // `create_new`'d by a concurrent winner but hasn't had its
+                // body `write_all`'d yet is transiently empty — a racing
+                // reader hitting that window must NOT mistake "empty" for
+                // "orphaned", or two callers can both reclaim and both win
+                // (observed as a flaky double-winner in the 50-thread test
+                // before this fix).
+                let holder_expired = val
+                    .get("expires_at")
+                    .and_then(|v| v.as_str())
+                    .and_then(|s| parse_iso8601(s).ok())
+                    .map(|exp| exp <= now_secs)
+                    .unwrap_or(false);
+
+                if holder_expired && attempt == 0 {
+                    // Orphan resurrection (root cause d): the prior holder's
+                    // marker outlived its TTL. Reclaim it and retry once.
+                    let _ = std::fs::remove_file(&marker_path);
+                    continue;
+                }
+
+                return Ok(GapClaimMarkerOutcome::Lost {
+                    winner_session: holder_session,
+                });
+            }
+            Err(e) => return Err(e).context("reserving gap-claim marker"),
+        }
+    }
+
+    // Both attempts hit AlreadyExists with a live holder — surface the
+    // holder from a fresh read for the error message.
+    let existing = std::fs::read_to_string(&marker_path).unwrap_or_default();
+    let val: serde_json::Value = serde_json::from_str(&existing).unwrap_or(serde_json::Value::Null);
+    let winner_session = val
+        .get("session_id")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown")
+        .to_string();
+    Ok(GapClaimMarkerOutcome::Lost { winner_session })
+}
+
+/// Emit `kind=lease_overlap` — the loser of a `reserve_gap_claim_marker` race
+/// records {gap_id, winner_session, loser_session, paths_attempted}. This is
+/// the detection-path AC from INFRA-1608: the event kind existed in
+/// EVENT_REGISTRY.yaml but nothing emitted it on an actual CAS-loss.
+// scanner-anchor: "kind":"lease_overlap"
+pub(crate) fn emit_lease_overlap_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    winner_session: &str,
+    loser_session: &str,
+    paths_attempted: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_overlap\",\
+         \"gap_id\":\"{}\",\"winner_session\":\"{}\",\"loser_session\":\"{}\",\"paths_attempted\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(winner_session),
+        json_escape(loser_session),
+        json_escape(paths_attempted),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
 /// Check if a session's lease file exists and has a non-expired expires_at.
 /// Returns false (stale) if the lease file is absent, unreadable, or expired.
 fn is_session_lease_alive(lock_dir: &Path, session_id: &str, now_secs: u64) -> bool {
@@ -2985,6 +4065,113 @@ fn is_session_lease_alive(lock_dir: &Path, session_id: &str, now_secs: u64) -> b
         Ok(exp_secs) => exp_secs > now_secs,
         Err(_) => true, // can't parse → treat as alive (conservative)
     }
+}
+
+/// INFRA-1646 (re-do of INFRA-1412): refuse `chump claim` when the resolved
+/// session already holds a LIVE lease for a DIFFERENT gap.
+///
+/// Without this gate, `write_or_merge_lease` (INFRA-985) silently overwrites
+/// `gap_id` in place inside the existing `<session>.json` lease file — the
+/// old gap's claim is lost with no error, no rollback, and no trace, leaving
+/// a lease whose `session_id` now points at gap B while any bookkeeping that
+/// keyed off "session X is working gap A" (state.db, NATS, farmer.sh's
+/// `check_silent_workers`) goes stale. Board note (2026-08-13): this is the
+/// preventive fix for RESILIENT-313 — a stale/duplicate claim lease crashed
+/// `check_silent_workers` and hard-blocked the fleet for 6h.
+///
+/// Only fires when the existing lease names a DIFFERENT `gap_id` — reclaiming
+/// the SAME gap under the same session (e.g. `--resume`) still falls through
+/// to the merge path unchanged.
+///
+/// Bypass: `CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1` (emits `claim_active_lease_bypassed`).
+// scanner-anchor: "kind":"claim_active_lease_blocked"
+fn check_no_active_lease_for_other_gap(
+    lock_dir: &Path,
+    gap_id: &str,
+    session_id: &str,
+) -> Result<()> {
+    let lease_path = lock_dir.join(format!("{}.json", session_id));
+    let Ok(body) = std::fs::read_to_string(&lease_path) else {
+        return Ok(()); // no existing lease under this session — nothing to block
+    };
+    let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+        return Ok(()); // unreadable — conservative: not a blocker
+    };
+    let Some(existing_gap) = val.get("gap_id").and_then(|v| v.as_str()) else {
+        return Ok(());
+    };
+    if existing_gap == gap_id {
+        return Ok(()); // same gap — resume/merge path owns this case
+    }
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    if !is_session_lease_alive(lock_dir, session_id, now) {
+        return Ok(()); // stale — not a live competitor
+    }
+
+    let taken_at = val
+        .get("taken_at")
+        .and_then(|v| v.as_str())
+        .unwrap_or("unknown");
+    Err(anyhow!(
+        "session {} already holds an active lease for {} (taken at {}) — refusing to claim {}.\n  \
+         Claiming a second gap under the same session used to silently overwrite the lease's\n  \
+         gap_id in place, leaving a stale/duplicate lease (the RESILIENT-313 failure class).\n  \
+         Options:\n  \
+         1. Release the existing lease first: chump --release --force\n  \
+         2. Pass a distinct --session for this claim.\n  \
+         3. Override: CHUMP_CLAIM_ALLOW_ACTIVE_LEASE=1 (audit event emitted).",
+        session_id,
+        existing_gap,
+        taken_at,
+        gap_id,
+    ))
+}
+
+/// Emit a `claim_active_lease_blocked` (or `_bypassed`) ambient event so the
+/// operator's peripheral-vision stream captures every active-lease conflict.
+// scanner-anchor: "kind":"claim_active_lease_blocked"
+fn emit_claim_active_lease_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    session_id: &str,
+    detail: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let bypassed = std::env::var("CHUMP_CLAIM_ALLOW_ACTIVE_LEASE")
+        .map(|v| !v.trim().is_empty() && v.trim() != "0")
+        .unwrap_or(false);
+    let kind = if bypassed {
+        "claim_active_lease_bypassed"
+    } else {
+        "claim_active_lease_blocked"
+    };
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"{kind}\",\
+         \"gap_id\":\"{}\",\"session_id\":\"{}\",\"detail\":\"{}\"}}\n",
+        json_escape(gap_id),
+        json_escape(session_id),
+        json_escape(detail),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
 }
 
 /// Collect session IDs that have emitted intent_retracted in ambient.jsonl.
@@ -3492,6 +4679,539 @@ fn emit_claim_hot_file_overlap_event(
     }
 }
 
+// ── INFRA-1604: deep claim-collision detection ───────────────────────────────
+//
+// Full path-set intersection of this claim's declared `--paths` against
+// every sibling lease's declared `paths[]` — structural, not heuristic.
+// Distinct from the 5.6 (INFRA-1394) check above (which greps gap AC *text*
+// for a hardcoded 5-file hot-file list) and from the 5.65 (INFRA-1763)
+// check below (which runs a real `git diff` inside each sibling's
+// worktree). This one trusts the lease system's own paths[] declarations
+// on both sides and supports globs + directory-prefix overlap.
+
+/// One sibling lease whose declared `paths[]` intersects this claim's
+/// declared `paths[]`.
+struct LeasePathCollisionMatch {
+    sibling_session: String,
+    sibling_gap: String,
+    overlap_paths: Vec<String>,
+}
+
+/// Compute the full path-set intersection of `own_paths` against every
+/// sibling lease file in `lock_dir`. Returns one match per sibling with a
+/// non-empty overlap.
+fn check_lease_path_collision(
+    lock_dir: &Path,
+    gap_id: &str,
+    own_session: &str,
+    own_paths: &[String],
+) -> Vec<LeasePathCollisionMatch> {
+    let mut out = Vec::new();
+
+    let Ok(entries) = std::fs::read_dir(lock_dir) else {
+        return out;
+    };
+
+    for entry in entries.flatten() {
+        let p = entry.path();
+        if p.extension().and_then(|s| s.to_str()) != Some("json") {
+            continue;
+        }
+        let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+        if stem == "ambient" {
+            continue;
+        }
+        let Ok(body) = std::fs::read_to_string(&p) else {
+            continue;
+        };
+        let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+            continue;
+        };
+
+        let sid = val
+            .get("session_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sid.is_empty() || sid == own_session {
+            continue;
+        }
+
+        let sibling_gap = val
+            .get("gap_id")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        if sibling_gap == gap_id {
+            continue;
+        }
+
+        let sibling_paths: Vec<String> = val
+            .get("paths")
+            .and_then(|v| v.as_array())
+            .map(|arr| {
+                arr.iter()
+                    .filter_map(|p| p.as_str().map(|s| s.to_string()))
+                    .collect()
+            })
+            .unwrap_or_default();
+
+        if sibling_paths.is_empty() {
+            continue;
+        }
+
+        let mut overlap: Vec<String> = Vec::new();
+        for own in own_paths {
+            for sib in &sibling_paths {
+                if path_overlaps_glob(own, sib) {
+                    overlap.push(format!("{} ~ {}", own, sib));
+                }
+            }
+        }
+
+        if !overlap.is_empty() {
+            overlap.sort();
+            overlap.dedup();
+            out.push(LeasePathCollisionMatch {
+                sibling_session: sid,
+                sibling_gap,
+                overlap_paths: overlap,
+            });
+        }
+    }
+
+    out
+}
+
+/// Directory-prefix- and glob-aware overlap check between two declared
+/// lease paths. A path ending in `/` is treated as a directory whose
+/// prefix overlaps any path underneath it (`docs/` overlaps
+/// `docs/gaps/X.yaml`); a path containing `*` is matched as a wildcard
+/// glob (`src/foo/*.rs` overlaps `src/foo/bar.rs`).
+fn path_overlaps_glob(a: &str, b: &str) -> bool {
+    if a == b || a == "**" || b == "**" {
+        return true;
+    }
+    if is_dir_prefix(a, b) || is_dir_prefix(b, a) {
+        return true;
+    }
+    if a.contains('*') && glob_match(a, b) {
+        return true;
+    }
+    if b.contains('*') && glob_match(b, a) {
+        return true;
+    }
+    false
+}
+
+/// True if `path` lives underneath directory `dir` (trailing slash on
+/// `dir` optional; exact matches are handled by the caller).
+fn is_dir_prefix(dir: &str, path: &str) -> bool {
+    if dir.contains('*') {
+        return false;
+    }
+    let prefix = if dir.ends_with('/') {
+        dir.to_string()
+    } else {
+        format!("{}/", dir)
+    };
+    path.starts_with(&prefix)
+}
+
+/// Classic `*`/`?` wildcard matcher (DP table). No external glob crate —
+/// the pattern space here is short repo-relative path strings, so this is
+/// cheap and dependency-free.
+fn glob_match(pattern: &str, text: &str) -> bool {
+    let p: Vec<char> = pattern.chars().collect();
+    let t: Vec<char> = text.chars().collect();
+    let (pl, tl) = (p.len(), t.len());
+    let mut dp = vec![vec![false; tl + 1]; pl + 1];
+    dp[0][0] = true;
+    for i in 1..=pl {
+        if p[i - 1] == '*' {
+            dp[i][0] = dp[i - 1][0];
+        }
+    }
+    for i in 1..=pl {
+        for j in 1..=tl {
+            dp[i][j] = match p[i - 1] {
+                '*' => dp[i - 1][j] || dp[i][j - 1],
+                '?' => dp[i - 1][j - 1],
+                c => dp[i - 1][j - 1] && c == t[j - 1],
+            };
+        }
+    }
+    dp[pl][tl]
+}
+
+/// Emit `kind=lease_path_collision` to ambient.jsonl. Best-effort — never
+/// blocks the claim flow.
+// scanner-anchor: "kind":"lease_path_collision" (registered in docs/observability/EVENT_REGISTRY.yaml, INFRA-1604)
+fn emit_lease_path_collision_event(
+    ambient_log: &Path,
+    claim_gap: &str,
+    sibling_gap: &str,
+    sibling_session: &str,
+    overlap_paths: &[String],
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let paths_json = serde_json::to_string(overlap_paths).unwrap_or_else(|_| "[]".to_string());
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"lease_path_collision\",\
+         \"claim_gap\":\"{cg}\",\"sibling_gap\":\"{sg}\",\
+         \"sibling_session\":\"{ss}\",\"overlap_paths\":{op},\"paths_count\":{pc}}}\n",
+        ts = ts,
+        cg = json_escape(claim_gap),
+        sg = json_escape(sibling_gap),
+        ss = json_escape(sibling_session),
+        op = paths_json,
+        pc = overlap_paths.len(),
+    );
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+// ── INFRA-1763: predictive diff-collision detection ─────────────────────────
+//
+// Real git-diff intersection across active leases at claim time. Distinct
+// from the 5.6 hot-file check above: that one matches AC *text* against
+// declared lease paths[]; this one runs an actual `git diff` inside each
+// sibling's worktree and intersects the *real* changed-file set against
+// this claim's paths. Schema: docs/design/COLLISION_PREDICTION_SCHEMA.md.
+
+/// Why a per-sibling diff computation failed. Feeds
+/// `kind=claim_diff_collision_check_failed`'s `failure_class` field.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DiffCollisionFailureClass {
+    /// Retryable: worktree not yet provisioned, git timed out, or a
+    /// process/IO error spawning git.
+    Transient,
+    /// Not retryable without operator intervention: bad merge-base or ref.
+    Permanent,
+}
+
+impl DiffCollisionFailureClass {
+    fn as_str(self) -> &'static str {
+        match self {
+            DiffCollisionFailureClass::Transient => "transient",
+            DiffCollisionFailureClass::Permanent => "permanent",
+        }
+    }
+}
+
+/// One sibling whose real diff could not be computed.
+struct DiffCollisionFailure {
+    sibling_gap: String,
+    sibling_session: String,
+    failure_class: DiffCollisionFailureClass,
+    reason: String,
+}
+
+/// One sibling whose real diff intersects this claim's paths.
+struct DiffCollisionMatch {
+    sibling_gap: String,
+    sibling_session: String,
+    shared_paths: Vec<String>,
+}
+
+/// Aggregate result of one diff-collision check run.
+struct DiffCollisionCheckResult {
+    duration_ms: u128,
+    siblings_checked: usize,
+    matches: Vec<DiffCollisionMatch>,
+    failures: Vec<DiffCollisionFailure>,
+}
+
+/// Compute the real changed-file set (staged + unstaged + untracked) inside
+/// a sibling's worktree. Returns the failure class + human reason on error.
+fn compute_git_diff_paths(
+    worktree: &Path,
+) -> std::result::Result<Vec<String>, (DiffCollisionFailureClass, String)> {
+    if !worktree.exists() {
+        return Err((
+            DiffCollisionFailureClass::Transient,
+            format!("sibling worktree not provisioned: {}", worktree.display()),
+        ));
+    }
+
+    let worktree_str = worktree.to_string_lossy().into_owned();
+
+    // 5s timeout via coreutils `timeout` — a hung git process must never
+    // stall the claim path. Exit 124 is timeout's own "expired" signal.
+    let run = |args: &[&str]| -> std::result::Result<String, (DiffCollisionFailureClass, String)> {
+        let mut full_args: Vec<&str> = vec!["5", "git", "-C", worktree_str.as_str()];
+        full_args.extend_from_slice(args);
+        let out = Command::new("timeout")
+            .args(&full_args)
+            .output()
+            .map_err(|e| {
+                (
+                    DiffCollisionFailureClass::Transient,
+                    format!("git IO error spawning `git {}`: {}", args.join(" "), e),
+                )
+            })?;
+
+        if out.status.code() == Some(124) {
+            return Err((
+                DiffCollisionFailureClass::Transient,
+                format!("git {} timed out after 5s", args.join(" ")),
+            ));
+        }
+        if !out.status.success() {
+            let stderr = String::from_utf8_lossy(&out.stderr).into_owned();
+            let lower = stderr.to_lowercase();
+            let class = if lower.contains("bad revision")
+                || lower.contains("unknown revision")
+                || lower.contains("ambiguous argument")
+                || lower.contains("not a valid object name")
+            {
+                DiffCollisionFailureClass::Permanent
+            } else {
+                DiffCollisionFailureClass::Transient
+            };
+            return Err((
+                class,
+                format!("git {} failed: {}", args.join(" "), stderr.trim()),
+            ));
+        }
+        Ok(String::from_utf8_lossy(&out.stdout).into_owned())
+    };
+
+    let mut paths: Vec<String> = Vec::new();
+
+    // Tracked changes vs HEAD (covers both staged and unstaged edits).
+    let diff_out = run(&["diff", "HEAD", "--name-only"])?;
+    paths.extend(
+        diff_out
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty()),
+    );
+
+    // New, not-yet-tracked files.
+    let untracked_out = run(&["ls-files", "--others", "--exclude-standard"])?;
+    paths.extend(
+        untracked_out
+            .lines()
+            .map(|l| l.trim().to_string())
+            .filter(|l| !l.is_empty()),
+    );
+
+    paths.sort();
+    paths.dedup();
+    Ok(paths)
+}
+
+/// INFRA-1763: scan every sibling lease's *real* worktree diff and
+/// intersect it against `own_paths`. Best-effort — never blocks the claim.
+fn check_diff_collision(
+    lock_dir: &Path,
+    worktree_base: &Path,
+    gap_id: &str,
+    own_session: &str,
+    own_paths: &[String],
+) -> DiffCollisionCheckResult {
+    let start = SystemTime::now();
+    let mut matches = Vec::new();
+    let mut failures = Vec::new();
+    let mut siblings_checked = 0usize;
+
+    let entries = std::fs::read_dir(lock_dir).ok();
+    if let Some(entries) = entries {
+        for entry in entries.flatten() {
+            let p = entry.path();
+            if p.extension().and_then(|s| s.to_str()) != Some("json") {
+                continue;
+            }
+            let stem = p.file_stem().and_then(|s| s.to_str()).unwrap_or("");
+            if stem == "ambient" {
+                continue;
+            }
+            let Ok(body) = std::fs::read_to_string(&p) else {
+                continue;
+            };
+            let Ok(val) = serde_json::from_str::<serde_json::Value>(&body) else {
+                continue;
+            };
+
+            let sid = val
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if sid.is_empty() || sid == own_session {
+                continue;
+            }
+
+            let sibling_gap = val
+                .get("gap_id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string();
+            if sibling_gap.is_empty() || sibling_gap == gap_id {
+                continue;
+            }
+
+            let sibling_worktree =
+                worktree_base.join(format!("chump-{}", sibling_gap.to_lowercase()));
+
+            siblings_checked += 1;
+            match compute_git_diff_paths(&sibling_worktree) {
+                Ok(sibling_diff_paths) => {
+                    if own_paths.is_empty() {
+                        continue;
+                    }
+                    let shared: Vec<String> = own_paths
+                        .iter()
+                        .filter(|op| sibling_diff_paths.iter().any(|sp| sp == *op))
+                        .cloned()
+                        .collect();
+                    if !shared.is_empty() {
+                        matches.push(DiffCollisionMatch {
+                            sibling_gap,
+                            sibling_session: sid,
+                            shared_paths: shared,
+                        });
+                    }
+                }
+                Err((failure_class, reason)) => {
+                    failures.push(DiffCollisionFailure {
+                        sibling_gap,
+                        sibling_session: sid,
+                        failure_class,
+                        reason,
+                    });
+                }
+            }
+        }
+    }
+
+    let duration_ms = SystemTime::now()
+        .duration_since(start)
+        .map(|d| d.as_millis())
+        .unwrap_or(0);
+
+    DiffCollisionCheckResult {
+        duration_ms,
+        siblings_checked,
+        matches,
+        failures,
+    }
+}
+
+/// INFRA-1763: emit `kind=collision_predicted` per
+/// docs/design/COLLISION_PREDICTION_SCHEMA.md. Best-effort.
+fn emit_collision_predicted_event(
+    ambient_log: &Path,
+    own_session: &str,
+    own_gap: &str,
+    m: &DiffCollisionMatch,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let ts = iso8601_from_unix(now);
+    let corr_id = format!("coll-{}-{}-{}", own_gap, m.sibling_gap, now);
+    let event = serde_json::json!({
+        "ts": ts,
+        "kind": "collision_predicted",
+        "schema_version": "collision-prediction-v1",
+        "agents": [
+            {"session": m.sibling_session, "current_gap": m.sibling_gap, "manifest_skills": []},
+            {"session": own_session, "current_gap": own_gap, "manifest_skills": []},
+        ],
+        "predicted_collision_ts": ts,
+        "confidence": 0.95,
+        "evidence": {
+            "source": "lease_overlap",
+            "details": "sibling's real uncommitted git diff intersects this claim's paths",
+            "shared_paths": m.shared_paths,
+            "lookahead_window_s": 0,
+        },
+        "recommended_action": "stand_down_B",
+        "session": own_session,
+        "corr_id": corr_id,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// INFRA-1763: emit `kind=claim_diff_collision_checked` (cost tracking) —
+/// fired once per claim regardless of whether any collision was found.
+fn emit_claim_diff_collision_checked_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    result: &DiffCollisionCheckResult,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_diff_collision_checked",
+        "gap_id": gap_id,
+        "session_id": session_id,
+        "duration_ms": result.duration_ms,
+        "siblings_checked": result.siblings_checked,
+        "matches_found": result.matches.len(),
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// INFRA-1763: emit `kind=claim_diff_collision_check_failed` for one sibling
+/// whose diff could not be computed.
+fn emit_claim_diff_collision_check_failed_event(
+    ambient_log: &Path,
+    gap_id: &str,
+    failure: &DiffCollisionFailure,
+) {
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let event = serde_json::json!({
+        "ts": iso8601_from_unix(now),
+        "kind": "claim_diff_collision_check_failed",
+        "gap_id": gap_id,
+        "sibling_gap": failure.sibling_gap,
+        "sibling_session": failure.sibling_session,
+        "failure_class": failure.failure_class.as_str(),
+        "reason": failure.reason,
+    });
+    append_ambient_line(ambient_log, &event);
+}
+
+/// Shared best-effort JSONL append helper for the INFRA-1763 event trio.
+fn append_ambient_line(ambient_log: &Path, event: &serde_json::Value) {
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+    {
+        let _ = f.write_all(event.to_string().as_bytes());
+        let _ = f.write_all(b"\n");
+    }
+}
+
 // ── INFRA-1415: Check-only helpers ──────────────────────────────────────────
 
 /// Check gap status in state.db (must be open and unclaimed).
@@ -3823,6 +5543,131 @@ mod nugget_prefetch {
         }
     }
 
+    /// INFRA-1733: link a freshly-created worktree's `.chump/github_cache.db`
+    /// to the main checkout's copy instead of leaving it to be initialized
+    /// empty. The cache is fed by a webhook receiver against the main
+    /// checkout only, so a worktree that doesn't share it starts every
+    /// session with a 0% hit rate.
+    ///
+    /// Creates a relative symlink `<worktree>/.chump/github_cache.db` ->
+    /// `../../.chump/github_cache.db` (relative to the worktree root, so it
+    /// keeps resolving even if the worktree base moves). Best-effort: any
+    /// failure is logged and swallowed so the claim proceeds regardless.
+    pub fn link_github_cache(repo_root: &Path, worktree_path: &Path) {
+        let main_cache = repo_root.join(".chump/github_cache.db");
+        let worktree_chump_dir = worktree_path.join(".chump");
+        let worktree_cache = worktree_chump_dir.join("github_cache.db");
+
+        if let Err(e) = std::fs::create_dir_all(&worktree_chump_dir) {
+            log::warn!(
+                "INFRA-1733: failed to create {} for github_cache.db linking: {}",
+                worktree_chump_dir.display(),
+                e
+            );
+            return;
+        }
+
+        if !main_cache.exists() {
+            log::warn!(
+                "INFRA-1733: main checkout has no {} — creating empty github_cache.db in worktree",
+                main_cache.display()
+            );
+            if let Err(e) = std::fs::File::create(&worktree_cache) {
+                log::warn!(
+                    "INFRA-1733: failed to create empty {}: {}",
+                    worktree_cache.display(),
+                    e
+                );
+            }
+            return;
+        }
+
+        // Relative target so the symlink survives the worktree base moving.
+        let relative_target = Path::new("../../.chump/github_cache.db");
+        if let Err(e) = std::os::unix::fs::symlink(relative_target, &worktree_cache) {
+            log::warn!(
+                "INFRA-1733: failed to symlink {} -> {}: {}",
+                worktree_cache.display(),
+                relative_target.display(),
+                e
+            );
+        }
+    }
+
+    /// INFRA-3834: link a freshly-created worktree's `.chump/state.db` to
+    /// the main checkout's copy, mirroring the INFRA-1733 `github_cache.db`
+    /// symlink above. Without this, `chump gap reserve` run inside the
+    /// worktree allocates IDs against a worktree-local `gap_counters` row
+    /// that starts from the same baseline as main's — producing IDs that
+    /// silently collide with gaps already assigned in the canonical,
+    /// shared `state.db`. Symlinking makes the worktree read/write the
+    /// same file (and the same SQLite locking/WAL machinery already used
+    /// by concurrent fleet workers against the main checkout), so an ID
+    /// allocated from a worktree can never collide with one allocated
+    /// from main or from a sibling worktree.
+    ///
+    /// Creates a symlink `<worktree>/.chump/state.db` -> the main
+    /// checkout's `.chump/state.db`, using an absolute, canonicalized
+    /// target. Deliberately NOT a fixed `../../...` relative hop like the
+    /// github_cache.db symlink above: this repo's actual worktree layout
+    /// nests worktrees under `<repo>/.claude/worktrees/<name>`, three
+    /// levels below repo_root, not two — a hardcoded `../../` resolves to
+    /// the wrong directory and silently produces a dangling/misplaced
+    /// symlink. Canonicalizing avoids re-encoding a depth assumption that
+    /// can drift again if the worktree layout changes.
+    /// Best-effort: any failure is logged and swallowed so the claim
+    /// proceeds regardless (the worktree falls back to an independent,
+    /// locally-initialized state.db, reproducing the pre-fix collision
+    /// risk — but never blocks the claim).
+    pub fn link_state_db(repo_root: &Path, worktree_path: &Path) {
+        let main_db = repo_root.join(".chump/state.db");
+        let worktree_chump_dir = worktree_path.join(".chump");
+        let worktree_db = worktree_chump_dir.join("state.db");
+
+        if let Err(e) = std::fs::create_dir_all(&worktree_chump_dir) {
+            log::warn!(
+                "INFRA-3834: failed to create {} for state.db linking: {}",
+                worktree_chump_dir.display(),
+                e
+            );
+            return;
+        }
+
+        if !main_db.exists() {
+            log::warn!(
+                "INFRA-3834: main checkout has no {} — leaving worktree state.db to be initialized independently",
+                main_db.display()
+            );
+            return;
+        }
+
+        if worktree_db.exists() || worktree_db.symlink_metadata().is_ok() {
+            // Already linked (e.g. --resume on an existing worktree) or a
+            // real file was initialized before this ran — don't clobber it.
+            return;
+        }
+
+        let target = match std::fs::canonicalize(&main_db) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!(
+                    "INFRA-3834: failed to canonicalize {}: {}",
+                    main_db.display(),
+                    e
+                );
+                return;
+            }
+        };
+        if let Err(e) = std::os::unix::fs::symlink(&target, &worktree_db) {
+            log::warn!(
+                "INFRA-3834: failed to symlink {} -> {}: {}",
+                worktree_db.display(),
+                target.display(),
+                e
+            );
+        }
+    }
+
     /// Read (title, description) from the gap registry. Description is read
     /// from the `description` column if present; otherwise we fall back to
     /// acceptance_criteria (still richer than title alone).
@@ -3948,6 +5793,82 @@ mod nugget_prefetch {
             std::env::remove_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH");
             // Must not panic or hang, even with no env / no DB.
             prefetch_and_print(Path::new("/nonexistent"), "INFRA-NOPE", "test-session");
+        }
+
+        /// INFRA-3834: a fresh worktree's `.chump/state.db` must become a
+        /// symlink to the main checkout's copy, not an independent file —
+        /// otherwise a gap_counters row in the worktree starts from the
+        /// same baseline as main's and can allocate a colliding ID.
+        #[test]
+        fn link_state_db_symlinks_to_main_checkout() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(repo_root.join(".chump")).unwrap();
+            std::fs::create_dir_all(&worktree_path).unwrap();
+            std::fs::write(repo_root.join(".chump/state.db"), b"canonical").unwrap();
+
+            link_state_db(&repo_root, &worktree_path);
+
+            let worktree_db = worktree_path.join(".chump/state.db");
+            let meta = std::fs::symlink_metadata(&worktree_db)
+                .expect("worktree state.db should exist after linking");
+            assert!(
+                meta.file_type().is_symlink(),
+                "worktree .chump/state.db should be a symlink, not a real file"
+            );
+            // Content resolves through the symlink to the main checkout's db,
+            // i.e. a gap_counters allocation in the worktree is the SAME
+            // allocation as one in main — collision is structurally impossible.
+            let content = std::fs::read(&worktree_db).unwrap();
+            assert_eq!(content, b"canonical");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+
+        #[test]
+        fn link_state_db_does_not_clobber_existing_file() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-noclobber-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(repo_root.join(".chump")).unwrap();
+            std::fs::create_dir_all(worktree_path.join(".chump")).unwrap();
+            std::fs::write(repo_root.join(".chump/state.db"), b"canonical").unwrap();
+            std::fs::write(worktree_path.join(".chump/state.db"), b"already-here").unwrap();
+
+            link_state_db(&repo_root, &worktree_path);
+
+            let content = std::fs::read(worktree_path.join(".chump/state.db")).unwrap();
+            assert_eq!(content, b"already-here");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+
+        #[test]
+        fn link_state_db_noop_when_main_has_none() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-nomaindb-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(&repo_root).unwrap();
+            std::fs::create_dir_all(&worktree_path).unwrap();
+
+            // Must not panic even though main has no .chump/state.db.
+            link_state_db(&repo_root, &worktree_path);
+            assert!(!worktree_path.join(".chump/state.db").exists());
+
+            let _ = std::fs::remove_dir_all(&tmp);
         }
     }
 }
@@ -4077,6 +5998,10 @@ pub fn fuzzy_match_active_leases(
     let Ok(entries) = std::fs::read_dir(&locks) else {
         return Vec::new();
     };
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
     let mut out: Vec<FuzzyMatch> = Vec::new();
     for ent in entries.flatten() {
         let p = ent.path();
@@ -4089,6 +6014,18 @@ pub fn fuzzy_match_active_leases(
         let Ok(json) = serde_json::from_str::<serde_json::Value>(&text) else {
             continue;
         };
+        // INFRA-CREDIBLE-161: a lease past its expires_at is not a live
+        // competitor — a migrated/laptop-era host can accumulate dozens of
+        // stale rows that never get vacuumed, and counting them as
+        // duplicates refuses every claim on that host (2026-07-22 chumpd-eu
+        // incident: 22 expired leases blocked all fleet claims).
+        if let Some(exp_str) = json.get("expires_at").and_then(|v| v.as_str()) {
+            if let Ok(exp_secs) = parse_iso8601(exp_str) {
+                if exp_secs <= now {
+                    continue; // expired — not a live competitor
+                }
+            }
+        }
         let lease_gap = json
             .get("gap_id")
             .and_then(|v| v.as_str())
@@ -4169,6 +6106,34 @@ pub fn emit_claim_duplicate_bypassed(repo_root: &Path, gap_id: &str, matches: &[
     }
 }
 
+/// CREDIBLE-161: emit kind=claim_fuzzy_refused to ambient.jsonl when the
+/// fuzzy gate refuses a claim outright (no bypass). The refusal previously
+/// only surfaced as text inside a caller's captured stdout/stderr, which
+/// hid it from the ambient stream for hours until a caller re-emitted it.
+pub fn emit_claim_fuzzy_refused(repo_root: &Path, gap_id: &str, matches: &[FuzzyMatch]) {
+    let amb = repo_root.join(".chump-locks").join("ambient.jsonl");
+    let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+    let match_count = matches.len();
+    let top_score = matches
+        .iter()
+        .map(|m| m.score)
+        .fold(0.0f64, |a, b| a.max(b));
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_fuzzy_refused\",\"gap\":\"{gap_id}\",\"match_count\":{match_count},\"top_score\":{top_score:.3}}}\n"
+    );
+    if let Some(parent) = amb.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    use std::io::Write as _;
+    if let Ok(mut f) = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&amb)
+    {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
 /// Look up the title of `gap_id` from the YAML file under docs/gaps.
 /// Best-effort: returns "" if the file isn't readable or doesn't parse.
 /// Falls through to gap_id when empty so the jaccard still produces some
@@ -4228,6 +6193,10 @@ pub fn run_fuzzy_gate(
         eprintln!("  [bypass] --force-duplicate set; proceeding anyway");
         return Ok(hits);
     }
+    // CREDIBLE-161: emit to ambient.jsonl so the refusal is visible in the
+    // ambient stream regardless of whether the caller re-emits captured
+    // stdout/stderr.
+    emit_claim_fuzzy_refused(repo_root, gap_id, &hits);
     Err(render_fuzzy_warnings(&hits))
 }
 
@@ -4386,6 +6355,119 @@ fn parse_iso8601_simple(ts: &str) -> Result<u64> {
     parse_iso8601(ts)
 }
 
+/// META-208: cargo-nextest flake-import ingestion path. Reads a JSON file
+/// (one array of `{"name": <test>, "outcome": "passed"|"failed"|"flaky"}`
+/// objects — the shape `chump preflight`'s `"flake-ingest"` step and
+/// `cargo run --bin chump-atomic-claim -- flake-import` both consume) and
+/// upserts one row per flaky outcome into `.chump/flake_tracker.db`.
+/// Non-flaky outcomes are ignored — this table only tracks flake history,
+/// not full test results (those already live in CI logs).
+/// Returns the number of flaky rows inserted.
+pub fn run_flake_import(repo_root: &Path, input_path: &Path) -> Result<usize> {
+    let raw = std::fs::read_to_string(input_path)
+        .with_context(|| format!("reading nextest output {}", input_path.display()))?;
+    let events: Vec<serde_json::Value> = serde_json::from_str(&raw)
+        .with_context(|| format!("parsing nextest JSON {}", input_path.display()))?;
+
+    let db_path = repo_root.join(".chump/flake_tracker.db");
+    if let Some(parent) = db_path.parent() {
+        std::fs::create_dir_all(parent)
+            .with_context(|| format!("creating {}", parent.display()))?;
+    }
+    let conn = rusqlite::Connection::open(&db_path)
+        .with_context(|| format!("opening {} for flake import", db_path.display()))?;
+    conn.execute(
+        "CREATE TABLE IF NOT EXISTS flake_outcomes (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            test_name TEXT NOT NULL,
+            outcome TEXT NOT NULL,
+            run_timestamp TEXT NOT NULL
+        )",
+        [],
+    )
+    .context("creating flake_outcomes table")?;
+
+    let now_secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let run_timestamp = unix_to_iso8601(now_secs);
+
+    let mut inserted = 0usize;
+    for event in &events {
+        let outcome = event.get("outcome").and_then(|v| v.as_str()).unwrap_or("");
+        if outcome != "flaky" {
+            continue;
+        }
+        let test_name = event
+            .get("name")
+            .and_then(|v| v.as_str())
+            .ok_or_else(|| anyhow!("flaky event missing \"name\" field: {}", event))?;
+        conn.execute(
+            "INSERT INTO flake_outcomes(test_name, outcome, run_timestamp)
+             VALUES(?1, 'flaky', ?2)",
+            rusqlite::params![test_name, run_timestamp],
+        )
+        .with_context(|| format!("inserting flake row for {}", test_name))?;
+        inserted += 1;
+    }
+    Ok(inserted)
+}
+
+#[cfg(test)]
+mod flake_import_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn imports_only_flaky_rows_with_timestamp() {
+        let dir = tempdir().unwrap();
+        let repo_root = dir.path();
+        let input_path = repo_root.join("nextest-flaky.json");
+        std::fs::write(
+            &input_path,
+            r#"[
+                {"name": "tests::stable_pass", "outcome": "passed"},
+                {"name": "tests::stable_fail", "outcome": "failed"},
+                {"name": "tests::flaky_one", "outcome": "flaky"},
+                {"name": "tests::flaky_two", "outcome": "flaky"}
+            ]"#,
+        )
+        .unwrap();
+
+        let inserted = run_flake_import(repo_root, &input_path).unwrap();
+        assert_eq!(inserted, 2);
+
+        let db_path = repo_root.join(".chump/flake_tracker.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let mut stmt = conn
+            .prepare(
+                "SELECT test_name, outcome, run_timestamp FROM flake_outcomes ORDER BY test_name",
+            )
+            .unwrap();
+        let rows: Vec<(String, String, String)> = stmt
+            .query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)))
+            .unwrap()
+            .map(|r| r.unwrap())
+            .collect();
+
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0].0, "tests::flaky_one");
+        assert_eq!(rows[0].1, "flaky");
+        assert!(!rows[0].2.is_empty());
+        assert_eq!(rows[1].0, "tests::flaky_two");
+
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM flake_outcomes WHERE test_name IN ('tests::stable_pass', 'tests::stable_fail')",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(count, 0, "non-flaky outcomes must not be inserted");
+    }
+}
+
 #[cfg(test)]
 mod fuzzy_match_tests {
     //! INFRA-1442: pure-function tests for the claim-time fuzzy-match
@@ -4524,6 +6606,36 @@ mod fuzzy_match_tests {
     }
 
     #[test]
+    fn fuzzy_match_active_leases_ignores_expired_lease() {
+        // CREDIBLE-161: a lease past its expires_at must not count as a
+        // duplicate. Without the expires_at check, a migrated host with a
+        // pile of never-vacuumed expired leases refuses every claim.
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        // Strongly-overlapping sibling lease, but expired (year 2000).
+        let lease = serde_json::json!({
+            "gap_id": "INFRA-9301",
+            "session": "laptop-era-session",
+            "paths": "src/foo.rs,scripts/ci/test-foo.sh",
+            "expires_at": "2000-01-01T00:00:00Z",
+        });
+        std::fs::write(locks.join("laptop-era-session.json"), lease.to_string()).unwrap();
+
+        let hits = fuzzy_match_active_leases(
+            dir.path(),
+            "INFRA-9302",
+            "INFRA-9302 fix test-foo.sh shape bug",
+            0.15,
+        );
+        assert!(
+            hits.is_empty(),
+            "expired lease must not be counted as a fuzzy-match duplicate; got {hits:?}"
+        );
+    }
+
+    #[test]
     fn run_fuzzy_gate_bypass_emits_event() {
         use tempfile::tempdir;
         let dir = tempdir().unwrap();
@@ -4562,6 +6674,46 @@ mod fuzzy_match_tests {
             std::env::remove_var("CHUMP_CLAIM_FUZZY_THRESHOLD");
         }
     }
+
+    /// CREDIBLE-161: a plain (non-bypassed) fuzzy-gate refusal must land in
+    /// ambient.jsonl as kind=claim_fuzzy_refused. Previously the refusal
+    /// message only existed inside the caller's captured stdout/stderr,
+    /// invisible to the ambient stream for hours.
+    #[test]
+    fn run_fuzzy_gate_refusal_emits_event() {
+        use tempfile::tempdir;
+        let dir = tempdir().unwrap();
+        let locks = dir.path().join(".chump-locks");
+        std::fs::create_dir_all(&locks).unwrap();
+        let lease = serde_json::json!({
+            "gap_id": "INFRA-9500",
+            "session": "claim-infra-9500-1",
+            "paths": "src/atomic_claim.rs,scripts/ci/test-claim-fuzzy-match.sh",
+        });
+        std::fs::write(locks.join("claim-infra-9500-1.json"), lease.to_string()).unwrap();
+
+        let gaps = dir.path().join("docs").join("gaps");
+        std::fs::create_dir_all(&gaps).unwrap();
+        std::fs::write(
+            gaps.join("INFRA-9501.yaml"),
+            "title: \"chump claim fuzzy match against atomic_claim.rs paths\"\n",
+        )
+        .unwrap();
+
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_FUZZY_THRESHOLD", "0.05");
+        }
+        let r = run_fuzzy_gate(dir.path(), "INFRA-9501", /* force_duplicate */ false);
+        assert!(r.is_err(), "expected refusal without bypass: {r:?}");
+        let amb = std::fs::read_to_string(locks.join("ambient.jsonl")).unwrap_or_default();
+        assert!(
+            amb.contains("claim_fuzzy_refused"),
+            "expected refusal event; got: {amb}"
+        );
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_FUZZY_THRESHOLD");
+        }
+    }
 }
 
 #[cfg(test)]
@@ -4574,6 +6726,101 @@ mod tests {
         assert!(s.starts_with("claim-infra-123-"));
         // claim-infra-123-<pid>-<epoch> = 4 dash-separated segments
         assert_eq!(s.matches('-').count(), 4);
+    }
+
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE default + parsing.
+    #[test]
+    fn claim_mode_defaults_to_blocking_when_unset() {
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Blocking);
+    }
+
+    #[test]
+    fn claim_mode_advisory_is_case_insensitive() {
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_MODE", "Advisory");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Advisory);
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+    }
+
+    #[test]
+    fn claim_mode_unrecognized_value_fails_closed_to_blocking() {
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_MODE", "bogus");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Blocking);
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+    }
+
+    // AC2: blocking semantics unchanged — overlap produces a Block outcome.
+    #[test]
+    fn overlap_outcome_blocking_mode_blocks() {
+        let outcome = overlap_outcome(
+            ClaimMode::Blocking,
+            42,
+            "INFRA-999",
+            &["src/foo.rs".to_string()],
+        );
+        match outcome {
+            OverlapOutcome::Block(msg) => {
+                assert!(msg.contains("#42"));
+                assert!(msg.contains("INFRA-999"));
+                assert!(msg.contains("src/foo.rs"));
+            }
+            OverlapOutcome::Warn(_) => panic!("expected Block in blocking mode"),
+        }
+    }
+
+    // AC3: advisory mode emits a structured warning and succeeds (no block).
+    #[test]
+    fn overlap_outcome_advisory_mode_warns() {
+        let outcome = overlap_outcome(
+            ClaimMode::Advisory,
+            7,
+            "INFRA-111",
+            &["src/bar.rs".to_string()],
+        );
+        match outcome {
+            OverlapOutcome::Warn(msg) => {
+                assert!(msg.contains("#7"));
+                assert!(msg.contains("INFRA-111"));
+                assert!(msg.contains("src/bar.rs"));
+            }
+            OverlapOutcome::Block(_) => panic!("expected Warn in advisory mode"),
+        }
+    }
+
+    #[test]
+    fn claim_overlap_advisory_event_is_emitted_to_ambient() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-claim-mode-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ambient_path = dir.join("ambient.jsonl");
+        emit_claim_overlap_advisory_event(
+            &ambient_path,
+            "INFRA-3765",
+            7,
+            "INFRA-111",
+            &["src/bar.rs".to_string()],
+        );
+        let contents = std::fs::read_to_string(&ambient_path).unwrap();
+        assert!(contents.contains("claim_overlap_advisory"));
+        assert!(contents.contains("INFRA-3765"));
+        assert!(contents.contains("INFRA-111"));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     // INFRA-1328: gh_owner_repo URL parser — pure logic, no network.
@@ -4660,6 +6907,23 @@ mod tests {
         // Day after leap day 2024 (leap-year math sanity)
         // 2024-03-01T00:00:00Z = 1709251200
         assert_eq!(unix_to_iso8601(1_709_251_200), "2024-03-01T00:00:00Z");
+    }
+
+    // INFRA-3002 AC#2/AC#6: claim must not fail on unrelated pre-existing
+    // similarity blocks, but must still surface genuine import failures.
+    #[test]
+    fn import_failure_similarity_block_is_recoverable() {
+        let stderr = "import complete: 1 inserted, 0 skipped, 1 blocked by \
+                       title-similarity (INFRA-1434; see ambient.jsonl \
+                       kind=gap_import_similarity_block).";
+        assert!(import_failure_is_similarity_block_only(stderr));
+    }
+
+    #[test]
+    fn import_failure_parse_error_is_still_fatal() {
+        let stderr = "chump gap import: invalid yaml at docs/gaps/INFRA-9999.yaml: \
+                       mapping values are not allowed in this context";
+        assert!(!import_failure_is_similarity_block_only(stderr));
     }
 
     #[test]
@@ -4952,7 +7216,12 @@ mod tests {
 
     #[test]
     fn from_argv_minimal() {
-        let argv: Vec<String> = vec!["claim".into(), "INFRA-123".into()];
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-123".into(),
+            "--role".into(),
+            "shepherd".into(),
+        ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-123");
         assert!(args.paths.is_none());
@@ -4970,6 +7239,8 @@ mod tests {
             "--session".into(),
             "test-session".into(),
             "--skip-doctor".into(),
+            "--role".into(),
+            "shepherd".into(),
         ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-200");
@@ -4979,9 +7250,256 @@ mod tests {
         assert!(!args.resume);
     }
 
+    // INFRA-5486 (INFRA-1863 slice): --role is mandatory (AC1/AC2) — omitting
+    // it is an error, regardless of what other flags are present.
+    #[test]
+    fn from_argv_missing_role_errors() {
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-123".into()];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("missing required flag --role"));
+    }
+
+    #[test]
+    fn from_argv_role_and_scope_flags() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-6624".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--scope".into(),
+            "atomic_claim".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert_eq!(args.gap_id, "INFRA-6624");
+        assert_eq!(args.role.as_deref(), Some("shepherd"));
+        assert_eq!(args.scope.as_deref(), Some("atomic_claim"));
+        // --paths is optional and can be omitted without error (AC2).
+        assert!(args.paths.is_none());
+    }
+
+    #[test]
+    fn from_argv_role_missing_value_errors() {
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-6624".into(), "--role".into()];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("--role needs a value"));
+    }
+
+    #[test]
+    fn from_argv_scope_missing_value_errors() {
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-6624".into(), "--scope".into()];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("--scope needs a value"));
+    }
+
+    // INFRA-5758 (INFRA-1689 slice): --region flag.
+    #[test]
+    fn from_argv_region_flag_alongside_paths() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--paths".into(),
+            "docs/foo.md".into(),
+            "--region".into(),
+            "src/foo.rs::dispatch_fanout".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert_eq!(args.region.as_deref(), Some("src/foo.rs::dispatch_fanout"));
+        assert!(!args.no_region);
+        assert_eq!(
+            args.paths_csv_with_region().as_deref(),
+            Some("docs/foo.md,src/foo.rs::dispatch_fanout")
+        );
+    }
+
+    #[test]
+    fn from_argv_region_flag_without_paths() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--region".into(),
+            "src/foo.rs::dispatch_fanout".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.paths.is_none());
+        assert_eq!(
+            args.paths_csv_with_region().as_deref(),
+            Some("src/foo.rs::dispatch_fanout")
+        );
+    }
+
+    #[test]
+    fn from_argv_region_missing_double_colon_errors() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--region".into(),
+            "src/foo.rs".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("--region must be <file>::<symbol>"));
+    }
+
+    #[test]
+    fn from_argv_no_region_flag() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--no-region".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.no_region);
+        assert!(args.region.is_none());
+        assert!(args.paths_csv_with_region().is_none());
+    }
+
+    #[test]
+    fn from_argv_region_and_no_region_mutually_exclusive() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--region".into(),
+            "src/foo.rs::dispatch_fanout".into(),
+            "--no-region".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn write_basic_lease_stores_region_entry_in_paths_array() {
+        // AC3: round-trip a lease whose paths CSV contains a `file::symbol`
+        // region entry through the real on-disk writer (not just the struct).
+        let tmp = std::env::temp_dir().join(format!(
+            "infra5758-region-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let lease_path = write_basic_lease(
+            &tmp,
+            "test-session-region",
+            "INFRA-5758",
+            Some("docs/foo.md,src/foo.rs::dispatch_fanout"),
+            14_400,
+        )
+        .expect("write");
+
+        let body = std::fs::read_to_string(&lease_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            parsed["paths"],
+            serde_json::json!(["docs/foo.md", "src/foo.rs::dispatch_fanout"])
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn from_argv_broad_and_reason_flags() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5775".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--paths".into(),
+            "src/foo.rs,docs/bar.md".into(),
+            "--broad".into(),
+            "--reason".into(),
+            "cross-cutting rename".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.broad);
+        assert_eq!(args.reason.as_deref(), Some("cross-cutting rename"));
+    }
+
+    #[test]
+    fn from_argv_reason_missing_value_errors() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5775".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--reason".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("--reason needs a value"));
+    }
+
+    // INFRA-5775 (INFRA-1863 slice): broad-scope claim guard.
+    #[test]
+    fn broad_scope_single_top_dir_passes_through() {
+        let result = check_broad_scope_and_narrow("src/foo.rs,src/bar.rs", false, None).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_without_broad_auto_narrows() {
+        let result = check_broad_scope_and_narrow("src/foo.rs,docs/bar.md", false, None).unwrap();
+        assert_eq!(result, Some(".".to_string()));
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_narrows_to_shared_ancestor() {
+        // Both paths share "src/module" as their deepest common ancestor
+        // even though the *top-level* dir ("src") is the same for both —
+        // this exercises common_parent_dir's prefix computation directly.
+        let narrowed = common_parent_dir(&["src/module/a.rs", "src/module/sub/b.rs"]);
+        assert_eq!(narrowed, "src/module");
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_with_broad_and_reason_passes() {
+        let result = check_broad_scope_and_narrow(
+            "src/foo.rs,docs/bar.md",
+            true,
+            Some("cross-cutting rename"),
+        )
+        .unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_with_broad_missing_reason_errors() {
+        let err = check_broad_scope_and_narrow("src/foo.rs,docs/bar.md", true, None).unwrap_err();
+        assert!(format!("{err:#}").contains("--broad requires --reason"));
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_with_broad_empty_reason_errors() {
+        let err =
+            check_broad_scope_and_narrow("src/foo.rs,docs/bar.md", true, Some("  ")).unwrap_err();
+        assert!(format!("{err:#}").contains("--broad requires --reason"));
+    }
+
+    #[test]
+    fn from_argv_unknown_flag_errors() {
+        let argv: Vec<String> = vec!["claim".into(), "INFRA-6624".into(), "--bogus".into()];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("unknown flag"));
+    }
+
     #[test]
     fn from_argv_resume_flag() {
-        let argv: Vec<String> = vec!["claim".into(), "INFRA-300".into(), "--resume".into()];
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-300".into(),
+            "--resume".into(),
+            "--role".into(),
+            "shepherd".into(),
+        ];
         let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
         assert_eq!(args.gap_id, "INFRA-300");
         assert!(args.resume);
@@ -5019,7 +7537,12 @@ mod tests {
     #[test]
     fn from_argv_accepts_canonical_gap_ids() {
         for good in ["INFRA-1234", "ZERO-WASTE-015", "SMOKE-001", "CREDIBLE-166"] {
-            let argv: Vec<String> = vec!["claim".into(), good.into()];
+            let argv: Vec<String> = vec![
+                "claim".into(),
+                good.into(),
+                "--role".into(),
+                "shepherd".into(),
+            ];
             assert!(
                 ClaimArgs::from_argv(&argv, PathBuf::from(".")).is_ok(),
                 "{good} should parse"
@@ -5199,6 +7722,116 @@ mod tests {
             None => std::env::remove_var("CHUMP_COORD_BIN"),
         }
     }
+    // ── INFRA-2472: shared-registry whois gate tests ────────────────────────────
+
+    fn write_whois_shim(path: &Path, rc: i32, stdout_msg: &str) {
+        use std::io::Write as _;
+        use std::os::unix::fs::PermissionsExt;
+        let body = format!(
+            "#!/usr/bin/env bash\nprintf '%s\\n' \"{}\"\nexit {}\n",
+            stdout_msg.replace('"', "\\\""),
+            rc
+        );
+        {
+            let mut f = std::fs::File::create(path).unwrap();
+            f.write_all(body.as_bytes()).unwrap();
+            f.sync_all().unwrap();
+        }
+        let mut perms = std::fs::metadata(path).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(path, perms).unwrap();
+    }
+
+    #[test]
+    fn shared_registry_whois_returns_holder_session() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "sess-on-other-machine");
+        let got = shared_registry_whois_with_bin(&shim, "INFRA-2472");
+        assert_eq!(got.as_deref(), Some("sess-on-other-machine"));
+    }
+
+    #[test]
+    fn shared_registry_whois_none_when_unclaimed() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "");
+        let got = shared_registry_whois_with_bin(&shim, "INFRA-2472");
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn shared_registry_whois_none_on_nonzero_exit() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 1, "some-session");
+        let got = shared_registry_whois_with_bin(&shim, "INFRA-2472");
+        assert_eq!(got, None);
+    }
+
+    #[test]
+    fn shared_registry_gap_uniqueness_blocks_foreign_holder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "sess-remote");
+
+        let saved = std::env::var("CHUMP_COORD_BIN").ok();
+        std::env::set_var("CHUMP_COORD_BIN", &shim);
+        let saved_url = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:4222");
+
+        let result = check_shared_registry_gap_uniqueness("INFRA-2472", "sess-local");
+        assert!(result.is_err(), "foreign holder must block the claim");
+        let msg = result.unwrap_err().to_string();
+        assert!(
+            msg.contains("sess-remote"),
+            "message must name the holder: {msg}"
+        );
+
+        match saved {
+            Some(v) => std::env::set_var("CHUMP_COORD_BIN", v),
+            None => std::env::remove_var("CHUMP_COORD_BIN"),
+        }
+        match saved_url {
+            Some(v) => std::env::set_var("CHUMP_NATS_URL", v),
+            None => std::env::remove_var("CHUMP_NATS_URL"),
+        }
+    }
+
+    #[test]
+    fn shared_registry_gap_uniqueness_allows_self_holder() {
+        let tmp = tempfile::tempdir().unwrap();
+        let shim = tmp.path().join("chump-coord-whois-shim");
+        write_whois_shim(&shim, 0, "sess-local");
+
+        let saved = std::env::var("CHUMP_COORD_BIN").ok();
+        std::env::set_var("CHUMP_COORD_BIN", &shim);
+        let saved_url = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:4222");
+
+        let result = check_shared_registry_gap_uniqueness("INFRA-2472", "sess-local");
+        assert!(result.is_ok(), "self-held claim must not block: {result:?}");
+
+        match saved {
+            Some(v) => std::env::set_var("CHUMP_COORD_BIN", v),
+            None => std::env::remove_var("CHUMP_COORD_BIN"),
+        }
+        match saved_url {
+            Some(v) => std::env::set_var("CHUMP_NATS_URL", v),
+            None => std::env::remove_var("CHUMP_NATS_URL"),
+        }
+    }
+
+    #[test]
+    fn shared_registry_whois_none_when_nats_url_unset() {
+        let saved_url = std::env::var("CHUMP_NATS_URL").ok();
+        std::env::remove_var("CHUMP_NATS_URL");
+        assert_eq!(shared_registry_whois("INFRA-2472"), None);
+        if let Some(v) = saved_url {
+            std::env::set_var("CHUMP_NATS_URL", v);
+        }
+    }
+
     // ── INFRA-1116: INTENT overlap gate tests ──────────────────────────────────
 
     fn mk_intent_tmp(label: &str) -> PathBuf {
@@ -5452,6 +8085,77 @@ mod tests {
             .unwrap()
             .as_secs();
         assert!(is_session_lease_alive(&tmp, "fresh", now));
+    }
+
+    // ── INFRA-1646: block claim when session already holds an active lease ──
+
+    #[test]
+    fn active_lease_gate_blocks_different_gap_same_session() {
+        let tmp = mk_intent_tmp("active-lease-block");
+        write_basic_lease(&tmp, "worker-1", "INFRA-OLD", None, 7_200).unwrap();
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-NEW", "worker-1");
+        assert!(
+            result.is_err(),
+            "second gap under same live session should block"
+        );
+        let msg = result.unwrap_err().to_string();
+        assert!(msg.contains("INFRA-OLD"), "error should name the held gap");
+    }
+
+    #[test]
+    fn active_lease_gate_allows_same_gap_same_session() {
+        let tmp = mk_intent_tmp("active-lease-same-gap");
+        write_basic_lease(&tmp, "worker-1", "INFRA-A", None, 7_200).unwrap();
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-A", "worker-1");
+        assert!(
+            result.is_ok(),
+            "reclaiming the same gap_id should not block"
+        );
+    }
+
+    #[test]
+    fn active_lease_gate_allows_no_existing_lease() {
+        let tmp = mk_intent_tmp("active-lease-absent");
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-A", "fresh-session");
+        assert!(
+            result.is_ok(),
+            "no prior lease file for this session should not block"
+        );
+    }
+
+    #[test]
+    fn active_lease_gate_allows_expired_lease() {
+        let tmp = mk_intent_tmp("active-lease-expired");
+        // Write a live lease then overwrite expires_at to the past.
+        write_basic_lease(&tmp, "worker-1", "INFRA-OLD", None, 7_200).unwrap();
+        let body = std::fs::read_to_string(tmp.join("worker-1.json")).unwrap();
+        let mut val: serde_json::Value = serde_json::from_str(&body).unwrap();
+        val["expires_at"] = serde_json::Value::String("2000-01-01T00:00:00Z".to_string());
+        std::fs::write(
+            tmp.join("worker-1.json"),
+            serde_json::to_string_pretty(&val).unwrap(),
+        )
+        .unwrap();
+        let result = check_no_active_lease_for_other_gap(&tmp, "INFRA-NEW", "worker-1");
+        assert!(result.is_ok(), "expired lease should not block a new claim");
+    }
+
+    #[test]
+    fn emit_claim_active_lease_event_writes_valid_json() {
+        let tmp = mk_intent_tmp("active-lease-emit");
+        let ambient = tmp.join("ambient.jsonl");
+        emit_claim_active_lease_event(&ambient, "INFRA-NEW", "worker-1", "some detail");
+        let content = std::fs::read_to_string(&ambient).unwrap();
+        let mut saw_kind = false;
+        for line in content.lines() {
+            let v: serde_json::Value = serde_json::from_str(line).expect("valid JSON");
+            if v["kind"] == "claim_active_lease_blocked" {
+                saw_kind = true;
+                assert_eq!(v["gap_id"], "INFRA-NEW");
+                assert_eq!(v["session_id"], "worker-1");
+            }
+        }
+        assert!(saw_kind, "expected claim_active_lease_blocked event");
     }
 }
 
@@ -6329,5 +9033,142 @@ mod release_lease_tests {
             .query_row("SELECT gap_id FROM leases", [], |r| r.get(0))
             .unwrap();
         assert_eq!(surviving, "EFFECTIVE-216");
+    }
+}
+
+// INFRA-1608: the atomic gap-claim marker is the structural fix for the
+// TOCTOU race behind the INFRA-1602 double-claim (two live leases on the
+// same gap). These tests exercise `reserve_gap_claim_marker` directly, plus
+// a real multi-thread race to prove the filesystem-level CAS actually holds
+// under concurrency (not just single-threaded logic).
+#[cfg(test)]
+mod gap_claim_marker_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    #[test]
+    fn first_reservation_wins() {
+        let dir = tempdir().unwrap();
+        let outcome = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(outcome, GapClaimMarkerOutcome::Won(_)));
+    }
+
+    #[test]
+    fn second_reservation_loses_to_live_holder() {
+        let dir = tempdir().unwrap();
+        let first = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(first, GapClaimMarkerOutcome::Won(_)));
+
+        let second = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-b", 900).unwrap();
+        match second {
+            GapClaimMarkerOutcome::Lost { winner_session } => {
+                assert_eq!(winner_session, "sess-a");
+            }
+            GapClaimMarkerOutcome::Won(_) => panic!("second claimant must not win"),
+        }
+    }
+
+    #[test]
+    fn same_session_reservation_is_reentrant() {
+        let dir = tempdir().unwrap();
+        let first = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(first, GapClaimMarkerOutcome::Won(_)));
+        // A retry by the SAME session (e.g. a resumed claim attempt) must not
+        // treat itself as a stranger.
+        let retry = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        assert!(matches!(retry, GapClaimMarkerOutcome::Won(_)));
+    }
+
+    #[test]
+    fn expired_marker_is_reclaimed_as_orphan() {
+        let dir = tempdir().unwrap();
+        // TTL of -10s: the marker we write is already expired the instant
+        // it's written — simulates a session that died mid-claim (root
+        // cause (d) from INFRA-1608's classification list).
+        let first = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "dead-sess", -10).unwrap();
+        assert!(matches!(first, GapClaimMarkerOutcome::Won(_)));
+
+        let second = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-b", 900).unwrap();
+        assert!(
+            matches!(second, GapClaimMarkerOutcome::Won(_)),
+            "an orphaned/expired marker must be reclaimable, got {second:?}",
+        );
+    }
+
+    impl std::fmt::Debug for GapClaimMarkerOutcome {
+        fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+            match self {
+                GapClaimMarkerOutcome::Won(p) => write!(f, "Won({})", p.display()),
+                GapClaimMarkerOutcome::Lost { winner_session } => {
+                    write!(f, "Lost{{winner_session: {winner_session}}}")
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn guard_drop_releases_marker_on_abort() {
+        let dir = tempdir().unwrap();
+        let path = gap_claim_marker_path(dir.path(), "INFRA-1608");
+        {
+            let outcome =
+                reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+            let GapClaimMarkerOutcome::Won(p) = outcome else {
+                panic!("expected Won");
+            };
+            let _guard = GapClaimMarkerGuard { path: Some(p) };
+            assert!(path.exists());
+            // guard drops here without disarm() — simulates an early bail!
+        }
+        assert!(
+            !path.exists(),
+            "Drop must remove the marker when the claim aborts before disarm()"
+        );
+    }
+
+    #[test]
+    fn guard_disarm_leaves_marker_in_place() {
+        let dir = tempdir().unwrap();
+        let path = gap_claim_marker_path(dir.path(), "INFRA-1608");
+        let outcome = reserve_gap_claim_marker(dir.path(), "INFRA-1608", "sess-a", 900).unwrap();
+        let GapClaimMarkerOutcome::Won(p) = outcome else {
+            panic!("expected Won");
+        };
+        let guard = GapClaimMarkerGuard { path: Some(p) };
+        guard.disarm();
+        assert!(path.exists(), "disarm() must NOT remove the marker");
+    }
+
+    // The load-bearing regression: N threads race `reserve_gap_claim_marker`
+    // for the SAME gap_id concurrently. Exactly one must win. This is a real
+    // OS-level filesystem race (not simulated), so it directly exercises the
+    // `create_new` CAS primitive that replaces the old scan-then-write TOCTOU
+    // window. AC6 of INFRA-1608 asks for 50 concurrent attempts.
+    #[test]
+    fn concurrent_reservations_exactly_one_winner() {
+        let dir = tempdir().unwrap();
+        let lock_dir = dir.path().to_path_buf();
+        const N: usize = 50;
+
+        let handles: Vec<_> = (0..N)
+            .map(|i| {
+                let lock_dir = lock_dir.clone();
+                std::thread::spawn(move || {
+                    reserve_gap_claim_marker(&lock_dir, "INFRA-1608", &format!("racer-{i}"), 900)
+                })
+            })
+            .collect();
+
+        let mut winners = 0;
+        let mut losers = 0;
+        for h in handles {
+            match h.join().unwrap().unwrap() {
+                GapClaimMarkerOutcome::Won(_) => winners += 1,
+                GapClaimMarkerOutcome::Lost { .. } => losers += 1,
+            }
+        }
+
+        assert_eq!(winners, 1, "exactly one racer must win the CAS");
+        assert_eq!(losers, N - 1, "every other racer must lose cleanly");
     }
 }

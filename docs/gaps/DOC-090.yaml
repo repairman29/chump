@@ -1,0 +1,16 @@
+- id: DOC-090
+  domain: DOC
+  title: teach the doc-freshness gate to see untagged docs and threshold by tag, then schedule it (DOC-089 slice 2)
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "SLICE 2 of DOC-089. Slice 1 shipped the doc half: docs/FACTORY_VISION.md anchor + all 70 docs/strategy docs classified (43 that had NO frontmatter now tagged; census 15 canonical / 48 log / 4 decision-record / 3 one-off / 0 untagged). This slice is the gate half — AC 4/5/6 of DOC-089 — split out because it edits scripts/ci/ and therefore forfeits the doc-only express lane"
+    - "MAKE THE GATE SEE UNTAGGED DOCS. scripts/ci/test-doc-freshness.sh (DOC-041) runs at .github/workflows/ci.yml:729 but scans ONLY files that already carry last_audited, so a doc with no frontmatter is structurally invisible to it. That is the same defect class as EFFECTIVE-407 (audit-ac reported 6 vague gaps while 74 carried template ACs): a detector blind to the dominant case reads as a clean bill of health. An untagged doc under docs/strategy/ must be a FINDING, not a silence"
+    - "NOTE THE WINDOW IS OPEN RIGHT NOW: slice 1 tagged all 70, so today the untagged count is 0 and this check would pass trivially. Implement it anyway and prove it with a fixture — add an untagged doc in a test and assert the gate fails. Without the fixture this ships as a no-op that silently rots the moment someone adds an untagged doc"
+    - "THRESHOLD BY TAG, NOT GLOBALLY. A canonical doc unaudited for 104 days is the real risk. A log doc being old is CORRECT — log records when the doc was last TRUE, and slice 1 deliberately stamped log docs with their real last-touch date (33 of them sit at May-June 2026, ~95 days). Flagging those would be wrong and is exactly why the current gate had to be warn-only. Suggested: tight threshold for canonical, none for log, decision-record exempt"
+    - THEN DROP WARN-ONLY for canonical docs specifically. The gate has been warn-only since DOC-041 'until the long-tail cleanup happens' — slice 1 IS that cleanup, so the justification is now spent. Do not make it fail for log docs
+    - SCHEDULE IT via the existing curator-loop pattern (ci-audit / md-links / decompose). A one-time cleanup that is not scheduled is stale again within a quarter, which is precisely how the corpus reached 61% untagged. Per ZERO-WASTE-036 an unscheduled instrument does not count as shipped
+    - "VERIFY AS SLICE 1 DID: run the gate before and after and record scanned/fresh/stale counts in the PR body. Slice 1 baseline to compare against: 208 scanned, 0 stale, exit 0"
+  outcome_id: MISSION-010
+

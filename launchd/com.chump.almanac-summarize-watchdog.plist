@@ -1,0 +1,61 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.almanac-summarize-watchdog — RESILIENT-354
+
+  Supervises the almanac summarize fleet launcher
+  (com.jeffadkins.almanac.summarize): restarts it within one cycle if it has
+  died, and pages the operator via operator-recall.sh
+  (--condition ALMANAC_SUMMARIZE_COVERAGE_DROP) if any served repo's
+  summarized-percentage falls below the floor. Closes the 2026-08-10
+  incident where the launcher died to SIGTERM and sat dead for 10 days with
+  no alarm, stuck at 68.6% summarized.
+
+  Runs scripts/ops/almanac-summarize-watchdog.sh every 5 minutes (300s) —
+  "one cycle" for the kill-it-and-it-comes-back-quickly AC.
+
+  INSTALLATION:
+    scripts/setup/install-almanac-summarize-watchdog.sh
+
+  LOGS:
+    stdout: /tmp/chump-almanac-summarize-watchdog.out.log
+    stderr: /tmp/chump-almanac-summarize-watchdog.err.log
+-->
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.almanac-summarize-watchdog</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/ops/almanac-summarize-watchdog.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <key>StartInterval</key>
+  <integer>300</integer>
+
+  <key>ThrottleInterval</key>
+  <integer>60</integer>
+
+  <!-- Run at load so a dead driver is caught immediately on install/boot,
+       not only after the first 5-minute tick. -->
+  <key>RunAtLoad</key>
+  <true/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-almanac-summarize-watchdog.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-almanac-summarize-watchdog.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key>
+    <string>/usr/local/bin:/usr/bin:/bin:/opt/homebrew/bin:/opt/homebrew/sbin</string>
+  </dict>
+</dict>
+</plist>

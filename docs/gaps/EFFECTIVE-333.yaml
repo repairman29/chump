@@ -1,0 +1,13 @@
+- id: EFFECTIVE-333
+  domain: EFFECTIVE
+  title: "EFFECTIVE: wire AC coverage fraction into the confidence score (judgment organ WS1 piece 2)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"wire AC coverage fraction into the confidence score (judgment organ WS1 piece 2)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3419
+

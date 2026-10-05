@@ -20,7 +20,17 @@ case "$(uname -s)" in
   *) echo "skip: not macOS"; exit 0 ;;
 esac
 
-REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+# INFRA-2365: resolve to the MAIN worktree, not the worktree this installer
+# happens to run from — see install-refresh-runner-binary-launchd.sh for the
+# full rationale (baking a linked/temp worktree path in causes exit=78 once
+# that worktree is reaped).
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib/resolve-main-worktree.sh
+source "$SCRIPT_DIR/../lib/resolve-main-worktree.sh"
+REPO_ROOT="$(resolve_main_worktree "${BASH_SOURCE[0]}")" || {
+    echo "FAIL: could not resolve main worktree from ${BASH_SOURCE[0]}" >&2
+    exit 1
+}
 PLIST_NAME="com.chump.fleet-autopilot"
 PLIST_PATH="$HOME/Library/LaunchAgents/${PLIST_NAME}.plist"
 AUTOPILOT_SCRIPT="$REPO_ROOT/scripts/coord/fleet-autopilot.sh"

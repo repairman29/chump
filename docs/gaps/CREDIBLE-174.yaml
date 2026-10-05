@@ -1,0 +1,57 @@
+- id: CREDIBLE-174
+  domain: CREDIBLE
+  title: enforce reviewer-role write-tool restriction at the tool level, not just prompt instruction
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    Context (2026-07-29, operator comparison against github.com/ehippy/built): built is
+    a tiny (1-day-old, 0-star, MIT) LLM-staffed Kanban pipeline — PM -> Developer ->
+    Tester -> Reviewer -> Deployer. Its Reviewer stage has NO bash/write/edit tools at
+    all -- a hard architectural constraint, not a prompt instruction ("don't edit
+    files"). It can only judge the diff and hand back a verdict; it structurally
+    cannot "fix" what it's reviewing, which means a compromised or sloppy Reviewer
+    prompt can never silently patch over its own finding.
+    
+    Chump's PR-review-intelligence cluster (pr_triage/explain/fix_clippy/ac_coverage/
+    coupling, diff_review_tool.rs -- see docs/CODEBASE_REALITY_MAP.md SS2 "Developer
+    surfaces" / "PR-review intelligence ~5K LOC") does not currently enforce this
+    separation at the tool level as far as this audit found -- review-class agent
+    invocations get the same tool surface as implementation-class ones, gated only by
+    prompt instruction (self-discipline), which is weaker than a structural guarantee.
+    
+    Why this matters for Chump specifically: unlike built's fixed single-project
+    pipeline, Chump's fleet runs review-adjacent work (curator PR audits, code-review
+    skill, bot-merge preflight judgment calls) at much higher volume and autonomy --
+    the credibility discipline this repo already applies everywhere else
+    (CREDIBLE-090 signal!=outcome, "verify before believing") argues for the same
+    hardening here: a review verdict should be structurally incapable of being the
+    thing that also silently patched the code it was judging.
+    
+    Secondary data point worth carrying, not a separate action item: built's
+    `auto_main` deploy mode is a working zero-human-touch merge path in a system
+    built in ~1 day. Chump's own mission scoreboard (docs/MISSION.md (C) THE BINARY)
+    still reports NO on a zero-human-touch PR merged in repairman29/BEAST-MODE,
+    despite orders of magnitude more infrastructure. Not a knock -- a narrow,
+    single-project pipeline reaching that milestone before a general-purpose
+    coordination OS does is a real, humbling comparandum for anyone tempted to
+    credit ChumpOS's scale of investment as proof it's closer to done.
+    
+    Rough shape (not pre-sliced, per two-phase decomposition doctrine):
+    (a) identify which review-class code paths currently share a tool registry with
+        implementation-class agent calls (likely tool_policy/middleware/routing per
+        the Reality Map's SS3 "Tool-governance + WASM sandbox ~6K LOC" cluster)
+    (b) define a "review-only" tool profile (read/search/comment, no write/edit/bash)
+        and wire it as the enforced ceiling for reviewer-class dispatches, not an
+        opt-in
+    (c) this is a hardening/trust gap, not a missing-feature gap -- scope small,
+        don't let it balloon into a general tool-policy redesign
+  acceptance_criteria:
+    - review-class agent tool profiles are enforced structurally (no write/edit/bash tool availability) rather than by prompt instruction alone, for at least the primary PR-review-intelligence code path
+    - a test proves a reviewer-class dispatch cannot invoke a write/edit/bash tool even if instructed to
+    - no regression to existing review-quality (pr_triage/fix_clippy/ac_coverage) functionality that legitimately needs read/search access
+  notes: |
+    Structural mechanism built (tool_policy::review_class_dispatch_active + tool_middleware gate, 5 tests) in worktree /tmp/chump-credible-174, uncommitted -- see CREDIBLE-181 for the finding that no real call site currently exists to wire it into. Do not close to done until CREDIBLE-181 lands (mechanism-only != AC1 met).
+  closed_date: '2026-07-30'
+  closed_pr: 3423
+

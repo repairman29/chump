@@ -1,0 +1,20 @@
+- id: PRODUCT-146
+  domain: PRODUCT
+  title: "[postsub.io] Pricing tier CTAs are completely non-functional (Get Started Free / Start Free Trial / Contact Sales)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of postsub.io (Scout, stranger tier, ~10 min bounded session, no account/payment).
+    
+    All three pricing-card buttons -- "Get Started Free" (Free tier), "Start Free Trial" (Professional, $29), "Contact Sales" (Enterprise, $99) -- produce zero visible effect on click: no navigation, no modal, no console error. This is the primary conversion path on a paid SaaS product's own pricing page. Notably inconsistent: other CTAs phrased almost identically elsewhere on the same page ("Start Publishing for Free", nav "Get Started") DO correctly open the sign-up modal -- so this isn't a global JS failure, specifically the pricing-card buttons are unwired.
+    
+    context: {"url":"https://postsub.io","tier":"stranger","source":"scout-stranger-agent"}
+    source: holler feedback_events, dedupe 8d7d99f449a7960f
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/postsub"
+

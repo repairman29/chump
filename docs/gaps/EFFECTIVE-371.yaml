@@ -1,0 +1,16 @@
+- id: EFFECTIVE-371
+  domain: EFFECTIVE
+  title: "EFFECTIVE: arcade gate-green end-to-end at N=5 — the first readiness mission, no announcement until READY-GATE passes"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    The first full readiness mission: take the arcade (smallest bucket surface — static games + shared-mega-DB Supabase touches only) to READY-GATE green end-to-end, audience N=5 friendly testers, ZERO public announcement until green. Rough shape: (a) bucket-GO via CREDIBLE-206 rows + EFFECTIVE-370 arcade slice; (b) stranger-GO via the posse loop already proven on these games (adapters exist, GAME-001..005 receipts); (c) audience-GO: five named friendly testers (a text message, not a launch), holler tickets from them flowing the existing bridge; (d) exit = READY-GATE green for jeffadkins.dev/games + a one-page readiness receipt the release-auditor can consume, at which point LIGHTHOUSE-ARCADE's telling decision goes to Jeff. This mission is the template: olive and upshift repeat it.
+  acceptance_criteria:
+    - all three GOs green for the arcade with receipts
+    - five real humans played and their feedback flowed holler-to-chump
+    - zero announcements before green
+    - readiness receipt doc consumable by release-auditor
+    - template written down so upshift/olive reruns are mechanical
+  outcome_id: LIGHTHOUSE-ARCADE
+

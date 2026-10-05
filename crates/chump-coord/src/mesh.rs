@@ -190,6 +190,66 @@ impl BandwidthBudget {
     }
 }
 
+/// INFRA-1804 AC5: compatibility shim wiring `BandwidthBudget` into the
+/// existing chump_gh self-throttle (scripts/coord/lib/github.sh —
+/// `_chump_gh_preempt_if_low`, `CHUMP_GH_MAX_CALLS_PER_MIN`,
+/// `CHUMP_GH_CALL_CRITICALITY`). Bash owns the fleet-wide throttle state
+/// (`.gh-throttle-window.*`, shared across processes via flock); this gate
+/// is for Rust callers (chump-coord binary, mesh transport) that want the
+/// same "defer background calls when the budget is tight" semantics
+/// in-process, using 'tokens' (call count) rather than bytes.
+pub struct GhThrottleGate {
+    budget: BandwidthBudget,
+}
+
+impl GhThrottleGate {
+    /// `max_calls_per_min` mirrors `CHUMP_GH_MAX_CALLS_PER_MIN` (fleet
+    /// default 60). One token == one gh call.
+    pub fn new(max_calls_per_min: usize) -> Self {
+        Self {
+            budget: BandwidthBudget::new(max_calls_per_min, 60),
+        }
+    }
+
+    /// Roll the window over if `window_seconds` have elapsed since
+    /// `window_start`, mirroring the 60s sliding window the bash throttle
+    /// re-derives from `.gh-throttle-window.*` timestamps on each check.
+    fn refresh_window(&mut self) {
+        if let Ok(start) = chrono::DateTime::parse_from_rfc3339(&self.budget.window_start) {
+            let elapsed = chrono::Utc::now()
+                .signed_duration_since(start)
+                .num_seconds();
+            if elapsed >= i64::from(self.budget.window_seconds) {
+                self.budget.reset();
+            }
+        }
+    }
+
+    /// True when the call should be deferred: `criticality == "background"`
+    /// AND the per-minute call budget is exhausted. Critical calls are
+    /// never deferred — mirrors `_chump_gh_preempt_if_low`'s fail-open for
+    /// `CHUMP_GH_CALL_CRITICALITY=critical` (the default).
+    pub fn should_defer(&mut self, criticality: &str) -> bool {
+        if criticality != "background" {
+            return false;
+        }
+        self.refresh_window();
+        !self.budget.can_send(1)
+    }
+
+    /// Record a call against the budget. Call once `should_defer()` has
+    /// returned `false` and the call is actually about to be made.
+    pub fn record_call(&mut self) {
+        self.refresh_window();
+        self.budget.deduct(1);
+    }
+
+    /// Tokens remaining in the current window.
+    pub fn remaining(&self) -> usize {
+        self.budget.remaining
+    }
+}
+
 /// Mesh message queue (simulates local queuing for offline operation) —
 /// ported from the internal sibling repo's crates/coord/src/mesh/abstract_impl.rs.
 #[derive(Clone, Debug)]
@@ -500,6 +560,33 @@ mod tests {
         assert!(!budget.can_send(501));
         budget.reset();
         assert_eq!(budget.remaining, 1000);
+    }
+
+    #[test]
+    fn gh_throttle_gate_defers_only_background_when_budget_exhausted() {
+        // 2 calls/min budget — mirrors a tight CHUMP_GH_MAX_CALLS_PER_MIN override.
+        let mut gate = GhThrottleGate::new(2);
+        assert!(!gate.should_defer("critical"));
+        assert!(!gate.should_defer("background"));
+        gate.record_call();
+        gate.record_call();
+        assert_eq!(gate.remaining(), 0);
+        // Budget exhausted: background calls defer, critical calls never do
+        // (fail-open, mirrors _chump_gh_preempt_if_low's criticality=critical skip).
+        assert!(gate.should_defer("background"));
+        assert!(!gate.should_defer("critical"));
+    }
+
+    #[test]
+    fn gh_throttle_gate_rolls_window_over_after_elapsed() {
+        let mut gate = GhThrottleGate::new(1);
+        gate.record_call();
+        assert!(gate.should_defer("background"));
+        // Simulate the 60s window having elapsed already.
+        gate.budget.window_start =
+            (chrono::Utc::now() - chrono::Duration::seconds(61)).to_rfc3339();
+        assert!(!gate.should_defer("background"));
+        assert_eq!(gate.remaining(), 1);
     }
 
     #[test]

@@ -82,28 +82,42 @@ pub fn done_ids(all: &[Gap]) -> HashSet<String> {
 /// down for the MVP and reflection-driven tuning lands in AUTO-013-A):
 ///
 /// 1. status == "open"
-/// 2. priority is "P1" or "P2" (skip P3+ until the loop is trusted)
+/// 2. priority is "P0", "P1" or "P2" (skip P3+ until the loop is trusted)
 /// 3. effort != "xl" (XL gaps need human breakdown — see design doc §4)
 /// 4. all `depends_on` IDs are in `done_ids`
-/// 5. take first N in declared order
+/// 5. sort by priority (P0 first), stable within a tier, then take first N
 ///
-/// This is deliberately stupid. Reflection-driven priority tuning is AUTO-013-A.
+/// INFRA-3616: P0 was previously excluded from the eligible filter entirely
+/// (only `P1 || P2` passed), so an operator-marked P0 was invisible to this
+/// picker — and even the P1/P2 that did pass were taken in raw declared order
+/// with no priority sort. Both are fixed: P0 is eligible, and the eligible set
+/// is priority-sorted so a P0 always precedes a P1 precedes a P2. The sort is
+/// stable, so within a priority tier the original declared order is preserved.
 pub fn pickable_gaps<'a>(all: &'a [Gap], n: usize, done_ids: &HashSet<String>) -> Vec<&'a Gap> {
-    all.iter()
+    let mut eligible: Vec<&Gap> = all
+        .iter()
         .filter(|g| g.status == "open")
-        .filter(|g| g.priority == "P1" || g.priority == "P2")
+        .filter(|g| matches!(g.priority.as_str(), "P0" | "P1" | "P2"))
         .filter(|g| g.effort != "xl")
         .filter(|g| g.depends_on.iter().flatten().all(|d| done_ids.contains(d)))
-        .take(n)
-        .collect()
+        .collect();
+    // Stable sort keeps declared order within a priority tier (INFRA-3616).
+    eligible.sort_by_key(|g| priority_rank(&g.priority));
+    eligible.into_iter().take(n).collect()
 }
 
 // ── INFRA-DISPATCH-POLICY: policy-aware single-gap picker ────────────────────
 
 /// Numeric rank for a priority string. Lower = higher urgency.
 /// Unknown strings sort last (u8::MAX).
+///
+/// INFRA-3616: "P0" was previously missing from this table, so an
+/// operator-marked P0 fell through to `u8::MAX` and sorted BEHIND every
+/// P1/P2/P3/P4 — the picker actively deprioritized the single most urgent
+/// class of gap. P0 now maps to 0 (highest urgency).
 fn priority_rank(p: &str) -> u8 {
     match p {
+        "P0" => 0,
         "P1" => 1,
         "P2" => 2,
         "P3" => 3,
@@ -232,6 +246,12 @@ pub fn pick_gap_with_kind<'a>(
     // for PRODUCT/EFFECTIVE work next. The penalty is 1 (vs 0 for non-INFRA),
     // so INFRA gaps remain pickable when there is nothing else — the bias
     // nudges but does not block.
+    //
+    // INFRA-3616: the anti-monopoly domain penalty is a P1/P2 REBALANCING
+    // nudge and must never demote a P0. A P0 is operator-marked / mission-
+    // critical: it is exempt from the domain penalty so it always sorts by its
+    // pure priority rank (0) ahead of any lower-priority gap, regardless of
+    // domain-bias state. The FLEET-045 nudge still reorders P1-vs-P2 work.
     let bias_threshold: f64 = std::env::var("CHUMP_PICKER_BIAS_THRESHOLD")
         .ok()
         .and_then(|s| s.trim().parse().ok())
@@ -255,11 +275,13 @@ pub fn pick_gap_with_kind<'a>(
     }
 
     eligible.sort_by_key(|g| {
-        let domain_penalty: u8 = if bias_active && gap_domain(&g.id) == "INFRA" {
-            1
-        } else {
-            0
-        };
+        // INFRA-3616: P0 is exempt from the domain penalty — never demote a P0.
+        let domain_penalty: u8 =
+            if bias_active && g.priority != "P0" && gap_domain(&g.id) == "INFRA" {
+                1
+            } else {
+                0
+            };
         (
             domain_penalty,
             priority_rank(&g.priority),
@@ -658,6 +680,63 @@ mod tests {
         assert_eq!(
             result.id, "COG-99",
             "threshold=0.5 + 60% INFRA should bias away from INFRA-999"
+        );
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+    }
+
+    // ── INFRA-3616: P0 supremacy — priority is the primary sort ──────────────
+
+    /// pickable_gaps: a P0 is eligible (was excluded) and precedes P1/P2.
+    #[test]
+    fn infra3616_pickable_orders_p0_before_p1_before_p2() {
+        let gaps = vec![
+            g("C2", "P2", "s", "open", None),
+            g("B1", "P1", "s", "open", None),
+            g("A0", "P0", "m", "open", None), // P0 declared LAST — must still lead
+        ];
+        let done = HashSet::new();
+        let picked = pickable_gaps(&gaps, 5, &done);
+        let ids: Vec<&str> = picked.iter().map(|g| g.id.as_str()).collect();
+        assert_eq!(
+            ids,
+            vec!["A0", "B1", "C2"],
+            "P0 must precede P1 must precede P2 regardless of declared order"
+        );
+    }
+
+    /// pick_gap: the single-gap picker returns the P0 first.
+    #[test]
+    fn infra3616_pick_gap_returns_p0_first() {
+        let gaps = vec![
+            g("P1-A", "P1", "s", "open", None),
+            g("P0-A", "P0", "m", "open", None),
+            g("P2-A", "P2", "xs", "open", None),
+        ];
+        let done = HashSet::new();
+        let picked = pick_gap(&gaps, &done, &no_live(), 0, 3).expect("should pick");
+        assert_eq!(picked.id, "P0-A", "P0 must be picked before any P1/P2");
+    }
+
+    /// pick_gap: a P0 is NEVER demoted by the FLEET-045 domain-bias nudge, even
+    /// when INFRA monopoly bias is active. The bias may still reorder P1/P2.
+    #[test]
+    #[serial(picker_bias)]
+    fn infra3616_p0_not_demoted_by_domain_bias() {
+        std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
+        std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");
+        // 9 recent INFRA ships → 90% > 80% threshold → bias active.
+        let mut gaps: Vec<Gap> = (1..=9)
+            .map(|i| g_done(&format!("INFRA-{i}"), &format!("2026-05-{i:02}")))
+            .collect();
+        // A P0 INFRA gap (would be penalized) vs a P1 PRODUCT gap (unpenalized).
+        gaps.push(g("INFRA-999", "P0", "s", "open", None));
+        gaps.push(g("PRODUCT-1", "P1", "s", "open", None));
+        let done = done_ids(&gaps);
+        let picked = pick_gap(&gaps, &done, &no_live(), 0, 3).expect("should pick");
+        assert_eq!(
+            picked.id, "INFRA-999",
+            "a P0 must never be demoted below a P1 by domain-bias"
         );
         std::env::remove_var("CHUMP_PICKER_BIAS_THRESHOLD");
         std::env::remove_var("CHUMP_PICKER_BIAS_WINDOW");

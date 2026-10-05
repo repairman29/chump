@@ -248,7 +248,7 @@ for lease in "$LOCK_DIR"/*.json; do
         realert_min="${SILENT_REALERT_MIN:-360}"
         skip=0
         if [[ -f "$marker" ]]; then
-            marker_mtime="$(stat -f %m "$marker" 2>/dev/null || stat -c %Y "$marker" 2>/dev/null || echo 0)"
+            marker_mtime="$(stat -c %Y "$marker" 2>/dev/null || stat -f %m "$marker" 2>/dev/null || echo 0)"
             marker_age_min=$(( (NOW_EPOCH - marker_mtime) / 60 ))
             if (( marker_age_min < realert_min )); then
                 skip=1

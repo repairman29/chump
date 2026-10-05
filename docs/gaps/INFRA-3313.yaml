@@ -2,9 +2,9 @@
   domain: INFRA
   title: "ZERO-WASTE: zw-a"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    - verify zw-a
+    - Synthetic bench fixture; close as non-actionable or confirm bench harness passes.
   outcome_id: MISSION-010
 

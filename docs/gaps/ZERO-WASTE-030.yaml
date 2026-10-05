@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-030
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: wip/ remote branches accumulate unbounded (484+, 6th consecutive cycle); stale-branch-reaper skips no-PR branches by design"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"wip/ remote branches accumulate unbounded (484+, 6th consecutive cycle); stale-branch-reaper skips no-PR branches by design\" is implemented in the relevant ZERO-WASTE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

@@ -1,0 +1,22 @@
+# RESILIENT-1098 — apex watchdog-of-the-watchdog. Cross-node peer heartbeat
+# check: this unit watches OTHER fleet nodes (docs/fleet/nodes/*.json), not
+# this one. It exists so a whole-node wedge (organ-watchdog dead,
+# organ-reconcile dead, systemd itself hosed) is still caught — by a peer
+# node, not by the operator session. Every fleet node runs this same unit,
+# each watching its peers, so there is no single point of observation.
+#
+# HOST-AGNOSTIC MECHANISM (RESILIENT-200, mirrors chump-organ-watchdog.service):
+# tracked helsinki-shaped (User=root, /root/... paths) ON PURPOSE.
+# install-helsinki-atc.sh rewrites "/root/" -> the run-user's $HOME and
+# "User=root" -> "User=<run-user>" at copy time.
+[Unit]
+Description=Chump apex watchdog — cross-node peer heartbeat check (RESILIENT-1098)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=root
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/ops/apex-watchdog.sh'

@@ -15,6 +15,8 @@ Chump has two co-equal lanes:
 - **The coordinator** — file-based leases, an `ambient.jsonl` peripheral-vision stream, a SQLite gap registry, linked worktrees, and a merge-queue ship pipeline. Coordinates many concurrent agent sessions on the same repo without stomping each other. No specific agent required; any tool that can commit code and push a branch works.
 - **The built-in agent** — optionally, Chump also ships its own agent: connects to local LLMs (Ollama, vLLM, mistral.rs), keeps durable state in SQLite (tasks, episodes, memory), exposes 30+ governed tools (repo, git, GitHub, web search, scheduling), and talks through a web PWA, CLI, Discord bot, or any [ACP-compatible editor](https://agentclientprotocol.com) (Zed, JetBrains). **This lane is optional** — you can use Chump as a pure coordinator for agents you already have.
 
+Together these form Chump's **two-surface architecture**: the coordinator surface (any agent, any tool) and the built-in agent surface (Chump's own governed agent). You can use either surface independently, or both together.
+
 **License:** AGPLv3 (apps) + Apache-2.0 (libraries) — see [NOTICE](NOTICE) · **Platform:** macOS, Linux, Windows (WSL2) · **Docs:** [repairman29.github.io/chump](https://repairman29.github.io/chump/) · **For collaborators / external reviewers:** [docs/PITCH.md](docs/PITCH.md)
 
 > **No Anthropic key? No Claude Code?** Chump works with any agent that can commit code. See [docs/QUICKSTART_OFFLINE.md](docs/QUICKSTART_OFFLINE.md) for Ollama, or use the coordinator with your existing tool.
@@ -60,6 +62,14 @@ chump gen "add a /health endpoint to my axum server"
 ```
 
 Reads the current repo, generates a patch, runs `cargo check`, opens a PR. Good for "I have one task, ship it" — no need to spin up the fleet.
+
+**Or auto-execute with confirmation** (INFRA-3656, RIBBON-01):
+
+```bash
+chump trek "add a /health endpoint to my axum server" --yes
+```
+
+Like `gen`, but classifies your ask and actually dispatches the routed engine: CREATE (bootstrap new project), IMPROVE (fix/enhance existing code), or INGEST (add external repo). Refuses ambiguous asks and diagnosis-only routes (Rescue/Comprehend) honestly rather than faking success. Without `--yes`, it confirms before executing.
 
 **4. Talk to the fleet** — conversational loop driving multiple agents in parallel.
 
@@ -262,12 +272,14 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 
 | Script | What it does |
 |--------|-------------|
+| `chump trek "your task" --yes` | Auto-execute front-door entrypoint: classifies your ask (CREATE/IMPROVE/INGEST/RESCUE/COMPREHEND) and dispatches the routed engine in-process. Without `--yes`, confirms before executing. (INFRA-3656) |
 | `./run.sh web` | Start the web PWA (default: port 3000) |
 | `./run.sh local -- --chump "prompt"` | CLI one-shot |
 | `./scripts/setup/setup-local.sh` | Guided first-time setup |
 | `./scripts/ci/verify-external-golden-path.sh` | Smoke test (build + required files) |
 | `./scripts/ci/chump-preflight.sh` | Full health check (inference + API + tools) |
 | `./scripts/coord/bot-merge.sh --gap <ID> --auto-merge` | Dispatcher: ship a gap through the merge queue |
+| `bash scripts/setup/chump-fleet-bootstrap.sh` | Installs every required launchd daemon/git hook on this host (idempotent). An hourly `com.chump.bootstrap-auto-install` LaunchAgent re-runs this automatically once you've run it manually the first time (INFRA-1808) — but a fresh machine still needs that one manual run to bootstrap the bootstrapper. |
 
 ---
 
@@ -283,6 +295,7 @@ Per-cell forensics, validated empirical results, and paper preprints are tracked
 | [`docs/strategy/PROJECT_STORY.md`](docs/strategy/PROJECT_STORY.md) | What this project is, how it got here, and where it's going |
 | [`docs/process/EXTERNAL_GOLDEN_PATH.md`](docs/process/EXTERNAL_GOLDEN_PATH.md) | Full setup walkthrough |
 | [`docs/architecture/ARCHITECTURE.md`](docs/architecture/ARCHITECTURE.md) | System architecture reference |
+| [`docs/ops/ORGAN_MANIFEST_BOM.md`](docs/ops/ORGAN_MANIFEST_BOM.md) | Unified organ-manifest BOM — schema, the three consumers, migration guide (INFRA-7756/INFRA-7771) |
 | [`docs/architecture/ACP.md`](docs/architecture/ACP.md) | Agent Client Protocol adapter |
 | [`docs/architecture/ACP_CAPABILITY_COMPARISON.md`](docs/architecture/ACP_CAPABILITY_COMPARISON.md) | ACP capability comparison vs other agents in the registry |
 | [`docs/process/AGENT_COORDINATION.md`](docs/process/AGENT_COORDINATION.md) | Dispatcher internals — leases, branches, failure modes, pre-commit spec |

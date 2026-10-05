@@ -43,6 +43,12 @@ fn isolation_env(root: &Path) -> Vec<(String, String)> {
     vec![
         ("CHUMP_REPO".into(), r.clone()),
         ("CHUMP_HOME".into(), r.clone()),
+        // Isolate HOME too: the RESILIENT-069 farmer gate resolves the
+        // oauth-token.json under $HOME/.chump, so without this a stale token in
+        // the developer's real ~/.chump makes farmer RED and every reserve/ship
+        // test fail. An empty tempdir HOME has no token -> farmer fails open
+        // (green), so the tests exercise gap mechanics deterministically.
+        ("HOME".into(), r.clone()),
         ("CHUMP_RESERVE_SCAN_OPEN_PRS".into(), "0".into()),
         ("CHUMP_RESERVE_NO_AUTOSTAGE".into(), "1".into()),
         ("CHUMP_RAW_YAML_LOCK".into(), "0".into()),
@@ -372,6 +378,60 @@ fn gap_ship_reserved_gap_marks_done() {
     );
 }
 
+/// ZERO-WASTE-062: Regression test — gap-ship atomically updates BOTH state.db
+/// AND docs/gaps/<ID>.yaml (status=done, closed_pr=N). Without this atomic
+/// write, every shipped gap leaves state.db==done / yaml==open drift, requiring
+/// a separate per-gap reconcile PR.
+#[test]
+fn gap_ship_updates_state_db_and_yaml_atomically() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_isolated_repo(dir.path());
+    let id = reserve_gap(dir.path(), "INFRA", "test-ship-yaml-atomic");
+
+    // Ship the gap with a known closed_pr.
+    let out = run(dir.path(), &["gap", "ship", &id, "--closed-pr", "4242"]);
+    assert!(
+        out.status.success(),
+        "gap ship failed: {}\n{}",
+        stdout(&out),
+        stderr(&out)
+    );
+
+    // 1. Assert state.db shows status=done and closed_pr=4242.
+    let show = run(dir.path(), &["gap", "show", &id, "--json"]);
+    assert!(show.status.success(), "gap show after ship failed");
+    let json: serde_json::Value = serde_json::from_str(stdout(&show).trim()).unwrap();
+    assert_eq!(
+        json["status"].as_str(),
+        Some("done"),
+        "state.db: gap status must be 'done' after ship"
+    );
+    assert_eq!(
+        json["closed_pr"].as_i64(),
+        Some(4242),
+        "state.db: closed_pr must be 4242 after --closed-pr 4242"
+    );
+
+    // 2. Assert docs/gaps/<ID>.yaml exists with status=done and closed_pr=4242.
+    let yaml_path = dir.path().join("docs/gaps").join(format!("{id}.yaml"));
+    assert!(
+        yaml_path.exists(),
+        "docs/gaps/{id}.yaml must exist after gap ship (ZERO-WASTE-056)"
+    );
+    let yaml_content = std::fs::read_to_string(&yaml_path)
+        .unwrap_or_else(|e| panic!("cannot read {}: {e}", yaml_path.display()));
+    assert!(
+        yaml_content.contains("status: done"),
+        "docs/gaps/{id}.yaml must contain 'status: done', got:\n{yaml_content}"
+    );
+    assert!(
+        yaml_content.contains("closed_pr: 4242"),
+        "docs/gaps/{id}.yaml must contain 'closed_pr: 4242', got:\n{yaml_content}"
+    );
+
+    // 3. No test pollution — tempdir is cleaned up by tempfile::tempdir() Drop.
+}
+
 // ── 6. claim (top-level) ─────────────────────────────────────────────────────
 
 #[test]
@@ -383,5 +443,58 @@ fn claim_no_args_exits_2() {
         out.status.code(),
         Some(2),
         "expected exit 2 for `claim` with no gap ID"
+    );
+}
+
+// ── 7. CREDIBLE-110: unknown subcommand must error, never hallucinate ───────
+
+/// A single unknown token (`chump bogus`) must exit non-zero with a usage
+/// error, not silently route to the model.
+#[test]
+fn unknown_subcommand_single_token_exits_nonzero_no_prose() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_isolated_repo(dir.path());
+    let out = run(dir.path(), &["bogus"]);
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "unknown subcommand must not exit 0"
+    );
+    let err = stderr(&out);
+    assert!(
+        err.contains("unknown subcommand"),
+        "stderr should report an unknown-subcommand error, got: {err}"
+    );
+    assert!(
+        !stdout(&out).to_lowercase().contains("agriculture"),
+        "must not hallucinate LLM prose for an unknown subcommand"
+    );
+}
+
+/// CREDIBLE-110 regression: a *multi-word* unknown invocation (e.g. `chump
+/// cron list`, mirroring the reported `chump farmer status` hallucination
+/// before `farmer status` was wired up) must also error — previously only
+/// the exact two-argv-element case (`args.len() == 2`) was caught, so any
+/// unknown subcommand with trailing args silently dropped those args and
+/// routed the first word alone to the model.
+#[test]
+fn unknown_subcommand_with_trailing_args_exits_nonzero_no_prose() {
+    let dir = tempfile::tempdir().unwrap();
+    setup_isolated_repo(dir.path());
+    let out = run(dir.path(), &["cron", "list"]);
+    assert_ne!(
+        out.status.code(),
+        Some(0),
+        "unknown subcommand with trailing args must not exit 0"
+    );
+    let err = stderr(&out);
+    assert!(
+        err.contains("unknown subcommand"),
+        "stderr should report an unknown-subcommand error, got: {err}"
+    );
+    assert!(
+        stdout(&out).trim().is_empty(),
+        "must not print a hallucinated reply to stdout, got: {}",
+        stdout(&out)
     );
 }

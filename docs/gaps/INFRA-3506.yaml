@@ -1,0 +1,14 @@
+- id: INFRA-3506
+  domain: INFRA
+  title: "RESILIENT: [COTG-6.2] self-maintaining deployed tools (keep it alive without the user)"
+  status: open
+  priority: P3
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-6.2] self-maintaining deployed tools (keep it alive without the user)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY PARTIAL ~30% WRONG-TARGET -> BUILD external. src/fleet_self_doctor.rs + paramedic.rs heal the INTERNAL fleet only. Build delivered-tool monitoring; reuse the circuit-breaker scaffolding.
+  outcome_id: COTG
+

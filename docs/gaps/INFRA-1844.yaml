@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: vendor ai-gm-service multi-model ensemble (Together.ai then Qwen then Mistral fallback) for Chump LLM abstraction layer"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Read repairman29/ai-gm-service/aiGMMultiModelEnsembleService.js and togetherAIService.js via gh api; document the fallback chain construction (Together.ai ChatKimi K2 then Qwen 72B then Mistral) plus the quality-vs-cost heuristics in docs/arsenal/cross-pollination/CP-012-ai-gm-ensemble.md

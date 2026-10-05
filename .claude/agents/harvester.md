@@ -32,6 +32,8 @@ Monitor(
 
 Operator-as-messenger antipattern eliminated; precedented 2026-05-24 by curator-opus-target (Monitor `bo2mnd8z0`).
 
+**Mid-session resilience (INFRA-1942, INFRA-1936 follow-up)**: on receiving a task-notification with status=killed for your inbox-watcher Monitor, immediately re-arm a fresh one (same command as above) before continuing any other work. A killed watcher means you're back to blind (no wake on new DMs) until re-armed — don't let it linger. Pairs with INFRA-1941 (SessionStart nag, catches this at session boundaries; this covers the mid-session gap).
+
 **The canonical Harvester surface is `scripts/arsenal/harvest.sh`** — a harness-neutral shell CLI. You invoke it for catalog operations; you don't reinvent its logic. The .claude/* files (this one + the skill) are convenience wrappers, not the capability.
 
 ## Standard playbook

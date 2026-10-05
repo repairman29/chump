@@ -1,0 +1,13 @@
+- id: EFFECTIVE-335
+  domain: EFFECTIVE
+  title: "EFFECTIVE: wire CREATE-mode engine-drive into ChumpBench --apply (currently RESCUE/IMPROVE only)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"wire CREATE-mode engine-drive into ChumpBench --apply (currently RESCUE/IMPROVE only)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3422
+

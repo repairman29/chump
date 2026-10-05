@@ -1,0 +1,15 @@
+- id: RESILIENT-309
+  domain: RESILIENT
+  title: "RESILIENT: Pixel-factory strong-LLM backend — Claude-Max OAuth to OpenAI-compatible proxy on CJ, point chump execute-gap cascade at it"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - A Claude-Max to OpenAI-compatible proxy runs on CJ (wraps CJ working claude CLI), bound to the tailnet at a stable port, supervised (systemd, survives restart)
+    - The Pixel chump execute-gap cascade is configured via CHUMP_CUSTOM_BASE_URL + CHUMP_CUSTOM_API_KEY to route strong work to the CJ proxy as the PRIMARY provider at a sonnet-class model
+    - "PROOF: a Pixel worker picks a gap, routes to the CJ proxy, and ships ONE real merged PR whose work was done by a sonnet-class model (NOT the free-tier cascade) - verified in the worker log (backend=claude/model=sonnet via the custom endpoint) AND the merged PR"
+    - "Dev/test only: no prod dependency on OAuth; the same CHUMP_CUSTOM_BASE_URL slot must accept an api-key or local-ollama-on-CJ backend later with ZERO Pixel-side change"
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: ssh termux claude --version + curl api.anthropic.com/v1/messages. OUTPUT: claude native binary not installed (no Android build); HTTP 401 (no ANTHROPIC_API_KEY, on flat OAuth sub). THEORY: Pixel factory cannot run strong claude -p so it is stuck on weak free-tier cascade; openclaw docs/providers/claude-max-api-proxy.md exposes the OAuth sub as an OpenAI-compatible endpoint by wrapping the Claude Code CLI, and chump src/provider_cascade.rs already speaks custom OpenAI endpoints (is_local_endpoint, resolve_model_for_endpoint, CHUMP_CUSTOM_BASE_URL in auth.rs) — so run the proxy on CJ (CLI works there, x86_64) and point the Pixel cascade at it over tailnet. ALT rejected: metered ANTHROPIC_API_KEY (costs per-token, dev-only should be flat sub); native OAuth provider in chump (big build, duplicates openclaw). Dev/test only, never prod; end-state is api-key or local ollama on CJ — same endpoint abstraction, only the backend swaps.
+

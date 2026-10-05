@@ -2,12 +2,9 @@
   domain: INFRA
   title: pre-push actionlint gate — prevent matrix-in-if and version-typo class from reaching main
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - A pre-push hook runs actionlint and rejects matrix-in-if and invalid-version workflow errors before they reach main; a crafted bad workflow is blocked locally.
   outcome_id: MISSION-010
 

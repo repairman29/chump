@@ -1,0 +1,14 @@
+- id: INFRA-3573
+  domain: INFRA
+  title: "RESILIENT: chump gap import resilient — one corrupt entry (dup 'evidence' line 44856, gaps[2750]) aborts the whole YAML->state.db sync so voice/VOA gaps never become pickable; skip+log bad entries + fix the entry"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chump gap import resilient — one corrupt entry (dup 'evidence' line 44856, gaps[2750]) aborts the whole YAML->state.db sync so voice/VOA gaps never become pickable; skip+log bad entries + fix the entry\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-09'
+  closed_pr: 3539
+  outcome_id: COTG
+

@@ -2,7 +2,7 @@
   domain: MISSION
   title: "MISSION-008 follow-up: outcome_id REQUIRED at reserve for P0 (parallel to CREDIBLE-107 --evidence gate); picker tie-breaks toward traced; --status=done flip requires outcome_id"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "`chump gap reserve --priority P0` REQUIRES --outcome <id> where id is a valid row in outcomes table; refuses without it (mirrors CREDIBLE-107 --evidence gate). Bypass: CHUMP_GAP_RESERVE_NO_OUTCOME=1 + emit kind=outcome_gate_bypassed audit event."
@@ -13,5 +13,5 @@
     - "CLAUDE.md gains a Mission-Tracing section: \"Every P0/P1 gap belongs to an outcome. Filed without one → blocked at reserve. Closed without one → blocked at ship.\""
   notes: |
     Origin: operator 2026-06-09T04:45Z "WTF I thought all gaps belong to missions and we worked them top to bottom?" Diagnosis: MISSION-008 shipped the SCHEMA but HARD CONSTRAINT explicitly forbade enforcement until follow-up. Current state: 1159 open gaps, 232 untraced (20%), 5 untraced open P0s. The hook tells us; nothing acts. This gap closes that loop. The CREDIBLE-107 pattern (--evidence gate just shipped) is the template. Untraced gaps that pre-date this enforcement: backfilled via heuristic + operator review (no migration retroactive ban).
-  outcome_id: MISSION-010
+  outcome_id: CREDIBLE-000
 

@@ -15,8 +15,8 @@
 #   docs/gaps/META-162.yaml — 9 AC
 #   docs/gaps/META-159.yaml — sibling: chump vote + consensus-tally CLI
 #
-# Feature flag: CHUMP_FLEET_RECV_SIDE_V0=1 required for tick to do real work.
-# Without it, tick emits a heartbeat-only response.
+# Feature flag: CHUMP_FLEET_RECV_SIDE_V0 defaults ON (CREDIBLE-179); set to
+# "0" to opt out, in which case tick emits a heartbeat-only response.
 #
 # Rust-First-Bypass: glue between jq + scripts/coord helpers;
 # <200 LOC at first commit; read-mostly (only writes are ambient.jsonl emit
@@ -44,7 +44,7 @@
 #   3 — ambient log missing or unreadable
 #
 # Env:
-#   CHUMP_FLEET_RECV_SIDE_V0      set to "1" to enable real tally work
+#   CHUMP_FLEET_RECV_SIDE_V0      defaults to "1" (real tally work); set "0" to opt out
 #   CHUMP_SESSION_ID              session id for inbox + emits (default: deliberator-<pid>)
 #   CHUMP_AMBIENT_LOG             ambient.jsonl path override
 #   CHUMP_DELIBERATOR_LANE_OVERRIDE  if "1", lane-scope checks skip
@@ -111,7 +111,7 @@ _nudge_curators_to_vote() {
     if [[ -f "$stamp" ]]; then
         local now_ts stamp_ts age_h
         now_ts="$(_now_epoch)"
-        stamp_ts="$(stat -f %m "$stamp" 2>/dev/null || stat -c %Y "$stamp" 2>/dev/null || echo "$now_ts")"
+        stamp_ts="$(stat -c %Y "$stamp" 2>/dev/null || stat -f %m "$stamp" 2>/dev/null || echo "$now_ts")"
         age_h=$(( (now_ts - stamp_ts) / 3600 ))
         (( age_h < cooldown_h )) && return 0
     fi
@@ -217,6 +217,21 @@ _peek_inbox() {
 
 # ── Verdict logic (canonical from META-159 AC #3) ────────────────────────────
 # Inputs: yes no abstain total deadline_epoch now_epoch
+# INFRA-2162 (META-125/C3): this function is where quorum satisfaction
+# (yes/no/total crossing the thresholds below) and NO_QUORUM/timeout are
+# both decided, in one pass, immediately before the caller emits
+# kind=consensus_result. The umbrella originally named these two moments
+# as separate ambient kinds — consensus_quorum_reached (fires BEFORE the
+# verdict is tallied) and consensus_timeout (a standalone failure signal).
+# Neither is split out today; NO_QUORUM already rides inside
+# kind=consensus_result and escalates via operator-recall after the
+# NO_QUORUM_GRACE_HOURS window (see caller, ~line 451). Registered as
+# status: planned in docs/observability/EVENT_REGISTRY.yaml pending a
+# decision on whether splitting them out is worth the extra ambient line
+# per tally.
+# scanner-anchor: "kind":"consensus_quorum_reached"
+# scanner-anchor: "kind":"consensus_timeout"
+#
 # Outputs: prints verdict string to stdout
 _compute_verdict() {
     local yes="$1" no="$2" total="$3"
@@ -333,9 +348,16 @@ _cmd_tick() {
     echo "=== curator-opus-deliberator tick @ $(_now_iso) ==="
     echo
 
-    # Feature flag gate.
-    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-0}" != "1" ]]; then
-        echo "[deliberator] CHUMP_FLEET_RECV_SIDE_V0 not set — heartbeat only"
+    # Feature flag gate (CREDIBLE-179: default ON, matching `chump vote` /
+    # `chump consensus ask`'s opt-out polarity per the "A2A consensus is
+    # always-on and mandatory" doctrine. The old opt-in default meant a
+    # session that never ran the macOS-only bootstrap `launchctl setenv`
+    # step got heartbeat-only ticks forever — the deliberator never
+    # actually scanned proposals or nudged curators to vote, compounding
+    # the zero-real-votes-ever bug even after `chump vote` itself worked.
+    # Explicit CHUMP_FLEET_RECV_SIDE_V0=0 remains the opt-out escape hatch.)
+    if [[ "${CHUMP_FLEET_RECV_SIDE_V0:-1}" == "0" ]]; then
+        echo "[deliberator] CHUMP_FLEET_RECV_SIDE_V0=0 — heartbeat only"
         _cmd_heartbeat
         return 1
     fi
@@ -621,6 +643,11 @@ _cmd_help() {
 
 cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
+
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "deliberator" || true
+fi
 
 case "$cmd" in
     tick)       _cmd_tick "$@" ;;

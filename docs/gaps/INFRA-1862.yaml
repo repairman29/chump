@@ -2,7 +2,7 @@
   domain: INFRA
   title: "A2A WORLD-CLASS: extend INFRA-1115 broadcast/inbox into a real coordination mesh with delivery guarantees + role-typed routing (META-074 child B)"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Child B of META-074. Operator priority #2: "A2A world class."

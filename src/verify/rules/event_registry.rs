@@ -51,6 +51,8 @@ const PROD_PATHS: &[&str] = &[
     "scripts/dev/",
     "scripts/setup/",
     "scripts/content-bots/",
+    "scripts/arsenal/",
+    "scripts/chairman/",
 ];
 
 const CODE_EXTS: &[&str] = &["rs", "sh", "py", "ts", "tsx", "js", "yml", "yaml"];

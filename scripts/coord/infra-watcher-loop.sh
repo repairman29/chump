@@ -7,7 +7,10 @@
 #   audit-daemons  — launchd plist health (StartInterval / StartCalendarInterval)
 #   check-runners  — self-hosted runner ghost-online detection
 #   check-disk     — /tmp + /private/tmp + .chump-locks disk pressure
+#   check-disk-headroom — proactive $HOME free-GB margin alarm (INFRA-7890),
+#                    pages BEFORE the cargo-target-reaper's 20GB critical floor
 #   check-procs    — claude process count + load avg
+#   check-ptys     — pty allocation vs kern.tty.ptmx_max (RESILIENT-092)
 #
 # Emits kind=infra_watcher_finding with {category, severity, detail} to ambient.jsonl
 #
@@ -25,6 +28,10 @@ AMBIENT_LOG="${REPO_ROOT}/.chump-locks/ambient.jsonl"
 
 _ts() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
 
+# INFRA-2210: no-idle finding counter — cmd_tick reads this after all
+# subchecks run to decide whether the cycle was genuinely quiet.
+_NON_OK_FINDING_COUNT=0
+
 _emit_finding() {
     local category="$1"
     local severity="$2"  # critical | warning | ok
@@ -39,9 +46,53 @@ _emit_finding() {
         >> "$AMBIENT_LOG"
     if [[ "$severity" == "critical" ]]; then
         printf '[infra-watcher] CRITICAL %s: %s\n' "$category" "$detail" >&2
+        _NON_OK_FINDING_COUNT=$((_NON_OK_FINDING_COUNT + 1))
+    elif [[ "$severity" == "warning" ]]; then
+        printf '[infra-watcher] %s %s: %s\n' "$severity" "$category" "$detail"
+        _NON_OK_FINDING_COUNT=$((_NON_OK_FINDING_COUNT + 1))
     else
         printf '[infra-watcher] %s %s: %s\n' "$severity" "$category" "$detail"
     fi
+}
+
+# INFRA-2210: no-idle substrate scan. Runs only when the tick's subchecks
+# found nothing critical/warning (substrate health check passes). Looks for
+# filing-worthy weaknesses — launchd plists with no matching
+# scripts/ci/test-*-watchdog.sh coverage — and files a P2 gap per weakness
+# found (P2 is permissionless per CLAUDE.md intake firewall; no --outcome
+# required). Dedupes against gaps already filed for the same plist by
+# grepping ambient.jsonl for a prior infra_watcher_filed_gap on that plist
+# in the last 24h, so a quiet substrate doesn't refile every tick.
+_no_idle_substrate_scan() {
+    local plist_dir="${REPO_ROOT}/scripts/launchd"
+    [[ -d "$plist_dir" ]] || return 1
+    local acted=0
+    local plist base name cutoff_epoch now_epoch
+    now_epoch="$(date -u +%s)"
+    cutoff_epoch=$((now_epoch - 86400))
+    for plist in "$plist_dir"/*.plist; do
+        [[ -f "$plist" ]] || continue
+        base="$(basename "$plist" .plist)"
+        name="${base#com.chump.}"
+        if grep -rlq "$name" "${REPO_ROOT}/scripts/ci/"test-*watchdog*.sh 2>/dev/null; then
+            continue
+        fi
+        if grep -q "\"kind\":\"infra_watcher_filed_gap\".*\"plist\":\"${base}\"" "$AMBIENT_LOG" 2>/dev/null; then
+            local last_ts last_epoch
+            last_ts="$(grep "\"kind\":\"infra_watcher_filed_gap\".*\"plist\":\"${base}\"" "$AMBIENT_LOG" 2>/dev/null | tail -1 | sed -n 's/.*"ts":"\([^"]*\)".*/\1/p')"
+            last_epoch="$(date -u -d "$last_ts" +%s 2>/dev/null || date -u -j -f "%Y-%m-%dT%H:%M:%SZ" "$last_ts" +%s 2>/dev/null || echo 0)"
+            (( last_epoch > cutoff_epoch )) && continue
+        fi
+        printf '[infra-watcher] no-idle: %s has no watchdog test coverage — filing gap\n' "$base"
+        chump gap reserve --domain INFRA --priority P2 \
+            --title "RESILIENT: watchdog test coverage for launchd plist ${base}" \
+            >/dev/null 2>&1 || true
+        printf '{"ts":"%s","kind":"infra_watcher_filed_gap","plist":"%s"}\n' \
+            "$(_ts)" "$base" >> "$AMBIENT_LOG" 2>/dev/null || true
+        acted=1
+    done
+    (( acted == 1 )) && return 0
+    return 1
 }
 
 _header() { printf '\n=== infra-watcher: %s ===\n' "$1"; }
@@ -51,7 +102,7 @@ _header() { printf '\n=== infra-watcher: %s ===\n' "$1"; }
 # Optionally verify the associated process has heartbeated recently.
 cmd_audit_daemons() {
     _header "audit-daemons"
-    local plist_dir="${HOME}/Library/LaunchAgents"
+    local plist_dir="${CHUMP_INFRA_WATCHER_PLIST_DIR:-${HOME}/Library/LaunchAgents}"
     local found_any=0
     local findings=0
 
@@ -162,12 +213,13 @@ cmd_check_runners() {
 
     # Standalone ghost-online detection
     local gh_bin="${CHUMP_GH_BIN:-gh}"
+    local repo_slug
+    repo_slug="$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null \
+        | sed 's|.*github.com[:/]||; s|\.git$||')"
 
     # Get runner state — fail gracefully if gh unavailable
     local runners_json
-    if ! runners_json="$("$gh_bin" api repos/"$(git -C "$REPO_ROOT" remote get-url origin 2>/dev/null \
-        | sed 's|.*github.com[:/]||; s|\.git$||')" \
-        /actions/runners --paginate 2>/dev/null)"; then
+    if ! runners_json="$("$gh_bin" api "repos/${repo_slug}/actions/runners" --paginate 2>/dev/null)"; then
         printf '[infra-watcher] check-runners: gh api unavailable — skipping runner check\n'
         return 0
     fi
@@ -187,9 +239,14 @@ print(sum(1 for r in runners if r.get('status')=='online' and r.get('busy')==Fal
         return 0
     fi
 
-    # Check for queued runs older than 5 minutes
+    # Check for queued runs older than 5 minutes. INFRA-2464: `gh run list`
+    # is a GraphQL call; the REST equivalent (actions/runs?status=queued)
+    # hits the REST bucket instead, which stays healthy during GraphQL
+    # exhaustion — and reuses repo_slug resolved above instead of a second
+    # lookup.
     local queued_json
-    if ! queued_json="$("$gh_bin" run list --status queued --limit 20 --json databaseId,createdAt,status 2>/dev/null)"; then
+    if ! queued_json="$("$gh_bin" api "repos/${repo_slug}/actions/runs?status=queued&per_page=20" \
+        --jq '.workflow_runs' 2>/dev/null)"; then
         printf '[infra-watcher] check-runners: cannot read queued runs — skipping\n'
         return 0
     fi
@@ -201,7 +258,7 @@ import json,sys
 from datetime import datetime, timezone, timedelta
 runs=json.load(sys.stdin)
 cutoff=datetime.now(timezone.utc) - timedelta(minutes=5)
-old=[r for r in runs if datetime.fromisoformat(r['createdAt'].replace('Z','+00:00')) < cutoff]
+old=[r for r in runs if datetime.fromisoformat(r['created_at'].replace('Z','+00:00')) < cutoff]
 print(len(old))
 " 2>/dev/null || echo 0)"
 
@@ -255,6 +312,41 @@ cmd_check_disk() {
     return 0
 }
 
+# ── check-disk-headroom ─────────────────────────────────────────────────────
+# INFRA-7890: disk defense was reactive-only — nothing paged until the
+# cargo-target-reaper's own DISK_CRITICAL_GB (default 20) free-GB floor was
+# already breached, at which point the reaper's aggressive mode is the first
+# and only signal. This check pages BEFORE that floor: it trends free-GB on
+# $HOME against the same DISK_CRITICAL_GB floor plus a margin, so an operator
+# (or the reaper) gets advance warning while there's still headroom to act.
+cmd_check_disk_headroom() {
+    _header "check-disk-headroom"
+
+    local critical_gb="${CHUMP_DISK_CRITICAL_GB:-20}"
+    local margin_gb="${CHUMP_INFRA_WATCHER_DISK_MARGIN_GB:-15}"
+    local warn_floor=$(( critical_gb + margin_gb ))
+
+    local free_kb free_gb
+    free_kb="$("${CHUMP_DF_BIN:-df}" -k "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+    if [[ ! "$free_kb" =~ ^[0-9]+$ ]]; then
+        printf '[infra-watcher] check-disk-headroom: could not read free space for %s — skipping\n' "$HOME"
+        return 0
+    fi
+    free_gb=$(( free_kb / 1024 / 1024 ))
+
+    if [[ "$free_gb" -lt "$critical_gb" ]]; then
+        _emit_finding "disk_headroom" "critical" \
+            "free=${free_gb}GB on \$HOME is BELOW the cargo-target-reaper critical floor (${critical_gb}GB) — reaper aggressive mode should already be engaged; page if it is not"
+    elif [[ "$free_gb" -lt "$warn_floor" ]]; then
+        _emit_finding "disk_headroom" "warning" \
+            "free=${free_gb}GB on \$HOME is trending toward the ${critical_gb}GB critical floor (margin=${margin_gb}GB, warn_floor=${warn_floor}GB) — proactive action recommended before the reactive reaper kicks in"
+    else
+        printf '[infra-watcher] check-disk-headroom: OK free=%dGB (warn_floor=%dGB, critical_floor=%dGB)\n' \
+            "$free_gb" "$warn_floor" "$critical_gb"
+    fi
+    return 0
+}
+
 # ── check-procs ───────────────────────────────────────────────────────────────
 # Flag if claude proc count >100 OR load_avg_1m >10.
 cmd_check_procs() {
@@ -298,6 +390,77 @@ cmd_check_procs() {
     fi
 
     [[ "$findings" -eq 0 ]] && printf '[infra-watcher] check-procs: OK\n'
+    return 0
+}
+
+# ── check-ptys ────────────────────────────────────────────────────────────────
+# RESILIENT-092: a long Claude-Code /loop session leaked 505 master ptys ->
+# kern.tty.ptmx_max=511 EXHAUSTED -> forkpty 'Device not configured'
+# MACHINE-WIDE -> terminals unusable + fleet down ~2h. This check detects the
+# same class of pressure BEFORE forkpty actually fails, and pages the
+# operator (not just logs a finding) once usage crosses the threshold — the
+# existing claude-reaper pressure mode (INFRA-1851) reacts by reaping faster
+# but never escalates to the operator, so a leak outside the reaper's reach
+# (e.g. the Claude.app GUI process itself, which the reaper won't touch)
+# would silently run the machine to exhaustion again.
+#
+# Cross-platform: macOS reports the ceiling via `sysctl -n kern.tty.ptmx_max`
+# and allocation via counting /dev/ttys??? device files. Linux reports both
+# directly via /proc/sys/kernel/pty/{max,nr}. If neither probe resolves, the
+# check no-ops rather than guessing (same safe-by-default posture as the
+# reaper's pressure block).
+#
+# scanner-anchor: "kind":"infra_watcher_finding" category=pty_exhaustion
+cmd_check_ptys() {
+    _header "check-ptys"
+
+    local threshold="${CHUMP_INFRA_WATCHER_PTY_THRESHOLD:-80}"
+    local limit="" alloc=""
+
+    if [[ -n "${CHUMP_PTY_LIMIT_OVERRIDE:-}" ]]; then
+        limit="$CHUMP_PTY_LIMIT_OVERRIDE"
+    elif [[ -f /proc/sys/kernel/pty/max ]]; then
+        limit="$(cat /proc/sys/kernel/pty/max 2>/dev/null || true)"
+    elif command -v "${CHUMP_SYSCTL_BIN:-sysctl}" >/dev/null 2>&1; then
+        limit="$("${CHUMP_SYSCTL_BIN:-sysctl}" -n kern.tty.ptmx_max 2>/dev/null || true)"
+    fi
+
+    if [[ -n "${CHUMP_PTY_ALLOC_OVERRIDE:-}" ]]; then
+        alloc="$CHUMP_PTY_ALLOC_OVERRIDE"
+    elif [[ -f /proc/sys/kernel/pty/nr ]]; then
+        alloc="$(cat /proc/sys/kernel/pty/nr 2>/dev/null || true)"
+    else
+        alloc="$(ls /dev/ttys??? 2>/dev/null | wc -l | tr -d ' ')"
+    fi
+
+    if [[ -z "$limit" || -z "$alloc" || ! "$limit" =~ ^[0-9]+$ || ! "$alloc" =~ ^[0-9]+$ || "$limit" -eq 0 ]]; then
+        printf '[infra-watcher] check-ptys: unable to determine pty limit/allocation (limit=%s alloc=%s) — skipping\n' \
+            "${limit:-?}" "${alloc:-?}"
+        return 0
+    fi
+
+    local pct=$(( alloc * 100 / limit ))
+    printf '[infra-watcher] check-ptys: allocated=%s limit=%s pct=%d%% (threshold=%d%%)\n' \
+        "$alloc" "$limit" "$pct" "$threshold"
+
+    if [[ "$pct" -ge "$threshold" ]]; then
+        local severity="warning"
+        [[ "$pct" -ge 95 ]] && severity="critical"
+        _emit_finding "pty_exhaustion" "$severity" \
+            "allocated=${alloc} limit=${limit} pct=${pct}% (threshold=${threshold}%) — forkpty exhaustion imminent; restart the leaking Claude Code app or raise kern.tty.ptmx_max"
+
+        # Scream: page the operator directly via the halt-class recall
+        # channel BEFORE forkpty actually fails machine-wide, rather than
+        # relying on a downstream consumer to notice the critical finding.
+        local recall_script="${SCRIPT_DIR}/../dispatch/operator-recall.sh"
+        if [[ -f "$recall_script" ]]; then
+            bash "$recall_script" --condition PTY_EXHAUSTION \
+                --reason "pty allocation ${alloc}/${limit} (${pct}%) >= ${threshold}% threshold — forkpty failure imminent, restart leaking Claude Code app" \
+                >/dev/null 2>&1 || true
+        fi
+    else
+        printf '[infra-watcher] check-ptys: OK\n'
+    fi
     return 0
 }
 
@@ -486,11 +649,21 @@ print(json.dumps(s))
 # kind=oauth_token_stale_despite_daemon — refresher daemon is wedged. If the
 # file is stale and the plist is NOT loaded, that's just "operator hasn't
 # installed it yet" — emit a warning but a different (less alarming) kind.
+#
+# RESILIENT-056: also parse expires_at (claudeAiOauth.expiresAt, captured by
+# oauth-token-refresh.sh) so a token gets flagged from its own claimed expiry
+# even when mtime alone still looks fresh — a refresh can write a token that
+# was already near-expired (short-lived reissue, clock skew, etc). Either
+# signal (mtime > stale_s OR expiry within CHUMP_OAUTH_EXPIRY_WARN_S) emits a
+# single unified kind=auth_token_stale event within one 15-min tick, which
+# widens the operator-recall AUTH_DEAD trigger (scripts/dispatch/operator-recall.sh).
 # scanner-anchor: "kind":"oauth_token_stale_despite_daemon"
+# scanner-anchor: "kind":"auth_token_stale"
 cmd_check_oauth_freshness() {
     _header "check-oauth-freshness"
     local token_file="${CHUMP_OAUTH_TOKEN_FILE:-${HOME}/.chump/oauth-token.json}"
     local stale_s="${CHUMP_OAUTH_STALE_S:-900}"
+    local expiry_warn_s="${CHUMP_OAUTH_EXPIRY_WARN_S:-600}"
     local plist_label="com.chump.oauth-refresh"
 
     if [[ ! -f "$token_file" ]]; then
@@ -506,10 +679,48 @@ cmd_check_oauth_freshness() {
         mtime="$(stat -c %Y "$token_file")"
     fi
     age=$((now - mtime))
-    printf '[infra-watcher] check-oauth-freshness: %s age=%ds (threshold=%ds)\n' \
-        "$token_file" "$age" "$stale_s"
 
-    if (( age <= stale_s )); then
+    # expires_at may be an ISO-8601 string or an epoch (seconds or ms) —
+    # accept either shape since the source Keychain blob's format isn't
+    # contractually fixed. Absence (empty string) is not an error: older
+    # token files predate RESILIENT-056 and simply skip the expiry check.
+    local expires_epoch
+    expires_epoch="$(python3 -c "
+import json, sys
+from datetime import datetime, timezone
+try:
+    d = json.load(open('${token_file}'))
+    exp = d.get('expires_at', '')
+    if not exp:
+        sys.exit(0)
+    try:
+        v = float(exp)
+        if v > 1e12:
+            v = v / 1000.0
+        print(int(v))
+        sys.exit(0)
+    except ValueError:
+        pass
+    s = str(exp).rstrip('Z')
+    dt = datetime.fromisoformat(s).replace(tzinfo=timezone.utc)
+    print(int(dt.timestamp()))
+except Exception:
+    pass
+" 2>/dev/null)"
+
+    local expiry_secs_left="" expiry_stale=0
+    if [[ -n "$expires_epoch" ]]; then
+        expiry_secs_left=$((expires_epoch - now))
+        (( expiry_secs_left <= expiry_warn_s )) && expiry_stale=1
+    fi
+
+    local mtime_stale=0
+    (( age > stale_s )) && mtime_stale=1
+
+    printf '[infra-watcher] check-oauth-freshness: %s age=%ds (threshold=%ds) expires_in=%ss (threshold=%ds)\n' \
+        "$token_file" "$age" "$stale_s" "${expiry_secs_left:-n/a}" "$expiry_warn_s"
+
+    if (( mtime_stale == 0 && expiry_stale == 0 )); then
         return 0
     fi
 
@@ -519,12 +730,28 @@ cmd_check_oauth_freshness() {
         daemon_loaded=1
     fi
 
+    local reason="expiry"
+    if (( mtime_stale == 1 && expiry_stale == 1 )); then
+        reason="mtime_and_expiry"
+    elif (( mtime_stale == 1 )); then
+        reason="mtime"
+    fi
+
+    local ts
+    ts="$(_ts)"
+    printf '{"ts":"%s","kind":"auth_token_stale","token_file":"%s","age_seconds":%d,"stale_threshold_s":%d,"expiry_secs_left":%s,"daemon_loaded":%s,"reason":"%s"}\n' \
+        "$ts" "$token_file" "$age" "$stale_s" "${expiry_secs_left:-null}" \
+        "$([[ "$daemon_loaded" -eq 1 ]] && echo true || echo false)" "$reason" \
+        >> "$AMBIENT_LOG"
+    printf '[infra-watcher] ALERT check-oauth-freshness: auth_token_stale reason=%s age=%ds expiry_secs_left=%s daemon_loaded=%s\n' \
+        "$reason" "$age" "${expiry_secs_left:-n/a}" "$daemon_loaded" >&2
+
     if (( daemon_loaded == 1 )); then
         _emit_finding "oauth_token_stale_despite_daemon" "critical" \
-            "token_file=${token_file} age=${age}s daemon=${plist_label}/loaded — refresher is wedged, manual investigation required"
+            "token_file=${token_file} age=${age}s daemon=${plist_label}/loaded reason=${reason} — refresher is wedged, manual investigation required"
     else
         _emit_finding "oauth_token_stale_no_daemon" "warning" \
-            "token_file=${token_file} age=${age}s daemon=${plist_label}/not-loaded — install via scripts/setup/install-oauth-refresh-launchd.sh"
+            "token_file=${token_file} age=${age}s daemon=${plist_label}/not-loaded reason=${reason} — install via scripts/setup/install-oauth-refresh-launchd.sh"
     fi
 }
 
@@ -538,9 +765,26 @@ cmd_tick() {
     cmd_audit_daemon_health
     cmd_check_runners
     cmd_check_disk
+    cmd_check_disk_headroom
     cmd_check_procs
+    cmd_check_ptys
     cmd_check_repo_vars
     cmd_check_oauth_freshness
+
+    # INFRA-2210: no-idle — substrate health check passed (no critical/
+    # warning findings this cycle) means we go looking for filing-worthy
+    # weaknesses instead of just exiting quiet.
+    if (( _NON_OK_FINDING_COUNT == 0 )); then
+        # shellcheck source=/dev/null
+        if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && _no_idle_substrate_scan; then
+            printf '{"ts":"%s","kind":"curator_no_op_avoided","session":"%s","role":"infra-watcher","action":"substrate_scan"}\n' \
+                "$(_ts)" "${CHUMP_SESSION_ID:-infra-watcher-$$}" >> "$AMBIENT_LOG" 2>/dev/null || true
+            printf '[infra-watcher] no-op avoided — filed substrate weakness gap(s) instead of idling\n'
+        else
+            printf '[infra-watcher] substrate healthy, no filing-worthy weaknesses found\n'
+        fi
+    fi
+
     printf '[infra-watcher] tick complete ts=%s\n' "$(_ts)"
 }
 
@@ -548,17 +792,24 @@ cmd_tick() {
 CMD="${1:-tick}"
 shift || true
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$CMD" != "help" && "$CMD" != "-h" && "$CMD" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "infra-watcher" || true
+fi
+
 case "$CMD" in
     tick)                    cmd_tick "$@" ;;
     audit-daemons)           cmd_audit_daemons "$@" ;;
     audit-daemon-health)     cmd_audit_daemon_health "$@" ;;
     check-runners)           cmd_check_runners "$@" ;;
     check-disk)              cmd_check_disk "$@" ;;
+    check-disk-headroom)     cmd_check_disk_headroom "$@" ;;
     check-procs)             cmd_check_procs "$@" ;;
+    check-ptys)              cmd_check_ptys "$@" ;;
     check-repo-vars)         cmd_check_repo_vars "$@" ;;
     check-oauth-freshness)   cmd_check_oauth_freshness "$@" ;;
     *)
-        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-procs|check-repo-vars|check-oauth-freshness}\n' \
+        printf 'Usage: %s {tick|audit-daemons|check-runners|check-disk|check-disk-headroom|check-procs|check-ptys|check-repo-vars|check-oauth-freshness}\n' \
             "$(basename "$0")" >&2
         exit 1
         ;;

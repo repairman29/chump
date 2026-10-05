@@ -1,0 +1,15 @@
+- id: RESILIENT-234
+  domain: RESILIENT
+  title: "RESILIENT: fleet-bootstrap --check FAILs at session preflight — triage dormant layers vs stale check; cron-health unavailable"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    scripts/setup/chump-fleet-bootstrap.sh --check (META-066) exits non-zero at session preflight (freshness-preamble 2026-08-05 shows bootstrap=FAIL, cron-health=unavailable) while ground truth shows the fleet shipping (18 merges/24h; PR #3478 merged same evening). CLAUDE.md warns a failing bootstrap means the productization layer (META-063/064/065 gates, INFRA-1257 hourly planner) may be dormant code-on-disk — but a stale check testing retired components would produce the same signal. Signal-vs-outcome triage, not an assumed outage. Rough shape: (a) run the check verbosely, enumerate exactly which probes fail; (b) for each: restore the launchd plist/git hook if genuinely dormant, or fix/retire the probe if it tests something retired; (c) same for cron-health=unavailable; (d) end state is a clean, trustworthy exit 0.
+  acceptance_criteria:
+    - each failing probe identified with a receipt
+    - dormant layers restored or probes corrected — no blanket bypass
+    - freshness-preamble reports bootstrap=OK and cron-health present
+    - write-up notes which of META-063/064/065 + INFRA-1257 were actually dormant vs falsely flagged
+  outcome_id: RESILIENT-000
+

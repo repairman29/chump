@@ -1,6 +1,6 @@
 ---
 name: target
-description: Chump's demo-target curator (curator-opus-target role) — execute the work-your-lane loop for the demo-target + INFRA-1318 Liaison Phase 2 + META-074 child A/B/C umbrella lane. Use to (1) read inbox + advance active claim + pick next-best in lane, (2) decompose an umbrella into N sub-slices, (3) dispatch N Sonnet subagents in parallel via Agent tool per META-069, (4) babysit + surgical-rescue in-flight PRs that fail audit gates, (5) emit DONE on each ship. **This skill is a thin wrapper over `scripts/coord/target-loop.sh`** (filed as INFRA-1917 follow-up; this skill body is the discipline source-of-truth until that script lands). Examples that should trigger this skill, "work-your-lane", "advance my active claim", "dispatch sub-fleet on the remaining INFRA-1861 slices", "babysit PR #NNNN audit failure", "claim next-best from META-074 child A".
+description: Chump's demo-target curator (curator-opus-target role) — execute the work-your-lane loop for the demo-target + INFRA-1318 Liaison Phase 2 + META-074 child A/B/C umbrella lane. Use to (1) read inbox + advance active claim + pick next-best in lane, (2) decompose an umbrella into N sub-slices, (3) dispatch N Sonnet subagents in parallel via Agent tool per META-069, (4) babysit + surgical-rescue in-flight PRs that fail audit gates, (5) emit DONE on each ship. **This skill is a thin wrapper over `scripts/coord/target-loop.sh`** (the harness-neutral CLI, INFRA-1917). Examples that should trigger this skill, "work-your-lane", "advance my active claim", "dispatch sub-fleet on the remaining INFRA-1861 slices", "babysit PR #NNNN audit failure", "claim next-best from META-074 child A".
 user-invocable: true
 allowed-tools:
   - Bash
@@ -14,7 +14,7 @@ allowed-tools:
 
 # /target — Demo-Target Curator Loop
 
-The Target curator is one of ~5 named Opus curators in Chump's role-scoped fleet (target / ci-audit / handoff / shepherd / decompose). The canonical surface will be the harness-neutral shell CLI at `scripts/coord/target-loop.sh` (filed under INFRA-1917 as a follow-up to this productization PR). Any harness (Claude Code, opencode, codex, manual operator) will invoke it the same way.
+The Target curator is one of ~5 named Opus curators in Chump's role-scoped fleet (target / ci-audit / handoff / shepherd / decompose). The canonical surface is the harness-neutral shell CLI at `scripts/coord/target-loop.sh`. Any harness (Claude Code, opencode, codex, manual operator) invokes it the same way.
 
 This slash command is a thin Claude-Code convenience that runs the 5-step work-your-lane protocol. The discipline lives at [`.claude/agents/target.md`](../../agents/target.md). The role-scoped fleet vision is at [`docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md`](../../../docs/strategy/ROLE_SCOPED_FLEET_2026-05-23.md).
 
@@ -29,8 +29,6 @@ Parse `$ARGUMENTS`:
 - `status` → print lane scope + active claim + last DONE broadcasts
 
 ```bash
-# Until scripts/coord/target-loop.sh lands, dispatch as Agent(subagent_type=target).
-# Once shipped, simple pass-through:
 scripts/coord/target-loop.sh $ARGUMENTS
 ```
 

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "PR #3183 stuck [CI-RED] — CI red for 38m"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   description: |
     https://github.com/repairman29/chump/pull/3183
@@ -22,9 +22,6 @@
     Failing check: audit
     Stuck class: CI-RED — ci-flake-rerun or human investigation required
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Stale dated stuck-PR alarm for PR #3183; confirm the PR is merged/closed and close this alarm."
   outcome_id: MISSION-010
 

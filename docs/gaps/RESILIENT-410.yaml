@@ -1,0 +1,15 @@
+- id: RESILIENT-410
+  domain: RESILIENT
+  title: board-vitals (RESILIENT-371) emits its per-run proof-of-life only to ambient.jsonl, so the resident watch is invisible in the board-cycle beat's systemd JOURNAL where the human board looks — add an unconditional stdout tick line so a healthy watch is distinguishable from a dead one
+  status: in_progress
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "ROOT CAUSE: board_vitals_check emits board_vitals_tick every run via _bv_emit, which appends ONLY to .chump-locks/ambient.jsonl. Under the board-cycle beat (systemd, stdout->journal) the function prints nothing to stdout on a healthy cycle, so `journalctl -u chump-board-cycle.service` shows the Sonnet beat but NO board-vitals line — a healthy watch (incidents=0) is indistinguishable from a dead/un-sourced one in the journal. The residency proof exists (ticks land in ambient every ~13-15min) but is not observable where an operator naturally checks."
+    - "FIX: add an unconditional printf to STDOUT at the end of board_vitals_check — `[board-vitals] tick — incidents=N disk=X% merge_age=Ym worker_silent=Z main_red_span=Wm` (plus ` — PAGED` when incidents>0). Every run, healthy or not. Under the beat this lands in the systemd journal; standalone it prints to the terminal. Ambient emit is unchanged (structured record stays)."
+    - "TEST: scripts/ci/test-board-vitals.sh asserts a healthy run prints `[board-vitals] tick — incidents=0` to stdout (new assertion; suite now 13/13)."
+    - "LIVE PROOF ON CJ: after merge + organ-watchdog reset, `journalctl -u chump-board-cycle.service` on the NEXT beat shows the `[board-vitals] tick — incidents=0 ...` line — the human board can confirm the resident watch is alive from the journal and retire the manual /loop."
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: journalctl -u chump-board-cycle.service | grep board-vitals (on CJ, deployed RESILIENT-371) | OUTPUT: empty — the beat runs green and board_vitals_tick lands in .chump-locks/ambient.jsonl (19 ticks, incidents:0, cadence matches beats: 02:11:05 beat-done == 02:11:05 tick) but nothing surfaces in the journal | THEORY: _bv_emit is file-only; residency is real but journal-invisible, so the human board can't tell live-watch from dead-watch without grepping ambient | ALT: rejected 'just document grep ambient.jsonl' — the operator checks journalctl on the unit; making the proof-of-life visible THERE is the durable fix (Jeff: always the permanent fix)
+  closed_pr:

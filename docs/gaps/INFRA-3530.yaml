@@ -1,0 +1,13 @@
+- id: INFRA-3530
+  domain: INFRA
+  title: almanac never indexes SQL — blind to migrations/RLS/schema, directly relevant to this fleet's recurring Supabase questions
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    ast-crawler's is_supported() covers rust/python/js/ts/go/bash/yaml only. SQL is completely unindexed fleet-wide despite being common and directly load-bearing for this portfolio's recurring Supabase/RLS/migration questions (survey 2026-08-02: 8 sql files in olive, 46 in upshift, 298 in Chump, 296 in BEAST-MODE). Unlike markdown, SQL has real extractable structure (CREATE TABLE, CREATE POLICY, ALTER TABLE, migration ordering) that a dedicated tree-sitter-sql pass could turn into genuine symbols, not just a markdown-style raw-content fallback. Lower urgency than INFRA-3531 (SQL isn't invisible in the same 'completely dead' sense — schema questions currently get answered via live Supabase MCP calls, not almanac), but worth its own scoped pass given how often this fleet needs schema/RLS context.
+  acceptance_criteria:
+    - "The change described by \"almanac never indexes SQL — blind to migrations/RLS/schema, directly relevant to this fleet's recurring Supabase questions\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

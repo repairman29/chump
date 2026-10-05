@@ -1,7 +1,7 @@
 - id: RESILIENT-044
   domain: RESILIENT
   title: "RESILIENT: audit gate silent-exit-1 after 31 PASS lines — required gate blocker, need to identify which sub-test fails without [FAIL] marker (post-trunk-RED inherited)"
-  status: open
+  status: done
   priority: P1
   effort: s
   description: |
@@ -12,5 +12,7 @@
     - "If the wrapper swallows the error: add explicit [FAIL: <reason>] output so future failures are debuggable"
     - Required CI gate audit passes on a fresh PR against main containing this fix
     - "If the issue is the audit aggregator wrapper hiding failure details: file a follow-up gap to instrument all audit sub-test runners with consistent [PASS]/[FAIL] output (META-quality)"
+  closed_date: '2026-09-02'
+  closed_pr: 4398
   outcome_id: RESILIENT-000
 

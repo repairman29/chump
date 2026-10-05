@@ -1,13 +1,13 @@
 - id: MISSION-056
   domain: MISSION
-  title: 'MISSION: chump improve scout must skip already-done work at PICK time (loops on a done gap, never ships)'
+  title: "MISSION: chump improve scout must skip already-done work at PICK time (loops on a done gap, never ships)"
   status: done
   priority: P1
   effort: m
   acceptance_criteria:
-  - The change described by "chump improve scout must skip already-done work at PICK time (loops on a done gap, never ships)"
-    is implemented in the relevant MISSION code path(s).
-  - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-  - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - "The change described by \"chump improve scout must skip already-done work at PICK time (loops on a done gap, never ships)\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   closed_date: '2026-07-25'
   closed_pr: 3291
+

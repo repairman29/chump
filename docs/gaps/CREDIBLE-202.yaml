@@ -1,0 +1,19 @@
+- id: CREDIBLE-202
+  domain: CREDIBLE
+  title: "CREDIBLE: almanac stale flag measures local checkout HEAD, not origin/main — weeks of behind-ness can read as fresh"
+  status: done
+  priority: P2
+  effort: s
+  description: |
+    almanac_status reports stale:false when indexed_commit == the LOCAL checkout's HEAD — but the local checkout only moves when someone pulls. Observed 2026-08-05: Chump's checkout sat 15-16 commits behind origin/main; almanac reported indexed=true/stale=false the whole time, and the hourly refresh cron saw no HEAD move so it happily kept the old index. The gauge answers 'am I current with the checkout?' when consumers hear 'am I current with the repo?'. Same instrument class as Chump's symlink binary-age bug (CREDIBLE-201): the measurement is narrower than the question. Rough shape: (a) status gains behind_origin (git rev-list --count HEAD..origin/main after a cheap fetch, or last-fetch-age when offline); (b) stale semantics documented and split: stale_vs_checkout / behind_origin; (c) refresh cron optionally ff-pulls clean checkouts before deciding 'no HEAD move' (respect dirty checkouts — never touch them); (d) search grounding block surfaces behind_origin so a 0-hit or odd answer is inspectable. Fleet briefing already warns 'trust a 0-hit answer only after checking note/fallback_reason' — this extends that honesty to freshness.
+  acceptance_criteria:
+    - almanac_status exposes behind-origin distance or last-fetch age alongside stale
+    - stale semantics documented in the tool description
+    - refresh path cannot report fresh while origin/main is ahead and the checkout is clean
+    - search grounding includes the new freshness signal
+  notes: |
+    Shipped in almanac repo directly (no chump PR — external-repo work): almanac commit 26975fc, 2026-08-06. status now reports origin {reference, behind, refs-vintage} from local refs (offline-safe) + loud origin_note when behind>0 or vintage unknown/stale. Verified live: chump checkout read 'behind 1' with note; almanac level+silent. 3 automated tests incl. real-clone behind-count e2e; DEPTH.md same commit.
+  closed_date: '2026-08-06'
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+

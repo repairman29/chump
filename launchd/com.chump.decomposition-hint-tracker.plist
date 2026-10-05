@@ -1,0 +1,63 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<!--
+  com.chump.decomposition-hint-tracker — INFRA-1564 LaunchAgent.
+
+  Runs scripts/dev/decomposition-hint-tracker.sh daily. Reads
+  decomposition_hint ambient events emitted by bot-merge.sh, resolves each
+  against gh pr list to classify outcome (heeded / landed_clean /
+  landed_followup / pending / skipped), and writes normalized rows to
+  .chump/decomposition-outcomes.jsonl. Emits kind=decomposition_hint_tracked
+  to ambient.jsonl so operators see this firing.
+
+  INSTALLATION:
+    (see scripts/setup/bootstrap-manifest.yaml id=decomposition-hint-tracker-launchd)
+
+  Manual run:
+    launchctl start com.chump.decomposition-hint-tracker
+    tail /tmp/chump-decomposition-hint-tracker.out.log
+
+  UNINSTALL:
+    launchctl unload ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist
+    rm ~/Library/LaunchAgents/com.chump.decomposition-hint-tracker.plist
+-->
+<dict>
+  <key>Label</key>
+  <string>com.chump.decomposition-hint-tracker</string>
+
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>/path/to/Chump/scripts/dev/decomposition-hint-tracker.sh</string>
+  </array>
+
+  <key>WorkingDirectory</key>
+  <string>/path/to/Chump</string>
+
+  <!-- Daily. -->
+  <key>StartInterval</key>
+  <integer>86400</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-decomposition-hint-tracker.out.log</string>
+
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-decomposition-hint-tracker.err.log</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/path/to/HOME</string>
+    <key>PATH</key>
+    <string>/usr/local/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/path/to/.cargo/bin:/usr/bin:/bin</string>
+  </dict>
+
+  <key>ThrottleInterval</key>
+  <integer>600</integer>
+</dict>
+</plist>

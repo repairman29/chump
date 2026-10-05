@@ -25,8 +25,8 @@
 //!   `--scope rust`    <60s   (cargo fmt/clippy/check warm; no scripts)
 //!   `--scope all`     same as INFRA-1670 (every gate)
 
-use std::process::{Command, Stdio};
-use std::time::Instant;
+use std::process::{Command, ExitCode, Stdio};
+use std::time::{Duration, Instant};
 
 /// One gate the preflight runs.
 #[derive(Debug, Clone)]
@@ -61,6 +61,37 @@ fn step(name: &'static str, argv: &[&str], kind: GateKind) -> Step {
         name,
         argv: argv.iter().map(|s| s.to_string()).collect(),
         kind,
+    }
+}
+
+/// RESILIENT-072 / INFRA-2720: scripts/ci/cargo-test-with-rerun.sh REQUIRES
+/// `-- <cmd> [args...]`. Without the `--` separator + a real command after
+/// it, the wrapper prints `usage: ...` and exits non-zero without running a
+/// single test. This is a standalone fn (rather than inline in `run()`) so
+/// the `--` + cargo-invocation shape is unit-testable.
+fn cargo_test_wrapper_argv(nextest_available: bool) -> &'static [&'static str] {
+    if nextest_available {
+        &[
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "nextest",
+            "run",
+            "--bin",
+            "chump",
+        ]
+    } else {
+        &[
+            "bash",
+            "scripts/ci/cargo-test-with-rerun.sh",
+            "--",
+            "cargo",
+            "test",
+            "--bin",
+            "chump",
+            "--tests",
+        ]
     }
 }
 
@@ -102,6 +133,10 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
         "scripts/git-hooks/pre-commit-event-registry.sh",
     ),
     (
+        "bash-portability",
+        "scripts/git-hooks/pre-commit-bash-portability.sh",
+    ),
+    (
         "gap-divergence",
         "scripts/git-hooks/pre-commit-gap-divergence.sh",
     ),
@@ -130,6 +165,116 @@ const CONTENT_GUARD_MIRRORS: &[(&str, &str)] = &[
     ("rust-first", "scripts/git-hooks/pre-commit-rust-first.sh"),
 ];
 
+// INFRA-5000 (META-070/INFRA-3373 slice, cluster cli-observability-misc):
+// the 41 leftover CLI/observability/cost/telemetry smoke scripts enumerated
+// in docs/process/AUDIT_JOB_DECOMPOSITION.md's cli-observability-misc
+// section. Grab-bag of one-off ci.yml audit-job scripts with lowest
+// per-script cascade risk but highest count — mirrored here as the
+// `cli-observability-misc` gate.
+const CLI_OBSERVABILITY_MISC_SCRIPTS: &[(&str, &str)] = &[
+    ("acp-real-clients", "scripts/ci/test-acp-real-clients.sh"),
+    (
+        "api-chat-cost-kill",
+        "scripts/ci/test-api-chat-cost-kill.sh",
+    ),
+    (
+        "api-cost-leaderboard",
+        "scripts/ci/test-api-cost-leaderboard.sh",
+    ),
+    (
+        "cascade-rebase-observability",
+        "scripts/ci/test-cascade-rebase-observability.sh",
+    ),
+    ("chump-fleet-cli", "scripts/ci/test-chump-fleet-cli.sh"),
+    ("chump-skill-cli", "scripts/ci/test-chump-skill-cli.sh"),
+    ("cli-aliases", "scripts/ci/test-cli-aliases.sh"),
+    (
+        "cli-arg-validation",
+        "scripts/ci/test-cli-arg-validation.sh",
+    ),
+    ("cli-exit-codes", "scripts/ci/test-cli-exit-codes.sh"),
+    ("cli-fleet-coord", "scripts/ci/test-cli-fleet-coord.sh"),
+    ("cli-help", "scripts/ci/test-cli-help.sh"),
+    ("cli-integration", "scripts/ci/test-cli-integration.sh"),
+    ("cli-output-format", "scripts/ci/test-cli-output-format.sh"),
+    (
+        "cli-product-surface",
+        "scripts/ci/test-cli-product-surface.sh",
+    ),
+    (
+        "cog-043-action-telemetry",
+        "scripts/ci/test-cog-043-action-telemetry.sh",
+    ),
+    ("cost-enforcement", "scripts/ci/test-cost-enforcement.sh"),
+    ("cost-per-model", "scripts/ci/test-cost-per-model.sh"),
+    ("cost-watch", "scripts/ci/test-cost-watch.sh"),
+    ("coupling-cost", "scripts/ci/test-coupling-cost.sh"),
+    (
+        "cursor-cli-integration",
+        "scripts/ci/test-cursor-cli-integration.sh",
+    ),
+    (
+        "doc-only-clippy-skip",
+        "scripts/ci/test-doc-only-clippy-skip.sh",
+    ),
+    (
+        "event-registry-guard",
+        "scripts/ci/test-event-registry-guard.sh",
+    ),
+    (
+        "fleet-metrics-snapshot",
+        "scripts/ci/test-fleet-metrics-snapshot.sh",
+    ),
+    ("gap-closed-pr-cli", "scripts/ci/test-gap-closed-pr-cli.sh"),
+    ("gate-telemetry", "scripts/ci/test-gate-telemetry.sh"),
+    ("gen-cost-summary", "scripts/ci/test-gen-cost-summary.sh"),
+    (
+        "github-api-telemetry",
+        "scripts/ci/test-github-api-telemetry.sh",
+    ),
+    (
+        "github-api-telemetry-shim",
+        "scripts/ci/test-github-api-telemetry-shim.sh",
+    ),
+    ("harvester-cli", "scripts/ci/test-harvester-cli.sh"),
+    (
+        "infra-1062-clippy-timeout-silent-exit",
+        "scripts/ci/test-infra-1062-clippy-timeout-silent-exit.sh",
+    ),
+    (
+        "observability-coverage",
+        "scripts/ci/test-observability-coverage.sh",
+    ),
+    (
+        "observability-loop",
+        "scripts/ci/test-observability-loop.sh",
+    ),
+    ("pr-cost-telemetry", "scripts/ci/test-pr-cost-telemetry.sh"),
+    ("pr-fix-clippy", "scripts/ci/test-pr-fix-clippy.sh"),
+    (
+        "pr-stuck-cluster-observability",
+        "scripts/ci/test-pr-stuck-cluster-observability.sh",
+    ),
+    (
+        "pr-unstick-observability",
+        "scripts/ci/test-pr-unstick-observability.sh",
+    ),
+    ("pwa-cost-ceiling", "scripts/ci/test-pwa-cost-ceiling.sh"),
+    (
+        "pwa-version-compat",
+        "scripts/ci/test-pwa-version-compat.sh",
+    ),
+    (
+        "pwa-workflow-observability",
+        "scripts/ci/test-pwa-workflow-observability.sh",
+    ),
+    ("telemetry-cost", "scripts/ci/test-telemetry-cost.sh"),
+    (
+        "worker-preship-clippy",
+        "scripts/ci/test-worker-preship-clippy.sh",
+    ),
+];
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Status {
     Pass,
@@ -146,6 +291,34 @@ struct Outcome {
 
 fn run_step(s: &Step) -> Outcome {
     let started = Instant::now();
+
+    // META-208: "flake-ingest" is a pseudo-step (no subprocess spawn) — after
+    // a successful "test" step produces cargo-nextest JSON output, this arm
+    // calls chump_atomic_claim::run_flake_import in-process to upsert flaky
+    // outcomes into .chump/flake_tracker.db. argv[1] is the path to the
+    // nextest output file produced by the preceding "test" step; argv[2]
+    // (optional, test-only override) is the repo root — defaults to cwd.
+    if s.argv[0] == "flake-ingest" {
+        let input_path = std::path::Path::new(&s.argv[1]);
+        let repo_root = match s.argv.get(2) {
+            Some(rr) => std::path::PathBuf::from(rr),
+            None => std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")),
+        };
+        return match chump_atomic_claim::atomic_claim::run_flake_import(&repo_root, input_path) {
+            Ok(n) => Outcome {
+                status: Status::Pass,
+                elapsed_ms: started.elapsed().as_millis(),
+                captured: Some(format!(
+                    "[preflight] flake-ingest: {n} flaky test(s) recorded"
+                )),
+            },
+            Err(e) => Outcome {
+                status: Status::Fail,
+                elapsed_ms: started.elapsed().as_millis(),
+                captured: Some(format!("[preflight] flake-ingest failed: {e:#}")),
+            },
+        };
+    }
 
     // INFRA-2721/2722: graceful-skip when a bash gate points at a missing
     // script. Without this guard the gate hard-fails locally (because the
@@ -165,6 +338,26 @@ fn run_step(s: &Step) -> Outcome {
                     script_path
                 )),
             };
+        }
+    }
+
+    // EFFECTIVE-499: the capped-jobs cargo check runner (see
+    // `cargo_check_step`) is identifiable by its `nice` prefix. Defer actual
+    // execution until system load drops below a configurable threshold
+    // rather than racing another busy process at a capped job count.
+    // Disabled via CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE=1 (tests, CI runners).
+    if s.argv.first().map(String::as_str) == Some("nice")
+        && std::env::var(LOAD_DEFER_DISABLE_ENV).as_deref() != Ok("1")
+    {
+        let defers = defer_until_load_below(
+            load_defer_threshold(),
+            Duration::from_secs(30),
+            Duration::from_secs(2),
+            load_average_1m,
+            std::thread::sleep,
+        );
+        if defers > 0 {
+            eprintln!("[preflight] cargo check deferred {defers} poll(s) waiting for load to drop");
         }
     }
 
@@ -193,6 +386,22 @@ fn run_step(s: &Step) -> Outcome {
             elapsed_ms,
             captured: Some(format!("failed to spawn {:?}: {}", s.argv, e)),
         },
+    }
+}
+
+/// INFRA-4116 (INFRA-3381 slice): generic single-script spawn helper. Runs
+/// `bash <name>`, waits for it, and fails closed on a non-zero exit or a
+/// spawn error. A thin, reusable entry point for call sites that just need
+/// "run this script and turn non-zero into an error" without the full
+/// `Step`/`Outcome` status-line machinery `run_step` provides.
+// Not yet called from `run()` — reserved for a follow-up call site; unit
+// tests below exercise it directly.
+#[allow(dead_code)]
+fn run_preflight_script(name: &str) -> Result<(), ExitCode> {
+    let status = Command::new("bash").arg(name).stdin(Stdio::null()).status();
+    match status {
+        Ok(s) if s.success() => Ok(()),
+        _ => Err(ExitCode::FAILURE),
     }
 }
 
@@ -474,6 +683,49 @@ fn compute_check_jobs(cpus: usize, load1: f64) -> usize {
     }
 }
 
+/// Env var overriding the load1 threshold above which the cargo check
+/// runner defers execution rather than racing another busy process.
+/// Absolute `/proc/loadavg` 1-minute value; defaults to `available_cpus()`.
+const LOAD_DEFER_THRESHOLD_ENV: &str = "CHUMP_PREFLIGHT_LOAD_THRESHOLD";
+/// Set to "1" to skip the defer-and-poll loop entirely. Used by tests (no
+/// real clock/`/proc/loadavg` to wait on) and by CI runners, where there's
+/// no other local process to wait out.
+const LOAD_DEFER_DISABLE_ENV: &str = "CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE";
+
+/// EFFECTIVE-499: resolve the configurable load1 threshold from
+/// `CHUMP_PREFLIGHT_LOAD_THRESHOLD`, falling back to `available_cpus()` when
+/// unset or unparseable.
+fn load_defer_threshold() -> f64 {
+    std::env::var(LOAD_DEFER_THRESHOLD_ENV)
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or_else(|| available_cpus() as f64)
+}
+
+/// EFFECTIVE-499: polls `load_fn` until it drops to/below `threshold`,
+/// sleeping `poll` (via injected `sleep_fn`) between checks, up to
+/// `max_wait` total before giving up and letting the caller run anyway —
+/// never blocks forever on a machine that's just permanently busy. Returns
+/// the number of polls that observed load above threshold (0 means no defer
+/// happened). Pure over injected `load_fn`/`sleep_fn` so it's unit-testable
+/// without a real clock or `/proc/loadavg`.
+fn defer_until_load_below(
+    threshold: f64,
+    max_wait: Duration,
+    poll: Duration,
+    mut load_fn: impl FnMut() -> f64,
+    mut sleep_fn: impl FnMut(Duration),
+) -> u32 {
+    let mut waited = Duration::ZERO;
+    let mut defers = 0u32;
+    while load_fn() > threshold && waited < max_wait {
+        defers += 1;
+        sleep_fn(poll);
+        waited += poll;
+    }
+    defers
+}
+
 /// Best-effort CPU count; defaults to 4 if unavailable (matches CI runner
 /// baseline so behavior is predictable when detection fails).
 fn available_cpus() -> usize {
@@ -589,6 +841,10 @@ struct Args {
     /// the cargo-shaped pipeline entirely. Unset or "code" runs the normal
     /// pipeline below unchanged.
     artifact_type: Option<String>,
+    /// EFFECTIVE-1547: common scaffolding stub for future chump subcommands.
+    /// `newcmd` is a placeholder that does nothing but exit 0 — a template
+    /// other subcommands can copy the wiring from.
+    newcmd: bool,
 }
 
 fn parse_args(argv: &[String]) -> Args {
@@ -603,6 +859,7 @@ fn parse_args(argv: &[String]) -> Args {
         vs_ref: None,
         full: false,
         artifact_type: None,
+        newcmd: false,
     };
     let mut i = 0;
     while i < argv.len() {
@@ -614,6 +871,7 @@ fn parse_args(argv: &[String]) -> Args {
             "--json" => a.json = true,
             "--pre-commit" => a.pre_commit = true,
             "-h" | "--help" => a.help = true,
+            "newcmd" => a.newcmd = true,
             "--scope" => {
                 if i + 1 >= argv.len() {
                     a.bad_scope = Some("(missing value)".to_string());
@@ -704,6 +962,9 @@ OPTIONS:
                     entirely. Unregistered T (including the default \"code\")
                     falls through to the normal pipeline below.
     -h, --help      This message
+
+SUBCOMMANDS:
+    newcmd          New chump subcommand placeholder (EFFECTIVE-1547)
 
 BYPASS:
     Main-RED auto-skip (INFRA-2422): when origin/main itself is failing a
@@ -870,11 +1131,25 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
     // Conservative whitelist — these are the ones that have most often
     // failed-on-CI-but-would-have-passed-locally in the last 48h.
     let candidates = [
+        // RESILIENT-361: dead-writer FIFO wedge regression — proves the
+        // CHUMP_TOKEN_PARSE_TIMEOUT_S SIGALRM bound actually unblocks
+        // _parse_token_usage.py instead of hanging forever. Fast (~1s),
+        // pure local (fifo + subshell, no network).
+        "scripts/ci/test-parse-token-usage-dead-writer-timeout.sh",
         "scripts/ci/test-event-registry-coverage.sh",
+        // INFRA-3579: integrations.yml pull_request concurrency group must stay
+        // keyed on github.sha (not pull_request.number) — regression of this
+        // guard reintroduces the 0-step CANCELLED self-hosted checkout class
+        // that INFRA-1655 root-caused to concurrency-group cancellation.
+        "scripts/ci/test-integrations-yml-concurrency-group-key.sh",
         // MISSION-045: outcome-gate keystone — proves P0/P1 reserves are blocked
         // without an outcome (when outcomes exist), the audited flag + empty-DB
         // skip work. Fast (~2s), pure local (chump binary + temp dirs, no network).
         "scripts/ci/test-outcome-gate.sh",
+        // RESILIENT-313: farmer stale-lease heartbeat regression — a present
+        // claim-*.json lease must never crash the tick before write_heartbeat.
+        // Pure shell, ~3s, Linux-safe, no network.
+        "scripts/ci/test-farmer-stale-lease-heartbeat.sh",
         // EFFECTIVE-323: opencode harness smoke — build_harness_cmd argv is
         // well-formed + set-u clean (catches the $_TO unbound + missing-`run`
         // class). Pure shell, ~1s; live spawn skips without opencode/auth.
@@ -887,6 +1162,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // merge-conflict clobbers silently dropping registry kinds.
         "scripts/ci/test-event-registry-audit-regression.sh",
         "scripts/ci/test-no-raw-gh-in-hot-paths.sh",
+        // RESILIENT-018: gh-in-ci GH_TOKEN guard lint gate + its own smoke
+        // test. Pure shell, no network — greps scripts/ci/test-*.sh for
+        // unguarded gh calls and exercises check_gh_token_or_skip directly.
+        "scripts/ci/test-gh-in-ci-guarded.sh",
+        "scripts/ci/test-gh-token-guard.sh",
         "scripts/ci/check-path-filter-coverage.sh",
         "scripts/ci/test-env-var-coverage.sh",
         "scripts/ci/test-merged-check-guard.sh",
@@ -903,6 +1183,10 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // without it and main's fast-checks went red at 20:15:44. Carried here
         // so this PR unbreaks main rather than needing a separate fix.
         "scripts/ci/test-notify-operator.sh",
+        // RESILIENT-1096: every literal CHUMP_NOTIFY_KIND assignment in
+        // production scripts must have a suppress|page|direct verdict in
+        // operator-escalation-registry.txt. Pure shell, no cargo, no network.
+        "scripts/ci/test-notify-kind-escalation-coverage.sh",
         "scripts/ci/test-discord-gateway.sh",
         // RESILIENT-248: pr-rescue zero-CI-runs detector. Pure decision-function
         // fixture — no network, no cargo, no GH_TOKEN, well under a second.
@@ -911,6 +1195,19 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-pr-rescue-noci.sh",
         // RESILIENT-050: trunk-RED hold gate — fast (~2s), no network needed.
         "scripts/ci/test-reaper-trunk-red-hold.sh",
+        // REAPER-SPARE (PR #4589 fix): stale-pr-reaper must SPARE recoverable
+        // BLOCKED PRs (pending required checks, or a flake-budget-exhausted
+        // known flake on an otherwise-green PR) and only bounce genuinely dead
+        // ones (hard non-flake failure / conflict). Pure decision-function
+        // fixtures + INFRA-304 markers, no network, ~1s.
+        "scripts/ci/test-reaper-spare-recoverable-blocked.sh",
+        // INFRA-1410 (completes PR #4606): stale-pr-reaper prompt-retries the
+        // current failing run on flake re-arm. Network-free — the test stubs
+        // gh / chump / the rebase script via PATH and drives the whole respawn
+        // state machine in a tmpdir — so it runs in local preflight identically
+        // to the ci.yml fast-checks job (registers this gate for preflight-vs-CI
+        // parity, INFRA-1867).
+        "scripts/ci/test-pr-stuck-auto-respawn.sh",
         // RESILIENT-066: fleet-pause autolift + pause-immune choir — Tier A,
         // pure shell, no GitHub API, ~2s.
         "scripts/ci/test-fleet-pause-autolift.sh",
@@ -939,6 +1236,13 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // (outcome/failure_class/gap_reserve_calls) — pure bash, ~1s, no
         // network, 3 synthetic-ambient fixture tests.
         "scripts/ci/test-pr-stuck-cluster-observability.sh",
+        // INFRA-3352: pr-stuck-cluster-detector CORE detection logic (below-
+        // threshold no-op, cluster-detected filing, window/cooldown dedup) —
+        // existed since INFRA-1133 but was never wired into preflight or CI,
+        // so a regression in the detector's actual cluster math would ship
+        // silently. Pure bash + synthetic ambient.jsonl fixtures, ~1s, no
+        // network.
+        "scripts/ci/test-pr-stuck-cluster-detection.sh",
         // INFRA-2391: `chump demo` subcommand smoke — asserts --help and an
         // end-to-end --dry-run both exit 0. Pure local, no network.
         "scripts/ci/test-chump-demo-smoke.sh",
@@ -958,6 +1262,34 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // `verified` job step itself IS GitHub-context-dependent (needs.*.result)
         // and is allowlisted separately in preflight-ci-parity-exceptions.txt.
         "scripts/ci/test-aggregator-verified.sh",
+        // INFRA-1841 (CP-009): mock-services offline-CI fixture smoke test —
+        // builds+runs the 4 vendored Anthropic/OpenAI/Stripe/Supabase mocks
+        // under tests/fixtures/mock-services and asserts response shape.
+        // SKIPs cleanly (exit 0) when docker is unavailable/unreachable, so
+        // it never false-fails a host without Docker. ~4s warm, ~15s cold.
+        "scripts/ci/test-mock-services.sh",
+        // INFRA-1841 (CP-009): mock-services CHUMP_USE_MOCK_SERVICES=1
+        // opt-in wiring pattern — proves scripts/ci/lib/mock-services-env.sh
+        // transparently redirects Anthropic/OpenAI calls to the local
+        // mocks. Same skip behavior as test-mock-services.sh above.
+        "scripts/ci/test-mock-services-integration.sh",
+        // INFRA-2351 (META-269 sub-2): bash-portability-lint smoke test —
+        // proves the GNU-sed/GNU-date/POSIX-sh-bashism checks in
+        // scripts/ci/bash-portability-lint.sh actually fire on synthetic
+        // fixtures. Pure bash, no network, ~1s.
+        "scripts/ci/test-bash-portability-lint.sh",
+        // INFRA-2358: A2A typed RPC v1 observability smoke test — proves the
+        // 4 terminal event kinds (finished/timeout/send_failed/
+        // handler_crash) are registered + emitted from both
+        // crates/chump-coord/src/rpc.rs and scripts/coord/rpc/_rpc_lib.sh,
+        // that latency_ms and failure_class ride along, and runs
+        // `cargo test -p chump-coord --lib rpc::`. Pure local, no network.
+        "scripts/ci/test-a2a-rpc-observability.sh",
+        // INFRA-1789: `chump preflight --help` golden-file regression —
+        // catches a stale CLI surface (INFRA-1246 class) where a flag is
+        // renamed/removed without the help text being updated. Pure local
+        // (one subprocess + a string diff), ~0.1s, no network.
+        "scripts/ci/test-cli-help-regression.sh",
     ];
     candidates
         .iter()
@@ -1173,6 +1505,12 @@ pub fn run(argv: &[String]) -> i32 {
     let mut args = parse_args(argv);
     if args.help {
         print_help();
+        return 0;
+    }
+    // EFFECTIVE-1547: `newcmd` is a placeholder subcommand — scaffolding
+    // future chump subcommands can copy this wiring from. It does nothing
+    // but exit 0.
+    if args.newcmd {
         return 0;
     }
     // EFFECTIVE-318: --full reproduces CI's audit shards locally — force the
@@ -1511,30 +1849,11 @@ pub fn run(argv: &[String]) -> i32 {
                 .status()
                 .map(|s| s.success())
                 .unwrap_or(false);
-            let test_argv: &[&str] = if nextest_available {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "nextest",
-                    "run",
-                    "--bin",
-                    "chump",
-                ]
-            } else {
-                &[
-                    "bash",
-                    "scripts/ci/cargo-test-with-rerun.sh",
-                    "--",
-                    "cargo",
-                    "test",
-                    "--bin",
-                    "chump",
-                    "--tests",
-                ]
-            };
-            steps.push(step("cargo-test", test_argv, GateKind::Rust));
+            steps.push(step(
+                "cargo-test",
+                cargo_test_wrapper_argv(nextest_available),
+                GateKind::Rust,
+            ));
         }
 
         // INFRA-1857: system-integration-test gate (INFRA-849). Mirrors
@@ -1740,6 +2059,30 @@ pub fn run(argv: &[String]) -> i32 {
             ));
         }
 
+        // INFRA-5429 (INFRA-1861 slice): bypass-line-required audit. Every
+        // gate-manifest.yaml check that can exit FAIL must carry a
+        // "How to bypass cleanly: <instructions>" line. No skip env var —
+        // per INFRA-2429 zero-bypass thesis, a gate whose entire purpose is
+        // "every FAIL needs a documented bypass" should not itself grow an
+        // undocumented one; it's cheap (grep-only, no network) so there is
+        // no legitimate reason to skip it locally.
+        steps.push(step(
+            "bypass-line-required",
+            &["bash", "scripts/ci/test-bypass-line-required.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-4537 (INFRA-1861 slice): bypass-line OUTPUT audit. The
+        // static grep above proves the bypass line exists in source; this
+        // force-fires each FAIL-capable gate against its real violating
+        // fixture and scans the actual printed output, catching a line
+        // that exists in source but never reaches the real failure path.
+        steps.push(step(
+            "bypass-line-output-audit",
+            &["bash", "scripts/ci/test-bypass-line-output-audit.sh"],
+            GateKind::Scripts,
+        ));
+
         // INFRA-1810: install-script manifest gate. Verifies every
         // scripts/setup/install-*.sh is mapped to REQUIRED_DAEMONS,
         // optional-installers-allowlist.txt, or deprecated-installers-allowlist.txt.
@@ -1775,6 +2118,36 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "plist-no-tmp-paths",
             &["bash", "scripts/ci/test-plist-no-tmp-paths.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-2338: install-trunk-sentinel.sh smoke. Verifies the installer
+        // writes BOTH the trunk-sentinel plist AND the fix-trunk-dispatcher
+        // plist, with REPO_ROOT correctly substituted. Mocks launchctl/plutil
+        // via a stub bin dir; no real launchd touched.
+        steps.push(step(
+            "install-trunk-sentinel",
+            &["bash", "scripts/ci/test-install-trunk-sentinel.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-1808: every scripts/setup/install-*.sh must be mode 0755.
+        // install-bot-merge-watchdog.sh shipped 0644 and silently never ran
+        // via chump-fleet-bootstrap.sh for days. Pure stat check, <1s.
+        steps.push(step(
+            "install-scripts-executable",
+            &["bash", "scripts/ci/test-install-scripts-executable.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-1808: bootstrap-auto-install smoke. install-bootstrap-auto-
+        // launchd.sh (the hourly self-install job for chump-fleet-bootstrap.sh)
+        // must generate a valid plist and its runner must emit
+        // kind=fleet_bootstrap_auto_install. Dry-run + stub bootstrap script;
+        // no real launchd touched.
+        steps.push(step(
+            "bootstrap-auto-install",
+            &["bash", "scripts/ci/test-bootstrap-auto-install.sh"],
             GateKind::Scripts,
         ));
 
@@ -1831,6 +2204,19 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
 
+        // RESILIENT-332: worker-picker anti-SPIN gate. Mirrors the audit.yml
+        // test-worker-no-spin.sh step — proves the worker picker
+        // (_pick_and_claim_gap.py) ADVANCES past a preflight-failing or
+        // open-PR gap and never re-offers it (the 2026-08-15 spin where a
+        // worker re-picked two stale-open gaps 108x/15min doing zero work).
+        // Same characteristics as the picker gates above: pure-Python picker +
+        // cooldown files, <2s, no network, no chump binary.
+        steps.push(step(
+            "worker-no-spin",
+            &["bash", "scripts/ci/test-worker-no-spin.sh"],
+            GateKind::Scripts,
+        ));
+
         // RESILIENT-135: worker timeout-scaler gate. Mirrors the audit.yml
         // test-worker-timeout-scale.sh step — proves the effort-based per-cycle
         // timeout derives from an IMMUTABLE base and cannot compound toward ~0s
@@ -1869,6 +2255,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "claim-mode",
+            &["bash", "scripts/ci/test-claim-mode.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "git-identity-guard",
             &["bash", "scripts/ci/test-git-identity-guard.sh"],
             GateKind::Scripts,
@@ -1899,6 +2290,16 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "run-fleet-core-cap",
+            &["bash", "scripts/ci/test-run-fleet-core-cap.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "worker-run-node-aware",
+            &["bash", "scripts/ci/test-worker-run-node-aware.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "docs-delta-guard",
             &["bash", "scripts/ci/test-docs-delta-guard.sh"],
             GateKind::Scripts,
@@ -1921,6 +2322,126 @@ pub fn run(argv: &[String]) -> i32 {
         steps.push(step(
             "lease-ttl-file",
             &["bash", "scripts/ci/test-infra-115-lease-ttl-file.sh"],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-4050 (META-070/META-086 audit-job decomposition, cluster
+        // C3-pr-worker-lifecycle): mirror the 22 remaining unmirrored
+        // PR/worker-lifecycle & merge-automation gates from
+        // docs/process/AUDIT_JOB_DECOMPOSITION.md's C3 table (23 total in
+        // that table; test-no-verify-audit.sh was already mirrored above).
+        // Each is pure shell/fixture-based, no chump binary build required
+        // — safe for the fast local loop. All always-on (no per-gate bypass
+        // env var) per the EFFECTIVE-094 bypass-var debt-ceiling, same
+        // precedent as the INFRA-3379 cluster mirror above.
+        steps.push(step(
+            "bot-merge-auto-close",
+            &["bash", "scripts/ci/test-bot-merge-auto-close.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-conflict-wiring",
+            &["bash", "scripts/ci/test-bot-merge-conflict-wiring.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "conflict-resolver",
+            &["bash", "scripts/ci/test-conflict-resolver.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "external-verify-merge",
+            &["bash", "scripts/ci/test-external-verify-merge.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "gate-promotion-no-regression",
+            &["bash", "scripts/ci/test-gate-promotion-no-regression.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "bot-merge-hang",
+            &["bash", "scripts/ci/test-infra-119-bot-merge-hang.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "install-pr-auto-rebase",
+            &["bash", "scripts/ci/test-install-pr-auto-rebase.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-auto-rebase",
+            &["bash", "scripts/ci/test-pr-auto-rebase.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-blocked-watch",
+            &["bash", "scripts/ci/test-pr-blocked-watch.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-explain-block",
+            &["bash", "scripts/ci/test-pr-explain-block.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-terminal-state",
+            &["bash", "scripts/ci/test-pr-terminal-state.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-triage-bot",
+            &["bash", "scripts/ci/test-pr-triage-bot.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-watch-auto-resolve",
+            &["bash", "scripts/ci/test-pr-watch-auto-resolve.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pr-watch-shepherd-smoke",
+            &["bash", "scripts/ci/test-pr-watch-shepherd-smoke.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-preflight-hook",
+            &["bash", "scripts/ci/test-pre-push-preflight-hook.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-rebase-allow",
+            &["bash", "scripts/ci/test-pre-push-rebase-allow.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "pre-push-test-gate",
+            &["bash", "scripts/ci/test-pre-push-test-gate.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "preflight-ci-parity-smoke",
+            &["bash", "scripts/ci/test-preflight-ci-parity.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "rebase-coordination",
+            &["bash", "scripts/ci/test-rebase-coordination.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "review-handoff-smoke",
+            &["bash", "scripts/ci/test-review-handoff-smoke.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "stale-branch-rebase",
+            &["bash", "scripts/ci/test-stale-branch-rebase.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "status-flip-proof-of-merge",
+            &["bash", "scripts/ci/test-status-flip-proof-of-merge.sh"],
             GateKind::Scripts,
         ));
 
@@ -2031,6 +2552,14 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "infra-3002-claim-import-similarity-nonfatal",
+            &[
+                "bash",
+                "scripts/ci/test-claim-import-similarity-nonfatal.sh",
+            ],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "infra-250-v1-retirement",
             &["bash", "scripts/ci/test-infra-250-v1-retirement.sh"],
             GateKind::Scripts,
@@ -2073,6 +2602,55 @@ pub fn run(argv: &[String]) -> i32 {
             &["bash", "scripts/ci/test-meta-011-git-stomp.sh"],
             GateKind::Scripts,
         ));
+        steps.push(step(
+            "preflight-ci-parity-smoke",
+            &["bash", "scripts/ci/test-preflight-ci-parity-smoke.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
+            "gap-reserve-no-stale-collision",
+            &["bash", "scripts/ci/test-gap-reserve-no-stale-collision.sh"],
+            GateKind::Scripts,
+        ));
+        // RESILIENT-001: the mirror-converge dirty-tree gate. Hermetic —
+        // builds bare-repo fixtures in a tmpdir with a stubbed `chump`, no
+        // network/root/systemctl — so it runs in local preflight identically
+        // to the ci.yml pr-hygiene job (registers this gate for
+        // preflight-vs-CI parity, INFRA-1867).
+        steps.push(step(
+            "backlog-sync-reader-dirty-tree",
+            &["bash", "scripts/ci/test-backlog-sync-reader-dirty-tree.sh"],
+            GateKind::Scripts,
+        ));
+        // INFRA-7887: registry-remote contract for the same script. Hermetic:
+        // bare-repo fixtures in a tmpdir with HOME pinned and a stubbed
+        // `chump`. Mirrors the ci.yml step of the same name.
+        steps.push(step(
+            "backlog-sync-registry-remote",
+            &["bash", "scripts/ci/test-backlog-sync-registry-remote.sh"],
+            GateKind::Scripts,
+        ));
+
+        // EFFECTIVE-1666 (EFFECTIVE-414 slice): bin-bloat-guard mirror.
+        // Pure `git diff` + `wc -c` over new top-level src/*.rs files —
+        // hermetic, <1s, no cargo build. Mirrors the ci.yml step above.
+        steps.push(step(
+            "bin-bloat-guard",
+            &[
+                "bash",
+                "scripts/ci/bin-bloat-guard.sh",
+                "--base",
+                "origin/main",
+            ],
+            GateKind::Scripts,
+        ));
+
+        // INFRA-5000 (META-070/INFRA-3373 slice): cli_observability_misc
+        // gate — mirrors the 41 remaining cli-observability-misc cluster
+        // scripts from docs/process/AUDIT_JOB_DECOMPOSITION.md.
+        for (name, script) in CLI_OBSERVABILITY_MISC_SCRIPTS {
+            steps.push(step(name, &["bash", script], GateKind::Scripts));
+        }
     }
 
     // INFRA-3377 (META-070): commit-content-guards mirrors. --pre-commit
@@ -2887,6 +3465,75 @@ struct BaselineDiff {
 mod tests {
     use super::*;
 
+    // INFRA-3352: test-pr-stuck-cluster-detection.sh existed since INFRA-1133
+    // but was never in the discover_test_scripts allowlist, so a regression
+    // in the detector's core cluster math (threshold/window/cooldown) could
+    // ship without preflight or CI ever running it. Guard the wiring.
+    #[test]
+    fn infra3352_pr_stuck_cluster_detection_test_is_wired() {
+        let repo_root = find_repo_root().expect("repo root");
+        let scripts = discover_test_scripts(&repo_root);
+        assert!(
+            scripts
+                .iter()
+                .any(|p| p.ends_with("scripts/ci/test-pr-stuck-cluster-detection.sh")),
+            "test-pr-stuck-cluster-detection.sh must be wired into preflight's \
+             always-run allowlist so detector regressions surface locally"
+        );
+    }
+
+    // INFRA-4116: run_preflight_script must return Ok(()) for a successful
+    // script and Err(ExitCode::FAILURE) for a failing one.
+    #[test]
+    fn infra4116_run_preflight_script_ok_and_err() {
+        let dir = tempfile::tempdir().expect("tempdir");
+
+        let ok_script = dir.path().join("ok.sh");
+        std::fs::write(&ok_script, "#!/bin/sh\nexit 0\n").expect("write ok script");
+        assert!(run_preflight_script(ok_script.to_str().unwrap()).is_ok());
+
+        let fail_script = dir.path().join("fail.sh");
+        std::fs::write(&fail_script, "#!/bin/sh\nexit 1\n").expect("write fail script");
+        assert_eq!(
+            run_preflight_script(fail_script.to_str().unwrap()),
+            Err(ExitCode::FAILURE)
+        );
+    }
+
+    // RESILIENT-072: cargo-test-with-rerun.sh exits 2 with a `usage:` error
+    // if invoked without `-- <cmd>`. Assert both nextest and cargo-test
+    // fallback argvs carry the required separator + a real command after it.
+    #[test]
+    fn resilient072_cargo_test_wrapper_argv_has_separator_and_cmd() {
+        for nextest_available in [true, false] {
+            let argv = cargo_test_wrapper_argv(nextest_available);
+            assert_eq!(
+                argv[0], "bash",
+                "wrapper must be invoked via bash, not exec'd directly"
+            );
+            assert!(
+                argv[1].ends_with("cargo-test-with-rerun.sh"),
+                "argv[1] must be the wrapper script"
+            );
+            let sep_pos = argv.iter().position(|a| *a == "--").unwrap_or_else(|| {
+                panic!(
+                    "cargo-test-with-rerun.sh requires a `--` separator; \
+                     without it the wrapper prints usage and exits non-zero \
+                     without running a single test (RESILIENT-072). argv={argv:?}"
+                )
+            });
+            assert!(
+                sep_pos + 1 < argv.len(),
+                "`--` must be followed by a real command, not be the last arg"
+            );
+            assert_eq!(
+                argv[sep_pos + 1],
+                "cargo",
+                "the wrapped command must be `cargo ...`"
+            );
+        }
+    }
+
     // RESILIENT-196: disk-floor guard (pure comparison — no env/process races).
     #[test]
     fn resilient196_disk_floor_comparison() {
@@ -3068,6 +3715,32 @@ mod tests {
         assert!(out.captured.is_some());
     }
 
+    // META-208: "flake-ingest" arm runs in-process (no subprocess spawn) —
+    // exercises run_step's dispatch, not just chump_atomic_claim directly.
+    #[test]
+    fn run_step_flake_ingest_imports_flaky_rows() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let input_path = dir.path().join("nextest-flaky.json");
+        std::fs::write(
+            &input_path,
+            r#"[{"name": "tests::flaky_one", "outcome": "flaky"}]"#,
+        )
+        .unwrap();
+        let s = step(
+            "flake-ingest",
+            &[
+                "flake-ingest",
+                input_path.to_str().unwrap(),
+                dir.path().to_str().unwrap(),
+            ],
+            GateKind::AlwaysFast,
+        );
+        let out = run_step(&s);
+
+        assert_eq!(out.status, Status::Pass);
+        assert!(out.captured.unwrap().contains("1 flaky"));
+    }
+
     // INFRA-2422: The old skip_via_env_returns_zero test is removed because
     // the env bypass is deleted. The --help path exits 0 regardless.
     #[test]
@@ -3157,6 +3830,17 @@ mod tests {
         assert!(!s.rust, "docs-only must skip rust");
         assert!(!s.scripts, "docs-only must skip scripts");
         assert!(s.docs, "docs-only must record docs");
+    }
+
+    #[test]
+    fn parse_args_newcmd_flag() {
+        let a = parse_args(&["newcmd".to_string()]);
+        assert!(a.newcmd);
+    }
+
+    #[test]
+    fn run_newcmd_exits_zero() {
+        assert_eq!(run(&["newcmd".to_string()]), 0);
     }
 
     #[test]
@@ -3599,5 +4283,86 @@ mod tests {
             "unscoped fallback must run --workspace, argv={:?}",
             step.argv
         );
+    }
+
+    #[test]
+    fn cargo_check_step_argv_includes_nice_and_capped_jobs() {
+        // EFFECTIVE-499 AC 1 & 3: `nice -n 10 cargo check ... -j 6` (or
+        // equivalent capped jobs) under an idle (load1=0.0) machine with
+        // >=6 CPUs — compute_check_jobs caps at 6 regardless of CPU count.
+        let fixture = make_fixture_workspace();
+        let root = fixture.path();
+        let paths = vec!["crates/foo/src/lib.rs".to_string()];
+        let step = cargo_check_step(root, &paths);
+        assert_eq!(step.argv[0], "nice", "argv={:?}", step.argv);
+        assert!(
+            step.argv.windows(2).any(|w| w == ["-n", "10"]),
+            "expected `nice -n 10`, argv={:?}",
+            step.argv
+        );
+        let jobs_idx = step
+            .argv
+            .iter()
+            .position(|a| a == "--jobs")
+            .expect("expected --jobs flag");
+        let jobs_val: usize = step.argv[jobs_idx + 1].parse().expect("numeric jobs value");
+        assert!(
+            jobs_val <= 6,
+            "capped jobs must be <= 6, got {jobs_val}, argv={:?}",
+            step.argv
+        );
+    }
+
+    #[test]
+    fn defer_until_load_below_runs_immediately_when_already_under_threshold() {
+        let mut sleeps = 0u32;
+        let defers = defer_until_load_below(
+            4.0,
+            Duration::from_secs(30),
+            Duration::from_secs(2),
+            || 1.0,
+            |_| sleeps += 1,
+        );
+        assert_eq!(defers, 0);
+        assert_eq!(sleeps, 0);
+    }
+
+    #[test]
+    fn defer_until_load_below_polls_until_load_drops() {
+        // Load reported as busy (10.0) for the first two polls, then drops
+        // below the threshold (4.0) on the third read.
+        let loads = std::cell::RefCell::new(vec![10.0, 10.0, 2.0]);
+        let mut sleeps = 0u32;
+        let defers = defer_until_load_below(
+            4.0,
+            Duration::from_secs(30),
+            Duration::from_millis(1),
+            || loads.borrow_mut().remove(0),
+            |_| sleeps += 1,
+        );
+        assert_eq!(defers, 2, "expected 2 deferred polls before load dropped");
+        assert_eq!(sleeps, 2);
+    }
+
+    #[test]
+    fn defer_until_load_below_gives_up_after_max_wait() {
+        // Toggle-for-tests: a permanently-busy load_fn still returns within
+        // a bounded max_wait rather than looping forever.
+        let defers = defer_until_load_below(
+            1.0,
+            Duration::from_millis(5),
+            Duration::from_millis(2),
+            || 99.0,
+            |_| {},
+        );
+        assert!(defers >= 2, "expected at least 2 polls, got {defers}");
+    }
+
+    #[test]
+    fn load_defer_disable_env_is_the_expected_name() {
+        // Guards the toggle-for-tests contract referenced in run_step: the
+        // env var name must stay stable since it's the documented escape
+        // hatch for CI/tests to skip the real-time defer loop.
+        assert_eq!(LOAD_DEFER_DISABLE_ENV, "CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE");
     }
 }

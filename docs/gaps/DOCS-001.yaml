@@ -1,0 +1,13 @@
+- id: DOCS-001
+  domain: DOCS
+  title: "EFFECTIVE: unify factory org model into one JTBD framework (DOC-079/083/088)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"unify factory org model into one JTBD framework (DOC-079/083/088)\" is implemented in the relevant DOCS code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-09'
+  closed_pr: 3531
+

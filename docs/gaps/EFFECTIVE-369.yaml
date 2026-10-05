@@ -1,0 +1,16 @@
+- id: EFFECTIVE-369
+  domain: EFFECTIVE
+  title: "EFFECTIVE: fleet radio — chump brief --spoken assembler wired to Mac/Pixel TTS, morning schedule plus on-demand"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    ChumpOS gets a voice: a spoken fleet brief, scheduled (morning) and on-demand. Voice INPUT is already Jeff's habit; spoken OUTPUT is the unbuilt half. Nearly done — the pipeline exists at both ends: jarvis scripts/voice_node.py is a complete edge chain (PulseAudio -> OpenWakeWord/Porcupine -> VAD -> Whisper -> gateway -> TTS FIFO, with runbooks), jarvis-ui lib/voice.ts does browser TTS with rate/pitch, openclaw Swabble is a tested Swift wake-word package, and Chump's own web/v2/daily-brief.js (+ scripts/ci/test-pwa-daily-brief.sh) already assembles brief content. Rough shape: (a) 'chump brief --spoken' — assemble a ~60-second script from mission-scoreboard verdict + 24h ships + holler arrivals + waiting-on-Jeff items, reusing the daily-brief data path; (b) Mac speaker out (macOS say or the jarvis-ui voice surface) + launchd morning schedule + on-demand CLI; (c) Pixel voice node as second speaker via the jarvis gateway; (d) script register per the first-mate voice — receipts spoken, no adjectives (write-as-jeff twin); (e) when EFFECTIVE-364/365 land, the approval queue feeds the brief: the radio announces where the one click is needed.
+  acceptance_criteria:
+    - chump brief --spoken produces and speaks a script from LIVE scoreboard+ambient+holler data on a Mac
+    - morning launchd run works unattended
+    - script names concrete receipts (counts, gap IDs), no vibes
+    - on-demand invocation under 10s to first word
+    - Pixel node path documented even if deferred
+  outcome_id: FLEET-RADIO
+

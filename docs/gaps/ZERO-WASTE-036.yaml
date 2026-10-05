@@ -1,0 +1,20 @@
+- id: ZERO-WASTE-036
+  domain: ZERO-WASTE
+  title: "WIRING SWEEP: autonomous curator loop that uses Almanac + the WIRING organ to find built-but-unwired capabilities, triage (wire / allowlist-dormant / archive-dead), file a gap-with-receipt per real one, and wire it. The systematic fix for the recurring built-not-wired pattern (this session hand-wired 6: model roster->bench, budget_tracker beyond fleet_mode, cost_ledger->bench, judgment pieces, loop branches, effort measurement). Mine-before-build: WIRING organ (almanac-organs, '29 unwired' — refine the over-claimed 'in NO profile' dead-ness first per organ-selfdiagnosis), src/inventory.rs, comprehend consult, almanac index, existing curator-loop pattern (ci-audit/md-links/decompose). NOT a new detector — an ACT-on-detection sweep"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - DETECTOR is intent-without-invocation, NOT dead code — that distinction is the whole design. Dead code has no declared purpose (that is ZERO-WASTE-044's weaker zero-importer signal). This finds capability that DECLARES a purpose and has no trigger. Each detector below is backed by a real 2026-08-07 instance
+    - "D1 script declaring periodic intent, no scheduler: scripts/coord/pr-rescue.sh exists, zero cron/launchd entries reference it — PR #3499 rotted 9h with auto-merge armed (RESILIENT-247)"
+    - "D2 tool whose own --help names an input it is never run against: tracemap --help literally cites .chump-locks/ambient.jsonl; 4,394 events sat unread, and when finally run it consumed 20 of them (EFFECTIVE-397)"
+    - "D3 type/module whose doc declares a role with no caller: chump-coord/src/worker/mod.rs:10 calls WorkerCapability a 'picker filter'; zero callers outside its crate, and a SECOND capability model exists in chump-team with team_id/max_concurrent_gaps/last_heartbeat_at, also unwired (MISSION-077)"
+    - "D4 required checklist item with no telemetry proving execution: RELEASE_CHECKLIST 1e mandates flagmap and 1.5 mandates comprehend, yet 0 of 6 organ binaries log usage — an auditor could skip both and nothing would show (CREDIBLE-221)"
+    - "D5 producer with no consumer: gaps carry preferred_backend/preferred_machine/required_model and 0 of 233 open gaps populate them; cross-fleet, beast-mode's a2a_messages queue has seven HTTP writers and no reader at all"
+    - "D6 shipped capability with ~zero adoption telemetry: almanac add-ref used twice ever, almanac_api 2 calls of 128 in 30 days"
+    - "TRIAGE, three outcomes not one: WIRE (complete the job), ALLOWLIST-DORMANT (deliberately off — must record WHO decided and WHY, else it is re-detected forever), ARCHIVE-DEAD. An allowlist with reasons is what keeps this from becoming noise"
+    - FILE a gap-with-receipt per real finding, through the same holler path as the other sweeps, with stable dedupe hashes — a re-detected standing condition must not refile every cycle
+    - "HONESTY: state the detector's false-positive floor in its own output, same rule as ZERO-WASTE-044. Almanac resolves only ~20-40 percent of import edges, so 'no caller' is weak evidence; D1/D2/D4 (no scheduler / never-invoked-on-documented-input / no execution telemetry) are far stronger than D3/D5 and should be ranked above them"
+    - "EVIDENCE THIS IS THE FLEET'S MOST RECURRING FAILURE: the originating session hand-wired 6 instances; the 2026-08-07 session independently found 6 more (D1-D6 above) plus this gap itself sitting unbuilt. That is 13 known instances across two sessions"
+  depends_on: [EFFECTIVE-389]
+

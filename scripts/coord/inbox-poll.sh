@@ -92,8 +92,8 @@ echo "$count" > "$COUNTER"
 (( count % THROTTLE_N != 0 )) && exit 0
 
 # Compare mtimes: skip if cursor is fresher than inbox
-inbox_mtime="$(stat -f %m "$INBOX" 2>/dev/null || stat -c %Y "$INBOX" 2>/dev/null || echo 0)"
-cursor_mtime="$(stat -f %m "$CURSOR" 2>/dev/null || stat -c %Y "$CURSOR" 2>/dev/null || echo 0)"
+inbox_mtime="$(stat -c %Y "$INBOX" 2>/dev/null || stat -f %m "$INBOX" 2>/dev/null || echo 0)"
+cursor_mtime="$(stat -c %Y "$CURSOR" 2>/dev/null || stat -f %m "$CURSOR" 2>/dev/null || echo 0)"
 (( inbox_mtime <= cursor_mtime )) && exit 0
 
 # New messages exist — read them via existing chump-inbox.sh

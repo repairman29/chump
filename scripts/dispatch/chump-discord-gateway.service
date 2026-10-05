@@ -1,0 +1,32 @@
+# RESILIENT-370 — serenity-free Discord RECEIVE gateway, tracked under
+# scripts/dispatch/ so the manifest-derived ATC roster (install-helsinki-atc.sh,
+# TREK-18) ACTUALLY deploys it. RESILIENT-266 shipped the gateway + a manifest
+# `enabled chump-discord-gateway.service` line, but the unit template lived in
+# scripts/ops/ where the roster never looks and the only installer was Mac
+# launchd — so on every Linux node the organ was declared-but-never-installed,
+# the exact drift class TREK-18 exists to kill. helsinki's decommission left the
+# two-way operator channel dark with nothing to revive it.
+#
+# HOST-AGNOSTIC: paths use /root/; install-helsinki-atc.sh host-rewrites `/root/`
+# -> the repo-owner's HOME and inserts `User=<owner>` under [Service]. The beat
+# additionally fixes HOME from the run-user at runtime (the sed only rewrites
+# `/root/` WITH a trailing slash, so a bare Environment=HOME=/root would survive).
+[Unit]
+Description=Chump Discord receive gateway (serenity-free, two-way operator channel) — RESILIENT-370
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+Environment=HOME=/root
+Environment=CHUMP_REPO=/root/Projects/chump
+WorkingDirectory=/root/Projects/chump
+# Source providers.env (export-format) for DISCORD_TOKEN + CHUMP_READY_DM_USER_ID
+# — the SAME creds notify-operator.sh uses for the outbound half. The beat
+# re-resolves and degrades gracefully (idles, never crash-loops) if absent.
+ExecStart=/bin/bash -c 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/dispatch/discord-gateway-beat.sh'
+Restart=always
+RestartSec=10
+
+[Install]
+WantedBy=multi-user.target

@@ -1,9 +1,11 @@
 - id: INFRA-1954
   domain: INFRA
   title: "CREDIBLE: gap-reserve re-uses shipped gap IDs removed from docs/gaps/ — INFRA-018 guard only checks live registry, not git history"
-  status: open
+  status: done
   priority: P1
   effort: s
+  closed_pr: 3305
+  closed_date: '2026-08-17'
   description: |
     During the 2026-05-25 Cold Water cycle, chump gap reserve assigned IDs
     META-103, INFRA-1953, INFRA-1955, and INFRA-1957 — all of which had already

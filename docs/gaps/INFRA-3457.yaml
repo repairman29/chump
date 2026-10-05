@@ -1,0 +1,11 @@
+- id: INFRA-3457
+  domain: INFRA
+  title: "RESILIENT: bot-merge code-reviewer hard-requires ANTHROPIC_API_KEY — falls over (auto-merge NOT armed) in OAuth-only envs"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"bot-merge code-reviewer hard-requires ANTHROPIC_API_KEY — falls over (auto-merge NOT armed) in OAuth-only envs\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

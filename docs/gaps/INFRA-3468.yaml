@@ -1,0 +1,12 @@
+- id: INFRA-3468
+  domain: INFRA
+  title: "EFFECTIVE: CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"CONFIG organ — add JS/TS + Python env adapters (comprehend UAT pilot-1 B1/B2)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  skills_required: "external_repo:repairman29/almanac"
+

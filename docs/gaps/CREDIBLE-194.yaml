@@ -1,0 +1,18 @@
+- id: CREDIBLE-194
+  domain: CREDIBLE
+  title: "CREDIBLE: spirit judge is blind on --implement/RESCUE laps — diffs base_branch...HEAD (empty, commits are on clone main); use lap_commit_range"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"spirit judge is blind on --implement/RESCUE laps — diffs base_branch...HEAD (empty, commits are on clone main); use lap_commit_range\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3456
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: chump bench run --track e2e/chumpbench/rescue-beast-ci.yaml --apply --implement --json (binary at main 19ba6b2c, has CREDIBLE-192 spirit judge + CREDIBLE-193).
+    OUTPUT: result=PASS, 100% zero-touch (2/2 lap commits), wall_clock 16s — BUT spirit_verdict='' spirit_reason='no diff to judge', despite the agent writing AND committing a real fix (log shows '[main 1729daa] chore: seed breakage' + '[main 3bb5edb] feat: implement track task'). The tally_human_touches correctly saw '2 lap commit(s)'; the spirit judge saw nothing.
+    THEORY: spirit_judge (src/bench.rs:149-161) computes the diff as  (base=base_branch(dir)). RESCUE/--implement laps commit ONTO the clone's OWN main branch, so base_branch resolves to the same tip as HEAD -> the three-dot diff is empty -> early-return 'no diff to judge'. So CREDIBLE-192's spirit lens is structurally blind on exactly the laps that produce agent work worth judging (stub/hack detection is a no-op there). FIX: derive the range from lap_commit_range(dir) (bench.rs:453, the INFRA-3523 base..tip range already proven correct by tally_human_touches) and  instead of base_branch...HEAD.
+    ALT: (a) diff HEAD~N..HEAD by counting lap commits — fragile to commit count; (b) stash a pre-lap SHA and diff against it — new plumbing; lap_commit_range already computes the exact range and is battle-tested by the touch tally, so reuse it. Also consider excluding runtime junk (sessions/*.db, .chump-locks/ambient.jsonl) the agent swept into the commit.
+

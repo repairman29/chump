@@ -1,0 +1,14 @@
+- id: PRODUCT-179
+  domain: PRODUCT
+  title: "PRODUCT: Create Voice Ask API Route (Siri Seam) (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - POST endpoint accepts {key, text}
+    - Endpoint integrates with the orchestrator to process the query
+    - Response contains a 'spoken' field for Siri to read
+    - Response time for simple queries is < 5 seconds
+  depends_on: [PRODUCT-178]
+  outcome_id: EFFECTIVE-000
+

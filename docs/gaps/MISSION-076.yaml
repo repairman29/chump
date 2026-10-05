@@ -1,0 +1,16 @@
+- id: MISSION-076
+  domain: MISSION
+  title: "multi-repo execution lane: ChumpOS can TAG external-repo work but cannot EXECUTE it — 77 gaps stranded"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "STATE (verified 2026-08-07): external_repo:<owner>/<repo> is consumed ONLY as a derived index (chump-gap-store lib.rs:4488 upserts a repos row per tag). Neither dispatch.rs nor execute_gap.rs mentions it. So a worker claiming one of the 77 open external-repo gaps gets a CHUMP worktree, grounded against CHUMP's almanac index (EFFECTIVE-390), gated by cargo test + chump's hooks, shipped by bot-merge into CHUMP's main — for work that lives in olive, slidemate or ai-gm-service. This is not serialization, it is a missing execution path"
+    - "SEPARATE THE BOUNDARY: kernel = gap registry, claim/lease, dispatch, almanac (already per-repo), holler. Userland = checkout, test cmd, lint/build, CI, ship pipeline, merge policy. Today Chump's userland is wrongly assumed universal — bot-merge's gates, the cargo-test pre-push gate and the main.rs merge driver are all Chump-specific"
+    - "CRAWL (do first): read-only. Organs+almanac sweep N repos, file findings to holler, zero writes to any repo. Already specified as EFFECTIVE-398 (organs emit --findings-json) -> EFFECTIVE-389 (scheduled sweep). Crawl also PRODUCES the backlog walk consumes, so it is a dependency not just caution"
+    - "WALK: dispatch clones/worktrees the TARGET repo, agent works there, opens a PR against THAT repo, and THAT repo's own CI is the gate. Chump's gates must not apply. Needs the missing primitive: a per-repo contract (how to test, how to ship). DERIVE it by default rather than author it — measured: olive test='npm run lint && npm run build', upshift test='npm run e2e:all'; holler/posse genuinely have none, which is a valid answer not a failure. Hang it off the existing repos table, which already carries last_clone_at and last_ship_at columns that anticipate exactly this"
+    - "RUN: many repos concurrently + autonomous merge. Gate on proven walk, a per-repo merge policy (which repos may auto-merge vs require a human), and a GLOBAL governor — the real parallelism limits are machine resources (145 live worktrees today; ~60-94 ptys per Agent-tool dispatch per SUBAGENT_DISPATCH), GitHub API rate (there is already a gh-throttle window + _chump_gh_classify_call), and inference capacity (Ollama contention observed 2026-08-06). NOT merge conflicts"
+    - "WHY CROSS-REPO IS SAFER THAN TODAY: every collision hit on 2026-08-06/07 was WITHIN chump — main.rs +6081/-6089 conflict (PR #3499), a shared dirty checkout between sibling sessions, a DEPTH.md test-count race, an ALMANAC_HOME env race. Different repos touch different files; fanning out REDUCES contention on the one hot repo"
+    - "OBSERVATION BEFORE ACTION: do not run autonomous agents across 90 repos while CREDIBLE-220 (nothing watches non-chump CI — two repos sat red ~6 months) and RESILIENT-247 (pr-rescue.sh exists but is unscheduled) are open. You cannot supervise what you cannot see"
+  outcome_id: MISSION-032
+

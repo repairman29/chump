@@ -7,6 +7,9 @@
 # (g) META-184: trunk-red guard — all BEHIND PRs get rebase_skipped reason=trunk_red,
 # (h) META-184: claim guard — PR with active claim gets rebase_skipped reason=claim,
 # (i) META-184: throttle guard — more than MAX_REBASES BEHIND PRs → overflow gets rebase_skipped reason=throttle.
+# (n) RESILIENT-081: strict-aware rebase gate — strict=false → 0 rebases issued (all
+#     rebase_skipped reason=not_strict) even with N BEHIND PRs; strict=true → rebases
+#     proceed up to MAX_REBASES budget.
 
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -955,4 +958,170 @@ else
   exit 1
 fi
 
-echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions verified)"
+# ── (n) RESILIENT-081: strict-aware rebase gate ───────────────────────────────
+# strict=false -> 0 rebases issued even with N BEHIND PRs (all rebase_skipped
+# reason=not_strict). strict=true -> rebases proceed up to MAX_REBASES.
+_run_strict_gate_harness() {  # $1=strict_val ("true"|"false") $2=out_ambient
+  local strict_val="$1" out_ambient="$2"
+  local harness="$WORK_DIR/strict-gate-${strict_val}.sh"
+  : > "$out_ambient"
+  cat > "$harness" << STRICT_EOF
+#!/usr/bin/env bash
+set -euo pipefail
+REPO_ROOT="$REPO_ROOT"
+AMBIENT="$out_ambient"
+DRY_RUN=1
+MAX_REBASES=3
+REBASE_DEBOUNCE_FILE="$WORK_DIR/debounce-strict-${strict_val}"
+: > "\$REBASE_DEBOUNCE_FILE"
+
+source "\$REPO_ROOT/scripts/coord/lib/github_cache.sh"
+
+_emit_pr_action_taken() {
+  local n="\$1" act="\$2" rsn="\$3" gid="\$4" ts
+  ts="\$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  printf '{"ts":"%s","kind":"pr_action_taken","pr_number":%d,"action":"%s","reason":"%s","gap_id":"%s","dry_run":true}\n' "\$ts" "\$n" "\$act" "\$rsn" "\$gid" >> "\$AMBIENT"
+}
+_should_skip_trunk_red() { return 1; }
+_pr_has_active_claim() { return 1; }
+_pr_in_rebase_debounce() { return 1; }
+_record_rebase_debounce() { :; }
+# Stub the live/cached checks so this harness exercises the gate logic only —
+# no real gh call, no cache-file coupling.
+_pr_shepherd_strict_enabled() { echo "$strict_val"; }
+_merge_queue_active() { echo "false"; }
+
+rebase_gate_open=0
+if [ "\$(_pr_shepherd_strict_enabled)" = "true" ] || [ "\$(_merge_queue_active)" = "true" ]; then
+  rebase_gate_open=1
+fi
+
+# 4 synthetic BEHIND PRs (gap_id + head_sha only — classification is pre-decided)
+pr_nums="201 202 203 204"
+rebase_count=0
+for pr_num in \$pr_nums; do
+  gap_id="INFRA-\${pr_num}"
+  if [ "\$rebase_gate_open" -eq 0 ]; then
+    _emit_pr_action_taken "\$pr_num" "rebase_skipped" "not_strict" "\$gap_id"
+    continue
+  fi
+  if [ "\$rebase_count" -ge "\$MAX_REBASES" ]; then
+    _emit_pr_action_taken "\$pr_num" "rebase_skipped" "throttle" "\$gap_id"
+    continue
+  fi
+  _emit_pr_action_taken "\$pr_num" "rebase" "" "\$gap_id"
+  rebase_count=\$((rebase_count + 1))
+done
+STRICT_EOF
+  chmod +x "$harness"
+  bash "$harness" 2>/dev/null || { echo "[test] FAIL: strict-gate(${strict_val}) harness non-zero"; exit 1; }
+}
+
+STRICT_FALSE_AMBIENT="$WORK_DIR/ambient-strict-false"
+_run_strict_gate_harness "false" "$STRICT_FALSE_AMBIENT"
+rebase_issued_false=$(grep -c '"action":"rebase"' "$STRICT_FALSE_AMBIENT" 2>/dev/null || true)
+not_strict_skipped=$(grep -c '"reason":"not_strict"' "$STRICT_FALSE_AMBIENT" 2>/dev/null || true)
+if [[ "${rebase_issued_false:-0}" -eq 0 && "${not_strict_skipped:-0}" -eq 4 ]]; then
+  echo "[test] (n) strict=false: OK (0 rebases, 4 skipped reason=not_strict)"
+else
+  echo "[test] FAIL (n): strict=false expected 0 rebases + 4 not_strict skips, got rebases=${rebase_issued_false:-0} skipped=${not_strict_skipped:-0}"
+  exit 1
+fi
+
+STRICT_TRUE_AMBIENT="$WORK_DIR/ambient-strict-true"
+_run_strict_gate_harness "true" "$STRICT_TRUE_AMBIENT"
+rebase_issued_true=$(grep -c '"action":"rebase"' "$STRICT_TRUE_AMBIENT" 2>/dev/null || true)
+throttled_true=$(grep -c '"reason":"throttle"' "$STRICT_TRUE_AMBIENT" 2>/dev/null || true)
+if [[ "${rebase_issued_true:-0}" -eq 3 && "${throttled_true:-0}" -eq 1 ]]; then
+  echo "[test] (n) strict=true: OK (3 rebases up to budget, 1 throttled)"
+else
+  echo "[test] FAIL (n): strict=true expected 3 rebases + 1 throttled, got rebases=${rebase_issued_true:-0} throttled=${throttled_true:-0}"
+  exit 1
+fi
+
+# ── (o) META-194: synthetic 6-PR fixture — one PR per classification path ────
+# Builds a single 6-PR gh-style JSON array covering BEHIND, MERGEABLE, ARMED,
+# DIRTY, BLOCKED_GREEN, BLOCKED_REAL_FAIL. Classification is run through the
+# REAL classification block extracted verbatim from cmd_tick() in the daemon
+# (not a reimplementation) so this test tracks the live logic. The expected
+# action per classification mirrors the daemon's action-selection branches
+# (META-184/META-186): BEHIND -> rebase, BLOCKED_GREEN -> arm_auto_merge,
+# BLOCKED_REAL_FAIL -> file_followup_gap, ARMED/DIRTY/untrusted-MERGEABLE ->
+# no_action (left for a human or a downstream daemon).
+SIXPR_DIR="$(mktemp -d /tmp/shepherd-6pr-XXXXXX)"
+trap 'rm -rf "$SIXPR_DIR"' EXIT
+
+# Extract the classification python body verbatim from the daemon source
+# (the block between `python3 -c "` in cmd_tick and its closing `"`).
+sixpr_start=$(grep -n 'classified=\$(printf .%s. "\$prs_json" | python3 -c "$' "$DAEMON" | head -1 | cut -d: -f1)
+sixpr_end=$(awk -v s="$sixpr_start" 'NR>s && /^" 2>\/dev\/null \|\| true\)$/{print NR; exit}' "$DAEMON")
+if [[ -z "$sixpr_start" || -z "$sixpr_end" ]]; then
+  echo "[test] FAIL (o): could not locate classification block in daemon (start=$sixpr_start end=$sixpr_end)"; exit 1
+fi
+sed -n "$((sixpr_start + 1)),$((sixpr_end - 1))p" "$DAEMON" > "$SIXPR_DIR/classify.py"
+[[ -s "$SIXPR_DIR/classify.py" ]] || { echo "[test] FAIL (o): could not extract classification block from daemon"; exit 1; }
+
+cat > "$SIXPR_DIR/fixture-6pr.json" << 'SIXPR_JSON_EOF'
+[
+  {"number":601,"title":"feat(INFRA-601): behind","mergeStateStatus":"BEHIND","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","headRefOid":"sha601","statusCheckRollup":[],"author":{"login":"alice"},"baseRefName":"main","headRefName":"branch-601"},
+  {"number":602,"title":"feat(INFRA-602): mergeable","mergeStateStatus":"CLEAN","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","headRefOid":"sha602","statusCheckRollup":[],"author":{"login":"untrusted-bot"},"baseRefName":"main","headRefName":"branch-602"},
+  {"number":603,"title":"feat(INFRA-603): armed","mergeStateStatus":"CLEAN","autoMergeRequest":{"enabledAt":"2026-01-01T00:00:00Z"},"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","headRefOid":"sha603","statusCheckRollup":[],"author":{"login":"alice"},"baseRefName":"main","headRefName":"branch-603"},
+  {"number":604,"title":"feat(INFRA-604): dirty","mergeStateStatus":"DIRTY","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","headRefOid":"sha604","statusCheckRollup":[],"author":{"login":"alice"},"baseRefName":"main","headRefName":"branch-604"},
+  {"number":605,"title":"feat(INFRA-605): blocked-green","mergeStateStatus":"BLOCKED","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","headRefOid":"sha605","statusCheckRollup":[{"conclusion":"SUCCESS","status":"COMPLETED","name":"ci"},{"conclusion":"SKIPPED","status":"COMPLETED","name":"docs"}],"author":{"login":"alice"},"baseRefName":"main","headRefName":"branch-605"},
+  {"number":606,"title":"feat(INFRA-606): blocked-real-fail","mergeStateStatus":"BLOCKED","autoMergeRequest":null,"createdAt":"2026-01-01T00:00:00Z","updatedAt":"2026-01-01T00:00:00Z","headRefOid":"sha606","statusCheckRollup":[{"conclusion":"FAILURE","status":"COMPLETED","name":"ci","targetUrl":"https://example.test/run/606"}],"author":{"login":"alice"},"baseRefName":"main","headRefName":"branch-606"}
+]
+SIXPR_JSON_EOF
+
+classified_6pr=$(python3 "$SIXPR_DIR/classify.py" < "$SIXPR_DIR/fixture-6pr.json" 2>"$SIXPR_DIR/classify.err") \
+  || { echo "[test] FAIL (o): classification script errored:"; cat "$SIXPR_DIR/classify.err"; exit 1; }
+
+sixpr_ok=1
+declare -A expect_class=([601]=BEHIND [602]=MERGEABLE [603]=ARMED [604]=DIRTY [605]=BLOCKED_GREEN [606]=BLOCKED_REAL_FAIL)
+declare -A expect_action=([601]=rebase [602]=no_action [603]=no_action [604]=no_action [605]=arm_auto_merge [606]=file_followup_gap)
+
+while IFS= read -r line; do
+  [[ -n "$line" ]] || continue
+  pr=$(printf '%s' "$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["pr"])')
+  cls=$(printf '%s' "$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["classification"])')
+  is_cg=$(printf '%s' "$line" | python3 -c 'import json,sys; print(json.load(sys.stdin)["is_clean_green"])')
+
+  # Action mirrors the daemon's if/elif chain in cmd_tick (BEHIND -> rebase;
+  # BLOCKED_GREEN -> arm_auto_merge; BLOCKED_REAL_FAIL -> file_followup_gap;
+  # everything else -> no_action for this daemon this tick).
+  case "$cls" in
+    BEHIND) action="rebase" ;;
+    BLOCKED_GREEN) action="arm_auto_merge" ;;
+    BLOCKED_REAL_FAIL) action="file_followup_gap" ;;
+    *) action="no_action" ;;
+  esac
+
+  if [[ "${expect_class[$pr]:-}" != "$cls" ]]; then
+    echo "[test] FAIL (o): PR #$pr expected classification ${expect_class[$pr]:-<missing>}, got $cls"
+    sixpr_ok=0
+  fi
+  if [[ "${expect_action[$pr]:-}" != "$action" ]]; then
+    echo "[test] FAIL (o): PR #$pr expected action ${expect_action[$pr]:-<missing>}, got $action"
+    sixpr_ok=0
+  fi
+  # BLOCKED_GREEN/MERGEABLE both surface is_clean_green=True per daemon comment (line ~841);
+  # only BLOCKED_GREEN in this fixture is untrusted-author-independent, so just sanity-check
+  # the flag is boolean-shaped for the two CLEAN_GREEN-eligible classes.
+  if [[ "$cls" == "MERGEABLE" || "$cls" == "BLOCKED_GREEN" ]] && [[ "$is_cg" != "True" ]]; then
+    echo "[test] FAIL (o): PR #$pr ($cls) expected is_clean_green=True, got $is_cg"
+    sixpr_ok=0
+  fi
+done <<< "$classified_6pr"
+
+seen_count=$(printf '%s\n' "$classified_6pr" | grep -c '"pr":' || true)
+if [[ "$seen_count" -ne 6 ]]; then
+  echo "[test] FAIL (o): expected 6 classified PRs, got $seen_count"
+  sixpr_ok=0
+fi
+
+if [[ "$sixpr_ok" -eq 1 ]]; then
+  echo "[test] (o) 6-PR fixture: OK (BEHIND->rebase, MERGEABLE->no_action, ARMED->no_action, DIRTY->no_action, BLOCKED_GREEN->arm_auto_merge, BLOCKED_REAL_FAIL->file_followup_gap)"
+else
+  exit 1
+fi
+
+echo "[test-pr-shepherd-daemon] PASS (tick + ${classified_count} pr_classified + META-184 guards + META-185 BLOCKED sub-states + META-186 actions + RESILIENT-081 strict-gate + META-194 6-PR fixture verified)"

@@ -1,0 +1,15 @@
+- id: CREDIBLE-277
+  domain: CREDIBLE
+  title: EVENT_REGISTRY.yaml — the declared ground-truth contract every ambient consumer reads — is not parseable YAML
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "python3 -c 'import yaml,sys; yaml.safe_load(open(\"docs/observability/EVENT_REGISTRY.yaml\"))' exits 0 — today it raises ScannerError at line 110 on an unquoted backtick"
+    - "The real question is answered in the notes: does ANY consumer actually PARSE this file? Name each one with file:line, or state plainly that the declared ground-truth contract is documentation-only and the INFRA-754/1237/1287 claims about consumers reading it are overstated"
+    - The registry gate either parses the YAML or the gap records explicitly why grepping is sufficient — a contract its own enforcement cannot parse is the defect, not the syntax error
+    - A CI check fails if the file ever stops parsing, so this cannot silently regress
+    - "Fix the class, not the instance: any other unquoted scalar starting with a YAML indicator character is corrected in the same pass"
+  evidence: |
+    COMMAND: git show origin/main:docs/observability/EVENT_REGISTRY.yaml | python3 -c 'import yaml,sys; yaml.safe_load(sys.stdin)'  |  OUTPUT: yaml.scanner.ScannerError: found character '`' that cannot start any token, in "<stdin>", line 110, column 14. Line 110 is an unquoted trigger value beginning with a backtick: 'trigger: `chump gap audit-done` finds a DONE gap...'. Pre-existing on origin/main (f60ac216), not introduced by any recent branch.  |  THEORY: the file header declares itself a GROUND-TRUTH CONTRACT that fleet-brief, waste-tally, kpi-report and every ambient consumer reads to know which kind=X values to expect, and INFRA-1237 hardened a gate around it. But any consumer using a real YAML parser cannot load it at all — which means either no consumer actually parses it (the contract is documentation, not machinery) or those that do are silently falling back. Both possibilities are worth knowing, and the gate passing while the file is unparseable means the gate is grepping, not parsing. A contract that its own enforcement cannot parse is the same shape as a supervisor that reports health it never measured.  |  ALT: considered just quoting line 110 as a drive-by inside PR 3562 — rejected: the one-line fix is trivial but the question it raises (does anything actually parse this file?) is the real work, and burying it in a curator-supervisor diff would lose it. Considered treating it as cosmetic — rejected: INFRA-754/1237/1287 all cite consumers reading this file, so either those citations are wrong or the consumers are broken.
+

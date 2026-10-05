@@ -55,6 +55,15 @@ if ! [[ "$DOMAIN" =~ ^[A-Z][A-Z0-9]*$ ]]; then
     exit 1
 fi
 
+# RESILIENT-365: block the next symptom PR when a recurring-gap-pattern
+# cluster already has an open RCA gap for this title's keyword. Not blocked
+# when the title already references the RCA gap id (that's the intended
+# resolve path — link to the RCA instead of filing another symptom).
+_HOLD_CHECK="$(dirname "$0")/gap-pattern-hold-check.sh"
+if [[ -x "$_HOLD_CHECK" ]] && ! "$_HOLD_CHECK" "$TITLE"; then
+    exit 2
+fi
+
 # INFRA-109: resolve REPO_ROOT + LOCK_DIR via main-repo path (linked worktree safe).
 # shellcheck source=../lib/repo-paths.sh
 source "$(dirname "$0")/../lib/repo-paths.sh"

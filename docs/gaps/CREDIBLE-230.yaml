@@ -1,0 +1,15 @@
+- id: CREDIBLE-230
+  domain: CREDIBLE
+  title: "inference test kit: we have never measured whether BEST models can make chump write/edit/ship/merge unaided"
+  status: open
+  priority: P2
+  effort: l
+  acceptance_criteria:
+    - "OPERATOR FRAMING 2026-08-07: 'I don't know that we've ever actually tried with best/correct models to get chump to write/edit ship and merge code. That doesn't sound like a free tier job unless that is all you can afford.' Everything we believe about model capability here came from FREE-TIER failures, and we generalized from them"
+    - "WHAT WE ACTUALLY MEASURED (EFFECTIVE-366): free/sub models avoid str_replace, reach for patch_file/run_cli, both fail — so Claude became the final rung. That is a real finding about CHEAP models on ONE task. It is NOT a measurement of what the best models can do, and it is not a ceiling"
+    - "BUILD A GRADED HARNESS, not a vibe check: a fixed set of representative gaps (xs/s/m effort, across at least Rust and TS) run end-to-end — claim -> edit -> commit -> PR -> CI green -> merge — with the SAME gap attempted per model tier so results are comparable"
+    - "REPORT PER TIER, per stage: where does each tier fail? Tool-call refusal, wrong edit, broken build, failed CI, or ship-wall? A per-stage failure map is the useful artifact; a single pass/fail rate is not. Reuse eval_harness.rs and the existing 7-type round taxonomy rather than inventing a parallel harness"
+    - "OUTCOME IS A ROUTING POLICY, not a leaderboard: the deliverable is 'tier X is sufficient for effort<=s in language Y' — a rule the cascade and EFFECTIVE-409's tender can consume. Today's policy (Claude last rung) is a reasonable default derived from one negative result, and it may be leaving both money and throughput on the table in BOTH directions"
+    - "COST THE ANSWER: record tokens and dollars per successful merge per tier. 'Cheaper model succeeded' is only a win if the retries, failed CI runs and escalations do not exceed the price of doing it right the first time"
+  outcome_id: CHUMPOS
+

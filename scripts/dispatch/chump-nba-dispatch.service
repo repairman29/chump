@@ -1,0 +1,41 @@
+# EFFECTIVE-509 (+ conservative first cut of EFFECTIVE-510) — the AUTO-DISPATCH
+# CONSUMER for the next-best-action router. The producer
+# (scripts/coord/next-best-action.sh, chump-next-best-action.timer) is ADVISORY:
+# it writes an EV-ranked ~/.chump/next-best-action.json but never acts. Until
+# now a HUMAN read that file and dispatched each bet by hand — the SPOF that
+# stalled the fleet between check-ins. This unit runs
+# scripts/coord/nba-dispatch-beat.sh, which reads the TOP-ranked candidate and,
+# for a SMALL SAFE ALLOW-LIST only, takes the reversible action:
+#   heal_organ           reset-failed + restart a DEAD manifest organ (relapse
+#                        after auto-heal escalates to the human, never loops)
+#   dispatch_worker_p*   ensure worker/farmer units are ACTIVE (respects the
+#                        fleet-paused sentinel — never overrides an operator pause)
+#   wait_ci              benign no-op
+# EVERYTHING else (merge_pr, close/cut PRs, resolve/rebase, raise_faculty, any
+# unknown action-type) DEFERS: it records a needs-human item + emits
+# kind=nba_deferred_to_human for Jeff's digest. Idempotent (tracks the last bet
+# in ~/.chump/nba-dispatch-state.json; a standing bet is not re-decided within
+# 30 min). Emits kind=nba_dispatched | nba_deferred_to_human | nba_dispatch_skipped
+# each cycle. Paired with chump-nba-dispatch.timer; rostered in
+# scripts/ops/organ-manifest.txt so organ-reconcile + organ-deploy keep it alive.
+#
+# CJ-native form (User=jeff, /home/jeff paths), mirroring chump-next-best-action
+# .service; install-helsinki-atc.sh host-rewrites paths per node if run elsewhere.
+[Unit]
+Description=Chump NBA auto-dispatch — consume the top next-best-action; take a safe allow-listed action or defer to the human
+After=network-online.target chump-next-best-action.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=jeff
+Environment=HOME=/home/jeff
+Environment=PATH=/home/jeff/.cargo/bin:/home/jeff/Projects/chump/target/release:/usr/local/bin:/usr/bin:/bin
+Environment=CHUMP_REPO_ROOT=/home/jeff/Projects/chump
+WorkingDirectory=/home/jeff/Projects/chump
+# Source providers.env + cj.env for parity with the other CJ organs (gh token,
+# per-node config). The consumer makes no LLM call — it reads the already-
+# computed NBA board and issues systemctl (reset-failed/restart/start) via the
+# sudo -n elevation the watchdog uses on owned nodes — so it is cheap.
+ExecStart=/bin/bash -lc 'set -a; source /home/jeff/.chump/providers.env 2>/dev/null; source /home/jeff/.chump/cj.env 2>/dev/null; set +a; cd /home/jeff/Projects/chump; exec bash scripts/coord/nba-dispatch-beat.sh'
+TimeoutStartSec=300

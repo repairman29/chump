@@ -1,0 +1,13 @@
+- id: CREDIBLE-232
+  domain: CREDIBLE
+  title: "stub-guard: gate on placeholder patterns not source-file-unchanged (olive #10 false-positive)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"gate on placeholder patterns not source-file-unchanged (olive #10 false-positive)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3528
+  outcome_id: CHUMPOS
+

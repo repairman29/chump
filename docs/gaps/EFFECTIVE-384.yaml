@@ -1,0 +1,16 @@
+- id: EFFECTIVE-384
+  domain: EFFECTIVE
+  title: "EFFECTIVE: agent briefing names 5 of 9 almanac tools — impact/architecture/comprehend/why invisible"
+  status: done
+  priority: P2
+  effort: xs
+  description: |
+    Four almanac MCP tools are live and callable but never named where agents actually learn their toolset, so nothing reaches for them. src/context_assembly.rs (injected into EVERY dispatch) enumerates only almanac_search/api/search_fleet/neighbors/status — it predates almanac_impact and almanac_architecture (2026-08-05) and almanac_comprehend and almanac_why (2026-08-07). docs/ALMANAC.md (DOC-085) covers impact+architecture but predates comprehend+why. Receipt: 'almanac usage --days 1' shows ZERO organic calls to any of the four; every recorded call is from manual verification. This is the frozen-index pattern — maintained but not delivered.
+  acceptance_criteria:
+    - context_assembly.rs almanac directive names all four missing tools with a trigger condition each
+    - docs/ALMANAC.md covers almanac_comprehend and almanac_why
+    - no new tool is advertised that tools/list does not serve
+    - briefing stays terse — it is injected on every dispatch
+  closed_date: '2026-08-07'
+  closed_pr: 3501
+

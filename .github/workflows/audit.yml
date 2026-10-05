@@ -30,17 +30,49 @@ on:
     branches: [main, master]
   merge_group:
 
-# Workflow-level concurrency: cancel-in-progress: FALSE for this workflow.
-# Each unique SHA gets its own group — a fixup push of commit B does NOT cancel
-# in-flight audit for commit A. Both complete, both report.
+# Least-privilege token scope: read-only. No job in this workflow writes
+# through GITHUB_TOKEN.
+#   pull-requests: read — REQUIRED by dorny/paths-filter in the `changes` job
+#     (lists PR files via the API on pull_request events; the job is
+#     continue-on-error, so a missing scope fails quietly) and by the
+#     cross-PR contract gate (`gh pr list` / `gh pr view --json files`).
+permissions:
+  contents: read
+  pull-requests: read
+
+# INFRA-2516: the per-SHA group above (INFRA-2452 fix) never collided — every push
+# gets a new SHA, so cancel-in-progress:false or :true made no difference; stale
+# audit runs for commits a PR had already moved past just kept running to
+# completion. Under multi-PR load that piled up 13 in-flight audit runs against 4
+# runners and wedged the merge queue for ~30min (2026-06-03, #2981 + 3 PRs).
 #
-# Contrast with ci.yml: ci.yml's workflow-level concurrency uses cancel-in-progress:true
-# to save runner cost on rapid fixup pushes for the cost-sensitive jobs (cargo build,
-# e2e, etc.). That is correct for those jobs. Audit is cheap (~5min, no cargo-audit
-# since INFRA-503) and branch-protection required — it must never be cancelled.
+# Fix: group per PR (or per ref for push/merge_group) instead of per SHA, and flip
+# cancel-in-progress back to true. A newer push to the SAME PR now cancels the
+# superseded audit run for that PR instead of letting it occupy a runner slot to
+# completion; the latest commit's own audit run is never the one cancelled, so
+# branch protection always gets a result for HEAD. This does NOT reintroduce
+# INFRA-2452: that incident was ci.yml's *workflow-wide* cancel-in-progress killing
+# the required `audit` job as collateral damage from an unrelated job's fixup push.
+# Here the concurrency group is scoped to audit.yml alone and keyed per-PR, so only
+# a newer audit run for the SAME PR cancels an older one — never cross-PR, never
+# collateral from another workflow.
+#
+# INFRA-1852-parity (2026-09-07): the INFRA-2516 form keyed PUSH events on
+# `github.ref` (= refs/heads/main for every main push), so all main pushes shared
+# ONE group under cancel-in-progress: true — each coherence-sync auto-commit
+# cancelled the prior main commit's still-running audit. That was invisible to
+# PR branch protection (it only cares about HEAD), but ci.yml's `verified`
+# aggregate runs PER main commit and polls for THAT commit's audit lane; a
+# cancelled audit never reports success, so `verified` timed out at 600s and
+# fail-closed → deterministic trunk-red under rapid main pushes (~7.5h freeze
+# 2026-09-07). Fix mirrors ci.yml's own INFRA-1852 concurrency split: PUSH
+# events key on github.run_id (unique per run → never collides → a main push
+# is never the one cancelled, every commit's audit completes and reports),
+# while PR / merge_group keep per-PR/ref keying so PR fixups still cancel their
+# own superseded runs (preserves the INFRA-2516 runner-pool pileup protection).
 concurrency:
-  group: audit-${{ github.event_name == 'push' && github.run_id || github.sha }}
-  cancel-in-progress: false
+  group: audit-${{ github.event_name == 'push' && github.run_id || (github.event.pull_request.number || github.ref) }}
+  cancel-in-progress: true
 
 env:
   CARGO_TERM_COLOR: always
@@ -67,6 +99,74 @@ env:
   SCCACHE_LOG: info
 
 jobs:
+  # ── changes: docs-only lane detector (EFFECTIVE-415) ────────────────────────
+  # AC #2: the 4-shard audit matrix was an unconditional 11-12 min floor on
+  # every PR, including ones that touch only .md files (PR #3489, DOC-085).
+  # ci.yml already has this exact docs_only signal (INFRA-1379) for clippy/
+  # cargo-test/e2e — this mirrors it locally rather than cross-workflow
+  # `needs:` (GitHub Actions jobs can only depend on jobs in the SAME
+  # workflow file). push/merge_group always run the full matrix — the
+  # dorny/paths-filter base-ref diff is only meaningful for pull_request.
+  changes:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    continue-on-error: true  # INFRA-1348: a filter failure must not block audit
+    outputs:
+      docs_only: ${{ steps.lanes.outputs.docs_only }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dorny/paths-filter@v4
+        id: filter
+        with:
+          filters: |
+            rust:
+              - 'src/**'
+              - 'crates/**'
+              - 'Cargo.toml'
+              - 'Cargo.lock'
+              - 'chump-tool-macro/**'
+              - 'build.rs'
+              - 'tests/**'
+              - 'wasm/**'
+              - '.github/workflows/**'
+              - 'rust-toolchain.toml'
+            web:
+              - 'web/**'
+              - 'ChumpMenu/**'
+            scripts:
+              - 'scripts/**'
+              - 'tools/**'
+              - '.github/workflows/**'
+              - 'bin/**'
+              - 'launchd/**'
+              - 'config/**'
+              - '.release-plz.toml'
+            docs:
+              - 'docs/**'
+              - 'book/**'
+              - '*.md'
+              - 'CONTRIBUTING.md'
+              - 'CODE_OF_CONDUCT.md'
+              - 'CHANGELOG.md'
+              - 'SECURITY.md'
+      - name: Compute docs_only (mirrors ci.yml INFRA-1379)
+        id: lanes
+        run: |
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            # push-to-main / merge_group: always run the full matrix.
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          rust="${{ steps.filter.outputs.rust }}"
+          web="${{ steps.filter.outputs.web }}"
+          scripts="${{ steps.filter.outputs.scripts }}"
+          docs="${{ steps.filter.outputs.docs }}"
+          if [[ "$docs" == "true" && "$rust" != "true" && "$web" != "true" && "$scripts" != "true" ]]; then
+            echo "docs_only=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "docs_only=false" >> "$GITHUB_OUTPUT"
+          fi
+
   # ── audit-shard ──────────────────────────────────────────────────────────────
   # INFRA-2565: 4-way parallel shard matrix replacing the single serial `audit` job.
   # Each shard runs the 8 setup steps then its share of audit gates.
@@ -75,7 +175,16 @@ jobs:
   #   shard-2: event-registry + observability + webhook/cache telemetry
   #   shard-3: bash/script gates — coordinator, worker, bot-merge, PWA, precommit
   #   shard-4: cross-PR contract gate + security + remaining guards
+  #
+  # EFFECTIVE-415: skipped entirely when `changes` says docs_only=true — a
+  # change that touches only .md files cannot regress a cargo build,
+  # event-registry contract, or bash gate. The `audit` aggregate below
+  # treats "skipped" as passing (same aggregator pattern as ci.yml's
+  # clippy-required / cargo-test-required), so branch protection still
+  # gets a green required check.
   audit-shard:
+    needs: [changes]
+    if: needs.changes.outputs.docs_only != 'true'
     strategy:
       fail-fast: false
       matrix:
@@ -94,20 +203,64 @@ jobs:
       # ── 8 shared setup steps (replicated in every shard) ────────────────────
       - uses: actions/checkout@v7
 
-      - name: Install Linux packages for chump-desktop (workspace member)
+      # INFRA-3594: cached primary path — on a warm cache, restore_pkgs.sh in
+      # this action untars the previously-installed .deb contents straight
+      # onto the filesystem with ZERO network calls (no apt-get update, no
+      # mirror dependency at all). Only a cache miss (first run after the
+      # package list or weekly version stamp changes) touches the network,
+      # via apt-fast's own parallel downloader. This is what actually kills
+      # the "live apt-get every PR run" flake AC1 calls out — RESILIENT-330's
+      # bounded retry below only fires as a fallback on that rare miss path.
+      - name: Install Linux packages for chump-desktop (cached, INFRA-3594)
         if: runner.os == 'Linux'  # INFRA-1534: macOS self-hosted skips apt
+        id: apt-cached
+        continue-on-error: true
+        timeout-minutes: 15
+        uses: awalsh128/cache-apt-pkgs-action@v1.6.3
+        with:
+          packages: webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev util-linux
+          version: audit-shard-v1
+
+      - name: Install Linux packages for chump-desktop (fallback, RESILIENT-330)
+        if: runner.os == 'Linux' && steps.apt-cached.outcome == 'failure'
+        # RESILIENT-330: bound apt so a hung Ubuntu mirror can't consume the whole
+        # 25-min job budget. Root cause (run 31863996317, audit-shard 2): apt-get
+        # stalled ~24 min with no output (last line 04:16:54, then dead until
+        # "The operation was canceled" at 04:41:24), hitting timeout-minutes:25 →
+        # shard CANCELLED → `audit` (branch-protection required) FAIL → every PR
+        # blocked → back-pressure breaker jammed → fleet halted. There was NO
+        # per-step timeout or retry, so one transient mirror stall took the shard
+        # down. Fix: a step-level cap well under the job budget + a per-attempt
+        # `timeout` (kills a stuck connection) + retry against a fresh connection,
+        # plus apt's own Acquire retries/timeouts. Common transient stall now
+        # recovers in ~1 attempt instead of hanging to the wall.
+        # INFRA-3594: demoted to a fallback behind the cached path above — this
+        # only runs when the cache action itself failed or timed out.
+        timeout-minutes: 18
         run: |
-          sudo apt-get update
-          sudo apt-get install -y \
-            webkit2gtk-4.1 \
-            libwebkit2gtk-4.1-dev \
-            libayatana-appindicator3-dev \
-            build-essential \
-            pkg-config \
-            libssl-dev \
-            libgtk-3-dev \
-            librsvg2-dev \
-            util-linux
+          set -uo pipefail
+          pkgs="webkit2gtk-4.1 libwebkit2gtk-4.1-dev libayatana-appindicator3-dev build-essential pkg-config libssl-dev libgtk-3-dev librsvg2-dev util-linux"
+          apt_opts="-o Acquire::Retries=3 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30"
+          rc=1
+          for attempt in 1 2 3; do
+            echo "apt attempt $attempt of 3"
+            # shellcheck disable=SC2086  # $apt_opts and $pkgs are space-separated arg lists — word-splitting is intended
+            if timeout -k 15 90 sudo apt-get $apt_opts update \
+               && timeout -k 15 180 sudo apt-get $apt_opts install -y $pkgs; then
+              rc=0
+              echo "apt install OK (attempt $attempt)"
+              break
+            fi
+            echo "::warning::apt attempt $attempt failed or timed out (exit 124 = a hung mirror was killed by timeout); cleaning locks and retrying"
+            sudo pkill -9 -f 'apt-get|dpkg' 2>/dev/null || true
+            sudo rm -f /var/lib/apt/lists/lock /var/cache/apt/archives/lock /var/lib/dpkg/lock /var/lib/dpkg/lock-frontend 2>/dev/null || true
+            sudo dpkg --configure -a 2>/dev/null || true
+            sleep $((attempt * 15))
+          done
+          if [ "$rc" -ne 0 ]; then
+            echo "::error::apt-get failed after 3 bounded attempts (RESILIENT-330) — transient mirror/infra failure, not a code failure; re-run the job"
+            exit 1
+          fi
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
@@ -193,7 +346,8 @@ jobs:
         # runners redirects build output away from $(pwd)/target).
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-domain-summary.sh
 
@@ -201,7 +355,8 @@ jobs:
         if: matrix.shard == 1
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-done-format.sh
 
@@ -211,6 +366,19 @@ jobs:
         # only the first run line) sees the mirrored script; the test self-builds
         # the chump binary when it is missing.
         run: bash scripts/ci/test-outcome-gate.sh
+
+      - name: gap-store single source of truth — sqlite canonical, postgrest dormant, no silent 2nd store (RESILIENT-1057)
+        if: matrix.shard == 1
+        # Pure shell source-inspection; guards against reintroducing the gap-store
+        # split-brain ([[gap-store-split-brain-swamp]]). Runtime parity is checked
+        # on-node by scripts/coord/gap-store-single-source-check.sh.
+        run: bash scripts/ci/test-gap-store-single-source.sh
+
+      - name: farmer stale-lease heartbeat — a present lease must never crash the tick (RESILIENT-313)
+        if: matrix.shard == 1
+        # Runs ON LINUX by design (test-farmer.sh SKIPs non-Darwin and never
+        # caught the `stat -f %m` crash). Pure shell, no chump binary needed.
+        run: bash scripts/ci/test-farmer-stale-lease-heartbeat.sh
 
       - name: opencode harness smoke — build_harness_cmd argv + live spawn (EFFECTIVE-323)
         if: matrix.shard == 1
@@ -275,6 +443,12 @@ jobs:
           cargo build --bin chump 2>&1 | tail -2
           CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-gap-consolidate.sh
 
+      - name: audit log query/retention smoke test — CP-010 vendored AuditLogger (INFRA-1842)
+        if: matrix.shard == 1
+        run: |
+          cargo build --bin chump 2>&1 | tail -2
+          CHUMP_BIN="${CARGO_TARGET_DIR:-$(pwd)/target}/debug/chump" bash scripts/ci/test-audit-log.sh
+
       - name: PWA gap endpoint security — rate limit, CSRF, headers, timeout (CREDIBLE-023)
         if: matrix.shard == 1
         run: |
@@ -312,7 +486,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-cross-pr-contract.sh
 
@@ -588,6 +763,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-mission-picker-worker.sh
 
+      - name: worker picker anti-SPIN — advances past preflight-failing / open-PR gaps, never re-offers (RESILIENT-332)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-worker-no-spin.sh
+
       - name: worker timeout scaler — no death-spiral, derives from immutable base (RESILIENT-135)
         if: matrix.shard == 3
         run: bash scripts/ci/test-worker-timeout-scale.sh
@@ -595,6 +774,10 @@ jobs:
       - name: auth-status validity probe — catches depleted-credential-wins-precedence trap (RESILIENT-086)
         if: matrix.shard == 3
         run: bash scripts/ci/test-auth-status.sh
+
+      - name: chump-farmer-run host-aware PATH — Termux $PREFIX/bin reachable, Helsinki unchanged (RESILIENT-376)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-chump-farmer-run-path.sh
 
       - name: chump fleet bootstrap orchestrator (META-066)
         if: matrix.shard == 3
@@ -611,6 +794,10 @@ jobs:
       - name: PR auto-rescue daemon smoke (INFRA-1600)
         if: matrix.shard == 3
         run: bash scripts/ci/test-pr-failure-auto-rescue.sh
+
+      - name: Trunk-recovery reviver (RESILIENT-1190)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-trunk-recovery-reviver.sh
 
       - name: PR auto-rescue active audit-handler (INFRA-1618)
         if: matrix.shard == 3
@@ -644,6 +831,24 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-stale-worktree-reaper-tmp.sh
 
+      # RESILIENT-324. shard-3: pure shell, gh/chump/systemctl stubbed, no
+      # chump binary or live GitHub needed.
+      - name: rot-reaper drains CONFLICTING+old PRs, spares fresh/mergeable/filing (RESILIENT-324)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-rot-reaper.sh
+
+      # RESILIENT-311 completion: the rot-reaper no longer closes a good PR whose
+      # required `verified` aggregate is red for a recoverable reason (green-
+      # underneath / late-parity / CI-cancel / flake / pending). shard-3: pure
+      # shell, gh/chump stubbed, no binary or live GitHub needed.
+      - name: rot-reaper spares green-underneath verified-red PRs, closes only genuine hard-fails (RESILIENT-311)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-rot-reaper-verified-red-spare.sh
+
+      - name: back-pressure breaker can't deadlock — dead-zone escape resumes, 6+ jam still halts (RESILIENT-324)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-back-pressure-hysteresis.sh
+
       - name: bot-merge watchdog — kills done-gap procs, spares open-gap, exempt bypass (INFRA-1006)
         if: matrix.shard == 3
         run: bash scripts/ci/test-bot-merge-watchdog.sh
@@ -662,6 +867,12 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-notify-operator.sh
 
+      # RESILIENT-1096. shard-3: pure shell, no chump binary, and shards 1/4 are
+      # the ones paying the cold cargo build.
+      - name: every CHUMP_NOTIFY_KIND has an escalation-registry verdict (RESILIENT-1096)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-notify-kind-escalation-coverage.sh
+
       # RESILIENT-266. shard-3: pure shell, no chump binary, and shards 1/4 are
       # the ones paying the cold cargo build.
       - name: discord gateway daemon guard (RESILIENT-266)
@@ -678,6 +889,10 @@ jobs:
       - name: cascade-cancel rollup classification fixture (INFRA-1002)
         if: matrix.shard == 4
         run: bash scripts/ci/test-rollup-cascade-cancel.sh
+
+      - name: cascade-cancellation status description fixture (INFRA-5430)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-cascade-cancellation-status-description.sh
 
       - name: bounced-PR detector fixture (INFRA-781)
         if: matrix.shard == 4
@@ -728,6 +943,14 @@ jobs:
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
         if: matrix.shard == 4
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
+
+      - name: gh-in-ci GH_TOKEN guard — test scripts calling gh api/gh pr must guard (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-in-ci-guarded.sh
+
+      - name: gh-token-guard smoke test — skip-with-WARN when GH_TOKEN unset (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-token-guard.sh
 
       - name: no-new-bypass-env-vars — forbid new CHUMP_*_BYPASS/SKIP/IGNORE_* (INFRA-2429)
         if: matrix.shard == 4
@@ -800,6 +1023,14 @@ jobs:
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
 
+      - name: organ-manifest unified-BOM integration — parser+renderer+housekeeping-lib agree (INFRA-7768)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-organ-manifest-bom-integration.sh
+
+      - name: "audit-step isolation guard — one test script per step (RESILIENT-044)"
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-audit-step-isolation.sh
+
       # ── sccache stats (always, all shards) ──────────────────────────────────
       - name: sccache --show-stats
         if: always() && steps.r2detect.outputs.configured == 'true'
@@ -818,6 +1049,10 @@ jobs:
   # tax (~12min × every PR). Moved to .github/workflows/cargo-audit-nightly.yml
   # (cron daily). Advisory database updates daily, not per-commit, so per-PR
   # was redundant. Median PR cycle drops from 14m → ~5m.
+  #
+  # EFFECTIVE-415: "skipped" now also passes — audit-shard's own `if:` skips
+  # the whole matrix on docs_only PRs (see audit-shard comment above). Same
+  # aggregator pattern as ci.yml's cargo-test / clippy required rollups.
   audit:
     name: audit
     needs: [audit-shard]
@@ -829,8 +1064,8 @@ jobs:
         run: |
           result="${{ needs.audit-shard.result }}"
           echo "audit-shard result=$result"
-          if [ "$result" = "success" ]; then
-            echo "audit: all shards passed"
+          if [ "$result" = "success" ] || [ "$result" = "skipped" ]; then
+            echo "audit: all shards passed (or appropriately skipped, result=$result)"
           else
             echo "::error::audit FAIL — at least one audit-shard failed (result=$result)"
             exit 1

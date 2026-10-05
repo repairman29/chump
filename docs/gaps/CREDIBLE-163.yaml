@@ -1,0 +1,11 @@
+- id: CREDIBLE-163
+  domain: CREDIBLE
+  title: coord-surfaces-smoke (INFRA-032) silently skips in CI; fix guard + enable fast-checks ./target caching
+  status: superseded
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Discovered 2026-07-26 while fixing CI cache (target-dir PR #3317): scripts/ci/coord-surfaces-smoke.sh (fast-checks 'Dual-surface coordination smoke', INFRA-032) checks $ROOT/target/debug/chump and SKIPs (exit 0 = green) when absent. Because INFRA-2118 set CARGO_TARGET_DIR=/tmp/cargo-target-<run_id>, the binary was NEVER at $ROOT/target → the smoke test has been SILENTLY SKIPPING in CI (false-green) — it never actually validated the coordination surfaces it claims to. When #3317 pointed CARGO_TARGET_DIR at ./target for fast-checks, the test ran for real and FAILED (on the chump gap reserve/claim/preflight/briefing sequence in the CI env). #3317 kept fast-checks on /tmp to unblock; this gap: (1) diagnose why the real run fails (state.db/git/lease setup in the fast-checks CI env — get the actual failing chump command + error), (2) fix the smoke test so it genuinely passes, (3) make the binary discovery honor CARGO_TARGET_DIR (use ${CARGO_TARGET_DIR:-$ROOT/target}/debug/chump) so skip/run isn't accidental, (4) THEN flip fast-checks CARGO_TARGET_DIR to the same conditional as clippy/cargo-test to enable ./target Swatinem caching. Verify: coord-surfaces-smoke RUNS (not skips) and passes; fast-checks v1-trunk cache grows past 0.2 GB."
+  notes: |
+    [2026-07-26T19:29:43Z] [gap-bankruptcy 2026-07-26] work already merged to origin/main (gap-ID in a merged commit); closing ghost-open gap. Reversible via `chump gap requeue CREDIBLE-163`.
+

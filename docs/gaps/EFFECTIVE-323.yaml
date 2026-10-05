@@ -1,0 +1,15 @@
+- id: EFFECTIVE-323
+  domain: EFFECTIVE
+  title: opencode harness end-to-end smoke test — exercise claim→spawn→run→commit→ship locally so 'harness-agnostic' is verified, not claimed
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"opencode harness end-to-end smoke test — exercise claim→spawn→run→commit→ship locally so 'harness-agnostic' is verified, not claimed\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3339
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: turning on the opencode fleet surfaced a CHAIN of unexercised-path bugs, found one-fleet-cycle-at-a-time (same friction as the MISSION-045 3-CI-round grind, same root cause: no e2e test): (1) farmer plist PATH missing /usr/bin:/bin (RESILIENT-202); (2) wrong backend var — CHUMP_AGENT_HARNESS is attribution, CHUMP_WORK_BACKEND is the real selector; (3) worker.sh $_TO unbound in the opencode/codex branch (PR #3337, merged); (4) worker.sh opencode spawn missing the 'run' subcommand → ENAMETOOLONG (PR in flight). All latent because claude was always the backend; nothing ever ran the opencode path. There are likely MORE downstream (does opencode's output get parsed? does the worker commit its edits? does bot-merge ship?). The affordance: a smoke test that runs the FULL non-claude harness path (claim→spawn→run→commit→ship) against a trivial fixture gap, locally, surfacing all wiring breaks in ONE pass. This is 'preflight for harnesses' and the concrete makes-harness-agnostic-true instance of EFFECTIVE-321 (affordances over gates). Pairs with docs/process/HARNESS_CONTRACT.md.
+

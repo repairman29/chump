@@ -1,0 +1,48 @@
+- id: EFFECTIVE-421
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] index open + recently-merged PRs — agents cannot see work in flight"
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    Operator 2026-08-08: 'almanac needs to see planned/recent PRs too.' Almanac indexes COMMITTED code. It cannot see an open PR, so an agent has no way to answer the two questions that most directly waste fleet time: 'is someone already doing this' and 'what changed recently, and why'. almanac_why reaches merged history via git blame, but in-flight work is entirely invisible. Concretely: ZERO-WASTE-045 dedupes a new gap against the gap registry, and ZERO-WASTE-046 against fleet CODE, but neither sees that an open PR is already implementing the thing — so two agents can converge on the same work with one of them already halfway done. That is a bigger throughput win than any CI tuning, because it prevents work rather than accelerating it. Scope: index PR metadata per registered repo — number, title, body, state, branch, changed file paths, gap ID from the title, opened/merged timestamps — refreshed on the same cadence as the index. Changed FILE PATHS matter most: they make 'who else is touching this file' answerable, which is the collision question. Recently-merged PRs give the other half — a 'what changed here lately and why' view that pairs with almanac_why's blame. Deliberately metadata, not diffs: storing patches would balloon the index and duplicate git.
+  acceptance_criteria:
+    - open PRs for a registered repo are queryable with their changed file paths, so 'is anyone already touching src/foo.rs' has an answer
+    - recently-merged PRs (a bounded window) are queryable with title, gap ID and changed paths, giving a why-did-this-change view alongside almanac_why's blame
+    - PR data carries its own freshness — a PR list is stale the moment it is fetched, so every answer states when it was last synced, the same discipline as index staleness
+    - "the dedupe checks (ZERO-WASTE-045 gaps, ZERO-WASTE-046 code) gain a third leg: in-flight PRs, so a near-duplicate that is already being built is surfaced before a second agent claims it"
+    - remote-cached repos with no worktree still work — this is API metadata, not a filesystem read
+    - "no diffs or patches are stored: metadata plus paths only, and the reason is written down"
+  notes: |
+    SHIPPED 2026-08-09 in almanac 1b295c7 (origin/main), release binaries deployed — almanac_prs live in the MCP server (10 tools).
+    
+    5 of 6 acceptance criteria met in almanac:
+    1. open PRs queryable with changed paths — 'almanac prs <repo> --touching PATH'
+       (exact file or directory prefix). Live: 16 PRs synced from chump.
+    2. recently-merged PRs queryable with title, gap ID, changed paths; window
+       bounded (--merged-window, default 30).
+    3. freshness stated FIRST, not as a footnote — synced_at, or a loud
+       NEVER-SYNCED warning so an empty list cannot read as 'no work in flight'.
+    5. remote-cached repos work — verified on pixi-game (no worktree at all):
+       origin-based API read, sync completed.
+    6. no diffs or patches; metadata + paths only, reason written into the schema
+       comment (the patch is already in git).
+    
+    AC #4 NOT DONE — it is chump-side (ZERO-WASTE-045/046 gaining an in-flight
+    dedupe leg) and this session is working external-to-chump by operator
+    instruction. Filed to holler instead: kind=suggestion, project=chump,
+    context.repo=repairman29/chump, tier=operator_verified, titled 'Dedupe needs a
+    third leg: in-flight PRs (ZERO-WASTE-045/046 + almanac_prs)'. It will bridge
+    into a chump gap on the next holler-to-chump --apply.
+    
+    ALSO NOT DONE and flagged in that same holler row: nothing syncs PRs on a
+    cadence yet. The hourly refresh cron is the natural home.
+    
+    RECEIPT that this prevents real waste: on 2026-08-09 I built #3534 against
+    .github/workflows/audit.yml while #3532 was already open against the same
+    file. Both merged. That is now one query:
+      almanac prs chump --touching .github/workflows/audit.yml
+  closed_date: '2026-08-09'
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

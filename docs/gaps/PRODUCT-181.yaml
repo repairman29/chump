@@ -1,0 +1,14 @@
+- id: PRODUCT-181
+  domain: PRODUCT
+  title: "PRODUCT: Implement Voice Contract Formatting (ALMANAC.md) (PRODUCT-177 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Output filter removes all markdown and enumerated lists from the 'spoken' field
+    - "File:line references are stripped from spoken output"
+    - Replies are limited to 1-3 plain sentences
+    - Repo names and counts are preserved as per VOICE_ADDENDUM
+  depends_on: [PRODUCT-179]
+  outcome_id: EFFECTIVE-000
+

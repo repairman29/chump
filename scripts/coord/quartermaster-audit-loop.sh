@@ -21,6 +21,12 @@
 # Self-throttle: max 5 follow-up gaps per audit run; overflow to
 #   .chump/quartermaster-deferred.jsonl (one JSON line per finding).
 #
+# Candidate filter: only runnable operator-facing artifacts (daemons, loops,
+#   launchd installers/plists) can be shelfware. Tests, gap YAML records, plain
+#   data files, libraries, templates and docs are NOT filed: a cross-reference
+#   line for them in a role doc has no outcome, and each one cost a review.
+#   Each artifact is filed at most once (.chump/quartermaster-filed.txt).
+#
 # Usage:
 #   scripts/coord/quartermaster-audit-loop.sh tick           # full tick (trigger-check + run if FIRE)
 #   scripts/coord/quartermaster-audit-loop.sh run            # force an audit run
@@ -65,6 +71,11 @@ AGE_THRESHOLD_S="${CHUMP_QUARTERMASTER_AGE_THRESHOLD_S:-1800}"
 
 cmd="${1:-help}"
 [[ $# -gt 0 ]] && shift || true
+
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$cmd" != "help" && "$cmd" != "-h" && "$cmd" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "quartermaster-audit" || true
+fi
 
 # ── helpers ────────────────────────────────────────────────────────────────
 
@@ -148,6 +159,27 @@ grep_role_docs() {
         fi
     done
     echo "$found"
+}
+
+FILED_FILE="$CHUMP_DIR/quartermaster-filed.txt"
+
+# Only runnable operator-facing artifacts can be shelfware. Everything else
+# (test-*.sh, docs/gaps/*.yaml, *.txt, *.rs, *.md, templates) is skipped.
+is_shelfware_candidate() {
+    case "$1" in
+        test-*|*.yaml|*.yml|*.txt|*.rs|*.md|*.template|*.json|*.toml) return 1 ;;
+        *daemon*.sh|*-loop.sh|install-*.sh|*.plist) return 0 ;;
+        *) return 1 ;;
+    esac
+}
+
+already_filed() {
+    [[ -f "$FILED_FILE" ]] && grep -qxF "$1" "$FILED_FILE"
+}
+
+mark_filed() {
+    mkdir -p "$CHUMP_DIR"
+    printf '%s\n' "$1" >> "$FILED_FILE"
 }
 
 # Guess the best curator for a given artifact basename.
@@ -243,6 +275,8 @@ cmd_run() {
         local artifact
         while IFS= read -r artifact || [[ -n "$artifact" ]]; do
             [[ -z "$artifact" ]] && continue
+            is_shelfware_candidate "$artifact" || continue
+            already_filed "$artifact" && continue
 
             local gap_hit=0 artifact_hit=0
             [[ -n "$gap_id" ]] && gap_hit="$(grep_role_docs "$gap_id")"
@@ -277,6 +311,7 @@ cmd_run() {
                             --priority P2 \
                             2>/dev/null | grep -oE '(INFRA|META|CREDIBLE|RESILIENT|EFFECTIVE|FLEET|DOC|MEM|VOA|SCALE)-[0-9]+' | head -1 || echo "")"
                     fi
+                    mark_filed "$artifact"
                     gaps_filed=$(( gaps_filed + 1 ))
                     echo "  filed gap ${new_gap_id:-?} for shelfware: $artifact (${gap_id:-unknown})"
                 else
@@ -330,9 +365,14 @@ cmd_drain_deferred() {
         role_candidate="$(echo "$line" | python3 -c "import json,sys; d=json.load(sys.stdin); print(d.get('role_candidate','curator-opus-target'))" 2>/dev/null || echo "curator-opus-target")"
 
         [[ -z "$artifact" ]] && continue
+        # Drop stale deferred findings that no longer pass the candidate filter
+        # or were already filed.
+        is_shelfware_candidate "$artifact" || continue
+        already_filed "$artifact" && continue
 
         ambient_emit "shelfware_detected" \
             "\"gap_id\":\"$gap_id\",\"artifact\":\"$artifact\",\"role_candidate\":\"$role_candidate\",\"source\":\"deferred\""
+        mark_filed "$artifact"
 
         if command -v chump >/dev/null 2>&1; then
             CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \

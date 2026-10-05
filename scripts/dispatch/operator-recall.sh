@@ -8,7 +8,19 @@
 # Conditions:
 #   (a) AUTH_DEAD           — ≥ CHUMP_AUTH_STORM_RECALL_THRESHOLD fleet_auth_storm
 #                             events with action=worker_exit in the last
-#                             CHUMP_AUTH_STORM_WINDOW_SECS (default 5, 3600)
+#                             CHUMP_AUTH_STORM_WINDOW_SECS (default 5, 3600),
+#                             OR ≥ CHUMP_OAUTH_FAILURE_RECALL_THRESHOLD (default 3)
+#                             oauth_token_refresh_failed events, OR
+#                             ≥ CHUMP_AUTH_STALE_RECALL_THRESHOLD (default 2)
+#                             auth_token_stale events (RESILIENT-056: emitted by
+#                             infra-watcher-loop.sh check-oauth-freshness), all
+#                             within the same CHUMP_AUTH_STORM_WINDOW_SECS window —
+#                             widened past the single fleet_auth_storm+worker_exit
+#                             signal so a wedged refresher pages too, OR
+#                             ≥ CHUMP_SUB_AUTH_DEAD_RECALL_THRESHOLD (default 1)
+#                             worker_sub_auth_dead events (RESILIENT-1443:
+#                             worker.sh's CHUMP_AUTH_MODE=oauth precheck found
+#                             the claude CLI OAuth session logged out)
 #   (b) COST_CAP            — cost_cap_exceeded event in ambient.jsonl within 2 h,
 #                             OR `chump cost-watch --hard-cap` exits non-zero
 #   (c) CI_BROKEN           — ≥ CHUMP_CI_BROKEN_THRESHOLD pr_stuck events with
@@ -35,6 +47,49 @@
 #                             Fires when the INFRA-2304 reactor's escalated reap
 #                             could not recover sufficient headroom — operator
 #                             must intervene (manual reap, fleet pause, etc.)
+#   (g) PTY_EXHAUSTION      — invoked directly (via --condition PTY_EXHAUSTION)
+#                             by scripts/coord/infra-watcher-loop.sh check-ptys
+#                             (RESILIENT-092) when pty allocation crosses
+#                             CHUMP_INFRA_WATCHER_PTY_THRESHOLD (default 80%) of
+#                             kern.tty.ptmx_max (macOS) or /proc/sys/kernel/pty/max
+#                             (Linux) — pages BEFORE forkpty fails machine-wide,
+#                             not auto-detected by this script's scan loop.
+#   (h) AUTONOMY_HALT       — RESILIENT-321: the kill switch (~/.chump/AUTONOMY_LEVEL)
+#                             is currently 0 AND the oldest fleet_stopped_kill_switch
+#                             event in the last CHUMP_AUTONOMY_HALT_WINDOW_SECS
+#                             (default 86400) is older than
+#                             CHUMP_AUTONOMY_HALT_MIN_SECS (default 1800) — i.e. the
+#                             fleet has been silently halted for 30+ minutes. Every
+#                             other halt condition above self-reports via a loud
+#                             ambient event the moment it fires; AUTONOMY_LEVEL=0 did
+#                             not — worker.sh/bot-merge.sh log+skip quietly every
+#                             cycle, so a refresh/provision (or any other automated
+#                             path) clobbering the kill switch to 0 went unnoticed
+#                             for 6h on 2026-08-14. This closes that silent-halt gap.
+#   (i) WORKER_HALT         — RESILIENT-324: invoked directly (via --condition
+#                             WORKER_HALT) by scripts/ops/organ-watchdog.sh when
+#                             every configured chump-worker@<id>.service (the
+#                             gap-starter fleet workers) has sat inactive for >=
+#                             CHUMP_WORKER_HALT_MIN_SECS (default 1800), tracked
+#                             independent of AUTONOMY_LEVEL — a provision/refresh
+#                             path can SIGTERM-stop + disable the worker UNITS
+#                             directly without ever touching the kill switch, which
+#                             is exactly how the fleet sat with zero active workers
+#                             for 2.5h with no alarm on 2026-08-14 (AUTONOMY_HALT
+#                             above never fired because AUTONOMY_LEVEL stayed
+#                             non-zero the whole time).
+#   (j) ZERO_SHIP_ACTIVE    — RESILIENT-575: >= CHUMP_ZERO_SHIP_MIN_CYCLES
+#                             (default 3) worker_exit events (workers are
+#                             actively cycling — NOT idle/halted, which (h)/(i)
+#                             already cover) but 0 gap_shipped events, both
+#                             within CHUMP_ZERO_SHIP_WINDOW_SECS (default 3600).
+#                             This is the "board" signal from the 2026-09-01
+#                             incident: workers showed 'active' the whole time
+#                             while a sub-cap outage silently cooled-down+
+#                             blocked every gap it touched — zero real PRs for
+#                             9h, unpaged, because every existing condition
+#                             checks for idle/dead workers, not busy-but-fruitless
+#                             ones.
 #
 # Usage:
 #   operator-recall.sh                  # auto-detect all conditions; exit 0
@@ -46,6 +101,9 @@
 #   CHUMP_OPERATOR_RECALL_COOLDOWN_SECS    suppress duplicate recalls (default 3600)
 #   CHUMP_AUTH_STORM_RECALL_THRESHOLD      default 5
 #   CHUMP_AUTH_STORM_WINDOW_SECS           default 3600
+#   CHUMP_OAUTH_FAILURE_RECALL_THRESHOLD   default 3 (oauth_token_refresh_failed count)
+#   CHUMP_AUTH_STALE_RECALL_THRESHOLD      default 2 (auth_token_stale count)
+#   CHUMP_SUB_AUTH_DEAD_RECALL_THRESHOLD   default 1 (worker_sub_auth_dead count, RESILIENT-1443)
 #   CHUMP_CI_BROKEN_THRESHOLD              default 3
 #   CHUMP_CI_BROKEN_WINDOW_SECS            default 7200
 #   CHUMP_QUEUE_STARVE_SECS                default 86400
@@ -54,6 +112,8 @@
 #   CHUMP_RUNNER_GHOST_ONLINE_DETECT       set to 0 to disable QUEUE_SATURATED detection (default 1)
 #   CHUMP_DISK_CRITICAL_WINDOW_SECS        recency window for disk_critical events (default 600)
 #   CHUMP_DISK_CRITICAL_PCT                free% threshold below which to page (default 5)
+#   CHUMP_ZERO_SHIP_WINDOW_SECS            default 3600 (RESILIENT-575)
+#   CHUMP_ZERO_SHIP_MIN_CYCLES             default 3 (RESILIENT-575)
 #   CHUMP_AMBIENT_LOG                      path to ambient.jsonl
 
 set -uo pipefail
@@ -66,6 +126,9 @@ _recall_url="${CHUMP_OPERATOR_RECALL_URL:-}"
 _cooldown="${CHUMP_OPERATOR_RECALL_COOLDOWN_SECS:-3600}"
 _auth_threshold="${CHUMP_AUTH_STORM_RECALL_THRESHOLD:-5}"
 _auth_window="${CHUMP_AUTH_STORM_WINDOW_SECS:-3600}"
+_oauth_fail_threshold="${CHUMP_OAUTH_FAILURE_RECALL_THRESHOLD:-3}"
+_auth_stale_threshold="${CHUMP_AUTH_STALE_RECALL_THRESHOLD:-2}"
+_sub_auth_dead_threshold="${CHUMP_SUB_AUTH_DEAD_RECALL_THRESHOLD:-1}"
 _ci_threshold="${CHUMP_CI_BROKEN_THRESHOLD:-3}"
 _ci_window="${CHUMP_CI_BROKEN_WINDOW_SECS:-7200}"
 _queue_starve="${CHUMP_QUEUE_STARVE_SECS:-86400}"
@@ -74,6 +137,10 @@ _runner_queue_min_count="${CHUMP_RUNNER_QUEUE_MIN_COUNT:-3}"
 _runner_ghost_detect="${CHUMP_RUNNER_GHOST_ONLINE_DETECT:-1}"
 _disk_critical_window="${CHUMP_DISK_CRITICAL_WINDOW_SECS:-600}"
 _disk_critical_pct="${CHUMP_DISK_CRITICAL_PCT:-5}"
+_zero_ship_window="${CHUMP_ZERO_SHIP_WINDOW_SECS:-3600}"
+_zero_ship_min_cycles="${CHUMP_ZERO_SHIP_MIN_CYCLES:-3}"
+_autonomy_halt_min_secs="${CHUMP_AUTONOMY_HALT_MIN_SECS:-1800}"
+_autonomy_halt_window="${CHUMP_AUTONOMY_HALT_WINDOW_SECS:-86400}"
 
 _check_only=0
 _forced_condition=""
@@ -389,12 +456,56 @@ with open(path, "r", errors="replace") as f:
 PYEOF
 }
 
-# (a) AUTH_DEAD — fleet_auth_storm with action=worker_exit
+# (a) AUTH_DEAD — fleet_auth_storm with action=worker_exit, OR repeated
+# oauth_token_refresh_failed / auth_token_stale (RESILIENT-056: widened past
+# the original narrow signal so a wedged OAuth refresher pages the operator
+# too, not only a worker-exit storm).
 _auth_exits=$(_scan_ambient "$_auth_window" '"kind":"fleet_auth_storm"' \
     | grep -c '"action":"worker_exit"' 2>/dev/null || true)
 _auth_exits="${_auth_exits//[[:space:]]/}"
+
+_oauth_fail_hits=$(_scan_ambient "$_auth_window" '"kind":"oauth_token_refresh_failed"' | wc -l 2>/dev/null || echo 0)
+_oauth_fail_hits="${_oauth_fail_hits//[[:space:]]/}"
+
+_auth_stale_hits=$(_scan_ambient "$_auth_window" '"kind":"auth_token_stale"' | wc -l 2>/dev/null || echo 0)
+_auth_stale_hits="${_auth_stale_hits//[[:space:]]/}"
+
+# RESILIENT-1443: worker_sub_auth_dead — worker.sh's precheck (CHUMP_AUTH_MODE=
+# oauth) found the claude CLI OAuth session logged out (e.g. lapsed across a
+# reboot). This is an unambiguous "the sub is dead" signal, not a probabilistic
+# storm, so it pages at a low count by default (threshold=1) — the whole point
+# is that a logged-out sub pages within one worker cycle instead of the fleet
+# silently demoting to a dead free-tier floor for hours (2026-09-21 CJ
+# incident: farmer heartbeat stayed green while 0 gaps shipped post-reboot).
+_sub_auth_dead_hits=$(_scan_ambient "$_auth_window" '"kind":"worker_sub_auth_dead"' | wc -l 2>/dev/null || echo 0)
+_sub_auth_dead_hits="${_sub_auth_dead_hits//[[:space:]]/}"
+
+# CREDIBLE-130: fleet_credit_exhausted (billing exhausted, credentials fine)
+# is deliberately EXCLUDED from every AUTH_DEAD signal above — it must never
+# be added to the fleet_auth_storm/oauth_token_refresh_failed/auth_token_stale
+# scan set, since that would resurrect the 2026-06-08 misdiagnosis (a valid
+# key on a zero-balance account paged as "auth credentials appear fully
+# dead"). Surface it as its own informational line instead so an operator
+# checking recall status sees the real cause and the real fix (top up
+# credits / switch CHUMP_AUTH_MODE), not an auth-rotation runbook.
+_credit_exhausted_hits=$(_scan_ambient "$_auth_window" '"kind":"fleet_credit_exhausted"' | wc -l 2>/dev/null || echo 0)
+_credit_exhausted_hits="${_credit_exhausted_hits//[[:space:]]/}"
+if (( _credit_exhausted_hits > 0 )); then
+    echo "[operator-recall] INFO: fleet_credit_exhausted seen ${_credit_exhausted_hits}x in last ${_auth_window}s — billing exhausted, NOT an auth failure; not counted toward AUTH_DEAD. Top up credits or switch CHUMP_AUTH_MODE." >&2
+fi
+
+_reason=""
 if (( _auth_exits >= _auth_threshold )); then
     _reason="fleet_auth_storm with action=worker_exit seen ${_auth_exits}x in last ${_auth_window}s (threshold=${_auth_threshold}); auth credentials appear fully dead"
+elif (( _oauth_fail_hits >= _oauth_fail_threshold )); then
+    _reason="oauth_token_refresh_failed seen ${_oauth_fail_hits}x in last ${_auth_window}s (threshold=${_oauth_fail_threshold}); OAuth refresher repeatedly failing"
+elif (( _auth_stale_hits >= _auth_stale_threshold )); then
+    _reason="auth_token_stale seen ${_auth_stale_hits}x in last ${_auth_window}s (threshold=${_auth_stale_threshold}); token stale/expired and not recovering"
+elif (( _sub_auth_dead_hits >= _sub_auth_dead_threshold )); then
+    _reason="worker_sub_auth_dead seen ${_sub_auth_dead_hits}x in last ${_auth_window}s (threshold=${_sub_auth_dead_threshold}); claude CLI OAuth session is logged out on a worker configured for CHUMP_AUTH_MODE=oauth (RESILIENT-1443) — run: claude then /login, verify with: claude -p OK"
+fi
+
+if [[ -n "$_reason" ]]; then
     if (( _check_only )); then
         echo "[operator-recall] HALT condition=AUTH_DEAD: $_reason"
         _any_halt=1
@@ -429,7 +540,10 @@ fi
 
 # (c) CI_BROKEN — pr_stuck with ci-related reason
 _ci_raw=$(_scan_ambient "$_ci_window" '"kind":"pr_stuck"')
-_ci_hits=$(echo "$_ci_raw" | grep -ic '"reason".*ci\|ci.*fail\|check.*fail\|all.*check' 2>/dev/null || echo 0)
+# RESILIENT-281: grep -c already prints "0" (and exits 1) on zero matches;
+# `|| echo 0` appended a duplicate line ($'0\n0'), breaking the `(( ))`
+# comparisons below with a silent "syntax error in expression". Use `|| true`.
+_ci_hits=$(echo "$_ci_raw" | grep -ic '"reason".*ci\|ci.*fail\|check.*fail\|all.*check' 2>/dev/null || true)
 _ci_hits="${_ci_hits//[[:space:]]/}"
 # Fall back: count any pr_stuck if no reason field — conservative
 if (( _ci_hits == 0 )); then
@@ -498,6 +612,75 @@ if (( _disk_hits > 0 )); then
             _any_halt=1
         else
             _emit_recall "DISK_CRITICAL" "$_reason"
+        fi
+    fi
+fi
+
+# (h) AUTONOMY_HALT — RESILIENT-321: sustained silent kill-switch halt.
+# Live-read the current AUTONOMY_LEVEL (same fail-closed contract as every
+# other consumer); only proceed if it is 0 RIGHT NOW — a since-recovered halt
+# (operator ran `chump fleet start`) must not page.
+_al_file_live="${HOME:-/tmp}/.chump/AUTONOMY_LEVEL"
+_al_now=0
+if [[ -r "$_al_file_live" ]]; then
+    _al_raw_live="$(tr -d '[:space:]' < "$_al_file_live" 2>/dev/null || true)"
+    [[ "$_al_raw_live" =~ ^[0-9]+$ ]] && _al_now="$_al_raw_live"
+fi
+if [[ "$_al_now" -eq 0 ]]; then
+    _halt_events=$(_scan_ambient "$_autonomy_halt_window" '"kind":"fleet_stopped_kill_switch"')
+    if [[ -n "$_halt_events" ]]; then
+        _first_halt_ts=$(echo "$_halt_events" | python3 -c "
+import json, sys
+from datetime import datetime, timezone
+best = None
+for line in sys.stdin:
+    line = line.strip()
+    if not line:
+        continue
+    try:
+        d = json.loads(line)
+        ts = d.get('ts', '').rstrip('Z')
+        epoch = int(datetime.fromisoformat(ts).replace(tzinfo=timezone.utc).timestamp())
+    except Exception:
+        continue
+    if best is None or epoch < best:
+        best = epoch
+print(best if best is not None else 0)
+" 2>/dev/null || echo 0)
+        _first_halt_ts="${_first_halt_ts:-0}"
+        if [[ "$_first_halt_ts" =~ ^[0-9]+$ ]] && (( _first_halt_ts > 0 )); then
+            _halt_age=$(( $(_now_epoch) - _first_halt_ts ))
+            if (( _halt_age >= _autonomy_halt_min_secs )); then
+                _halt_mins=$(( _halt_age / 60 ))
+                _reason="AUTONOMY_LEVEL has been 0 (kill switch) for ~${_halt_mins}m (>= ${_autonomy_halt_min_secs}s threshold); fleet is silently halted with no work happening"
+                if (( _check_only )); then
+                    echo "[operator-recall] HALT condition=AUTONOMY_HALT: $_reason"
+                    _any_halt=1
+                else
+                    _emit_recall "AUTONOMY_HALT" "$_reason" ',"class":"AUTONOMY_HALT","halt_age_s":'"$_halt_age"',"remediation":"chump fleet start (or chump fleet level N) to resume; if this was NOT operator-initiated, find + fix the process that wrote AUTONOMY_LEVEL=0 before resuming"'
+                fi
+            fi
+        fi
+    fi
+fi
+
+# (j) ZERO_SHIP_ACTIVE — RESILIENT-575: workers are actively cycling
+# (worker_exit events present, so this is NOT idle/dead — (h)/(i) own that)
+# but nothing has shipped in the same window. Catches the "board said active,
+# nothing shipped" class the 2026-09-01 sub-cap-outage incident fell through.
+_worker_cycles=$(_scan_ambient "$_zero_ship_window" '"kind":"worker_exit"' | wc -l 2>/dev/null || echo 0)
+_worker_cycles="${_worker_cycles//[[:space:]]/}"
+if [[ -n "$_worker_cycles" ]] && (( _worker_cycles >= _zero_ship_min_cycles )); then
+    _ship_count=$(_scan_ambient "$_zero_ship_window" '"kind":"gap_shipped"' | wc -l 2>/dev/null || echo 0)
+    _ship_count="${_ship_count//[[:space:]]/}"
+    if [[ -n "$_ship_count" ]] && (( _ship_count == 0 )); then
+        _zs_hours=$(( _zero_ship_window / 3600 ))
+        _reason="${_worker_cycles} worker_exit cycle(s) in the last ${_zs_hours}h (workers actively cycling) but 0 gap_shipped events — fleet is busy but shipping nothing"
+        if (( _check_only )); then
+            echo "[operator-recall] HALT condition=ZERO_SHIP_ACTIVE: $_reason"
+            _any_halt=1
+        else
+            _emit_recall "ZERO_SHIP_ACTIVE" "$_reason" ',"class":"ZERO_SHIP_ACTIVE","worker_cycles":'"$_worker_cycles"',"remediation":"check for fleet_backend_auto_fallback / worker_cooldown_cluster_wide / auth-storm events in ambient.jsonl; a busy-but-fruitless fleet usually means every cycle is silently failing on one backend"'
         fi
     fi
 fi

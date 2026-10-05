@@ -1,0 +1,13 @@
+- id: RESILIENT-229
+  domain: RESILIENT
+  title: "create-photo-renamer track FAILs on python 3.14 (pillow has no 3.14 wheels -> source build fails): the 1 real red in the heat. Pin the venv to a pillow-capable python (prefer 3.12/3.11/3.13, fall back to python3) so the suite can reach 6/6 full-suite green (V1.5 bar)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"the 1 real red in the heat. Pin the venv to a pillow-capable python (prefer 3.12/3.11/3.13, fall back to python3) so the suite can reach 6/6 full-suite green (V1.5 bar)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+  closed_pr: 3451
+

@@ -1,0 +1,48 @@
+# RESILIENT-318 / INFRA-2130 SCALE-A — the Batched Merge Train organ (systemd port).
+#
+# Ports the macOS-launchd com.chump.integrator-daemon to Linux/systemd on the
+# primary node (helsinki, root). The chump-integrator batches up to
+# CHUMP_INTEGRATOR_BATCH_MAX ready_to_ship gaps through a preflight gate into ONE
+# integration branch so CI runs once per batch instead of once per gap
+# (~7 PRs/hr -> ~35 PRs/hr per docs/process/SCALING.md). It was a Mac-launchd-only
+# organ ("no chump-integrator binary installed" on helsinki) — same port pattern
+# as chump-farmer / chump-rot-reaper.
+#
+# DRY-RUN BY DEFAULT (CHUMP_INTEGRATOR_LIVE=0). In dry-run the daemon selects
+# candidates, builds + preflights the integration branch locally, and logs what
+# it WOULD ship — NO git push, NO PR. Flipping to LIVE (=1) is an operator
+# decision gated on trunk-not-RED — see docs/process/SCALING.md "Flip to LIVE
+# mode". DO NOT set LIVE=1 in this tracked unit; use the installer's --live
+# drop-in (scripts/setup/install-integrator-daemon-systemd.sh --live).
+#
+# Paths target the primary node (helsinki, root). Non-root nodes: adjust per
+# docs/process/LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump Batched Merge Train — batch ready_to_ship gaps through preflight (DRY-RUN) (RESILIENT-318 / INFRA-2130)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+# DRY-RUN default. Operator flips to LIVE only after trunk is confirmed GREEN —
+# see docs/process/SCALING.md. Do NOT change this to 1 here; use the --live drop-in.
+Environment=CHUMP_INTEGRATOR_LIVE=0
+# Conservative v1 batch cap. Raise only after observing stable cycles.
+Environment=CHUMP_INTEGRATOR_BATCH_MAX=5
+Environment=RUST_LOG=info
+ExecStartPre=/bin/mkdir -p /root/.chump/logs
+# Source providers.env (export-format, so source it in a shell rather than
+# systemd EnvironmentFile which can't parse `export KEY=val`) for NATS/GH creds.
+# NATS is OPTIONAL — the daemon falls back to an advisory file lock + state.db
+# when the bus is absent. --once runs a single cycle then exits (launchd handled
+# cadence via StartInterval; here the paired .timer does).
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec /root/.cargo/bin/chump-integrator --once'
+# Preflight can take up to CHUMP_INTEGRATOR_PREFLIGHT_TIMEOUT_S (default 480s)
+# plus branch-build time; give a generous ceiling so a cycle is never killed
+# mid-preflight. Still well under the 15-min timer cadence for the common case.
+TimeoutStartSec=1200
+# Mirror the launchd log paths referenced in docs/process/SCALING.md so the
+# operator's `tail ~/.chump/logs/integrator-daemon.err` works on Linux too.
+StandardOutput=append:/root/.chump/logs/integrator-daemon.out
+StandardError=append:/root/.chump/logs/integrator-daemon.err

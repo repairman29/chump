@@ -1,0 +1,26 @@
+- id: PRODUCT-191
+  domain: PRODUCT
+  title: "[olive] Committed test credentials in olive source (surfaced by flagmap js-env)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: unknown -- no tier recorded (filed before the tier field existed, or by a producer that has not adopted it yet) -- verify independently before trusting it.
+    
+    The new CONFIG organ JS/TS adapter (almanac flagmap, shipped 2026-08-05) cataloged olive's env flags and the defaults exposed committed credentials in source: TEST_USER_PASSWORD has hardcoded default "OliveE2eTest123!" (8 read sites, e2e config) and KROGER_CLIENT_ID has hardcoded default "jarvisshopping-bbccng3h" (5 read sites). TEST_USER_EMAIL=jeffadkins1@gmail.com also hardcoded. Olive is private so nothing is leaked publicly YET, but shop rule 4 (revoke-before-publish) means these become release blockers the day any olive repo carve-out goes public. Fix: move defaults out of source into .env.example placeholders + CI secrets; rotate the Kroger client credentials if that id/secret pair was ever real. Receipt: run `flagmap --repo ~/Projects/olive --top` (binary at almanac/target/release/flagmap).
+    
+    context: {"domain":"PRODUCT","found_by":"almanac flagmap js-env adapter first live run","external_repo":"repairman29/olive"}
+    source: holler feedback_events, dedupe olive-committed-test-creds-flagmap-2026-08-05
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  notes: |
+    [2026-08-07T14:01:49Z] 4 open PR(s) on repairman29/olive -- check whether any already address this before writing a fresh fix (none matched automatically; this is a mechanical "these exist" surface, not a claim any of them are relevant):
+      #6 chore(deps): weekly batched minor/patch upgrades (upshift) -- https://github.com/repairman29/olive/pull/6
+      #4 Bump eslint from 9.39.2 to 10.5.0 -- https://github.com/repairman29/olive/pull/4
+      #3 Bump @types/node from 20.19.30 to 26.0.0 -- https://github.com/repairman29/olive/pull/3
+      #2 Bump the weekly-batch group across 1 directory with 11 updates -- https://github.com/repairman29/olive/pull/2
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/olive"
+

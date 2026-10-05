@@ -14,12 +14,110 @@
 //
 // Usage:
 //   <chump-pr-card pr-number="1822"></chump-pr-card>
+//
+// Note: the PRODUCT-086 action modal is appended to document.body (not
+// shadow DOM) so it can render above everything else — its CSS
+// (.pr-action-modal*) stays global in index.html.
+
+// INFRA-1011: embeddable PR detail tile. Renders state badge + per-check
+// rows. Auto-mounts where a host UI puts it (sidebar, agents view,
+// workflow timeline); no layout opinions here.
+const CSS = `
+  :host {
+    display: block;
+    font-size: 12px;
+    color: var(--text-primary);
+  }
+  .pr-card {
+    border: 1px solid var(--border, #2a2a2e);
+    border-radius: var(--radius-sm, 6px);
+    padding: 8px 12px;
+    background: var(--surface, transparent);
+    max-width: 480px;
+  }
+  .pr-card.loading,
+  .pr-card.error { opacity: 0.6; }
+  .pr-card-header {
+    display: flex; justify-content: space-between; align-items: center;
+    gap: 8px; margin-bottom: 6px;
+  }
+  .pr-card-title {
+    color: inherit; text-decoration: none; font-weight: 500;
+    overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  }
+  .pr-card-title:hover { text-decoration: underline; }
+  .pr-card-badge {
+    font-size: 10px; padding: 2px 8px; border-radius: 10px;
+    white-space: nowrap;
+  }
+  .pr-card-badge-ok      { background: rgba(60,180,90,0.18);  color: #4ec170; }
+  .pr-card-badge-warn    { background: rgba(204,136,0,0.18);  color: #d99a23; }
+  .pr-card-badge-fail    { background: rgba(204,51,68,0.18);  color: #d65468; }
+  .pr-card-badge-pending { background: rgba(120,140,180,0.18); color: #aab5cc; }
+  .pr-card-checks {
+    list-style: none; padding: 0; margin: 0;
+    max-height: 220px; overflow-y: auto;
+  }
+  .pr-check {
+    display: flex; gap: 6px; align-items: center;
+    font-size: 11px; padding: 1px 0;
+  }
+  .pr-check-icon { width: 14px; text-align: center; font-weight: 600; }
+  .pr-check-ok      .pr-check-icon { color: #4ec170; }
+  .pr-check-fail    .pr-check-icon { color: #d65468; }
+  .pr-check-pending .pr-check-icon { color: #aab5cc; }
+  .pr-check-skip    .pr-check-icon { color: var(--text-tertiary, #777); }
+  .pr-check a { color: inherit; text-decoration: none; }
+  .pr-check a:hover { text-decoration: underline; }
+  .pr-check-empty {
+    font-style: italic; color: var(--text-tertiary, #777);
+    font-size: 11px; padding-top: 4px;
+  }
+  .pr-card-sha {
+    margin-top: 6px; font-size: 10px;
+    color: var(--text-tertiary, var(--text-secondary));
+    font-family: ui-monospace, SFMono-Regular, monospace;
+  }
+
+  /* PRODUCT-086: PR action panel — approve, request changes, comment, revert buttons. */
+  .pr-card-actions {
+    display: flex; gap: 6px; margin-top: 10px; flex-wrap: wrap;
+  }
+  .pr-action-btn {
+    padding: 6px 12px; font-size: 12px;
+    border: 1px solid var(--border, #2a2a2e);
+    background: var(--surface, #1a1a1e);
+    color: var(--text, #ddd);
+    border-radius: 4px; cursor: pointer;
+    transition: all 150ms ease;
+  }
+  .pr-action-btn:hover:not(:disabled) {
+    background: var(--accent, #2a4a7a);
+    border-color: var(--accent, #4a7abb);
+  }
+  .pr-action-btn:disabled {
+    opacity: 0.5; cursor: not-allowed;
+  }
+
+  /* Mobile-friendly action panel: smaller buttons and text wrap on narrow viewports */
+  @media (max-width: 640px) {
+    .pr-action-btn {
+      padding: 4px 8px; font-size: 11px; flex: 1; min-width: 60px;
+    }
+  }
+`;
 
 class ChumpPrCard extends HTMLElement {
   static get observedAttributes() { return ['pr-number']; }
+  #shadow;
   #timer = null;
   #stopped = false;
   #data = null;
+
+  constructor() {
+    super();
+    this.#shadow = this.attachShadow({ mode: 'open' });
+  }
 
   connectedCallback() {
     this.#render({ loading: true });
@@ -193,7 +291,7 @@ class ChumpPrCard extends HTMLElement {
     const endpoint = `/api/prs/${prNum}/${action}`;
     const payload = body !== null ? { body } : {};
 
-    const btn = this.querySelector(`.pr-action-${action}`);
+    const btn = this.#shadow.querySelector(`.pr-action-${action}`);
     if (btn) btn.disabled = true;
 
     // Get session ID from sessionStorage if available
@@ -223,11 +321,11 @@ class ChumpPrCard extends HTMLElement {
 
   #render({ loading, error, data, pr }) {
     if (loading) {
-      this.innerHTML = `<div class="pr-card loading">loading PR…</div>`;
+      this.#shadow.innerHTML = `<style>${CSS}</style><div class="pr-card loading">loading PR…</div>`;
       return;
     }
     if (error) {
-      this.innerHTML = `<div class="pr-card error">PR #${pr ?? ''} unavailable (${error})</div>`;
+      this.#shadow.innerHTML = `<style>${CSS}</style><div class="pr-card error">PR #${pr ?? ''} unavailable (${error})</div>`;
       return;
     }
     const d = data;
@@ -248,7 +346,8 @@ class ChumpPrCard extends HTMLElement {
       </div>
     `;
 
-    this.innerHTML = `
+    this.#shadow.innerHTML = `
+      <style>${CSS}</style>
       <div class="pr-card">
         <div class="pr-card-header">
           <a class="pr-card-title" href="${d.url || '#'}" target="_blank" rel="noopener">
@@ -263,7 +362,7 @@ class ChumpPrCard extends HTMLElement {
     `;
 
     // Setup action listeners after rendering
-    this.#setupActions(this);
+    this.#setupActions(this.#shadow);
   }
 
   #esc(s) {

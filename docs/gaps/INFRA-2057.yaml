@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: chump cron subcommand — declarative cron expr to launchd plist (macOS) / systemd timer (Linux) generator; idempotent install + uninstall; never depends on Claude Code or any specific agent session being alive"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "New chump cron subcommand with at least install + uninstall + status actions. Surface: chump cron install --name NAME --schedule CRON_EXPR --exec COMMAND [--description TEXT] [--working-dir PATH] [--env KEY=VAL] [--stdout-log PATH] [--stderr-log PATH]"

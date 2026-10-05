@@ -1,0 +1,15 @@
+- id: PRODUCT-176
+  domain: PRODUCT
+  title: "gap HTTP write surface: POST /api/gap (create) + PATCH /api/gap/{id} (update)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - POST /api/gap with JSON body (domain,title, optional priority/effort/description/acceptance_criteria/skills_required/external_repo) creates a gap via reserve_verified and returns its id; the gap is visible in GET /api/gaps
+    - "POST /api/gap enforces MISSION-045 parity: P0/P1 without outcome_id returns 422 with a clear error, never creates the gap"
+    - PATCH /api/gap/{id} maps JSON fields onto GapFieldUpdate and calls set_fields; store integrity guards (done-without-closed_pr, terminal-done reopen, title hijack) surface as 4xx JSON errors, not 500s or silent success
+    - Both routes enforce check_auth + check_csrf + per-IP rate limit identically to /api/gap/claim, and gap-id validation on PATCH
+    - "Automated tests cover: create happy path, P0-no-outcome rejection, PATCH status update, PATCH guard rejection, and unauthorized access for both routes"
+  closed_date: '2026-08-07'
+  closed_pr: 3490
+

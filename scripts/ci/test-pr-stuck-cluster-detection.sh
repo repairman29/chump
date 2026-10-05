@@ -211,6 +211,59 @@ test_script_exists() {
     pass "Test 7: script exists and is executable"
 }
 
+# Test 8 (INFRA-3352): a single chronically-stuck PR (below cluster
+# threshold, age >= chronic threshold) triggers an individual escalation —
+# proves the fix; fails on main (pre-fix) because sub-threshold PRs were
+# silently dropped with only a "no cluster" message.
+test_chronic_single_pr_escalates() {
+    local test_dir="$(setup_test_env)"
+    trap "cleanup_test_env '$test_dir'" RETURN
+
+    now_epoch="$(date +%s)"
+    # 7h ago — older than the default 6h chronic threshold, within the 2h... no,
+    # must ALSO be within CLUSTER_WINDOW_S so it's counted as a stuck event at all.
+    old_epoch=$(( now_epoch - 25200 ))
+    old_ts="$(date -u -d @"$old_epoch" +%Y-%m-%dT%H:%M:%SZ 2>/dev/null || date -u -v-7H +%Y-%m-%dT%H:%M:%SZ)"
+
+    cat > "$test_dir/.chump-locks/ambient.jsonl" << EOF
+{"ts":"$old_ts","kind":"pr_stuck","pr":2001,"gap":"INFRA-200"}
+EOF
+
+    local output
+    output="$(LOCK_DIR="$test_dir/.chump-locks" CHUMP_PR_CLUSTER_WINDOW_S=36000 bash "$REPO_ROOT/scripts/coord/pr-stuck-cluster-detector.sh" 2>&1 || true)"
+
+    if echo "$output" | grep -q "WOULD file chronic gap"; then
+        pass "Test 8: chronic single stuck PR escalates individually"
+        return 0
+    else
+        fail "Test 8: expected 'WOULD file chronic gap', got: $output"
+    fi
+}
+
+# Test 9 (INFRA-3352): a single stuck PR younger than the chronic threshold
+# stays a plain no_op — no premature escalation.
+test_chronic_single_pr_too_young() {
+    local test_dir="$(setup_test_env)"
+    trap "cleanup_test_env '$test_dir'" RETURN
+
+    now_epoch="$(date +%s)"
+    ts_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+
+    cat > "$test_dir/.chump-locks/ambient.jsonl" << EOF
+{"ts":"$ts_iso","kind":"pr_stuck","pr":2002,"gap":"INFRA-201"}
+EOF
+
+    local output
+    output="$(LOCK_DIR="$test_dir/.chump-locks" bash "$REPO_ROOT/scripts/coord/pr-stuck-cluster-detector.sh" 2>&1 || true)"
+
+    if echo "$output" | grep -q "WOULD file chronic gap"; then
+        fail "Test 9: chronic gap should not fire for a fresh stuck PR, got: $output"
+    else
+        pass "Test 9: fresh sub-threshold stuck PR does not escalate"
+        return 0
+    fi
+}
+
 # Run all tests.
 echo "[test-pr-stuck-cluster-detection] Starting tests..."
 
@@ -221,6 +274,8 @@ test_cluster_detected
 test_cluster_outside_window
 test_cluster_cooldown_dedup
 test_detector_dry_run
+test_chronic_single_pr_escalates
+test_chronic_single_pr_too_young
 
 echo "[test-pr-stuck-cluster-detection] All tests passed!"
 exit 0

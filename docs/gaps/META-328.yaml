@@ -1,0 +1,21 @@
+- id: META-328
+  domain: META
+  title: "META: outcome-table drift + one weekly verdict — compose mission-grade, roadmap-status and the scoreboard into counsel"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    RE-SCOPED 2026-08-07 after the operator asked whether prior art existed and it did. Title rewritten under CHUMP_ALLOW_GAP_REWRITE (INFRA-456's sanctioned correction path) because the original — 'the fleet has no conscience' — is factually FALSE: partial conscience machinery exists and runs. ORIGINAL SCOPE WAS WRONG. What exists, mine it rather than rebuild: (1) 'chump mission-grade' (INFRA-599) computes per-pillar pickable/in-flight/shipped-24h every 30 min via launchd, emitting a kind=mission_grade ambient event; (2) 'chump roadmap-status' (INFRA-606, INFRA-1145) parses docs/ROADMAP.md weekly outcomes against state.db and ALREADY implements starved_outcomes, untraced_p0, pillar_coverage and --exit-on-drift — verified by running it 2026-08-07: it printed Weeks 1-4, 'No starved outcomes', 3 untraced P1s, and pillar coverage; (3) scripts/dev/mission-scoreboard.sh reports the four mission gates including the mission-ship ratio against its 2/3 scaling gate (15/28 on 2026-08-07, up from 5/18 two days earlier); (4) INFRA-3499 (~50% built) is the do->reflect loop with the hook already WIRED at autonomy_loop.rs:1352 — per-work-item reflection, adjacent to but distinct from periodic fleet coherence. WHAT IS ACTUALLY MISSING and all this gap now builds: (a) roadmap-status drift covers ROADMAP.md's WEEKLY outcomes, NOT the outcome table — which is why it truthfully printed 'No starved outcomes' on a day when LIGHTHOUSE-OLIVE and LIGHTHOUSE-UPSHIFT held zero gaps and LIGHTHOUSE-ARCADE held one, against MISSION-010's 2,621; (b) nothing composes these four sources into ONE verdict, so a whole-system drift required a human pass to surface; (c) the registry cannot distinguish a DELIBERATELY PARKED outcome from a neglected one — the ambiguity that made a considered factory-first sequencing read as drift.
+  acceptance_criteria:
+    - the drift analysis in roadmap-status is EXTENDED to cover the outcome table (outcomes with a stated DoD and zero open gaps; outcomes whose children are all unpickable) — extend that command, never add a parallel checker
+    - the registry supports marking an outcome deliberately parked WITH a reason, and a parked outcome reports as parked rather than starved — the LIGHTHOUSE outcomes on 2026-08-07 are the test case
+    - "one weekly composition reads mission-grade, roadmap-status, mission-scoreboard and the factory matrix and emits a SINGLE operator-readable verdict: at most three things worth changing, each naming which organ produced it"
+    - every line traces to a mechanical check from those existing sources — the model synthesizes and prioritizes, it never detects (judgment-panel architecture, CREDIBLE-191)
+    - "the verdict can be APPROVAL: a run where nothing drifts says so and stops, and that outcome is reachable by construction"
+    - delivered where the operator already looks (FLEET-RADIO), weekly not hourly — reflection, not monitoring
+    - "dogfood receipt: the first run reproduces the outcome-table finding a human made on 2026-08-07 (three product lighthouses at 0/0/1 against MISSION-010's 2,621); if it cannot, it is not measuring the right thing"
+  depends_on: [INFRA-3499]
+  notes: |
+    Over-scoped on first filing because I skipped the DOC-082 dedupe check — I specified mechanical checks that already ship and run every 30 minutes. Third such miss this session: CREDIBLE-217 superseded into EFFECTIVE-389 for the same reason, and EFFECTIVE-383 was saved only because EFFECTIVE-386 happened to ship mid-session. Caught by the operator asking 'did you look first'. Effort m->s: composition plus one extension, not a build.
+  outcome_id: CHUMPOS
+

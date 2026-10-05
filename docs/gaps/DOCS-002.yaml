@@ -1,0 +1,11 @@
+- id: DOCS-002
+  domain: DOCS
+  title: "DOCS: Run-the-Business roadmap track — the RUN half of COTG (customer 0)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"Run-the-Business roadmap track — the RUN half of COTG (customer 0)\" is implemented in the relevant DOCS code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

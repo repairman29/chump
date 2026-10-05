@@ -1,0 +1,14 @@
+- id: ZERO-WASTE-038
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: four unattributed LOC clusters missing from capability buckets — src/execution, chump-policy, tool_policy, reviewer-routing"
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    scripts/dev/capability-drift-scan.py (CREDIBLE-173 backstop) flagged four LOC clusters unattributed in docs/observability/CAPABILITY_BUCKETS.yaml on 2026-08-05: src/execution (801 LOC), crates/chump-policy (383), src/tool_policy (326), crates/chump-reviewer-routing (325). Per the scan's own triage rule: add a bucket entry per real capability area, or mark genuinely dead/vendored code for a separate look. Note chump-policy and reviewer-routing are load-bearing in the ship pipeline (bot-merge runs both on every PR), so 'dead code' is unlikely for those two.
+  acceptance_criteria:
+    - capability-drift-scan.py reports zero unattributed clusters
+    - each new bucket entry names the capability in REALITY_MAP terms
+    - anything judged dead or vendored gets a note, not a silent exclusion
+  outcome_id: ZERO-WASTE-000
+

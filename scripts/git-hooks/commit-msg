@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+
+# --- modern-bash re-exec (INFRA-3688) -------------------------------------
+# macOS ships bash 3.2, which lacks `mapfile`/`readarray` and errors on an
+# empty array expanded under `set -u` — silently breaking any guard that uses
+# bash-4 idioms (the actionlint + ci-regression guards among them, which is how
+# the Mac kept pushing split-brained state past dead guardrails). Re-exec the
+# whole hook (and everything it sources) under a bash>=4 if one exists;
+# otherwise warn LOUDLY rather than no-op in silence.
+if [ -z "${CHUMP_HOOK_BASH_REEXEC:-}" ] && [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _cb in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    if [ -x "$_cb" ]; then export CHUMP_HOOK_BASH_REEXEC=1; exec "$_cb" "$0" "$@"; fi
+  done
+  echo "⚠ [chump-hook $(basename "$0")] bash ${BASH_VERSINFO:-3}.x too old and no bash>=4 found — guards may silently no-op. Fix: brew install bash" >&2
+fi
+# --------------------------------------------------------------------------
 #
 # commit-msg — Chump git hook (INFRA-1969 fix for C6 finding).
 #
@@ -57,6 +72,16 @@ _stamp_provenance() {
     printf '\nChump-Agent: %s\n' "$agent" >> "$MSG_FILE"
 }
 _stamp_provenance || true
+
+# ── INFRA-7880: publish guard, REPORT-ONLY ────────────────────────────────────
+# pre-commit cannot see the message (git writes it afterwards); this stage can.
+# Placed before the docs-delta check because that check has early exits.
+# Logs findings, never blocks: the wrapper always exits 0 and we ignore it too.
+_PG_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || true)"
+if [ -n "$_PG_ROOT" ] && [ -f "$_PG_ROOT/scripts/publish-guard/report_only.py" ] && command -v python3 >/dev/null 2>&1; then
+    python3 "$_PG_ROOT/scripts/publish-guard/report_only.py" message "$MSG_FILE" || true
+fi
+unset _PG_ROOT
 
 # Legacy inline docs-delta check — fallback when the installed chump binary
 # predates `chump verify` (CREDIBLE-155). NOTE: preserves historical early

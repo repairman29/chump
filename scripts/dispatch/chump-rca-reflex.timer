@@ -1,0 +1,19 @@
+# RESILIENT-365 — wires the INFRA-249 recurring-gap-pattern-detector as a live
+# organ instead of a script only ever run by hand. Cadence mirrors
+# chump-almanac-liveness.timer (a periodic sweep, not a hot path).
+[Unit]
+Description=Chump RCA reflex — recurring-gap-pattern cluster detection + auto-RCA (RESILIENT-365 / INFRA-249)
+
+[Timer]
+OnBootSec=10min
+OnUnitActiveSec=30min
+# RESILIENT-1455: OnUnitInactiveSec pairs with OnUnitActiveSec so this Type=oneshot
+# timer self-perpetuates. A oneshot goes inactive after each run, leaving OnUnitActiveSec
+# with no live "active" anchor -> NextElapse goes n/a and the timer fires once, never again.
+# OnUnitInactiveSec re-arms from the inactive edge (the anchor a oneshot has). Mirrors the
+# chump-farmer.timer fix (#4808 / RESILIENT-313).
+OnUnitInactiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

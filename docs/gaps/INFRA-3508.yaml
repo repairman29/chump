@@ -1,0 +1,10 @@
+- id: INFRA-3508
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-S.1] sourcing resolver (repo -> arsenal -> world prior-art, before building)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "A sourcing resolver, given a capability need, checks in order: existing repo -> internal arsenal -> world prior-art, and returns the first viable source before triggering a from-scratch build."
+  outcome_id: COTG
+

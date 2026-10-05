@@ -1,0 +1,46 @@
+- id: RESILIENT-227
+  domain: RESILIENT
+  title: bot-merge stage_start's kill of the PREVIOUS stage's watchdog isn't fully reliable under load -- stale watchdog fires anyway
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"bot-merge stage_start's kill of the PREVIOUS stage's watchdog isn't fully reliable under load -- stale watchdog fires anyway\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    Second live occurrence, same session, different stage pair: this time cargo-test (budget correctly 1200s per RESILIENT-133) was killed reporting 'budget 300s' after ALL 2699 tests passed and stage_done() successfully logged completion (542s elapsed). Confirms this isn't specific to the fmt->clippy transition -- it's a general race in the watchdog kill/rearm chain that can surface on any stage boundary. Both occurrences: the CURRENT stage's own watchdog was correctly armed with the right value (confirmed via its own 'starting ... (budget Ns)' log line matching RESILIENT-133's fix), work completed successfully within that budget, yet the process was still SIGTERM'd reporting a stale 300s figure -- meaning some EARLIER stage's un-killed watchdog is the actual culprit, not the current stage's own timer. Raises confidence this is systemic (global __STAGE_BUDGET_PID single-slot tracking losing track of an earlier watchdog under a kill race) rather than a one-off fluke.
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: shipped CREDIBLE-182 immediately after RESILIENT-133 merged (the
+    fix confirmed live in the exact worktree used -- verified via grep against
+    the actual file on disk, and the run's own log line proves the new budget
+    was correctly received).
+    OUTPUT (from .chump-locks/bot-merge-99154.log):
+      [bot-merge 10:59:42] ▶ cargo fmt starting … (budget 300s)
+      [bot-merge 10:59:46] ▶ cargo clippy --workspace --all-targets starting … (budget 900s)
+      [bot-merge 11:05:16] ✓ cargo clippy --workspace --all-targets done (330s)
+      ERROR (INFRA-1422): stage "cargo clippy --workspace --all-targets" exceeded budget 300s (elapsed 330s).
+    
+    The clippy stage correctly logged budget=900s (RESILIENT-133's fix working
+    as intended) AND correctly finished successfully at 330s elapsed (well
+    under 900s) -- yet the process was still SIGTERM'd, and the wedge message
+    reports budget=300s, not 900s. 300s is the DEFAULT budget used by the
+    PRECEDING "cargo fmt" stage (started 4s before clippy). This strongly
+    indicates cargo fmt's own watchdog subshell (armed with the old default
+    300s) was not reliably killed when stage_start's own
+    `kill "$__STAGE_BUDGET_PID" ... ; __STAGE_BUDGET_PID=""` ran for the
+    clippy stage's own stage_start() call, and fired independently ~30-90s
+    after its nominal 300s (10:59:42+300s=11:04:42 nominal vs 11:05:16
+    observed -- consistent with scheduling delay under heavy build
+    contention, matching this session's repeated evidence of severe CPU/disk
+    pressure).
+    
+    THEORY: a race between `kill "$__STAGE_BUDGET_PID"` and the watchdog
+    subshell's own `sleep` completing, OR the kill signal not being delivered
+    promptly under system load. Needs investigation under controlled but
+    realistic load (e.g. actually building the workspace concurrently) rather
+    than the clean, fast isolated unit test used to verify RESILIENT-133's
+    core budget-value fix (which passed cleanly and remains correct for that
+    narrower claim).
+

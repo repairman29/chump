@@ -1,21 +1,18 @@
 - id: INFRA-1827
   domain: INFRA
-  title: 'EFFECTIVE: chump --briefing injects top-N scratchpad seed keys — drops ''git rev-parse origin/main'' callcount >80%
-    (activates INFRA-1761 prompt_inject field)'
+  title: "EFFECTIVE: chump --briefing injects top-N scratchpad seed keys — drops 'git rev-parse origin/main' callcount >80% (activates INFRA-1761 prompt_inject field)"
   status: done
   priority: P1
   effort: xs
   acceptance_criteria:
-  - Extend src/main.rs --briefing handler (line 766+) to read all SEED_KEYS where prompt_inject=true via scratchpad::get()
-    (INFRA-1826)
-  - 'Format inserted block as:\n  === Shared scratchpad (chump-scratch v1) ===\n  main.head.sha: <value> (age=Xm)\n  fleet.size:
-    <value>\n  pillar.focus: <value>\n  last_known_good.chump_binary: <value> (age=Xh)\n  red_letter.last_ts: <value>'
-  - Cap at 500 tokens total injected (per A2A_SCRATCHPAD_KEYS.md doc)
-  - Skip the block entirely if scratchpad backend returns 0 values (no scratchpad daemon running yet)
-  - 'Bypass: CHUMP_BRIEFING_SCRATCHPAD=0 disables injection (operator-quiet sessions)'
-  - 'Smoke test scripts/ci/test-briefing-scratchpad-injection.sh: stub scratchpad get(), invoke chump --briefing, assert injected
-    block present + values match'
-  - Depends on INFRA-1826 (real get/set/cas)
-  outcome_id: MISSION-010
+    - "Extend src/main.rs --briefing handler (line 766+) to read all SEED_KEYS where prompt_inject=true via scratchpad::get() (INFRA-1826)"
+    - "Format inserted block as:\\n  === Shared scratchpad (chump-scratch v1) ===\\n  main.head.sha: <value> (age=Xm)\\n  fleet.size: <value>\\n  pillar.focus: <value>\\n  last_known_good.chump_binary: <value> (age=Xh)\\n  red_letter.last_ts: <value>"
+    - Cap at 500 tokens total injected (per A2A_SCRATCHPAD_KEYS.md doc)
+    - Skip the block entirely if scratchpad backend returns 0 values (no scratchpad daemon running yet)
+    - "Bypass: CHUMP_BRIEFING_SCRATCHPAD=0 disables injection (operator-quiet sessions)"
+    - "Smoke test scripts/ci/test-briefing-scratchpad-injection.sh: stub scratchpad get(), invoke chump --briefing, assert injected block present + values match"
+    - Depends on INFRA-1826 (real get/set/cas)
   closed_date: '2026-07-25'
   closed_pr: 2819
+  outcome_id: MISSION-010
+

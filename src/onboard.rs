@@ -292,15 +292,72 @@ fn owner_repo_from_path(path: &str) -> Result<String> {
     Ok(format!("{owner}/{repo}"))
 }
 
+/// Derive the `owner_repo` slug for a local-path `chump onboard` invocation.
+///
+/// EFFECTIVE-290: a local path that is actually a previously-cloned external
+/// repo (e.g. `~/.chump/external/<owner>/<repo>` or its `.../clone` subdir,
+/// as can be passed by `--schedule`/`--iter-once` or by re-running onboard
+/// against an already-onboarded repo) was mislabeled `local/<basename>` --
+/// e.g. `local/BEAST-MODE` -- losing the owner and producing a slug that
+/// didn't match the real clone's tag. When `canonical` resolves under
+/// `external_root`, derive the real `<owner>/<repo>` slug via
+/// `owner_repo_from_path` instead of the generic `local/` fallback.
+fn derive_local_slug(path: &Path, canonical: &Path, external_root: &Path) -> String {
+    let fallback = || {
+        path.file_name()
+            .and_then(|n| n.to_str())
+            .map(|n| format!("local/{n}"))
+            .unwrap_or_else(|| "local/repo".to_string())
+    };
+    if canonical.starts_with(external_root) {
+        owner_repo_from_path(&canonical.to_string_lossy()).unwrap_or_else(|_| fallback())
+    } else {
+        fallback()
+    }
+}
+
+/// Resolve the directory onboard should actually read intent docs from, for
+/// a local (non-URL) `chump onboard` invocation.
+///
+/// EFFECTIVE-290: when `clone_root` is the external-repo root
+/// (`.../<owner>/<repo>`) rather than the actual checkout, follow the nested
+/// `clone/` subdir so intent docs are read from the real clone instead of
+/// the (fileless) parent directory -- this is what produced "no readable
+/// intent documents found" for repos that plainly have a README.
+fn resolve_local_clone_dir(clone_root: &Path) -> PathBuf {
+    if !clone_root.join(".git").exists() && clone_root.join("clone").join(".git").exists() {
+        clone_root.join("clone")
+    } else {
+        clone_root.to_path_buf()
+    }
+}
+
 fn run_inner(args: &[String]) -> Result<()> {
     let opts = parse_args(args)?;
-    let repo_url_or_path = opts.repo_url_or_path.trim().to_string();
+    let mut repo_url_or_path = opts.repo_url_or_path.trim().to_string();
 
     // Determine if input is a URL or a local path
-    let is_url = repo_url_or_path.starts_with("https://")
+    let mut is_url = repo_url_or_path.starts_with("https://")
         || repo_url_or_path.starts_with("http://")
         || repo_url_or_path.starts_with("git@")
         || repo_url_or_path.starts_with("ssh://");
+
+    // EFFECTIVE-112 / private-repo onboard: a bare `owner/repo` GitHub slug
+    // (no scheme, exactly one slash, not an existing local path) was previously
+    // misclassified as a LOCAL PATH -- the slug became `local/<repo>`, onboard
+    // scanned a nonexistent relative dir and reported "no readable intent
+    // documents", and it never reached the auth-capable clone (so PRIVATE repos
+    // could not be onboarded at all). Rewrite it to a GitHub HTTPS URL so the
+    // shallow_clone auth path (env token -> gh keyring) reaches private repos
+    // and reuses/creates ~/.chump/external/<owner>/<repo>/clone.
+    if !is_url && looks_like_github_slug(&repo_url_or_path) {
+        eprintln!(
+            "chump onboard: interpreting {repo_url_or_path} as GitHub repo \
+             https://github.com/{repo_url_or_path}"
+        );
+        repo_url_or_path = format!("https://github.com/{repo_url_or_path}");
+        is_url = true;
+    }
 
     // Derive owner/repo slug
     let (owner_repo, clone_root) = if is_url {
@@ -312,11 +369,10 @@ fn run_inner(args: &[String]) -> Result<()> {
         (slug, dest)
     } else {
         let path = PathBuf::from(&repo_url_or_path);
-        let slug = path
-            .file_name()
-            .and_then(|n| n.to_str())
-            .map(|n| format!("local/{n}"))
-            .unwrap_or_else(|| "local/repo".to_string());
+        let canonical = path.canonicalize().unwrap_or_else(|_| path.clone());
+        let home = std::env::var("HOME").unwrap_or_else(|_| "/tmp".to_string());
+        let external_root = PathBuf::from(home).join(".chump").join("external");
+        let slug = derive_local_slug(&path, &canonical, &external_root);
         let dest = match opts.clone_to {
             Some(ref p) => p.clone(),
             None => path.clone(),
@@ -345,7 +401,7 @@ fn run_inner(args: &[String]) -> Result<()> {
         }
         git_dir
     } else {
-        clone_root.clone()
+        resolve_local_clone_dir(&clone_root)
     };
 
     eprintln!("chump onboard: scanning {} ...", owner_repo);
@@ -357,6 +413,7 @@ fn run_inner(args: &[String]) -> Result<()> {
     let intent_files = [
         "README.md",
         "CLAUDE.md",
+        "MANIFESTO.md",
         "AGENTS.md",
         "ideas/TODO.md",
         "IMPLEMENTATION.md",
@@ -369,6 +426,26 @@ fn run_inner(args: &[String]) -> Result<()> {
             context_parts.push(format!("### {rel}\n{preview}"));
             inputs_read.push(InputRead {
                 path: rel.to_string(),
+                sha256: sha,
+                summary: first_line(&content),
+            });
+        }
+    }
+
+    // EFFECTIVE-416: repos that keep their intent docs under docs/*.md (no
+    // top-level ROADMAP.md, just e.g. docs/ARCHITECTURE.md, docs/VISION.md)
+    // were reported as "no readable intent documents" even though they had
+    // readable ones. Scan the whole docs/ dir for markdown files, skipping
+    // docs/ROADMAP.md since it's already handled above.
+    for rel in list_markdown_files(&clone_dir, "docs") {
+        if rel == "docs/ROADMAP.md" {
+            continue;
+        }
+        if let Some((content, sha)) = read_file_with_sha(&clone_dir, &rel) {
+            let preview = truncate_chars(&content, 3000);
+            context_parts.push(format!("### {rel}\n{preview}"));
+            inputs_read.push(InputRead {
+                path: rel.clone(),
                 sha256: sha,
                 summary: first_line(&content),
             });
@@ -1048,6 +1125,32 @@ fn external_repo_dir(owner_repo: &str) -> PathBuf {
         .join(owner_repo)
 }
 
+/// True when `s` is a bare `owner/repo` GitHub slug: exactly one `/`, both
+/// halves non-empty and composed only of GitHub-legal identifier characters
+/// (ASCII alnum, `.`, `_`, `-`), with no scheme/colon/space, and NOT an
+/// existing local path. A relative directory that actually exists on disk is
+/// treated as a local path (returns false); a non-existent `owner/repo` is
+/// treated as a remote GitHub slug so onboard can clone it.
+fn looks_like_github_slug(s: &str) -> bool {
+    if s.contains(':') || s.contains(' ') {
+        return false;
+    }
+    let parts: Vec<&str> = s.split('/').collect();
+    if parts.len() != 2 || parts[0].is_empty() || parts[1].is_empty() {
+        return false;
+    }
+    let ok = |p: &str| {
+        p.chars()
+            .all(|c| c.is_ascii_alphanumeric() || c == '.' || c == '_' || c == '-')
+    };
+    if !ok(parts[0]) || !ok(parts[1]) {
+        return false;
+    }
+    // An actual local dir/file of this shape wins; only a non-existent slug is
+    // treated as a remote repo.
+    !std::path::Path::new(s).exists()
+}
+
 /// Extract `owner/repo` from a GitHub/GitLab HTTPS or SSH URL.
 fn extract_owner_repo(url: &str) -> Result<String> {
     // Normalise: strip trailing `.git`
@@ -1300,6 +1403,30 @@ fn read_file_with_sha(root: &Path, rel: &str) -> Option<(String, String)> {
     let content = fs::read_to_string(root.join(rel)).ok()?;
     let sha = hex_sha256(content.as_bytes());
     Some((content, sha))
+}
+
+/// List `*.md` files directly under `root/rel_dir` (non-recursive), returning
+/// paths relative to `root` (e.g. `"docs/ARCHITECTURE.md"`), sorted for
+/// deterministic output. Returns an empty vec if the dir doesn't exist.
+fn list_markdown_files(root: &Path, rel_dir: &str) -> Vec<String> {
+    let dir = root.join(rel_dir);
+    let Ok(entries) = fs::read_dir(&dir) else {
+        return Vec::new();
+    };
+    let mut out: Vec<String> = entries
+        .filter_map(|e| e.ok())
+        .filter(|e| e.path().is_file())
+        .filter_map(|e| {
+            let name = e.file_name().to_string_lossy().to_string();
+            if name.to_ascii_lowercase().ends_with(".md") {
+                Some(format!("{rel_dir}/{name}"))
+            } else {
+                None
+            }
+        })
+        .collect();
+    out.sort();
+    out
 }
 
 fn hex_sha256(bytes: &[u8]) -> String {
@@ -1796,6 +1923,35 @@ mod tests {
     }
 
     #[test]
+    fn test_looks_like_github_slug() {
+        // Bare owner/repo slugs (nonexistent locally) are treated as GitHub repos —
+        // this is the defect fix: `repairman29/olive` must NOT be read as a local
+        // path (which produced `local/olive` + "no readable intent documents" and
+        // never reached the auth-capable clone, so private repos failed).
+        assert!(looks_like_github_slug("repairman29/olive"));
+        assert!(looks_like_github_slug("owner/repo"));
+        assert!(looks_like_github_slug("repairman29/BEAST-MODE"));
+        assert!(looks_like_github_slug("a.b_c/d.e_f-g"));
+        // Not slugs: schemes, multiple/zero slashes, empty halves, spaces.
+        assert!(!looks_like_github_slug("https://github.com/owner/repo"));
+        assert!(!looks_like_github_slug("git@github.com:owner/repo"));
+        assert!(!looks_like_github_slug("owner/repo/extra"));
+        assert!(!looks_like_github_slug("noslash"));
+        assert!(!looks_like_github_slug("owner/"));
+        assert!(!looks_like_github_slug("/repo"));
+        assert!(!looks_like_github_slug("owner repo/x"));
+        // An existing local dir of this two-part shape wins (treated as a path).
+        let base = std::env::temp_dir().join(format!("chump_slug_probe_{}", std::process::id()));
+        let sub = base.join("kid");
+        std::fs::create_dir_all(&sub).unwrap();
+        let existing = sub.to_string_lossy().to_string();
+        // Absolute path has >2 parts so it is never a slug; the point is the
+        // FS-existence guard: a path that exists is never mistaken for a remote.
+        assert!(!looks_like_github_slug(&existing));
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
     fn test_owner_repo_from_path() {
         // MISSION-058: --iter-once gets a local repo path from the plist/timer.
         assert_eq!(
@@ -1812,6 +1968,69 @@ mod tests {
             owner_repo_from_path("/root/.chump/external/foo/bar/").unwrap(),
             "foo/bar"
         );
+    }
+
+    #[test]
+    fn test_derive_local_slug_under_external_root_uses_owner_repo() {
+        // EFFECTIVE-290: a local path under ~/.chump/external/<owner>/<repo>
+        // must resolve to the real owner/repo slug, not `local/<basename>`.
+        let external_root = PathBuf::from("/home/jeff/.chump/external");
+        let path = PathBuf::from("/home/jeff/.chump/external/repairman29/BEAST-MODE");
+        assert_eq!(
+            derive_local_slug(&path, &path, &external_root),
+            "repairman29/BEAST-MODE"
+        );
+        // .../clone subdir variant
+        let clone_path = PathBuf::from("/home/jeff/.chump/external/repairman29/BEAST-MODE/clone");
+        assert_eq!(
+            derive_local_slug(&clone_path, &clone_path, &external_root),
+            "repairman29/BEAST-MODE"
+        );
+    }
+
+    #[test]
+    fn test_derive_local_slug_outside_external_root_falls_back_to_local() {
+        let external_root = PathBuf::from("/home/jeff/.chump/external");
+        let path = PathBuf::from("/home/jeff/Projects/myrepo");
+        assert_eq!(
+            derive_local_slug(&path, &path, &external_root),
+            "local/myrepo"
+        );
+    }
+
+    #[test]
+    fn test_resolve_local_clone_dir_follows_nested_clone() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_onboard_clonedir_probe_{}_a",
+            std::process::id()
+        ));
+        let clone_sub = base.join("clone");
+        std::fs::create_dir_all(clone_sub.join(".git")).unwrap();
+        assert_eq!(resolve_local_clone_dir(&base), clone_sub);
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_resolve_local_clone_dir_uses_root_when_no_nested_clone() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_onboard_clonedir_probe_{}_b",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&base).unwrap();
+        std::fs::write(base.join("README.md"), "# hi").unwrap();
+        assert_eq!(resolve_local_clone_dir(&base), base);
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_resolve_local_clone_dir_uses_root_when_it_is_itself_a_git_repo() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_onboard_clonedir_probe_{}_c",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(base.join(".git")).unwrap();
+        assert_eq!(resolve_local_clone_dir(&base), base);
+        std::fs::remove_dir_all(&base).ok();
     }
 
     #[test]
@@ -2212,5 +2431,96 @@ mod tests {
             content.contains("CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED"),
             "CHUMP_ONBOARD_SCOUT_AGENTIC_DISABLED must be registered in scripts/ci/env-vars-internal.txt"
         );
+    }
+
+    // EFFECTIVE-416: repos whose only readable intent docs are MANIFESTO.md
+    // and/or free-form files under docs/*.md (not the fixed 7-file allowlist)
+    // must still be picked up — not reported as "no readable intent documents".
+    #[test]
+    fn test_list_markdown_files_finds_docs_dir_md_files() {
+        let base =
+            std::env::temp_dir().join(format!("chump_intent_docs_probe_{}", std::process::id()));
+        let docs_dir = base.join("docs");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::write(docs_dir.join("ARCHITECTURE.md"), "# Architecture\n").unwrap();
+        std::fs::write(docs_dir.join("VISION.md"), "# Vision\n").unwrap();
+        std::fs::write(docs_dir.join("ROADMAP.md"), "# Roadmap\n").unwrap();
+        std::fs::write(docs_dir.join("notes.txt"), "not markdown").unwrap();
+
+        let found = list_markdown_files(&base, "docs");
+        assert_eq!(
+            found,
+            vec![
+                "docs/ARCHITECTURE.md".to_string(),
+                "docs/ROADMAP.md".to_string(),
+                "docs/VISION.md".to_string(),
+            ]
+        );
+
+        std::fs::remove_dir_all(&base).ok();
+    }
+
+    #[test]
+    fn test_list_markdown_files_missing_dir_returns_empty() {
+        let base = std::env::temp_dir().join(format!(
+            "chump_intent_docs_probe_missing_{}",
+            std::process::id()
+        ));
+        assert!(list_markdown_files(&base, "docs").is_empty());
+    }
+
+    #[test]
+    fn test_manifesto_and_docs_glob_produce_readable_intent_context() {
+        // Simulates the olive-shaped repo: only MANIFESTO.md + docs/*.md exist,
+        // none of the pre-EFFECTIVE-416 fixed intent_files are present. Before
+        // the fix this repo shape produced zero context_parts and onboard
+        // bailed with "no readable intent documents found".
+        let base = std::env::temp_dir().join(format!(
+            "chump_intent_docs_probe_manifesto_{}",
+            std::process::id()
+        ));
+        let docs_dir = base.join("docs");
+        std::fs::create_dir_all(&docs_dir).unwrap();
+        std::fs::write(base.join("MANIFESTO.md"), "# Our manifesto\n").unwrap();
+        std::fs::write(docs_dir.join("VISION.md"), "# Vision\n").unwrap();
+
+        let mut context_parts: Vec<String> = Vec::new();
+
+        let intent_files = [
+            "README.md",
+            "CLAUDE.md",
+            "MANIFESTO.md",
+            "AGENTS.md",
+            "ideas/TODO.md",
+            "IMPLEMENTATION.md",
+            "ROADMAP.md",
+            "docs/ROADMAP.md",
+        ];
+        for rel in &intent_files {
+            if let Some((content, _sha)) = read_file_with_sha(&base, rel) {
+                context_parts.push(format!("### {rel}\n{content}"));
+            }
+        }
+        for rel in list_markdown_files(&base, "docs") {
+            if rel == "docs/ROADMAP.md" {
+                continue;
+            }
+            if let Some((content, _sha)) = read_file_with_sha(&base, &rel) {
+                context_parts.push(format!("### {rel}\n{content}"));
+            }
+        }
+
+        assert!(
+            !context_parts.is_empty(),
+            "MANIFESTO.md + docs/*.md must be picked up as readable intent documents"
+        );
+        assert!(context_parts
+            .iter()
+            .any(|p| p.starts_with("### MANIFESTO.md")));
+        assert!(context_parts
+            .iter()
+            .any(|p| p.starts_with("### docs/VISION.md")));
+
+        std::fs::remove_dir_all(&base).ok();
     }
 }

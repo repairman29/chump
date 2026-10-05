@@ -92,7 +92,7 @@ NOW_EPOCH="$(date -u +%s)"
 # missing. macOS `stat -f %m` / Linux `stat -c %Y`.
 _wt_mtime_epoch() {
     local p="$1"
-    stat -f %m "$p" 2>/dev/null || stat -c %Y "$p" 2>/dev/null || echo 0
+    stat -c %Y "$p" 2>/dev/null || stat -f %m "$p" 2>/dev/null || echo 0
 }
 
 # Echo "lease_path" (first match) for a worktree, or empty if none.

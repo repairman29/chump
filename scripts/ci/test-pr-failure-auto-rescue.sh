@@ -157,14 +157,17 @@ cat > "$STUB_JSON_STALE" <<EOF
 }
 EOF
 
+# RESILIENT-379: the dispose path is now opt-in (PR_TERMINAL_CLOSE_ARMED=1); the
+# default is alert-not-reap (test 11 below). Run this control in legacy mode so it
+# still proves the freshness gate isn't always-skip when close IS enabled.
 out_stale=$(PATH="$FAKE_BIN:$PATH" GH_STUB_JSON_FILE="$STUB_JSON_STALE" \
-    PR_TERMINAL_HOURS=6 PR_TERMINAL_FRESHNESS_MIN=10 \
+    PR_TERMINAL_HOURS=6 PR_TERMINAL_FRESHNESS_MIN=10 PR_TERMINAL_CLOSE_ARMED=1 \
     CHECK_PR=3598 bash "$DAEMON" 2>&1)
 
 if echo "$out_stale" | grep -q "WOULD close"; then
-    ok "stale-updated red-armed PR still disposes (gate is not always-skip)"
+    ok "stale-updated red-armed PR still disposes under PR_TERMINAL_CLOSE_ARMED=1 (gate is not always-skip)"
 else
-    fail "stale-updated red-armed PR unexpectedly deferred: $out_stale"
+    fail "stale-updated red-armed PR unexpectedly deferred in legacy close mode: $out_stale"
 fi
 
 # Test 10 (functional, RESILIENT-299): a PR that is armed + BLOCKED + a
@@ -211,6 +214,37 @@ if echo "$out_systemic" | grep -q "WOULD close"; then
     fail "systemic shared-red PR unexpectedly produced a WOULD-close diagnostic"
 else
     ok "no WOULD-close diagnostic for systemic shared-red PR"
+fi
+
+# Test 11 (functional, RESILIENT-379 — THE incident regression): an armed + BLOCKED
+# + required-check RED past PR_TERMINAL_HOURS, whose updatedAt is ALSO stale (so it
+# would dispose under legacy mode, test 9) and whose red is ISOLATED (no other open
+# PR shares it, so the systemic guard does NOT fire), must be LEFT OPEN and ALERTED
+# — never closed — under the DEFAULT config. This is exactly the #4173/#4175 class:
+# a vouched-for (armed) PR with a real-but-1-line-fixable red on its own branch.
+# FAKE_BIN's gh stub returns nothing for `pr list`, so count_shared_red_prs → ISOLATED.
+out_isolated=$(PATH="$FAKE_BIN:$PATH" GH_STUB_JSON_FILE="$STUB_JSON_STALE" \
+    PR_TERMINAL_HOURS=6 PR_TERMINAL_FRESHNESS_MIN=10 \
+    CHECK_PR=4173 bash "$DAEMON" 2>&1)
+
+if echo "$out_isolated" | grep -q "ALERT-NOT-REAP (RESILIENT-379)"; then
+    ok "armed+red+stale ISOLATED PR is alert-not-reaped by default (#4173/#4175 class)"
+else
+    fail "armed+red+stale isolated PR was NOT alert-not-reaped by default: $out_isolated"
+fi
+if echo "$out_isolated" | grep -q "WOULD close"; then
+    fail "default mode produced a WOULD-close diagnostic for an armed PR (should alert, not reap)"
+else
+    ok "no WOULD-close diagnostic for armed PR under default (alert-not-reap) config"
+fi
+
+# Test 12 (source): the alert-not-reap guard + opt-in flag are present in source.
+if grep -q "PR_TERMINAL_CLOSE_ARMED" "$DAEMON" \
+   && grep -q "pr_terminal_alert_not_reaped" "$DAEMON" \
+   && grep -q "ALERT-NOT-REAP" "$DAEMON"; then
+    ok "RESILIENT-379 alert-not-reap guard present (PR_TERMINAL_CLOSE_ARMED + pr_terminal_alert_not_reaped)"
+else
+    fail "RESILIENT-379 alert-not-reap guard missing from source"
 fi
 
 echo

@@ -29,6 +29,103 @@ fn max_consecutive_tool_fails() -> u32 {
         .unwrap_or(DEFAULT_MAX_CONSECUTIVE_TOOL_FAILS)
 }
 
+/// EFFECTIVE-448: max force-edit nudges before the loop is allowed to Complete
+/// with zero edits (a legit rung-failure — the model genuinely couldn't do it).
+/// Bounded so a gap that truly needs no edit doesn't spin forever. Override via
+/// `CHUMP_MAX_EDIT_NUDGES`.
+const DEFAULT_MAX_EDIT_NUDGES: u32 = 3;
+
+fn max_edit_nudges() -> u32 {
+    std::env::var("CHUMP_MAX_EDIT_NUDGES")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .unwrap_or(DEFAULT_MAX_EDIT_NUDGES)
+}
+
+/// EFFECTIVE-448: only fire the force-edit nudge for runs EXPECTED to produce an
+/// edit (gap execution / implementation). Interactive chat and read-only queries
+/// must still Complete with a prose answer. `execute_gap()` sets
+/// `CHUMP_REQUIRE_EDIT=1` for both the free-tier and paid paths.
+fn require_edit_mode() -> bool {
+    std::env::var("CHUMP_REQUIRE_EDIT").as_deref() == Ok("1")
+}
+
+/// EFFECTIVE-465: after how many iterations of read-only investigation (zero
+/// edits applied, on a require_edit run) we start shoving the model to edit —
+/// even while it is still emitting tool calls (never reaching EndTurn). The
+/// EFFECTIVE-448 nudge only fires on `StopReason::EndTurn`, so a model like
+/// DeepSeek that read-loops (`read_file`/`grep`) for the whole 30-iteration
+/// budget never triggers it and the run exhausts `max_iterations` straight into
+/// an empty diff (proven: gap INFRA-3679, 24+ read turns, zero str_replace).
+/// This budget catches that path. Default 8; override `CHUMP_INVESTIGATE_BUDGET`.
+const DEFAULT_INVESTIGATE_BUDGET: usize = 8;
+
+fn investigate_budget() -> usize {
+    std::env::var("CHUMP_INVESTIGATE_BUDGET")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_INVESTIGATE_BUDGET)
+}
+
+/// EFFECTIVE-465: minimum iterations between two investigation-path nudges, so
+/// the model gets a fresh turn (or two) to actually act on the shove before the
+/// next one lands — rather than burning the whole `max_edit_nudges` cap on
+/// three back-to-back iterations. Default 2; override `CHUMP_INVESTIGATE_NUDGE_SPACING`.
+const DEFAULT_INVESTIGATE_NUDGE_SPACING: usize = 2;
+
+fn investigate_nudge_spacing() -> usize {
+    std::env::var("CHUMP_INVESTIGATE_NUDGE_SPACING")
+        .ok()
+        .and_then(|s| s.trim().parse::<usize>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_INVESTIGATE_NUDGE_SPACING)
+}
+
+/// EFFECTIVE-465: the edit tools a require_edit run is FORCED down to once the
+/// text nudges are exhausted with zero edits. Removing the read-only tools
+/// (`read_file`/`grep_repo`/`list_dir`/`almanac_search`) physically stops a
+/// model that structurally avoids editing (DeepSeek's real M1 tool-selection
+/// wall — it read-loops past every text nudge) from investigating forever: its
+/// only actions become "apply the change" or "answer in prose". `str_replace`
+/// edits an existing file; `write_file` CREATES a new one (many decomposed
+/// sub-gaps target a file that doesn't exist yet — read-only tools can never
+/// satisfy those). Overridable via `CHUMP_EDIT_ONLY_TOOLS` (comma-separated).
+fn edit_only_tool_names() -> Vec<String> {
+    match std::env::var("CHUMP_EDIT_ONLY_TOOLS") {
+        Ok(s) if !s.trim().is_empty() => s
+            .split(',')
+            .map(|t| t.trim().to_string())
+            .filter(|t| !t.is_empty())
+            .collect(),
+        _ => vec!["str_replace".to_string(), "write_file".to_string()],
+    }
+}
+
+/// Filter `tools` down to the edit-only set. If NONE of the edit tools are
+/// present in the registry (unusual), returns the original list unchanged so we
+/// never hand the model an empty tool set (which some providers reject).
+fn restrict_to_edit_tools(tools: &[Tool]) -> Vec<Tool> {
+    let want = edit_only_tool_names();
+    let filtered: Vec<Tool> = tools
+        .iter()
+        .filter(|t| want.iter().any(|w| w == &t.name))
+        .cloned()
+        .collect();
+    if filtered.is_empty() {
+        tools.to_vec()
+    } else {
+        filtered
+    }
+}
+
+/// EFFECTIVE-448: the firm message injected when the model narrates a fix but
+/// never applies one. A weak model (DeepSeek flash/pro) investigates for many
+/// read-only turns, then emits an EndTurn prose summary — the FSM would Complete
+/// with zero edits and `free_tier_ship` aborts on "empty diff". Kept as a const
+/// so the unit test can assert the exact wording is what gets injected.
+pub(crate) const EDIT_NUDGE_MESSAGE: &str = "You have investigated enough. You have NOT written any file yet — you only described the change. STOP investigating and APPLY the change NOW. To EDIT an existing file, use `str_replace`: copy the EXACT existing snippet into `old_string` (enough surrounding lines to be unique) and the replacement into `new_string`. If the target file DOES NOT EXIST YET (a new file), use `write_file` to CREATE it with the full contents. Make the smallest change that satisfies the task, then stop. If — and only if — no change is genuinely possible, reply with a single line beginning `NO_EDIT_POSSIBLE:` followed by the concrete reason.";
+
 /// Decide whether a tool batch outcome should trip the fail-storm breaker.
 ///
 /// Returns `Some(error_msg)` when `counter` has reached `max_consecutive_fails`
@@ -68,6 +165,65 @@ pub(crate) fn track_batch_outcome(
     None
 }
 
+/// EFFECTIVE-918: max consecutive `git_commit` tool calls allowed without an
+/// intervening successful write (edit) before the controller aborts. A model
+/// that repeatedly calls `git_commit` (e.g. retrying on "nothing to commit"
+/// or misreading the result) without ever landing a fix burns the iteration
+/// budget the same way the fail-storm above does — except each `git_commit`
+/// call can succeed (exit 0, empty diff) so the fail-storm breaker never
+/// trips. Default 2: a 3rd consecutive `git_commit` call with no edit in
+/// between aborts the run. Overridable via `CHUMP_MAX_CONSECUTIVE_GIT_COMMITS`.
+const DEFAULT_MAX_CONSECUTIVE_GIT_COMMITS: u32 = 2;
+
+fn max_consecutive_git_commits() -> u32 {
+    std::env::var("CHUMP_MAX_CONSECUTIVE_GIT_COMMITS")
+        .ok()
+        .and_then(|s| s.trim().parse::<u32>().ok())
+        .filter(|n| *n >= 1)
+        .unwrap_or(DEFAULT_MAX_CONSECUTIVE_GIT_COMMITS)
+}
+
+/// Decide whether a batch's `git_commit` calls should trip the git_commit-storm
+/// breaker.
+///
+/// Returns `Some(error_msg)` when `counter` (after accounting for this batch)
+/// exceeds `max_consecutive_commits`. Returns `None` otherwise.
+///
+/// Mutates `counter`:
+///   - reset to 0 when the batch applied at least one successful edit
+///     (`edits_applied > 0` — a real "intervening successful write")
+///   - incremented by the batch's `git_commit_calls` count
+pub(crate) fn track_git_commit_storm(
+    outcome: &BatchOutcome,
+    counter: &mut u32,
+    max_consecutive_commits: u32,
+) -> Option<String> {
+    if outcome.edits_applied > 0 {
+        *counter = 0;
+    }
+    if outcome.git_commit_calls == 0 {
+        return None;
+    }
+    *counter += outcome.git_commit_calls as u32;
+    if *counter > max_consecutive_commits {
+        // EFFECTIVE-824: log the storm detection event so operators can spot
+        // this breaker tripping in the logs, not just infer it from the
+        // aborted-run error text.
+        tracing::warn!(
+            consecutive_git_commits = *counter,
+            threshold = max_consecutive_commits,
+            "git_commit storm breaker tripped: aborting run"
+        );
+        return Some(format!(
+            "Aborting: {} consecutive git_commit calls with no intervening successful write. \
+             The model appears to be storming on git_commit without making progress. \
+             Override the threshold via CHUMP_MAX_CONSECUTIVE_GIT_COMMITS=<N>.",
+            counter
+        ));
+    }
+    None
+}
+
 pub struct IterationController<'a> {
     pub max_iterations: usize,
     pub provider: &'a dyn Provider,
@@ -97,8 +253,30 @@ impl<'a> IterationController<'a> {
         let mut tool_calls_count: u32 = 0;
         let mut consecutive_failed_batches: u32 = 0;
         let max_consecutive_fails = max_consecutive_tool_fails();
+        // EFFECTIVE-918: git_commit-storm breaker state — separate from the
+        // fail-storm counter above because a storming `git_commit` call can
+        // itself succeed (empty diff, nothing to commit) each time.
+        let mut consecutive_git_commits: u32 = 0;
+        let max_consecutive_git_commits = max_consecutive_git_commits();
         let mut thinking_segments: Vec<String> = Vec::new();
         let completion_cap = crate::env_flags::agent_completion_max_tokens();
+
+        // EFFECTIVE-448: track applied edits + how many force-edit nudges we've
+        // fired. A run expected to produce an edit (`require_edit`) that reaches
+        // an EndTurn having changed no file gets a firm "stop investigating,
+        // str_replace now" message and loops again — bounded by `max_edit_nudges`
+        // — instead of Completing into the empty diff that aborts the ship.
+        let mut edits_applied: usize = 0;
+        let mut edit_nudges_fired: u32 = 0;
+        let require_edit = require_edit_mode();
+        let max_edit_nudges = max_edit_nudges();
+        // EFFECTIVE-465: investigation-path force-edit nudge state. Shares the
+        // `edit_nudges_fired`/`max_edit_nudges` cap with the EndTurn nudge so the
+        // TOTAL number of shoves is bounded across both paths.
+        let investigate_budget = investigate_budget();
+        let investigate_nudge_spacing = investigate_nudge_spacing();
+        let mut last_investigate_nudge_iter: usize = 0;
+        let mut edit_only_forced_logged = false;
 
         // Helper: build the standard cancelled outcome and return early.
         // Defined as a named macro so it can capture `_iter`, `thinking_segments`,
@@ -135,7 +313,17 @@ impl<'a> IterationController<'a> {
         let mut last_failed_tool: Option<String> = None;
 
         // Capture max fails up-front so the per-call helper doesn't re-read env.
-        let track_outcome = |outcome: BatchOutcome, counter: &mut u32| -> Option<String> {
+        // EFFECTIVE-918: also runs the git_commit-storm check against the same
+        // batch outcome before handing it to the fail-storm tracker, so both
+        // breakers are evaluated from a single call site.
+        let mut track_outcome = |outcome: BatchOutcome, counter: &mut u32| -> Option<String> {
+            if let Some(err) = track_git_commit_storm(
+                &outcome,
+                &mut consecutive_git_commits,
+                max_consecutive_git_commits,
+            ) {
+                return Some(err);
+            }
             track_batch_outcome(outcome, counter, max_consecutive_fails)
         };
 
@@ -175,8 +363,62 @@ impl<'a> IterationController<'a> {
 
             crate::belief_state::decay_turn();
 
+            // EFFECTIVE-465: investigation-path force-edit nudge. The EFFECTIVE-448
+            // nudge below only fires on `StopReason::EndTurn`; a model that keeps
+            // emitting read-only tool calls (never EndTurn) sails past it and
+            // exhausts `max_iterations` straight into an empty diff. Here — at the
+            // top of a turn, BEFORE the model call — if this run must produce an
+            // edit, none has landed, and the model has been investigating past the
+            // budget, inject the SAME firm "stop investigating, str_replace now"
+            // message so the model edits (or declares NO_EDIT_POSSIBLE) instead of
+            // read-looping. Spaced by `investigate_nudge_spacing` and bounded by the
+            // shared `max_edit_nudges` cap so it can't spin; on cap exhaustion the
+            // run still terminates and the caller escalates up the model ladder.
+            if require_edit
+                && edits_applied == 0
+                && _iter > investigate_budget
+                && edit_nudges_fired < max_edit_nudges
+                && _iter.saturating_sub(last_investigate_nudge_iter) >= investigate_nudge_spacing
+            {
+                edit_nudges_fired += 1;
+                last_investigate_nudge_iter = _iter;
+                // eprintln (not just tracing) so the shove is VISIBLE in the
+                // worker's per-cycle log — the receipt that the floor was forced
+                // to edit rather than silently read-looping into an empty diff.
+                eprintln!(
+                    "[agent-loop] EFFECTIVE-465: iter {_iter} investigating with zero edits past \
+                     budget — injecting force-edit nudge (#{edit_nudges_fired})"
+                );
+                tracing::info!(
+                    edit_nudges_fired,
+                    iter = _iter,
+                    "EFFECTIVE-465: investigating with zero edits past budget — injecting force-edit nudge"
+                );
+                ctx.session.add_message(axonerai::provider::Message {
+                    role: "user".to_string(),
+                    content: EDIT_NUDGE_MESSAGE.to_string(),
+                });
+            }
+
+            // EFFECTIVE-465: once the text nudges are exhausted on a require_edit
+            // run that STILL has zero edits, force the model down to edit-only
+            // tools so it physically cannot keep read-looping (DeepSeek ignores
+            // every text nudge). Its only moves become str_replace/write_file or
+            // a prose answer.
+            let force_edit_only =
+                require_edit && edits_applied == 0 && edit_nudges_fired >= max_edit_nudges;
             let tools_for_call = if skip_tools_first_call && model_calls_count == 0 {
                 None
+            } else if force_edit_only {
+                if !edit_only_forced_logged {
+                    edit_only_forced_logged = true;
+                    eprintln!(
+                        "[agent-loop] EFFECTIVE-465: text nudges exhausted with zero edits — \
+                         restricting tools to edit-only (str_replace/write_file) to force an edit \
+                         or NO_EDIT_POSSIBLE"
+                    );
+                }
+                Some(restrict_to_edit_tools(&tools))
             } else {
                 Some(tools.clone())
             };
@@ -270,6 +512,7 @@ impl<'a> IterationController<'a> {
                                 ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                             }
                             last_failed_tool = outcome.last_failed_tool.clone();
+                            edits_applied += outcome.edits_applied;
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
@@ -297,6 +540,54 @@ impl<'a> IterationController<'a> {
 
                     if model_calls_count <= 2 && response_wanted_tools(payload) {
                         tracing::info!("narration detected: retrying with tools");
+                        continue;
+                    }
+
+                    // EFFECTIVE-448: force-edit nudge. Past model_calls_count<=2 the
+                    // narration-retry above no longer fires, so a weak model (DeepSeek
+                    // flash/pro) that investigates for many read-only turns then emits an
+                    // EndTurn prose summary would Complete having applied ZERO edits — and
+                    // free_tier_ship then aborts on "empty diff — changed nothing". When
+                    // this run is expected to produce an edit (CHUMP_REQUIRE_EDIT=1) and
+                    // none has landed, inject a firm "stop investigating, str_replace now"
+                    // message and loop again — bounded by max_edit_nudges so a gap that
+                    // genuinely needs no edit (or that the model truly can't do) still
+                    // terminates. A model that ALREADY edited (edits_applied>0) Completes
+                    // normally; one that explicitly declares no edit is possible
+                    // (NO_EDIT_POSSIBLE:) is allowed to Complete without burning the cap.
+                    if require_edit
+                        && edits_applied == 0
+                        && edit_nudges_fired < max_edit_nudges
+                        && !payload
+                            .trim_start()
+                            .to_uppercase()
+                            .starts_with("NO_EDIT_POSSIBLE")
+                    {
+                        edit_nudges_fired += 1;
+                        // EFFECTIVE-465: share the spacing tracker so the loop-top
+                        // investigation nudge doesn't immediately stack a second
+                        // identical shove on the very next iteration.
+                        last_investigate_nudge_iter = _iter;
+                        eprintln!(
+                            "[agent-loop] EFFECTIVE-448: EndTurn with zero edits — injecting \
+                             force-edit nudge (#{edit_nudges_fired})"
+                        );
+                        tracing::info!(
+                            edit_nudges_fired,
+                            model_calls_count,
+                            "EFFECTIVE-448: EndTurn with zero edits — injecting force-edit nudge"
+                        );
+                        // Preserve the prose the model just produced for context, then
+                        // append the nudge as the next user turn and loop.
+                        let content_for_history = thinking_strip::strip_for_public_reply(&text);
+                        ctx.session.add_message(axonerai::provider::Message {
+                            role: "assistant".to_string(),
+                            content: content_for_history,
+                        });
+                        ctx.session.add_message(axonerai::provider::Message {
+                            role: "user".to_string(),
+                            content: EDIT_NUDGE_MESSAGE.to_string(),
+                        });
                         continue;
                     }
 
@@ -383,6 +674,7 @@ impl<'a> IterationController<'a> {
                                     ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                                 }
                                 last_failed_tool = outcome.last_failed_tool.clone();
+                                edits_applied += outcome.edits_applied;
                                 if let Some(err) =
                                     track_outcome(outcome, &mut consecutive_failed_batches)
                                 {
@@ -436,6 +728,7 @@ impl<'a> IterationController<'a> {
                                 ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                             }
                             last_failed_tool = outcome.last_failed_tool.clone();
+                            edits_applied += outcome.edits_applied;
                             if let Some(err) =
                                 track_outcome(outcome, &mut consecutive_failed_batches)
                             {
@@ -508,6 +801,7 @@ impl<'a> IterationController<'a> {
                         ctx.phase_timings.tools_ms += t.elapsed().as_millis();
                     }
                     last_failed_tool = outcome.last_failed_tool.clone();
+                    edits_applied += outcome.edits_applied;
                     if let Some(err) = track_outcome(outcome, &mut consecutive_failed_batches) {
                         // FSM: → Interrupted (storm breaker)
                         let interrupted = AgentState::Interrupted {
@@ -576,6 +870,132 @@ impl<'a> IterationController<'a> {
     }
 }
 
+// ── EFFECTIVE-1138: `chump loop <cmd> --interval N [--max-iters M]` ────────
+// Ephemeral scheduler: repeatedly runs an arbitrary command on a fixed
+// interval until either `--max-iters` is reached or SIGINT/SIGTERM arrives.
+// Process-wide signal flag; safe because `run_ephemeral_loop` is only ever
+// invoked as the whole of a dedicated `chump loop` process/RPC call, never
+// alongside other signal-sensitive machinery in the same process.
+static LOOP_SHUTDOWN_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+extern "C" fn loop_on_signal(sig: i32) {
+    LOOP_SHUTDOWN_SIGNAL.store(sig, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Repeatedly spawns `cmd` (argv[0] + args) every `interval_secs` seconds,
+/// printing one JSON line per iteration to stdout with `run`, `status`,
+/// `start_ts`, and `end_ts` fields. Stops after `max_iters` iterations
+/// (if `Some`), or immediately on SIGINT/SIGTERM (returns exit code 0).
+pub fn run_ephemeral_loop(cmd: &[String], interval_secs: u64, max_iters: Option<u64>) -> i32 {
+    if cmd.is_empty() {
+        eprintln!("chump loop: no command supplied");
+        return 1;
+    }
+
+    // SAFETY: handler only stores an atomic; async-signal-safe.
+    unsafe {
+        let handler = loop_on_signal as extern "C" fn(i32) as *const () as usize;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
+    }
+
+    let mut run: u64 = 0;
+    loop {
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        run += 1;
+        let start_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let status = std::process::Command::new(&cmd[0]).args(&cmd[1..]).status();
+        let end_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+        let status_code = match &status {
+            Ok(s) => s.code().unwrap_or(-1),
+            Err(_) => -1,
+        };
+        println!(
+            "{}",
+            serde_json::json!({
+                "run": run,
+                "status": status_code,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+            })
+        );
+
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        // Sleep in small slices so a signal arriving mid-interval is
+        // observed promptly instead of after the full interval elapses.
+        let mut slept = 0u64;
+        while slept < interval_secs {
+            if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+                return 0;
+            }
+            let chunk = (interval_secs - slept).min(1);
+            std::thread::sleep(std::time::Duration::from_secs(chunk));
+            slept += chunk;
+        }
+    }
+}
+
+/// Parses `--interval N` and optional `--max-iters M` out of a `chump loop`
+/// argv tail, returning `(cmd, interval_secs, max_iters)`. The remaining
+/// (non-flag) tokens form the command to execute.
+pub fn parse_ephemeral_loop_args(
+    args: &[String],
+) -> Result<(Vec<String>, u64, Option<u64>), String> {
+    let mut cmd = Vec::new();
+    let mut interval: Option<u64> = None;
+    let mut max_iters: Option<u64> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--interval" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| "--interval requires a value".to_string())?;
+                interval = Some(
+                    v.parse::<u64>()
+                        .map_err(|_| format!("invalid --interval value: {v}"))?,
+                );
+                i += 2;
+            }
+            "--max-iters" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| "--max-iters requires a value".to_string())?;
+                max_iters = Some(
+                    v.parse::<u64>()
+                        .map_err(|_| format!("invalid --max-iters value: {v}"))?,
+                );
+                i += 2;
+            }
+            other => {
+                cmd.push(other.to_string());
+                i += 1;
+            }
+        }
+    }
+
+    let interval = interval.ok_or_else(|| "--interval is required".to_string())?;
+    Ok((cmd, interval, max_iters))
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit tests for the fail-storm circuit breaker. The `execute` method itself
@@ -590,6 +1010,8 @@ mod tests {
             success_count: n,
             fail_count: 0,
             last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 0,
         }
     }
     fn fail_batch(n: usize) -> BatchOutcome {
@@ -597,6 +1019,8 @@ mod tests {
             success_count: 0,
             fail_count: n,
             last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 0,
         }
     }
     fn mixed_batch(ok: usize, fail: usize) -> BatchOutcome {
@@ -604,7 +1028,85 @@ mod tests {
             success_count: ok,
             fail_count: fail,
             last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 0,
         }
+    }
+
+    /// A batch consisting of a single successful `git_commit` call.
+    fn git_commit_batch() -> BatchOutcome {
+        BatchOutcome {
+            success_count: 1,
+            fail_count: 0,
+            last_failed_tool: None,
+            edits_applied: 0,
+            git_commit_calls: 1,
+        }
+    }
+
+    /// A batch consisting of a single successful `str_replace` edit (an
+    /// "intervening successful write" that should reset the git_commit-storm
+    /// counter).
+    fn edit_batch() -> BatchOutcome {
+        BatchOutcome {
+            success_count: 1,
+            fail_count: 0,
+            last_failed_tool: None,
+            edits_applied: 1,
+            git_commit_calls: 0,
+        }
+    }
+
+    #[test]
+    fn git_commit_storm_no_trip_under_threshold() {
+        let mut counter = 0u32;
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert_eq!(counter, 1);
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert_eq!(counter, 2);
+    }
+
+    #[test]
+    fn git_commit_storm_trips_on_third_consecutive_call() {
+        let mut counter = 0u32;
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        let err = track_git_commit_storm(&git_commit_batch(), &mut counter, 2);
+        assert!(
+            err.is_some(),
+            "expected git_commit storm breaker to trip on 3rd consecutive call"
+        );
+        let msg = err.unwrap();
+        assert!(msg.contains("3 consecutive"), "msg: {}", msg);
+        assert!(
+            msg.contains("CHUMP_MAX_CONSECUTIVE_GIT_COMMITS"),
+            "msg: {}",
+            msg
+        );
+    }
+
+    #[test]
+    fn git_commit_storm_resets_on_intervening_edit() {
+        let mut counter = 0u32;
+        track_git_commit_storm(&git_commit_batch(), &mut counter, 2);
+        track_git_commit_storm(&git_commit_batch(), &mut counter, 2);
+        assert_eq!(counter, 2);
+        // A successful write in between resets the counter.
+        track_git_commit_storm(&edit_batch(), &mut counter, 2);
+        assert_eq!(
+            counter, 0,
+            "intervening successful write must reset counter"
+        );
+        // Then two more git_commit calls should not immediately trip.
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+        assert!(track_git_commit_storm(&git_commit_batch(), &mut counter, 2).is_none());
+    }
+
+    #[test]
+    fn git_commit_storm_ignores_non_git_commit_batches() {
+        let mut counter = 0u32;
+        assert!(track_git_commit_storm(&ok_batch(3), &mut counter, 2).is_none());
+        assert_eq!(counter, 0);
     }
 
     #[test]
@@ -740,6 +1242,31 @@ mod tests {
         std::env::set_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS", "7");
         assert_eq!(max_consecutive_tool_fails(), 7);
         std::env::remove_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS");
+    }
+
+    #[test]
+    fn parse_ephemeral_loop_args_extracts_interval_and_max_iters() {
+        let args: Vec<String> = vec!["--interval", "5", "--max-iters", "3", "echo", "hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let (cmd, interval, max_iters) = parse_ephemeral_loop_args(&args).unwrap();
+        assert_eq!(cmd, vec!["echo".to_string(), "hi".to_string()]);
+        assert_eq!(interval, 5);
+        assert_eq!(max_iters, Some(3));
+    }
+
+    #[test]
+    fn parse_ephemeral_loop_args_requires_interval() {
+        let args: Vec<String> = vec!["echo".to_string(), "hi".to_string()];
+        assert!(parse_ephemeral_loop_args(&args).is_err());
+    }
+
+    #[test]
+    fn run_ephemeral_loop_stops_at_max_iters() {
+        let cmd = vec!["true".to_string()];
+        let exit_code = run_ephemeral_loop(&cmd, 0, Some(2));
+        assert_eq!(exit_code, 0);
     }
 }
 
@@ -976,5 +1503,502 @@ mod cancellation_tests {
             "outcome.reply should be the cancellation message, got: {:?}",
             outcome.reply
         );
+    }
+
+    // ── EFFECTIVE-448: force-edit nudge integration tests ──────────────────
+    //
+    // These exercise the real `IterationController::execute` loop with scripted
+    // provider + task-executor mocks to prove the DeepSeek cheap-floor fix: a
+    // model that investigates for >2 read-only turns then emits EndTurn prose
+    // must be NUDGED to apply an edit (not Complete into an empty diff), while a
+    // model that DID edit must still Complete cleanly with no nudge.
+
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    /// Scripted provider. `edit_at` = the 1-based call index on which it returns
+    /// a `str_replace` ToolUse; all other early calls return a read_only ToolUse,
+    /// and once past `investigate_calls` it returns EndTurn prose. Counts calls.
+    struct ScriptedProvider {
+        calls: Arc<AtomicUsize>,
+        investigate_calls: usize,
+        edit_at: Option<usize>,
+    }
+
+    #[async_trait]
+    impl axonerai::provider::Provider for ScriptedProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1; // 1-based
+            if Some(n) == self.edit_at {
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: format!("edit_{n}"),
+                        name: "str_replace".to_string(),
+                        input: serde_json::json!({
+                            "path": "src/foo.rs",
+                            "old_string": "a",
+                            "new_string": "b"
+                        }),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                });
+            }
+            if n <= self.investigate_calls {
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: format!("read_{n}"),
+                        name: "read_file".to_string(),
+                        input: serde_json::json!({ "path": "src/foo.rs" }),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                });
+            }
+            // Past the investigation phase: narrate a fix in prose, no tool call.
+            Ok(CompletionResponse {
+                text: Some(
+                    "I have finished investigating. The fix is to change `a` to `b` \
+                     in src/foo.rs so the guard fires correctly."
+                        .to_string(),
+                ),
+                tool_calls: vec![],
+                stop_reason: StopReason::EndTurn,
+            })
+        }
+    }
+
+    /// Task executor that returns a realistic SUCCESS string per tool: a
+    /// read_file result (not an edit) or a `str_replace: edited ...` result
+    /// (a real edit, which `edit_was_applied` must count).
+    struct ScriptedExecutor;
+
+    #[async_trait]
+    impl TaskExecutor for ScriptedExecutor {
+        async fn execute_all<'a>(
+            &self,
+            _event_tx: Option<&crate::stream_events::EventSender>,
+            _tool_executor: &ToolExecutor<'a>,
+            tool_calls: &[ToolCall],
+        ) -> Result<Vec<ToolResult>> {
+            Ok(tool_calls
+                .iter()
+                .map(|tc| {
+                    let result = if tc.name == "str_replace" {
+                        "str_replace: edited src/foo.rs (1 replacement, 1 → 1 bytes)".to_string()
+                    } else {
+                        "fn foo() {}\n".to_string()
+                    };
+                    ToolResult {
+                        tool_call_id: tc.id.clone(),
+                        tool_name: tc.name.clone(),
+                        result,
+                    }
+                })
+                .collect())
+        }
+    }
+
+    /// A registered tool with a permissive schema so schema-validation passes
+    /// (the ScriptedExecutor is what actually produces results; the registry is
+    /// only consulted for tool-name + input-schema validation).
+    struct PermissiveTool(&'static str);
+
+    #[async_trait]
+    impl axonerai::tool::Tool for PermissiveTool {
+        fn name(&self) -> String {
+            self.0.to_string()
+        }
+        fn description(&self) -> String {
+            "permissive test tool".to_string()
+        }
+        fn input_schema(&self) -> serde_json::Value {
+            serde_json::json!({ "type": "object", "additionalProperties": true })
+        }
+        async fn execute(&self, _input: serde_json::Value) -> Result<String> {
+            Ok(String::new())
+        }
+    }
+
+    fn count_nudge_messages(ctx: &AgentLoopContext) -> usize {
+        ctx.session
+            .get_messages()
+            .iter()
+            .filter(|m| m.content == EDIT_NUDGE_MESSAGE)
+            .count()
+    }
+
+    /// Investigate for 3 read-only turns then narrate prose forever, with the
+    /// run marked as edit-required. The controller must NOT Complete at the
+    /// first EndTurn; it must inject the force-edit nudge up to the cap, then
+    /// terminate. Without the fix it would Complete at the first EndTurn.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_448_nudges_when_investigating_but_never_editing() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "2");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = ScriptedProvider {
+            calls: Arc::clone(&calls),
+            investigate_calls: 3,
+            edit_at: None,
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 20,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        let total_calls = calls.load(Ordering::SeqCst);
+        // 3 read turns + 1st EndTurn (nudge #1) + 2nd EndTurn (nudge #2) + 3rd
+        // EndTurn (cap reached → Complete) = 6 provider calls.
+        assert_eq!(
+            total_calls, 6,
+            "expected 3 reads + 3 EndTurns (2 nudged), got {total_calls}"
+        );
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            2,
+            "expected exactly 2 force-edit nudge messages injected"
+        );
+        assert!(
+            total_calls > 4,
+            "regression: loop Completed at first EndTurn instead of nudging"
+        );
+        // It still terminates (does not hang / exhaust iterations).
+        assert!(!outcome.reply.starts_with("Exceeded max iterations"));
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    /// A model that investigates, THEN applies a str_replace, THEN narrates must
+    /// Complete cleanly on the next EndTurn — no nudge — because an edit landed.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_448_completes_normally_when_edit_was_applied() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "3");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        // calls: 1,2 = reads; 3 = str_replace (edit); 4+ = EndTurn prose.
+        let provider = ScriptedProvider {
+            calls: Arc::clone(&calls),
+            investigate_calls: 3,
+            edit_at: Some(3),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 20,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        let total_calls = calls.load(Ordering::SeqCst);
+        // 1,2 reads + 3 str_replace + 4th EndTurn → Complete (no nudge).
+        assert_eq!(
+            total_calls, 4,
+            "edited run must Complete at first EndTurn, got {total_calls} calls"
+        );
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            0,
+            "no nudge must fire once a real edit has been applied"
+        );
+        assert!(!outcome.reply.starts_with("Exceeded max iterations"));
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    // ── EFFECTIVE-465: investigation-path force-edit nudge tests ────────────
+    //
+    // The EFFECTIVE-448 nudge only fires on `StopReason::EndTurn`. DeepSeek's
+    // real failure mode (proven live on gap INFRA-3679) is different: it keeps
+    // emitting read-only `read_file`/`grep` ToolUse calls, NEVER reaches EndTurn,
+    // and exhausts `max_iterations` straight into an empty diff — the nudge never
+    // fires. These tests exercise the loop-top investigation nudge that catches
+    // that path.
+
+    /// Provider that ALWAYS returns a read-only `read_file` ToolUse — it never
+    /// edits and never EndTurns (the DeepSeek read-loop death spiral).
+    struct AlwaysInvestigateProvider {
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl axonerai::provider::Provider for AlwaysInvestigateProvider {
+        async fn complete(
+            &self,
+            _messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            Ok(CompletionResponse {
+                text: None,
+                tool_calls: vec![ToolCall {
+                    id: format!("read_{n}"),
+                    name: "read_file".to_string(),
+                    input: serde_json::json!({ "path": "src/foo.rs" }),
+                }],
+                stop_reason: StopReason::ToolUse,
+            })
+        }
+    }
+
+    /// A model that read-loops forever (never EndTurns) on an edit-required run
+    /// must be force-edit-nudged from the loop top — bounded by `max_edit_nudges`
+    /// — and still terminate (max iterations) rather than silently exhausting the
+    /// budget with the nudge never firing. Without the EFFECTIVE-465 fix the nudge
+    /// (EndTurn-only) never fires and `count_nudge_messages` is 0.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_465_nudges_on_pure_investigation_never_endturn() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_INVESTIGATE_BUDGET", "2");
+        std::env::set_var("CHUMP_INVESTIGATE_NUDGE_SPACING", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "2");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = AlwaysInvestigateProvider {
+            calls: Arc::clone(&calls),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 8,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        // budget=2 → nudges eligible from iter 3; spacing=1, cap=2 → nudges at
+        // iters 3 and 4, then the cap stops further shoves. The read-loop never
+        // edits, so the run terminates at max_iterations.
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            2,
+            "expected exactly 2 investigation-path nudges (bounded by cap)"
+        );
+        assert!(
+            outcome.reply.starts_with("Exceeded max iterations"),
+            "a never-editing read-loop must still terminate, got: {:?}",
+            outcome.reply
+        );
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_INVESTIGATE_BUDGET");
+        std::env::remove_var("CHUMP_INVESTIGATE_NUDGE_SPACING");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
+    }
+
+    /// Provider that read-loops UNTIL it sees the force-edit nudge in the
+    /// conversation, then applies a `str_replace` (the intended effect: the nudge
+    /// flips the model from investigating to editing), then EndTurns to Complete.
+    struct InvestigateUntilNudgedProvider {
+        calls: Arc<AtomicUsize>,
+        edited: Arc<std::sync::atomic::AtomicBool>,
+    }
+
+    #[async_trait]
+    impl axonerai::provider::Provider for InvestigateUntilNudgedProvider {
+        async fn complete(
+            &self,
+            messages: Vec<Message>,
+            _tools: Option<Vec<axonerai::provider::Tool>>,
+            _max_tokens: Option<u32>,
+            _system: Option<String>,
+        ) -> Result<CompletionResponse> {
+            let n = self.calls.fetch_add(1, Ordering::SeqCst) + 1;
+            if self.edited.load(Ordering::SeqCst) {
+                // Already edited — narrate and Complete.
+                return Ok(CompletionResponse {
+                    text: Some("Applied the edit. Done.".to_string()),
+                    tool_calls: vec![],
+                    stop_reason: StopReason::EndTurn,
+                });
+            }
+            let saw_nudge = messages.iter().any(|m| m.content == EDIT_NUDGE_MESSAGE);
+            if saw_nudge {
+                self.edited.store(true, Ordering::SeqCst);
+                return Ok(CompletionResponse {
+                    text: None,
+                    tool_calls: vec![ToolCall {
+                        id: format!("edit_{n}"),
+                        name: "str_replace".to_string(),
+                        input: serde_json::json!({
+                            "path": "src/foo.rs",
+                            "old_string": "a",
+                            "new_string": "b"
+                        }),
+                    }],
+                    stop_reason: StopReason::ToolUse,
+                });
+            }
+            // No nudge yet — keep investigating.
+            Ok(CompletionResponse {
+                text: None,
+                tool_calls: vec![ToolCall {
+                    id: format!("read_{n}"),
+                    name: "read_file".to_string(),
+                    input: serde_json::json!({ "path": "src/foo.rs" }),
+                }],
+                stop_reason: StopReason::ToolUse,
+            })
+        }
+    }
+
+    /// The point of the fix: the investigation nudge must actually FLIP a
+    /// read-looping model into applying an edit — not just fire and terminate.
+    /// The model reads until nudged, then str_replaces, then Completes cleanly.
+    #[tokio::test]
+    #[serial_test::serial]
+    async fn effective_465_investigation_nudge_flips_model_to_edit() {
+        std::env::set_var("CHUMP_REQUIRE_EDIT", "1");
+        std::env::set_var("CHUMP_INVESTIGATE_BUDGET", "2");
+        std::env::set_var("CHUMP_INVESTIGATE_NUDGE_SPACING", "1");
+        std::env::set_var("CHUMP_MAX_EDIT_NUDGES", "3");
+
+        let calls = Arc::new(AtomicUsize::new(0));
+        let provider = InvestigateUntilNudgedProvider {
+            calls: Arc::clone(&calls),
+            edited: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+        };
+        let mut registry = ToolRegistry::new();
+        registry.register(Box::new(PermissiveTool("read_file")));
+        registry.register(Box::new(PermissiveTool("str_replace")));
+        let executor = ToolExecutor::new(&registry);
+        let task_exec: Arc<dyn TaskExecutor + Send + Sync> = Arc::new(ScriptedExecutor);
+        let tool_runner = ToolRunner {
+            executor: &executor,
+            registry: &registry,
+            task_executor: task_exec,
+        };
+        let mut controller = IterationController {
+            max_iterations: 12,
+            provider: &provider,
+            state: AgentState::Idle,
+        };
+        let mut ctx = make_ctx();
+        let prompt_assembler = make_prompt_assembler();
+        let perception = make_perception();
+
+        let outcome = controller
+            .execute(
+                &mut ctx,
+                vec![],
+                None,
+                false,
+                &tool_runner,
+                &prompt_assembler,
+                &perception,
+                CancellationToken::new(),
+            )
+            .await
+            .expect("execute must return Ok");
+
+        // Exactly ONE nudge should have fired (at iter 3, budget=2) — it flipped
+        // the model to editing, so no further shoves were needed.
+        assert_eq!(
+            count_nudge_messages(&ctx),
+            1,
+            "one investigation nudge should have flipped the model to edit"
+        );
+        // The run must NOT have exhausted iterations — it Completed after editing.
+        assert!(
+            !outcome.reply.starts_with("Exceeded max iterations"),
+            "the nudged edit must let the run Complete, not exhaust iterations: {:?}",
+            outcome.reply
+        );
+
+        std::env::remove_var("CHUMP_REQUIRE_EDIT");
+        std::env::remove_var("CHUMP_INVESTIGATE_BUDGET");
+        std::env::remove_var("CHUMP_INVESTIGATE_NUDGE_SPACING");
+        std::env::remove_var("CHUMP_MAX_EDIT_NUDGES");
     }
 }

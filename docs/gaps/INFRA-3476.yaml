@@ -1,0 +1,12 @@
+- id: INFRA-3476
+  domain: INFRA
+  title: "EFFECTIVE: chump agent-run must clear CHUMP_TOOLS_ASK — unattended write_file/git_push are denied (no approval channel)"
+  status: superseded
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chump agent-run must clear CHUMP_TOOLS_ASK — unattended write_file/git_push are denied (no approval channel)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: MISSION-010
+

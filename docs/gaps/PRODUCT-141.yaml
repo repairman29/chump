@@ -1,0 +1,27 @@
+- id: PRODUCT-141
+  domain: PRODUCT
+  title: "chump assess <repo>: check-then-generate roadmap + generalized % to goal, not tool-specific format"
+  status: open
+  priority: P2
+  effort: l
+  description: |
+    The end goal of today's whole thread (INFRA-3526/3527/3529/3530/3531): a human should be able to ask Chump 'how baked is repo X' and get a real, computed % against a real, current goal — not a first-mate session spending an entire evening manually reading files by hand, which is what actually happened 2026-08-02 and which does not scale past a handful of repos.
+    
+    What exists today, all pieces, none connected:
+    - roadmap TRACKER: chump roadmap-status parses docs/ROADMAP.md into milestone %, but ONLY Chump's own weekly-outcome format. Olive's roadmap is a status-tagged ticket-table (EX/LI/BR/P0 tracks, checkbox status per ticket). Upshift's is a 1300-line phase narrative. grave-dancer's is a phased build doc with prose 'Done when' criteria per phase. Four real formats found in one afternoon; roadmap-status understands exactly one of them.
+    - roadmap WRITER: RoadmapFromVisionContract (chump-handoff), a real typed LLM contract, zero callers anywhere (INFRA-3527, still open).
+    - doc VISIBILITY: FIXED today (INFRA-3531) — markdown finally reaches almanac's index, so a check-first step can actually find an existing roadmap instead of assuming none exists.
+    
+    The specific mistake this gap exists to prevent, made twice today before being caught: almanac's markdown blindness (now fixed) led to confidently concluding olive and upshift-platform had NO defined goal, when both had real, current, substantial roadmaps sitting in docs/. Generating a NEW roadmap for a repo that already has one — without checking first — is exactly how BEAST-MODE ended up with 127 competing, all-abandoned planning documents (found 2026-08-02, zero of them touched in 30 days). Absence-of-plan and abundance-of-abandoned-plans are the same failure mode: nobody checked before writing.
+    
+    Scope: a 'chump assess <repo>' command/workflow that (1) checks for an existing roadmap/plan doc via almanac search first — now that markdown is visible, this is finally possible; (2) if found, parses it into a generalized status model (done/in-progress/not-started per item, regardless of the four+ formats already found in this portfolio alone) rather than assuming Chump's own ROADMAP.md shape; (3) if genuinely absent, offers to generate one via RoadmapFromVisionContract (INFRA-3527) rather than silently proceeding without one; (4) computes and reports a real % against whatever goal the roadmap states, with the same honesty discipline this session used by hand — a % is only reported when a real goal exists, never invented against an assumed one.
+  acceptance_criteria:
+    - checks for an existing plan doc (via almanac, post-INFRA-3531) before ever proposing to generate one
+    - correctly parses at least the 3 real formats found this session (Chump's own weekly-outcome ROADMAP.md, a status-tagged ticket-table like olive's, a phased prose doc like grave-dancer's/upshift's) into one common done/in-progress/not-started model
+    - refuses to compute a % when no real goal exists, and says so explicitly rather than defaulting to a health-score substitute (the exact mistake corrected mid-session in PORTFOLIO_READINESS.md)
+    - if it finds an abandoned-plan-pile situation (multiple stale competing docs, BEAST-MODE-style) it flags that explicitly rather than picking one arbitrarily and pretending it's canonical
+    - tested against at least 2 real repos in this portfolio with different roadmap formats, not just synthetic fixtures
+  depends_on: [INFRA-3527]
+  source_doc: session 2026-08-02, the full roadmap/%-to-goal investigation
+  outcome_id: META-067
+

@@ -215,7 +215,8 @@ CHUMP_EC_STALE_DAYS=14 \
 CHUMP_EC_MARCUS_STALL_DAYS=7 \
     run_cmd "$T5" "tick" > /dev/null 2>&1
 
-finding_count=$(grep -c '"kind":"external_collab_finding"' "$T5/.chump-locks/ambient.jsonl" 2>/dev/null || echo "0")
+finding_count=$(grep -c '"kind":"external_collab_finding"' "$T5/.chump-locks/ambient.jsonl" 2>/dev/null || true)
+finding_count="${finding_count:-0}"
 if [ "$finding_count" = "0" ]; then
     ok "Case 5: all-fresh + clean docs → no findings emitted"
 else

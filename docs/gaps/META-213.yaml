@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement PR fix-class classification in daemon (META-209 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - "The `auto-admin-merge-daemon.sh` script includes logic to classify a PR's `fix_class` based on its title prefix (e.g., 'feat:', 'fix:', 'chore:') and/or analysis of the diff scope."

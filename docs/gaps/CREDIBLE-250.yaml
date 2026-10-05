@@ -1,0 +1,10 @@
+- id: CREDIBLE-250
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker registration RPC handler (CREDIBLE-099 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - Worker registration RPC handler is implemented and returns a success response
+    - Handler stores the worker presence record in the NATS-KV bucket
+

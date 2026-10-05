@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: chump-fleet-bootstrap durability — auto-chmod install scripts, fix false-negative checks, run hourly via launchd (3 issues found by curator-opus-shepherd 2026-05-23)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Three concrete issues found 2026-05-23 by curator-opus-shepherd while investigating why pr-auto-rebase + claude-reaper + bot-merge-watchdog + 2 other REQUIRED_DAEMONS were not running despite their installer scripts having shipped days earlier. Root cause: nothing runs the bootstrap installer automatically. The installer is documented in CLAUDE.md but only runs when an operator manually invokes it. Manual invocation discovered a real bug too (scripts/setup/install-bot-merge-watchdog.sh was mode 0644). Two of the manifest checks (queue-health-monitor-launchd, github-liaison-launchd) returned false-negative MISSING despite the daemons being loaded — bootstrap-check logic looks for different markers than what installers create. Rough shape: (a) fix install-bot-merge-watchdog.sh perm + add a pre-commit hook or CI gate that asserts install-*.sh files are mode 0755; (b) fix bootstrap-check false negatives for queue-health-monitor and github-liaison; (c) install a launchd job that runs chump-fleet-bootstrap.sh --install hourly (idempotent installers already, so safe to repeat) with a kind=fleet_bootstrap_auto_install ambient event per run.

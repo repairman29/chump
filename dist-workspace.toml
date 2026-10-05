@@ -7,6 +7,12 @@ members = ["cargo:."]
 cargo-dist-version = "0.31.0"
 # CI backends to support
 ci = "github"
+# ZERO-WASTE-005 (2026-08-13): only run 'plan' on pull_request events, not a full
+# cross-platform artifact build. The 4 self-hosted runners are saturated and PR
+# artifact builds are not required checks (only audit/test/ACP-smoke block merge) —
+# building full release artifacts on every PR was pure runner waste + red-X noise.
+# Tag-push releases are unaffected (this only gates the pull_request trigger).
+pr-run-mode = "plan"
 # Installers: shell script for curl|sh convenience (Hermes-style onboarding) +
 # Homebrew bottle install via the repairman29/homebrew-chump tap (INFRA-172,
 # 2026-04-30). cargo-dist auto-publishes the formula to the tap on every

@@ -29,7 +29,14 @@ fi
 
 if command -v cargo >/dev/null 2>&1 && [[ -f "$REPO_ROOT/Cargo.toml" ]]; then
     echo ""
-    if (cd "$REPO_ROOT" && cargo test -p chump-gap-store proof_of_merge --quiet -- --test-threads=1 2>&1 | tail -10); then
+    # RESILIENT-306: run through the INFRA-764 flake-autorerun wrapper so a
+    # KNOWN_FLAKES.yaml-catalogued flake (credible218 — GHA-hosted-runner-only,
+    # CREDIBLE-283) is auto-rerun ONCE in-lane and recovers WITHIN this same
+    # fast-checks run instead of reddening the lane and jamming the fleet.
+    # A real (uncatalogued) proof-of-merge failure is NOT rerun — the wrapper
+    # passes its exit code straight through, so genuine bugs still fail loud.
+    if (cd "$REPO_ROOT" && bash scripts/ci/cargo-test-with-rerun.sh -- \
+            cargo test -p chump-gap-store proof_of_merge -- --test-threads=1 2>&1 | tail -15); then
         ok "cargo test proof_of_merge passed"
     else
         fail "cargo test proof_of_merge failed"

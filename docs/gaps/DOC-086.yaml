@@ -1,0 +1,14 @@
+- id: DOC-086
+  domain: DOC
+  title: "CREDIBLE: SHIP_ASSIST_PLAYBOOK additions — cancelled-required-checks diagnosis, superseded-sweep orphans, two-slice re-mint pattern"
+  status: open
+  priority: P2
+  effort: xs
+  description: |
+    Three diagnosis/recovery patterns proven 2026-08-06 belong in docs/process/SHIP_ASSIST_PLAYBOOK.md so fleet workers stop re-deriving them: (1) PR BLOCKED + zero failures + armed = check the REQUIRED checks (audit/test/ACP smoke) for conclusion CANCELLED — concurrency-cancelled required checks block silently and need gh run rerun (receipt: PR #3488); (2) close-superseded-prs closes a live second-slice PR when the gap gets bookkept done against slice 1 — orphaned verified work (receipts: #3488 closed while reruns were queued, CREDIBLE-204); (3) the clean second-slice recovery is re-mint under a fresh gap ID (reserve slice-2 gap, claim, cherry-pick, retitle, bot-merge) — it needs no bypass trailers, unlike the INFRA-3532 printed recovery (receipt: CREDIBLE-205 / PR #3491). Session-side mirror already exists as the operator's chump-ship skill; this gap is the fleet-side half.
+  acceptance_criteria:
+    - three patterns added to SHIP_ASSIST_PLAYBOOK with receipts
+    - cancelled-required diagnosis includes the exact gh commands
+    - re-mint pattern cross-references INFRA-3532's gate message
+  outcome_id: CREDIBLE-000
+

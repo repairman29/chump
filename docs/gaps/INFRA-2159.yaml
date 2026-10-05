@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C8 chump-consensus-aggregator-daemon — Rust binary computes confidence-weighted decision at quorum or timeout"
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Aggregator daemon computes a confidence-weighted decision at quorum and publishes a consensus.resolved event; unit-tested on a sample vote set.
   outcome_id: MISSION-010
 

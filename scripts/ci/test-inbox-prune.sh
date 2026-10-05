@@ -175,7 +175,7 @@ for i in range(50000):
 " > "$DRY_LARGE"
 
 BEFORE_SIZE="$(wc -c < "$DRY_LARGE")"
-BEFORE_MTIME="$(stat -f %m "$DRY_LARGE" 2>/dev/null || stat -c %Y "$DRY_LARGE" 2>/dev/null)"
+BEFORE_MTIME="$(stat -c %Y "$DRY_LARGE" 2>/dev/null || stat -f %m "$DRY_LARGE" 2>/dev/null)"
 
 CHUMP_INBOX_DIR="$INBOX_DIR" bash "$PRUNE_SCRIPT" prune --max-size 100KB --dry-run 2>&1 | grep -v "^$" || true
 

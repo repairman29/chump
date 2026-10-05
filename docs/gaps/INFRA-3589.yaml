@@ -1,0 +1,33 @@
+- id: INFRA-3589
+  domain: INFRA
+  title: "code-reviewer-agent.sh: pipefail+grep-no-match crashes as false CONCERN instead of ESCALATE fallback"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    scripts/coord/code-reviewer-agent.sh runs under `set -euo pipefail`. Line ~407:
+    
+      VERDICT_LINE=$(echo "$RESPONSE" | grep -E '^(APPROVE|CONCERN|ESCALATE):' | head -1)
+    
+    When the LLM's first line doesn't match the exact "VERB: reason" format (e.g. it
+    replies just "APPROVE" on its own line, then prose - no colon), grep exits 1
+    (no match). Under `pipefail`, the pipe's exit status becomes grep's non-zero
+    code even though `head -1` itself succeeded on empty input, so `set -e`
+    aborts the whole script with exit 1 immediately - before reaching the very
+    next line's fallback (`if [[ -z "$VERDICT_LINE" ]]; then VERDICT_LINE="ESCALATE: ..."`).
+    
+    bot-merge.sh's case statement treats script exit 1 as verdict=CONCERN (see
+    scripts/coord/bot-merge.sh ~L3662-3668), so a mere format-mismatch crash gets
+    reported to the operator as "Code-reviewer raised CONCERN" and blocks
+    auto-merge - even when the LLM's actual prose was positive/APPROVE-leaning.
+    Reproduced live on PR #3594 (EFFECTIVE-372): RESPONSE started with literal
+    "APPROVE\n\n<positive prose, no colon>", crashed at VERDICT_LINE parse,
+    exit 1, bot-merge read this as CONCERN and blocked auto-merge.
+    
+    Fix: guard the grep with a pattern that doesn't fail the pipeline (e.g.
+    `grep -E '...' || true`, or a `set +e`/`set -e` bracket) so a
+    format-mismatch reaches the existing ESCALATE fallback (line ~408-410)
+    instead of crashing the whole script with a misleading exit code.
+  acceptance_criteria:
+    - "1. scripts/coord/code-reviewer-agent.sh's VERDICT_LINE grep no longer aborts\n   the script under set -euo pipefail when the LLM response doesn't contain\n   an APPROVE:/CONCERN:/ESCALATE: prefixed line.\n2. A malformed/non-matching LLM response reaches the existing \"ESCALATE:\n   code-reviewer response did not match expected format\" fallback (exit 2),\n   not a silent crash reported upstream as CONCERN (exit 1).\n3. Regression test in scripts/ci/test-code-reviewer-agent.sh covering a\n   RESPONSE value with no colon-suffixed verdict line on its own."
+

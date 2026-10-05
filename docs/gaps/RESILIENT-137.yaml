@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: "RESILIENT (Cut-Friction): streamline the commit-gate stack — a 60-line docs commit took 5 attempts (stomp-hang, net-new-docs, bypass-4-field, index-mutex pileup)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Part of MISSION-044 (Cut the Friction). Landing a 60-line docs change (META-287) took FIVE commit attempts, each blocked by a different gate discovered one-at-a-time: (1) bare git commit hung on the stomp prompt (non-tty); (2) net-new-docs trailer required; (3) a preemptive Off-Rails-Bypass trailer triggered a 4-required-field bypass-validator; (4) the chump-commit index-mutex hard-failed after 30s under normal concurrency; (5) a zsh GID-var assignment attempted setgid. Each gate is individually reasonable but STACKED + non-fail-fast they make a trivial commit a multi-attempt slog.

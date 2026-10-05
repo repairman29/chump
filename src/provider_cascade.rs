@@ -17,7 +17,19 @@ use crate::local_openai::{self, LocalOpenAIProvider};
 use crate::provider_quality;
 
 const DEFAULT_RPM_HEADROOM_PCT: f32 = 80.0;
-const MAX_SLOTS: u32 = 14; // INFRA-789: slots 12-14 for Gemini 2.5 Flash Lite, 3 Flash, 3.1 Flash Lite
+// EFFECTIVE-413: raised from 14 — a pinned ceiling silently dropped any
+// CHUMP_PROVIDER_{N}_* block past slot 14 (e.g. slot 15, an OpenCode Zen
+// subscription slot) with no error, just an unreachable provider. Slots
+// 12-14 are OpenCode Zen variants, not Gemini (stale comment fixed here).
+const MAX_SLOTS: u32 = 40;
+
+// EFFECTIVE-413 AC #4: money-risk guard. A slot that omits RPD entirely
+// parses to rpd_limit=0, which the cascade treats as "unlimited" (see the
+// `if slot.rpd_limit > 0` gate below) — silently unbounded spend for any
+// paid-per-token slot whose operator simply forgot the RPD line. Slots that
+// omit RPD get this safe default cap instead of true-unlimited; set RPD
+// explicitly (including `RPD=0`) to opt out and get genuine no-limit.
+const DEFAULT_RPD_WHEN_UNSET: u32 = 500;
 
 /// INFRA-352: emit a structured ambient.jsonl event when the cascade has
 /// exhausted every slot it could try and is about to return Err to the caller.
@@ -113,7 +125,14 @@ fn emit_cascade_backoff_event(kind: &str, backoff_s: u64) {
 
 /// INFRA-1004: emit a `cascade_routed` ambient event on every successful slot selection.
 /// Records which slot was chosen and the active cascade mode for routing observability.
-fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str) {
+///
+/// ZERO-WASTE-060: also carries the estimated token count served by this slot.
+/// Every cascade slot (Cloud or Local) is a free-tier provider — the cascade
+/// exists specifically to serve requests without ever touching the paid
+/// Anthropic-only path — so `tokens` here is what `chump kpi report`'s
+/// free-tier-savings section sums to estimate dollars saved vs an
+/// Anthropic-only baseline.
+fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str, tokens: u64) {
     let repo_root = crate::repo_path::runtime_base();
     let lock_dir = repo_root.join(".chump-locks");
     let _ = std::fs::create_dir_all(&lock_dir);
@@ -126,7 +145,8 @@ fn emit_cascade_routed_event(slot_name: &str, cascade_mode: &str, tier: &str) {
     let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
     let line = format!(
         "{{\"ts\":\"{ts}\",\"session\":\"{session}\",\"kind\":\"cascade_routed\",\
-         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\"}}"
+         \"slot\":\"{slot_name}\",\"tier\":\"{tier}\",\"cascade_mode\":\"{cascade_mode}\",\
+         \"tokens\":{tokens}}}"
     );
     use std::io::Write as _;
     if let Ok(mut f) = std::fs::OpenOptions::new()
@@ -472,6 +492,9 @@ pub struct ProviderSlot {
     pub calls_this_minute: AtomicU32,
     pub minute_start: Mutex<Instant>,
     /// Daily request cap (0 = unlimited). Set via CHUMP_PROVIDER_{N}_RPD.
+    /// EFFECTIVE-413: `from_env()` only produces 0 here for an *explicit*
+    /// `RPD=0`; a slot that omits RPD entirely gets `DEFAULT_RPD_WHEN_UNSET`
+    /// instead, so this field being 0 always reflects a deliberate choice.
     pub rpd_limit: u32,
     /// Calls made today (resets at midnight local time, approximately via day_start tracking).
     pub calls_today: AtomicU32,
@@ -648,28 +671,64 @@ impl ProviderCascade {
                 .unwrap_or_else(|_| "gpt-4".to_string());
             let name = std::env::var(format!("CHUMP_PROVIDER_{}_NAME", n))
                 .unwrap_or_else(|_| format!("slot_{}", n));
-            let priority = std::env::var(format!("CHUMP_PROVIDER_{}_PRIORITY", n))
-                .ok()
+            let priority_raw = std::env::var(format!("CHUMP_PROVIDER_{}_PRIORITY", n)).ok();
+            let priority = priority_raw
+                .as_ref()
                 .and_then(|v| v.parse().ok())
                 .unwrap_or(n * 10);
-            let rpm = std::env::var(format!("CHUMP_PROVIDER_{}_RPM", n))
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(30);
-            let rpd = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n))
-                .ok()
-                .and_then(|v| v.parse().ok())
-                .unwrap_or(0);
+            let rpm_raw = std::env::var(format!("CHUMP_PROVIDER_{}_RPM", n)).ok();
+            let rpm = rpm_raw.as_ref().and_then(|v| v.parse().ok()).unwrap_or(30);
+            let rpd_env = std::env::var(format!("CHUMP_PROVIDER_{}_RPD", n)).ok();
+            let rpd: u32 = match rpd_env.as_ref().and_then(|v| v.parse().ok()) {
+                Some(explicit) => explicit,
+                None => {
+                    // EFFECTIVE-413 AC #4: no explicit RPD → assume the
+                    // operator forgot it, not that they want unbounded
+                    // spend. An explicit `RPD=0` still opts into true
+                    // unlimited (handled by the `Some(explicit)` arm above).
+                    eprintln!(
+                        "[cascade] WARNING: slot {} ({}) has no CHUMP_PROVIDER_{}_RPD set — \
+                         defaulting to {} instead of unlimited. Set RPD explicitly (RPD=0 for \
+                         genuine unlimited) to silence this.",
+                        n, name, n, DEFAULT_RPD_WHEN_UNSET
+                    );
+                    DEFAULT_RPD_WHEN_UNSET
+                }
+            };
             let privacy = std::env::var(format!("CHUMP_PROVIDER_{}_PRIVACY", n))
                 .map(|s| parse_privacy_tier(&s))
                 .unwrap_or(PrivacyTier::Safe);
-            let context_k = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n))
-                .ok()
+            let context_k_raw = std::env::var(format!("CHUMP_PROVIDER_{}_CONTEXT_K", n)).ok();
+            let context_k = context_k_raw
+                .as_ref()
                 .and_then(|v| v.trim().parse::<u32>().ok());
             let model_class = std::env::var(format!("CHUMP_PROVIDER_{}_MODEL_CLASS", n))
                 .ok()
                 .filter(|s| !s.is_empty())
                 .map(|s| s.trim().to_lowercase());
+
+            // CREDIBLE-227 AC #4: a slot that declares BASE/KEY/MODEL but
+            // omits RPM, PRIORITY, and CONTEXT_K is "half-declared" — it
+            // silently falls back to defaults (rpm=30, priority=n*10,
+            // unlimited context) instead of an explicit, verified value.
+            // Make that visible instead of letting it look fully configured.
+            if rpm_raw.is_none() && priority_raw.is_none() && context_k_raw.is_none() {
+                eprintln!(
+                    "[cascade] WARNING: slot {} ({}) declares only BASE/KEY/MODEL/MODEL_CLASS — \
+                     missing RPM/PRIORITY/CONTEXT_K, falling back to defaults (rpm=30, priority={}, context_k=none). \
+                     Set CHUMP_PROVIDER_{}_RPM/PRIORITY/CONTEXT_K explicitly.",
+                    n, name, n * 10, n
+                );
+                // scanner-anchor: "kind":"provider_slot_incomplete"
+                crate::tool_policy::emit_ambient_json(
+                    "provider_slot_incomplete",
+                    serde_json::json!({
+                        "slot": n,
+                        "name": name,
+                        "missing": ["RPM", "PRIORITY", "CONTEXT_K"],
+                    }),
+                );
+            }
 
             let provider = LocalOpenAIProvider::with_fallback(base.clone(), None, key, model);
             slots.push(ProviderSlot {
@@ -1401,6 +1460,7 @@ impl Provider for ProviderCascade {
                                         &local_slot.name,
                                         self.cascade_mode(),
                                         "local",
+                                        est,
                                     );
                                     return Ok(r);
                                 }
@@ -1634,7 +1694,7 @@ impl Provider for ProviderCascade {
                     } else {
                         "local"
                     };
-                    emit_cascade_routed_event(&slot.name, self.cascade_mode(), tier_str);
+                    emit_cascade_routed_event(&slot.name, self.cascade_mode(), tier_str, est);
                     return Ok(r);
                 }
                 Err(e) => {
@@ -1704,7 +1764,11 @@ impl Provider for ProviderCascade {
                             eprintln!("[cascade] {} failed (transient), trying next", slot.name);
                         }
 
-                        record_failover(&slot.name, classify_failover_reason(&e_str));
+                        let failover_reason = classify_failover_reason(&e_str);
+                        if failover_reason == "429" {
+                            provider_quality::record_slot_rate_limited(&slot.name);
+                        }
+                        record_failover(&slot.name, failover_reason);
                         idx = i + 1;
                         continue;
                     }
@@ -3552,7 +3616,7 @@ mod tests {
         let log_path = dir.path().join("ambient.jsonl");
         std::env::set_var("CHUMP_AMBIENT_LOG", log_path.to_string_lossy().to_string());
 
-        emit_cascade_routed_event("test-slot", "local-only", "local");
+        emit_cascade_routed_event("test-slot", "local-only", "local", 42);
 
         let contents = std::fs::read_to_string(&log_path).unwrap_or_default();
         assert!(contents.contains("cascade_routed"), "event kind missing");
@@ -3568,6 +3632,7 @@ mod tests {
             contents.contains("\"tier\":\"local\""),
             "tier field missing"
         );
+        assert!(contents.contains("\"tokens\":42"), "tokens field missing");
 
         std::env::remove_var("CHUMP_AMBIENT_LOG");
     }

@@ -1,0 +1,12 @@
+- id: EFFECTIVE-355
+  domain: EFFECTIVE
+  title: "EFFECTIVE: str_replace edit tool — anchored old->new edits so general/weak models stop clobbering files"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"str_replace edit tool — anchored old->new edits so general/weak models stop clobbering files\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3479
+

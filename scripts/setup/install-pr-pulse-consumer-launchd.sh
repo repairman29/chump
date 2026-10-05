@@ -7,7 +7,16 @@
 
 set -euo pipefail
 
-REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
+# INFRA-2365: resolve to the MAIN worktree, not whatever worktree this
+# installer runs from (see scripts/lib/resolve-main-worktree.sh; INFRA-451
+# class — a baked-in linked/temp worktree path dies with exit=78 once the
+# worktree is reaped).
+# shellcheck source=../lib/resolve-main-worktree.sh
+source "$(cd "$(dirname "$0")" && pwd)/../lib/resolve-main-worktree.sh"
+REPO_ROOT="$(resolve_main_worktree "$0")" || {
+    echo "FAIL: could not resolve main worktree from $0" >&2
+    exit 1
+}
 SCRIPT="$REPO_ROOT/scripts/coord/pr-pulse-consumer.sh"
 PLIST_DIR="$HOME/Library/LaunchAgents"
 PLIST="$PLIST_DIR/com.chump.pr-pulse-consumer.plist"

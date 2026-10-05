@@ -2,12 +2,9 @@
   domain: INFRA
   title: "ZERO-WASTE: workflow consolidation Phase 1 — fold voice-lint + repo-health + test-bot-autonomous + 5 other satellite workflows into ci.yml as conditional jobs (24 .yml files → ~6); cuts per-push runner-claim fan-out 3-4×"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - voice-lint, repo-health, test-bot-autonomous and 5 named satellite workflows are folded into a single consolidated workflow with no loss of checks; CI still runs each check.
   outcome_id: MISSION-010
 

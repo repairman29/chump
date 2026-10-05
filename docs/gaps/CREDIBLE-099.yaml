@@ -1,7 +1,8 @@
 - id: CREDIBLE-099
   domain: CREDIBLE
   title: "CREDIBLE: fleet workers REGISTER a claim but not THEMSELVES — register_worker RPC is a stub, heartbeat files absent, kpi --agents empty → the fleet is unattributable/unverifiable from any vantage (the 'opus in trench coats' root cause)"
-  status: open
+  status: done
+  closed_pr: 3900
   priority: P1
   effort: m
   description: |

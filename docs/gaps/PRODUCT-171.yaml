@@ -1,0 +1,18 @@
+- id: PRODUCT-171
+  domain: PRODUCT
+  title: "[upshift] upshift upgrade (the core mutating command) has zero PR-path e2e coverage"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Named floor-raiser #1 in DEPTH.md (merged upshift#27, 2026-08-02). The only automated exercise of `upshift upgrade` is the weekly cron - which runs the PUBLISHED npm release with --skip-tests, so a regression in PR code merges and ships before any automation ever runs it. tests/e2e/REVIEW.md already sketches the fix: an isolated-fixture upgrade e2e (mutating, needs its own throwaway fixture + lockfile assert + rollback-path case). This is the highest-value test gap in the repo: the product's whole promise is safe upgrades.
+    
+    context: {"pr":"upshift#27","source":"claude-triage/depth-pass-2026-08-02"}
+    source: holler feedback_events, dedupe 84cbd279c1effc54
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/upshift"
+

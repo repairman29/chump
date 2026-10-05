@@ -7,6 +7,23 @@
 //! Testability:
 //!   - `CHUMP_GH` env var overrides the `gh` binary path (mock injection).
 //!   - `CHUMP_REPO_ROOT` env var overrides the repo root (fake gap YAMLs).
+//!
+//! ## Boilerplate-AC exclusion (CREDIBLE-1471, CREDIBLE-279 slice)
+//!
+//! `chump gap reserve` without an explicit `--acceptance-criteria` mints a
+//! templated placeholder bullet (`default_acceptance_criteria` in
+//! `src/main.rs`): `"The change described by \"<what>\" is implemented in the
+//! relevant <domain> code path(s)."`. That sentence can never be covered *or*
+//! failed by a diff — it restates the gap title, not a checkable behavior —
+//! so counting it toward the denominator inflates confidence and, at scale
+//! (CREDIBLE-279: 79 `done` gaps closed by PRs touching zero implementation
+//! files), let genuinely uncovered gaps read as fully scored. [`is_boilerplate_ac`]
+//! detects this exact template (domain-agnostic — it matches on the
+//! surrounding phrase, not the substituted title/domain) and
+//! [`score_against_bullets`] drops matching bullets before scoring, so they
+//! never enter `AcCoverageResult::bullets` and never affect
+//! [`AcCoverageResult::confidence`] or `done_auditor::is_over_claim`'s
+//! denominator.
 
 use std::process::Command;
 
@@ -164,6 +181,23 @@ pub fn load_ac_bullets(gap_id: &str) -> Result<Vec<String>, String> {
         return Ok(vec![]);
     }
     Ok(serde_json::from_str::<Vec<String>>(ac_field).unwrap_or_default())
+}
+
+// ── boilerplate-AC detector ───────────────────────────────────────────────────
+
+/// CREDIBLE-1471: detect the templated placeholder AC minted by
+/// `default_acceptance_criteria` (`src/main.rs`) for gaps reserved without an
+/// explicit `--acceptance-criteria`: `"The change described by \"<what>\" is
+/// implemented in the relevant <domain> code path(s)."`. Domain-agnostic by
+/// design — it matches on the fixed surrounding phrase, not the substituted
+/// `<what>`/`<domain>` values, so it catches every domain variant (INFRA,
+/// CREDIBLE, ZERO-WASTE, …) that the template produces.
+///
+/// This sentence restates the gap title; no diff can cover or fail it, so it
+/// must never enter the AC-coverage denominator (see module docs above).
+pub fn is_boilerplate_ac(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    lower.contains("is implemented in the relevant") && lower.contains("code path")
 }
 
 // ── waiver parser ─────────────────────────────────────────────────────────────
@@ -435,6 +469,80 @@ fn systemctl_bin() -> String {
     std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "systemctl".to_string())
 }
 
+/// INFRA-3728: run `ssh <node> systemctl is-active <unit>` against a remote
+/// node and return the trimmed stdout. The ssh binary can be stubbed via
+/// `CHUMP_AC_GATE_SYSTEMCTL_BIN`.
+fn run_remote_systemctl(node: &str, unit: &str) -> Result<String, String> {
+    let ssh_bin =
+        std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "ssh".to_string());
+    let output = Command::new(&ssh_bin)
+        .arg(node)
+        .arg("systemctl")
+        .arg("is-active")
+        .arg(unit)
+        .output()
+        .map_err(|e| format!("failed to spawn `{ssh_bin}` for {node}: {e}"))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        return Err(format!(
+            "`{ssh_bin} {node} systemctl is-active {unit}` exited with {}: {stderr}",
+            output.status
+        ));
+    }
+    Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+}
+
+/// INFRA-7098: resolve the hostname that owns `unit` by reading its
+/// `CapabilityManifest` from the NATS capabilities KV
+/// (`chump_coord::capability::resolve_target_node`). Returns `None` on any
+/// error — no NATS reachable, no manifest for `unit`, a stale manifest, or a
+/// manifest with no `machine` set. Per INFRA-3652 AC-2, a `None` here is NOT
+/// treated as "assume localhost" by [`check_systemd_unit_live`] — it fails
+/// closed instead.
+///
+/// `CoordClient::connect` already bounds the NATS dial with its own
+/// `tokio::time::timeout` (`CHUMP_NATS_TIMEOUT_MS`, default 500ms), so a
+/// bare current-thread runtime is enough to drive it synchronously without
+/// risking a hang when NATS is unreachable (the common case in unit tests
+/// and most CI runs).
+///
+/// INFRA-3653: the `chump` binary's own `main` is `#[tokio::main]`, so by
+/// the time any CLI command reaches here a Tokio runtime is ALREADY driving
+/// the current thread — building a second one with `Builder::build()` and
+/// calling `block_on` on it panics ("Cannot start a runtime from within a
+/// runtime"), it does not just fall back to `None`. `chump verify --live`
+/// hit this immediately against a real systemd-unit proof bullet (the same
+/// path `chump pr ac-coverage` exercises). Spawning a dedicated OS thread
+/// and building/driving the runtime THERE sidesteps the nesting check
+/// entirely — the new thread has no ambient runtime of its own.
+fn resolve_target_node_for_unit(unit: &str) -> Option<String> {
+    let unit = unit.to_string();
+    std::thread::spawn(move || {
+        let rt = tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .ok()?;
+        rt.block_on(async {
+            let client = chump_coord::CoordClient::connect_or_skip().await?;
+            chump_coord::capability::resolve_target_node(&client.capabilities_kv, &unit)
+                .await
+                .ok()
+        })
+    })
+    .join()
+    .ok()?
+}
+
+/// True when `node` names the current host, per the same
+/// hostname-or-`CHUMP_MACHINE_LABEL` lookup [`chump_coord::capability`] uses
+/// to populate a manifest's `machine` field — so the comparison matches how
+/// the field was written in the first place.
+fn is_current_host(node: &str) -> bool {
+    chump_coord::capability::hostname_or_label()
+        .map(|h| h == node)
+        .unwrap_or(false)
+}
+
 fn ambient_log_path() -> String {
     std::env::var("CHUMP_AMBIENT_LOG").unwrap_or_else(|_| ".chump-locks/ambient.jsonl".to_string())
 }
@@ -486,15 +594,23 @@ fn find_url_token(bullet: &str) -> Option<String> {
     None
 }
 
-/// Check whether a proof bullet's claimed live outcome is actually true
-/// right now. Returns `(verified, detail)`. Fails closed: a bullet whose
-/// text names no mechanically-checkable target (no literal
-/// `<unit>.service`/`.timer`, `kind=<event>`, or URL) is `(false, ..)` —
-/// the gate never takes a proof claim on faith.
-fn check_live_outcome(bullet: &str) -> (bool, String) {
-    if let Some(unit) = find_systemd_unit_token(bullet) {
-        return match Command::new(systemctl_bin())
-            .args(["is-active", &unit])
+/// INFRA-3652: resolve which host owns `unit` (via `resolve`, normally
+/// [`resolve_target_node_for_unit`]) and probe THAT host — local systemctl
+/// when it resolves to the current host, `ssh <node> systemctl`
+/// (INFRA-3728) when it resolves elsewhere. Unlike the earlier INFRA-7098
+/// cut, an unresolved target no longer silently falls back to a local
+/// probe (that fallback was exactly the "assume localhost" anti-pattern
+/// AC-2 exists to kill) — it fails CLOSED with a detail naming the unit, so
+/// a claim about a unit on a node the gate can't place never gets rubber-
+/// stamped by accidentally checking the wrong box.
+///
+/// `resolve` is injected so unit tests can exercise resolves-remote /
+/// remote-active / remote-failed / unresolved without a live NATS server —
+/// see the `infra3652_*` tests below.
+fn check_systemd_unit_live(unit: &str, resolve: impl Fn(&str) -> Option<String>) -> (bool, String) {
+    match resolve(unit) {
+        Some(node) if is_current_host(&node) => match Command::new(systemctl_bin())
+            .args(["is-active", unit])
             .output()
         {
             Ok(out) => {
@@ -506,7 +622,32 @@ fn check_live_outcome(bullet: &str) -> (bool, String) {
                 false,
                 format!("systemctl unavailable ({e}); cannot confirm {unit}"),
             ),
-        };
+        },
+        Some(node) => match run_remote_systemctl(&node, unit) {
+            Ok(state) => {
+                let ok = state == "active";
+                (
+                    ok,
+                    format!("ssh {node} systemctl is-active {unit} -> \"{state}\""),
+                )
+            }
+            Err(e) => (
+                false,
+                format!("remote check of {unit} on {node} failed: {e}"),
+            ),
+        },
+        None => (false, format!("target node unresolved for {unit}")),
+    }
+}
+
+/// Check whether a proof bullet's claimed live outcome is actually true
+/// right now. Returns `(verified, detail)`. Fails closed: a bullet whose
+/// text names no mechanically-checkable target (no literal
+/// `<unit>.service`/`.timer`, `kind=<event>`, or URL) is `(false, ..)` —
+/// the gate never takes a proof claim on faith.
+fn check_live_outcome(bullet: &str) -> (bool, String) {
+    if let Some(unit) = find_systemd_unit_token(bullet) {
+        return check_systemd_unit_live(&unit, resolve_target_node_for_unit);
     }
     if let Some(kind) = find_event_kind_token(bullet) {
         let path = ambient_log_path();
@@ -550,6 +691,117 @@ fn check_live_outcome(bullet: &str) -> (bool, String) {
          diff keyword-match does not count as proof"
             .to_string(),
     )
+}
+
+// ── proof-AC synthesis on-ramp (PEER-VERI-08, INFRA-3655) ──────────────────
+//
+// CREDIBLE-281 above makes proof bullets un-fakeable IF one exists — but a
+// gap whose author never wrote a `PROVEN-BY` bullet skips the live-outcome
+// check entirely by omission, not by honest scoping. A diff that adds/edits
+// a systemd unit, an install script, or a deploy path is exactly the class
+// where "the diff looks right" and "the thing is actually running" diverge
+// (see the CREDIBLE-281 doc comment's INFRA-3598 precedent). This closes
+// that gap at AC-synthesis time: when such a diff is detected and no bullet
+// in the (stored or synthesized) set is already a proof bullet, inject one
+// naming a concrete target lifted straight from the diff — so it is always
+// `check_live_outcome`-parseable by construction, never a hallucinated path.
+
+/// True when a unified diff touches a systemd unit, an install script, or a
+/// deploy path — the three surfaces where "diff landed" and "thing is live"
+/// can diverge. Matches on diff path headers (`diff --git a/X b/X`,
+/// `+++ b/X`) so renames/adds/edits are all caught.
+fn diff_touches_service_surface(diff: &str) -> bool {
+    for line in diff.lines() {
+        let path = if let Some(p) = line.strip_prefix("+++ b/") {
+            p
+        } else if let Some(rest) = line.strip_prefix("diff --git a/") {
+            // "diff --git a/<old> b/<new>" — take the b/ side.
+            match rest.split(" b/").nth(1) {
+                Some(p) => p,
+                None => continue,
+            }
+        } else {
+            continue;
+        };
+        let lower = path.to_ascii_lowercase();
+        if lower.ends_with(".service") || lower.ends_with(".timer") {
+            return true;
+        }
+        if lower.contains("systemd/") || lower.contains("launchd/") {
+            return true;
+        }
+        if (lower.contains("/install") || lower.starts_with("install")) && lower.ends_with(".sh") {
+            return true;
+        }
+        if lower.contains("deploy")
+            && (lower.ends_with(".sh") || lower.ends_with(".yml") || lower.ends_with(".yaml"))
+        {
+            return true;
+        }
+    }
+    false
+}
+
+/// Pull the first mechanically-checkable target (`<unit>.service`/`.timer`,
+/// `kind=<event>`, or a literal URL) out of a diff's *added* lines — the
+/// same three shapes [`check_live_outcome`] knows how to probe. Scanning
+/// added lines only (not context/removed lines) keeps the extracted target
+/// tied to what this PR actually introduced.
+fn extract_live_proof_target(diff: &str) -> Option<String> {
+    // A new/renamed unit file's path IS the checkable target even when its
+    // added *content* never spells out its own filename (a `.service` file's
+    // body is `[Unit]`/`[Service]` stanzas, not a self-reference).
+    for line in diff.lines() {
+        let path = if let Some(p) = line.strip_prefix("+++ b/") {
+            Some(p)
+        } else if let Some(rest) = line.strip_prefix("diff --git a/") {
+            rest.split(" b/").nth(1)
+        } else {
+            None
+        };
+        if let Some(p) = path {
+            if let Some(name) = p.rsplit('/').next() {
+                if name.ends_with(".service") || name.ends_with(".timer") {
+                    return Some(name.to_string());
+                }
+            }
+        }
+    }
+    for line in diff.lines() {
+        let added = match line.strip_prefix('+') {
+            // Exclude the "+++ b/path" file-header line itself.
+            Some(rest) if !rest.starts_with("++ ") && !line.starts_with("+++") => rest,
+            _ => continue,
+        };
+        if let Some(unit) = find_systemd_unit_token(added) {
+            return Some(unit);
+        }
+        if let Some(kind) = find_event_kind_token(added) {
+            return Some(format!("kind={kind}"));
+        }
+        if let Some(url) = find_url_token(added) {
+            return Some(url);
+        }
+    }
+    None
+}
+
+/// Build a synthesized proof bullet for a service/install/deploy-touching
+/// diff, or `None` when the diff doesn't touch that surface, already has a
+/// proof bullet, or names no concrete checkable target (fail-open per AC#3
+/// — a docs-only or target-less diff gets no injected bullet).
+pub(crate) fn maybe_inject_proof_ac(diff: &str, existing_bullets: &[String]) -> Option<String> {
+    if !diff_touches_service_surface(diff) {
+        return None;
+    }
+    if existing_bullets.iter().any(|b| is_proof_bullet(b)) {
+        return None;
+    }
+    let target = extract_live_proof_target(diff)?;
+    Some(format!(
+        "PROVEN-BY {target} — live-outcome check required (this diff touches a \
+         systemd unit / install script / deploy path; PEER-VERI-08 INFRA-3655)"
+    ))
 }
 
 // ── ambient emit wrapper ──────────────────────────────────────────────────────
@@ -810,6 +1062,14 @@ fn score_against_bullets(
     trailer_text: String,
     repo: Option<&str>,
 ) -> AcCoverageResult {
+    // CREDIBLE-1471: drop templated boilerplate bullets before scoring — they
+    // can't be covered or failed by any diff and must not count toward the
+    // coverage denominator (see module docs + `is_boilerplate_ac`).
+    let raw_bullets: Vec<String> = raw_bullets
+        .into_iter()
+        .filter(|b| !is_boilerplate_ac(b))
+        .collect();
+
     // Fetch diff (external repo via --repo when supplied).
     let diff = match repo {
         Some(r) => run_gh(&["pr", "diff", &pr_number.to_string(), "--repo", r]),
@@ -823,6 +1083,10 @@ fn score_against_bullets(
     // Evaluate each bullet
     let mut bullets = Vec::new();
     let mut any_miss = false;
+    // PEER-VERI-08 (INFRA-3655): track proof-bullet misses separately —
+    // these are the ones CHUMP_VERIFY_LIVE_BLOCKING can promote past the
+    // advisory fail-open path below.
+    let mut any_proof_miss = false;
 
     for (i, text) in raw_bullets.iter().enumerate() {
         // Check if waived (0-based index)
@@ -867,6 +1131,9 @@ fn score_against_bullets(
 
         if !covered {
             any_miss = true;
+            if is_proof {
+                any_proof_miss = true;
+            }
             let prefix = &text[..text.len().min(40)];
             ambient(
                 if is_proof {
@@ -898,8 +1165,16 @@ fn score_against_bullets(
 
     // Determine status
     let is_advisory = std::env::var("CHUMP_AC_GATE_ADVISORY").as_deref() == Ok("true");
+    // PEER-VERI-08 (INFRA-3655) AC#2: an unproven live-outcome result BLOCKS
+    // the close instead of being swallowed by the advisory fail-open path —
+    // but only when the operator has ratcheted CHUMP_VERIFY_LIVE_BLOCKING on
+    // (default off). Non-proof misses are untouched by this flag (AC#3).
+    let live_blocking =
+        any_proof_miss && std::env::var("CHUMP_VERIFY_LIVE_BLOCKING").as_deref() == Ok("1");
     let status = if any_miss {
-        if is_advisory {
+        if live_blocking {
+            CoverageStatus::Miss
+        } else if is_advisory {
             CoverageStatus::Advisory
         } else {
             CoverageStatus::Miss
@@ -907,6 +1182,15 @@ fn score_against_bullets(
     } else {
         CoverageStatus::Pass
     };
+    if live_blocking {
+        ambient(
+            "ac_coverage_live_blocking",
+            vec![
+                ("pr_number", pr_number.to_string()),
+                ("gap_id", gap_id.clone()),
+            ],
+        );
+    }
 
     // Print miss list to stderr
     if any_miss {
@@ -1547,6 +1831,273 @@ pub fn cited_paths(bullet: &str) -> Vec<String> {
     out
 }
 
+// ── live-outcome Roll-Call CLI (INFRA-3653, PEER-VERI-06) ──────────────────
+//
+// `chump pr ac-coverage` / `check_live_outcome` above prove-or-fail a PR's
+// proof bullets as a side effect of scoring a diff. There was no standalone,
+// repeatable command a human (or a gate step) could run against a gap ID or
+// PR number to get a one-shot Roll-Call: "is the thing this gap claims is
+// live actually live, on the node that owns it, right now". `run_live` is
+// that command — `chump verify --live <gap|pr>`.
+
+#[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Debug)]
+enum LiveTier {
+    // Proof bullet exists but names no mechanically-checkable target — all
+    // we know is that something was presumably built.
+    Built,
+    // A target resolved (systemd unit / ambient kind / URL) but the probe
+    // found it is NOT currently true.
+    Wired,
+    // The probe confirmed the claimed live outcome right now.
+    Detectable,
+    // Confirmed live AND (systemd-unit claims, `--revive`) confirmed
+    // restart-capable via a read-only dry-run check.
+    Revivable,
+}
+
+impl LiveTier {
+    fn label(self) -> &'static str {
+        match self {
+            LiveTier::Built => "BUILT",
+            LiveTier::Wired => "WIRED",
+            LiveTier::Detectable => "DETECTABLE",
+            LiveTier::Revivable => "REVIVABLE",
+        }
+    }
+}
+
+struct LiveClaim {
+    bullet: String,
+    tier: LiveTier,
+    detail: String,
+}
+
+fn json_escape_live(s: &str) -> String {
+    s.replace('\\', "\\\\").replace('"', "\\\"")
+}
+
+/// Resolve the CLI's `<gap|pr>` positional argument to a gap id. A bare
+/// integer (optionally `#`-prefixed) is treated as a PR number and resolved
+/// via its title (same convention as `parse_gap_id`); anything else must
+/// already BE a `<DOMAIN>-<N>` gap id.
+fn resolve_gap_id_for_live(target: &str) -> Result<String, String> {
+    if let Ok(pr_num) = target.trim_start_matches('#').parse::<u64>() {
+        let pr_json = run_gh(&["pr", "view", &pr_num.to_string(), "--json", "title"])
+            .map_err(|e| format!("gh pr view {pr_num} failed: {e}"))?;
+        let title = json_extract_string(&pr_json, "title").unwrap_or_default();
+        return parse_gap_id(&title).ok_or_else(|| {
+            format!("PR #{pr_num} title {title:?} has no <DOMAIN>-<N> gap reference")
+        });
+    }
+    match parse_gap_id(target) {
+        Some(id) if id == target => Ok(id),
+        _ => Err(format!(
+            "'{target}' is neither a PR number nor a <DOMAIN>-<N> gap id"
+        )),
+    }
+}
+
+fn local_is_enabled(unit: &str) -> Result<String, String> {
+    let out = Command::new(systemctl_bin())
+        .args(["is-enabled", unit])
+        .output()
+        .map_err(|e| format!("systemctl unavailable: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+fn run_remote_is_enabled(node: &str, unit: &str) -> Result<String, String> {
+    let ssh_bin =
+        std::env::var("CHUMP_AC_GATE_SYSTEMCTL_BIN").unwrap_or_else(|_| "ssh".to_string());
+    let out = Command::new(&ssh_bin)
+        .arg(node)
+        .arg("systemctl")
+        .arg("is-enabled")
+        .arg(unit)
+        .output()
+        .map_err(|e| format!("failed to spawn `{ssh_bin}` for {node}: {e}"))?;
+    Ok(String::from_utf8_lossy(&out.stdout).trim().to_string())
+}
+
+/// Read-only revivability probe for a systemd-unit proof claim: NEVER
+/// restarts anything. Resolves the same target node `check_live_outcome`
+/// probes (INFRA-7098) so a remotely-owned unit is checked via `ssh`, not
+/// against the local runner.
+fn check_revivable(unit: &str) -> (bool, String) {
+    let enabled_state = match resolve_target_node_for_unit(unit) {
+        Some(node) if !is_current_host(&node) => run_remote_is_enabled(&node, unit),
+        _ => local_is_enabled(unit),
+    };
+    match enabled_state {
+        Ok(state) => {
+            let revivable = matches!(
+                state.as_str(),
+                "enabled" | "enabled-runtime" | "static" | "indirect" | "generated" | "transient"
+            );
+            (
+                revivable,
+                format!("systemctl is-enabled {unit} -> \"{state}\" (dry-run; nothing restarted)"),
+            )
+        }
+        Err(e) => (false, format!("revivability check failed: {e}")),
+    }
+}
+
+/// `chump verify --live <gap|pr> [--revive] [--json]` (INFRA-3653,
+/// PEER-VERI-06) — one repeatable Roll-Call command: load the gap's PROOF
+/// ACs (bullets containing PROVEN-BY/PROOF:), probe each mechanically-
+/// checkable claim against its resolved target node via
+/// [`check_live_outcome`], and print a per-claim receipt plus one overall
+/// BUILT/WIRED/DETECTABLE/REVIVABLE verdict. `--revive` additionally runs a
+/// read-only `systemctl is-enabled` dry-run against systemd-unit claims —
+/// it never restarts anything, so the command changes nothing on the target
+/// node by default OR with `--revive`. Exits 0 iff the weakest claim reaches
+/// at least DETECTABLE; non-zero (1) otherwise so this is usable as a gate
+/// step. Exits 2 on a bad invocation (unresolvable target, engine error).
+pub fn run_live(args: &[String]) -> i32 {
+    let mut target: Option<String> = None;
+    let mut revive = false;
+    let mut json = false;
+    for a in args {
+        match a.as_str() {
+            "--revive" => revive = true,
+            "--json" => json = true,
+            "-h" | "--help" => {
+                println!(
+                    "Usage: chump verify --live <gap-id|pr-number> [--revive] [--json]\n\n\
+                     Loads the gap's PROOF ACs (bullets containing PROVEN-BY/PROOF:),\n\
+                     runs each mechanically-checkable claim against its resolved target\n\
+                     node, and prints a per-claim receipt plus one overall\n\
+                     BUILT/WIRED/DETECTABLE/REVIVABLE verdict. Exits non-zero unless the\n\
+                     weakest claim reaches DETECTABLE.\n\n\
+                     --revive  also dry-run-check systemd-unit claims for restart\n\
+                     feasibility (systemctl is-enabled only -- never restarts anything).\n\
+                     --json    machine-readable output."
+                );
+                return 0;
+            }
+            other if target.is_none() => target = Some(other.to_string()),
+            other => {
+                eprintln!("chump verify --live: unexpected argument '{other}'");
+                return 2;
+            }
+        }
+    }
+
+    let Some(target) = target else {
+        eprintln!("chump verify --live: a <gap-id|pr-number> argument is required");
+        return 2;
+    };
+
+    let gap_id = match resolve_gap_id_for_live(&target) {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("chump verify --live: {e}");
+            return 2;
+        }
+    };
+
+    let bullets = match load_ac_bullets(&gap_id) {
+        Ok(b) => b,
+        Err(e) => {
+            eprintln!("chump verify --live: cannot load AC for {gap_id}: {e}");
+            return 2;
+        }
+    };
+
+    let proof_bullets: Vec<String> = bullets.into_iter().filter(|b| is_proof_bullet(b)).collect();
+
+    if proof_bullets.is_empty() {
+        if json {
+            println!(
+                "{{\"gap_id\":\"{}\",\"verdict\":\"UNPROVEN\",\"claims\":[],\"detail\":\"no PROVEN-BY/PROOF: bullet found\"}}",
+                json_escape_live(&gap_id)
+            );
+        } else {
+            println!("{gap_id}: no PROVEN-BY/PROOF: bullet found -- nothing to verify live");
+        }
+        return 1;
+    }
+
+    let mut claims = Vec::new();
+    for bullet in &proof_bullets {
+        let (confirmed, mut detail) = check_live_outcome(bullet);
+        let unit = find_systemd_unit_token(bullet);
+        let has_target = unit.is_some()
+            || find_event_kind_token(bullet).is_some()
+            || find_url_token(bullet).is_some();
+        let mut tier = if has_target {
+            if confirmed {
+                LiveTier::Detectable
+            } else {
+                LiveTier::Wired
+            }
+        } else {
+            LiveTier::Built
+        };
+
+        if revive {
+            if let Some(unit) = &unit {
+                let (revivable, revive_detail) = check_revivable(unit);
+                detail.push_str(&format!(" | {revive_detail}"));
+                // Revivable is strictly ABOVE Detectable: it means "live, AND
+                // would survive a restart" — a currently-failed/inactive unit
+                // stays Wired (unproven) no matter how revivable it is. A
+                // dead unit that could theoretically be restarted is not the
+                // same claim as a unit that IS live right now.
+                if confirmed && revivable {
+                    tier = LiveTier::Revivable;
+                }
+            }
+        }
+
+        claims.push(LiveClaim {
+            bullet: bullet.clone(),
+            tier,
+            detail,
+        });
+    }
+
+    let overall = claims
+        .iter()
+        .map(|c| c.tier)
+        .min()
+        .unwrap_or(LiveTier::Built);
+    let proven = overall >= LiveTier::Detectable;
+
+    if json {
+        let claims_json: Vec<String> = claims
+            .iter()
+            .map(|c| {
+                format!(
+                    "{{\"bullet\":\"{}\",\"tier\":\"{}\",\"detail\":\"{}\"}}",
+                    json_escape_live(&c.bullet),
+                    c.tier.label(),
+                    json_escape_live(&c.detail)
+                )
+            })
+            .collect();
+        println!(
+            "{{\"gap_id\":\"{}\",\"verdict\":\"{}\",\"claims\":[{}]}}",
+            json_escape_live(&gap_id),
+            overall.label(),
+            claims_json.join(",")
+        );
+    } else {
+        println!("chump verify --live {gap_id}");
+        for c in &claims {
+            println!("  [{}] {}", c.tier.label(), c.bullet.trim());
+            println!("      {}", c.detail);
+        }
+        println!("VERDICT: {}", overall.label());
+    }
+
+    if proven {
+        0
+    } else {
+        1
+    }
+}
+
 // ── unit tests ────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1644,6 +2195,60 @@ mod tests {
         assert!(!p.contains("Additional context"));
         let p2 = build_ac_writer_prompt("t", "d", "diff --git a/x b/x");
         assert!(p2.contains("Additional context"));
+    }
+
+    #[test]
+    fn infra3653_resolve_gap_id_for_live_accepts_bare_gap_id() {
+        assert_eq!(
+            resolve_gap_id_for_live("INFRA-3653"),
+            Ok("INFRA-3653".to_string())
+        );
+    }
+
+    #[test]
+    fn infra3653_resolve_gap_id_for_live_rejects_non_gap_non_number() {
+        assert!(resolve_gap_id_for_live("not-a-gap-or-number").is_err());
+    }
+
+    #[test]
+    fn infra3653_live_tier_order_matches_verdict_ladder() {
+        // BUILT < WIRED < DETECTABLE < REVIVABLE — overall verdict takes the
+        // weakest claim (min), so a Wired claim must never be out-ranked by
+        // a Detectable one when both are present.
+        assert!(LiveTier::Built < LiveTier::Wired);
+        assert!(LiveTier::Wired < LiveTier::Detectable);
+        assert!(LiveTier::Detectable < LiveTier::Revivable);
+        let claims = [LiveTier::Revivable, LiveTier::Wired, LiveTier::Detectable];
+        assert_eq!(claims.iter().min(), Some(&LiveTier::Wired));
+    }
+
+    #[test]
+    #[serial_test::serial]
+    fn infra3653_run_live_no_proof_bullets_is_unproven() {
+        // load_ac_bullets shells out to `chump gap show`; point CHUMP_REAL_BINARY
+        // at a stub that returns descriptive-only AC (no PROOF:/PROVEN-BY marker)
+        // so this stays offline and deterministic. Serialized: mutates the
+        // process-global CHUMP_REAL_BINARY env var (same hazard AMBIENT_ENV_LOCK
+        // guards above for CHUMP_AMBIENT_LOG).
+        let script = std::env::temp_dir().join("infra3653_stub_no_proof.sh");
+        std::fs::write(
+            &script,
+            "#!/bin/bash\necho '{\"acceptance_criteria\":\"[\\\"The thing works\\\"]\"}'\n",
+        )
+        .unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&script, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        std::env::set_var("CHUMP_REAL_BINARY", &script);
+        let code = run_live(&["INFRA-9999999".to_string()]);
+        std::env::remove_var("CHUMP_REAL_BINARY");
+        let _ = std::fs::remove_file(&script);
+        assert_eq!(
+            code, 1,
+            "no proof bullets must be reported unproven (exit 1)"
+        );
     }
 
     #[test]
@@ -1873,6 +2478,179 @@ mod tests {
         assert!(
             !b.covered,
             "LLM judge must not override a proof bullet's live-outcome verdict"
+        );
+    }
+
+    // ── PEER-VERI-08 (INFRA-3655): systemic proof-AC synthesis + blocking ──
+
+    #[test]
+    fn peerveri08_service_touching_diff_gets_injected_proof_ac() {
+        let diff = concat!(
+            "diff --git a/systemd/chump-worker.service b/systemd/chump-worker.service\n",
+            "+++ b/systemd/chump-worker.service\n",
+            "+[Unit]\n",
+            "+Description=chump worker\n",
+        );
+        let injected = maybe_inject_proof_ac(diff, &[]);
+        assert!(injected.is_some(), "service-unit diff must get a proof AC");
+        let bullet = injected.unwrap();
+        assert!(is_proof_bullet(&bullet));
+        assert_eq!(
+            find_systemd_unit_token(&bullet),
+            Some("chump-worker.service".to_string()),
+            "injected bullet must name the concrete unit check_live_outcome can parse: {bullet}"
+        );
+    }
+
+    #[test]
+    fn peerveri08_docs_only_diff_gets_no_injected_proof_ac() {
+        let diff = "+++ b/docs/process/FOO.md\n+some docs text\n";
+        assert!(
+            maybe_inject_proof_ac(diff, &[]).is_none(),
+            "docs-only diff must not get a proof AC injected"
+        );
+    }
+
+    #[test]
+    fn peerveri08_existing_proof_bullet_is_not_duplicated() {
+        let diff = concat!(
+            "diff --git a/systemd/chump-worker.service b/systemd/chump-worker.service\n",
+            "+++ b/systemd/chump-worker.service\n",
+            "+[Unit]\n",
+        );
+        let existing = vec!["PROVEN-BY chump-worker.service already covers this".to_string()];
+        assert!(
+            maybe_inject_proof_ac(diff, &existing).is_none(),
+            "a diff that already carries a proof bullet must not get a second one injected"
+        );
+    }
+
+    #[test]
+    fn peerveri08_install_script_diff_with_no_derivable_target_gets_no_injection() {
+        // AC#3: fail-open when no concrete, check_live_outcome-parseable
+        // target can be derived, even though the surface (install script)
+        // matched.
+        let diff = "+++ b/scripts/setup/install-foo.sh\n+echo hello\n";
+        assert!(maybe_inject_proof_ac(diff, &[]).is_none());
+    }
+
+    #[test]
+    fn peerveri08_live_blocking_flag_promotes_proof_miss_past_advisory() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("CHUMP_AC_GATE_ADVISORY", "true");
+        std::env::set_var("CHUMP_VERIFY_LIVE_BLOCKING", "1");
+        let bullet =
+            "PROVEN-BY chump-nonexistent-unit-xyz123.service reaching active state".to_string();
+        let result = score_against_bullets(
+            1,
+            "INFRA-TEST".to_string(),
+            vec![bullet],
+            String::new(),
+            None,
+        );
+        std::env::remove_var("CHUMP_AC_GATE_ADVISORY");
+        std::env::remove_var("CHUMP_VERIFY_LIVE_BLOCKING");
+        assert_eq!(
+            result.status,
+            CoverageStatus::Miss,
+            "an inactive-unit proof AC must BLOCK (Miss) when CHUMP_VERIFY_LIVE_BLOCKING=1, \
+             even though CHUMP_AC_GATE_ADVISORY=true would otherwise fail it open"
+        );
+    }
+
+    #[test]
+    fn peerveri08_live_blocking_flag_off_keeps_advisory_fail_open() {
+        let _guard = AMBIENT_ENV_LOCK.lock().unwrap();
+        std::env::set_var("CHUMP_AC_GATE_ADVISORY", "true");
+        std::env::remove_var("CHUMP_VERIFY_LIVE_BLOCKING");
+        let bullet =
+            "PROVEN-BY chump-nonexistent-unit-xyz123.service reaching active state".to_string();
+        let result = score_against_bullets(
+            1,
+            "INFRA-TEST".to_string(),
+            vec![bullet],
+            String::new(),
+            None,
+        );
+        std::env::remove_var("CHUMP_AC_GATE_ADVISORY");
+        assert_eq!(
+            result.status,
+            CoverageStatus::Advisory,
+            "with CHUMP_VERIFY_LIVE_BLOCKING unset (default off), advisory mode must still fail open"
+        );
+    }
+
+    // ── CREDIBLE-1471: boilerplate-AC exclusion ─────────────────────────────
+
+    #[test]
+    fn credible1471_is_boilerplate_ac_matches_every_domain_variant() {
+        assert!(is_boilerplate_ac(
+            "The change described by \"add a foo widget\" is implemented in the relevant EFFECTIVE code path(s)."
+        ));
+        assert!(is_boilerplate_ac(
+            "The change described by \"fix the bar\" is implemented in the relevant INFRA code path(s)."
+        ));
+    }
+
+    #[test]
+    fn credible1471_is_boilerplate_ac_does_not_match_real_criteria() {
+        assert!(!is_boilerplate_ac(
+            "At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change."
+        ));
+        assert!(!is_boilerplate_ac(
+            "The CLI exits non-zero when the lease file is missing."
+        ));
+    }
+
+    #[test]
+    fn credible1471_boilerplate_bullet_excluded_from_coverage_denominator() {
+        let bullets = vec![
+            "The change described by \"add a foo widget\" is implemented in the relevant EFFECTIVE code path(s).".to_string(),
+        ];
+        let result = score_against_bullets(
+            1,
+            "EFFECTIVE-TEST".to_string(),
+            bullets,
+            String::new(),
+            None,
+        );
+        assert!(
+            result.bullets.is_empty(),
+            "a gap whose only AC is the templated boilerplate must score as zero \
+             scoreable bullets, not one uncovered bullet: {:?}",
+            result.bullets
+        );
+        assert_eq!(
+            result.status,
+            CoverageStatus::Pass,
+            "boilerplate-only AC must not force a Miss status"
+        );
+    }
+
+    #[test]
+    fn credible1471_boilerplate_bullet_excluded_alongside_real_criteria() {
+        let bullets = vec![
+            "The change described by \"add a foo widget\" is implemented in the relevant EFFECTIVE code path(s).".to_string(),
+            "A totally unrelated, never-covered real acceptance criterion.".to_string(),
+        ];
+        let result = score_against_bullets(
+            1,
+            "EFFECTIVE-TEST".to_string(),
+            bullets,
+            String::new(),
+            None,
+        );
+        assert_eq!(
+            result.bullets.len(),
+            1,
+            "only the real bullet should remain after boilerplate exclusion: {:?}",
+            result.bullets
+        );
+        assert!(
+            !result.bullets[0]
+                .text
+                .contains("is implemented in the relevant"),
+            "the surviving bullet must be the real criterion, not the boilerplate one"
         );
     }
 
@@ -2184,5 +2962,149 @@ mod redteam {
         assert_eq!(v2.len(), 1);
         assert_eq!(v2[0].index, 1);
         assert_eq!(v2[0].status, JudgeStatus::Unmet);
+    }
+
+    // ── INFRA-3652: node-aware live-outcome probe ───────────────────────────
+    //
+    // `check_systemd_unit_live` takes the resolver as a parameter precisely so
+    // these tests don't need a live NATS server / capability manifest to
+    // exercise the resolves-remote / remote-active / remote-failed /
+    // unresolved branches (the resolver param is only a test seam —
+    // production always calls it with `resolve_target_node_for_unit`, see
+    // `check_live_outcome`).
+
+    /// Serializes these tests' process-global env-var mutations (`CHUMP_AC_GATE_SYSTEMCTL_BIN`,
+    /// `CHUMP_MACHINE_LABEL`) against parallel test threads — this module has no
+    /// access to `tests::AMBIENT_ENV_LOCK` (module-private), so it gets its own.
+    static INFRA3652_ENV_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
+    fn infra3652_write_stub_bin(
+        dir: &std::path::Path,
+        name: &str,
+        body: &str,
+    ) -> std::path::PathBuf {
+        let path = dir.join(name);
+        std::fs::write(&path, body).unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&path, perms).unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn infra3652_resolves_remote_and_probes_that_node_when_active() {
+        let _guard = INFRA3652_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "infra3652-remote-active-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let args_file = dir.join("args.txt");
+        let stub = infra3652_write_stub_bin(
+            &dir,
+            "ssh-stub.sh",
+            &format!(
+                "#!/bin/sh\necho \"$@\" > {:?}\necho active\nexit 0\n",
+                args_file
+            ),
+        );
+        std::env::set_var("CHUMP_MACHINE_LABEL", "infra3652-test-local-host");
+        std::env::set_var("CHUMP_AC_GATE_SYSTEMCTL_BIN", &stub);
+        let (ok, detail) = check_systemd_unit_live("chump-node-refresh.service", |_| {
+            Some("closetjunky".to_string())
+        });
+        std::env::remove_var("CHUMP_AC_GATE_SYSTEMCTL_BIN");
+        std::env::remove_var("CHUMP_MACHINE_LABEL");
+        let args_seen = std::fs::read_to_string(&args_file).unwrap_or_default();
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(
+            args_seen.contains("closetjunky") && args_seen.contains("chump-node-refresh.service"),
+            "ssh must be invoked against the resolved node and the named unit, got: {args_seen:?}"
+        );
+        assert!(ok, "remote active state must verify: {detail}");
+        assert!(
+            detail.contains("closetjunky"),
+            "detail must name the resolved target node: {detail}"
+        );
+    }
+
+    #[test]
+    fn infra3652_remote_failed_state_fails_and_names_node() {
+        // AC-3: the proof-AC shape naming chump-node-refresh.service, known
+        // failed on closetjunky (CJ) — must evaluate to (false, detail)
+        // naming closetjunky and the real failed state, not rubber-stamp it.
+        let _guard = INFRA3652_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "infra3652-remote-failed-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stub =
+            infra3652_write_stub_bin(&dir, "ssh-stub.sh", "#!/bin/sh\necho failed\nexit 3\n");
+        std::env::set_var("CHUMP_MACHINE_LABEL", "infra3652-test-local-host");
+        std::env::set_var("CHUMP_AC_GATE_SYSTEMCTL_BIN", &stub);
+        let (ok, detail) = check_systemd_unit_live("chump-node-refresh.service", |_| {
+            Some("closetjunky".to_string())
+        });
+        std::env::remove_var("CHUMP_AC_GATE_SYSTEMCTL_BIN");
+        std::env::remove_var("CHUMP_MACHINE_LABEL");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(!ok, "a failed remote unit must not verify: {detail}");
+        assert!(
+            detail.contains("closetjunky") && detail.contains("chump-node-refresh.service"),
+            "detail must name both the node and the unit so the receipt is checkable: {detail}"
+        );
+    }
+
+    #[test]
+    fn infra3652_unresolved_target_fails_closed_with_named_detail() {
+        // AC-2: an unresolvable target must fail CLOSED with a detail naming
+        // the unit -- it must NOT silently fall back to a local probe (that
+        // fallback is exactly the "assume localhost" anti-pattern this gap
+        // removes).
+        let (ok, detail) = check_systemd_unit_live("chump-node-refresh.service", |_| None);
+        assert!(!ok, "an unresolved target must fail closed: {detail}");
+        assert_eq!(
+            detail,
+            "target node unresolved for chump-node-refresh.service"
+        );
+    }
+
+    #[test]
+    fn infra3652_resolves_to_current_host_runs_local_probe() {
+        // When resolution says the unit lives on THIS host, the gate must
+        // still take the local systemctl path (AC-1's "local execution
+        // remains only when the target resolves to the current host").
+        let _guard = INFRA3652_ENV_LOCK.lock().unwrap();
+        let dir = std::env::temp_dir().join(format!(
+            "infra3652-local-{}-{}",
+            std::process::id(),
+            line!()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let stub = infra3652_write_stub_bin(
+            &dir,
+            "systemctl-stub.sh",
+            "#!/bin/sh\necho active\nexit 0\n",
+        );
+        std::env::set_var("CHUMP_MACHINE_LABEL", "infra3652-this-host");
+        std::env::set_var("CHUMP_AC_GATE_SYSTEMCTL_BIN", &stub);
+        let (ok, detail) = check_systemd_unit_live("chump-local.service", |_| {
+            Some("infra3652-this-host".to_string())
+        });
+        std::env::remove_var("CHUMP_AC_GATE_SYSTEMCTL_BIN");
+        std::env::remove_var("CHUMP_MACHINE_LABEL");
+        let _ = std::fs::remove_dir_all(&dir);
+        assert!(ok, "local active state must verify: {detail}");
+        assert!(
+            detail.starts_with("systemctl is-active"),
+            "resolving to the current host must take the local (non-ssh) path: {detail}"
+        );
     }
 }

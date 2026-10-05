@@ -1,0 +1,12 @@
+- id: EFFECTIVE-347
+  domain: EFFECTIVE
+  title: Bandit selector honors CHUMP_PREFERRED_MODEL_CLASS — make difficulty/model-class escalation live (dead under active Bandit strategy)
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Bandit selector honors CHUMP_PREFERRED_MODEL_CLASS — make difficulty/model-class escalation live (dead under active Bandit strategy)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3437
+

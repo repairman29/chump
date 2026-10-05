@@ -1,0 +1,12 @@
+- id: CREDIBLE-200
+  domain: CREDIBLE
+  title: "CREDIBLE: cascade implement can ship a stub test (assert 1==1) with no source fix; organ only catches it on green CI"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"cascade implement can ship a stub test (assert 1==1) with no source fix; organ only catches it on green CI\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3475
+

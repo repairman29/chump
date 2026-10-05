@@ -40,6 +40,10 @@
 #                           claude -p. Use opus for harder gaps.
 #   CARGO_TARGET_DIR        recommended: shared target across worktrees
 #                           (see INFRA-210 — exported below if unset)
+#   CHUMP_CARGO_TARGET_GROUP_SIZE (default 2) workers per distinct
+#                           CARGO_TARGET_DIR — see INFRA-3662 below.
+#   CHUMP_CARGO_TARGET_ROOT override for the per-group target root (skips
+#                           USB/cjdata* autodetect — see INFRA-3662 below).
 #
 # Stop:
 #   FLEET_SIZE=0 scripts/dispatch/run-fleet.sh   ← preferred (cascade-kills orphans, INFRA-581)
@@ -99,6 +103,9 @@ _ARG_LOCKS_DIR=""
 _ARG_TMUX_SESSION=""
 _FLEET_RESTART=0
 _FLEET_DRY_RUN_ARG=0
+# CREDIBLE-1020: --detect-zero-launchd runs the zero-process launchd-job
+# detector and exits, skipping the rest of the fleet-launcher body.
+_FLEET_DETECT_ZERO_LAUNCHD=0
 _POSITIONAL=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -118,6 +125,8 @@ while [[ $# -gt 0 ]]; do
             _FLEET_RESTART=1; shift ;;
         --dry-run)
             _FLEET_DRY_RUN_ARG=1; shift ;;
+        --detect-zero-launchd)
+            _FLEET_DETECT_ZERO_LAUNCHD=1; shift ;;
         --help|-h)
             sed -n '2,/^set -/p' "$0" | sed 's/^# \?//' | head -60
             exit 0
@@ -162,6 +171,42 @@ fi
 SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
 # INFRA-469: route every `chump` invocation through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
+
+# CREDIBLE-1020 (CREDIBLE-274 slice): reads a launchd plist's Label via
+# PlistBuddy (falls back to a plain grep/sed parse on non-macOS boxes,
+# where /usr/libexec/PlistBuddy doesn't exist — e.g. Linux dev/CI hosts).
+_launchd_plist_label() {
+    local plist="$1"
+    if [[ -x /usr/libexec/PlistBuddy ]]; then
+        /usr/libexec/PlistBuddy -c 'Print :Label' "$plist" 2>/dev/null
+        return
+    fi
+    grep -A1 '<key>Label</key>' "$plist" 2>/dev/null \
+        | grep '<string>' | head -1 \
+        | sed -e 's/.*<string>//' -e 's/<\/string>.*//'
+}
+
+# Walks all .plist files under scripts/launchd and ~/Library/LaunchAgents,
+# extracts each job's Label, and prints the plist path for any job whose
+# label has no matching running process (candidate (a), CREDIBLE-274 slice).
+_detect_zero_launchd_jobs() {
+    local dir plist label
+    for dir in "$REPO_ROOT/scripts/launchd" "$HOME/Library/LaunchAgents"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r -d '' plist; do
+            label="$(_launchd_plist_label "$plist")"
+            [[ -n "$label" ]] || continue
+            if ! pgrep -f "$label" >/dev/null 2>&1; then
+                echo "$plist"
+            fi
+        done < <(find "$dir" -maxdepth 1 -name '*.plist' -print0 2>/dev/null)
+    done
+}
+
+if [[ "$_FLEET_DETECT_ZERO_LAUNCHD" -eq 1 ]]; then
+    _detect_zero_launchd_jobs
+    exit 0
+fi
 
 # INFRA-351: source $REPO_ROOT/.env (if present) so spawned worker panes
 # inherit ANTHROPIC_API_KEY / OPENAI_API_KEY / TOGETHER_API_KEY etc. and
@@ -222,6 +267,34 @@ elif [[ -n "${ANTHROPIC_API_KEY:-}" ]]; then
 fi
 
 FLEET_SIZE="${FLEET_SIZE:-8}"
+
+# EFFECTIVE-086 AC #3: bind worker concurrency to the graduated autonomy
+# dial via the existing fleet scaling gate (docs/process/FLEET_SLOS.md /
+# INFRA-518) rather than a separate cap. The dial is a *ceiling* — the
+# scale-up criteria in FLEET_SLOS.md still govern whether the fleet may
+# actually use up to that ceiling. Mirrors
+# crates/chump-atomic-claim/src/autonomy_level.rs::AutonomyLevel::max_workers
+# — keep both in sync if the level->cap mapping changes.
+if [[ "$FLEET_SIZE" != "0" ]]; then
+    _al_path="${HOME:-/tmp}/.chump/AUTONOMY_LEVEL"
+    _al_level=0
+    if [[ -r "$_al_path" ]]; then
+        _al_raw="$(tr -d '[:space:]' < "$_al_path" 2>/dev/null || echo "")"
+        [[ "$_al_raw" =~ ^[0-9]+$ ]] && _al_level="$_al_raw"
+    fi
+    case "$_al_level" in
+        0|1) _al_max_workers=0 ;;
+        2) _al_max_workers=1 ;;
+        3) _al_max_workers=2 ;;
+        4) _al_max_workers=4 ;;
+        *) _al_max_workers="" ;; # 5 (UNLEASHED) or out-of-range: no level-imposed ceiling
+    esac
+    if [[ -n "$_al_max_workers" ]] && (( FLEET_SIZE > _al_max_workers )); then
+        echo "[run-fleet.sh] AUTONOMY_LEVEL=$_al_level caps FLEET_SIZE $FLEET_SIZE -> $_al_max_workers (EFFECTIVE-086)" >&2
+        FLEET_SIZE=$_al_max_workers
+    fi
+fi
+
 # INFRA-371: timeout default lowered 1800→600.
 # INFRA-707: raised 600→900. Post-rebalancing (FLEET-046) the fleet picks
 # substantive EFFECTIVE/CREDIBLE gaps that write 600-900 lines of Rust —
@@ -234,6 +307,45 @@ FLEET_TIMEOUT_S="${FLEET_TIMEOUT_S:-1800}"
 # Memory guard (2026-07-19): cap per-worker cargo parallelism — concurrent
 # rustc jobs (~1.2GB each) are the top RAM consumers during fleet build storms.
 export CARGO_BUILD_JOBS="${CARGO_BUILD_JOBS:-4}"
+
+# INFRA-3659: cap AGGREGATE cargo concurrency (FLEET_SIZE * CARGO_BUILD_JOBS)
+# to this host's core count — durable version of the 2026-08-22 CJ hand-cap
+# (jobs=1 in ~/.cargo/config.toml + manually stopping cj-worker2/3). CJ is
+# 4-core but ran ~14 workers x CARGO_BUILD_JOBS=4 = ~56 rustc threads ->
+# swap thrash, 30-45min/gap, unverified_ship. Every launch now self-caps
+# instead of relying on a human noticing and hand-editing config. No bypass
+# knob on purpose (INFRA-2429 zero-bypass thesis) — a host that genuinely
+# has spare headroom should raise CARGO_BUILD_JOBS/FLEET_SIZE explicitly
+# rather than opt out of the safety net wholesale.
+if [[ "$FLEET_SIZE" != "0" ]]; then
+    _fleet_nproc="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)"
+    if [[ "$_fleet_nproc" =~ ^[0-9]+$ ]] && (( _fleet_nproc > 0 )) && (( FLEET_SIZE * CARGO_BUILD_JOBS > _fleet_nproc )); then
+        _fleet_size_before=$FLEET_SIZE
+        _cargo_jobs_before=$CARGO_BUILD_JOBS
+        # Prefer trimming FLEET_SIZE first (worker count is the cheaper knob
+        # to give back — CARGO_BUILD_JOBS>1 still helps a single build finish
+        # faster), then fall back to shrinking CARGO_BUILD_JOBS if one worker
+        # alone still oversubscribes the box.
+        if (( FLEET_SIZE > _fleet_nproc )); then
+            FLEET_SIZE=$_fleet_nproc
+        fi
+        while (( FLEET_SIZE * CARGO_BUILD_JOBS > _fleet_nproc && FLEET_SIZE > 1 )); do
+            FLEET_SIZE=$(( FLEET_SIZE - 1 ))
+        done
+        if (( FLEET_SIZE * CARGO_BUILD_JOBS > _fleet_nproc )); then
+            CARGO_BUILD_JOBS=$(( _fleet_nproc / FLEET_SIZE ))
+            (( CARGO_BUILD_JOBS < 1 )) && CARGO_BUILD_JOBS=1
+            export CARGO_BUILD_JOBS
+        fi
+        echo "[run-fleet] INFRA-3659: capped concurrency to nproc=$_fleet_nproc -> FLEET_SIZE $_fleet_size_before->$FLEET_SIZE, CARGO_BUILD_JOBS $_cargo_jobs_before->$CARGO_BUILD_JOBS"
+        _amb_cap_log="${CHUMP_AMBIENT_LOG:-$FLEET_LOCKS_DIR/ambient.jsonl}"
+        mkdir -p "$(dirname "$_amb_cap_log")" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"fleet_concurrency_capped","nproc":%d,"fleet_size_before":%d,"fleet_size_after":%d,"cargo_jobs_before":%d,"cargo_jobs_after":%d}\n' \
+          "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_fleet_nproc" "$_fleet_size_before" "$FLEET_SIZE" "$_cargo_jobs_before" "$CARGO_BUILD_JOBS" \
+          >> "$_amb_cap_log" 2>/dev/null || true
+    fi
+fi
+
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
@@ -360,6 +472,59 @@ FLEET_START_EPOCH="${FLEET_START_EPOCH:-$(date +%s)}"
 if [ -z "${CARGO_TARGET_DIR:-}" ]; then
     export CARGO_TARGET_DIR="${CHUMP_SHARED_CARGO_TARGET:-$HOME/.cargo/chump-shared-target}"
 fi
+
+# INFRA-3662: one CARGO_TARGET_DIR shared by every worker means the cargo
+# fingerprint/incremental cache is also shared — worktree A's build of a file
+# that doesn't exist on worktree B's branch poisons B's fingerprint lookup
+# ("couldn't read tests/foo.rs: No such file or directory", INFRA-1138). The
+# per-worker-test-gate CARGO_TARGET_DIR override fixed `cargo test`, but the
+# fleet's persistent worker.sh loop (which does NOT go through that gate for
+# `cargo check`/`clippy`) still shares one target dir across every pane.
+# Fix: split workers into groups of CHUMP_CARGO_TARGET_GROUP_SIZE (default 2)
+# and give each group its own CARGO_TARGET_DIR — bounded fan-out (FLEET_SIZE/N
+# distinct dirs, not FLEET_SIZE) so disk footprint stays close to today's
+# single-dir baseline while isolating fingerprint state. sccache (rustc-wrapper
+# in .cargo/config.toml) still shares compiled object code across ALL groups,
+# so the hit-rate benefit is unaffected — only fingerprint/incremental state is
+# now group-local instead of fleet-global.
+CHUMP_CARGO_TARGET_GROUP_SIZE="${CHUMP_CARGO_TARGET_GROUP_SIZE:-2}"
+if ! [[ "$CHUMP_CARGO_TARGET_GROUP_SIZE" =~ ^[0-9]+$ ]] || [[ "$CHUMP_CARGO_TARGET_GROUP_SIZE" -lt 1 ]]; then
+    echo "[run-fleet] WARN: CHUMP_CARGO_TARGET_GROUP_SIZE='$CHUMP_CARGO_TARGET_GROUP_SIZE' invalid — defaulting to 2"
+    CHUMP_CARGO_TARGET_GROUP_SIZE=2
+fi
+
+# Root directory under which each group's target dir is created. Prefers a
+# mounted external/USB data disk (mirrors install-sccache.sh's cjdata3-first
+# autodetect, INFRA-3660) so N group dirs don't compete with the OS drive for
+# space; falls back to the existing single shared-target location so a
+# machine with no USB/cjdata mount keeps today's behavior when N==FLEET_SIZE
+# effectively collapses to group size 1 (see per-worker loop below).
+_detect_cargo_target_root() {
+    if [[ -n "${CHUMP_CARGO_TARGET_ROOT:-}" ]]; then
+        echo "$CHUMP_CARGO_TARGET_ROOT"
+        return
+    fi
+    if [[ -d /mnt/cjdata3 && -w /mnt/cjdata3 ]]; then
+        echo "/mnt/cjdata3/chump-cargo-targets"
+        return
+    fi
+    local root_fs best="" best_avail_kb=0
+    root_fs="$(df -P / 2>/dev/null | awk 'NR==2{print $1}')"
+    while read -r fs avail_kb mnt; do
+        [[ "$fs" == "$root_fs" ]] && continue
+        [[ -w "$mnt" ]] || continue
+        if (( avail_kb > best_avail_kb )); then
+            best_avail_kb=$avail_kb
+            best="$mnt"
+        fi
+    done < <(df -Pk /mnt/cjdata* 2>/dev/null | awk 'NR>1{print $1, $4, $6}')
+    if [[ -n "$best" ]]; then
+        echo "$best/chump-cargo-targets"
+        return
+    fi
+    echo "$(dirname "$CARGO_TARGET_DIR")/chump-cargo-target-groups"
+}
+CHUMP_CARGO_TARGET_ROOT="$(_detect_cargo_target_root)"
 
 # ── INFRA-844: --restart — tear down existing fleet then relaunch ─────────────
 if [[ "$_FLEET_RESTART" -eq 1 ]]; then
@@ -498,6 +663,47 @@ if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" && "$FLEET_DRY_RUN" != "1" ]]; then
     fi
 fi
 
+# CREDIBLE-390 (CREDIBLE-130 slice): classify a probe error string into one
+# of four discrete classes so callers stop conflating "billing exhausted"
+# with "credentials invalid" (the 2026-06-08 auth-dead false-positive — a
+# valid API key on a zero-balance account was reported as "authentication
+# failed" and sent the on-call down an auth/flag/lease rabbit hole before a
+# direct probe revealed the real cause was credit exhaustion). Order matters:
+# billing/credit-exhaustion phrases must be checked BEFORE the generic
+# 401/unauthorized check, since a credit-exhausted response can also carry a
+# 401-shaped envelope depending on provider.
+#
+# CREDIBLE-449 (CREDIBLE-130 slice, filed after this landed) re-asked for the
+# same three ACs — parse probe error body/status into auth-invalid vs
+# credit-exhausted vs rate-limit vs network, with test coverage. Verified
+# 2026-09-02 that classify_probe_error() below already satisfies all three
+# (see scripts/ci/test-run-fleet-error-classification.sh, 10/10 passing);
+# closed as duplicate rather than re-implementing.
+#   echoes one of: auth-invalid | credit-exhausted | rate-limit | network
+classify_probe_error() {
+    local out="$1"
+    local lower
+    lower="$(tr '[:upper:]' '[:lower:]' <<<"$out")"
+
+    if grep -qiE 'credit balance is too low|credit_limit|credit limit|insufficient quota|insufficient_quota|payment required|\b402\b|billing' <<<"$lower"; then
+        echo "credit-exhausted"
+        return
+    fi
+    if grep -qiE '\b429\b|rate.?limit|too many requests|overloaded_error|rate_limit_error' <<<"$lower"; then
+        echo "rate-limit"
+        return
+    fi
+    if grep -qiE 'could not resolve host|connection refused|econnrefused|network is unreachable|timed out|timeout|dns|no route to host|connection reset' <<<"$lower"; then
+        echo "network"
+        return
+    fi
+    if grep -qiE '\b401\b|unauthorized|invalid.*(api.?key|token)|authentication_error|permission_error|invalid x-api-key' <<<"$lower"; then
+        echo "auth-invalid"
+        return
+    fi
+    echo "auth-invalid"
+}
+
 # INFRA-621: launch-time auth verification. Probe the detected auth path with
 # a minimal claude call to ensure credentials are valid before spawning workers.
 # This catches misconfigurations early (e.g., expired OAUTH token, invalid API key)
@@ -538,6 +744,18 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
         fi
     done
 
+    # RESILIENT-088: a 404/model-not-found error means the API rejected the
+    # *model* the probe (or claude's own default resolution) picked, not the
+    # credentials — Anthropic authenticates the request before it looks up
+    # the model, so reaching a 404 at all is itself proof auth was accepted.
+    # Retired model IDs 404 identically for valid and invalid keys, so the
+    # old code (any non-zero probe rc == auth failure) misread "model gone"
+    # as "credentials bad" and halted the fleet on perfectly good auth.
+    if [[ $_probe_rc -ne 0 ]] && grep -qiE '404|model_not_found|not_found_error|no such model|model[^0-9a-z]*(not found|does not exist)' <<<"$_probe_out" 2>/dev/null; then
+        echo "[run-fleet] INFRA-621/RESILIENT-088: probe got model-not-found (404), not an auth failure — treating as auth-OK"
+        _probe_rc=0
+    fi
+
     if [[ $_probe_rc -eq 0 ]]; then
         echo "[run-fleet] INFRA-621: auth probe succeeded"
         printf '{"ts":"%s","kind":"fleet_auth_verified","auth_mode":"%s","auth_path":"%s"}\n' \
@@ -547,19 +765,21 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
     else
         _auth_probe_failed=1
 
-        # Generate operator-friendly error hints based on auth mode.
-        if [[ "$_fleet_auth_mode" == "subscription" ]]; then
-            if grep -q "401\|Unauthorized\|invalid.*token" <<<"$_probe_out" 2>/dev/null; then
-                _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN is expired or invalid. Refresh your subscription credentials."
-            else
-                _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN authentication failed."
-            fi
+        # CREDIBLE-390: classify the failure into a discrete class BEFORE
+        # generating the operator-facing message, so credit-exhaustion never
+        # gets mislabeled as an auth failure (CREDIBLE-130).
+        _probe_error_class="$(classify_probe_error "$_probe_out")"
+
+        if [[ "$_probe_error_class" == "credit-exhausted" ]]; then
+            _auth_probe_error="Credit balance is too low on this account (not a credentials problem — auth accepted, billing exhausted). Top up credits, or switch CHUMP_AUTH_MODE to use a different auth path."
+        elif [[ "$_probe_error_class" == "rate-limit" ]]; then
+            _auth_probe_error="Anthropic API rate limit hit during the launch probe. This is transient — retry launch, or reduce fleet concurrency."
+        elif [[ "$_probe_error_class" == "network" ]]; then
+            _auth_probe_error="Network error reaching the Anthropic API (not a credentials problem). Check connectivity and retry."
+        elif [[ "$_fleet_auth_mode" == "subscription" ]]; then
+            _auth_probe_error="CLAUDE_CODE_OAUTH_TOKEN is expired or invalid. Refresh your subscription credentials."
         elif [[ "$_fleet_auth_mode" == "api_key" ]]; then
-            if grep -q "401\|Unauthorized\|invalid.*key" <<<"$_probe_out" 2>/dev/null; then
-                _auth_probe_error="ANTHROPIC_API_KEY is invalid or has insufficient permissions."
-            else
-                _auth_probe_error="ANTHROPIC_API_KEY authentication failed."
-            fi
+            _auth_probe_error="ANTHROPIC_API_KEY is invalid or has insufficient permissions."
         elif [[ "$_fleet_auth_mode" == "unknown" ]]; then
             _auth_probe_error="No auth credentials found. Set ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN."
         else
@@ -567,23 +787,42 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
         fi
 
         # Check for conflicting auth setup (both set but one is empty).
-        if [[ -n "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
-            && [[ "$_fleet_auth_mode" != "api_key" ]]; then
-            _auth_probe_error="$_auth_probe_error (hint: ANTHROPIC_API_KEY is set but appears invalid; unset it if you want to use OAUTH token instead)"
-        fi
-        if [[ -z "${ANTHROPIC_API_KEY:-}" && -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
-            && [[ "$_fleet_auth_mode" != "subscription" ]]; then
-            _auth_probe_error="$_auth_probe_error (hint: CLAUDE_CODE_OAUTH_TOKEN is set but appears invalid; unset it if you want to use API key instead)"
+        # Only relevant to the auth-invalid class — credit/rate-limit/network
+        # failures aren't fixed by switching auth path.
+        if [[ "$_probe_error_class" == "auth-invalid" ]]; then
+            if [[ -n "${ANTHROPIC_API_KEY:-}" && -z "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+                && [[ "$_fleet_auth_mode" != "api_key" ]]; then
+                _auth_probe_error="$_auth_probe_error (hint: ANTHROPIC_API_KEY is set but appears invalid; unset it if you want to use OAUTH token instead)"
+            fi
+            if [[ -z "${ANTHROPIC_API_KEY:-}" && -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] \
+                && [[ "$_fleet_auth_mode" != "subscription" ]]; then
+                _auth_probe_error="$_auth_probe_error (hint: CLAUDE_CODE_OAUTH_TOKEN is set but appears invalid; unset it if you want to use API key instead)"
+            fi
         fi
 
-        echo "[run-fleet] ERROR: INFRA-621: auth probe failed" >&2
+        echo "[run-fleet] ERROR: INFRA-621: auth probe failed (class=$_probe_error_class)" >&2
         echo "[run-fleet]   $_auth_probe_error" >&2
         # shellcheck disable=SC2001  # sed needed for correct quoting in JSON context
-        printf '{"ts":"%s","kind":"fleet_auth_misconfigured","auth_mode":"%s","auth_path":"%s","error":"%s"}\n' \
+        printf '{"ts":"%s","kind":"fleet_auth_misconfigured","auth_mode":"%s","auth_path":"%s","error_class":"%s","error":"%s"}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
-            "$_fleet_auth_mode" "$_fleet_auth_path" \
+            "$_fleet_auth_mode" "$_fleet_auth_path" "$_probe_error_class" \
             "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
             >> "$_amb_log" 2>/dev/null || true
+
+        # CREDIBLE-130 AC3: credit-exhaustion also gets its own distinct kind
+        # (separate from fleet_auth_misconfigured) so operator-recall and any
+        # other ambient consumer can route on it without needing to parse the
+        # error_class field out of a generically-named auth event. This is the
+        # signal that would have short-circuited the 2026-06-08 misdiagnosis —
+        # a consumer watching for fleet_auth_* kinds alone would still not see
+        # this as an auth problem.
+        if [[ "$_probe_error_class" == "credit-exhausted" ]]; then
+            printf '{"ts":"%s","kind":"fleet_credit_exhausted","auth_mode":"%s","auth_path":"%s","error":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "$_fleet_auth_mode" "$_fleet_auth_path" \
+                "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
+                >> "$_amb_log" 2>/dev/null || true
+        fi
 
         if [[ "${CHUMP_FLEET_FORCE_LAUNCH:-0}" != "1" ]]; then
             exit 3
@@ -629,7 +868,11 @@ fi
 # grep -c prints "0" AND exits 1 on zero-match; the old `|| true` then wrote a
 # SECOND "0", yielding "0\n0" and a `((` syntax error (VOA-004). Capture the count
 # as-is and default only if the whole expansion is empty.
-_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null | grep -c "^INSERT.*'open'" 2>/dev/null)
+# Registry privacy: the mirror is published to the private `registry` remote;
+# origin/main only carries it in the legacy (pre-cutover) layout.
+_reg_ref="origin/main"
+git -C "$REPO_ROOT" remote get-url registry >/dev/null 2>&1 && _reg_ref="registry/main"
+_sql_open=$(git -C "$REPO_ROOT" show "${_reg_ref}:.chump/state.sql" 2>/dev/null | grep -c "^INSERT.*'open'" 2>/dev/null)
 _sql_open=${_sql_open:-0}
 if (( _db_open < _sql_open )); then
     echo "[run-fleet] INFRA-465: state.db has $_db_open open gaps, origin/main has $_sql_open — running 'chump gap import'"
@@ -651,7 +894,7 @@ cat <<EOF
   effort        : $FLEET_EFFORT_FILTER
   log dir       : $FLEET_LOG_DIR
   backend       : $FLEET_BACKEND
-  CARGO_TARGET_DIR : $CARGO_TARGET_DIR
+  CARGO_TARGET_DIR : $CHUMP_CARGO_TARGET_ROOT/group-<N> (groups of $CHUMP_CARGO_TARGET_GROUP_SIZE, INFRA-3662)
 EOF
 
 if [ "$FLEET_DRY_RUN" = "1" ]; then
@@ -775,7 +1018,12 @@ worker_env=(
     # INFRA-623: workers inherit launch epoch so fleet-restart --refresh-auth
     # can compare oauth-token.json mtime against fleet start time.
     "FLEET_START_EPOCH=$FLEET_START_EPOCH"
-    "CARGO_TARGET_DIR=$CARGO_TARGET_DIR"
+    # INFRA-3662: NOT setting CARGO_TARGET_DIR here on purpose — a single
+    # fleet-wide value here would apply to every worker regardless of the
+    # per-group override computed in the spawn loop below (last assignment
+    # on the command line wins, but omitting it entirely avoids relying on
+    # that ordering). Each worker gets CARGO_TARGET_DIR=<group dir> injected
+    # per-pane in the spawn loop instead.
     # INFRA-371 token-burn defaults
     "FLEET_INLINE_BRIEFING=$FLEET_INLINE_BRIEFING"
     "CHUMP_LESSONS_AT_SPAWN_N=$CHUMP_LESSONS_AT_SPAWN_N"
@@ -872,7 +1120,15 @@ for i in $(seq 1 "$FLEET_SIZE"); do
          && "$i" -le "$CONTENT_BOT_LAST" ]]; then
         worker_skills_env="WORKER_SKILLS=content-bot,pmm,docubot,evangelist,copybot "
     fi
-    cmd="${env_prefix}${worker_skills_env}AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
+    # INFRA-3662: group workers into CHUMP_CARGO_TARGET_GROUP_SIZE-sized
+    # cohorts, each with its own CARGO_TARGET_DIR under CHUMP_CARGO_TARGET_ROOT.
+    # Ends the fleet-wide shared-target fingerprint clobbering (INFRA-1138)
+    # while keeping the group count bounded (FLEET_SIZE/N dirs, not FLEET_SIZE)
+    # so combined disk footprint stays a small multiple of the old single dir.
+    _group_idx=$(( (i - 1) / CHUMP_CARGO_TARGET_GROUP_SIZE + 1 ))
+    _worker_target_dir="$CHUMP_CARGO_TARGET_ROOT/group-${_group_idx}"
+    mkdir -p "$_worker_target_dir" 2>/dev/null || true
+    cmd="${env_prefix}${worker_skills_env}CARGO_TARGET_DIR=$_worker_target_dir AGENT_ID=$i $SCRIPT_DIR/worker.sh 2>&1 | tee -a '$log'"
     tmux split-window -t "$FLEET_SESSION:fleet" -c "$REPO_ROOT" "$cmd"
     # INFRA-581: capture the newly-created pane's shell PID so teardown can
     # cascade-kill worker.sh → timeout → claude subtrees on FLEET_SIZE=0.

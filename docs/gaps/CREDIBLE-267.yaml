@@ -1,0 +1,15 @@
+- id: CREDIBLE-267
+  domain: CREDIBLE
+  title: "CREDIBLE: unblock the ship pipeline — allowlist test-notify-operator.sh in preflight-ci-parity (unmirrored gate from #3544 fails fast-checks on EVERY PR)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"unblock the ship pipeline — allowlist test-notify-operator.sh in preflight-ci-parity (unmirrored gate from #3544 fails fast-checks on EVERY PR)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3554
+  outcome_id: MISSION-010
+  evidence: |
+    2026-08-09: EVERY PR fails fast-checks/test identically (verified on #3550 Rust + #3553 shell — no common code). Root: scripts/ci/test-preflight-ci-parity.sh reports 1 UNMIRRORED gate — audit.yml audit-shard step 'operator escalation channel is wired (RESILIENT-263)' running test-notify-operator.sh — added by #3544 (RESILIENT-263) without a preflight mirror/Tier-D/allowlist. It landed because #3544 was admin-merged past its own parity failure, so now the parity smoke fails on all PRs and blocks the whole ship pipeline.
+

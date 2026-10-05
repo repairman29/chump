@@ -1,0 +1,13 @@
+- id: INFRA-3461
+  domain: INFRA
+  title: "EFFECTIVE: chump llm-complete — sanctioned shell gateway to the shared LLM service (ProviderCascade), so shell scripts stop hand-rolling curl+x-api-key"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"chump llm-complete — sanctioned shell gateway to the shared LLM service (ProviderCascade), so shell scripts stop hand-rolling curl+x-api-key\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3360
+  outcome_id: MISSION-010
+

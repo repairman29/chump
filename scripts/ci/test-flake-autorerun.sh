@@ -75,21 +75,48 @@ case "$1" in
         n=$((n+1))
         echo "$n" > "$COUNT_FILE"
 
+        # RESILIENT-1044: replay a byte-for-byte captured real CI failure
+        # (run 30777601663) instead of synthesizing output, so the parser is
+        # exercised against production bytes, not just an idealized fixture.
+        if [[ -n "${FAKE_RAW_LOG_FILE:-}" && "$n" == "1" ]]; then
+            cat "$FAKE_RAW_LOG_FILE"
+            exit 101
+        fi
+
         if [[ "$n" == "1" ]]; then
             names="${FAKE_FAIL_NAMES:-}"
         else
             names="${FAKE_FAIL_NAMES_RERUN:-}"
         fi
         IFS=',' read -ra arr <<< "$names"
+        # RESILIENT-306: FAKE_FORMAT selects the failure-output shape so the
+        # parser is exercised against all three CI realities:
+        #   verbose  — legacy `cargo test`  ("test NAME ... FAILED")
+        #   nextest  — `cargo nextest run`  ("    FAIL [ 0.0s] <bin> NAME")
+        #   quiet    — `cargo test --quiet` (names only in the failures: block)
+        fmt="${FAKE_FORMAT:-verbose}"
         for t in "${arr[@]}"; do
             [[ -z "$t" ]] && continue
-            echo "test $t ... FAILED"
+            case "$fmt" in
+                # Realistic nextest shape (fleet un-jam 2026-08-13): ANSI SGR
+                # color codes + a "(N/M)" progress column + a hyphenated bin
+                # name -- the exact combination that defeated the first
+                # RESILIENT-306 parser and let credible218 re-jam the fleet.
+                nextest) printf '\033[31;1m        FAIL\033[0m [   0.005s] (1/1) \033[35;1mfake-crate\033[0m \033[34;1m%s\033[0m\n' "$t" ;;
+                quiet)   : ;;  # names appear only in the failures: block below
+                *)       echo "test $t ... FAILED" ;;
+            esac
         done
         echo "test passing_one ... ok"
         if [[ -z "$names" ]]; then
             echo "test result: ok. 1 passed; 0 failed"
             exit 0
         else
+            if [[ "$fmt" == "quiet" ]]; then
+                echo "failures:"
+                for t in "${arr[@]}"; do [[ -z "$t" ]] && continue; echo "    $t"; done
+                echo ""
+            fi
             echo "test result: FAILED. 1 passed; $(echo "$names" | tr , '\n' | grep -c .) failed"
             exit 101
         fi
@@ -106,6 +133,7 @@ run_wrapper() {
     TMP_STATE="$TMP/state-$$-${RANDOM}" \
     FAKE_FAIL_NAMES="${FAKE_FAIL_NAMES:-}" \
     FAKE_FAIL_NAMES_RERUN="${FAKE_FAIL_NAMES_RERUN:-}" \
+    FAKE_FORMAT="${FAKE_FORMAT:-verbose}" \
     bash "$FAKE/scripts/ci/cargo-test-with-rerun.sh" -- cargo test 2>&1
     RC=$?
     cd - >/dev/null || true
@@ -173,6 +201,81 @@ if [[ "$RC" -ne 0 ]] && ! grep -q "flake_autorerun_initiated" /tmp/bypass.out; t
     ok "bypass returns raw signal without rerun"
 else
     fail "bypass should not rerun (rc=$RC, log: $(cat /tmp/bypass.out))"
+fi
+
+# ── Test 6: nextest-format catalog hit → recovered (RESILIENT-306) ──────────
+# This is the regression the fleet-jam exposed: CI runs `cargo nextest run`,
+# whose failure lines the old parser could not read, so INFRA-764's autorerun
+# was silently blind to every nextest flake. Must parse + recover now.
+echo "--- Test 6: nextest-format catalog hit, rerun green → recovered ---"
+OUT=$(FAKE_FORMAT=nextest \
+      FAKE_FAIL_NAMES="known_module::tests::flaky_one" \
+      FAKE_FAIL_NAMES_RERUN="" \
+      run_wrapper)
+RC=$?
+if [[ "$RC" -eq 0 ]] \
+   && echo "$OUT" | grep -q "flake_autorerun_initiated" \
+   && echo "$OUT" | grep -q "flake_autorerun_recovered"; then
+    ok "nextest-format catalog flake auto-rerun recovered"
+else
+    fail "expected nextest recover (rc=$RC, out=$OUT)"
+fi
+
+# ── Test 7: nextest-format unknown failure → no rerun ───────────────────────
+echo "--- Test 7: nextest-format unknown failure → no rerun, exit non-zero ---"
+OUT=$(FAKE_FORMAT=nextest FAKE_FAIL_NAMES="some::real::bug" run_wrapper)
+RC=$?
+if [[ "$RC" -ne 0 ]] && echo "$OUT" | grep -q "not auto-rerunning"; then
+    ok "nextest-format unknown failure not auto-rerun"
+else
+    fail "expected non-zero + no-rerun message (rc=$RC, out=$OUT)"
+fi
+
+# ── Test 8: quiet-format catalog hit → recovered ────────────────────────────
+# The fast-checks proof-of-merge guard (RESILIENT-306) runs cargo test, which
+# lists failed names only in the "failures:" block. Must parse + recover.
+echo "--- Test 8: quiet/failures-block catalog hit, rerun green → recovered ---"
+OUT=$(FAKE_FORMAT=quiet \
+      FAKE_FAIL_NAMES="known_module::tests::flaky_one" \
+      FAKE_FAIL_NAMES_RERUN="" \
+      run_wrapper)
+RC=$?
+if [[ "$RC" -eq 0 ]] \
+   && echo "$OUT" | grep -q "flake_autorerun_recovered"; then
+    ok "failures-block catalog flake auto-rerun recovered"
+else
+    fail "expected quiet-format recover (rc=$RC, out=$OUT)"
+fi
+# ── Test 9: RESILIENT-1044 real-incident byte fixture → correct attribution ──
+# Replays the byte-for-byte captured cargo-test output from CI run
+# 30777601663 (2026-08-03) where fleet_self_rescue_conductor::tests::
+# dial_zero_halts failed. That failure predates the RESILIENT-306 parser fix
+# (2026-08-13) and is NOT in KNOWN_FLAKES.yaml, so the correct behavior is:
+# parse the real test name out of the captured production bytes and report
+# "not auto-rerunning" attributed to that exact name -- NOT the pre-fix
+# "no parseable failed-test names; not a flake shape" misdiagnosis that let
+# this incident freeze green-main. Locks in the fix against the exact bytes
+# that caused the incident, not just a synthetic approximation.
+echo "--- Test 9: RESILIENT-1044 real-incident bytes → correctly attributed, no rerun ---"
+FIXTURE="$REPO_ROOT/scripts/ci/testdata/resilient-1044-nextest-fail-sample.log"
+if [[ ! -f "$FIXTURE" ]]; then
+    fail "missing fixture: $FIXTURE"
+else
+    cd "$FAKE" || exit 2
+    OUT=$(PATH="$TMP/bin:$PATH" \
+          TMP_STATE="$TMP/state-$$-${RANDOM}" \
+          FAKE_RAW_LOG_FILE="$FIXTURE" \
+          bash "$FAKE/scripts/ci/cargo-test-with-rerun.sh" -- cargo test 2>&1)
+    RC=$?
+    cd - >/dev/null || true
+    if [[ "$RC" -ne 0 ]] \
+       && echo "$OUT" | grep -q "not auto-rerunning" \
+       && echo "$OUT" | grep -q "fleet_self_rescue_conductor::tests::dial_zero_halts" \
+       && ! echo "$OUT" | grep -q "not a flake shape"; then
+        ok "real-incident bytes correctly attributed to dial_zero_halts, no silent skip"
+    else
+        fail "expected correct attribution, no 'not a flake shape' misdiagnosis (rc=$RC, out=$OUT)"
+    fi
 fi
 
 # ── Summary ─────────────────────────────────────────────────────────────────

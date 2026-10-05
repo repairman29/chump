@@ -113,6 +113,18 @@ out="$(run_gate "$R" "bar" CHUMP_SHARED_SERVICE_BLOCK=1)"; rc=$?
 if [[ $rc -eq 0 ]] && ! echo "$out" | grep -q 'BLOCKED\|WARN'; then ok "no-pattern file: silent"; else fail "no-pattern (rc=$rc): $out"; fi
 rm -rf "$R"
 
+# 7b. Audited intentional-direct sites (INFRA-3465): adversary_llm.rs +
+# screen_vision_tool.rs must be silent even in block mode.
+R="$(mk_repo)"; stage_file "$R" "src/adversary_llm.rs" "$BESPOKE"
+out="$(run_gate "$R" "adversary" CHUMP_SHARED_SERVICE_BLOCK=1)"; rc=$?
+if [[ $rc -eq 0 ]] && ! echo "$out" | grep -q 'BLOCKED\|WARN'; then ok "allowlisted (adversary_llm.rs): silent even in block mode"; else fail "adversary_llm allowlist (rc=$rc): $out"; fi
+rm -rf "$R"
+
+R="$(mk_repo)"; stage_file "$R" "src/screen_vision_tool.rs" "$BESPOKE"
+out="$(run_gate "$R" "screen vision" CHUMP_SHARED_SERVICE_BLOCK=1)"; rc=$?
+if [[ $rc -eq 0 ]] && ! echo "$out" | grep -q 'BLOCKED\|WARN'; then ok "allowlisted (screen_vision_tool.rs): silent even in block mode"; else fail "screen_vision_tool allowlist (rc=$rc): $out"; fi
+rm -rf "$R"
+
 # 7. CHUMP_SHARED_SERVICE_CHECK=0 → silent even with a bespoke call in block mode.
 R="$(mk_repo)"; stage_file "$R" "src/foo.rs" "$BESPOKE"
 out="$(run_gate "$R" "add foo" CHUMP_SHARED_SERVICE_CHECK=0 CHUMP_SHARED_SERVICE_BLOCK=1)"; rc=$?

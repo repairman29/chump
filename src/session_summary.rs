@@ -37,6 +37,7 @@
 use std::process::Command;
 
 use crate::gap_store;
+use crate::kpi_report;
 
 /// A gap stuck in bisect_quarantined — surfaced in "Needs operator review".
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -748,12 +749,36 @@ pub fn run(argv: &[String]) -> i32 {
     // operator sees them in "Needs operator review" without a separate query.
     let quarantined = load_quarantined_gaps();
 
+    // INFRA-2143: integration cycle health tail line — cheap ambient.jsonl
+    // scan, same 7d window `chump kpi report --integration` defaults to.
+    let cycle_health =
+        kpi_report::build_integration_cycle_section(&crate::repo_path::repo_root(), 168);
+
     let rendered = match args.format {
-        OutputFormat::Text => render_text(&since, &args.window, &merged, &open, &quarantined),
+        OutputFormat::Text => {
+            let mut out = render_text(&since, &args.window, &merged, &open, &quarantined);
+            out.push_str(&integration_cycle_health_tail(&cycle_health));
+            out
+        }
         OutputFormat::Json => render_json(&since, &args.window, &merged, &open, &quarantined),
     };
     print!("{}", rendered);
     0
+}
+
+/// INFRA-2143: one-line integration-cycle health summary appended to the
+/// session-summary tail — "did the last 7d of integration cycles look
+/// healthy" at a glance, without a separate `chump kpi report --integration`
+/// call.
+fn integration_cycle_health_tail(section: &kpi_report::IntegrationCycleSection) -> String {
+    let p50 = section
+        .p50_wall_minutes
+        .map(|m| format!("{m:.0}min"))
+        .unwrap_or_else(|| "—".to_string());
+    format!(
+        "Integration cycle health (7d): cycles={}, P50={}, quarantine={:.1}%\n",
+        section.cycles_shipped, p50, section.bisect_quarantine_rate_pct,
+    )
 }
 
 #[cfg(test)]

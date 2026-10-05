@@ -67,6 +67,14 @@ SENTINEL="$CHUMP_DIR/fleet-paused"
 KICK_STATE="$CHUMP_DIR/farmer-kick-state.json"
 HEARTBEAT_FILE="$CHUMP_DIR/farmer-heartbeat"
 
+# RESILIENT-331: per-tick outcome counters (I-did-X, not just I-ran). Reset at
+# the top of each tick, folded into the closing farmer_heartbeat's `counts` so
+# chairman-pulse.sh can tell a tick that healed something from one that just
+# turned over.
+TICK_KICKED_N=0
+TICK_SILENT_N=0
+TICK_ESCALATED_N=0
+
 # ── Core helpers (zero chump dependencies) ────────────────────────────────────
 _ts()  { date -u +%Y-%m-%dT%H:%M:%SZ; }
 _now() { date +%s; }
@@ -89,9 +97,38 @@ emit() {
         log "WARN: ambient write failed for kind=$kind"
 }
 
+# ── Portable file mtime (epoch seconds), ALWAYS a clean integer ───────────────
+# RESILIENT-313: the old inline `stat -f %m F || stat -c %Y F` is a macOS-first
+# ordering that is TOXIC on GNU/Linux. On Linux `stat -f` means --file-system and
+# `%m` is parsed as a SECOND path arg → stat prints a multi-line filesystem block
+# to stdout AND exits non-zero, so the `||` fallback output gets CONCATENATED with
+# that garbage. The result (`  File: "...\n ID: ..."`) then flows into `$(( now -
+# mtime ))`, where under `set -u` the token `File` is an unbound variable and the
+# whole tick dies BEFORE write_heartbeat — the farmer's one job. Any present/stale
+# claim-*.json lease was enough to trip it. This helper is GNU-first, BSD-second,
+# and sanitizes to digits so a non-numeric result can never crash arithmetic.
+_mtime() {
+    local f="$1" m
+    m="$(stat -c %Y "$f" 2>/dev/null)" || m="$(stat -f %m "$f" 2>/dev/null)" || m=0
+    [[ "$m" =~ ^[0-9]+$ ]] || m=0
+    printf '%s' "$m"
+}
+
 # Write/update the heartbeat file (local only, no network).
+# RESILIENT-313: dual-write — the in-repo path (what the worker binary's
+# farmer-gate reads, src/farmer_status.rs) PLUS a durable out-of-repo copy under
+# $HOME/.chump that survives the fleet's `git reset --hard` / `git clean` of the
+# repo checkout. The 30s chump-farmer.timer rewrites both every tick, so even a
+# reset that deletes the in-repo copy leaves it stale for <30s — well under the
+# 120s freshness threshold.
 write_heartbeat() {
-    printf '%s\n' "$(_ts)" > "$HEARTBEAT_FILE"
+    local ts; ts="$(_ts)"
+    printf '%s\n' "$ts" > "$HEARTBEAT_FILE" 2>/dev/null || true
+    local durable="${HOME:-/root}/.chump/farmer-heartbeat"
+    if [[ "$durable" != "$HEARTBEAT_FILE" ]]; then
+        mkdir -p "${HOME:-/root}/.chump" 2>/dev/null || true
+        printf '%s\n' "$ts" > "$durable" 2>/dev/null || true
+    fi
 }
 
 # ── Dry-run wrapper ───────────────────────────────────────────────────────────
@@ -139,7 +176,35 @@ CONTROL_PLANE_LABELS=(
     "com.chump.queue-health-monitor"
     "dev.chump.premature-closure-watch"
     "dev.chump.system-invariants-monitor"
+    "com.chump.integrator-daemon"
 )
+
+# RESILIENT-132 AC#5: labels whose ProgramArguments binary path is baked in
+# at install time by a dedicated installer (not a static repo script path).
+# exit=127 for these means the baked path is stale/missing — a bare
+# `launchctl kickstart` re-runs the SAME broken command and just loops. The
+# fix is to re-run the installer (idempotent, re-resolves the binary and
+# rewrites the plist) before kickstarting.
+declare -A LABEL_REPAIR_INSTALLER=(
+    ["com.chump.integrator-daemon"]="scripts/setup/install-integrator-daemon.sh"
+)
+
+# _repair_daemon_binary LABEL — re-run the label's installer (if any) to
+# rebake a stale ProgramArguments binary path. No-op for labels without a
+# registered installer.
+_repair_daemon_binary() {
+    local label="$1"
+    local installer="${LABEL_REPAIR_INSTALLER[$label]:-}"
+    [[ -z "$installer" ]] && return 0
+    local installer_path="$REPO_ROOT/$installer"
+    if [[ -x "$installer_path" ]]; then
+        log "$label exit=127 — re-running installer to rebake binary path: $installer"
+        run_cmd bash "$installer_path"
+        emit "farmer_daemon_binary_repaired" "\"label\":\"$label\",\"installer\":\"$installer\""
+    else
+        log "$label exit=127 — no installer found at $installer_path, skipping rebake"
+    fi
+}
 
 # label_is_loaded LABEL — returns 0 if launchd has the label loaded
 label_is_loaded() {
@@ -157,6 +222,7 @@ kick_daemon() {
     log "kicking $label"
     run_cmd launchctl kickstart -k "gui/$(id -u)/$label"
     emit "farmer_daemon_kicked" "\"label\":\"$label\""
+    TICK_KICKED_N=$(( TICK_KICKED_N + 1 ))
 }
 
 # ── Kick-escalation tracker ───────────────────────────────────────────────────
@@ -334,8 +400,18 @@ check_auth() {
         if "$probe" --quiet >/dev/null 2>&1; then
             emit "farmer_auth_ok" "\"path\":\"oauth\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\""
         else
-            operator_page "AUTH_DEAD" "auth-status.sh validity probe reports BROKEN (oauth path, mode=${auth_mode})"
-            emit "farmer_auth_dead" "\"reason\":\"validity_probe_broken\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\""
+            # CREDIBLE-136: signal != outcome (CREDIBLE-090) — a single BROKEN
+            # verdict can be a transient probe failure (network blip, one-off
+            # claude -p timeout), not a genuine outage. Force ONE fresh re-probe
+            # (--probe bypasses auth-status.sh's own cache) before paging
+            # halt-class AUTH_DEAD; if the re-probe comes back OK, the first
+            # failure was transient and must not be replayed as an outage.
+            if "$probe" --probe --quiet >/dev/null 2>&1; then
+                emit "farmer_auth_ok" "\"path\":\"oauth\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe_reprobe_ok\",\"note\":\"first probe was BROKEN, re-probe OK — transient\""
+            else
+                operator_page "AUTH_DEAD" "auth-status.sh validity probe reports BROKEN (oauth path, mode=${auth_mode}) on TWO consecutive probes"
+                emit "farmer_auth_dead" "\"reason\":\"validity_probe_broken\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\",\"reprobed\":true"
+            fi
         fi
         return
     fi
@@ -346,7 +422,7 @@ check_auth() {
         return
     }
     local mtime now age
-    mtime=$(stat -f %m "$token_file" 2>/dev/null || stat -c %Y "$token_file" 2>/dev/null || echo 0)
+    mtime=$(_mtime "$token_file")   # RESILIENT-313: portable, always-integer
     now="$(_now)"
     age=$(( now - mtime ))
     if [[ "$age" -gt "$OAUTH_MAX_AGE_S" ]]; then
@@ -364,7 +440,7 @@ check_silent_workers() {
     for lease_file in "$LOCK_DIR"/claim-*.json; do
         [[ -f "$lease_file" ]] || continue
         local mtime
-        mtime=$(stat -f %m "$lease_file" 2>/dev/null || stat -c %Y "$lease_file" 2>/dev/null || echo 0)
+        mtime=$(_mtime "$lease_file")   # RESILIENT-313: was the crash site (macOS stat -f on Linux)
         local age=$(( now - mtime ))
         [[ "$age" -lt "$SILENT_WORKER_S" ]] && continue
         # Stale lease — check if session has recent ambient activity
@@ -395,9 +471,18 @@ try:
 except Exception:
     print(99999)
 " 2>/dev/null || echo 99999)
+        # RESILIENT-313: sanitize to a single integer. `set -o pipefail` + a
+        # grep-miss on $AMBIENT makes the pipeline exit non-zero even though
+        # python already printed a value, so the `|| echo 99999` fallback
+        # APPENDS a second line ("99999\n99999"). A multi-line $recent then made
+        # `[[ -gt ]]` throw a "syntax error in expression" — silently disabling
+        # Mode-4 silent-worker detection. Keep only the last numeric line.
+        recent="$(printf '%s\n' "$recent" | grep -E '^[0-9]+$' | tail -1)"
+        [[ "$recent" =~ ^[0-9]+$ ]] || recent=99999
         if [[ "$recent" -gt "$SILENT_WORKER_S" ]]; then
             log "silent worker detected: session=$session_id lease_age=${age}s ambient_age=${recent}s"
             emit "farmer_silent_worker" "\"session\":\"$session_id\",\"lease_age_s\":$age,\"ambient_age_s\":$recent"
+            TICK_SILENT_N=$(( TICK_SILENT_N + 1 ))
             # Kick the stale-lease-reaper (Mode 4 response — don't rm the lease ourselves)
             if label_is_loaded "com.chump.reap-stale-leases"; then
                 run_cmd launchctl kickstart -k "gui/$(id -u)/com.chump.reap-stale-leases"
@@ -411,7 +496,7 @@ handle_sentinel() {
     [[ -f "$SENTINEL" ]] || return 0
     local now; now="$(_now)"
     local mtime
-    mtime=$(stat -f %m "$SENTINEL" 2>/dev/null || stat -c %Y "$SENTINEL" 2>/dev/null || echo 0)
+    mtime=$(_mtime "$SENTINEL")   # RESILIENT-313: portable, always-integer
     local age=$(( now - mtime ))
     log "sentinel present, age=${age}s"
 
@@ -469,7 +554,9 @@ revive_control_plane() {
                 mark_escalated "$label"
                 operator_page "DAEMON_CRASH_LOOP" "label=$label exit_code=$exit_code kicks>=$KICK_ESCALATE_N in ${KICK_WINDOW_S}s"
                 emit "farmer_escalated" "\"label\":\"$label\",\"exit_code\":$exit_code"
+                TICK_ESCALATED_N=$(( TICK_ESCALATED_N + 1 ))
             else
+                [[ "$exit_code" == "127" ]] && _repair_daemon_binary "$label"
                 kick_daemon "$label"
             fi
         fi
@@ -492,11 +579,32 @@ check_dead_supervisors() {
             mark_escalated "$label"
             operator_page "DAEMON_CRASH_LOOP" "label=$label exit_code=$exit_code"
             emit "farmer_escalated" "\"label\":\"$label\",\"exit_code\":$exit_code"
+                TICK_ESCALATED_N=$(( TICK_ESCALATED_N + 1 ))
         else
+            [[ "$exit_code" == "127" ]] && _repair_daemon_binary "$label"
             kick_daemon "$label"
         fi
     done
 }
+
+# ── Crash guard (RESILIENT-313) ───────────────────────────────────────────────
+# The farmer's ONE job is to keep the heartbeat fresh so the worker-gate stays
+# GREEN. A tick that dies mid-way (unbound var, bad arithmetic, a future edit)
+# used to leave NO heartbeat → the worker binary's farmer-gate reads it stale →
+# every worker on the host hard-blocks new claims → silent fleet-wide outage.
+# This EXIT trap guarantees the heartbeat is written even on an abnormal exit,
+# so a single bad tick can never dark-out the fleet again. It stays LOUD (logs a
+# WARN) so the crash is still visible rather than masked. Normal ticks set
+# _HEARTBEAT_WRITTEN=1 and the trap is a no-op for them.
+_HEARTBEAT_WRITTEN=0
+_farmer_exit_guard() {
+    local rc=$?
+    if [[ "$rc" -ne 0 && "${_HEARTBEAT_WRITTEN}" != "1" ]]; then
+        log "WARN: tick exiting abnormally (rc=$rc) before heartbeat — writing it anyway so the worker-gate does not dark-out the fleet (RESILIENT-313)"
+        write_heartbeat || true
+    fi
+}
+trap _farmer_exit_guard EXIT
 
 # ── Main tick ─────────────────────────────────────────────────────────────────
 log "farmer tick start (dry_run=$DRY_RUN)"
@@ -513,8 +621,10 @@ check_silent_workers
 # Mode 6: dead supervisors (always run, not only during revive)
 check_dead_supervisors
 
-# Heartbeat — written AFTER all checks so a crash mid-tick shows up as stale
+# Heartbeat — written AFTER all checks on the normal path. A crash BEFORE here is
+# now caught by the EXIT trap above (RESILIENT-313) so the fleet never darks out.
 write_heartbeat
-emit "farmer_heartbeat" "\"dry_run\":${DRY_RUN}"
+_HEARTBEAT_WRITTEN=1
+emit "farmer_heartbeat" "\"dry_run\":${DRY_RUN},\"counts\":{\"kicked\":${TICK_KICKED_N},\"silent_detected\":${TICK_SILENT_N},\"escalated\":${TICK_ESCALATED_N}}"
 
 log "farmer tick done"

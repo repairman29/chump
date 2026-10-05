@@ -1,7 +1,8 @@
 - id: INFRA-1502
   domain: INFRA
   title: "MISSION: Awesome-list placement — awesome-rust + awesome-llm-agents + awesome-coding-agents PRs + maintainer outreach"
-  status: open
+  status: shipped
+  closed_pr: 4087
   priority: P2
   effort: s
   acceptance_criteria:

@@ -35,7 +35,7 @@ set -euo pipefail
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
 
 QUIET=0
-declare -a TARGETS
+declare -a TARGETS=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --quiet) QUIET=1 ;;
@@ -61,7 +61,15 @@ done
 # RESILIENT-256: added `wip`. The uncommitted-WIP watchdog is the only thing
 # standing between a 13-hour-old dirty tree and a permanent loss, so a silent
 # one is worse than a noisy one — it grades here like every other canary.
-[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor wip)
+# INFRA-3650: added `process-organ-heal`. It heals raw background bash
+# procs (e.g. almanac-vision-keeper) that aren't systemd units, so nothing
+# else revives them if it dies — same "the healer can never stay dead"
+# closure RESILIENT-356 gave organ-watchdog.sh, one layer down the stack.
+# INFRA-3654: added `outcome-verify-heal-consumer`. It is the consumer for
+# kind=outcome_probe_failed / kind=ac_coverage_proof_miss — both emitters
+# existed with no consumer before this gap, so a dead consumer here would
+# quietly reopen the same "proved-false live outcome, nobody told" hole.
+[[ ${#TARGETS[@]} -eq 0 ]] && TARGETS=(pr worktree branch stuck-pr pr-watch watchdog ci-flake pr-blocked distill curator-supervisor wip process-organ-heal outcome-verify-heal-consumer)
 
 # Per-reaper alert thresholds (seconds since last heartbeat).
 threshold_secs() {
@@ -81,6 +89,16 @@ threshold_secs() {
         # silence into an alert within one watchdog run (30 min).
         curator-supervisor) echo $((1 * 3600)) ;;
         wip)         echo $((2 * 3600)) ;;   # 2h (cadence 30min × 4x — RESILIENT-256)
+        # INFRA-3650: process-organ-heal's install cadence is 5min (see
+        # chump-node-install.sh's process-organ-heal organ wrapper) — 1h is
+        # 12 missed cycles, generous enough that a laptop that slept for a
+        # bit doesn't cry wolf, tight enough to catch a genuinely dead loop
+        # same-session.
+        process-organ-heal) echo $((1 * 3600)) ;;
+        # INFRA-3654: this consumer's timer cadence is 10min (see its .timer
+        # unit) — 1h is 6 missed cycles, same "generous but catches a real
+        # death same-session" reasoning as process-organ-heal above.
+        outcome-verify-heal-consumer) echo $((1 * 3600)) ;;
         *)           echo $((4 * 3600)) ;;
     esac
 }

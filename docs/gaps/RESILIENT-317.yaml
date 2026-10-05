@@ -1,0 +1,10 @@
+- id: RESILIENT-317
+  domain: RESILIENT
+  title: reap-orphan-claude-procs.sh is macOS-only (Claude.app via launchctl) — Linux port for owned worker nodes
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - a Linux variant reaps orphaned claude subprocesses on systemd nodes (parent reparented to pid 1, or not under the live worker process tree) older than REAP_AGE (default 1h), while PROTECTING active leased worker claude -p procs — the macOS version keys off the Claude.app PID which does not exist on Linux
+    - installed via the COTG housekeeping suite (RESILIENT-318 sibling); guards against the hung-child wedge class (a no-timeout child froze both workers 4h40m on 2026-08-17)
+

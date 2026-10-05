@@ -1,0 +1,17 @@
+- id: DOC-073
+  domain: DOC
+  title: "CREDIBLE: align repo docs with ChumpOS ground truths — fix stale/contradictory positioning across 29 files"
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Full-corpus ChumpOS ground-truths documentation audit + fix, done in an interactive session per operator request. Scope: flagship reader-facing docs (README/AGENTS.md/PITCH/DEMO_5MIN/OFFLINE_FIRST_WORKFLOW), docs/strategy identity docs (NORTH_STAR/PROJECT_STORY/MARKET_EVALUATION/PRODUCT_REALITY_CHECK/CHUMP_TO_CHAMP), docs/operations, docs/process, docs/design, docs/agents, docs/business, docs/research. Fixed: stale harness-exclusivity claims (Claude Code as only/default harness -> OpenCode is default gateway per 2026-07-27 framing), offline-first-as-spine framing (superseded by 2026-05-16 infra-is-the-product reset), missing ChumpOS/agentic-OS framing, 2-month-stale evidence snapshots in external-facing pitch docs, research-privacy violations (specific deltas/model-names/magnitudes beyond the one sanctioned finding, per docs/process/RESEARCH_INTEGRITY.md) migrated to chump-proprietary, and a 3-way product-identity contradiction (Discord bot / consciousness research platform / fleet OS for personal compute) resolved into one ChumpOS identity with mission 'ship any vision, rescue any dream' per explicit operator directive. Full audit trail + per-file rationale in session transcript; nothing deleted without migration (chump-proprietary/research/public-repo-migration-2026-07-29.md holds removed empirical content).
+  acceptance_criteria:
+    - docs no longer claim Claude Code is the exclusive/default harness where OpenCode is now default
+    - docs no longer position offline-first as the product spine
+    - docs/strategy identity docs (NORTH_STAR/PROJECT_STORY/MARKET_EVALUATION/PRODUCT_REALITY_CHECK) converge on one ChumpOS identity instead of 3 competing product framings
+    - no public doc states cognitive-architecture empirical specifics beyond the one RESEARCH_INTEGRITY.md-sanctioned finding
+    - removed content is preserved in chump-proprietary, not deleted
+  closed_date: '2026-07-30'
+  closed_pr: 3392
+

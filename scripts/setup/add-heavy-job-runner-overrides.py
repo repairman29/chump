@@ -22,7 +22,7 @@ from pathlib import Path
 # Map job-name → var-name. Snake-cased upper.
 HEAVY_JOBS = {
     'clippy': 'RUNNER_CLIPPY',
-    'cargo-test': 'RUNNER_CARGO_TEST',
+    'cargo-test-shard': 'RUNNER_CARGO_TEST',
     'audit': 'RUNNER_AUDIT',
     'coverage': 'RUNNER_COVERAGE',
     'e2e-pwa': 'RUNNER_E2E_PWA',

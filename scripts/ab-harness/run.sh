@@ -43,6 +43,7 @@ CHUMP_BIN="./target/release/chump"
 RESUME=""
 ORDER="fixed"   # COG-011c: fixed (A then B), reverse (B then A), or random per task
 SEED_LESSONS=""  # COG-014: optional path to a lessons JSON file to seed before the run
+ARTIFACT=""      # EFFECTIVE-485: optional ship/release artifact JSON to normalize pre-trial
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -54,6 +55,7 @@ while [[ $# -gt 0 ]]; do
     --resume) RESUME="$2"; shift 2;;
     --order) ORDER="$2"; shift 2;;
     --seed-lessons) SEED_LESSONS="$2"; shift 2;;
+    --artifact) ARTIFACT="$2"; shift 2;;
     -h|--help)
       sed -n '2,30p' "$0"
       exit 0
@@ -66,6 +68,18 @@ case "$ORDER" in
   fixed|reverse|random) ;;
   *) echo "ERROR: --order must be fixed|reverse|random (got '$ORDER')" >&2; exit 2;;
 esac
+
+# EFFECTIVE-485: normalize + validate the ship artifact before any trial
+# starts. normalize_artifact.py prints "error: ..." to stderr and exits 1
+# on a missing/invalid field; propagate that failure here so a bad artifact
+# never reaches run_trial.
+if [[ -n "$ARTIFACT" ]]; then
+  SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+  if ! LAUNCH_CONTEXT=$(python3.12 "$SCRIPT_DIR/normalize_artifact.py" "$ARTIFACT"); then
+    exit 1
+  fi
+  echo "[harness] artifact normalized: $LAUNCH_CONTEXT"
+fi
 
 for k in FIXTURE FLAG TAG; do
   if [[ -z "${!k}" ]]; then

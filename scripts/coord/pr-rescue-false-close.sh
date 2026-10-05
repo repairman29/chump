@@ -79,6 +79,28 @@ fi
 # Best-effort gap-id extraction.
 gap_id="$(echo "$head_ref" | sed -E 's|^chump/||' | awk -F- '{print toupper($1)"-"$2}')"
 
+# ── Mergeability guard (INFRA-5349, INFRA-3604 slice) ───────────────────────
+# A manually closed PR should stay closed if the target branch is not
+# mergeable/rebaseable — reopening a DIRTY/CONFLICTING PR just re-jams the
+# merge queue with something nobody can land anyway.
+if [[ "$state" == "CLOSED" ]]; then
+    rest_json="$(gh api "repos/{owner}/{repo}/pulls/$PR" $repo_arg 2>/dev/null || echo '{}')"
+    mergeable="$(echo "$rest_json" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('mergeable',''))" 2>/dev/null)"
+    rebaseable="$(echo "$rest_json" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('rebaseable',''))" 2>/dev/null)"
+    mergeable_state="$(echo "$rest_json" | python3 -c "import json,sys;d=json.load(sys.stdin);print(d.get('mergeable_state',''))" 2>/dev/null)"
+
+    if [[ "$mergeable" == "False" || "$rebaseable" == "False" ]]; then
+        ts_iso="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || true
+        reason="mergeable=$mergeable rebaseable=$rebaseable mergeable_state=$mergeable_state"
+        echo "[pr-rescue] REFUSED: PR #$PR not reopened — target branch not mergeable/rebaseable ($reason)" >&2
+        printf '{"ts":"%s","session":"pr-rescue","event":"AUDIT","kind":"pr_reopen_refused","pr":%s,"branch":"%s","gap":"%s","reason":"%s"}\n' \
+            "$ts_iso" "$PR" "$head_ref" "$gap_id" "$reason" \
+            >> "$AMBIENT" 2>/dev/null || true
+        exit 1
+    fi
+fi
+
 # ── Reopen + comment + re-arm ──────────────────────────────────────────────
 if [[ "$state" == "CLOSED" ]]; then
     echo "[pr-rescue] Reopening PR #$PR ($head_ref)..."

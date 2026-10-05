@@ -1,0 +1,16 @@
+- id: RESILIENT-203
+  domain: RESILIENT
+  title: opencode agentic worker hangs at init in the large (746k-LOC) Chump repo — model-independent scaling blocker
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - The opencode agentic worker no longer hangs indefinitely at init in the 746k-LOC repo - it initializes within a bounded timeout or fails fast with a clear error (model-independent)
+    - Root cause identified + fixed with a durable timeout/fail-fast (not retry-forever)
+    - "Proven: across >=3 runs in the full repo, the worker reaches its first real work step or errors clearly within a bounded time - no indefinite init hang"
+  notes: |
+    SOLVED (architecture) 2026-07-27: the cheap fleet = Chump-NATIVE execute-gap loop + provider cascade, NOT opencode. Proven: 'chump --execute-gap' on Groq free-tier runs the native ChumpAgent loop, executes read_file/list_dir tools scoped to the worktree — NO large-repo hang (native tools, not opencode's repo-wide scan), NO rate-limit death (free-tier rotation), FREE. This clears all 3 walls opencode hit. ONE remaining variable = MODEL tool-call quality: free 70B llama (Groq) works mechanically but 'storms on bad tool inputs' and aborts (too weak); DeepSeek strong+cheap but account out-of-balance; mistral/codestral proven clean tool-calls + funded but MISTRAL_API_KEY only in opencode auth (add to .env). WINNING CONFIG: CHUMP_WORK_BACKEND=chump-local + CHUMP_FREE_TIER_PROVIDERS pinned to a competent cheap coder (codestral-latest@api.mistral.ai or topped-up deepseek). (b) = ~$5-10 for a good cheap model, NOT a big paid tier. Validated Jeff's 'a then b': (a) uses infra he already built; (b) is a small model-budget, not architecture.
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27 field-clearing: after fixing every opencode WIRING bug (farmer PATH RESILIENT-202, CHUMP_WORK_BACKEND, worker.sh $_TO #3337 + missing 'run' #3338 + build_harness_cmd #3339), a live worker still fails every cycle. Isolation: opencode 'run' WORKS for (a) simple prompts in the full repo ('2+2'->'4'), (b) the actual gap briefing in a TEMP repo (implemented the worker-scaling formula), (c) agentic edits in a temp repo. It HANGS at 'init' (loads config -> 'all LSPs disabled' -> 'all formatters disabled' -> init -> blocks, 0 further output, timeout 124) for the AGENTIC briefing in the full Chump repo/worktree — reproduced with BOTH opencode-go/kimi-k2.7-code AND opencode-go/deepseek-v4-pro, so it is NOT the model. The fleet's own runs instead got instant 'UnknownError: Unexpected server error' (fleet-env variant of the same wall). Root shape: opencode's project init/context-load does not scale to 746k LOC. First things to try: opencode.json settings to cap/disable context indexing at init; scope opencode to a subtree; or a --format json non-TTY path. Decision needed (Jeff): tune opencode for large repos, scope it down, or reconsider the worker harness. Blocks the opencode fleet flip; wiring is otherwise fully cleared.
+

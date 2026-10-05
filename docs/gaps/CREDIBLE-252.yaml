@@ -1,0 +1,10 @@
+- id: CREDIBLE-252
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement register_worker_rpc_handlers in rpc.rs (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - register_worker_rpc_handlers function is no longer a stub
+    - register_worker_rpc_handlers function returns a valid response
+

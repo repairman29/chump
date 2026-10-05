@@ -101,5 +101,50 @@ assert_field_str "kind"     "vote"      "$VOTE_LINE"
 assert_field     "vote"     "1"         "$VOTE_LINE"
 assert_field_str "corr_id"  "META-999"  "$VOTE_LINE"
 assert_field_str "rationale" "ship it"  "$VOTE_LINE"
+assert_field     "confidence" "100"     "$VOTE_LINE"
+
+echo "[test-chump-vote] PASS — all fields present in kind=vote event (default confidence=100)"
+
+# INFRA-2157 (META-125/C6): explicit --confidence value is emitted.
+echo "[test-chump-vote] running: chump vote META-998 -1 --reason \"needs work\" --confidence 42"
+"$CHUMP_BIN" vote META-998 -1 --reason "needs work" --confidence 42
+
+VOTE_LINE_2="$(grep '"corr_id":"META-998"' "$CHUMP_AMBIENT_LOG" | grep '"kind":"vote"' || true)"
+if [[ -z "$VOTE_LINE_2" ]]; then
+    echo "FAIL: no kind=vote line for META-998 in ambient.jsonl"
+    cat "$CHUMP_AMBIENT_LOG"
+    exit 1
+fi
+
+assert_field_str "kind"     "vote"        "$VOTE_LINE_2"
+assert_field     "vote"     "-1"          "$VOTE_LINE_2"
+assert_field_str "corr_id"  "META-998"    "$VOTE_LINE_2"
+assert_field_str "rationale" "needs work" "$VOTE_LINE_2"
+assert_field     "confidence" "42"        "$VOTE_LINE_2"
+
+echo "[test-chump-vote] PASS — explicit --confidence 42 present in kind=vote event"
+
+# INFRA-2157: invalid --confidence values are rejected with exit 2.
+echo "[test-chump-vote] running: chump vote META-997 +1 --reason \"x\" --confidence 101 (expect exit 2)"
+set +e
+"$CHUMP_BIN" vote META-997 +1 --reason "x" --confidence 101
+RC=$?
+set -e
+if [[ "$RC" -ne 2 ]]; then
+    echo "FAIL: expected exit 2 for out-of-range --confidence, got $RC"
+    exit 1
+fi
+
+echo "[test-chump-vote] running: chump vote META-996 +1 --reason \"x\" --confidence abc (expect exit 2)"
+set +e
+"$CHUMP_BIN" vote META-996 +1 --reason "x" --confidence abc
+RC=$?
+set -e
+if [[ "$RC" -ne 2 ]]; then
+    echo "FAIL: expected exit 2 for non-integer --confidence, got $RC"
+    exit 1
+fi
+
+echo "[test-chump-vote] PASS — invalid --confidence values rejected with exit 2"
 
 echo "[test-chump-vote] PASS — all fields present in kind=vote event"

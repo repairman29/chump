@@ -1,0 +1,11 @@
+- id: RESILIENT-339
+  domain: RESILIENT
+  title: "rot-reaper false-red guard: NEVER REALFAIL-close a PR that is failing ONLY a KNOWN shared/systemic-red gate (farmer-flap cascade, or the RESILIENT-337 >=3-PRs-same-check signal). Tonight PRs false-red on fast-checks/test/verified (not their own fault) were eligible for REALFAIL-close at 8h — closing good code. Before closing, cross-check: are the PRs failing checks the SAME ones failing fleet-wide? If yes = false-red, SKIP close, alert instead. Only close on a failure UNIQUE to this PR. COTG: guard ships in rot-reaper, verified by self-test."
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"NEVER REALFAIL-close a PR that is failing ONLY a KNOWN shared/systemic-red gate (farmer-flap cascade, or the RESILIENT-337 >=3-PRs-same-check signal). Tonight PRs false-red on fast-checks/test/verified (not their own fault) were eligible for REALFAIL-close at 8h — closing good code. Before closing, cross-check: are the PRs failing checks the SAME ones failing fleet-wide? If yes = false-red, SKIP close, alert instead. Only close on a failure UNIQUE to this PR. COTG: guard ships in rot-reaper, verified by self-test.\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

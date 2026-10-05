@@ -45,35 +45,35 @@ use std::path::PathBuf;
 
 /// One vote event parsed from ambient.jsonl.
 #[derive(Debug, Clone)]
-struct VoteEvent {
-    corr_id: String,
-    vote: i32, // +1, -1, 0
+pub(crate) struct VoteEvent {
+    pub(crate) corr_id: String,
+    pub(crate) vote: i32, // +1, -1, 0
     /// Optional deadline ISO-8601 string attached to the event.
-    deadline: Option<String>,
+    pub(crate) deadline: Option<String>,
     /// CREDIBLE-082: non-empty → this is a reaction to the proposal with that corr_id.
     /// Empty/None → original emission; weight = 1.0.
-    parent_corr_id: Option<String>,
+    pub(crate) parent_corr_id: Option<String>,
 }
 
 /// Aggregated tally per corr_id.
 #[derive(Debug, Default)]
-struct Tally {
-    yes: u32,
-    no: u32,
-    abstain: u32,
+pub(crate) struct Tally {
+    pub(crate) yes: u32,
+    pub(crate) no: u32,
+    pub(crate) abstain: u32,
     /// CREDIBLE-082: sum of per-vote weights (1.0 for originals, react_weight for reactions).
-    weighted: f64,
+    pub(crate) weighted: f64,
     /// Latest deadline seen for this corr_id (ISO-8601).
-    deadline: Option<String>,
+    pub(crate) deadline: Option<String>,
 }
 
 impl Tally {
-    fn total(&self) -> u32 {
+    pub(crate) fn total(&self) -> u32 {
         self.yes + self.no + self.abstain
     }
 
     /// Compute verdict per AC3.
-    fn verdict(&self, now_secs: i64) -> &'static str {
+    pub(crate) fn verdict(&self, now_secs: i64) -> &'static str {
         // Check deadline first.
         let deadline_future = self
             .deadline
@@ -102,7 +102,7 @@ impl Tally {
 
 /// Parse an ISO-8601 UTC timestamp to Unix seconds.
 /// Returns None if parsing fails.
-fn parse_iso8601(s: &str) -> Option<i64> {
+pub(crate) fn parse_iso8601(s: &str) -> Option<i64> {
     // Try a simple pattern: YYYY-MM-DDTHH:MM:SSZ or with +00:00
     // Use chrono for proper parsing.
     use std::str::FromStr;
@@ -118,7 +118,7 @@ fn parse_iso8601(s: &str) -> Option<i64> {
 }
 
 /// Parse a duration string like "1h", "24h", "7d" → seconds.
-fn parse_duration_secs(s: &str) -> Option<i64> {
+pub(crate) fn parse_duration_secs(s: &str) -> Option<i64> {
     if let Some(n) = s.strip_suffix('h') {
         n.parse::<i64>().ok().map(|h| h * 3600)
     } else if let Some(n) = s.strip_suffix('d') {
@@ -132,7 +132,7 @@ fn parse_duration_secs(s: &str) -> Option<i64> {
 
 /// Extract a string value from a flat JSON object line.
 /// Handles simple `"key":"value"` and `"key":numeric` patterns.
-fn json_get_str<'a>(line: &'a str, key: &str) -> Option<&'a str> {
+pub(crate) fn json_get_str<'a>(line: &'a str, key: &str) -> Option<&'a str> {
     let needle = format!("\"{}\":", key);
     let pos = line.find(needle.as_str())?;
     let rest = &line[pos + needle.len()..];
@@ -172,7 +172,7 @@ fn parse_vote_str(s: &str) -> Option<i32> {
 }
 
 /// Resolve ambient.jsonl path.
-fn ambient_path() -> PathBuf {
+pub(crate) fn ambient_path() -> PathBuf {
     std::env::var("CHUMP_AMBIENT_LOG")
         .map(PathBuf::from)
         .unwrap_or_else(|_| {
@@ -202,7 +202,7 @@ fn ambient_path() -> PathBuf {
 }
 
 /// Parse ambient.jsonl into VoteEvents.
-fn load_vote_events(
+pub(crate) fn load_vote_events(
     path: &std::path::Path,
     since_secs: i64,
     now_secs: i64,
@@ -279,7 +279,7 @@ fn load_vote_events(
 /// Originals (no `parent_corr_id`) receive weight 1.0.
 /// If no event in the batch carries any `parent_corr_id`, the weighted
 /// sum equals the raw count — full backward compatibility.
-fn aggregate(events: &[VoteEvent], react_weight: f64) -> HashMap<String, Tally> {
+pub(crate) fn aggregate(events: &[VoteEvent], react_weight: f64) -> HashMap<String, Tally> {
     let mut map: HashMap<String, Tally> = HashMap::new();
     for ev in events {
         let t = map.entry(ev.corr_id.clone()).or_default();

@@ -20,8 +20,12 @@
 
 pub mod capability;
 pub mod loop_body;
+/// RESILIENT-334: subscribe+act reactor — closes the Layer 1a loop by
+/// reacting to WORK_POSTED bus events with a real atomic claim attempt.
+pub mod react;
 pub mod worktree;
 
 pub use capability::WorkerCapability;
 pub use loop_body::{run_one_cycle, CycleEnv, CycleOutcome, DEFAULT_EXEC_TIMEOUT_S};
+pub use react::{react_to_event, ReactOutcome};
 pub use worktree::{create_worktree, remove_worktree, worktree_dir_for};

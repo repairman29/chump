@@ -2,12 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE P1: META-125/C2 NATS subject taxonomy — chump.events.consensus.{ask,vote,resolved}.> + chump.curator.<role>.consensus + decision audit subject"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - NATS subject taxonomy for consensus is documented and subscribers/publishers use the agreed subjects in an end-to-end test.
   outcome_id: MISSION-010
 

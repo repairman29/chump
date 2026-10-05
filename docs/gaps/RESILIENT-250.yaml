@@ -1,0 +1,19 @@
+- id: RESILIENT-250
+  domain: RESILIENT
+  title: "DEADLOCK: gap-status-guard needs status=done before merge; PROOF-OF-MERGE needs the merge before done — PR #3499 stuck 24h"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "OBSERVED CONSEQUENCE: PR #3499 (INFRA-1965) has been open since 2026-08-07T14:37Z with an expired lease and no path to merge. This deadlock is the reason, and it will silently hold any similar PR"
+    - "WHY IT DOES NOT HIT EVERY PR — the asymmetry is the clue. gap-status-guard.yml:52-55 reads docs/gaps/<ID>.yaml only IF that file exists, and exits 0 with 'may be a new gap being filed' when it does not. Measured 2026-08-08: docs/gaps/INFRA-1965.yaml EXISTS (status: open) so #3499 is gated, while CREDIBLE-215 (#3510) and RESILIENT-248 (#3525) have NO per-file YAML and sail through the same gate. So the guard binds an arbitrary subset determined by which gaps happen to have a file checked in — it is not enforcing a policy, it is enforcing a filesystem accident"
+    - "THE STEP NAME DOES NOT MATCH THE CODE. It is called 'Verify gap status flipped if PR title implies close', but gap-status-guard.yml:46 extracts ANY leading gap ID: grep -oE '^[A-Z]+-[0-9]+'. Nothing tests for close INTENT. And the pre-commit hook REQUIRES a gap ID in every commit subject, so by construction essentially every PR title 'implies close'. The condition the name promises was never implemented"
+    - IT IS ALSO REDUNDANT, which is the strongest argument for fixing it in the guard rather than in chump gap ship. .github/workflows/auto-flip-on-merge.yml exists precisely to run 'chump gap ship <ID> --closed-pr <N> --update-yaml' AFTER the merge lands, and its header says it eliminates the silent-shipped-but-status-still-open backlog (31 gaps at the time). Post-merge flipping is already solved; requiring the flip PRE-merge duplicates it and creates the cycle
+    - "PREFERRED FIX: make gap-status-guard non-blocking for the pre-merge case, or restrict it to titles that genuinely imply close, and let auto-flip-on-merge own the transition. Do NOT weaken INFRA-1392 PROOF-OF-MERGE — refusing to mark a gap done without evidence it merged is the honest half of this pair and exists to stop exactly the false done state"
+    - WHATEVER THE FIX, PROVE IT ON A FIXTURE PR that has a checked-in docs/gaps/<ID>.yaml with status open, and assert it can reach merge. The bug is invisible on any gap lacking that file, which is why it survived
+    - "ALSO RESOLVE THE 31-GAP QUESTION: if the guard is relaxed, confirm auto-flip-on-merge actually fires and closes the gap, otherwise the backlog it was built to kill comes back"
+  closed_pr: 3556
+  outcome_id: MISSION-010
+  evidence: |
+    COMMAND: chump gap ship INFRA-1965 --closed-pr 3499 --update-yaml | OUTPUT: 'INFRA-1392 PROOF-OF-MERGE: refusing to flip INFRA-1965 to status=done — no commit on local main carries this gap ID. Either (a) wait for the actual merge to land on main, or (b) ensure the merge commit subject mentions INFRA-1965.' AND the CI gate on the same PR: 'ERROR: PR title implies gap INFRA-1965 is closed, but status is open. Run: chump gap ship INFRA-1965 --closed-pr <PR-NUMBER> --update-yaml' — the gate prescribes exactly the command that PROOF-OF-MERGE refuses to run | THEORY: two guards, each individually correct, form a cycle. gap-status-guard.yml:65 fails the PR while status != done; INFRA-1392 refuses to set done without a commit on main; the commit cannot reach main because the PR cannot merge | ALT: considered and rejected — (a) the PR is simply red for other reasons: no, its other failures (FLEET-048, the merge conflict, the compile) are fixed and gap-status-check is what remains; (b) the operator forgot to bookkeep: no, the documented command is blocked by design; (c) it is specific to this gap: no, it is structural for any gap with a checked-in docs/gaps/<ID>.yaml
+

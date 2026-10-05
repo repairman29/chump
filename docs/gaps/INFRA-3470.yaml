@@ -1,0 +1,11 @@
+- id: INFRA-3470
+  domain: INFRA
+  title: "EFFECTIVE: comprehension->work engine — organs emit STRUCTURED findings + wire verifier to --apply (external_repo gaps)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"comprehension->work engine — organs emit STRUCTURED findings + wire verifier to --apply (external_repo gaps)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

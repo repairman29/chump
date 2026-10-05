@@ -1,0 +1,16 @@
+- id: RESILIENT-242
+  domain: RESILIENT
+  title: "RESILIENT: [almanac] rotation blast-radius — map every read site of a secret BEFORE revoking it"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Receipt from 2026-08-07: verifying the echeo_old GCP keys established WHICH three keys were exposed and that Google had auto-disabled them, but nothing established WHERE they are read — so the delete step carries unknown breakage risk and has stalled since 2026-07-11. Shop rule 4 is revoke-before-publish, and the thing that makes revocation scary is not knowing the blast radius. The CONFIG organ already extracts env-var read sites with file:line across the fleet (2,936 flags over 5,700 env reads in chump alone). Expose it as a rotation query: given a secret or env-var name, list every read site fleet-wide with citations, plus which repos are deployed, so a human can revoke with a checklist instead of a leap of faith. Explicitly not a secret scanner — gitleaks covers detection; this covers consequence.
+  acceptance_criteria:
+    - "given an env-var or secret name, the report lists every read site fleet-wide with repo:path:line, grouped by repo"
+    - "the report states its coverage honestly per repo: which ecosystems have a CONFIG adapter and which returned None, so an empty result for a Python or Go repo is never mistaken for 'not used here'"
+    - it names the artifact classes it cannot see — unindexed SQL (INFRA-3530), unsupported languages (CREDIBLE-210/214), and runtime-only injection (CI secrets, launchd env, Secret Manager mounts) — because a rotation checklist that hides its blind spots is worse than none
+    - "dogfood receipt: run it for the three echeodev key identifiers and OPENAI_API_KEY, and record the output in SECURITY_REMEDIATION.md next to the pending delete step"
+    - documented as a required input to the revoke-before-publish gate in ROTATION_STEPS.md
+  skills_required: "external_repo:repairman29/almanac"
+

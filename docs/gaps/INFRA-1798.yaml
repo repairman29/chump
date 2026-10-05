@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: cron-loop autopilot prompt reads opus-message inbox at iter start — 'Glance' phase addendum (INFRA-1796 dogfood)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   description: |
     Receive-and-act-by-default, loop-discipline half (sibling of CREDIBLE-114, the PreToolUse hard-enforcement half). Per A2A_MASTER_PLAN_2026-06-03 Tier-0 step 0.3: 'chump-inbox.sh read' must be the MANDATORY first step of every curator/worker/autopilot cycle, and the agent must ACT on what it finds (ack handoffs, vote on open proposals) — not read-only. This is the 'demand side' the whole A2A layer was missing: agents broadcast 57 proposals over 24d but never read/voted, so consensus_result stayed 0 (the closing bug is fixed in CREDIBLE-122). Success is the OUTCOME metric, not a green check: inbox_advance > 0 and consensus_result firing organically.

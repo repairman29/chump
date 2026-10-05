@@ -9,11 +9,34 @@
 //! - `GET /api/sessions/active`
 //! - `GET /api/trace/pr/:n`
 //! - `GET /api/dashboard-summary` (INFRA-1883)
+//! - `GET /api/gaps` (RESILIENT-1030, authed) — open-gap queue state.
+//! - `POST /api/gap` (authed) — reserve/set/ship gap mutation.
+//! - `POST /api/mission` (authed) — external mission intake.
+//! - `GET /api/doc/{name}` (INFRA-5663) — allow-listed durable doc render
+//!   (`roadmap` → `docs/ROADMAP.md`, `mission` → `docs/MISSION.md`) at HEAD.
+//! - `POST /api/sentinel-heartbeat` (RESILIENT-1055, authed) — per-node
+//!   fleet-health-sentinel heartbeat ingest sink.
+//! - `GET /api/fleet/nodes` (RESILIENT-1055, unauthed read; INFRA-5663) —
+//!   cross-node systemd organ health, aggregated server-side (which organs
+//!   failed per node, with server-computed staleness) so the operator reads
+//!   one route instead of SSH-crawling every node. The write side
+//!   (`POST /api/sentinel-heartbeat`) stays fail-closed; safe only on tailnet.
 //! - `WS  /api/live`
+//! - `GET /` — static daily cockpit page (INFRA-5663) served from
+//!   `web/cockpit-live/` via a `tower_http::ServeDir` fallback.
 //!
 //! ## Env vars
 //!
-//! - `CHUMP_FLEET_SERVER_PORT` (default `7070`) — port to bind (always 127.0.0.1).
+//! - `CHUMP_FLEET_SERVER_PORT` (default `7070`) — port to bind.
+//! - `CHUMP_FLEET_SERVER_BIND` (default `127.0.0.1`, RESILIENT-1030) —
+//!   bind address. Set to a tailnet IP (e.g. the host's `100.x.y.z`
+//!   Tailscale address) to expose the create API + fleet-server to the
+//!   operator's other machines instead of only localhost. The mutating
+//!   routes (`/api/mission`, `/api/gap`) and the new `/api/gaps` read route
+//!   are already fail-closed behind `CHUMP_BATPHONE_TOKEN`; binding wider
+//!   than localhost does NOT add auth to the other (unauthenticated)
+//!   dashboard/events/segments routes, so only bind non-localhost on a
+//!   private tailnet, never a public interface.
 //! - `CHUMP_FLEET_DB` (optional) — override `.chump/fleet_events.db`.
 //! - `CHUMP_REPO_ROOT` (optional) — override the repo root for dashboard-summary reads.
 
@@ -38,6 +61,18 @@ fn resolve_repo_root() -> std::path::PathBuf {
         .unwrap_or_else(|| std::path::PathBuf::from("."))
 }
 
+/// RESILIENT-1030: resolve the bind address from `CHUMP_FLEET_SERVER_BIND`,
+/// falling back to localhost-only when unset, empty, or unparseable.
+/// Pure and unit-testable so the fallback-on-bad-input behavior is covered
+/// without spinning up a real listener.
+fn resolve_bind_ip(env_val: Option<&str>) -> std::net::IpAddr {
+    env_val
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1)))
+}
+
 fn resolve_db_path() -> std::path::PathBuf {
     if let Ok(p) = std::env::var("CHUMP_FLEET_DB") {
         if !p.is_empty() {
@@ -60,15 +95,35 @@ fn main() -> ExitCode {
         println!();
         println!("Env vars:");
         println!("  CHUMP_FLEET_SERVER_PORT  (default 7070)");
+        println!("  CHUMP_FLEET_SERVER_BIND  (default 127.0.0.1; RESILIENT-1030 tailnet exposure)");
         println!("  CHUMP_FLEET_DB           (default <repo>/.chump/fleet_events.db)");
-        println!(
-            "  CHUMP_FLEET_SCRUBBER_DIR (default <repo>/web/fleet-scrubber; mounted at /scrubber)"
-        );
         return ExitCode::SUCCESS;
     }
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("chump-fleet-server {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
+    }
+    // --query-logs <stage> (EFFECTIVE-1519): print `logs/launch.log` entries
+    // matching the given stage (draft/approve/send/publish) and exit —
+    // doesn't start the server.
+    if let Some(stage) = args
+        .windows(2)
+        .find(|w| w[0] == "--query-logs")
+        .map(|w| w[1].clone())
+    {
+        let repo_root = resolve_repo_root();
+        return match chump_fleet_server::mission::handle_log_query(&repo_root, &stage) {
+            Ok(lines) => {
+                for line in lines {
+                    println!("{line}");
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("[chump-fleet-server] --query-logs failed: {e}");
+                ExitCode::from(1)
+            }
+        };
     }
     // Optional --port N (alternative to CHUMP_FLEET_SERVER_PORT env var).
     let port_override: Option<u16> = args
@@ -145,8 +200,14 @@ async fn run(port_override: Option<u16>) -> anyhow::Result<()> {
 
     let router = routes::build_router(Arc::clone(&store), repo_root);
 
-    // Localhost only — do NOT bind 0.0.0.0 (security requirement).
-    let addr = std::net::SocketAddr::from(([127, 0, 0, 1], port));
+    // RESILIENT-1030: bind address is now configurable via
+    // CHUMP_FLEET_SERVER_BIND (defaults to localhost-only, unchanged from
+    // before). Set it to a tailnet IP to expose the authed mutating routes
+    // + /api/gaps beyond localhost — see the module doc comment above for
+    // the caveat about the still-unauthenticated dashboard/events routes.
+    let bind_env = std::env::var("CHUMP_FLEET_SERVER_BIND").ok();
+    let ip = resolve_bind_ip(bind_env.as_deref());
+    let addr = std::net::SocketAddr::from((ip, port));
     let listener = tokio::net::TcpListener::bind(addr).await?;
     tracing::info!(addr = %addr, "listening");
 
@@ -175,5 +236,41 @@ async fn shutdown_signal() {
     tokio::select! {
         _ = ctrl_c => tracing::info!("received SIGINT, shutting down"),
         _ = terminate => tracing::info!("received SIGTERM, shutting down"),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // RESILIENT-1030: CHUMP_FLEET_SERVER_BIND lets the operator expose the
+    // fleet-server on a tailnet IP; unset/empty/garbage must still fall
+    // back to the safe localhost-only default.
+    #[test]
+    fn resolve_bind_ip_defaults_to_localhost_when_unset() {
+        assert_eq!(
+            resolve_bind_ip(None),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))
+        );
+    }
+
+    #[test]
+    fn resolve_bind_ip_defaults_to_localhost_when_empty_or_garbage() {
+        assert_eq!(
+            resolve_bind_ip(Some("")),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))
+        );
+        assert_eq!(
+            resolve_bind_ip(Some("not-an-ip")),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(127, 0, 0, 1))
+        );
+    }
+
+    #[test]
+    fn resolve_bind_ip_honors_a_configured_tailnet_ip() {
+        assert_eq!(
+            resolve_bind_ip(Some("100.64.1.2")),
+            std::net::IpAddr::V4(std::net::Ipv4Addr::new(100, 64, 1, 2))
+        );
     }
 }

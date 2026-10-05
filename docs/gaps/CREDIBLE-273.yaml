@@ -1,0 +1,18 @@
+- id: CREDIBLE-273
+  domain: CREDIBLE
+  title: "measure first-pass yield: 51 CI runs for 7 PRs, 14% FPY, and under 5% of failures were real code defects"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "THE LEVER IS IN THE FAILURE MIX, NOT THE FAILURE COUNT. Of ~45 failures: about 2 were real defects in the change (a pub(crate) visibility break across a crate split, one port error); about 10 were obligations discovered LATE (preflight-parity mirror x4, docs-delta trailer x2, install-manifest, stale base x2); about 11 were FALSE SIGNALS (CREDIBLE-175 cargo-test env race, the proof_of_merge flake x5); about 5 were scope-blind detectors (tests pinned to src/main.rs broken by a legitimate refactor). Under 5% of CI failures were the thing CI exists to catch"
+    - "CRAWL — INSTRUMENT IT FIRST, no new plumbing required. FPY is computable today from gh run list per PR branch. Ship a script reporting, weekly and split by PR class: PR count, total CI runs, first-pass yield, rework multiplier, merged vs destroyed. Doc-only already runs at 100% FPY (#3524: one run, zero failures) while code PRs run near zero — that gap is the first finding and it makes later claims arguable instead of asserted"
+    - WALK — SHIFT THE TOP THREE OBLIGATIONS LEFT. preflight-parity, docs-delta and install-manifest each fail in CI after roughly 12 minutes and could fail in pre-commit in about a second. That is ~10 of tonight failures converted from round trips to instant feedback. DOC-096 covers the parity half; extend it to the other two
+    - "RUN — KILL THE FALSE SIGNALS, because these destroy output rather than delay it. The proof_of_merge flake did not slow PR #3510, it KILLED it (CREDIBLE-251). RESILIENT-250 made #3499 structurally unmergeable regardless of quality. Those two gaps are the whole \"zero output is unacceptable\" case, already named and filed"
+    - "THE METRIC HAS A BLIND SPOT AND THE DOC MUST SAY SO. Yield thinking optimises the line you have. The largest wins in the same session were invisible to it: mold sat installed-and-unwired (EFFECTIVE-396), operator-recall sat dead since 2026-05-08 with enabled=true, and a clean merge nearly deleted chump gap write-ac. All three are ZERO-DEFECT states by any process metric because nothing was failing. A yield metric cannot see an instrument that quietly stopped reporting — keep a second lens"
+    - "DELIVERABLE: a decision record in docs/strategy/ with doc_tag decision-record, plus the measurement script, so next week is a comparison rather than a re-derivation"
+  closed_pr: 3556
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: for each PR touched 2026-08-09, gh run list --branch <head> --workflow=ci.yml counting total runs and conclusion==failure | OUTPUT: #3524 runs=1 failed=0 merged; #3551 runs=2 failed=1 merged; #3544 runs=6 failed=6 merged; #3525 runs=7 failed=5 merged; #3510 runs=9 failed=9 NOT merged; #3499 runs=11 failed=11 NOT merged; #3509 runs=15 failed=13 merged. Totals 51 runs across 7 PRs; exactly one PR passed CI on its first attempt | THEORY: first-pass yield is 1/7 = 14% and the rework multiplier is about 7x, but the actionable signal is the failure MIX, not the count — classifying the ~45 failures gives roughly 2 real code defects, 10 late-discovered process obligations, 11 false signals, and 5 scope-blind detectors | ALT: rejected "the changes were low quality" — only about 2 of 45 failures were defects in the change itself. Rejected "CI is too slow" — the one doc-only PR merged in 7m32s with a single clean run; duration is not the constraint, rework is
+

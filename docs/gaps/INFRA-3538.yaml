@@ -1,0 +1,13 @@
+- id: INFRA-3538
+  domain: INFRA
+  title: THROWAWAY probe B — wontfix repro, delete me
+  status: wontfix
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"THROWAWAY probe B — wontfix repro, delete me\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    THROWAWAY probe for the INFRA-1965 wontfix investigation (2026-08-07). Bug did NOT reproduce. Disposed per archive-only rule — not deleted.
+

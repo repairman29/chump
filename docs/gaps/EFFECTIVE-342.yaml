@@ -1,0 +1,30 @@
+- id: EFFECTIVE-342
+  domain: EFFECTIVE
+  title: agent-run implement produces correct code but never persists it (uses read-only tools only) — blocks zero-touch CREATE
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Surfaced by the first live EFFECTIVE-341 --implement lap. THE blocker to zero-touch CREATE (vision → working tool).
+    
+    WHAT HAPPENED: chump bench run --implement drove chump agent-run with the vision. The agent AUTHORED a correct rename_photos.py IN ITS REPLY TEXT (EXIF DateTimeOriginal → strptime → os.rename, argparse CLI) but executed ONLY read-only tools (list_dir, read_file) — never write_file. File exists nowhere; agent-run exited 0; acceptance failed.
+    
+    ROOT CAUSE (diagnosed):
+    - write_file IS registered — build_chump_agent_cli (agent_factory.rs:52) uses register_from_inventory = FULL toolset incl write_file (tool_inventory.rs:101). Tool available; model didn't call it.
+    - agent-run runs on provider_cascade::global_provider() = the FREE cloud cascade (Groq/Cerebras/Mistral/OpenRouter/Gemini/…), NOT Anthropic. Exactly the models tool_inventory.rs:131-138 flags as prone to 'spend their whole iteration budget on blind list_dir/read_file and never reach patch_file' (EFFECTIVE-005). Author-in-reply-then-stop is that failure class.
+    
+    So code-AUTHORING works on a free model; reliable code-PERSISTING does not.
+    
+    FIX DIRECTIONS:
+    (a) Route CREATE-implement agent-run to a capable provider (Anthropic via ANTHROPIC_API_KEY/OAUTH) not the free cost-cascade — needs a provider-selection knob on agent-run.
+    (b) Bump CHUMP_AGENT_MAX_ITER (default 25) + system-prompt nudge that the deliverable is files-on-disk.
+    (c) Re-run create-photo-renamer --implement to CONFIRM write_file fires + file lands.
+    
+    ACCEPTANCE: a --implement lap leaves the authored file on disk in the scored clone dir. Pillar: EFFECTIVE.
+  acceptance_criteria:
+    - "The change described by \"agent-run implement produces correct code but never persists it (uses read-only tools only) — blocks zero-touch CREATE\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-31'
+  closed_pr: 3430
+

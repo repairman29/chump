@@ -1,18 +1,12 @@
 - id: INFRA-2391
   domain: INFRA
-  title: 'EFFECTIVE: META-072 chump-demo crate shelfware — wire as subcommand OR delete'
+  title: "EFFECTIVE: META-072 chump-demo crate shelfware — wire as subcommand OR delete"
   status: done
   priority: P1
   effort: s
   acceptance_criteria:
-  - '["Wire crates/chump-demo as `chump demo` subcommand — add to main.rs cmd-dispatch + CLAP parser, ensure `chump demo --help`
-    works","Audit existing crates/chump-demo/src/main.rs (322 LOC, META-072 Track-3 autonomous-throughput demo loop) and decide
-    whether it stands as-is or needs adaptation to current chump architecture (last 6 weeks of substrate shift)","Smoke test:
-    `chump demo` runs end-to-end without erroring (may be no-op or print-only); CI test at scripts/ci/test-chump-demo-smoke.sh
-    asserts exit 0","If META-072 intent no longer matches current demo loop (chump-demo was speculative), file follow-up INFRA-NNN
-    to revisit demo design rather than scoping that to this gap","Mention demo subcommand in CLAUDE.md or AGENTS.md so future
-    curators discover it","Resolution emits kind=shelfware_resolved to ambient.jsonl with field {crate:chump-demo, action:wire,
-    pr:NNNN}"]'
-  outcome_id: MISSION-010
+    - "[\"Wire crates/chump-demo as `chump demo` subcommand — add to main.rs cmd-dispatch + CLAP parser, ensure `chump demo --help` works\",\"Audit existing crates/chump-demo/src/main.rs (322 LOC, META-072 Track-3 autonomous-throughput demo loop) and decide whether it stands as-is or needs adaptation to current chump architecture (last 6 weeks of substrate shift)\",\"Smoke test: `chump demo` runs end-to-end without erroring (may be no-op or print-only); CI test at scripts/ci/test-chump-demo-smoke.sh asserts exit 0\",\"If META-072 intent no longer matches current demo loop (chump-demo was speculative), file follow-up INFRA-NNN to revisit demo design rather than scoping that to this gap\",\"Mention demo subcommand in CLAUDE.md or AGENTS.md so future curators discover it\",\"Resolution emits kind=shelfware_resolved to ambient.jsonl with field {crate:chump-demo, action:wire, pr:NNNN}\"]"
   closed_date: '2026-07-25'
   closed_pr: 3290
+  outcome_id: MISSION-010
+

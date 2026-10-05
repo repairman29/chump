@@ -1,0 +1,18 @@
+- id: CREDIBLE-195
+  domain: CREDIBLE
+  title: "CREDIBLE: ground the spirit lens (acceptance result + fuller intent) so it stops false-STUB-ing genuine acceptance-passing fixes — CREDIBLE-191 slice 1"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"ground the spirit lens (acceptance result + fuller intent) so it stops false-STUB-ing genuine acceptance-passing fixes — CREDIBLE-191 slice 1\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3457
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: chump bench run --track e2e/chumpbench/rescue-beast-ci.yaml --apply --implement --json (binary at main 9ce6beb2, has CREDIBLE-194 spirit-visibility fix).
+    OUTPUT: scorecard result=PASS acceptance_verdict=pass wall_clock_s=93, spirit_verdict=STUB spirit_reason='empty or irrelevant code change.' — BUT the net lap diff (origin/main..HEAD = seed+fix, verified in the clone) is a correct fixture 'function add(a, b) { return a + b; } module.exports = { add };' that MADE THE ACCEPTANCE CHECK PASS. So spirit(STUB) contradicts letter(pass) and spirit is WRONG — a false negative on a genuine minimal fix.
+    THEORY: spirit_judge (src/bench.rs) is called as spirit_judge(chump_bin, &track.task, dir) with only the terse task text and the diff; it has no signal that the change PASSED a real acceptance check, and its STUB definition doesn't exclude minimal-but-correct fixes. So it mislabels a small correct fix as STUB 'empty or irrelevant'. FIX (CREDIBLE-191 slice 1): ground the lens — (a) pass the acceptance verdict into spirit_judge and tell the LLM 'this diff made the acceptance check <PASS|FAIL>' (PASS is strong evidence AGAINST stub); (b) pass a fuller intent (mode + acceptance.check, not just the terse task); (c) tighten the prompt: a minimal correct change that passes acceptance is GENUINE; STUB = literally placeholder/no-op/empty/'add your code here'. Unit test the prompt-builder/grounding. Re-run the lap to confirm GENUINE not STUB.
+    ALT: (a) drop the spirit lens for command-acceptance tracks (loses the stub/hack signal on CREATE laps where acceptance is narrow — no); (b) full multi-lens vote panel now (too big for one PR — that's later CREDIBLE-191 slices). Grounding the single lens is the smallest fix that removes the observed false negative.
+

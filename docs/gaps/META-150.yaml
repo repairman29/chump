@@ -2,7 +2,7 @@
   domain: META
   title: "META: Retire Individual Required Checks (Cleanup) (META-131 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: xs
   acceptance_criteria:
     - All configurations making individual lane checks required are removed from the CI system.

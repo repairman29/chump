@@ -1,0 +1,20 @@
+- id: RESILIENT-239
+  domain: RESILIENT
+  title: "cargo shared-target I/O tax: 52GB/363k-file deps dir makes warm no-op check 70s at 18% CPU (57s pure stat) — sweep + bound incremental"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "MEASURED BEFORE/AFTER recorded in the gap: warm no-op 'cargo check --workspace' drops from 70s wall to <10s wall (baseline 1:10.02 at 18% CPU, 13s CPU floor)"
+    - ~/.cargo/chump-shared-target total drops from 61GB/389,175 files to <15GB; debug/deps under 100k files
+    - cargo-sweep installed and a scheduled prune (--time 14 --recursive) wired into the same place the other maintenance crons live; prune is idempotent and safe to run while fleet agents build
+    - CARGO_INCREMENTAL=0 set for CI/worker build paths (fresh worktrees gain nothing from an 11GB incremental cache); interactive checkout keeps incremental on
+    - Re-run the 3+ parallelism case from the existing cross-worktree cargo index mutex contention gap and record whether the stall reproduces after the sweep; if it does, this gap does NOT close and the mutex theory gets its own evidence block
+    - "No regression: full workspace check from cold still completes (baseline 12:08) and 'chump --version' still starts in <15ms (baseline 8.8ms)"
+  outcome_id: MISSION-010
+  evidence: |
+    COMMAND: time cargo check --workspace --quiet (warm, immediately after an identical successful run); du -sh + find -type f on ~/.cargo/chump-shared-target/debug
+    OUTPUT: warm no-op = 5.91s user + 7.15s system, 18% cpu, 1:10.02 total wall — 13s CPU against 70s wall, so ~57s is neither user nor system compute. debug/deps = 52GB across 362,902 files; debug/incremental = 11GB; debug total = 61GB / 389,175 files. Cold-ish full workspace check for comparison = 12:08.
+    THEORY: cargo stats its entire fingerprint + deps tree on every invocation. The shared target-dir (Chump/target symlinks to ~/.cargo/chump-shared-target per .cargo/config.toml target-dir) accumulates artifacts across every worktree, feature-flag combo, and toolchain, and cargo never GCs it. At 363k files the per-invocation stat walk dominates wall-clock, which is why utilization sits at 18% instead of being CPU-bound. Predicts the same root cause behind the existing cross-worktree cargo index mutex contention gap at 3+ fleet parallelism.
+    ALT: (a) main.rs monolith blast radius — REFUTED by measurement: real appended-fn edit to main.rs (18,808 LOC) = 12.67s vs identical edit to an 88-LOC leaf module = 13.47s, no blast-radius penalty. (b) genuine cold compile — refuted, the 70s run was warm and immediately repeated. (c) APFS slowness generally — testable by re-measuring after a sweep; if wall drops toward the 13s CPU floor, file count was the cause.
+

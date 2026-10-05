@@ -1,0 +1,18 @@
+{
+  "name": "publisher",
+  "version": "1.0.0",
+  "description": "EFFECTIVE-483/484/365: PUBLISHER.md platform rules, Jeff's-voice style loader, draft generator, and approval queue",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test platforms.test.ts style.test.ts draft.test.ts store.test.ts queue.test.ts drive.test.ts track.test.ts e2e.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}

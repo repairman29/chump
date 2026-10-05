@@ -1,0 +1,18 @@
+- id: EFFECTIVE-415
+  domain: EFFECTIVE
+  title: doc-only PRs still pay ~12m of Audit, and PRs can sit hours with CI never triggering
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "MEASURED 2026-08-07 on PR #3489 (DOC-085, doc-only: 3 .md files). GOOD NEWS FIRST — check selection is already well optimized: clippy, cargo-test, e2e, tauri-cowork-e2e, ACP real-client, ACP force-fire and system-integration ALL SKIPPED (20 skipped / 20 run), with clippy-required and cargo-test-required still reporting SUCCESS via the aggregator pattern. This gap is NOT 'require fewer checks' — that is done"
+    - "REMAINING COST: the Audit workflow is the floor at 11-12 minutes on every PR including doc-only ones (audit-shard x4 + gaps-integrity + gap-status-check). Decide deliberately whether 4 audit shards are warranted for a change that touches only .md — either shard-skip on the same rust/docs lane signal the other jobs already use, or record why the audit must always run in full"
+    - "THE DOMINANT LATENCY IS NOT CI: PR #3489 opened 21:47Z and its FIRST CI run started 00:22Z — 2h35m with zero runs — then merged 9 minutes later. The pipeline only fired after the PR was closed and reopened by hand. So end-to-end was 2h44m of which ~9m was actual pipeline"
+    - "FIX THE TRIGGER, it is worth more than any check tuning: detect a PR with zero workflow runs N minutes after open and re-fire (or alert). Pairs with RESILIENT-247 (pr-rescue.sh exists, is unscheduled) — a rescue loop that also watched for never-triggered CI would have caught this in minutes instead of hours"
+    - "Note the side effect for whoever implements the re-fire: close/reopen DROPS auto-merge, so it must be re-armed (gh pr merge <N> --auto --squash) or the PR silently stops merging itself"
+  notes: |
+    [2026-09-03T10:20:32Z] All 5 AC already satisfied by prior work landed on main before this session started: (1)/(3) are measurement-only notes, no action required. (2) shard-skip: audit.yml 'changes' job (docs_only signal, mirrors ci.yml INFRA-1379) gates audit-shard matrix — PR #4422 'EFFECTIVE-415: skip audit-shard matrix on docs-only PRs'. (4)/(5) trigger fix + auto-merge re-arm: scripts/coord/pr-rescue.sh RESILIENT-248 zero-CI-runs detector (pr_rescue_should_refire, NOCI_MINUTES=25) closes/reopens via App token and re-arms auto-merge post-reopen — shipped PR #3525, gap RESILIENT-248 status=done. Scheduling: .github/workflows/pr-rescue.yml runs 'cron: 0 */2 * * *' + workflow_dispatch, so the zero-CI detector already runs on a clock (RESILIENT-247 tracks formalizing/hardening that schedule separately, left open, out of scope here). Verified via git log/grep this session — no code change needed; closing with evidence.
+  closed_date: '2026-09-03'
+  closed_pr: 4422
+  outcome_id: EFFECTIVE-000
+

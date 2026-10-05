@@ -1,0 +1,21 @@
+- id: META-331
+  domain: META
+  title: "RESILIENT: node contract — declare, verify, and enforce fleet node substrate"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    Written the night of the 2026-08-09 closetjunky recovery. The fleet coordinates WORK well (gaps, leases, NATS, consensus) and does not model SUBSTRATE at all: no node identity, no registry, no security baseline, no boot-persistence verification, no storage inventory, no node-level liveness. Seven of the nine lifecycle phases failed in a single evening. Sub-gaps DOC-098 (Wi-Fi bringup runbook) and RESILIENT-282 (baseline enforcement) are already filed.
+  acceptance_criteria:
+    - "docs/design/FLEET_NODE_ARCHITECTURE.md lands: the node contract (declare + verify), nine lifecycle phases, the node record schema, an honest claimed-vs-verified table, and a four-wave plan"
+    - "Wave 1 declares: node identity generator writing ~/.chump/node-id.txt, an in-repo registry at docs/fleet/nodes/<node-id>.yaml holding posture facts only and never credentials, and chump node contract show"
+    - verify
+    - META-128 C2 (chump-disk-inventory daemon) is folded in as the first inventory producer rather than re-filed; today chump disk status
+    - plan
+    - budget ship while the daemon and ~/.chump/disk-inventory.json do not exist on any node
+    - "Wave 2 enforces: a node failing the security baseline is REFUSED WORK by the picker, not merely flagged (operator decision 2026-08-09)"
+    - Every node is in scope including the Mac (operator decision 2026-08-09)
+    - "Verification cadence is aggressive: on-change plus a short periodic floor, per operator decision 2026-08-09 to be as aggressive as needed to keep things running"
+    - Node liveness is tracked independently of fleet ship-rate, because closetjunky was offline 5 days while the fleet shipped from other nodes and nothing paged
+  outcome_id: MISSION-010
+

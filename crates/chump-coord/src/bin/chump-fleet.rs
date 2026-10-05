@@ -126,6 +126,47 @@ fn worker_bin() -> String {
     env::var("CHUMP_WORKER_BIN").unwrap_or_else(|_| "chump-worker".to_string())
 }
 
+/// Best-effort CPU count; defaults to 4 if unavailable (matches the
+/// convention in `chump-preflight::available_cpus`).
+fn available_cpus() -> usize {
+    std::thread::available_parallelism()
+        .map(|n| n.get())
+        .unwrap_or(4)
+}
+
+/// RESILIENT-1014 (a): cap concurrent build-agents to the node's core count.
+/// VERIFIED bug: 4 `claude -p` build agents on a 2-core box oversubscribes
+/// the CPU. `requested` is clamped down to `cpus` (never below 1) so the
+/// supervisor can never spawn more agents than the node can run at once.
+fn clamp_size_to_cpus(requested: usize, cpus: usize) -> usize {
+    requested.min(cpus.max(1))
+}
+
+/// RESILIENT-1014 (c): unique AGENT_ID per node. VERIFIED clash: two
+/// different nodes (cuphead, mugman) both reported AGENT_ID=1 because the
+/// id was a bare per-process worker index with no node identity baked in.
+/// `CHUMP_NODE_ID_OVERRIDE` is a test seam; production reads the kernel
+/// hostname (Linux) or falls back to `HOSTNAME`/`unknown-node`.
+fn node_id_component() -> String {
+    if let Ok(v) = env::var("CHUMP_NODE_ID_OVERRIDE") {
+        if !v.trim().is_empty() {
+            return v.trim().to_string();
+        }
+    }
+    if let Ok(hostname) = std::fs::read_to_string("/proc/sys/kernel/hostname") {
+        let trimmed = hostname.trim();
+        if !trimmed.is_empty() {
+            return trimmed.to_string();
+        }
+    }
+    if let Ok(v) = env::var("HOSTNAME") {
+        if !v.trim().is_empty() {
+            return v.trim().to_string();
+        }
+    }
+    "unknown-node".to_string()
+}
+
 #[tokio::main(flavor = "multi_thread")]
 async fn main() -> ExitCode {
     let argv: Vec<String> = env::args().collect();
@@ -140,15 +181,25 @@ async fn main() -> ExitCode {
     }
 
     let bin = worker_bin();
+    let cpus = available_cpus();
+    let size = clamp_size_to_cpus(cli.size, cpus);
+    if size != cli.size {
+        eprintln!(
+            "[chump-fleet] RESILIENT-1014: requested size={} exceeds node capacity (cpus={}) — clamping to {} to avoid oversubscription",
+            cli.size, cpus, size
+        );
+    }
+    let node_id = node_id_component();
     eprintln!(
-        "[chump-fleet] supervisor starting: size={} once={} idle={}s bin={}",
-        cli.size, cli.once, cli.idle_sleep_s, bin
+        "[chump-fleet] supervisor starting: size={} once={} idle={}s bin={} node_id={}",
+        size, cli.once, cli.idle_sleep_s, bin, node_id
     );
 
     let (shutdown_tx, shutdown_rx) = watch::channel(false);
-    let mut handles = Vec::with_capacity(cli.size);
-    for i in 0..cli.size {
+    let mut handles = Vec::with_capacity(size);
+    for i in 0..size {
         let session_id = format!("chump-fleet-{}-{}", std::process::id(), i);
+        let agent_id = format!("{}-{}", node_id, i);
         let bin = bin.clone();
         let skills = cli.worker_skills.clone();
         let machine = cli.worker_machine.clone();
@@ -162,15 +213,16 @@ async fn main() -> ExitCode {
                 if *rx.borrow() {
                     break;
                 }
-                let rc = run_one_worker(
-                    &bin,
-                    &session_id,
-                    skills.as_deref(),
-                    machine.as_deref(),
-                    backend.as_deref(),
+                let rc = run_one_worker(&WorkerSpawnSpec {
+                    bin: &bin,
+                    session_id: &session_id,
+                    agent_id: &agent_id,
+                    skills: skills.as_deref(),
+                    machine: machine.as_deref(),
+                    backend: backend.as_deref(),
                     once,
-                    idle,
-                )
+                    idle_sleep_s: idle,
+                })
                 .await;
                 match rc {
                     Ok(0) => {
@@ -228,30 +280,36 @@ async fn main() -> ExitCode {
     ExitCode::SUCCESS
 }
 
-async fn run_one_worker(
-    bin: &str,
-    session_id: &str,
-    skills: Option<&str>,
-    machine: Option<&str>,
-    backend: Option<&str>,
+struct WorkerSpawnSpec<'a> {
+    bin: &'a str,
+    session_id: &'a str,
+    agent_id: &'a str,
+    skills: Option<&'a str>,
+    machine: Option<&'a str>,
+    backend: Option<&'a str>,
     once: bool,
     idle_sleep_s: u64,
-) -> Result<i32> {
-    let mut cmd = Command::new(bin);
+}
+
+async fn run_one_worker(spec: &WorkerSpawnSpec<'_>) -> Result<i32> {
+    let mut cmd = Command::new(spec.bin);
     cmd.arg("--session-id")
-        .arg(session_id)
+        .arg(spec.session_id)
         .arg("--idle-sleep-s")
-        .arg(idle_sleep_s.to_string());
-    if once {
+        .arg(spec.idle_sleep_s.to_string());
+    if spec.once {
         cmd.arg("--once");
     }
-    if let Some(s) = skills {
+    // RESILIENT-1014 (c): globally-unique AGENT_ID (node_id + local index) so
+    // two nodes running the supervisor concurrently never report the same id.
+    cmd.env("AGENT_ID", spec.agent_id);
+    if let Some(s) = spec.skills {
         cmd.env("WORKER_SKILLS", s);
     }
-    if let Some(m) = machine {
+    if let Some(m) = spec.machine {
         cmd.env("WORKER_MACHINE", m);
     }
-    if let Some(b) = backend {
+    if let Some(b) = spec.backend {
         cmd.env("WORKER_BACKEND", b);
     }
     // Forward CHUMP_WORKER_EXEC_OVERRIDE if set (test seam).
@@ -292,5 +350,50 @@ async fn wait_for_signal() {
     #[cfg(not(unix))]
     {
         let _ = signal::ctrl_c().await;
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // RESILIENT-1014 (a): concurrency cap must never exceed the node's cores.
+    #[test]
+    fn clamp_size_to_cpus_no_clamp_when_within_cap() {
+        assert_eq!(clamp_size_to_cpus(2, 4), 2);
+    }
+
+    #[test]
+    fn clamp_size_to_cpus_clamps_oversubscription() {
+        // VERIFIED bug: 4 requested build-agents on a 2-core box.
+        assert_eq!(clamp_size_to_cpus(4, 2), 2);
+    }
+
+    #[test]
+    fn clamp_size_to_cpus_never_below_one() {
+        assert_eq!(clamp_size_to_cpus(5, 0), 1);
+    }
+
+    // RESILIENT-1014 (c): AGENT_ID must be unique per node, not just per
+    // in-process worker index.
+    #[test]
+    #[serial_test::serial(chump_fleet_node_id_env)]
+    fn node_id_component_uses_override() {
+        env::set_var("CHUMP_NODE_ID_OVERRIDE", "cuphead");
+        assert_eq!(node_id_component(), "cuphead");
+        env::remove_var("CHUMP_NODE_ID_OVERRIDE");
+    }
+
+    #[test]
+    #[serial_test::serial(chump_fleet_node_id_env)]
+    fn node_id_component_differs_across_nodes() {
+        // Simulates the VERIFIED clash: two nodes must not collapse to the
+        // same node identity, so their per-index AGENT_IDs never collide.
+        env::set_var("CHUMP_NODE_ID_OVERRIDE", "cuphead");
+        let cuphead_id = format!("{}-{}", node_id_component(), 1);
+        env::set_var("CHUMP_NODE_ID_OVERRIDE", "mugman");
+        let mugman_id = format!("{}-{}", node_id_component(), 1);
+        env::remove_var("CHUMP_NODE_ID_OVERRIDE");
+        assert_ne!(cuphead_id, mugman_id);
     }
 }

@@ -1,0 +1,14 @@
+- id: RESILIENT-320
+  domain: RESILIENT
+  title: "COTG: role-aware node installer (--role factory|data|embed) + capacity worker sizing"
+  status: open
+  priority: P0
+  effort: m
+  acceptance_criteria:
+    - "installer takes --role factory|data|embed; installs organs BY ROLE: factory=workers+pr-lander+reapers+integrator+orchestrator+disk-monitor+main-health-watchdog; data=orchestrator+disk-monitor+main-health-watchdog+Postgres, NO pr-lander/PR-reapers; embed=orchestrator+disk-monitor"
+    - factory provisions N workers=clamp(1,cores-1) minus 1 if node runs embeds; sets CHUMP_ORCH_WORKER_MAX (CJ 4-core+embeds→2); no hand-placed worker units/caps
+    - fresh box→correct organ set per role+self-test green; reconciles CJ(factory)+Pixel(data) retiring tonights hand-units
+  notes: |
+    [2026-08-19T20:20:31Z] RESILIENT-318/COTG. Installer is ROLE-BLIND today (would put pr-lander on Pixel data node). docs/strategy/DATA_HOME_PLAN.md
+    [2026-08-19T20:29:24Z] Jeff 2026-08-19 do-all-we-can: bumped P1->P0 — the COTG role-aware installer is the foundation for tuning bring-up to tonights reality; get it worked next.
+

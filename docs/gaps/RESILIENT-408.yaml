@@ -1,0 +1,22 @@
+- id: RESILIENT-408
+  domain: RESILIENT
+  title: "auto-deploy verifies wrong binary: gates on target/release, CJ workers exec ~/.cargo/bin/chump"
+  status: done
+  priority: P1
+  effort: s
+  description: |
+    MISSION-012/RESILIENT-211 deploy lineage. The CJ auto-deploy organ (scripts/ops/auto-deploy.sh -> scripts/setup/refresh-runner-binary.sh) gates deploy success on TARGET_BIN=CHUMP_RUNNER_BIN=~/Projects/chump/target/release/chump, but the workers (cj-worker-run.sh) exec ~/.cargo/bin/chump (first in their PATH) — a different file/inode. Result: binary_auto_deployed is emitted and auto-deploy-last-sha.txt advanced while the running worker executes stale code (observed 2026-08-24 05:50: worker binary was the 04:49 build with 0 EFFECTIVE-465 markers though auto-deploy had reported success). This is the merged-not-running disease on the deploy side. Script-only change (express lane, skips cargo-test gate). Do NOT blind-edit CI/hook Rust core. Push with --no-verify.
+  acceptance_criteria:
+    - auto-deploy verifies the binary the fleet PATH actually resolves chump to (on Linux nodes, ~/.cargo/bin/chump when present) rather than hardcoding target/release/chump
+    - After install, the deploy confirms the PATH-resolved binary build SHA == origin/main HEAD SHA (and carries the expected build marker when one is defined); on mismatch it emits kind=binary_auto_deploy_failed reason=worker_binary_sha_mismatch and exits non-zero
+    - binary_auto_deployed is emitted and auto-deploy-last-sha.txt written ONLY after that post-install verification passes — never on an unverified or mismatched install
+    - refresh-runner-binary.sh honors an externally-provided CARGO_TARGET_DIR (isolated build dir) instead of hard-overriding to REPO_ROOT/target, so the deploy build cannot lock-contend with worker builds
+    - "a scripts/ci regression test asserts: a stale PATH-resolved binary after a refresh causes the deploy to exit non-zero and NOT emit binary_auto_deployed"
+  notes: |
+    [2026-08-24T15:55:17Z] Filed by CJ fleet engineer 2026-08-24 while landing EFFECTIVE-465. Companion finding: EFFECTIVE-465 restrict-tools-to-edit-only fires correctly in the running worker (marker present), but floor still empty-diffs on non-trivial gaps (model burns 8192-token budget post-restriction with no appliable str_replace); trivial one-line gaps (CREDIBLE-301) DO land on flash.
+  closed_date: '2026-08-26'
+  closed_pr: 4238
+  outcome_id: MISSION-012
+  evidence: |
+    COMMAND: systemctl show chump-auto-deploy.service -p Environment; stat -c %i ~/.cargo/bin/chump ~/Projects/chump/target/release/chump. OUTPUT: CHUMP_RUNNER_BIN=target/release/chump (inode 2136728); worker wrapper PATH=~/.cargo/bin:...:target/release so chump resolves to ~/.cargo/bin/chump (inode 842125) — DIFFERENT file. At 05:50 worker binary was 04:49 build with 0 EFFECTIVE-465 markers while auto-deploy reported binary_auto_deployed. THEORY: auto-deploy.sh + refresh-runner-binary.sh gate success on TARGET_BIN=CHUMP_RUNNER_BIN=target/release/chump, NOT the artifact workers exec (~/.cargo/bin/chump, first in PATH) — deploy reports success while running worker stays stale = merged-not-running on deploy side. Compounded: refresh-runner-binary.sh hard-overrides CARGO_TARGET_DIR to REPO_ROOT/target (shared warm target workers build into), inviting lock contention. ALT: just repoint CHUMP_RUNNER_BIN — REJECTED: no fail-loud verification against PATH-resolved binary means drift silently recurs.
+

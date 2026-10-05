@@ -112,7 +112,7 @@ _heartbeat_age_s() {
     [[ -f "$HEARTBEAT" ]] || return 1
     local mtime now
     # macOS stat -f, Linux stat -c
-    mtime=$(stat -f %m "$HEARTBEAT" 2>/dev/null || stat -c %Y "$HEARTBEAT" 2>/dev/null)
+    mtime=$(stat -c %Y "$HEARTBEAT" 2>/dev/null || stat -f %m "$HEARTBEAT" 2>/dev/null)
     [[ -n "$mtime" ]] || return 1
     now=$(_now_epoch)
     printf '%d' "$((now - mtime))"

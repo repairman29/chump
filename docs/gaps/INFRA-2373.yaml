@@ -2,7 +2,7 @@
   domain: INFRA
   title: chump --help / chump init suggestion when ~/.chump/config.toml missing — user falls into env-var-default state silently
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
     - "src/main.rs print_help(): when ~/.chump/config.toml does not exist (and HOME is set), prepend a one-line banner `tip: run 'chump init' to scaffold ~/.chump/config.toml (one-time setup)` to help output."

@@ -1,0 +1,23 @@
+- id: PRODUCT-144
+  domain: PRODUCT
+  title: "[peakvinyl.club] Duplicate-word typo: \"$200/season/season\" on About and Join pages"
+  status: already_satisfied
+  priority: P2
+  effort: s
+  description: |
+    Fresh-context stranger-agent cold test of peakvinyl.club (Scout, stranger tier, ~10 min bounded session, no account/payment).
+    
+    Both the About page and the Join page display the membership price as "$200/season/season" -- the unit is repeated. Appears on the two pages a first-time visitor is most likely to read before deciding to join, right next to the actual payment CTA.
+    
+    context: {"url":"https://peakvinyl.club","tier":"stranger","source":"scout-stranger-agent"}
+    source: holler feedback_events, dedupe 40d159f27533f4db
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  closed_date: '2026-08-06'
+  skills_required: "external_repo:repairman29/pvc"
+  evidence: |
+    Typo $200/season/season NOT present in repairman29/pvc: all occurrences are correct single '$200/season' (join/about/membership pages + strategy HTMLs); no 'season/season' or 'season season' anywhere. Likely removed in the 'Pikes Peak Underground' rebrand (c362850). Verified via grep in wt/p11960 2026-08-06.
+

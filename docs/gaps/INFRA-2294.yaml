@@ -2,7 +2,7 @@
   domain: INFRA
   title: PWA cockpit + scrubber unification — best-in-class HITL fleet UX consensus (3 options A/B/C + role-grouping sub-question)
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     STRATEGIC: best-in-class HITL fleet visualization. Operator directive 2026-05-30T16:00Z: "Does the PWA need to be the end-all be-all? Are there two tools? We need the team's consensus on this, not mine."

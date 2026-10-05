@@ -52,9 +52,15 @@ _emit() {
         "$ts" "$kind" "${GAP_ID:-unknown}" "$body" >> "$ambient" 2>/dev/null || true
 }
 
-# AC #5: per-repo enable/disable. Default OFF to ship safely; operator opts in.
-if [[ "${CHUMP_CONFLICT_RESOLVER_ENABLED:-0}" != "1" ]]; then
-    echo "[conflict-resolver] disabled (set CHUMP_CONFLICT_RESOLVER_ENABLED=1 to enable)"
+# AC #5: per-repo enable/disable. CHUMP_CONFLICT_RESOLVER_ENABLED is a hard
+# override: "0" force-disables, "1" force-enables regardless of confidence.
+# Left unset (the default), the resolver is invoked automatically — INFRA-3767
+# closes the "requires --opt-in flag" gap — but only follows through on
+# scenarios it has a confidence pattern for (see is_confident_scenario()
+# below, AC #3). Low-confidence scenarios still skip cleanly and fall
+# through to the existing operator-handoff path in bot-merge.sh.
+if [[ "${CHUMP_CONFLICT_RESOLVER_ENABLED:-auto}" == "0" ]]; then
+    echo "[conflict-resolver] disabled (CHUMP_CONFLICT_RESOLVER_ENABLED=0)"
     _emit "conflict_resolve_skipped" '{"reason":"disabled"}'
     exit 0
 fi
@@ -62,6 +68,56 @@ fi
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 GAP_ID="${1:-${CHUMP_GAP_ID:-}}"
 RETRIES="${CHUMP_CONFLICT_RETRIES:-2}"
+
+# AC #3: confidence gate. The resolver runs unattended only for scenarios it
+# has a confidence pattern for — small, textual, non-binary conflicts. A
+# forced CHUMP_CONFLICT_RESOLVER_ENABLED=1 bypasses this (operator override);
+# otherwise low-confidence scenarios skip and defer to the operator-handoff
+# path instead of guessing.
+#   - every conflicted file's extension is on the textual allowlist
+#   - no conflicted file is binary (per `git diff --numstat`)
+#   - total conflict-marker count across all files stays under the threshold
+CHUMP_CONFLICT_CONFIDENCE_MAX_MARKERS="${CHUMP_CONFLICT_CONFIDENCE_MAX_MARKERS:-12}"
+CHUMP_CONFLICT_CONFIDENCE_EXTENSIONS="${CHUMP_CONFLICT_CONFIDENCE_EXTENSIONS:-sh,rs,py,js,ts,md,yaml,yml,toml,txt,json}"
+
+is_confident_scenario() {
+    local files=("$@")
+    local marker_total=0
+    local ext allowed
+
+    IFS=',' read -r -a allowed <<< "$CHUMP_CONFLICT_CONFIDENCE_EXTENSIONS"
+
+    for f in "${files[@]}"; do
+        [[ -z "$f" ]] && continue
+
+        # Binary check: `git diff --numstat` prints "-\t-\t<path>" for binaries.
+        if git -C "$REPO_ROOT" diff --numstat -- "$f" 2>/dev/null | awk '{print $1}' | grep -q '^-$'; then
+            echo "[conflict-resolver] low-confidence: $f is binary"
+            return 1
+        fi
+
+        ext="${f##*.}"
+        allowed_match=0
+        for a in "${allowed[@]}"; do
+            [[ "$ext" == "$a" ]] && { allowed_match=1; break; }
+        done
+        if [[ "$allowed_match" != "1" ]]; then
+            echo "[conflict-resolver] low-confidence: $f extension .$ext not in allowlist"
+            return 1
+        fi
+
+        local file_markers
+        file_markers="$(grep -c '^<<<<<<<' "$REPO_ROOT/$f" 2>/dev/null || echo 0)"
+        marker_total=$((marker_total + file_markers))
+    done
+
+    if (( marker_total > CHUMP_CONFLICT_CONFIDENCE_MAX_MARKERS )); then
+        echo "[conflict-resolver] low-confidence: $marker_total conflict markers > threshold $CHUMP_CONFLICT_CONFIDENCE_MAX_MARKERS"
+        return 1
+    fi
+
+    return 0
+}
 
 if [[ -z "$GAP_ID" ]]; then
     echo "[conflict-resolver] FAIL: GAP_ID required (env CHUMP_GAP_ID or arg \$1)"
@@ -163,6 +219,16 @@ main() {
         exit 0
     fi
     echo "[conflict-resolver] ${#files[@]} conflicted file(s): ${files[*]}"
+
+    # AC #3: skip unattended run on low-confidence scenarios unless the
+    # operator forced CHUMP_CONFLICT_RESOLVER_ENABLED=1.
+    if [[ "${CHUMP_CONFLICT_RESOLVER_ENABLED:-auto}" != "1" ]]; then
+        if ! is_confident_scenario "${files[@]}"; then
+            echo "[conflict-resolver] skipping unattended run — low confidence (set CHUMP_CONFLICT_RESOLVER_ENABLED=1 to force)"
+            _emit "conflict_resolve_skipped" '{"reason":"low_confidence"}'
+            exit 0
+        fi
+    fi
 
     local ctx_dir="${REPO_ROOT}/.chump-locks/conflict-ctx/$$"
     snapshot_pre "$ctx_dir"

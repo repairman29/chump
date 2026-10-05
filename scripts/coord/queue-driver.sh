@@ -35,6 +35,11 @@ source "$(dirname "$0")/lib/github.sh"
 # shellcheck disable=SC1091
 source "$(dirname "$0")/lib/ambient-write.sh"
 export CHUMP_GH_SCRIPT="queue-driver.sh"
+# shellcheck source=../lib/orchestrator-log.sh
+# shellcheck disable=SC1091
+source "$(dirname "$0")/../lib/orchestrator-log.sh"
+orch_log_start "queue-driver.sh" "$@"
+trap 'orch_log_end "queue-driver.sh" "$?"' EXIT
 
 DRY_RUN=0
 MAX=1
@@ -99,6 +104,40 @@ cascade_rebase_if_hot() {
     done
     [[ -z "$triggered_by" ]] && return 0
 
+    # ── INFRA-2232: skip-redundant-rerun gate ─────────────────────────────────
+    # The per-SHA lock below (INFRA-1310) only dedupes *concurrent* workers
+    # racing on the SAME commit. It does nothing for a *batch* of hot-file
+    # commits landing seconds apart (e.g. an admin-merge queue draining 5
+    # keystone PRs back to back) — each commit has a distinct SHA, so each one
+    # independently fires a full `gh pr update-branch` sweep across every open
+    # PR. Real incident (2026-08-15): a 5-commit hot-file batch fired 5 full
+    # cascades within 90s, each resetting all ~30 open PRs' check-runs back to
+    # pending (ok=1) — 150 redundant CI re-runs when 1 sweep (against the
+    # final SHA) would have sufficed. This gate coalesces: if a cascade sweep
+    # already ran within CHUMP_CASCADE_REBASE_DEBOUNCE_S (default 180s), skip
+    # this one — the next natural queue-driver tick picks up any PR still
+    # BEHIND once the batch settles.
+    #
+    # Bypass: CHUMP_CASCADE_REBASE_FORCE_RESWEEP=1 disables the gate (always
+    # fire a fresh sweep per hot-file commit — pre-INFRA-2232 behavior).
+    local _debounce_s="${CHUMP_CASCADE_REBASE_DEBOUNCE_S:-180}"
+    local _last_run_file="$REPO_ROOT/.chump-locks/cascade-rebase-last-run.ts"
+    if [[ "${CHUMP_CASCADE_REBASE_FORCE_RESWEEP:-0}" != "1" && -f "$_last_run_file" ]]; then
+        local _last_run_s _now_s _elapsed_s
+        _last_run_s="$(cat "$_last_run_file" 2>/dev/null || echo 0)"
+        _now_s="$(date +%s)"
+        _elapsed_s=$(( _now_s - _last_run_s ))
+        if [[ "$_last_run_s" =~ ^[0-9]+$ ]] && (( _elapsed_s < _debounce_s )); then
+            local _ambient_db="$REPO_ROOT/.chump-locks/ambient.jsonl"
+            local _now_ts; _now_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+            _ambient_write "$_ambient_db" \
+                "$(printf '{"ts":"%s","kind":"cascade_rebase_skipped_redundant","triggered_by":"%s","seconds_since_last":%d,"debounce_s":%d}' \
+                    "$_now_ts" "$triggered_by" "$_elapsed_s" "$_debounce_s")"
+            echo "queue-driver: cascade debounced — sweep ran ${_elapsed_s}s ago (< ${_debounce_s}s window), skipping redundant CI re-run cascade"
+            return 0
+        fi
+    fi
+
     # ── INFRA-1310: per-commit-SHA debounce lock ──────────────────────────────
     # With N concurrent workers all running queue-driver.sh, each one would
     # independently detect the hot-file commit and fire cascade_rebase_if_hot,
@@ -155,15 +194,34 @@ cascade_rebase_if_hot() {
         return 0
     fi
 
-    local ok=0 fail=0 auto_resolved=0
+    local run_started_s; run_started_s="$(date +%s)"
+    local ok=0 fail=0 auto_resolved=0 timeout_count=0
     for pr in $all_prs; do
         if [[ "$DRY_RUN" -eq 1 ]]; then
             echo "queue-driver: (dry-run) cascade would rebase PR #$pr"
             ok=$((ok + 1))
         else
-            if chump_gh pr update-branch "$pr" 2>&1; then
+            local _pr_started_ms _pr_ended_ms _pr_out _pr_rc
+            _pr_started_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+            # INFRA-1648: 30s per-PR latency budget (INFRA-1458 AC5, never
+            # actually enforced) — bound update-branch so one hung PR can't
+            # stall the whole cascade sweep. Routed through chump_gh (not raw
+            # gh) so throttling/secondary-rate-limit retry still applies;
+            # _cascade_run_with_timeout forks a subshell rather than exec'ing
+            # `timeout gh ...` so chump_gh's shell function stays reachable.
+            _pr_out="$(_cascade_run_with_timeout 30 chump_gh pr update-branch "$pr")"
+            _pr_rc=$?
+            _pr_ended_ms="$(_chump_gh_now_ms 2>/dev/null || echo 0)"
+            echo "$_pr_out"
+            if [[ $_pr_rc -eq 0 ]]; then
                 echo "queue-driver: ✓ cascade rebased PR #$pr"
                 ok=$((ok + 1))
+                _cascade_emit_pr_result "$pr" "success" "update_branch" "" "$((_pr_ended_ms - _pr_started_ms))"
+            elif [[ $_pr_rc -eq 124 ]]; then
+                echo "queue-driver: ⏱ cascade rebase timed out for PR #$pr (30s budget)"
+                timeout_count=$((timeout_count + 1))
+                fail=$((fail + 1))
+                _cascade_emit_pr_result "$pr" "timeout" "update_branch" "transient" "$((_pr_ended_ms - _pr_started_ms))"
             else
                 # INFRA-2255: server-side update-branch failed (DIRTY add-both).
                 # Try local rebase + auto-resolve via the allowlist before
@@ -172,22 +230,98 @@ cascade_rebase_if_hot() {
                     echo "queue-driver: ✓ cascade auto-resolved PR #$pr"
                     ok=$((ok + 1))
                     auto_resolved=$((auto_resolved + 1))
+                    _cascade_emit_pr_result "$pr" "success" "auto_resolve" "" "$((_pr_ended_ms - _pr_started_ms))"
                 else
                     echo "queue-driver: ✗ cascade rebase failed for PR #$pr (may already be up-to-date or DIRTY with semantic conflicts)"
                     fail=$((fail + 1))
+                    local _fclass; _fclass="$(_cascade_classify_failure "$_pr_rc" "$_pr_out")"
+                    _cascade_emit_pr_result "$pr" "failed" "update_branch" "$_fclass" "$((_pr_ended_ms - _pr_started_ms))"
                 fi
             fi
         fi
     done
+    local run_duration_s=$(( $(date +%s) - run_started_s ))
+
+    # INFRA-2232: record sweep completion time so a hot-file batch landing
+    # within the debounce window is coalesced instead of re-firing the sweep.
+    if [[ "$DRY_RUN" -ne 1 ]]; then
+        date +%s > "$REPO_ROOT/.chump-locks/cascade-rebase-last-run.ts" 2>/dev/null || true
+    fi
 
     local ambient="$REPO_ROOT/.chump-locks/ambient.jsonl"
     local now
     now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     _ambient_write "$ambient" \
-        "$(printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"auto_resolved":%d,"dry_run":%d}' \
-            "$now" "$triggered_by" "$ok" "$fail" "$auto_resolved" "$DRY_RUN")"
+        "$(printf '{"ts":"%s","kind":"cascade_rebase_triggered","triggered_by":"%s","pr_ok":%d,"pr_fail":%d,"auto_resolved":%d,"timeout_count":%d,"duration_s":%d,"dry_run":%d}' \
+            "$now" "$triggered_by" "$ok" "$fail" "$auto_resolved" "$timeout_count" "$run_duration_s" "$DRY_RUN")"
 
-    echo "queue-driver: cascade done — $ok rebased ($auto_resolved auto-resolved), $fail failed"
+    echo "queue-driver: cascade done — $ok rebased ($auto_resolved auto-resolved), $fail failed ($timeout_count timed out), ${run_duration_s}s elapsed"
+}
+
+# INFRA-1648: run a shell function (not just an external binary — `timeout`
+# can't exec a bash function directly) under a wall-clock budget. Forks a
+# subshell, which inherits already-defined functions like chump_gh without
+# needing `export -f`. Returns 124 on timeout, matching `timeout`(1)'s
+# convention so callers can share the same rc==124 check.
+_cascade_run_with_timeout() {
+    local budget="$1"; shift
+    local out_file; out_file="$(mktemp)"
+    ( "$@" >"$out_file" 2>&1 ) &
+    local cmd_pid=$! waited=0
+    while kill -0 "$cmd_pid" 2>/dev/null; do
+        if [[ $waited -ge $budget ]]; then
+            kill -9 "$cmd_pid" 2>/dev/null || true
+            wait "$cmd_pid" 2>/dev/null || true
+            cat "$out_file"
+            rm -f "$out_file"
+            return 124
+        fi
+        sleep 1
+        waited=$((waited + 1))
+    done
+    wait "$cmd_pid"
+    local rc=$?
+    cat "$out_file"
+    rm -f "$out_file"
+    return "$rc"
+}
+
+# INFRA-1648: failure-class taxonomy — distinguishes failures worth retrying
+# (transient: network blip, secondary rate limit, host hiccup, a PR that
+# raced to merged/closed mid-sweep) from failures that need a human or a
+# code change (permanent: semantic merge conflict, missing branch, PR not
+# found). Callers use this to decide whether a follow-up sweep is likely to
+# succeed without operator intervention.
+_cascade_classify_failure() {
+    local rc="$1" output="$2"
+    if [[ "$rc" -eq 124 ]]; then
+        echo "transient"
+        return
+    fi
+    if echo "$output" | grep -qiE 'could not resolve host|network is unreachable|timed out|temporarily unavailable|connection reset|rate limit|502 Bad Gateway|503 Service Unavailable'; then
+        echo "transient"
+        return
+    fi
+    if echo "$output" | grep -qiE 'not found|no such|already merged|is closed|conflict'; then
+        echo "permanent"
+        return
+    fi
+    # Unknown shape — default to permanent so we don't silently retry-loop
+    # something that will never resolve on its own.
+    echo "permanent"
+}
+
+# INFRA-1648: per-PR observability event. One row per PR processed by the
+# cascade, so `cascade_rebase_triggered`'s aggregate counts (pr_ok/pr_fail)
+# can be cross-checked and drilled into per-PR after the fact.
+# scanner-anchor: "kind":"cascade_rebase_pr_result"
+_cascade_emit_pr_result() {
+    local pr="$1" result="$2" phase="$3" failure_class="$4" duration_ms="$5"
+    local _amb="$REPO_ROOT/.chump-locks/ambient.jsonl"
+    local _now; _now="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    _ambient_write "$_amb" \
+        "$(printf '{"ts":"%s","kind":"cascade_rebase_pr_result","pr":%s,"result":"%s","phase":"%s","failure_class":"%s","duration_ms":%d}' \
+            "$_now" "$pr" "$result" "$phase" "$failure_class" "${duration_ms:-0}")"
 }
 
 # INFRA-2255: when `gh pr update-branch` fails during cascade because the PR
@@ -334,10 +468,24 @@ except Exception:
 # Previously this function only accepted conflicts in the (now-defunct)
 # docs/gaps.yaml legacy file — that left ~6 PRs/day stuck DIRTY for hours.
 # Returns 0 on successful push, non-zero otherwise.
+# INFRA-2464: cache-first branch resolution, mirroring cascade_auto_resolve_pr
+# above — this was the one unconditional raw `gh pr view` left in the file
+# (every other read site here already tries the sqlite cache before falling
+# back to a live call).
 resolve_dirty_pr() {
   local pr="$1"
   local branch
-  branch=$(gh pr view "$pr" --json headRefName -q .headRefName)
+  branch=$(cache_lookup_pr "$pr" 2>/dev/null | python3 -c '
+import json, sys
+try:
+    d = json.loads(sys.stdin.read())
+    print(d.get("headRefName") or d.get("head_ref") or "")
+except Exception:
+    pass
+' 2>/dev/null)
+  if [[ -z "$branch" ]]; then
+    branch=$(CHUMP_GH_CALL_CRITICALITY=background chump_gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null || true)
+  fi
   if [[ -z "$branch" ]]; then
     echo "queue-driver: ✗ #$pr — could not resolve branch name"
     return 1
@@ -528,6 +676,7 @@ for pr in $behind_candidates; do
     echo "queue-driver: (dry-run) would refresh PR #$pr (BEHIND)"
   else
     echo "queue-driver: refreshing PR #$pr (BEHIND)"
+    orch_log_step "refreshing PR #$pr (BEHIND)"
     if chump_gh pr update-branch "$pr" 2>&1; then
       echo "queue-driver: ✓ #$pr refreshed"
     else
@@ -547,6 +696,7 @@ for pr in $dirty_candidates; do
     break
   fi
   echo "queue-driver: attempting DIRTY auto-resolve for PR #$pr"
+  orch_log_step "attempting DIRTY auto-resolve for PR #$pr"
   if resolve_dirty_pr "$pr"; then
     # success — count toward MAX budget
     count=$((count + 1))
@@ -564,3 +714,4 @@ for pr in $dirty_candidates; do
 done
 
 echo "queue-driver: processed $count PR(s), skipped $skipped semantic-conflict PR(s)"
+orch_log_step "done — processed $count PR(s), skipped $skipped semantic-conflict PR(s)"

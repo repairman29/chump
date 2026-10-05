@@ -13,7 +13,7 @@
 #                  branch inside chump.
 #
 # --episodes <path>  Override the episode JSON path
-#                    (default: scripts/eval-reflection-ab/episodes.json).
+#                    (default: scripts/eval/fixtures/reflection-episodes.json).
 #
 # --chump-bin <path>  Path to the chump binary
 #                    (default: ./target/release/chump).

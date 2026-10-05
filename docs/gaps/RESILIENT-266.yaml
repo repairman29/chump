@@ -1,0 +1,20 @@
+- id: RESILIENT-266
+  domain: RESILIENT
+  title: compile the discord feature and run the gateway under launchd — nothing Chump sends can be REPLIED to until this exists
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - THIS IS THE UNLOCK, and it is the only thing standing between one-way alerts and running the business from a phone. RESILIENT-263 shipped outbound DMs (with chunking). RESILIENT-265 specs the approve/deny loop. Neither can receive a single tap or reply until this lands
+    - "BUILD: compile with --features discord. Decide deliberately whether it belongs in the DEFAULT feature set or stays opt-in, and write the reason down — an optional feature that everything depends on is how this got switched off unnoticed in the first place"
+    - "RUN IT UNDER LAUNCHD, with restart-on-crash. Follow the pattern already proven in this repo by scripts/docs-autocommit.sh + its plist: pidfile lock so two instances never race (run-discord.sh's own header warns duplicate instances cause duplicate replies to EVERY message)"
+    - LIVENESS CHECK IS MANDATORY, NOT OPTIONAL — this is the whole lesson of RESILIENT-262. The operator-recall handler has sat enabled=true in ~/.chump/operator-recall.toml with ZERO processes running since 2026-05-08, against a stale pidfile. Nobody noticed for three months because nothing checked. A silent-dead notifier manufactures false confidence that someone would have been told. The check must alarm through a path that does NOT depend on the thing being checked
+    - "VERIFY THE FULL LOOP ON A REAL DEVICE, not a mock: send an alert with approve/deny buttons, tap DENY on the phone, and assert resolve_approval fired and the PR was NOT closed. A test asserting the handler was registered is exactly the mock-shaped green that let the operator-recall handler pass while dead"
+    - "SECURITY, carried from holler and from src/discord.rs's existing checks: the gateway runs a FULL agent turn, so a commanding DM is an authorization surface. Keep the owner-ID verification that already exists; add the same check on BUTTON interactions (a custom_id is attacker-suppliable if anyone else can reach the bot). Reading and explaining may be conversational; state changes go only through buttons or a fixed verb set"
+    - ANSWER UNRECOGNISED REPLIES — an unparsed DM must get 'I did not understand that, here is what I accept', never silence. Silent drops are how an operator discovers the channel is one-way at the worst possible moment
+    - "COST NOTE: --features discord pulls serenity into the default build. Measure the binary-size and compile-time delta before making it default, and record the numbers — audit shard-1 already pays a 239s cold cargo build (INFRA-3540)"
+  closed_pr: 3551
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: inspection of the running build's cargo invocation + process list | OUTPUT: the shipped binary is built with --cfg feature="default" while the check-cfg line lists discord and telegram among the OPTIONAL features — so neither is compiled in. No chump discord process is running (only the operator's Discord desktop app). Meanwhile src/discord.rs is complete: gateway bot with GatewayIntents::DIRECT_MESSAGES, owner verification at :932/:964/:999 against CHUMP_READY_DM_USER_ID, and interaction_create at :1210 already parsing chump_approve:<id> / chump_deny:<id> into approval_resolver::resolve_approval | THEORY: outbound works because src/discord_dm.rs is plain REST needing no bot (proven live 2026-08-09, HTTP 200, and again in 3 chunked parts). Inbound needs the gateway, which is neither compiled nor running | ALT: rejected 'we need to build a reply path' — the reply path EXISTS in full and is switched off. This is a build-and-run gap, not a feature gap
+

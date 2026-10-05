@@ -99,6 +99,26 @@ if [[ -f "${AMBIENT_FILE}" ]]; then
   fi
 fi
 
+# ââ INFRA-3855: freshness gate for the open-PR overlap cache âââââ
+# The cold-cache REST refill in Step 2 used to fire on EVERY reserve whose
+# title matched no cached PR â and a novel gap title matches nothing, so
+# essentially every reserve paid one live `gh api .../pulls` round-trip
+# (~0.8s, and up to ~10s under GitHub secondary rate limits when several gaps
+# are filed in a burst). An empty title-match is indistinguishable from a cold
+# cache, so gate the refill on the cache's actual age: if pr_state was
+# refreshed within the TTL, trust it (empty match => genuinely no overlap) and
+# skip the network call. Override with CHUMP_AMBIENT_PR_CACHE_TTL_S (seconds,
+# default 600). The local ambient scan in Step 1 still runs on every call.
+_pr_cache_fresh() {
+  local max_age="${CHUMP_AMBIENT_PR_CACHE_TTL_S:-600}"
+  local db="${CHUMP_CACHE_DB:-$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump/github_cache.db}"
+  [[ -f "$db" ]] || return 1
+  local age
+  age="$(sqlite3 "$db" "SELECT CAST(strftime('%s','now') - strftime('%s', max(fetched_at_local)) AS INTEGER) FROM pr_state;" 2>/dev/null)" || return 1
+  [[ "$age" =~ ^[0-9]+$ ]] || return 1
+  [[ "$age" -lt "$max_age" ]]
+}
+
 # ── Step 2: INFRA-1108 — cache-first scan for overlapping open PRs ──
 # Prefer reading pr_state from .chump/github_cache.db (populated by webhooks
 # INFRA-1081). Falls back to gh pr list when cache is empty.
@@ -115,9 +135,15 @@ if [[ "${CHECK_PRS}" == "1" ]]; then
     if [[ -n "$MATCHES" ]]; then
       printf '[INFO] FLEET-029 cache hit: read overlap candidates via cache_query_open_prs_by_title (INFRA-1275)\n' >&2
     else
-      # Cold cache → single REST refill (gh api, NOT gh pr list — REST not GraphQL).
-      # Background-tagged so it yields to ship-blocking calls per INFRA-1080.
-      if cache_refresh_open_prs >/dev/null 2>&1; then
+      # INFRA-3855: an empty match is usually a WARM cache with genuinely no
+      # overlap, not a cold cache. Only pay the live `gh api` REST refill when
+      # the cache is actually stale (see _pr_cache_fresh); otherwise a burst of
+      # reserves would each fire one round-trip — the ~10s-per-handful tax.
+      if _pr_cache_fresh; then
+        : # cache fresh — trust the empty match, skip the network round-trip
+      elif cache_refresh_open_prs >/dev/null 2>&1; then
+        # Cold/stale cache → single REST refill (gh api, NOT gh pr list).
+        # Background-tagged so it yields to ship-blocking calls per INFRA-1080.
         MATCHES=$(cache_query_open_prs_by_title "${TITLE}" 2>/dev/null | awk -F'\t' '{printf "%s %s\n", $1, $2}' || true)
         [[ -n "$MATCHES" ]] && printf '[INFO] FLEET-029 cold-cache refilled via REST (INFRA-1275)\n' >&2
       fi

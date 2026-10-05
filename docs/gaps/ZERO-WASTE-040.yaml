@@ -1,0 +1,17 @@
+- id: ZERO-WASTE-040
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: two grounding pre-steps coexist — EFFECTIVE-354 implement-agent grounding vs Phase D dispatch grounding — dedupe or document the split"
+  status: open
+  priority: P3
+  effort: s
+  description: |
+    Two almanac-grounding pre-steps merged the same evening (2026-08-05) from different sessions: EFFECTIVE-354 (#3476) grounds implement agents; Phase D (#3477, dbbe7bf1) grounds gap dispatch via build_prompt_grounded in crates/chump-orchestrator/src/dispatch.rs. Flagged 'worth a dedupe look' by the #3477 landing notes. Decide: converge on one grounding path, or document the split (dispatch-time vs implement-time grounding serve different moments — maybe both belong, but then the shared almanac-CLI plumbing should be one module, not two).
+  acceptance_criteria:
+    - "one written decision: converge or keep-both-with-shared-plumbing"
+    - "if converge: loser retired with receipts"
+    - "if keep: shared CLI invocation + timeout logic extracted to one place, both callers use it"
+    - no third grounding path can be added without hitting the shared module
+  notes: |
+    DISPOSITION: the two grounding pre-steps are on DIFFERENT paths — EFFECTIVE-354 grounds the EXTERNAL improve agent (crates/chump-handoff contract via improve.rs implement_gap); Phase D build_prompt_grounded grounds the INTERNAL gap-dispatch (chump-orchestrator/dispatch.rs). Complementary (external-repo vs internal-fleet), not a merge candidate. Downgrade: no dedupe needed; optionally extract a shared keyword-extractor later.
+  outcome_id: ZERO-WASTE-000
+

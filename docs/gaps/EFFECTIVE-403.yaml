@@ -1,0 +1,13 @@
+- id: EFFECTIVE-403
+  domain: EFFECTIVE
+  title: "docs: WHEN_TO_CRATE — add path-parity sweep + cargo-test gate (from EFFECTIVE-399)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"WHEN_TO_CRATE — add path-parity sweep + cargo-test gate (from EFFECTIVE-399)\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3516
+  outcome_id: CHUMPOS
+

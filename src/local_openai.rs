@@ -931,6 +931,13 @@ impl LocalOpenAIProvider {
         &self.model
     }
 
+    /// CREDIBLE-227: API key for this slot, so an out-of-band probe (rate-limit
+    /// header capture, `/v1/models` existence check) can authenticate without
+    /// re-deriving it from env vars.
+    pub fn api_key(&self) -> &str {
+        &self.api_key
+    }
+
     /// Build with optional fallback URL (e.g. from CHUMP_FALLBACK_API_BASE). If primary fails after retries, one attempt is made to the fallback.
     /// Request timeout from CHUMP_MODEL_REQUEST_TIMEOUT_SECS (default 300s for slow 14B).
     pub fn with_fallback(
@@ -1581,10 +1588,14 @@ impl LocalOpenAIProvider {
             .first()
             .ok_or_else(|| anyhow!("No choices in response"))?;
 
+        // CREDIBLE-292: reasoning models leave `content` empty while they think;
+        // fall back to `reasoning_content` so the response is not treated as empty.
         let text = choice
             .message
             .content
             .clone()
+            .filter(|t| !t.trim().is_empty())
+            .or_else(|| choice.message.reasoning_content.clone())
             .map(|t| strip_think_blocks(&t));
         let tool_calls = if let Some(calls) = &choice.message.tool_calls {
             calls
@@ -1675,6 +1686,12 @@ struct LocalChoice {
 #[derive(Debug, Deserialize)]
 struct LocalResponseMessage {
     content: Option<String>,
+    // CREDIBLE-292: reasoning models (opencode-go/deepseek-v4-pro, kimi-k2.7-code)
+    // emit their thinking in `reasoning_content` and leave `content` empty until
+    // they commit to an answer. Surfaces it so the cascade's quality gate does
+    // not misclassify a reasoning-only response as "empty/malformed".
+    #[serde(default)]
+    reasoning_content: Option<String>,
     tool_calls: Option<Vec<LocalToolCall>>,
 }
 
@@ -1932,6 +1949,44 @@ mod tests {
                 .get("command")
                 .and_then(|c| c.as_str()),
             Some("ls -la")
+        );
+    }
+
+    #[tokio::test]
+    async fn complete_reasoning_content_falls_back_when_content_empty() {
+        // CREDIBLE-292: reasoning models (opencode-go) return empty `content`
+        // while thinking; the parser must fall back to `reasoning_content`.
+        let mock = MockServer::start().await;
+        let body = serde_json::json!({
+            "choices": [{
+                "message": {
+                    "content": "",
+                    "reasoning_content": "Need to read the file first.",
+                    "tool_calls": null
+                },
+                "finish_reason": "stop"
+            }]
+        });
+        Mock::given(method("POST"))
+            .and(path("/chat/completions"))
+            .respond_with(ResponseTemplate::new(200).set_body_json(&body))
+            .mount(&mock)
+            .await;
+
+        let provider = LocalOpenAIProvider::new(
+            mock.uri().to_string(),
+            "not-needed".to_string(),
+            "test".to_string(),
+        );
+        let messages = vec![Message {
+            role: "user".to_string(),
+            content: "Read the file".to_string(),
+        }];
+        let out = provider.complete(messages, None, None, None).await.unwrap();
+        assert_eq!(
+            out.text.as_deref(),
+            Some("Need to read the file first."),
+            "empty content must fall back to reasoning_content"
         );
     }
 

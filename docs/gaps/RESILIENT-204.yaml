@@ -1,0 +1,14 @@
+- id: RESILIENT-204
+  domain: RESILIENT
+  title: per-turn context assembly is ~2min/turn in the 746k-LOC repo — the native-loop throughput wall
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"per-turn context assembly is ~2min/turn in the 746k-LOC repo — the native-loop throughput wall\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: execute_gap native loop got only 6 tool-call turns in 700s (~2min/turn) in the full Chump repo — the model call is fast (devstral), so the cost is Chump's per-turn context assembly at 746k-LOC scale. This is the throughput/cost wall for self-hosting the fleet on its own giant repo (small/external repos assemble fast → fine). Profile + cap per-turn context (slim profile exists but still slow); grounded-search (EFFECTIVE-324 almanac-in-loop) also reduces turns.
+

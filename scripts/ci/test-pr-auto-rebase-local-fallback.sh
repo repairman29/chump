@@ -53,7 +53,10 @@ trap 'rm -rf "$TMP"' EXIT
 
 FIXTURE="$TMP/fixture-repo"
 mkdir -p "$FIXTURE"
-git -C "$FIXTURE" init -q
+# -b main: pin the initial branch name regardless of the host's
+# init.defaultBranch (git 2.43 defaults to "master"), since the fixture
+# below rebases feature branches onto a branch literally named "main".
+git -C "$FIXTURE" init -q -b main
 git -C "$FIXTURE" config user.email "test@example.com"
 git -C "$FIXTURE" config user.name "Test"
 

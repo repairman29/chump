@@ -1,0 +1,18 @@
+- id: PRODUCT-173
+  domain: PRODUCT
+  title: "[upshift] tierFromStripePriceId maps ANY unknown price id to 'pro' - a typo'd Stripe env silently grants pro"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Flagged in the depth pass (upshift#27) and the release audit. upshiftai/platform/lib/stripeTier.js: only the team price id is matched; everything else - including undefined and typos - defaults to 'pro'. A misconfigured STRIPE_TEAM_PRICE_ID or an unexpected price id in a webhook grants pro-tier limits silently. Product ruling needed: unknown price id should probably map to 'free' (fail-closed) or hard-error, plus a guard test either way. The current behavior is asserted as intended by the test suite, so changing it is a deliberate product decision, not a drive-by.
+    
+    context: {"source":"claude-triage/depth-pass-2026-08-02","decision_owner":"jeff"}
+    source: holler feedback_events, dedupe 04ae8c9dc91eb84c
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/upshift"
+

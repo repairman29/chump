@@ -21,7 +21,7 @@
 #   CHUMP_CARGO_SWEEP_TIME_DAYS  age-based prune horizon in days (default 14; RESILIENT-239)
 set -uo pipefail
 
-REPO_ROOT="${CHUMP_REPO:-/Users/jeffadkins/Projects/Chump}"
+REPO_ROOT="${CHUMP_REPO:-${CHUMP_REPO_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null || echo $HOME/Projects/chump)}}"
 CAP_MB="${CHUMP_CARGO_TARGET_CAP_MB:-20000}"
 TIME_DAYS="${CHUMP_CARGO_SWEEP_TIME_DAYS:-14}"
 AMB="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"

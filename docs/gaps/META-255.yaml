@@ -2,7 +2,7 @@
   domain: META
   title: "META: Run final smoke tests and append doctrine update note to PR_RESCUE_PROCEDURE.md (META-247 slice)"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Execute `bash scripts/ci/test-pr-rescue-procedure-doc.sh` and verify it passes.

@@ -38,6 +38,15 @@ path; keep this list and the gate's allowlist in sync:
   directly: `scripts/ab-harness/**`, `scripts/eval/cross-judge.sh`.
 - **Liveness/readiness probes:** `scripts/ci/check-providers.sh`,
   `scripts/ci/check-heartbeat-preflight.sh`, and similar `/models` pings.
+- **Audited intentional-direct call sites** (INFRA-3465, resolved by the
+  2026-07-28 fragmentation audit as allowlist-not-migrate — see
+  [`SHARED_LLM_SERVICE_INTEGRATION.md`](../design/SHARED_LLM_SERVICE_INTEGRATION.md)):
+  `src/adversary_llm.rs` (adversarial-critique use case; a same-signature
+  swap to `provider_cascade::build_provider()` was considered and rejected
+  as unnecessary churn — the direct call is already scoped and audited) and
+  `src/screen_vision_tool.rs` (vision/image input — `ProviderCascade::complete()`
+  is text-only today, so this is a capability gap, not a routing bug; direct
+  is correct until an image-input variant exists).
 
 ## Adding a new bespoke call anyway
 
@@ -59,6 +68,8 @@ trailer is present), set `CHUMP_SHARED_SERVICE_BLOCK=1`. Disable entirely with
 ## Current debt (migrate through the shared service over time)
 
 Per the 2026-07-28 audit (memory `llm-service-fragmentation-audit`), 5 product-path
-bespoke LLM calls exist; the reviewer (#1) is migrated (INFRA-3462). Remaining:
-`code-reviewer-agent.sh:288` (Tier-1), `src/adversary_llm.rs`, `src/screen_vision_tool.rs`,
+bespoke LLM calls exist; the reviewer (#1) is migrated (INFRA-3462), and
+`src/adversary_llm.rs` + `src/screen_vision_tool.rs` are resolved as audited
+allowlist entries (INFRA-3465, see "Legitimately-direct sites" above — not
+migration debt). Remaining: `code-reviewer-agent.sh:288` (Tier-1),
 `src/main.rs` (`gap decompose --verify`).

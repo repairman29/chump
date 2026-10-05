@@ -2,7 +2,7 @@
   domain: INFRA
   title: "RESILIENT: pr-stuck-cluster — 2 PRs blocked >2h as of 2026-06-07"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - docs/observability/EVENT_REGISTRY.yaml documents every outcome value emitted by pr_stuck_cluster_detector_run (no_op, dry_run, cluster_filed, gap_reserve_failed, gap_id_extract_failed, help, bad_args, error) covering success/failure/timeout-absence paths

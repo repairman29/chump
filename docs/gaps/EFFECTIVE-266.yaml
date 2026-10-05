@@ -1,10 +1,19 @@
 - id: EFFECTIVE-266
   domain: EFFECTIVE
   title: "Bootstrap: Another intent"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "1. Repository at /var/folders/7s/j23ghzjx04d_s5mf2wd53yrr0000gn/T/tmp.R5UhOPohfj has git history starting with the scaffold commit\n2. README.md first body line contains the intent string: \"Another intent\"\n3. Sub-gaps filed for core feature areas"
+  closed_pr: 4417
+  notes: |
+    Closed as duplicate of EFFECTIVE-136 (identical title "Bootstrap: Another intent",
+    same AC shape, same outcome_id — only the ephemeral macOS /var/folders tmp path
+    differs). Import-time similarity gate already flags this pairing at score 1.000
+    (ambient.jsonl kind=gap_import_similarity_block). The underlying capability this
+    AC exercises (`chump bootstrap <intent> --dir <path>` — scaffold repo, README,
+    umbrella + sub-gap filing) is fully implemented in src/commands/bootstrap.rs;
+    no new code required. Tracking consolidated onto EFFECTIVE-136.
   outcome_id: EFFECTIVE-000
 

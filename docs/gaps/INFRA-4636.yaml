@@ -1,0 +1,10 @@
+- id: INFRA-4636
+  domain: INFRA
+  title: "INFRA: Update e2e test selector to current component name (INFRA-1433 slice)"
+  status: closed
+  priority: P1
+  effort: s
+  notes: |
+    Closed as not-a-bug (reality-check, CREDIBLE-090): premise disproven before implementation. docs/process/CLAUDE_GOTCHAS.md (section '`chump-chat` selector confirmed NOT stale', INFRA-1433 / INFRA-4301, 2026-09-04 — one day prior to this gap) already established the selector is current: customElements.define('chump-chat', ChumpChat) at web/v2/chat.js:417 matches e2e-tauri/run.mjs:116 By.css('chump-chat') exactly, same string both sides. Grep for any renamed candidate (e.g. chat-room) across web/v2/ finds nothing. Root cause of the timeout is an app-init timing/routing race between two competing initial-view mechanisms (chump-nav cadence dispatch vs DOMContentLoaded chat-view append), not a naming mismatch -- and tauri-cowork-e2e was already demoted to nightly-only per RESILIENT-016 (.github/workflows/ci.yml:291, if:false). AC 'replace the stale chump-chat selector' is unsatisfiable against current reality; renaming a working, matching selector would be a no-op diff against durable-fix doctrine. No code change shipped.
+  outcome_id: MISSION-010
+

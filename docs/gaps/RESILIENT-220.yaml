@@ -1,0 +1,42 @@
+- id: RESILIENT-220
+  domain: RESILIENT
+  title: "chump inventory rebuild: detector-write phase fails 'attempt to write a readonly database' -- 0 findings recorded"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"detector-write phase fails 'attempt to write a readonly database' -- 0 findings recorded\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-31'
+  closed_pr: 3435
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: chump inventory rebuild
+    OUTPUT:
+      [inventory rebuild] pr_index: 3429 indexed from rest (auth=env(GITHUB_TOKEN))
+      [inventory rebuild] indexed 7331 artifacts
+      [inventory rebuild] provenance: 6864/7331 linked (93.6%), ...
+      [inventory rebuild] activation recomputed for 6455 artifact(s)
+      [inventory rebuild] running detectors (tier=0 surface-only)...
+      [inventory rebuild] detectors warn: attempt to write a readonly database
+      [inventory rebuild] 0 findings recorded at tier=0
+      [inventory rebuild] meta-write warn: attempt to write a readonly database
+    
+    COMMAND: chump inventory class-stats --json
+    OUTPUT: all 9 detector classes show total_findings=0, reviewed_count=0.
+    
+    RULED OUT: not a filesystem permissions issue (.chump/inventory.db is
+    -rw-r--r--, owned by the running user; .chump/ dir is drwxr-xr-x, writable);
+    not a disk-space issue (20Gi free at time of run); not a stale
+    lock/wal/shm file (none present); not a process holding the DB open (lsof
+    empty); not an explicit read-only open flag in code
+    (src/inventory.rs open_db_at() uses plain Connection::open, no RO mode).
+    
+    run_detectors_v2(conn: &Connection, ...) in src/inventory.rs takes the
+    SAME connection object that had just successfully written PR/artifact/
+    activation data moments earlier in the same rebuild run -- the failure is
+    specific to whatever happens inside the 9 detect_* functions it calls
+    (detect_orphan_artifacts is first in the call chain and short-circuits the
+    rest via `?` if it fails).
+

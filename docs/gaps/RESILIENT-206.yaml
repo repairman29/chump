@@ -1,0 +1,15 @@
+- id: RESILIENT-206
+  domain: RESILIENT
+  title: worker.sh chump-local path doesn't propagate CHUMP_FREE_TIER_PROVIDERS to execute-gap — falls back to dead local model
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"worker.sh chump-local path doesn't propagate CHUMP_FREE_TIER_PROVIDERS to execute-gap — falls back to dead local model\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3345
+  outcome_id: CHUMPOS
+  evidence: |
+    2026-07-27: with FLEET_BACKEND=chump-local set, the fleet worker correctly routes to 'chump --execute-gap' (native loop) — but execute-gap logged 'free-tier mode: model=qwen2.5:14b, trying provider 1/1 — qwen2.5:14b' and died TRANSPORT_UNREACHABLE (rc=76) because it used .env's OPENAI_MODEL/OPENAI_API_BASE (local ollama, down) instead of CHUMP_FREE_TIER_PROVIDERS=devstral. The manual invocation worked (devstral) because I exported CHUMP_FREE_TIER_PROVIDERS in the same shell; the fleet worker.sh chump-local branch does not pass/preserve it to the execute-gap subprocess (or the INFRA-471 model routing overrides OPENAI_MODEL first). Fix: worker.sh chump-local branch must export CHUMP_FREE_TIER_PROVIDERS (and not clobber it with the local OPENAI_MODEL) so the fleet uses the configured cheap provider. Part of the worker.sh↔execute-gap env-plumbing cluster (also FLEET_BACKEND vs CHUMP_WORK_BACKEND, EFFECTIVE-325).
+

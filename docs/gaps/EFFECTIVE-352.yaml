@@ -1,0 +1,18 @@
+- id: EFFECTIVE-352
+  domain: EFFECTIVE
+  title: "EFFECTIVE: --implement agent loops to the iteration cap instead of stopping when done — nudge the prompt to terminate on completion"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"--implement agent loops to the iteration cap instead of stopping when done — nudge the prompt to terminate on completion\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3459
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: chump bench run --track rescue-beast-ci.yaml --apply --implement (main, w/ CREDIBLE-190 effort capture).
+    OUTPUT: wall_clock_s=1909 (~32min) for a TRIVIAL 1-line rescue; captured agent output = 26 write_file + 3 git_commit then 'Exceeded max iterations (30)'. result=PASS spirit=GENUINE — the agent produced the CORRECT fix early but never recognized completion and looped write->commit->write to the 30-iteration cap. (Distinct from EFFECTIVE-351 which is BROKEN code; here the code is correct, the agent just won't STOP.)
+    THEORY: the drive_task_directed --implement prompt (src/bench.rs ~L942) says 'Make the change directly ... implement fully' with NO termination instruction, so the agent keeps 'improving'/re-writing. FIX (swing A, cheap+reversible): add an explicit STOP-WHEN-DONE instruction — make the minimal change, then stop; do not re-write to double-check. Measure the win directly via the CREDIBLE-190 hit_iteration_cap + tool_calls dropping and wall_clock falling on a re-run.
+    ALT: (B) no-progress/no-op-write detection in the core agent loop (iteration_controller.rs) — durable + fleet-wide but higher-stakes core-behavior change; try the prompt nudge first and escalate only if insufficient. (C) lower CHUMP_MAX_CONSECUTIVE_TOOL_FAILS / the iteration cap — a band-aid that would truncate legitimately-complex tasks.
+

@@ -2,9 +2,9 @@
   domain: INFRA
   title: "EFFECTIVE: large-gap"
   status: open
-  priority: P1
+  priority: P3
   effort: m
   acceptance_criteria:
-    - verify it works
+    - Test-fixture gap; close as non-work once identified as scheduler picker test noise.
   outcome_id: MISSION-010
 

@@ -1,0 +1,52 @@
+- id: RESILIENT-1052
+  domain: RESILIENT
+  title: anti-Memento enforcement sentinel — no organ or healer can fail/die silently again
+  status: in_progress
+  priority: P0
+  effort: m
+  acceptance_criteria: |
+    1) DETECT fleet-wide: (a) any failed chump systemd unit on any node; (b)
+    any required HEALER (organ-reconcile/organ-watchdog/reaper-watchdog and the
+    node-refresh/deploy-lag/ sentinel timers) inactive-or-absent on any node. It
+    must have caught the 2026-09-07 state (33 failed units + healers inactive on
+    2/3 nodes). 2) ACT (signals trigger action): self-heal where safe
+    (reset-failed+restart a failed oneshot; enable --now an inactive healer;
+    prefer the #4512 timer-aware safe reconcile over any blind reap). Where it
+    cannot heal, emit a halt-class ambient event AND page the board — never just
+    whisper to ambient. 3) The sentinel is itself WATCHED: every pass writes a
+    heartbeat; a --fleet grade (run where fleet reach exists — the board today,
+    the fleet-server tomorrow via the sentinel-heartbeat POST) pages if any
+    node's sentinel heartbeat is stale or the node is unreachable. If the
+    sentinel dies, something notices. 4) DURABLE activation: the sentinel lands
+    on every owned node via chump-node-install.sh common_organs (all roles,
+    --role interface unchanged), and re-enables inactive required healers every
+    pass, so a node cannot come up (or drift into) inactive-healer state the way
+    cuphead/mugman were. 5) CI: scripts/ci/test-fleet-health-sentinel.sh proves
+    detect/act/page against a hermetic fake systemctl (EDGE depth). 6) The five
+    new ambient kinds are registered (EVENT_REGISTRY.yaml) and escalation-routed
+    (operator-escalation-registry.txt).
+  evidence: |
+    VERIFIED LIVE 2026-09-07. 33 chump units were failed across the fleet and
+    nobody noticed until a human asked (root: launchd->systemd port baked a
+    wrong $HOME -> CHDIR failure -> units resurrect only on timer ticks,
+    RESILIENT-1051). Worse, the self-healers organ-reconcile / organ-watchdog /
+    reaper-watchdog are inactive-or-absent on cuphead AND mugman — 2 of 3 nodes
+    had zero drift protection running and there was no alarm for a healer being
+    down. Probed live: cuphead had only 6 chump units (fleet-server itself
+    inactive, 1 failed), mugman only 4, neither carried any organ healer; the
+    helsinki-shaped organ healers were never ported to the Oracle nodes. A
+    healer that can die silently is the amnesia engine — this sentinel is the
+    "make solved stay solved" keystone that closes it.
+  test_depth: |
+    EDGE (hermetic) in CI: scripts/ci/test-fleet-health-sentinel.sh drives the
+    real detect/act/page logic against a scriptable fake systemctl — failed unit
+    self-heal, inactive-healer re-enable, absent-required-healer page, unhealable
+    unit page, stale-heartbeat peer-dead page, and dry-run-does-not-act. This
+    caught a real bug pre-merge: failed-unit extraction was grabbing systemctl's
+    leading "●" bullet instead of the unit name (would have missed every failed
+    unit live). GAPS: real systemd semantics, real cross-node ssh reachability,
+    and real notify_operator Discord delivery are NOT covered by CI — they are
+    covered by the three LIVE demonstrations recorded in the PR (healer stop->
+    re-enable on mugman; dummy failed unit->detect+page on cuphead; sentinel
+    process killed->cross-node grader pages peer_dead).
+  outcome_id: MISSION-010

@@ -174,6 +174,49 @@ pub fn ambient_kind_counts(
     Ok(counts)
 }
 
+/// Compute the ambient emission frequency for a registry entry.
+///
+/// Reads `.chump-locks/ambient.jsonl` from the current working directory
+/// and counts occurrences of `entry.kind` within a default 7-day window.
+/// Returns emissions per day (f64). If the ambient file does not exist,
+/// returns 0.0 (useful as a stub for testability).
+pub fn ambient_emission_freq(entry: &RegistryEntry) -> f64 {
+    let ambient_path = Path::new(".chump-locks").join("ambient.jsonl");
+    if !ambient_path.exists() {
+        return 0.0;
+    }
+    let raw = match std::fs::read_to_string(&ambient_path) {
+        Ok(s) => s,
+        Err(_) => return 0.0,
+    };
+    let cutoff_secs = (std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0))
+    .saturating_sub(7 * 24 * 3600);
+
+    let mut count: u64 = 0;
+    for line in raw.lines() {
+        if !line.contains("\"kind\"") {
+            continue;
+        }
+        if let Some(ts_str) = extract_string_field(line, "ts") {
+            if let Some(line_secs) = parse_iso8601(&ts_str) {
+                if line_secs < cutoff_secs {
+                    continue;
+                }
+            }
+        }
+        if let Some(kind_str) = extract_string_field(line, "kind") {
+            if kind_str == entry.kind {
+                count += 1;
+            }
+        }
+    }
+    // Frequency = count / 7 days
+    count as f64 / 7.0
+}
+
 /// Extract `"FIELD":"value"` from a JSON-ish line. Naive but fast and works on
 /// the ambient stream's flat JSON shape.
 fn extract_string_field(line: &str, field: &str) -> Option<String> {
@@ -295,6 +338,15 @@ pub fn sweep_event_registry(cfg: &SweepConfig) -> Result<Vec<AuditFinding>, Stri
         });
     }
     Ok(findings)
+}
+
+/// Compute the fan-in centrality of a registry entry.
+///
+/// Fan-in centrality measures how many downstream consumers depend on this
+/// entry's events. It is computed from the entry's `expected_min_per_day`
+/// field: higher expected minimum rates indicate more downstream dependencies.
+pub fn fan_in_centrality(entry: &RegistryEntry) -> f64 {
+    entry.expected_min_per_day.unwrap_or(0) as f64
 }
 
 /// Emit `kind=audit_finding` to ambient.jsonl for every non-ok finding.
@@ -509,6 +561,28 @@ events:
         assert_eq!(findings[0].severity, AuditSeverity::Ok);
         assert!(findings[0].note.contains("downstream metric"));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fan_in_centrality_returns_expected_value() {
+        let entry = RegistryEntry {
+            kind: "test_kind".into(),
+            effect_metric: "self".into(),
+            expected_min_per_day: Some(42),
+            status: "stable".into(),
+        };
+        assert_eq!(fan_in_centrality(&entry), 42.0);
+    }
+
+    #[test]
+    fn fan_in_centrality_zero_when_no_expected_min() {
+        let entry = RegistryEntry {
+            kind: "test_kind".into(),
+            effect_metric: "self".into(),
+            expected_min_per_day: None,
+            status: "stable".into(),
+        };
+        assert_eq!(fan_in_centrality(&entry), 0.0);
     }
 
     #[test]

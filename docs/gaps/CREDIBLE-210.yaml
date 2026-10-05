@@ -1,0 +1,17 @@
+- id: CREDIBLE-210
+  domain: CREDIBLE
+  title: "CREDIBLE: index silently drops a repo's primary language — add-ref reported success on a C project after skipping all 528 source files"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Found 2026-08-06 dogfooding `almanac add-ref` on DeusData/codebase-memory-mcp (public MIT C project). add-ref printed 'reference indexed: 137 files, 899 symbols' — success-shaped. Reality: the repo's PRIMARY language is C, and almanac indexed ZERO C files. 528 non-vendored .c/.h files (401,440 lines — their entire product) were skipped without a word; what got indexed was the TypeScript graph-ui, shell scripts, python tooling, and docs. Root: ast-crawler maps only rs/py/js/ts/go/sh/yaml/md; everything else -> 'unknown' and parse.rs drops it silently (crates/ast-crawler/src/lib.rs:329-348, crates/almanac-core/src/parse.rs:93). This is the markdown-invisibility incident pattern (almanac#3, fixed 2026-08-02) repeating in another language. NOT asking for a C parser — fleet exposure to unsupported languages is near-zero (measured: 7 .swift, 1 .rb across ~/Projects; SQL is the separate deliberate INFRA-3530 deferral). The bug is the SILENCE: an index run must say what it could not read, or an agent trusts a confidently-empty index. Contrast the honesty layer working correctly on the same query: search returned fallback_reason 'no-embeddings' loudly.
+  acceptance_criteria:
+    - "almanac index/add-ref prints a loud stderr line naming skipped unsupported languages with file counts when they are a material share of the crawl (e.g. 'skipped 528 files: c/h — unsupported language')"
+    - the warning fires on add-ref too, where the operator has the least context about what the repo contains
+    - almanac stats/status surfaces the same unsupported-language skew so the gap is visible after the index run, not only during it
+    - a repo whose primary language is unsupported cannot report plain index success — the summary line itself must carry the caveat
+  depends_on: [CREDIBLE-214]
+  notes: |
+    CORRECTION 2026-08-08: my earlier note on this gap said pixel-edge holds '835 Kotlin files' that are language-blind. WRONG — extrapolated from 851 total files minus 16 indexed, which is not how you count a language. Actual: 13 .kt. The other 838 are Android build output (150 xml, 133 json, 122 .flat, 87 .dex, 82 .class). The blind spot is real but far smaller there. The ACTUAL biggest unreadable source in the fleet, measured by 'almanac discover' built the same day: Maclawd at 692 files (575 .swift, 113 .kt, 4 .kts) — an entire Swift application invisible to the index. SQL is second at ~350 fleet-wide but is DELIBERATELY deferred (INFRA-3530). Fleet total of unparseable real source: 1,065 files across 8 top-level repos, no double-counting.
+

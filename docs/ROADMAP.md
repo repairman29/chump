@@ -1,5 +1,7 @@
 # Chump Roadmap — current cycle
 
+**Two-surface architecture (operator, 2026-08-09).** Olive now has two first-class product surfaces: web (`/shop`) and MCP (`api/mcp`). Per the operator: "the plan is 2 surfaces. MCP + web for now and then we decide how to go from here on paid vs not." Monetisation (paid vs. free) is an explicitly deferred decision, not an open question.
+
 > **What this is.** The single canonical entry point for "what is chump
 > working on, in what order, why." Gaps implement the roadmap, not the
 > other way around.
@@ -21,6 +23,7 @@ Five anchors. **Mission Yield** is the headline number; **Wave order** is the sh
 | **🛠️ Backlog decisions** | [strategy/ROADMAP_BACKLOG.md](strategy/ROADMAP_BACKLOG.md) | 8 design-conversation items decided 2026-05-16 — what's build/defer/fold. |
 | **🔄 Integration-cycle ship pipeline** | [strategy/INTEGRATION_CYCLE_2026-05-29.md](strategy/INTEGRATION_CYCLE_2026-05-29.md) | How the fleet ships: batched cycles (Mode A) vs per-PR (Mode B) vs hot-fix (Mode C) vs external-repo (Mode D). |
 | **🌍 Outward Flywheel (MISSION-050)** | [strategy/OUTWARD_FLYWHEEL_2026-06-22.md](strategy/OUTWARD_FLYWHEEL_2026-06-22.md) | The path to MISSION-010: improving *other* repos. Run outward to discover, fix foundation-first (3→2→1: substrate → outward-loop → work-mix). |
+| **🏢 Run-the-Business track** | [strategy/RUN_THE_BUSINESS_2026-08-09.md](strategy/RUN_THE_BUSINESS_2026-08-09.md) | The co-equal non-build arm: maintenance, operations, and keeping existing systems running so the fleet isn't only pointed at new construction. |
 
 **Read order:** Mission Yield first (the why), Waves second (the order), then the three workstreams (what's pickable now).
 
@@ -75,7 +78,34 @@ unlock that makes both harness-agnosticism and scaling safe. This arc depends on
 the anti-bloat keystone `signals are not work` (MISSION-045 — doctrine doc lands
 with #3331; internal fleet health is telemetry, never a self-filed gap).
 
-## Current cycle — Revival & Truth (2026-07-19 → 2026-08-16)
+## Current cycle — Fleet self-hosting (2026-09-06 → present)
+
+> **Status update 2026-09-20 (DOC-155 sync).** The "Revival & Truth" cycle
+> below ran its course (Jul 19 → Aug 16); the fleet's actual center of
+> gravity since then has been turning its own coordination layer into a
+> product it dogfoods on itself. ~280 PRs merged 2026-09-06 → 2026-09-20
+> (`git log origin/main --since=2026-09-06`), dominant shape:
+> - **Organ-manifest unification** (~23 PRs) — `organ-manifest.txt` becomes
+>   the single roster of daemons/scripts/cron jobs, folding in
+>   `bootstrap-manifest.yaml`, adding a `platforms=` scope field, and a
+>   `node-organ-manifest.txt` sibling for per-machine process organs.
+> - **Almanac goes org-wide** (~17 PRs) — the grounded code-memory index
+>   (`repo:path:line` receipts, see the `almanac-mastery` skill) now covers
+>   the whole `repairman29` org, wired into `chump-mcp.json` with a
+>   `summarized_pct` coverage guard and CI-tested reindex/refresh paths.
+> - **Duty-officer hardening** (~4 PRs) — UID-derived XDG/DBUS fallbacks so
+>   the daemon survives non-interactive launch contexts.
+> - Remaining volume is the standing RESILIENT/CREDIBLE/INFRA backlog (see
+>   [`docs/MISSION.md` Scoreboard](./MISSION.md#scoreboard-the-one-honest-measure)
+>   for the mission-level read — MISSION-010 self-coordinating fleet remains
+>   the canonical gap this cycle serves).
+>
+> The Week 1-4 plan below is **historical** (mostly shipped or superseded by
+> the above) — kept for record, not as the live plan. Next Mission Driver
+> pass should replace it with a Week 1-4 breakdown of the fleet-self-hosting
+> arc, or fold it into `MISSION.md` directly.
+
+## Historical: Revival & Truth (2026-07-19 → 2026-08-16)
 
 > Filed 2026-07-19 after the queue-clear + registry triage session (15 PRs merged,
 > 288 pollution gaps closed, outcome linkage backfilled to 100% of open gaps,

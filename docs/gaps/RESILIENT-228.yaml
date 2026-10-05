@@ -1,0 +1,13 @@
+- id: RESILIENT-228
+  domain: RESILIENT
+  title: "Deprecate retiring GitHub Models in model_registry.yaml (+ disabled live slot 7): scheduled retirement brownout 410s every call, dragged the whole bench heat; roster last_global_verified was 3mo stale (2026-05-10)"
+  status: done
+  priority: P2
+  effort: xs
+  acceptance_criteria:
+    - "The change described by \"scheduled retirement brownout 410s every call, dragged the whole bench heat; roster last_global_verified was 3mo stale (2026-05-10)\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+  closed_pr: 3449
+

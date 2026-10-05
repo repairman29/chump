@@ -2,12 +2,9 @@
   domain: INFRA
   title: "Fix Dockerfile.ci edition2024 — base bump rust:1-bookworm + re-attempt META-262 clippy container with image-exists preflight"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - "Dockerfile.ci builds successfully on a rust:1-bookworm base with edition2024 support and the clippy container image-exists preflight passes."
   outcome_id: MISSION-010
 

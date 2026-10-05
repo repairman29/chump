@@ -2,7 +2,7 @@
   domain: EFFECTIVE
   title: "EFFECTIVE: chump harness-parity command surface — recovery/orchestration VERBS the fleet can call to self-heal, so autonomy doesn't depend on a human-in-Claude-Code (umbrella)"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   description: |
     Verified 2026-06-05 (probed live against the chump CLI): every recovery/orchestration action a human-in-Claude-Code performed to ship one s-sized gap this session is ABSENT as a chump verb, so a headless fleet worker / cron / non-Claude harness cannot perform it. Chump has DAEMONS that heal passively on a cadence, but lacks VERBS a worker can call to heal itself synchronously. This is the gap between 'fleet eventually recovers' and 'fleet is autonomous + harness-neutral'. Principle: parity is NOT reimplementing the harness's file/bash/git (HARNESS_CONTRACT.md) — it is exposing coordination/recovery/orchestration as on-demand chump commands. Decompose at claim time into the sub-verbs below.

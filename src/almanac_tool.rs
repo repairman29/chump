@@ -19,7 +19,25 @@ use async_trait::async_trait;
 use axonerai::tool::Tool;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Stdio};
+use std::sync::{Arc, Mutex};
+use std::time::Duration;
+
+/// RESILIENT-375: `almanac-mcp` occasionally wedges (embeddings search on a
+/// large index that never responds) with `run_almanac_search`'s
+/// `BufReader::lines()` blocking forever on the child's stdout — observed
+/// hanging `chump gap reserve` (and the swe/trek dedupe path) for 90s+ with
+/// no way out short of killing the whole process. Bound the wait with a
+/// watchdog thread that kills the child if it hasn't produced a result in
+/// time, so a hung index degrades to "no hits" instead of wedging the caller.
+/// Overridable for tests / operator tuning.
+fn almanac_search_timeout() -> Duration {
+    std::env::var("CHUMP_ALMANAC_SEARCH_TIMEOUT_MS")
+        .ok()
+        .and_then(|s| s.parse::<u64>().ok())
+        .map(Duration::from_millis)
+        .unwrap_or(Duration::from_secs(20))
+}
 
 pub struct AlmanacSearchTool;
 
@@ -127,9 +145,28 @@ fn run_almanac_search(bin: &str, db: &str, query: &str) -> Result<String> {
         .stdout
         .take()
         .ok_or_else(|| anyhow!("almanac: no stdout"))?;
+
+    // Watchdog: kill the child if the read loop below hasn't finished within
+    // the timeout. `done_rx.recv_timeout` blocks the watchdog thread, not the
+    // reader — when the reader finishes first it signals via `done_tx` and
+    // the watchdog exits without touching the (by-then-exited) child.
+    let child = Arc::new(Mutex::new(child));
+    let watchdog_child: Arc<Mutex<Child>> = Arc::clone(&child);
+    let (done_tx, done_rx) = std::sync::mpsc::channel::<()>();
+    let timeout = almanac_search_timeout();
+    let watchdog = std::thread::spawn(move || {
+        if done_rx.recv_timeout(timeout).is_err() {
+            if let Ok(mut c) = watchdog_child.lock() {
+                let _ = c.kill();
+            }
+        }
+    });
+
     let mut result = String::new();
     for line in BufReader::new(stdout).lines() {
-        let line = line?;
+        let Ok(line) = line else {
+            break;
+        };
         if line.trim().is_empty() {
             continue;
         }
@@ -141,8 +178,13 @@ fn run_almanac_search(bin: &str, db: &str, query: &str) -> Result<String> {
             break;
         }
     }
-    let _ = child.kill();
-    let _ = child.wait();
+
+    let _ = done_tx.send(());
+    let _ = watchdog.join();
+    if let Ok(mut c) = child.lock() {
+        let _ = c.kill();
+        let _ = c.wait();
+    }
     Ok(result.trim().to_string())
 }
 
@@ -326,5 +368,38 @@ mod tests {
         std::env::set_var("CHUMP_ALMANAC_ENABLED", "0");
         assert!(!almanac_available());
         std::env::remove_var("CHUMP_ALMANAC_ENABLED");
+    }
+
+    // RESILIENT-375: a hung `almanac-mcp` child (e.g. an embeddings search
+    // that never returns) must not wedge `run_almanac_search` forever. Point
+    // it at a fake "binary" that reads stdin then sleeps well past the
+    // configured timeout without ever writing to stdout — before the fix,
+    // `BufReader::lines()` blocks on that child indefinitely and this test
+    // hangs; after the fix, the watchdog kills the child and the call
+    // returns within the bounded timeout with an empty result.
+    #[test]
+    fn hung_child_is_bounded_by_timeout() {
+        let dir = tempfile::tempdir().unwrap();
+        let script_path = dir.path().join("hung-almanac-mcp.sh");
+        std::fs::write(&script_path, "#!/bin/sh\ncat >/dev/null\nsleep 60\n").unwrap();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mut perms = std::fs::metadata(&script_path).unwrap().permissions();
+            perms.set_mode(0o755);
+            std::fs::set_permissions(&script_path, perms).unwrap();
+        }
+
+        std::env::set_var("CHUMP_ALMANAC_SEARCH_TIMEOUT_MS", "300");
+        let start = std::time::Instant::now();
+        let result = run_almanac_search(script_path.to_str().unwrap(), "/dev/null", "test query");
+        let elapsed = start.elapsed();
+        std::env::remove_var("CHUMP_ALMANAC_SEARCH_TIMEOUT_MS");
+
+        assert!(
+            elapsed < Duration::from_secs(10),
+            "run_almanac_search did not bound the hung child: took {elapsed:?}"
+        );
+        assert_eq!(result.unwrap(), "");
     }
 }

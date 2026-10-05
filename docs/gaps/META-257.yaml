@@ -2,12 +2,9 @@
   domain: META
   title: "Auto-fix-class dispatcher — when META-186 detects N PRs failing same fingerprint within K hours, daemon spawns chump --execute-gap worker that INVESTIGATES (not auto-quarantines): reproduces test → real bug or flake → routes to KNOWN_FLAKES vs proper fix gap; safety guards include circuit breaker + budget cap + investigation-must-precede-quarantine rule"
   status: open
-  priority: P1
+  priority: P2
   effort: l
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - When N PRs fail the same fingerprint within K hours, the daemon spawns a chump --execute run targeting the shared cause; the dispatch and its outcome are emitted as events.
   outcome_id: MISSION-010
 

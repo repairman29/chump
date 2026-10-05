@@ -1,0 +1,24 @@
+- id: EFFECTIVE-343
+  domain: EFFECTIVE
+  title: CREATE acceptance needs env provisioning (pip deps + test fixtures) — code now lands + runs but imports PIL / needs fixtures/
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    The layer AFTER EFFECTIVE-342. With --slim + write_file, the CREATE lap now AUTHORS + PERSISTS a real tool (rename_photos.py lands on disk with correct EXIF/argparse code). The acceptance-fail reason has walked forward across three live laps:
+      1. exit 2, 'No such file' (no file)         → fixed by EFFECTIVE-341/342 wiring
+      2. patch_file storm (can't create new file) → fixed by EFFECTIVE-342 write_file enablement
+      3. exit 1, ModuleNotFoundError: No module named 'PIL'  ← WE ARE HERE
+    
+    Remaining blockers to a genuine zero-touch PASS are ENVIRONMENT, not OS build capability:
+    (a) DEPENDENCY PROVISIONING: the generated tool imports PIL (Pillow); nothing installs it before acceptance runs. Options: bench sets up a venv + pip install from the generated pyproject.toml/requirements before scoring; OR the agent is prompted to use only stdlib; OR acceptance runs in a provisioned sandbox.
+    (b) TEST FIXTURES: the acceptance is 'python3 rename_photos.py fixtures/ && ls fixtures/ | grep -qE ^[0-9]{4}' but no fixtures/ dir with dated photos exists. The track must ship fixtures (a few images with known EXIF DateTimeOriginal) OR the acceptance must create them.
+    (c) ACCEPTANCE/VISION coupling (from EFFECTIVE-339 (b)): acceptance hard-codes rename_photos.py; the agent happened to name it that, but that's luck. Consider an implementation-agnostic acceptance.
+    
+    ACCEPTANCE: a create-photo-renamer --implement lap reaches a real PASS/FAIL on the CODE (deps installed, fixtures present) rather than failing on missing environment. This is what turns the bench from 'does the OS write code' into 'does the OS deliver a WORKING tool'. Pillar: EFFECTIVE.
+  acceptance_criteria:
+    - "The change described by \"CREATE acceptance needs env provisioning (pip deps + test fixtures) — code now lands + runs but imports PIL / needs fixtures/\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3436
+

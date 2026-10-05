@@ -1,0 +1,13 @@
+- id: EFFECTIVE-465
+  domain: EFFECTIVE
+  title: "DeepSeek floor empty-diffs surgical gaps too: model explores (read_file/grep) instead of str_replace — verify-gate empty-diff, circuit-open (M1 tool-selection wall recurrence)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    1. A surgical single-file gap dispatched through the chump-local deepseek floor produces a non-empty diff (real str_replace edits) and passes the verify gate
+    2. The worker circuit breaker stops tripping on consecutive empty-diff rc=1 failures
+    3. At least one gap-drain-produced surgical sub-gap (e.g. INFRA-3679..3687) is claimed by the floor and MERGED as a PR
+  opened_date: '2026-08-24'
+  closed_date: '2026-09-08'
+  closed_pr: 4199

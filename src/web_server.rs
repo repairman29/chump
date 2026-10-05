@@ -812,6 +812,198 @@ async fn handle_broadcast(
     })))
 }
 
+// ── META-080: lesson sharing endpoint (in-memory store, META-073 slice) ──────
+//
+// Pragmatic subset of the wire format defined in
+// docs/design/LESSON_PROPAGATION_FORMAT.md (META-079). Process-local,
+// non-persistent (v1 scope per that doc's storage-layout note); a
+// NATS-backed v2 is a follow-up once the in-memory store proves the shape.
+
+const LESSON_DEFAULT_TTL_SECS: i64 = 24 * 60 * 60;
+
+static LESSON_STORE: std::sync::OnceLock<std::sync::Mutex<Vec<LessonRecord>>> =
+    std::sync::OnceLock::new();
+
+fn lesson_store() -> &'static std::sync::Mutex<Vec<LessonRecord>> {
+    LESSON_STORE.get_or_init(|| std::sync::Mutex::new(Vec::new()))
+}
+
+#[derive(Clone, serde::Serialize)]
+struct LessonRecord {
+    lesson_id: String,
+    headline: String,
+    #[serde(default)]
+    body: String,
+    context_tags: Vec<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    agent: Option<String>,
+    published_at_ms: i64,
+    expires_at_ms: i64,
+}
+
+#[derive(serde::Deserialize)]
+struct LessonPostRequest {
+    #[serde(default)]
+    lesson_id: Option<String>,
+    headline: String,
+    #[serde(default)]
+    body: Option<String>,
+    /// Task tag(s) this lesson applies to — filtered on in GET /api/lessons?tag=.
+    #[serde(default)]
+    context_tags: Vec<String>,
+    #[serde(default)]
+    agent: Option<String>,
+    /// Override the default 24h expiry. Mainly for tests / short-lived lessons.
+    #[serde(default)]
+    ttl_secs: Option<i64>,
+}
+
+fn now_ms_epoch() -> i64 {
+    std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
+}
+
+/// Drops expired lessons. Called on every read/write so the in-memory store
+/// stays bounded without a background reaper task.
+fn prune_expired_lessons(store: &mut Vec<LessonRecord>) {
+    let now = now_ms_epoch();
+    store.retain(|l| l.expires_at_ms > now);
+}
+
+/// EFFECTIVE-679: inbound body for `POST /api/drop`.
+#[derive(Debug, serde::Deserialize)]
+struct DropPostRequest {
+    sentence: String,
+    citation: String,
+}
+
+/// EFFECTIVE-679 (EFFECTIVE-392 slice): POST /api/drop — cheap idea-drop
+/// intake. Persists `{sentence, citation}` to the curator's drops queue
+/// file via `chump_gap_store::add_drop`. Idempotent: re-posting the same
+/// `(sentence, citation)` pair returns the existing id with 200 instead of
+/// creating a duplicate record.
+async fn handle_drop_post(
+    headers: HeaderMap,
+    Json(body): Json<DropPostRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let sentence = body.sentence.trim().to_string();
+    let citation = body.citation.trim().to_string();
+    if sentence.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "sentence must be non-empty".to_string(),
+        ));
+    }
+    let repo_root = repo_path::runtime_base();
+    let (record, created) = gap_store::add_drop(&repo_root, &sentence, &citation).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("add_drop failed: {e}"),
+        )
+    })?;
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(serde_json::json!({ "id": record.id }))))
+}
+
+/// META-080: POST /api/lessons — agents publish a lesson to the shared
+/// in-memory store. Lessons expire 24h after publish by default.
+async fn handle_lessons_post(
+    headers: HeaderMap,
+    Json(body): Json<LessonPostRequest>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let headline = body.headline.trim().to_string();
+    if headline.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "headline must be non-empty".to_string(),
+        ));
+    }
+    let ttl_secs = body.ttl_secs.unwrap_or(LESSON_DEFAULT_TTL_SECS).max(1);
+    let now = now_ms_epoch();
+    let lesson_id = body
+        .lesson_id
+        .filter(|s| !s.trim().is_empty())
+        .unwrap_or_else(|| uuid::Uuid::new_v4().to_string());
+    let expires_at_ms = now + ttl_secs * 1000;
+    let context_tags: Vec<String> = body
+        .context_tags
+        .into_iter()
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty())
+        .collect();
+    let record = LessonRecord {
+        lesson_id: lesson_id.clone(),
+        headline,
+        body: body.body.unwrap_or_default(),
+        context_tags: context_tags.clone(),
+        agent: body.agent.clone(),
+        published_at_ms: now,
+        expires_at_ms,
+    };
+    let count = {
+        let mut store = lesson_store().lock().unwrap_or_else(|e| e.into_inner());
+        prune_expired_lessons(&mut store);
+        store.push(record);
+        store.len()
+    };
+    // scanner-anchor: "kind":"lesson_published"
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "lesson_published".to_string(),
+        fields: vec![
+            ("lesson_id".to_string(), lesson_id.clone()),
+            ("agent".to_string(), body.agent.unwrap_or_default()),
+            ("context_tags".to_string(), context_tags.join(",")),
+        ],
+        ..Default::default()
+    });
+    Ok(Json(serde_json::json!({
+        "ok": true,
+        "lesson_id": lesson_id,
+        "expires_at_ms": expires_at_ms,
+        "count": count,
+    })))
+}
+
+/// META-080: GET /api/lessons?tag=<task-tag> — agents read relevant lessons.
+/// Without `tag`, returns all non-expired lessons.
+async fn handle_lessons_get(
+    headers: HeaderMap,
+    Query(params): Query<std::collections::HashMap<String, String>>,
+) -> Result<Json<serde_json::Value>, (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let tag = params
+        .get("tag")
+        .map(|t| t.trim().to_lowercase())
+        .filter(|t| !t.is_empty());
+    let mut store = lesson_store().lock().unwrap_or_else(|e| e.into_inner());
+    prune_expired_lessons(&mut store);
+    let lessons: Vec<&LessonRecord> = store
+        .iter()
+        .filter(|l| match &tag {
+            Some(t) => l.context_tags.iter().any(|ct| ct == t),
+            None => true,
+        })
+        .collect();
+    Ok(Json(serde_json::json!({
+        "lessons": lessons,
+        "count": lessons.len(),
+    })))
+}
+
 /// INFRA-1298: GET /api/inbox/{session} — read targeted-inbox messages.
 async fn handle_inbox_get(
     headers: HeaderMap,
@@ -1490,6 +1682,12 @@ async fn handle_tasks_list(
         return Err(StatusCode::UNAUTHORIZED);
     }
     let status = q.status.as_deref().filter(|s| !s.is_empty());
+    if let Some(s) = status {
+        const KNOWN_STATUSES: &[&str] = &["open", "blocked", "in_progress", "done", "abandoned"];
+        if !KNOWN_STATUSES.contains(&s) {
+            return Err(StatusCode::BAD_REQUEST);
+        }
+    }
     let mut tasks = task_db::task_list(status).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     if let Some(ref a) = q.assignee {
         let a = a.trim().to_lowercase();
@@ -4177,6 +4375,60 @@ async fn handle_brain_graph_stats(
     let stats =
         crate::memory_graph_viz::graph_stats().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(stats))
+}
+
+/// GET /api/brain/node/{id} — full record (degree + touching edges) for one node.
+/// Backs the /brain right-pane detail panel (INFRA-1558).
+async fn handle_brain_node(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let detail =
+        crate::memory_graph_viz::node_detail(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match detail {
+        Some(d) => Ok(Json(d).into_response()),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// GET /api/brain/graph/stream — SSE stream that re-pushes the full memory
+/// graph snapshot every 10s so the /brain Cytoscape view can apply incremental
+/// add/remove without a full page reload (INFRA-1558). Polling-based: each
+/// tick re-exports the whole graph; the client diffs against what it already
+/// has rendered rather than this endpoint computing a true delta.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        loop {
+            let data = crate::memory_graph_viz::export_graph_json().unwrap_or_default();
+            if tx
+                .send(Ok(Event::default().event("graph").data(data)))
+                .is_err()
+            {
+                break; // client disconnected
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
 }
 
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
@@ -8654,6 +8906,7 @@ async fn spawn_gap_workflow_inner(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             return Err(e.into());
         }
         emit_ambient_event(gap_id, "preflight", "passed");
@@ -8694,6 +8947,7 @@ async fn spawn_gap_workflow_inner(
                     Some(ms),
                 );
                 cleanup_lease(gap_id, &repo_root);
+                cleanup_worktree(gap_id);
                 return Err(format!("Claim failed: {}", status).into());
             }
             Err(e) => {
@@ -8707,6 +8961,7 @@ async fn spawn_gap_workflow_inner(
                     None,
                 );
                 cleanup_lease(gap_id, &repo_root);
+                cleanup_worktree(gap_id);
                 return Err(e.to_string().into());
             }
         }
@@ -8807,6 +9062,7 @@ async fn spawn_gap_workflow_inner(
                 Some(ms),
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             Err(format!("Ship failed: {}", status).into())
         }
         Err(e) => {
@@ -8820,6 +9076,7 @@ async fn spawn_gap_workflow_inner(
                 None,
             );
             cleanup_lease(gap_id, &repo_root);
+            cleanup_worktree(gap_id);
             Err(e.to_string().into())
         }
     }
@@ -9256,6 +9513,17 @@ fn build_api_router() -> Router {
         // INFRA-1338: server-side ROADMAP.md parser + 60s cache (replaces
         // INFRA-1207 client-side fallback).
         .route("/api/roadmap", get(routes::roadmap::handle_roadmap))
+        // INFRA-1563: operator-decision queue (sibling to /api/roadmap).
+        .route(
+            "/api/decisions",
+            get(routes::decisions::handle_decisions_list),
+        )
+        .route(
+            "/api/decisions/{id}/resolve",
+            post(routes::decisions::handle_decisions_resolve),
+        )
+        // EFFECTIVE-679: cheap idea-drop intake (EFFECTIVE-392 slice).
+        .route("/api/drop", post(handle_drop_post))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))
@@ -9271,6 +9539,11 @@ fn build_api_router() -> Router {
             get(handle_inbox_unread_count),
         )
         .route("/api/inbox/{session}/ack", post(handle_inbox_ack))
+        // META-080: lesson sharing endpoint (in-memory store, META-073 slice).
+        .route(
+            "/api/lessons",
+            get(handle_lessons_get).post(handle_lessons_post),
+        )
         .route("/api/approve", post(handle_approve))
         // INFRA-1340: per-tool persistent auto-approve policies (PWA dropdown)
         .route(
@@ -9382,6 +9655,8 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
@@ -9962,13 +10237,18 @@ mod api_battle_tests {
     ///
     /// RESTORES (never bare-removes) the prior CHUMP_REPO on drop, panics
     /// included. A bare remove_var leaves an unset-env window in which any
-    /// later repo_root() call can poison the process-wide chumpd_repo_root()
-    /// OnceLock with a live daemon's answer (the env-precedence check only
-    /// runs on the FIRST call ever) — under `cargo test`'s shared process
+    /// other test's repo_root() call resolves against a live chumpd daemon
+    /// instead of the intended tempdir — under `cargo test`'s shared process
     /// that cascades into repo_path/repo_tools failures whenever a chumpd
     /// daemon is running. Found live shipping this gap: nextest (process per
     /// test) passed 2734/2734 while the pre-push cargo-test gate failed 17
-    /// env-sensitive tests two modules away.
+    /// env-sensitive tests two modules away. Before INFRA-3534, the fallout
+    /// was worse: `chumpd_repo_root()` cached the whole env-precedence
+    /// decision in a `OnceLock`, so a stray daemon answer from the unset
+    /// window stuck for the rest of the process even after CHUMP_REPO was
+    /// restored. INFRA-3534 fixed that — only the pure socket lookup is
+    /// cached now, env is re-checked every call — but restoring promptly
+    /// still avoids the unset-env window entirely.
     struct GapWriteEnv {
         _dir: tempfile::TempDir,
         prev_repo: Option<String>,
@@ -10968,6 +11248,101 @@ mod api_battle_tests {
             Some(t) => std::env::set_var("CHUMP_WEB_TOKEN", t),
             None => std::env::remove_var("CHUMP_WEB_TOKEN"),
         }
+    }
+
+    /// INFRA-3534: `repo_path::chumpd_repo_root()` used to cache the whole
+    /// env-precedence decision in a `OnceLock`, so once a live chumpd daemon
+    /// answer was cached with CHUMP_REPO/CHUMP_HOME unset, a later
+    /// `CHUMP_REPO` set in the SAME process was silently ignored — exactly
+    /// the poisoning scenario documented on `GapWriteEnv` above. This test
+    /// spawns a minimal fake chumpd daemon over the real `db-path` unix
+    /// socket protocol, resolves `repo_root()` with env unset (hits the
+    /// daemon), then sets `CHUMP_REPO` and resolves again — the second call
+    /// must reflect the new env, not the frozen daemon answer.
+    #[test]
+    #[serial]
+    fn repo_root_honors_env_change_after_chumpd_daemon_answer() {
+        use std::io::{Read, Write};
+        use std::os::unix::net::UnixListener;
+
+        let daemon_root = tempfile::tempdir().unwrap();
+        let chump_dir = daemon_root.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let db_path = chump_dir.join("state.db");
+        std::fs::write(&db_path, b"").unwrap();
+        let sock_path = chump_dir.join("chumpd.sock");
+
+        let listener = UnixListener::bind(&sock_path).unwrap();
+        // INFRA-8042: bound the fake daemon's wait. A blocking accept() hung
+        // forever (and, via #[serial], every other serial test behind it)
+        // whenever repo_root() never dialled the socket.
+        listener.set_nonblocking(true).unwrap();
+        let db_path_reply = db_path.display().to_string();
+        let server = std::thread::spawn(move || {
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
+                        let mut buf = [0u8; 1024];
+                        let _ = stream.read(&mut buf);
+                        let resp = serde_json::json!({ "db_path": db_path_reply });
+                        let _ = stream.write_all(resp.to_string().as_bytes());
+                        return;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(_) => return,
+                }
+            }
+        });
+
+        let prev_repo = std::env::var("CHUMP_REPO").ok();
+        let prev_chump_home = std::env::var("CHUMP_HOME").ok();
+        let prev_home = std::env::var("HOME").ok();
+        std::env::remove_var("CHUMP_REPO");
+        std::env::remove_var("CHUMP_HOME");
+        // try_chumpd_db_path() falls back to $HOME when CHUMP_REPO/CHUMP_HOME
+        // are unset — point it at our fake daemon's directory.
+        std::env::set_var("HOME", daemon_root.path());
+        // INFRA-8042: an earlier test in this process may already have cached
+        // a chumpd answer; start from a clean cache so this call really
+        // queries the fake daemon.
+        crate::repo_path::reset_chumpd_cache_for_test();
+
+        let first = crate::repo_path::repo_root();
+        server.join().unwrap();
+        assert_eq!(
+            first.canonicalize().unwrap(),
+            daemon_root.path().canonicalize().unwrap(),
+            "first call should resolve via the fake chumpd daemon"
+        );
+
+        let other_root = tempfile::tempdir().unwrap();
+        std::env::set_var("CHUMP_REPO", other_root.path());
+        let second = crate::repo_path::repo_root();
+        assert_eq!(
+            second.canonicalize().unwrap(),
+            other_root.path().canonicalize().unwrap(),
+            "second call must honor the newly-set CHUMP_REPO, not the frozen \
+             daemon answer from before it was set"
+        );
+
+        match prev_repo {
+            Some(v) => std::env::set_var("CHUMP_REPO", v),
+            None => std::env::remove_var("CHUMP_REPO"),
+        }
+        match prev_chump_home {
+            Some(v) => std::env::set_var("CHUMP_HOME", v),
+            None => std::env::remove_var("CHUMP_HOME"),
+        }
+        match prev_home {
+            Some(v) => std::env::set_var("HOME", v),
+            None => std::env::remove_var("HOME"),
+        }
+        // Don't leave this test's (now deleted) daemon root cached for later tests.
+        crate::repo_path::reset_chumpd_cache_for_test();
     }
 }
 

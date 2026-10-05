@@ -1,0 +1,13 @@
+- id: DOC-070
+  domain: DOC
+  title: "DOC: fold discovery + EPIC S sourcing-intelligence into COTG backlog (follow-up to DOC-069)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"fold discovery + EPIC S sourcing-intelligence into COTG backlog (follow-up to DOC-069)\" is implemented in the relevant DOC code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3372
+

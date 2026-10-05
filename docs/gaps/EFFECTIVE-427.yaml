@@ -1,0 +1,12 @@
+- id: EFFECTIVE-427
+  domain: EFFECTIVE
+  title: "SHIP-INFRA 5/7 [SPEED]: batched integrator healthy + default — conflict-skip (RESILIENT-269) proven to land N green PRs in ONE CI run"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"batched integrator healthy + default — conflict-skip (RESILIENT-269) proven to land N green PRs in ONE CI run\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: SHIP-INFRA
+

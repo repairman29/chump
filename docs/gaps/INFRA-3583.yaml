@@ -1,0 +1,12 @@
+- id: INFRA-3583
+  domain: INFRA
+  title: Implement Payment Reminder System
+  status: wontfix
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - The payment reminder system is fully functional and can be triggered by the user.
+    - The system sends reminders to clients with an estimated due date
+  notes: EFFECTIVE-425 self-verify smoke test artifact — not real work, closing
+  outcome_id: COTG
+

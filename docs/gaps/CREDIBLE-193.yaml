@@ -1,0 +1,18 @@
+- id: CREDIBLE-193
+  domain: CREDIBLE
+  title: "CREDIBLE: bench engine-drive failure under --apply false-greens off stale clone — grade FAIL not score-current-state"
+  status: done
+  priority: P1
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"bench engine-drive failure under --apply false-greens off stale clone — grade FAIL not score-current-state\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3455
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: chump bench run --track e2e/chumpbench/rescue-beast-ci.yaml --apply --json (binary built from main 59d93638).
+    OUTPUT: 'engine drive failed: chump improve BEAST-MODE ... no onboard scan found — scoring current state anyway'; scorecard result=PASS acceptance_verdict=pass wall_clock_s=1 spirit_verdict='' spirit_reason='no diff to judge'; '2 zero-touch of 2 lap commit(s)' are a PRIOR lap's leftover in the reused clone.
+    THEORY: src/bench.rs run() L1513-1524 — drive_engine() Err under --apply sets drive_verdict=None, flows to score_track() whose (None,'command') arm runs grade_command on the STALE local clone; a prior lap already fixed the fixture so acceptance passes -> false PASS with no lap-authored diff. Fix: on Err(e) pass Some((Verdict::Fail, engine-error)) so score_track's (Some(v),_) arm grades FAIL. Distinct from CREDIBLE-190 (engine-SUCCESS + non-wiped clone).
+    ALT: (a) re-clone fresh on engine failure then score — heavier, still can't prove the agent worked; (b) require --implement for seed-break tracks — fixes invocation but leaves the vector live for the next caller. Grade-FAIL-on-drive-failure is the durable fix.
+

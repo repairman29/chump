@@ -13,8 +13,20 @@
 # Usage: bash node-describe.sh   # prints JSON profile to stdout
 set -uo pipefail
 
-os="$(uname -s)"; host="$(hostname -s 2>/dev/null || hostname)"
+os="$(uname -s)"
+# node_id: CHUMP_NODE_ID env wins (required on hosts where hostname is useless —
+# termux/Android always reports "localhost"). Falls back to hostname.
+host="${CHUMP_NODE_ID:-$(hostname -s 2>/dev/null || hostname)}"
 tailnet="$(tailscale ip -4 2>/dev/null | head -1)"; tailnet="${tailnet:-unknown}"
+
+# termux/Android host-assumption guard: `/` is a tiny read-only system partition
+# there (100% full, ~880M) — the real storage is $HOME (/data/user/0). Measure the
+# usable mount, not `/`, or the box reports 0G free and its build capacity is invisible.
+is_termux=false
+if [[ -n "${PREFIX:-}" && "${PREFIX}" == *com.termux* ]] || [[ "$(uname -o 2>/dev/null)" == "Android" ]]; then
+  is_termux=true
+fi
+disk_mount="/"; [[ "$is_termux" == true ]] && disk_mount="${HOME:-/data/data/com.termux/files/home}"
 
 # --- hardware ---
 if [[ "$os" == "Darwin" ]]; then
@@ -27,9 +39,13 @@ if [[ "$os" == "Darwin" ]]; then
   always_on=false          # laptop — sleeps
 else
   cores="$(nproc 2>/dev/null || echo 0)"
-  ram_gb="$(free -g 2>/dev/null | awk '/Mem:/{print $2}')"
-  disk_free_gb="$(df -BG / 2>/dev/null | awk 'NR==2{gsub(/G/,"",$4);print $4}')"
-  disk_total_gb="$(df -BG / 2>/dev/null | awk 'NR==2{gsub(/G/,"",$2);print $2}')"
+  # ram: /proc/meminfo is portable (termux has no `free`); GB = MemTotal_kB/1048576.
+  ram_gb="$(awk '/MemTotal/{printf "%d", $2/1048576}' /proc/meminfo 2>/dev/null || echo 0)"
+  [[ -z "$ram_gb" || "$ram_gb" == 0 ]] && ram_gb="$(free -g 2>/dev/null | awk '/Mem:/{print $2}')"
+  # disk: portable POSIX `df -Pk` on the usable mount (KB -> GB), not `df -BG /`
+  # (BusyBox/Android df lack -BG). Measures $HOME on termux, / elsewhere.
+  disk_free_gb="$(df -Pk "$disk_mount" 2>/dev/null | awk 'NR==2{printf "%d", $4/1048576}')"
+  disk_total_gb="$(df -Pk "$disk_mount" 2>/dev/null | awk 'NR==2{printf "%d", $2/1048576}')"
   if command -v nvidia-smi >/dev/null 2>&1; then
     gpu_name="$(nvidia-smi --query-gpu=name --format=csv,noheader 2>/dev/null | head -1)"
     gpu_vram_mb="$(nvidia-smi --query-gpu=memory.total --format=csv,noheader,nounits 2>/dev/null | head -1)"
@@ -63,9 +79,21 @@ systemctl is-active chump-pr-lander.timer >/dev/null 2>&1 && svc+=("chump-pr-lan
 
 j_arr(){ local out=""; for x in "$@"; do out+="\"$x\","; done; echo "[${out%,}]"; }
 
+# probed_at: the single field that makes this a READING rather than a sentence.
+# Without it a record cannot be known to be stale, so agents trust it when it is
+# wrong. Receipt, 2026-09-19: mugman.json still advertised
+# "services_running": ["ollama:embed/inference","chump-worker","chump-pr-lander"]
+# for a machine terminated that morning, and cuphead.json said 2 cores / 11 GB /
+# 45 GB for a box that is 4 / 23 / 146. Both were written 2026-09-11 and nothing
+# could tell. DESIGN_GAPS_HARDWARE_AWARE.md Gap 2 called this exactly.
+probed_at="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+probe_source="node-describe.sh"
+
 cat <<EOF
 {
   "node_id": "$host",
+  "probed_at": "$probed_at",
+  "probe_source": "$probe_source",
   "tailnet_ip": "$tailnet",
   "os": "$os",
   "hardware": {

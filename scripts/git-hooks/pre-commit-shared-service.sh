@@ -35,6 +35,11 @@ _is_allowlisted() {
         scripts/ab-harness/*) return 0 ;;
         scripts/coord/auth-status.sh | src/model_probe.rs | src/routes/health.rs | src/web_server.rs) return 0 ;;
         scripts/eval/cross-judge.sh | scripts/ci/check-providers.sh | scripts/ci/check-heartbeat-preflight.sh) return 0 ;;
+        # INFRA-3465: audited intentional-direct sites (2026-07-28 fragmentation
+        # audit resolved these as allowlist-not-migrate — see
+        # docs/design/SHARED_LLM_SERVICE_INTEGRATION.md and
+        # docs/process/CANONICAL_SERVICES.md "Legitimately-direct sites").
+        src/adversary_llm.rs | src/screen_vision_tool.rs) return 0 ;;
     esac
     return 1
 }

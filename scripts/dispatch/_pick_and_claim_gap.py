@@ -14,13 +14,31 @@ of yet-another-INFRA-fix.
 MISSION-028 FIX: this file now mirrors the ranking logic from _pick_gap.py
 (the CANONICAL ranking source). When changing ranking behaviour, change
 _pick_gap.py first and mirror here. Key invariants:
-  - Sort tuple: (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
-  - mission_rank=0 for MISSION-linked gaps, 1 otherwise; causes MISSION gaps to win
-    within the same priority band (e.g. P0-MISSION beats P0-self-maintenance).
-  - substrate P0 still beats mission P1 because effective_prio is compared first.
+  - Sort tuple: (prio_rank, mission_rank, wedge_rank, effort_rank, age, id)
+  - prio_rank is the PRIMARY key (P0=0 < P1=1 < P2=2 < P3=3). A P0 ALWAYS
+    beats any lower-priority gap — no heuristic may promote a lower-priority
+    gap above a higher-priority one.
+  - mission_rank=0 for MISSION-linked gaps, 1 otherwise; a within-priority-band
+    tiebreak so a P0-MISSION gap beats a P0-self-maintenance gap, but a
+    substrate P0 (prio_rank=0) still beats a mission P1 (prio_rank=1) because
+    prio_rank is compared first.
+  - wedge_rank = -(affinity_score + rebalance_boost): the affinity + FLEET-046/
+    INFRA-720 pillar/domain rebalance heuristics act ONLY as a within-band
+    tiebreaker (more affinity / more rebalance boost sorts earlier WITHIN the
+    same priority tier). They never cross priority tiers.
   - P0+domain=MISSION gaps bypass the sonnet xs-effort gate (mirroring
     _pick_gap.py MISSION-026 fix) so xs-effort P0 MISSION gaps are never
     permanently blocked by worker tier.
+
+INFRA-3616 FIX (the keystone): the old sort tuple led with `-affinity_score`
+and folded the rebalance boost INTO priority via
+`effective_prio = max(prio_rank - rebalance_boost, 0)`. That let a rebalance-
+boosted P1 (or an affinity-matched P1) floor to effective_prio=0 and TIE — then
+beat — a real P0, so operator-marked P0s and the active mission sat unworked
+while the fleet ground low-priority gaps (e.g. P1 MISSION-055 was picked over
+P0 INFRA-3616). Priority is now the pure PRIMARY key; the wedge heuristics are
+demoted to a within-band tiebreaker, matching the CANONICAL _pick_gap.py order
+(prio_rank, mission_rank, planner/wedge, effort, age, id).
 
 Reads the open-gap JSON, applies fleet filters, attempts to claim each
 candidate in priority order. Returns the first gap that was successfully
@@ -35,6 +53,10 @@ Environment (same as _pick_gap.py plus):
   REBALANCE_WINDOW number of recent ships to consider (default: 20)
   REBALANCE_DOMAIN_THRESHOLD  domain monopoly threshold 0-100 (default: 70)
   CHUMP_ACTIVE_MISSION  active mission outcome ID (MISSION-011); see _pick_gap.py
+  MERGED_RECENT_GAPS    RESILIENT-1510: space-separated gap IDs whose PR merged
+                        into origin/main recently (computed by worker.sh from
+                        commit subjects) — never re-offered even if the
+                        gap-store status hasn't flipped to done yet
 """
 
 from __future__ import annotations
@@ -46,10 +68,53 @@ import re
 import subprocess
 import sys
 import time
+from collections import Counter
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from _dep_resolution import MalformedDepList, parse_dep_list, unresolved_deps  # noqa: E402
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
+
+# EFFECTIVE-1543: pickable = genuinely-open work ONLY.
+# The queue was spinning on done work (1,943 open, 0 closed/90min while worker
+# PRs kept merging): the picker trusted the JSON `status` field alone, but
+# `chump gap list --json` can hand back stale / split-brain rows (the gap store
+# has multiple drifting reps; observed EFFECTIVE-449 status=already_satisfied +
+# closed_pr=4381 re-picked into a DUPLICATE PR). A gap is pickable ONLY when its
+# status is open/ready AND it carries NO linked PR (closed_pr) and NO shipped_in
+# marker. Anything already done/shipped/closed/in-flight is excluded here so a
+# lying status field can never resurrect done work.
+PICKABLE_STATUSES = {"open", "ready"}
+_DONE_LIKE_STATUSES = {
+    "already_satisfied", "done", "shipped", "superseded", "closed",
+    "closed_not_a_bug", "duplicate", "wont_fix", "wontfix", "blocked",
+    "in_progress", "in-progress", "in_review", "in_flight", "perpetual",
+    "ready_to_ship",
+}
+
+
+def _is_pickable_open(g: dict) -> bool:
+    """True only for genuinely-open, un-shipped, un-linked gaps.
+
+    Belt-and-suspenders against a stale/split-brain status field: a gap that
+    already has a closed_pr or shipped_in is done regardless of what `status`
+    claims, and must never be re-picked.
+    """
+    status = (g.get("status") or "").strip().lower()
+    if status not in PICKABLE_STATUSES:
+        return False
+    cp = g.get("closed_pr")
+    if cp not in (None, "", 0, "0"):
+        return False
+    shipped = g.get("shipped_in")
+    if isinstance(shipped, str):
+        shipped = shipped.strip()
+    if shipped not in (None, "", 0, "0"):
+        return False
+    return True
+
 PILLAR_TAGS = {"EFFECTIVE", "CREDIBLE", "RESILIENT", "ZERO-WASTE", "MISSION"}
 
 # MISSION-011: default active mission outcome when no explicit override is set.
@@ -569,7 +634,29 @@ def main() -> int:
     effort_filter = [e.lower() for e in csv("FLEET_EFFORT_FILTER")]
     worker_model = os.environ.get("FLEET_MODEL", "haiku").lower()
     exclude_re = re.compile(os.environ.get("EXCLUDE_RE", "^$"))
+    # META-937: waste-SLO-breach corrective-keyword exception. When the fleet
+    # is paused on a waste-SLO breach (.chump/fleet-paused), worker.sh sets
+    # this to "corrective" so ONLY gaps whose title contains that keyword
+    # remain pickable — the pause still blocks ordinary work, but a gap
+    # explicitly framed as fixing the breach itself can still be claimed.
+    # Unset/empty outside a pause: no restriction (default fleet behavior).
+    require_title_substrs = [s.lower().strip() for s in csv("FLEET_REQUIRE_TITLE_SUBSTR") if s.strip()]
     active = set(os.environ.get("ACTIVE_GAPS", "").split())
+    # RESILIENT-332 (anti-spin, Layer B): gaps that already have an open PR /
+    # in-progress branch on origin must NEVER be offered — a completed-but-
+    # unmerged gap (e.g. RESILIENT-327 / PR #3795) stayed pickable and got
+    # re-picked into a spin (108 worker_stuck/15min, 2026-08-15). worker.sh
+    # computes this set from `git ls-remote` (branch convention
+    # chump/<gapid>-fleet-*) and passes it here, mirroring the ACTIVE_GAPS
+    # lease-exclusion pattern. This is complementary to lease-exclusion:
+    # leases cover pre-push in-flight work, branches cover post-push
+    # awaiting-merge work. Empty/unset = no exclusion (graceful; Layers A+C
+    # still prevent the spin on nodes where the set can't be computed).
+    in_progress = set(os.environ.get("IN_PROGRESS_GAPS", "").split())
+    # RESILIENT-1510: gaps whose PR already merged into origin/main recently
+    # (worker.sh scans commit subjects), so a gap-store propagation lag can
+    # never cause an immediate re-pick of just-shipped work.
+    merged_recent = set(os.environ.get("MERGED_RECENT_GAPS", "").split())
     cooled = cooled_down_gaps(
         os.environ.get("COOLDOWN_DIR", ""),
         worker_id=os.environ.get("WORKER_ID", os.environ.get("AGENT_ID", "")),
@@ -609,41 +696,76 @@ def main() -> int:
     # Canonical logic mirrors _pick_gap.py (_load_active_mission / _is_mission_linked).
     active_mission = _load_active_mission()
 
+    # RESILIENT-1509: per-exclusion-reason counters. An empty cycle used to
+    # log a bare "no pickable gap" with no way to tell "467 gaps all
+    # genuinely blocked" from "the picker threw/over-excluded and nobody
+    # noticed" apart. worker.sh dumps this dict (via --dump-reasons / stderr)
+    # on every empty cycle so the operator/curator can see WHY.
+    reasons: Counter[str] = Counter()
+
     candidates = []
     for g in gaps:
         gid = g.get("id", "")
         if not gid or gid in active:
+            reasons["active_or_missing_id"] += 1
+            continue
+        # RESILIENT-332 (anti-spin, Layer B): skip gaps with an open PR /
+        # in-progress branch on origin (see IN_PROGRESS_GAPS above).
+        if gid in in_progress:
+            reasons["in_progress_branch"] += 1
+            continue
+        # RESILIENT-1510: skip gaps whose PR merged recently (see
+        # MERGED_RECENT_GAPS above) even if the gap-store status field hasn't
+        # caught up to "done" yet.
+        if gid in merged_recent:
             continue
         if gid in cooled:
+            reasons["cooled_down"] += 1
             continue
         if exclude_re.search(gid):
+            reasons["excluded_by_regex"] += 1
             continue
-        if g.get("status") != "open":
+        if not _is_pickable_open(g):
+            reasons["not_pickable_status"] += 1
             continue
         notes = (g.get("notes") or "").lstrip()
         if notes.upper().startswith("SUPERSEDED"):
+            reasons["superseded"] += 1
             continue
         # RESILIENT-272: never pick manufactured "pillar starved" junk gaps
         # (banned by CLAUDE.md Mission-Driver §2) — see helper docstring above.
         if is_manufactured_pillar_starved_junk(g.get("title", "")):
+            reasons["manufactured_pillar_junk"] += 1
             continue
+        # META-937: waste-SLO-breach corrective-keyword exception (see
+        # require_title_substrs comment above).
+        if require_title_substrs:
+            title_l = (g.get("title") or "").lower()
+            if not any(sub in title_l for sub in require_title_substrs):
+                reasons["title_substr_required"] += 1
+                continue
         p = (g.get("priority") or "").upper()
         if prio_filter and p not in prio_filter:
+            reasons["priority_filter"] += 1
             continue
         d = (g.get("domain") or "").lower()
         if domain_filter and d not in domain_filter:
+            reasons["domain_filter"] += 1
             continue
         e = (g.get("effort") or "").lower()
         if effort_filter and e not in effort_filter:
+            reasons["effort_filter"] += 1
             continue
         # META-044: META-* domain is only fleet-pickable when effort=xs|s.
         # Larger efforts require human judgment on scope and strategy.
         if d == "meta" and e not in ("xs", "s"):
+            reasons["meta_large_effort"] += 1
             continue
         # INFRA-418: skip gaps that require a different model tier.
         # If gap.required_model is not set (empty string), it's compatible with any model.
         required_model = (g.get("required_model") or "").lower()
         if required_model and required_model != worker_model:
+            reasons["required_model_mismatch"] += 1
             continue
         # INFRA-471: model-class effort gate (routing.yaml drives pick policy).
         # haiku workers refuse effort=m/l/xl — cognitive overhead exceeds capability.
@@ -661,21 +783,23 @@ def main() -> int:
         # is invisible to every haiku worker (and routing makes workers haiku), so
         # it starves forever — the literal mechanism of MISSION-026.
         if worker_model == "haiku" and e in ("m", "l", "xl") and not _is_p0_mission:
+            reasons["model_effort_gate"] += 1
             continue
         if worker_model == "sonnet" and e == "xs" and not _is_p0_mission:
+            reasons["model_effort_gate"] += 1
             continue
-        deps_raw = g.get("depends_on")
-        if isinstance(deps_raw, str):
-            try:
-                dep_list = json.loads(deps_raw) if deps_raw.strip() else []
-            except json.JSONDecodeError:
+        try:
+            dep_list = parse_dep_list(g.get("depends_on"))
+        except MalformedDepList:
+            # Malformed depends_on — skip to be safe.
+            reasons["malformed_depends_on"] += 1
+            continue
+        if dep_list:  # any non-empty dep array
+            # INFRA-398 (mirrored, RESILIENT-1114): check if all dependencies
+            # are satisfied (done or active) before skipping the gap.
+            if unresolved_deps(dep_list, gaps, active):
+                reasons["unresolved_deps"] += 1
                 continue
-        elif isinstance(deps_raw, list):
-            dep_list = deps_raw
-        else:
-            dep_list = []
-        if dep_list:
-            continue
 
         # INFRA-314: Extract affinity metadata (only when affinity is enabled).
         affinity_score = 0
@@ -703,6 +827,7 @@ def main() -> int:
 
             # Hard filter: if gap requires skills, worker must have all of them.
             if skills_required and not skills_required.issubset(worker_skills):
+                reasons["skills_mismatch"] += 1
                 continue
 
             # Affinity scoring: backend match (3) + machine match (2) + skill matches (1 each) + priority.
@@ -731,23 +856,34 @@ def main() -> int:
             if gap_pillar and gap_pillar in under_represented_pillars:
                 rebalance_boost += 2
 
-        effective_prio = max(PRIO_RANK.get(p, 9) - rebalance_boost, 0)
+        # INFRA-3616: priority is the PURE PRIMARY sort key. The rebalance boost
+        # is NOT folded into priority (the old `effective_prio = max(prio -
+        # boost, 0)` let a boosted P1 tie/beat a P0). Instead it feeds wedge_rank
+        # below as a within-band tiebreaker only.
+        prio_rank = PRIO_RANK.get(p, 9)
 
         # MISSION-028: mission_rank = 0 for gaps linked to the active mission,
-        # 1 for everything else. Inserted AFTER effective_prio so a P0-MISSION
-        # gap beats a P0-self-maintenance gap within the same priority band, but
-        # a substrate P0 (effective_prio=0) still beats a mission P1
-        # (effective_prio=1) because effective_prio is compared first.
-        # Canonical sort order matches _pick_gap.py:
-        #   (-affinity_score, effective_prio, mission_rank, effort_rank, age, id)
+        # 1 for everything else. Placed AFTER prio_rank so a P0-MISSION gap beats
+        # a P0-self-maintenance gap within the same priority band, but a
+        # substrate P0 (prio_rank=0) still beats a mission P1 (prio_rank=1)
+        # because prio_rank is compared first.
         mission_rank = 0 if _is_mission_linked(g, active_mission) else 1
 
-        # Primary sort: affinity (desc), effective priority, mission rank, effort, created_at.
+        # INFRA-3616: wedge_rank folds the affinity + FLEET-046/INFRA-720
+        # rebalance heuristics into a single within-band tiebreaker. Lower sorts
+        # earlier, so a higher affinity/rebalance score (more desirable) yields a
+        # more-negative wedge_rank and wins WITHIN its priority tier — never
+        # across tiers. This preserves the wedge/topology "ship order" heuristic
+        # (SHIP_ORDER_VISION) as a tiebreaker while priority stays authoritative.
+        wedge_rank = -(affinity_score + rebalance_boost)
+
+        # Canonical sort order matches _pick_gap.py:
+        #   (prio_rank, mission_rank, wedge_rank, effort_rank, age, id)
         candidates.append(
             (
-                -affinity_score,
-                effective_prio,
+                prio_rank,
                 mission_rank,
+                wedge_rank,
                 EFFORT_RANK.get(e, 9),
                 g.get("created_at") or 0,
                 gid,
@@ -773,32 +909,40 @@ def main() -> int:
         # Try candidates in rotated order.
         for i in range(len(candidates)):
             idx = (offset + i) % len(candidates)
-            gap_id = candidates[idx][5]  # Index [5]: (-affinity, eff_prio, mission_rank, effort, age, gid)
+            gap_id = candidates[idx][5]  # Index [5]: (prio_rank, mission_rank, wedge_rank, effort, age, gid)
             if dry_run:
                 print(gap_id)
                 return 0
-            if try_claim_gap(gap_id, session_id, lock_dir):
-                # FLEET-046 + INFRA-720: log when rebalancing influenced the pick.
-                if rebalance_enabled and (monopoly_domain or starved_pillars or under_represented_pillars):
-                    ambient_path = os.environ.get(
-                        "AMBIENT_JSONL", ".chump-locks/ambient.jsonl"
-                    )
-                    try:
-                        event = {
-                            "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-                            "kind": "rebalance_active",
-                            "event": "rebalance_active",
-                            "picked": gap_id,
-                            "monopoly_domain": monopoly_domain,
-                            "starved_pillars": sorted(starved_pillars),
-                            "under_represented_pillars": sorted(under_represented_pillars),
-                        }
-                        with open(ambient_path, "a") as f:
-                            f.write(json.dumps(event) + "\n")
-                    except Exception:
-                        pass
-                print(gap_id)
-                return 0
+            if not try_claim_gap(gap_id, session_id, lock_dir):
+                # RESILIENT-1509: a candidate that passed every filter but
+                # lost the atomic claim race (another worker got there
+                # first). Distinct from the filter-reason counters above —
+                # surfaces as "claim_race_lost" so a cycle that silently
+                # loses every race reads differently from one with zero
+                # candidates to begin with.
+                reasons["claim_race_lost"] += 1
+                continue
+            # FLEET-046 + INFRA-720: log when rebalancing influenced the pick.
+            if rebalance_enabled and (monopoly_domain or starved_pillars or under_represented_pillars):
+                ambient_path = os.environ.get(
+                    "AMBIENT_JSONL", ".chump-locks/ambient.jsonl"
+                )
+                try:
+                    event = {
+                        "ts": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+                        "kind": "rebalance_active",
+                        "event": "rebalance_active",
+                        "picked": gap_id,
+                        "monopoly_domain": monopoly_domain,
+                        "starved_pillars": sorted(starved_pillars),
+                        "under_represented_pillars": sorted(under_represented_pillars),
+                    }
+                    with open(ambient_path, "a") as f:
+                        f.write(json.dumps(event) + "\n")
+                except Exception:
+                    pass
+            print(gap_id)
+            return 0
     else:
         # INFRA-314: Emit affinity_starved if no eligible gaps found and affinity is enabled + worker has skill constraints.
         if affinity_enabled and worker_skills:
@@ -820,6 +964,22 @@ def main() -> int:
             except Exception:
                 pass
 
+    # RESILIENT-1509: reaching here means no gap was returned this cycle.
+    # Dump the per-reason exclusion counts to stderr so worker.sh (which no
+    # longer redirects this to /dev/null) can log WHY instead of a bare
+    # "no pickable gap" — the root cause of the 5h/276-cycle cuphead
+    # starvation was that this information was silently discarded.
+    sys.stderr.write(
+        json.dumps(
+            {
+                "pick_empty_cycle": True,
+                "total_gaps": len(gaps),
+                "candidates": len(candidates),
+                "exclusion_reasons": dict(reasons),
+            }
+        )
+        + "\n"
+    )
     return 0
 
 

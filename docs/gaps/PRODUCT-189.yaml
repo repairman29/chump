@@ -1,0 +1,20 @@
+- id: PRODUCT-189
+  domain: PRODUCT
+  title: "[maclawd] Flag-default drift in Maclawd: OPENAI_API_KEY read with 4 different defaults; HEARTBEAT_DURATION 2m vs 8h"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Confidence: unknown -- no tier recorded (filed before the tier field existed, or by a producer that has not adopted it yet) -- verify independently before trusting it.
+    
+    almanac flagmap (py-env adapter, 2026-08-05) triaged Maclawd's drift list. Real incoherences: (1) OPENAI_API_KEY read 49 times with FOUR distinct defaults ("", "not-needed", "ollama", "test-key") - code paths disagree about whether the key is required, faked, or routed to ollama, the same class as chump's FLEET_BACKEND bug. (2) HEARTBEAT_DURATION defaults to 2m in some read sites and 8h in others - a 240x disagreement. (3) BUNDLE_ID defaults to ai.openclaw.mac vs ai.openclaw.mac.debug, and BUILD_CONFIG debug vs release - if two entry points disagree, a "prod" build can carry debug identity. Fix pattern: one resolver function per flag (single default), everything else calls it. Receipt: `flagmap --repo ~/Projects/Maclawd --drift` (binary at almanac/target/release/flagmap).
+    
+    context: {"domain":"PRODUCT","found_by":"almanac flagmap drift triage 2026-08-06","external_repo":"repairman29/Maclawd"}
+    source: holler feedback_events, dedupe maclawd-flag-drift-openai-key-heartbeat-2026-08-06
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/maclawd"
+

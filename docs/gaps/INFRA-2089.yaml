@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE P1: chump swe <prompt> — productize per-gap bounded SWE-agent wrapper around claim->worktree->subagent-kill->auto-merge pipeline (Bet 1, MARKET_POSITIONING_2026-05-27 #2679)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - "Implement chump swe <prompt> as a new chump CLI subcommand wrapping the existing per-gap claim->worktree->subagent-dispatch pipeline as a one-shot SWE-agent product surface. CLI: chump swe '<prompt>' [--budget-secs N] [--budget-tokens N] [--budget-dollars N] [--paths CSV] [--dry-run-diff]. On invocation: reserve+claim a synthetic INFRA-NEW gap with the prompt as title, dispatch a Sonnet sub-agent into a /tmp worktree under the declared budget, ARM auto-merge on success, emit kind=swe_invocation_complete (success/failed/killed_at_budget) ambient event."

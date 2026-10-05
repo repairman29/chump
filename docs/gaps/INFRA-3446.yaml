@@ -1,0 +1,13 @@
+- id: INFRA-3446
+  domain: INFRA
+  title: "RESILIENT: gap preflight must recognize self-ownership — a session shipping its OWN claim gets FAIL 'live-claimed by <itself>', blocking the fleet's own ship path"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"gap preflight must recognize self-ownership — a session shipping its OWN claim gets FAIL 'live-claimed by <itself>', blocking the fleet's own ship path\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_pr: 3346
+  outcome_id: MISSION-010
+

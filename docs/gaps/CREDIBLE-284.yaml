@@ -1,0 +1,15 @@
+- id: CREDIBLE-284
+  domain: CREDIBLE
+  title: "CREDIBLE: gap reserve must accept + REQUIRE an authored acceptance-criteria for P0/P1 (stop the tautological placeholder; stop deferring the done-definition to claim-time decompose)"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "chump gap reserve accepts --acceptance-criteria and for P0/P1 REQUIRES it (same firewall as --outcome/--evidence); refuses without it. Bypass: --no-ac-required (audit trailer)"
+    - reserve NO LONGER auto-fills the tautological placeholder - an unauthored gap has EMPTY AC (which audit-ac flags), not a fake-pass placeholder that reads as covered
+    - chump gap decompose PRESERVES author-provided acceptance_criteria as the fixed done-definition (the WHAT) and only generates the implementation sub-steps (the HOW); never overwrites authored AC
+    - "CI smoke test proves: (a) reserve P1 without AC is refused, (b) with it the AC is stored verbatim, (c) decompose leaves authored AC unchanged"
+  outcome_id: CREDIBLE-000
+  evidence: |
+    COMMAND: chump gap reserve --help + sqlite3 .chump/state.db SELECT acceptance_criteria FROM gaps. OUTPUT: reserve has NO --acceptance-criteria flag; every reserved gap gets the tautological placeholder AC The change described by [title] is implemented in the relevant code paths. THEORY: the done-definition (WHAT done means) is intent and does NOT rot; only the decomposition (HOW / which files) ages. Deferring the done-definition to claim-time chump gap decompose (an LLM call) removes the external anchor - the same model family writes the AC, does the work, and the AC-gate judges the work against that self-authored AC, a closed loop grading its own homework. Structural driver of the unverified_ship class (37 of 70 cycles on CJ 2026-08-17). audit-ac already flags weak AC but reserve keeps minting placeholders. ALT rejected: keep placeholder + claim-time decompose (the current failure); pre-file sub-gaps at file time (those rot - why two-phase exists). Fix separates them: author WHAT at file time, generate HOW at claim time.
+

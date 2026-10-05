@@ -1,0 +1,13 @@
+- id: RESILIENT-273
+  domain: RESILIENT
+  title: "RESILIENT: productize the disk self-heal — reaper swarm freed 0 bytes + paged a human; encode the proven quiesce-prune-restore (size-cap, not free-disk%)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Encode the proven manual quiesce-prune-restore as a self-heal so no human is paged: (1) trigger on a HARD SIZE CAP of the shared target (e.g. >50GB), not just free-disk% (the free-disk reactors fired but couldn't act); (2) safely quiesce — set AUTONOMY_LEVEL=0, kill fleet builds, AND bootout the deploy/refresh daemons (auto-deploy + refresh-runner-binary) that ignore AUTONOMY_LEVEL and respawn builds; wait for 0 build procs; (3) prune the target; (4) restore the daemons; (5) emit an ambient event with GB reclaimed. Reconcile the 3 overlapping target-reapers into this ONE owner (don't add a 4th). Alt/better root fix to evaluate: relocate the shared target off the boot volume and/or a real bounded-size cap+eviction so it never bloats. Regression test with a synthetic oversized fixture dir."
+  closed_pr: 3553
+  outcome_id: FLEET-BUILD-SPEED
+  evidence: |
+    2026-08-09 disk-critical incident: shared target ~/.cargo/chump-shared-target bloated to ~150GB (debug/deps 147GB), disk hit 4% free. The EXISTING disk automation FAILED: cargo_target_reaper_summary showed bytes_freed:0 in aggressive_mode:true (12+ times), disk_critical_reactor escalated tiers 1->4 uselessly, disk_pressure_red emitted 'manual intervention required'. Root: mtime/hot-binary guard is defeated when all builds share one target dir (everything looks hot), and the reaper won't pause the builds holding the dir, so it can never reclaim a shared-target bloat under a live fleet. Required a HUMAN to: chump fleet stop + tmux kill, pkill builds, bootout auto-deploy+refresh-runner-binary daemons (AUTONOMY_LEVEL=0 does NOT stop those — they respawn cargo builds), rm -rf the target, restore daemons. Reclaimed 150GB (95%->79% used).
+

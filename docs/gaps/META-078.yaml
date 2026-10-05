@@ -1,12 +1,13 @@
 - id: META-078
   domain: META
   title: "META: Implement skill-aware routing decision engine (stub skills DB) (META-073 slice)"
-  status: open
+  status: done
   priority: P1
   effort: s
   acceptance_criteria:
     - System selects route based on agent skill compatibility
     - Emits 'routing_decision' event with skill match details
     - Falls back to default routing if skills data unavailable
+  closed_pr: 3902
   outcome_id: MISSION-010
 

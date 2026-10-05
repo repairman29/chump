@@ -1,0 +1,18 @@
+- id: PRODUCT-172
+  domain: PRODUCT
+  title: "[upshift] Playwright browser e2e suite is wired into no CI workflow (local-only despite living in e2e:all)"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Named floor-raiser #2 in DEPTH.md (upshift#27). tests/e2e/browser/site.spec.js (homepage, Radar CTAs, docs links, mobile nav, 404, console errors; chromium + mobile projects) runs in NO workflow - .github/workflows has unit/platform/cli-e2e/site-parity jobs but nothing runs `npm run e2e:browser`. The site can regress invisibly between merges. Fix: a CI job that serves web/ on 3333 and runs the playwright suite (config already exists; ~2 min job).
+    
+    context: {"pr":"upshift#27","source":"claude-triage/depth-pass-2026-08-02"}
+    source: holler feedback_events, dedupe 6547c73cf3fcf8e5
+  acceptance_criteria:
+    - The specific issue described above is verifiably fixed on the LIVE site (re-check the real URL after deploy, not just the diff)
+    - No regression -- the rest of the page/flow that already worked still works
+    - "If this was a \"claims a capability that doesn't work\" finding (a live CTA/flow promising something broken), the fix either makes it true or removes the claim -- never ship with both the break and the promise still in place"
+  source_doc: "holler:feedback_events"
+  skills_required: "external_repo:repairman29/upshift"
+

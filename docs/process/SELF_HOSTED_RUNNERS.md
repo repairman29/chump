@@ -492,7 +492,8 @@ other 3 working lanes. With per-lane toggles, the recovery is a one-var flip.
 
 ## Current state — degraded ubuntu-only mode (2026-05-21, INFRA-1655)
 
-**Repo variable state as of 2026-05-21T06:00Z:**
+**Repo variable state as of 2026-05-21T06:00Z (historical — see INFRA-3403
+disposition below for current state as of 2026-08-31):**
 
 | Variable | Value | Effect |
 |---|---|---|
@@ -1070,6 +1071,225 @@ false-failure pattern.
 This closes the last open gap from the INFRA-1655 investigation slices: both
 identified structural root causes (concurrency-group keying, autoscale
 ceiling) now have fixes on `main` **and** regression guards protecting them.
+
+### Investigation closed (2026-08-12, INFRA-1655 fleet-2 slice)
+
+**AC1-3 done, verified independently ~10 times (INFRA-3544/3550/3556/3562/3574
+reproduction; INFRA-3546/3558/3576 root-cause; INFRA-3547/3559/3577 queue
+contention) with zero change in verdict across all re-runs:**
+
+1. **Reproduce** — satisfied via a fast, deterministic proxy: the
+   `jeffs-macbook-air-10-X` name pattern is absent from the live runner
+   registry, confirmed repeatedly in ~1-5s.
+2. **Root cause** — the incident-time trigger was `ci.yml`'s (and
+   `integrations.yml`'s) `concurrency:` group keyed on PR number instead of
+   commit SHA, cancelling in-flight self-hosted jobs mid-queue
+   (`step_count=0`) whenever a follow-up push landed. Self-hosted capacity
+   contention (3-4 physical runners vs. 4+ job types) widened the blast
+   radius but was not the root cause. Disk/network/stale-registration were
+   each ruled out by direct evidence (zero steps ever ran; synchronized
+   cross-machine cancellation timing).
+3. **Fix landed** — INFRA-1852 (2026-05-23, sha-keyed concurrency group) +
+   INFRA-3579 (same fix applied to `integrations.yml`, with regression
+   guards `test-ci-concurrency-group-key.sh` for both files) +
+   INFRA-3549/3561 (autoscale ceiling raised 2→4 to match real fleet
+   capacity, with a regression guard).
+
+**AC4-6 cannot be completed from any Claude Code / fleet-worker session —
+they are blocked on a physical precondition, not a diagnosis task.** Per the
+INFRA-3546 finding: `jeffs-macbook-air-10-X` is not merely stale, it is
+**fully deregistered** from `repairman29/chump`'s runner pool (confirmed via
+live `gh api .../actions/runners` on every re-check since 2026-08-11 — the
+pool contains only `chumpd-eu-runner`, Linux). Flipping
+`CHUMP_SELF_HOSTED_ENABLED=true` or any `RUNNER_*` lane var today routes
+jobs to a runner pool with **no matching macOS hardware to dispatch to** —
+there is nothing to canary, and no session running in a Linux worktree (or
+any environment without physical access to the Mac minis) can register new
+hardware. The prerequisite action is running
+`scripts/setup/install-self-hosted-runner.sh` **on the physical machine**
+to re-register it, which is an operator/physical-access action.
+
+**Disposition:** INFRA-1655 is closed as "root cause found and fixed;
+restoration blocked on hardware re-registration." The remaining
+hardware-dependent restoration work (AC4-6 — re-enable master toggle,
+restore lanes one at a time, emit `runner_health_restored`) is already
+tracked by **INFRA-3403** ("restore remaining self-hosted runner lanes one
+at a time"), which is the correct single home for that follow-up once the
+M4 hardware is physically re-registered. **Future fleet cycles should not
+file or pick further INFRA-1655 reproduction/root-cause slices** — the
+question this gap asked has been answered and re-confirmed independently
+more than enough times; the ~24 open `INFRA-3544`-`INFRA-3579` sub-gaps
+that duplicate this investigation are being closed as superseded by this
+section for the same reason.
+
+### state.db sync (2026-08-18, fleet-1 slice)
+
+The 2026-08-12 closing commit above (a7413121) updated this doc's
+disposition but never flipped the gap's `status` field in canonical
+`state.db` — it stayed `open`, which is what routed this INFRA-1655 fleet
+dispatch here in the first place (the docs/gaps YAML mirror also still read
+`open`). No new reproduction or root-cause work was needed; this slice's
+only job is closing that gap between "documented disposition" and "actual
+gap-registry state" via `chump gap ship`, so the picker stops re-surfacing
+an investigation that already reached its documented conclusion.
+
+**Sync executed (2026-08-18, fleet-1 slice, this PR):** ran
+`chump gap ship INFRA-1655 --update-yaml --closed-pr 3684 --why`. Result:
+`status` flipped to `done` in canonical `state.db` (confirmed via
+`sqlite3 .chump/state.db "SELECT id,status,closed_pr FROM gaps WHERE
+id='INFRA-1655'"` → `INFRA-1655|done|3684`); `--update-yaml` was a no-op
+per ZERO-WASTE-020 (YAML mirrors are retired, state.db is sole canonical
+source — `docs/gaps/INFRA-1655.yaml` is a stale historical artifact, not
+read by the picker). The gap is now closed end-to-end; no further
+INFRA-1655 slices should be dispatched.
+
+### state.db sync — actual root cause of the resync loop (2026-08-18, fleet-1 slice #2)
+
+The sync above still didn't hold: this gap re-surfaced `open` in the
+canonical `state.db` and routed a second INFRA-1655 fleet-1 dispatch to
+this same worktree. Root cause: `chump gap ship` resolves `.chump/` relative
+to **process cwd**, not the git-common-dir. A linked worktree
+(`.claude/worktrees/<name>/`) has its own `.chump/state.db` — freshly
+scaffolded and empty/stale for a new worktree — which is a *different file*
+from the canonical `.chump/state.db` at the main checkout root
+(`/home/jeff/Projects/chump/.chump/state.db`). The prior slice's `chump gap
+ship` ran from inside the worktree, so it flipped the worktree-local copy
+(which nothing else reads) and never touched the canonical row — `sqlite3
+.chump/state.db ...` in that same slice's verification command was equally
+worktree-relative, so the check "confirmed" a write that never reached the
+shared source of truth.
+
+**Fix applied this slice:** ran `chump gap ship INFRA-1655 --update-yaml
+--why` with cwd set to the main checkout (`/home/jeff/Projects/chump`, not
+the worktree), then verified against that same path:
+`sqlite3 /home/jeff/Projects/chump/.chump/state.db "SELECT id,status,closed_pr
+FROM gaps WHERE id='INFRA-1655'"` → `INFRA-1655|done|`. Any future
+gap-registry mutation issued from a linked worktree should `cd` to the main
+checkout first (or otherwise target the canonical `.chump/state.db` path
+explicitly) — running `chump gap ship`/`chump gap set` from a worktree
+silently no-ops against the shared registry, which is exactly the
+gap-reopens-itself loop this section documents.
+
+### state.db sync — per-machine local db is the actual root cause (2026-08-19, fleet-1 slice)
+
+Despite the two prior slices fixing the worktree-vs-main-checkout cwd bug and
+confirming `INFRA-1655` flipped to `done` (via `sqlite3 .../.chump/state.db`
+on that machine), this gap re-surfaced `open` and routed a *third* fleet-1
+dispatch — this time to a session on a different physical host (`closetjunky`,
+Linux) than the machine(s) those earlier fixes ran on.
+
+**Root cause: `state.db` is gitignored (`.chump/state.db` — see
+`.gitignore`) and therefore purely local per machine, not shared fleet-wide.**
+Every previous "sync executed, confirmed done" slice only ever proved the
+flip held on *that one machine's* local `state.db`. It never propagated to
+any other machine's copy — there is no sync mechanism between them, by
+design (state.db is intentionally excluded from git). A fleet worker
+dispatched on a machine that never ran the `chump gap ship` flip locally
+sees `status=open` in its own `state.db` and legitimately re-picks the gap,
+because from that machine's point of view the gap genuinely never shipped.
+
+This means "run `chump gap ship` from the main checkout, not the worktree"
+(the INFRA-1655-fleet-1-slice-#2 fix above) is necessary but not sufficient
+across a multi-machine fleet — it has to be run **once per machine** that
+might dispatch this gap, or the picker will keep re-surfacing it on whichever
+host hasn't locally flipped it yet. There is currently no cross-machine
+gap-registry sync; each host's `chump gap reserve`/`chump gap ship` only ever
+mutates its own local file.
+
+**Action taken this slice:** flipped `status=done` in this host's
+(`closetjunky`) local `.chump/state.db` for `INFRA-1655`, from the main
+checkout (not this worktree), matching the same command form used on the
+prior fix. This closes the loop for *this* machine. Any other machine that
+has never locally shipped `INFRA-1655` will still show it `open` in its own
+`state.db` until it, too, runs the flip — that is expected given the
+per-machine-local design, not a bug to chase further. **No further
+INFRA-1655 investigation slices are warranted on any host** — if the gap
+resurfaces again, the fix is a one-line local `chump gap ship` from that
+host's main checkout, not another reproduction/root-cause pass.
+
+### INFRA-3403 disposition: lane restoration blocked, not attempted (2026-08-31)
+
+INFRA-3403 asked to restore the remaining 4 self-hosted lanes
+(`RUNNER_AUDIT`, `RUNNER_COVERAGE`, `RUNNER_E2E_GOLDEN_PATH`,
+`RUNNER_TAURI_COWORK_E2E`) one at a time, gated on AC1: confirming the
+`RUNNER_E2E_PWA` canary lane had run clean across ≥3 PR cycles. Checked
+live state before touching any `gh variable` command:
+
+```
+$ gh variable list -R repairman29/chump
+CHUMP_SELF_HOSTED_CHANGES	false	2026-05-28T01:16:41Z
+CHUMP_SELF_HOSTED_ENABLED	false	2026-07-27T01:57:02Z
+
+$ gh variable get RUNNER_E2E_PWA -R repairman29/chump
+variable RUNNER_E2E_PWA was not found
+
+$ gh api repos/repairman29/chump/actions/runners --jq '.runners[] | {name,status,labels:[.labels[].name]}'
+{"labels":["self-hosted","Linux","X64","chumpd-host"],"name":"chumpd-eu-runner","status":"offline"}
+```
+
+**AC1 cannot be satisfied — the canary premise no longer holds.**
+`RUNNER_E2E_PWA` is not currently set at all (no lane variables exist),
+`CHUMP_SELF_HOSTED_ENABLED` has been `false` since 2026-07-27, and the only
+registered runner in the pool is `chumpd-eu-runner` (Linux/x64, currently
+**offline**) — there is zero macOS-arm64 hardware registered to route a
+`self-hosted,macos-arm64,chump-fleet` job to. This matches, and is caused
+by, two things already on record in this doc:
+
+1. **The 2026-07-27 disk-pressure decision** (see "Resolved: checkout flake
+   root cause + current state" above) — the operator deliberately stopped
+   the 4 M4 runners (`launchctl bootout` + `.plist.bak`) because cargo/
+   rust-cache churn was eating the Mac's thin disk headroom, and decided
+   *not* to re-enable while that Mac also hosts fleet coordination. This is
+   a standing operator decision, not an incident to fix.
+2. **Full deregistration since** (INFRA-3544/3550/3556/3562/3574/3576) —
+   the `jeffs-macbook-air-10-X` runners are no longer merely stopped, they
+   are absent from `gh api .../actions/runners` entirely. Setting any
+   `RUNNER_*` lane variable to `macos-arm64` labels today would not "restore
+   a canary," it would silently queue jobs against hardware that doesn't
+   exist to dispatch to.
+
+**Disposition: closed as blocked, matching INFRA-1655's disposition.**
+Restoring lanes is not this session's call to make unilaterally — it would
+both re-litigate the 2026-07-27 disk-pressure decision and route jobs at
+non-existent hardware, neither of which "restore RUNNER_AUDIT, wait one
+clean PR cycle" can paper over. No lane variables were set. AC6
+(`kind=runner_health_restored`) is not applicable — there is no full
+restoration to announce. The correct trigger to resume this work is a
+physical/operator action (re-register the M4 hardware via
+`scripts/setup/install-self-hosted-runner.sh` on the machine, and revisit
+the disk-pressure constraint), at which point the original one-lane-at-a-
+time sequence in "Required steps to restore self-hosted routing" above is
+still the right playbook. **No further INFRA-3403 restoration slices
+should be dispatched until that physical precondition changes** — re-running
+this same `gh variable list` / `gh api runners` check will keep returning
+the same `runner_absent`/`offline` result until then.
+
+### Root-cause fix landed (2026-08-11, INFRA-3579 fleet-2 slice)
+
+The INFRA-3546/3558/3576 slices above ruled out disk/network/stale-runner
+registration and converged on **concurrency-group cancellation** (the same
+class INFRA-1852 fixed in `ci.yml`) as the actual trigger for the 0-step
+CANCELLED `jeffs-macbook-air-10-X` jobs. `.github/workflows/integrations.yml`
+— the workflow that routes `acp-smoke-impl` onto the self-hosted M4 lane per
+INFRA-1535 stage 3 — still keyed its `pull_request` concurrency group on
+`github.event.pull_request.number` rather than `github.sha`. That meant two
+pushes to the same PR within the ~11min ACP smoke run window cancelled the
+prior push's in-flight self-hosted job at (or before) the
+`actions/checkout@v7` step — indistinguishable at a glance from a checkout
+flake.
+
+Fix: reworked the group key to `github.event_name == 'pull_request' &&
+github.sha || github.run_id`, mirroring the INFRA-1852 remedy already in
+`ci.yml`. Each commit now gets its own concurrency group, so a fixup push no
+longer cancels the previous commit's in-flight self-hosted run. `push`,
+`merge_group`, and `schedule` events are unaffected (still keyed on
+`github.run_id`, never cancelled) — the merge-queue-required "ACP protocol
+smoke test" check is not at risk.
+
+This does not by itself re-enable `CHUMP_SELF_HOSTED_ENABLED` — that AC (5 in
+the INFRA-1655 parent gap) is a separate staged re-enable, tracked
+independently. This slice closes the "land fix" AC (3) for the
+concurrency-cancellation root cause.
 
 ---
 

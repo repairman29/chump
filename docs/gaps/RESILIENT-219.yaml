@@ -1,0 +1,44 @@
+- id: RESILIENT-219
+  domain: RESILIENT
+  title: test-cargo-target-reaper.sh Test 10 (aggressive-mode escalation) flakes with broken-pipe, fails required fast-checks CI gate
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"test-cargo-target-reaper.sh Test 10 (aggressive-mode escalation) flakes with broken-pipe, fails required fast-checks CI gate\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3426
+  outcome_id: RESILIENT-000
+  evidence: |
+    COMMAND: reproduced 3x shipping CREDIBLE-181 (PR #3423) across 2 distinct
+    GitHub Actions run-ids (30563379419 reran twice, then 30580384804 after a
+    full rebase+force-push for a genuinely fresh run) -- same failure every time.
+    OUTPUT (identical all 3 times):
+      scripts/ci/test-cargo-target-reaper.sh: line 203: printf: write error: Broken pipe
+        ✗ aggressive mode neither aborted nor escalated — unexpected
+      ##[error]Process completed with exit code 1.
+    
+    COMMAND: main's own most recent CI run (fast-checks, run 30563105151,
+    started 2026-07-30T16:48:27Z) -- last real signal before this incident.
+    OUTPUT: success
+    
+    THEORY: scripts/ci/test-cargo-target-reaper.sh's "Test 10: aggressive mode
+    bypasses the blanket cargo-active abort" spawns a fake `rustc` process,
+    runs the reaper script with CHUMP_DISK_CRITICAL_GB=999999 (forcing
+    aggressive mode), captures its output via `out_agg="$(... 2>&1 || true)"`,
+    then greps for "ABORT: active cargo" (fail) or "escalating" (pass) --
+    neither matched. The "printf: write error: Broken pipe" at the exact same
+    line/timestamp strongly suggests the captured output got truncated by a
+    closed pipe mid-write (the fake rustc process exiting, or a downstream
+    reader closing early under CI resource-timing variance), so `$out_agg`
+    never contains either expected string -- a test-harness robustness bug in
+    how this subtest captures subprocess output, not a real regression in
+    cargo-target-reaper.sh's actual aggressive-mode logic.
+    
+    None of CREDIBLE-181's diff (src/main.rs, tool_inventory.rs,
+    tool_middleware.rs, tool_policy.rs, review_dispatch.rs) touches
+    scripts/ci/test-cargo-target-reaper.sh or scripts/ops/cargo-target-reaper.sh
+    at all -- confirmed unrelated to that PR's own changes.
+

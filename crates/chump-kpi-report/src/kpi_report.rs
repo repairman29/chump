@@ -282,6 +282,149 @@ impl MissionGradeHistorySection {
     }
 }
 
+// ── Mission Binary repeatability (MISSION-066) ──────────────────────────────
+// docs/MISSION.md ① THE BINARY answers "did it happen this run". Repeatability
+// answers "does it keep happening" — the gap this section closes, per the
+// scoreboard's own evidence note ("verify zero-touch + repeatable until
+// instrumented"). Reads the `mission_binary_check` events that
+// scripts/dev/mission-scoreboard.sh appends to ambient.jsonl on every run.
+
+/// One recorded scoreboard run of ① THE BINARY.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MissionBinaryCheck {
+    pub ts: String,
+    pub repo: String,
+    pub beast_merges_7d: u64,
+    pub beast_zero_touch_7d: u64,
+}
+
+impl MissionBinaryCheck {
+    /// True when this run counts as ① YES (at least one zero-touch merge).
+    pub fn is_yes(&self) -> bool {
+        self.beast_zero_touch_7d > 0
+    }
+}
+
+#[derive(Debug, Default)]
+pub struct MissionBinarySection {
+    /// Most-recent-first history of recorded runs.
+    pub checks: Vec<MissionBinaryCheck>,
+    /// Consecutive YES runs counting back from the most recent (0 if the
+    /// latest run is NO or there is no history yet).
+    pub current_streak: u64,
+    /// Longest consecutive-YES run streak seen in the recorded history.
+    pub longest_streak: u64,
+}
+
+impl MissionBinarySection {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str("═══ Mission Binary Repeatability (① — MISSION-066) ═══\n");
+        if self.checks.is_empty() {
+            out.push_str("  No mission_binary_check runs recorded yet — run scripts/dev/mission-scoreboard.sh.\n");
+            return out;
+        }
+        out.push_str(&format!(
+            "  current streak: {} run(s)   longest streak: {} run(s)   recorded runs: {}\n",
+            self.current_streak,
+            self.longest_streak,
+            self.checks.len()
+        ));
+        for c in self.checks.iter().take(10) {
+            let short_ts = if c.ts.len() > 19 { &c.ts[..19] } else { &c.ts };
+            out.push_str(&format!(
+                "  {:<22} {}  zero-touch {} of {} merge(s)\n",
+                short_ts,
+                if c.is_yes() { "✅ YES" } else { "❌ NO " },
+                c.beast_zero_touch_7d,
+                c.beast_merges_7d
+            ));
+        }
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let checks_json: Vec<String> = self
+            .checks
+            .iter()
+            .map(|c| {
+                format!(
+                    r#"{{"ts":"{}","repo":"{}","beast_merges_7d":{},"beast_zero_touch_7d":{},"is_yes":{}}}"#,
+                    c.ts,
+                    c.repo,
+                    c.beast_merges_7d,
+                    c.beast_zero_touch_7d,
+                    c.is_yes()
+                )
+            })
+            .collect();
+        format!(
+            r#"{{"current_streak":{},"longest_streak":{},"checks":[{}]}}"#,
+            self.current_streak,
+            self.longest_streak,
+            checks_json.join(",")
+        )
+    }
+}
+
+/// Pure computation over recorded checks (most-recent-first) — split out from
+/// the ambient-log parser so the streak logic is directly unit-testable.
+fn compute_mission_binary_streaks(checks_most_recent_first: &[MissionBinaryCheck]) -> (u64, u64) {
+    let mut current = 0u64;
+    for c in checks_most_recent_first {
+        if c.is_yes() {
+            current += 1;
+        } else {
+            break;
+        }
+    }
+
+    let mut longest = 0u64;
+    let mut run = 0u64;
+    // Walk oldest-first so consecutive runs are contiguous in time.
+    for c in checks_most_recent_first.iter().rev() {
+        if c.is_yes() {
+            run += 1;
+            longest = longest.max(run);
+        } else {
+            run = 0;
+        }
+    }
+
+    (current, longest)
+}
+
+pub fn build_mission_binary_section(repo_root: &Path) -> MissionBinarySection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let mut checks = Vec::new();
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "mission_binary_check" {
+            continue;
+        }
+        checks.push(MissionBinaryCheck {
+            ts: extract_field(line, "ts").unwrap_or_default(),
+            repo: extract_field(line, "repo").unwrap_or_default(),
+            beast_merges_7d: extract_int_field(line, "beast_merges_7d").unwrap_or(0),
+            beast_zero_touch_7d: extract_int_field(line, "beast_zero_touch_7d").unwrap_or(0),
+        });
+    }
+
+    // Most recent first (matches MissionGradeHistorySection convention).
+    checks.reverse();
+    checks.truncate(50);
+
+    let (current_streak, longest_streak) = compute_mission_binary_streaks(&checks);
+
+    MissionBinarySection {
+        checks,
+        current_streak,
+        longest_streak,
+    }
+}
+
 /// Cost-saving estimate vs Anthropic-only baseline.
 #[derive(Debug, Default)]
 pub struct CostSavingsSection {
@@ -325,6 +468,111 @@ impl CostSavingsSection {
             r#"{{"actual_cost_usd":{:.6},"anthropic_only_cost_usd":{:.6},"window_days":{}}}"#,
             self.actual_cost_usd, self.anthropic_only_cost_usd, self.window_days
         )
+    }
+}
+
+/// ZERO-WASTE-060: free/local-tier routing savings, built from `cascade_routed`
+/// ambient events (INFRA-1004, extended by ZERO-WASTE-060 to carry a `tokens`
+/// field). Every cascade slot — cloud (Groq/Cerebras/Mistral/OpenRouter/Gemini/
+/// GitHub Models/NVIDIA NIM/SambaNova) or local (Ollama) — is a free-tier
+/// provider the cascade prefers *before* ever falling back to a paid
+/// Anthropic-only call, so this section answers "how much of the fleet's
+/// inference did we get for free, and what would it have cost otherwise."
+#[derive(Debug, Default)]
+pub struct FreeTierSavingsSection {
+    /// Total estimated tokens served by a free (cloud-cascade or local) slot.
+    pub free_tokens_used: u64,
+    /// Tokens served by a cloud free-tier slot (Groq, Cerebras, Gemini, ...).
+    pub free_cloud_tokens: u64,
+    /// Tokens served by the local (Ollama) slot.
+    pub free_local_tokens: u64,
+    /// Count of cascade_routed events in the window.
+    pub routed_calls: u64,
+    /// Estimated USD saved: what `free_tokens_used` would have cost at
+    /// Anthropic-only (Sonnet) rates, priced entirely as output tokens (the
+    /// cascade doesn't currently split input/output at the ambient-event
+    /// granularity, so this is a conservative-ish single-bucket estimate).
+    pub dollars_saved_usd: f64,
+    pub window_days: u64,
+}
+
+impl FreeTierSavingsSection {
+    pub fn render_text(&self) -> String {
+        let mut out = String::new();
+        out.push_str(&format!(
+            "═══ Free/Local-Tier Routing Savings (last {} days) ═══\n",
+            self.window_days
+        ));
+        out.push_str(&format!("  Routed calls:        {}\n", self.routed_calls));
+        out.push_str(&format!(
+            "  Free tokens used:    {} (cloud: {}, local: {})\n",
+            self.free_tokens_used, self.free_cloud_tokens, self.free_local_tokens
+        ));
+        out.push_str(&format!(
+            "  Dollars saved:       ${:.4}\n",
+            self.dollars_saved_usd
+        ));
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"free_tokens_used":{},"free_cloud_tokens":{},"free_local_tokens":{},"routed_calls":{},"dollars_saved_usd":{:.6},"window_days":{}}}"#,
+            self.free_tokens_used,
+            self.free_cloud_tokens,
+            self.free_local_tokens,
+            self.routed_calls,
+            self.dollars_saved_usd,
+            self.window_days
+        )
+    }
+}
+
+fn build_free_tier_savings_section(repo_root: &Path, window_days: u64) -> FreeTierSavingsSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let window_secs = window_days * 86_400;
+    let now_unix = current_unix();
+    let cutoff = now_unix.saturating_sub(window_secs);
+
+    let mut free_cloud_tokens = 0u64;
+    let mut free_local_tokens = 0u64;
+    let mut routed_calls = 0u64;
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "cascade_routed" {
+            continue;
+        }
+        let ts_unix = extract_field(line, "ts")
+            .and_then(|t| parse_iso8601_to_unix(&t))
+            .unwrap_or(0);
+        if ts_unix < cutoff {
+            continue;
+        }
+        let tokens = extract_int_field(line, "tokens").unwrap_or(0);
+        let tier = extract_field(line, "tier").unwrap_or_default();
+        routed_calls += 1;
+        if tier == "local" {
+            free_local_tokens += tokens;
+        } else {
+            free_cloud_tokens += tokens;
+        }
+    }
+
+    let free_tokens_used = free_cloud_tokens + free_local_tokens;
+    // Priced as pure output tokens at Anthropic-only (Sonnet) rates — the
+    // conservative side of the estimate, since output tokens are the
+    // expensive half of the rate table.
+    let dollars_saved_usd = cost_usd_from_tokens("unknown", 0, free_tokens_used, 0);
+
+    FreeTierSavingsSection {
+        free_tokens_used,
+        free_cloud_tokens,
+        free_local_tokens,
+        routed_calls,
+        dollars_saved_usd,
+        window_days,
     }
 }
 
@@ -592,6 +840,260 @@ pub fn build_claim_bust_section(repo_root: &Path) -> ClaimBustSection {
     ClaimBustSection { rows }
 }
 
+// ── Green-First-Try Rate Section (CREDIBLE-1112, slice of CREDIBLE-272) ─────
+
+/// Ship-pipeline green-first-try%: of the gaps that shipped (`kind=gap_shipped`),
+/// what fraction had zero `kind=bot_merge_phase_failure` events recorded against
+/// the same `gap_id` before shipping — i.e. the pipeline went green without a
+/// failed phase (fmt/clippy/test/push/pr-create) forcing a retry.
+#[derive(Debug, Default, Clone)]
+pub struct GreenFirstTrySection {
+    pub total_ships: u64,
+    pub green_first_try: u64,
+}
+
+impl GreenFirstTrySection {
+    pub fn green_first_try_pct(&self) -> f64 {
+        if self.total_ships == 0 {
+            0.0
+        } else {
+            (self.green_first_try as f64 / self.total_ships as f64) * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.total_ships == 0 {
+            return "═══ Green-First-Try% (CREDIBLE-1112) ═══\n  No gap_shipped events found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Green-First-Try% (CREDIBLE-1112) ═══\n  {}/{} ships green on first try ({:.1}%)\n",
+            self.green_first_try,
+            self.total_ships,
+            self.green_first_try_pct(),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"total_ships":{},"green_first_try":{},"green_first_try_pct":{:.1}}}"#,
+            self.total_ships,
+            self.green_first_try,
+            self.green_first_try_pct(),
+        )
+    }
+}
+
+/// Scan ambient.jsonl and correlate `gap_shipped` events against
+/// `bot_merge_phase_failure` events sharing the same `gap_id`.
+pub fn build_green_first_try_section(repo_root: &Path) -> GreenFirstTrySection {
+    use std::collections::HashSet;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut failed_gap_ids: HashSet<String> = HashSet::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "bot_merge_phase_failure" {
+            continue;
+        }
+        if let Some(gap_id) = extract_field(line, "gap_id") {
+            failed_gap_ids.insert(gap_id);
+        }
+    }
+
+    let mut section = GreenFirstTrySection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_shipped" {
+            continue;
+        }
+        let gap_id = match extract_field(line, "gap_id") {
+            Some(id) => id,
+            None => continue,
+        };
+        section.total_ships += 1;
+        if !failed_gap_ids.contains(&gap_id) {
+            section.green_first_try += 1;
+        }
+    }
+    section
+}
+
+// ── Time-to-Land Section (CREDIBLE-1113, slice of CREDIBLE-272) ─────────────
+
+/// Ship-pipeline time-to-land: wall-clock seconds from `kind=gap_claimed` to
+/// `kind=gap_shipped` for the same `gap_id`, aggregated as p50/p90/max.
+#[derive(Debug, Default, Clone)]
+pub struct TimeToLandSection {
+    pub sample_count: u64,
+    pub p50_seconds: Option<u64>,
+    pub p90_seconds: Option<u64>,
+    pub max_seconds: Option<u64>,
+}
+
+impl TimeToLandSection {
+    pub fn render_text(&self) -> String {
+        if self.sample_count == 0 {
+            return "═══ Time-to-Land (CREDIBLE-1113) ═══\n  No claim→ship pairs found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Time-to-Land (CREDIBLE-1113) ═══\n  n={} p50={}s p90={}s max={}s\n",
+            self.sample_count,
+            self.p50_seconds.unwrap_or(0),
+            self.p90_seconds.unwrap_or(0),
+            self.max_seconds.unwrap_or(0),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"sample_count":{},"p50_seconds":{},"p90_seconds":{},"max_seconds":{}}}"#,
+            self.sample_count,
+            opt_u64(self.p50_seconds),
+            opt_u64(self.p90_seconds),
+            opt_u64(self.max_seconds),
+        )
+    }
+}
+
+fn opt_u64(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => "null".to_string(),
+    }
+}
+
+fn percentile_u64_slice(sorted: &[u64], pct: usize) -> Option<u64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let rank = (pct * sorted.len()).div_ceil(100);
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    Some(sorted[idx])
+}
+
+/// Scan ambient.jsonl and correlate `gap_claimed` events against `gap_shipped`
+/// events sharing the same `gap_id`, taking the earliest claim before each ship.
+pub fn build_time_to_land_section(repo_root: &Path) -> TimeToLandSection {
+    use std::collections::HashMap;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut claimed_at: HashMap<String, u64> = HashMap::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_claimed" {
+            continue;
+        }
+        let (Some(gap_id), Some(ts)) = (
+            extract_field(line, "gap_id"),
+            extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)),
+        ) else {
+            continue;
+        };
+        claimed_at
+            .entry(gap_id)
+            .and_modify(|existing| *existing = (*existing).min(ts))
+            .or_insert(ts);
+    }
+
+    let mut durations: Vec<u64> = Vec::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_shipped" {
+            continue;
+        }
+        let (Some(gap_id), Some(shipped_ts)) = (
+            extract_field(line, "gap_id"),
+            extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)),
+        ) else {
+            continue;
+        };
+        if let Some(&claim_ts) = claimed_at.get(&gap_id) {
+            if shipped_ts >= claim_ts {
+                durations.push(shipped_ts - claim_ts);
+            }
+        }
+    }
+
+    let mut section = TimeToLandSection {
+        sample_count: durations.len() as u64,
+        ..Default::default()
+    };
+    durations.sort_unstable();
+    section.p50_seconds = percentile_u64_slice(&durations, 50);
+    section.p90_seconds = percentile_u64_slice(&durations, 90);
+    section.max_seconds = durations.last().copied();
+    section
+}
+
+// ── Gate False-Positive Rate Section (CREDIBLE-1115, slice of CREDIBLE-272) ─
+
+/// Ship-pipeline gate FP rate: of the halt-class/gate signals routed through
+/// the duty-officer quiet gate (`kind=duty_officer_action`), what fraction
+/// were determined to be false positives (`verdict=refuted`) rather than
+/// genuine (`verdict=healed|suppressed|runbook_needed`).
+#[derive(Debug, Default, Clone)]
+pub struct GateFalsePositiveSection {
+    pub total_signals: u64,
+    pub false_positives: u64,
+}
+
+impl GateFalsePositiveSection {
+    pub fn fp_rate_pct(&self) -> f64 {
+        if self.total_signals == 0 {
+            0.0
+        } else {
+            (self.false_positives as f64 / self.total_signals as f64) * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.total_signals == 0 {
+            return "═══ Gate FP Rate (CREDIBLE-1115) ═══\n  No duty_officer_action events found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Gate FP Rate (CREDIBLE-1115) ═══\n  {}/{} signals refuted as false positive ({:.1}%)\n",
+            self.false_positives,
+            self.total_signals,
+            self.fp_rate_pct(),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"total_signals":{},"false_positives":{},"fp_rate_pct":{:.1}}}"#,
+            self.total_signals,
+            self.false_positives,
+            self.fp_rate_pct(),
+        )
+    }
+}
+
+/// Scan ambient.jsonl for `kind=duty_officer_action` events and tally verdicts.
+pub fn build_gate_false_positive_section(repo_root: &Path) -> GateFalsePositiveSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut section = GateFalsePositiveSection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "duty_officer_action" {
+            continue;
+        }
+        section.total_signals += 1;
+        if extract_field(line, "verdict").as_deref() == Some("refuted") {
+            section.false_positives += 1;
+        }
+    }
+    section
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
@@ -600,9 +1102,13 @@ pub struct KpiReport {
     pub ship_rate: ShipRateSection,
     pub mission_history: MissionGradeHistorySection,
     pub cost_savings: CostSavingsSection,
+    pub free_tier_savings: FreeTierSavingsSection,
     pub leverage: LeverageSection,
     pub tokens_per_ship: TokensPerShipReport,
     pub handoff_rate: HandoffRateSection,
+    pub green_first_try: GreenFirstTrySection,
+    pub time_to_land: TimeToLandSection,
+    pub gate_false_positive: GateFalsePositiveSection,
 }
 
 impl KpiReport {
@@ -617,23 +1123,35 @@ impl KpiReport {
         out.push('\n');
         out.push_str(&self.cost_savings.render_text());
         out.push('\n');
+        out.push_str(&self.free_tier_savings.render_text());
+        out.push('\n');
         out.push_str(&self.leverage.render_text());
         out.push('\n');
         out.push_str(&self.tokens_per_ship.render_text());
         out.push('\n');
         out.push_str(&self.handoff_rate.render_text());
+        out.push('\n');
+        out.push_str(&self.green_first_try.render_text());
+        out.push('\n');
+        out.push_str(&self.time_to_land.render_text());
+        out.push('\n');
+        out.push_str(&self.gate_false_positive.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{},"time_to_land":{},"gate_false_positive":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
+            self.free_tier_savings.render_json(),
             self.leverage.render_json(),
             self.tokens_per_ship.render_json(),
             self.handoff_rate.render_json(),
+            self.green_first_try.render_json(),
+            self.time_to_land.render_json(),
+            self.gate_false_positive.render_json(),
         )
     }
 }
@@ -733,7 +1251,74 @@ impl AgentThroughputSection {
     }
 }
 
-/// Read agent throughput from .chump/metrics/agent-throughput-DATE.json.
+/// CREDIBLE-099 AC-4/AC-7: when no `.chump/metrics/agent-throughput-*.json`
+/// snapshot exists (the tracker script never ran, or hasn't run for this
+/// date), fall back to the worker-presence registry's own audit trail:
+/// `ambient.jsonl` `kind=gap_shipped` events, which every ship path emits
+/// with a `session` field (see `src/execute_gap.rs`'s
+/// `# scanner-anchor: "kind":"gap_shipped"`). This is the same source
+/// `chump_coord::presence::ships_today_counts` reads for "today", generalized
+/// to an arbitrary date so `--date YYYY-MM-DD` also gets real data instead of
+/// silently reporting nothing. `gap_failed` events are detector-emitted and
+/// carry no session attribution today, so `fails` stays 0 in this fallback —
+/// real, just incomplete, rather than fabricated.
+fn build_agent_throughput_section_from_ambient(
+    repo_root: &Path,
+    date: &str,
+) -> AgentThroughputSection {
+    let ambient_path = repo_root.join(".chump-locks/ambient.jsonl");
+    let Ok(contents) = std::fs::read_to_string(&ambient_path) else {
+        return AgentThroughputSection::default();
+    };
+
+    let mut ships_by_session: std::collections::BTreeMap<String, u64> =
+        std::collections::BTreeMap::new();
+    for line in contents.lines() {
+        let Ok(v) = serde_json::from_str::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v.get("kind").and_then(|k| k.as_str()) != Some("gap_shipped") {
+            continue;
+        }
+        let Some(ts) = v.get("ts").and_then(|t| t.as_str()) else {
+            continue;
+        };
+        if !ts.starts_with(date) {
+            continue;
+        }
+        let Some(session) = v.get("session").and_then(|s| s.as_str()) else {
+            continue;
+        };
+        *ships_by_session.entry(session.to_string()).or_insert(0) += 1;
+    }
+
+    if ships_by_session.is_empty() {
+        return AgentThroughputSection::default();
+    }
+
+    let total_ships: u64 = ships_by_session.values().sum();
+    let rows = ships_by_session
+        .into_iter()
+        .map(|(agent_id, ships)| AgentThroughputRow {
+            agent_id,
+            ships,
+            fails: 0,
+            p50_minutes_per_ship: None,
+            top_fail_modes: vec![],
+        })
+        .collect();
+
+    AgentThroughputSection {
+        date: date.to_string(),
+        rows,
+        total_ships,
+        total_fails: 0,
+    }
+}
+
+/// Read agent throughput from .chump/metrics/agent-throughput-DATE.json,
+/// falling back to the ambient `gap_shipped` audit trail (CREDIBLE-099
+/// AC-4/AC-7) when no tracker snapshot exists for the date.
 pub fn build_agent_throughput_section(
     repo_root: &Path,
     date_str: Option<&str>,
@@ -745,11 +1330,11 @@ pub fn build_agent_throughput_section(
         .join(format!("agent-throughput-{date}.json"));
     let content = match std::fs::read_to_string(&metrics_path) {
         Ok(c) => c,
-        Err(_) => return AgentThroughputSection::default(),
+        Err(_) => return build_agent_throughput_section_from_ambient(repo_root, date),
     };
     let json: serde_json::Value = match serde_json::from_str(&content) {
         Ok(v) => v,
-        Err(_) => return AgentThroughputSection::default(),
+        Err(_) => return build_agent_throughput_section_from_ambient(repo_root, date),
     };
     let mut section = AgentThroughputSection {
         date: json
@@ -801,10 +1386,40 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         ship_rate: build_ship_rate_section(repo_root),
         mission_history: build_mission_history_section(repo_root),
         cost_savings: build_cost_savings_section(repo_root, window_days),
+        free_tier_savings: build_free_tier_savings_section(repo_root, window_days),
         leverage: build_leverage_section(repo_root),
         tokens_per_ship: build_report(repo_root, window_days),
         handoff_rate: build_handoff_rate_section(repo_root, window_days),
+        green_first_try: build_green_first_try_section(repo_root),
+        time_to_land: build_time_to_land_section(repo_root),
+        gate_false_positive: build_gate_false_positive_section(repo_root),
     }
+}
+
+/// Parse a `YYYY-MM-DD` close date (the TEXT `closed_date` the ship path writes)
+/// to a unix timestamp at midnight UTC, dependency-free (days-from-civil). Lets
+/// the ship gauge count closes recorded without the INTEGER `closed_at`
+/// (CREDIBLE-1485/1486 — the split-brain where the writer sets `closed_date` but
+/// the reader read `closed_at`).
+fn parse_closed_date(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.len() < 10 {
+        return None;
+    }
+    let y: i64 = s.get(0..4)?.parse().ok()?;
+    let m: i64 = s.get(5..7)?.parse().ok()?;
+    let d: i64 = s.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil: days since 1970-01-01.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400)
 }
 
 fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
@@ -818,18 +1433,28 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
     };
     let now = current_unix();
 
-    let pillar_of = |title: &str| -> Option<&'static str> {
+    // CREDIBLE-421: title-prefix tagging (`EFFECTIVE: ...`) is opt-in and most
+    // gaps are titled `<DOMAIN>-<NUM>: ...` instead, so a title-only check
+    // left 70% of 30d ships "untagged" even though the gap's `domain` field
+    // already carries the pillar. Fall back to domain when the title has no
+    // explicit prefix.
+    let pillar_of = |title: &str, domain: &str| -> Option<&'static str> {
         let up = title.to_uppercase();
         if up.starts_with("EFFECTIVE:") {
-            Some("effective")
+            return Some("effective");
         } else if up.starts_with("CREDIBLE:") {
-            Some("credible")
+            return Some("credible");
         } else if up.starts_with("RESILIENT:") {
-            Some("resilient")
+            return Some("resilient");
         } else if up.starts_with("ZERO-WASTE:") {
-            Some("zero_waste")
-        } else {
-            None
+            return Some("zero_waste");
+        }
+        match domain.to_uppercase().as_str() {
+            "EFFECTIVE" => Some("effective"),
+            "CREDIBLE" => Some("credible"),
+            "RESILIENT" => Some("resilient"),
+            "ZERO-WASTE" | "ZERO_WASTE" | "ZEROWASTE" => Some("zero_waste"),
+            _ => None,
         }
     };
 
@@ -844,10 +1469,16 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
         let mut untagged = 0;
 
         for g in &done_gaps {
-            if let Some(closed) = g.closed_at {
-                if (closed as u64) >= cutoff {
+            // CREDIBLE-1485/1486: the ship path reliably sets closed_date (TEXT
+            // YYYY-MM-DD) but historically NOT closed_at (INTEGER unix ts) — only
+            // 4 of 2481 done gaps had closed_at vs 1731 with closed_date — so
+            // reading closed_at alone undercounted ships ~10-40x (kpi said 3/1d
+            // while git showed 30 closes/24h). Prefer closed_at; fall back to
+            // parsing closed_date so the gauge counts every real close.
+            if let Some(closed) = g.closed_at.or_else(|| parse_closed_date(&g.closed_date)) {
+                if closed >= cutoff as i64 {
                     total += 1;
-                    match pillar_of(&g.title) {
+                    match pillar_of(&g.title, &g.domain) {
                         Some("effective") => effective += 1,
                         Some("credible") => credible += 1,
                         Some("resilient") => resilient += 1,
@@ -1441,6 +2072,532 @@ pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
     }
 }
 
+// ── Debt Index — Crown Gauge + NBA (CREDIBLE-357) ───────────────────────────
+//
+// Maps the live gap registry (`.chump/state.db`) onto `debt_index::Capability`
+// so the crown gauge (live_pct/debt/top-5 dormant-by-Crit) and the
+// next_best_action candidate list are computed from real, current fleet
+// state rather than a fixture. Priority maps to criticality (P0/P1 -> Crit,
+// P2 -> Warn, else Info); status maps to liveness (done/shipped -> Complete,
+// in_progress/claimed -> Running, else Pending — dormant); effort maps to
+// `stages_short` (xs=1 .. xl=5, unknown effort defaults to 2) as the "how far
+// behind" proxy since the registry doesn't track literal pipeline stages.
+pub struct DebtIndexSection {
+    pub gauge: crate::debt_index::CrownGauge,
+    pub nba_text: String,
+    pub nba_candidate_count: usize,
+}
+
+impl DebtIndexSection {
+    pub fn render_text(&self) -> String {
+        format!("{}\n{}", self.gauge.render_text(), self.nba_text)
+    }
+
+    pub fn render_json(&self) -> String {
+        let top5 = self
+            .gauge
+            .top5_dormant_names
+            .iter()
+            .map(|n| format!("{:?}", n))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{"live_pct":{:.4},"debt":{:.2},"top5_dormant":[{}],"nba_candidate_count":{}}}"#,
+            self.gauge.live_pct, self.gauge.debt, top5, self.nba_candidate_count,
+        )
+    }
+}
+
+fn gap_priority_to_criticality(priority: &str) -> crate::live_pct::Criticality {
+    use crate::live_pct::Criticality;
+    match priority {
+        "P0" | "P1" => Criticality::Crit,
+        "P2" => Criticality::Warn,
+        _ => Criticality::Info,
+    }
+}
+
+fn gap_status_to_stage_status(status: &str) -> crate::live_pct::StageStatus {
+    use crate::live_pct::StageStatus;
+    match status {
+        "done" | "shipped" => StageStatus::Complete,
+        "in_progress" | "claimed" | "running" => StageStatus::Running,
+        _ => StageStatus::Pending,
+    }
+}
+
+fn gap_effort_to_stages_short(effort: &str) -> u32 {
+    match effort {
+        "xs" => 1,
+        "s" => 2,
+        "m" => 3,
+        "l" => 4,
+        "xl" => 5,
+        _ => 2,
+    }
+}
+
+/// Build the crown-gauge + NBA section from the current gap registry.
+pub fn build_debt_index_section(repo_root: &Path) -> DebtIndexSection {
+    let capabilities: Vec<crate::debt_index::Capability> =
+        match chump_gap_store::GapStore::open(repo_root) {
+            Ok(store) => store
+                .list(None)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|g| crate::debt_index::Capability {
+                    name: format!("{} {}", g.id, g.title),
+                    criticality: gap_priority_to_criticality(&g.priority),
+                    status: gap_status_to_stage_status(&g.status),
+                    stages_short: gap_effort_to_stages_short(&g.effort),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+    let gauge = crate::debt_index::compute_crown_gauge(&capabilities);
+    let nba_text = crate::debt_index::render_nba_candidates(&capabilities);
+    let nba_candidate_count = crate::debt_index::next_best_action_candidates(&capabilities).len();
+
+    DebtIndexSection {
+        gauge,
+        nba_text,
+        nba_candidate_count,
+    }
+}
+
+// ── Integration Cycle Dashboard (INFRA-2143) ────────────────────────────────
+//
+// Cross-references: INFRA-2132 (integration_cycle_* ambient events read here),
+// INFRA-2137 (bisect_quarantined status + `bisect_quarantine` event), INFRA-2142
+// (SLO thresholds shown alongside each metric), DOC-063 (the CI-bottleneck
+// review this dashboard measures success against).
+//
+// Data sources:
+//   - ambient.jsonl: integration_cycle_started/completed/shipped/failed/
+//     dry_run_completed, integration_preflight_started/failed, bisect_quarantine,
+//     graphql_exhausted, ci_flake_rerun (all within the requested window).
+//   - GitHub Actions API (best-effort, `gh` CLI): CI-runs-per-shipped-gap. When
+//     `gh` is unavailable/unauthenticated (e.g. in tests, or an offline
+//     checkout) the section renders "—" for that one metric rather than
+//     failing the whole report — every other metric is ambient-only and does
+//     not depend on network access.
+
+/// One resolved integration cycle: its `cycle_id`, start time, and (if it
+/// reached a terminal state within the window) end time.
+#[derive(Debug, Clone, Default)]
+struct CycleSpan {
+    started_at: Option<u64>,
+    ended_at: Option<u64>,
+    shipped_gap_count: Option<u64>,
+    shipped: bool,
+    preflight_failed: bool,
+}
+
+/// `chump kpi report --integration` dashboard section.
+#[derive(Debug, Clone, Default)]
+pub struct IntegrationCycleSection {
+    pub window_days: f64,
+    pub cycles_started: u64,
+    pub cycles_shipped: u64,
+    pub gaps_shipped: u64,
+    pub p50_wall_minutes: Option<f64>,
+    pub p95_wall_minutes: Option<f64>,
+    pub ci_runs_per_shipped_gap: Option<f64>,
+    pub runner_peak_util_pct: Option<f64>,
+    pub wall_time_saved_hours: f64,
+    pub quarantined_count: u64,
+    pub bisect_quarantine_rate_pct: f64,
+    pub cycles_zero_fail: u64,
+    pub rerun_cycles: u64,
+    pub graphql_exhaustion_per_day: f64,
+    pub operator_flake_rerun_per_day: f64,
+}
+
+impl IntegrationCycleSection {
+    pub fn mean_gaps_per_cycle(&self) -> f64 {
+        if self.cycles_shipped == 0 {
+            0.0
+        } else {
+            self.gaps_shipped as f64 / self.cycles_shipped as f64
+        }
+    }
+
+    pub fn cycles_zero_fail_pct(&self) -> f64 {
+        if self.cycles_started == 0 {
+            0.0
+        } else {
+            self.cycles_zero_fail as f64 / self.cycles_started as f64 * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        let fmt_min = |v: Option<f64>| {
+            v.map(|m| format!("{m:.1} min"))
+                .unwrap_or_else(|| "—".to_string())
+        };
+        let fmt_pct = |v: Option<f64>| {
+            v.map(|p| format!("{p:.0}%"))
+                .unwrap_or_else(|| "—".to_string())
+        };
+        let fmt_ratio = |v: Option<f64>| {
+            v.map(|r| format!("{r:.2}"))
+                .unwrap_or_else(|| "—".to_string())
+        };
+        let mut out = String::new();
+        out.push_str(&format!(
+            "═══ Integration Cycle Dashboard (last {}d) ═══\n\n",
+            self.window_days
+        ));
+        out.push_str("SHIP VELOCITY\n");
+        out.push_str(&format!(
+            "  Cycles shipped:        {}\n",
+            self.cycles_shipped
+        ));
+        out.push_str(&format!("  Gaps shipped:          {}\n", self.gaps_shipped));
+        out.push_str(&format!(
+            "  Mean gaps per cycle:   {:.2}\n",
+            self.mean_gaps_per_cycle()
+        ));
+        out.push_str(&format!(
+            "  P50 cycle wall time:   {}\n",
+            fmt_min(self.p50_wall_minutes)
+        ));
+        out.push_str(&format!(
+            "  P95 cycle wall time:   {}\n\n",
+            fmt_min(self.p95_wall_minutes)
+        ));
+        out.push_str("EFFICIENCY VS PER-PR BASELINE\n");
+        out.push_str(&format!(
+            "  CI runs / shipped gap: {}  (target: < 0.15)\n",
+            fmt_ratio(self.ci_runs_per_shipped_gap)
+        ));
+        out.push_str(&format!(
+            "  Runner peak util:      {}   (target: < 50%)\n",
+            fmt_pct(self.runner_peak_util_pct)
+        ));
+        out.push_str(&format!(
+            "  Wall time saved est:   {:.1} hours (vs hypothetical per-PR baseline)\n\n",
+            self.wall_time_saved_hours
+        ));
+        out.push_str("QUALITY\n");
+        out.push_str(&format!(
+            "  Bisect-quarantine rate: {:.1}%  (target: < 5%)\n",
+            self.bisect_quarantine_rate_pct
+        ));
+        out.push_str(&format!(
+            "  Cycles with 0 fails:    {}/{} ({:.0}%)\n",
+            self.cycles_zero_fail,
+            self.cycles_started,
+            self.cycles_zero_fail_pct()
+        ));
+        out.push_str(&format!(
+            "  Rerun cycles:           {}\n\n",
+            self.rerun_cycles
+        ));
+        out.push_str("EXTERNAL COSTS\n");
+        out.push_str(&format!(
+            "  GraphQL exhaustion / day:  {:.1}  (target: < 0.5)\n",
+            self.graphql_exhaustion_per_day
+        ));
+        out.push_str(&format!(
+            "  Operator flake-rerun interventions / day: {:.1} (target: < 1)\n",
+            self.operator_flake_rerun_per_day
+        ));
+        out
+    }
+
+    pub fn render_json(&self) -> String {
+        let opt_f64 = |v: Option<f64>| {
+            v.map(|n| n.to_string())
+                .unwrap_or_else(|| "null".to_string())
+        };
+        format!(
+            r#"{{"window_days":{},"cycles_started":{},"cycles_shipped":{},"gaps_shipped":{},"mean_gaps_per_cycle":{:.2},"p50_wall_minutes":{},"p95_wall_minutes":{},"ci_runs_per_shipped_gap":{},"runner_peak_util_pct":{},"wall_time_saved_hours":{:.2},"quarantined_count":{},"bisect_quarantine_rate_pct":{:.1},"cycles_zero_fail":{},"cycles_zero_fail_pct":{:.1},"rerun_cycles":{},"graphql_exhaustion_per_day":{:.2},"operator_flake_rerun_per_day":{:.2}}}"#,
+            self.window_days,
+            self.cycles_started,
+            self.cycles_shipped,
+            self.gaps_shipped,
+            self.mean_gaps_per_cycle(),
+            opt_f64(self.p50_wall_minutes),
+            opt_f64(self.p95_wall_minutes),
+            opt_f64(self.ci_runs_per_shipped_gap),
+            opt_f64(self.runner_peak_util_pct),
+            self.wall_time_saved_hours,
+            self.quarantined_count,
+            self.bisect_quarantine_rate_pct,
+            self.cycles_zero_fail,
+            self.cycles_zero_fail_pct(),
+            self.rerun_cycles,
+            self.graphql_exhaustion_per_day,
+            self.operator_flake_rerun_per_day,
+        )
+    }
+}
+
+fn percentile_f64(sorted: &[f64], pct: usize) -> Option<f64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let rank = (pct * sorted.len()).div_ceil(100);
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    Some(sorted[idx])
+}
+
+/// Build the integration-cycle dashboard by scanning `ambient.jsonl` for the
+/// last `window_hours` hours. `window_hours` of 168 == 7d (the default),
+/// 720 == 30d.
+pub fn build_integration_cycle_section(
+    repo_root: &Path,
+    window_hours: u64,
+) -> IntegrationCycleSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+    let cutoff = current_unix().saturating_sub(window_hours * 3600);
+
+    let mut cycles: BTreeMap<String, CycleSpan> = BTreeMap::new();
+    let mut quarantined_count: u64 = 0;
+    let mut graphql_exhausted_count: u64 = 0;
+    let mut ci_flake_rerun_count: u64 = 0;
+
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        let ts_unix = extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t));
+        let in_window = ts_unix.map(|t| t >= cutoff).unwrap_or(false);
+        if !in_window {
+            continue;
+        }
+
+        match kind.as_str() {
+            "integration_cycle_started" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    cycles.entry(cid).or_default().started_at = ts_unix;
+                }
+            }
+            "integration_cycle_shipped" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    let span = cycles.entry(cid).or_default();
+                    span.ended_at = ts_unix;
+                    span.shipped = true;
+                    span.shipped_gap_count = extract_int_field(line, "gap_count");
+                }
+            }
+            "integration_cycle_failed" | "integration_cycle_dry_run_completed" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    let span = cycles.entry(cid).or_default();
+                    if span.ended_at.is_none() {
+                        span.ended_at = ts_unix;
+                    }
+                }
+            }
+            "integration_preflight_failed" => {
+                if let Some(cid) = extract_field(line, "cycle_id") {
+                    cycles.entry(cid).or_default().preflight_failed = true;
+                }
+            }
+            "bisect_quarantine" => {
+                quarantined_count += 1;
+            }
+            "graphql_exhausted" => {
+                graphql_exhausted_count += 1;
+            }
+            "ci_flake_rerun" => {
+                ci_flake_rerun_count += 1;
+            }
+            _ => {}
+        }
+    }
+
+    let cycles_started = cycles.values().filter(|c| c.started_at.is_some()).count() as u64;
+    let shipped_spans: Vec<&CycleSpan> = cycles.values().filter(|c| c.shipped).collect();
+    let cycles_shipped = shipped_spans.len() as u64;
+    let gaps_shipped: u64 = shipped_spans
+        .iter()
+        .filter_map(|c| c.shipped_gap_count)
+        .sum();
+    let rerun_cycles = cycles.values().filter(|c| c.preflight_failed).count() as u64;
+    let cycles_zero_fail = cycles
+        .values()
+        .filter(|c| c.started_at.is_some() && !c.preflight_failed)
+        .count() as u64;
+
+    let mut wall_minutes: Vec<f64> = cycles
+        .values()
+        .filter_map(|c| match (c.started_at, c.ended_at) {
+            (Some(s), Some(e)) if e >= s => Some((e - s) as f64 / 60.0),
+            _ => None,
+        })
+        .collect();
+    wall_minutes.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let p50_wall_minutes = percentile_f64(&wall_minutes, 50);
+    let p95_wall_minutes = percentile_f64(&wall_minutes, 95);
+
+    let total_candidates = gaps_shipped + quarantined_count;
+    let bisect_quarantine_rate_pct = if total_candidates == 0 {
+        0.0
+    } else {
+        quarantined_count as f64 / total_candidates as f64 * 100.0
+    };
+
+    // Wall-time-saved heuristic: gaps that rode along in a shared cycle instead
+    // of paying for a dedicated per-PR CI cycle each. Baseline = one cycle's
+    // worth of wall time per gap; actual = one cycle's worth per cycle shipped.
+    let avg_wall_minutes = if wall_minutes.is_empty() {
+        0.0
+    } else {
+        wall_minutes.iter().sum::<f64>() / wall_minutes.len() as f64
+    };
+    let wall_time_saved_hours = if cycles_shipped == 0 || gaps_shipped <= cycles_shipped {
+        0.0
+    } else {
+        (gaps_shipped - cycles_shipped) as f64 * avg_wall_minutes / 60.0
+    };
+
+    let window_days = window_hours as f64 / 24.0;
+    let graphql_exhaustion_per_day = graphql_exhausted_count as f64 / window_days.max(1.0 / 24.0);
+    let operator_flake_rerun_per_day = ci_flake_rerun_count as f64 / window_days.max(1.0 / 24.0);
+
+    let (ci_runs_per_shipped_gap, runner_peak_util_pct) =
+        fetch_gh_actions_metrics(repo_root, window_hours, gaps_shipped);
+
+    IntegrationCycleSection {
+        window_days,
+        cycles_started,
+        cycles_shipped,
+        gaps_shipped,
+        p50_wall_minutes,
+        p95_wall_minutes,
+        ci_runs_per_shipped_gap,
+        runner_peak_util_pct,
+        wall_time_saved_hours,
+        quarantined_count,
+        bisect_quarantine_rate_pct,
+        cycles_zero_fail,
+        rerun_cycles,
+        graphql_exhaustion_per_day,
+        operator_flake_rerun_per_day,
+    }
+}
+
+/// Best-effort GitHub Actions run count via the `gh` CLI. Returns
+/// `(ci_runs_per_shipped_gap, runner_peak_util_pct)`, both `None` when `gh`
+/// is missing/unauthenticated, the repo has no `origin` remote, or the API
+/// call otherwise fails — callers render `None` as "—" rather than treating
+/// it as an error. Runner peak util is a point-in-time snapshot of
+/// in-progress runs (true peak-over-window tracking is a follow-up: it needs
+/// a sampling daemon, not a single report-time API call).
+fn fetch_gh_actions_metrics(
+    repo_root: &Path,
+    window_hours: u64,
+    gaps_shipped: u64,
+) -> (Option<f64>, Option<f64>) {
+    if gaps_shipped == 0 {
+        return (None, None);
+    }
+    let Some((owner, repo)) = resolve_repo_slug(repo_root) else {
+        return (None, None);
+    };
+    let since = current_unix().saturating_sub(window_hours * 3600);
+    let since_iso = unix_to_iso8601(since);
+
+    let runs_out = std::process::Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{owner}/{repo}/actions/runs?per_page=100&created=>={since_iso}"),
+            "-q",
+            ".total_count",
+        ])
+        .output();
+    let ci_runs_per_shipped_gap = match runs_out {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| n as f64 / gaps_shipped as f64),
+        _ => None,
+    };
+
+    let inflight_out = std::process::Command::new("gh")
+        .args([
+            "api",
+            &format!("repos/{owner}/{repo}/actions/runs?status=in_progress&per_page=100"),
+            "-q",
+            ".total_count",
+        ])
+        .output();
+    // CHUMP_RUNNER_POOL_SIZE: number of self-hosted runners in the pool, used
+    // to turn an in-flight-run count into a utilization percentage.
+    let pool_size: f64 = std::env::var("CHUMP_RUNNER_POOL_SIZE")
+        .ok()
+        .and_then(|s| s.parse::<f64>().ok())
+        .unwrap_or(4.0)
+        .max(1.0);
+    let runner_peak_util_pct = match inflight_out {
+        Ok(out) if out.status.success() => String::from_utf8_lossy(&out.stdout)
+            .trim()
+            .parse::<u64>()
+            .ok()
+            .map(|n| (n as f64 / pool_size * 100.0).min(100.0)),
+        _ => None,
+    };
+
+    (ci_runs_per_shipped_gap, runner_peak_util_pct)
+}
+
+/// Resolve `OWNER/REPO` from `git remote get-url origin`. Falls back to
+/// `CHUMP_INVENTORY_REPO` (form: "owner/repo") for tests — same env var
+/// `chump-inventory::resolve_repo_slug` uses, so a single override works
+/// fleet-wide.
+fn resolve_repo_slug(root: &Path) -> Option<(String, String)> {
+    if let Ok(slug) = std::env::var("CHUMP_INVENTORY_REPO") {
+        let parts: Vec<&str> = slug.split('/').collect();
+        if parts.len() == 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+            return Some((parts[0].to_string(), parts[1].to_string()));
+        }
+    }
+    let out = std::process::Command::new("git")
+        .args(["remote", "get-url", "origin"])
+        .current_dir(root)
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let url = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    let stripped = url
+        .trim_end_matches(".git")
+        .trim_end_matches('/')
+        .to_string();
+    let idx = stripped.find("github.com")?;
+    let after = &stripped[idx + "github.com".len()..];
+    let tail = after.trim_start_matches(':').trim_start_matches('/');
+    let parts: Vec<&str> = tail.split('/').collect();
+    if parts.len() >= 2 && !parts[0].is_empty() && !parts[1].is_empty() {
+        Some((parts[0].to_string(), parts[1].to_string()))
+    } else {
+        None
+    }
+}
+
+fn unix_to_iso8601(ts: u64) -> String {
+    let days = ts / 86_400;
+    let rem = ts % 86_400;
+    let hour = rem / 3600;
+    let min = (rem % 3600) / 60;
+    let sec = rem % 60;
+    let jdn = days as i64 + 2_440_588;
+    let a = jdn + 32_044;
+    let b = (4 * a + 3) / 146_097;
+    let c = a - (146_097 * b) / 4;
+    let d = (4 * c + 3) / 1461;
+    let e = c - (1461 * d) / 4;
+    let m = (5 * e + 2) / 153;
+    let day = e - (153 * m + 2) / 5 + 1;
+    let month = m + 3 - 12 * (m / 10);
+    let year = 100 * b + d - 4800 + m / 10;
+    format!("{year:04}-{month:02}-{day:02}T{hour:02}:{min:02}:{sec:02}Z")
+}
+
 // ── Tests ────────────────────────────────────────────────────────────────────
 
 #[cfg(test)]
@@ -1499,6 +2656,28 @@ mod tests {
         let store = chump_gap_store::GapStore::open(dir).unwrap();
         for (title, closed_ts) in entries {
             let reserved = store.reserve("INFRA", title, "P1", "s").unwrap();
+            let iso = unix_to_iso_date(*closed_ts);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=999 WHERE id=?3",
+                rusqlite::params![closed_ts, iso, reserved],
+            )
+            .unwrap();
+        }
+    }
+
+    fn seed_gap_store_with_domain(dir: &Path, entries: &[(&str, &str, i64)]) {
+        let chump_dir = dir.join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir)
+            .output();
+
+        let store = chump_gap_store::GapStore::open(dir).unwrap();
+        for (domain, title, closed_ts) in entries {
+            let reserved = store.reserve(domain, title, "P1", "s").unwrap();
             let iso = unix_to_iso_date(*closed_ts);
             let conn = store.conn_for_test();
             conn.execute(
@@ -1750,6 +2929,56 @@ mod tests {
     }
 
     #[test]
+    fn credible1485_ship_rate_counts_closed_date_without_closed_at() {
+        // The split-brain: the ship path writes closed_date (TEXT) but historically
+        // NOT closed_at (INTEGER), so a gauge reading closed_at alone undercounted
+        // ~10-40x. Seed a done gap with closed_date=today and closed_at=NULL — the
+        // real-world shape — and assert the 1d window counts it.
+        let tmp = tempdir();
+        std::fs::create_dir_all(tmp.join(".chump")).unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(&tmp)
+            .output();
+        let reserved = {
+            let store = chump_gap_store::GapStore::open(&tmp).unwrap();
+            let id = store
+                .reserve("INFRA", "closed_date only", "P1", "s")
+                .unwrap();
+            let today = unix_to_iso_date(current_unix() as i64);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_at=NULL, closed_date=?1, closed_pr=999 WHERE id=?2",
+                rusqlite::params![today, id],
+            )
+            .unwrap();
+            id
+        };
+        let _ = reserved;
+        let section = build_ship_rate_section(&tmp);
+        assert!(
+            section.windows[0].total >= 1,
+            "1d window must count a gap closed with closed_date but no closed_at (CREDIBLE-1485): {:?}",
+            section.windows[0]
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1485_parse_closed_date() {
+        assert_eq!(parse_closed_date("1970-01-01"), Some(0));
+        assert_eq!(parse_closed_date("1970-01-02"), Some(86_400));
+        let t = parse_closed_date("2026-10-01").unwrap();
+        assert!(
+            t > 1_700_000_000 && t % 86_400 == 0,
+            "midnight-aligned, got {t}"
+        );
+        assert_eq!(parse_closed_date(""), None);
+        assert_eq!(parse_closed_date("2026-13-01"), None);
+        assert_eq!(parse_closed_date("not-a-date"), None);
+    }
+
+    #[test]
     fn infra617_ship_rate_pillar_classification() {
         let tmp = tempdir();
         let now = current_unix() as i64;
@@ -1773,6 +3002,32 @@ mod tests {
     }
 
     #[test]
+    fn credible421_ship_rate_pillar_classification_falls_back_to_domain() {
+        // CREDIBLE-421: most gaps are titled "<DOMAIN>-<NUM>: ..." rather than
+        // an explicit "EFFECTIVE: ..." prefix, so the domain field must also
+        // classify a ship into its pillar instead of leaving it untagged.
+        let tmp = tempdir();
+        let now = current_unix() as i64;
+        seed_gap_store_with_domain(
+            &tmp,
+            &[
+                ("EFFECTIVE", "EFFECTIVE-1: speed up", now),
+                ("CREDIBLE", "CREDIBLE-2: add scorecard", now),
+                ("RESILIENT", "RESILIENT-3: watchdog", now),
+                ("ZERO-WASTE", "ZERO-WASTE-4: trim", now),
+                ("INFRA", "INFRA-5: unrelated plumbing", now),
+            ],
+        );
+        let section = build_ship_rate_section(&tmp);
+        assert_eq!(section.windows[0].effective, 1, "effective via domain");
+        assert_eq!(section.windows[0].credible, 1, "credible via domain");
+        assert_eq!(section.windows[0].resilient, 1, "resilient via domain");
+        assert_eq!(section.windows[0].zero_waste, 1, "zero_waste via domain");
+        assert_eq!(section.windows[0].untagged, 1, "only INFRA stays untagged");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
     fn infra617_mission_history_parses_ambient() {
         let tmp = tempdir();
         let ts = fixture_ts();
@@ -1788,6 +3043,59 @@ mod tests {
         assert_eq!(section.snapshots[0].credible_shipped, 0);
         assert_eq!(section.snapshots[0].total_pickable, 11);
         assert_eq!(section.snapshots[0].total_in_flight, 3);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn mission066_binary_section_empty_without_history() {
+        let tmp = tempdir();
+        let section = build_mission_binary_section(&tmp);
+        assert!(section.checks.is_empty());
+        assert_eq!(section.current_streak, 0);
+        assert_eq!(section.longest_streak, 0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn mission066_binary_section_computes_current_and_longest_streak() {
+        let tmp = tempdir();
+        // Oldest-first in the log: NO, YES, YES, YES, NO, YES.
+        // Longest run of YES = 3 (runs 2-4). Current streak (most recent run
+        // back until a NO) = 1 (just the final YES).
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-01T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":0}"#,
+                r#"{"ts":"2026-08-02T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":1}"#,
+                r#"{"ts":"2026-08-03T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":2,"beast_zero_touch_7d":2}"#,
+                r#"{"ts":"2026-08-04T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":2,"beast_zero_touch_7d":1}"#,
+                r#"{"ts":"2026-08-05T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":0}"#,
+                r#"{"ts":"2026-08-06T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":1}"#,
+            ],
+        );
+        let section = build_mission_binary_section(&tmp);
+        assert_eq!(section.checks.len(), 6);
+        // Most-recent-first: the newest entry (08-06, YES) is checks[0].
+        assert_eq!(section.checks[0].ts, "2026-08-06T00:00:00Z");
+        assert!(section.checks[0].is_yes());
+        assert_eq!(section.current_streak, 1);
+        assert_eq!(section.longest_streak, 3);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn mission066_binary_section_all_yes_streak_equals_history_len() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-01T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":1,"beast_zero_touch_7d":1}"#,
+                r#"{"ts":"2026-08-02T00:00:00Z","kind":"mission_binary_check","repo":"repairman29/BEAST-MODE","beast_merges_7d":2,"beast_zero_touch_7d":2}"#,
+            ],
+        );
+        let section = build_mission_binary_section(&tmp);
+        assert_eq!(section.current_streak, 2);
+        assert_eq!(section.longest_streak, 2);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -1813,6 +3121,56 @@ mod tests {
             section.anthropic_only_cost_usd
         );
         assert!(section.anthropic_only_cost_usd > 0.0);
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zero_waste_060_free_tier_savings_sums_cascade_routed_tokens() {
+        ensure_pricing();
+        let tmp = tempdir();
+        let ts = fixture_ts();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"cascade_routed","slot":"groq-llama","tier":"cloud","cascade_mode":"cloud-first","tokens":5000}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"cascade_routed","slot":"ollama-local","tier":"local","cascade_mode":"cloud-first","tokens":1000}}"#
+                ),
+                // Wrong kind: must not contribute to the tally.
+                &format!(
+                    r#"{{"ts":"{ts}","kind":"session_end","session_id":"s1","gap_id":"TEST-S","outcome":"shipped","input_tokens":1,"output_tokens":1,"cache_read_tokens":0,"model_id":"unknown"}}"#
+                ),
+            ],
+        );
+        let section = build_free_tier_savings_section(&tmp, 30);
+        assert_eq!(section.routed_calls, 2);
+        assert_eq!(section.free_cloud_tokens, 5000);
+        assert_eq!(section.free_local_tokens, 1000);
+        assert_eq!(section.free_tokens_used, 6000);
+        assert!(
+            section.dollars_saved_usd > 0.0,
+            "6000 free tokens at Anthropic-only rates must price above $0, got {}",
+            section.dollars_saved_usd
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn zero_waste_060_free_tier_savings_ignores_old_events() {
+        ensure_pricing();
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2000-01-01T00:00:00Z","kind":"cascade_routed","slot":"groq-llama","tier":"cloud","cascade_mode":"cloud-first","tokens":9999}"#,
+            ],
+        );
+        let section = build_free_tier_savings_section(&tmp, 30);
+        assert_eq!(section.routed_calls, 0);
+        assert_eq!(section.free_tokens_used, 0);
+        assert_eq!(section.dollars_saved_usd, 0.0);
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -2055,5 +3413,414 @@ mod tests {
         use chump_waste_tally::waste_tally::WASTE_KINDS;
         assert!(WASTE_KINDS.contains(&"review_handoff_failed"));
         assert!(WASTE_KINDS.contains(&"review_handoff_timeout"));
+    }
+
+    // ── INFRA-2143: Integration Cycle Dashboard tests ───────────────────────
+
+    /// ISO-8601 timestamp `hours_ago` hours before now (test-only helper;
+    /// exercises the same `unix_to_iso8601` the production gh-metrics path uses).
+    fn ts_hours_ago(hours_ago: u64) -> String {
+        unix_to_iso8601(current_unix().saturating_sub(hours_ago * 3600))
+    }
+
+    #[test]
+    fn integration_cycle_empty_dataset() {
+        let tmp = tempdir();
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 0);
+        assert_eq!(section.cycles_shipped, 0);
+        assert_eq!(section.gaps_shipped, 0);
+        assert_eq!(section.mean_gaps_per_cycle(), 0.0);
+        assert!(section.p50_wall_minutes.is_none());
+        assert!(section.p95_wall_minutes.is_none());
+        assert_eq!(section.bisect_quarantine_rate_pct, 0.0);
+        assert_eq!(section.wall_time_saved_hours, 0.0);
+        assert_eq!(section.graphql_exhaustion_per_day, 0.0);
+        assert_eq!(section.operator_flake_rerun_per_day, 0.0);
+    }
+
+    #[test]
+    fn integration_cycle_one_cycle_zero_quarantine() {
+        let tmp = tempdir();
+        let t_start = ts_hours_ago(2);
+        let t_end = ts_hours_ago(1);
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{t_start}","kind":"integration_cycle_started","cycle_id":"c1"}}"#
+                ),
+                &format!(
+                    r#"{{"ts":"{t_end}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":3}}"#
+                ),
+            ],
+        );
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 1);
+        assert_eq!(section.cycles_shipped, 1);
+        assert_eq!(section.gaps_shipped, 3);
+        assert_eq!(section.cycles_zero_fail, 1);
+        assert_eq!(section.rerun_cycles, 0);
+        assert_eq!(section.quarantined_count, 0);
+        assert_eq!(section.bisect_quarantine_rate_pct, 0.0);
+        assert!(section.p50_wall_minutes.is_some());
+        // 1 hour = 60 minutes wall time.
+        assert!((section.p50_wall_minutes.unwrap() - 60.0).abs() < 0.5);
+    }
+
+    #[test]
+    fn integration_cycle_multi_cycle_mixed_quality() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // Cycle 1: clean ship, 2 gaps.
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c1"}}"#,
+                    ts_hours_ago(10)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":2}}"#,
+                    ts_hours_ago(9)
+                ),
+                // Cycle 2: preflight failure, one gap quarantined, then ships 1 gap.
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c2"}}"#,
+                    ts_hours_ago(8)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_preflight_failed","cycle_id":"c2"}}"#,
+                    ts_hours_ago(7)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"bisect_quarantine","cycle_id":"c2","gap_id":"INFRA-9"}}"#,
+                    ts_hours_ago(7)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c2","gap_count":1}}"#,
+                    ts_hours_ago(6)
+                ),
+                // Cycle 3: aborted entirely (failed, nothing shipped).
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c3"}}"#,
+                    ts_hours_ago(5)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_failed","cycle_id":"c3"}}"#,
+                    ts_hours_ago(4)
+                ),
+                // External costs.
+                &format!(
+                    r#"{{"ts":"{}","kind":"graphql_exhausted"}}"#,
+                    ts_hours_ago(3)
+                ),
+                &format!(r#"{{"ts":"{}","kind":"ci_flake_rerun"}}"#, ts_hours_ago(3)),
+            ],
+        );
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 3);
+        assert_eq!(section.cycles_shipped, 2);
+        assert_eq!(section.gaps_shipped, 3);
+        assert_eq!(section.quarantined_count, 1);
+        assert_eq!(section.rerun_cycles, 1);
+        assert_eq!(section.cycles_zero_fail, 2);
+        // quarantine rate = 1 / (3 shipped + 1 quarantined) = 25%.
+        assert!((section.bisect_quarantine_rate_pct - 25.0).abs() < 0.01);
+        assert!(section.graphql_exhaustion_per_day > 0.0);
+        assert!(section.operator_flake_rerun_per_day > 0.0);
+        // gaps_shipped(3) > cycles_shipped(2) → some wall time saved.
+        assert!(section.wall_time_saved_hours > 0.0);
+    }
+
+    #[test]
+    fn integration_cycle_events_outside_window_excluded() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"old"}}"#,
+                    ts_hours_ago(1000)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"old","gap_count":9}}"#,
+                    ts_hours_ago(999)
+                ),
+            ],
+        );
+        // 168h (7d) window — a 1000h-old event must not count.
+        let section = build_integration_cycle_section(&tmp, 168);
+        assert_eq!(section.cycles_started, 0);
+        assert_eq!(section.gaps_shipped, 0);
+    }
+
+    #[test]
+    fn integration_cycle_window_override_30d() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c1"}}"#,
+                    ts_hours_ago(400)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":1}}"#,
+                    ts_hours_ago(399)
+                ),
+            ],
+        );
+        // 400h ago is outside 7d (168h) but inside 30d (720h).
+        let narrow = build_integration_cycle_section(&tmp, 168);
+        let wide = build_integration_cycle_section(&tmp, 720);
+        assert_eq!(narrow.cycles_started, 0);
+        assert_eq!(wide.cycles_started, 1);
+        assert_eq!(wide.gaps_shipped, 1);
+    }
+
+    #[test]
+    fn integration_cycle_render_text_contains_sections() {
+        let tmp = tempdir();
+        let section = build_integration_cycle_section(&tmp, 168);
+        let text = section.render_text();
+        assert!(text.contains("Integration Cycle Dashboard"));
+        assert!(text.contains("SHIP VELOCITY"));
+        assert!(text.contains("EFFICIENCY VS PER-PR BASELINE"));
+        assert!(text.contains("QUALITY"));
+        assert!(text.contains("EXTERNAL COSTS"));
+    }
+
+    #[test]
+    fn integration_cycle_render_json_shape() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_started","cycle_id":"c1"}}"#,
+                    ts_hours_ago(2)
+                ),
+                &format!(
+                    r#"{{"ts":"{}","kind":"integration_cycle_shipped","cycle_id":"c1","gap_count":2}}"#,
+                    ts_hours_ago(1)
+                ),
+            ],
+        );
+        let section = build_integration_cycle_section(&tmp, 168);
+        let json = section.render_json();
+        let parsed: serde_json::Value = serde_json::from_str(&json).expect("valid JSON");
+        assert_eq!(parsed["cycles_shipped"], 1);
+        assert_eq!(parsed["gaps_shipped"], 2);
+        assert!(parsed.get("bisect_quarantine_rate_pct").is_some());
+        assert!(parsed.get("p50_wall_minutes").is_some());
+    }
+
+    #[test]
+    fn integration_cycle_gh_metrics_none_when_no_remote() {
+        // No git remote configured in the temp dir → best-effort gh lookup
+        // degrades to None rather than erroring the whole report.
+        let tmp = tempdir();
+        let (ci_runs, runner_util) = fetch_gh_actions_metrics(&tmp, 168, 5);
+        assert!(ci_runs.is_none());
+        assert!(runner_util.is_none());
+    }
+
+    #[test]
+    fn integration_cycle_gh_metrics_none_when_zero_gaps_shipped() {
+        let tmp = tempdir();
+        let (ci_runs, runner_util) = fetch_gh_actions_metrics(&tmp, 168, 0);
+        assert!(ci_runs.is_none());
+        assert!(runner_util.is_none());
+    }
+
+    #[test]
+    fn resolve_repo_slug_env_override() {
+        std::env::set_var("CHUMP_INVENTORY_REPO", "repairman29/chump");
+        let tmp = tempdir();
+        let slug = resolve_repo_slug(&tmp);
+        std::env::remove_var("CHUMP_INVENTORY_REPO");
+        assert_eq!(slug, Some(("repairman29".to_string(), "chump".to_string())));
+    }
+
+    // ── CREDIBLE-099 AC-4/AC-7: kpi --agents ambient fallback ──────────────
+
+    #[test]
+    fn agent_throughput_falls_back_to_ambient_when_no_metrics_file() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-18T10:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+                r#"{"ts":"2026-08-18T11:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-2"}"#,
+                r#"{"ts":"2026-08-18T12:00:00Z","session":"worker-b","kind":"gap_shipped","gap_id":"CREDIBLE-3"}"#,
+                r#"{"ts":"2026-08-17T12:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-0"}"#,
+                r#"{"ts":"2026-08-18T13:00:00Z","session":"worker-a","kind":"gap_claimed","gap_id":"CREDIBLE-4"}"#,
+            ],
+        );
+        let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
+        assert_eq!(section.date, "2026-08-18");
+        assert_eq!(section.total_ships, 3);
+        let a = section
+            .rows
+            .iter()
+            .find(|r| r.agent_id == "worker-a")
+            .expect("worker-a row present");
+        assert_eq!(a.ships, 2);
+        let b = section
+            .rows
+            .iter()
+            .find(|r| r.agent_id == "worker-b")
+            .expect("worker-b row present");
+        assert_eq!(b.ships, 1);
+        let text = section.render_text();
+        assert!(!text.contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn agent_throughput_prefers_metrics_file_over_ambient() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-08-18T10:00:00Z","session":"worker-a","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+            ],
+        );
+        let metrics_dir = tmp.join(".chump/metrics");
+        std::fs::create_dir_all(&metrics_dir).unwrap();
+        std::fs::write(
+            metrics_dir.join("agent-throughput-2026-08-18.json"),
+            r#"{"date":"2026-08-18","total_ships":9,"total_fails":1,"agents":[{"agent_id":"worker-file","ships":9,"fails":1}]}"#,
+        )
+        .unwrap();
+        let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
+        assert_eq!(section.total_ships, 9);
+        assert_eq!(section.rows.len(), 1);
+        assert_eq!(section.rows[0].agent_id, "worker-file");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn agent_throughput_no_data_when_ambient_and_metrics_both_empty() {
+        let tmp = tempdir();
+        let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
+        assert!(section.date.is_empty());
+        assert!(section.render_text().contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1112_green_first_try_pct_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // CREDIBLE-1: shipped clean, no phase failure recorded.
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-1","pr_number":"101","commit_sha":"aaa"}"#,
+                // CREDIBLE-2: hit a clippy failure before shipping — NOT green-first-try.
+                r#"{"ts":"2026-09-01T00:05:00Z","kind":"bot_merge_phase_failure","step":"clippy","exit_code":13,"gap_id":"CREDIBLE-2","branch":"chump/credible-2"}"#,
+                r#"{"ts":"2026-09-01T00:10:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-2","pr_number":"102","commit_sha":"bbb"}"#,
+                // CREDIBLE-3: shipped clean, no phase failure recorded.
+                r#"{"ts":"2026-09-01T00:15:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-3","pr_number":"103","commit_sha":"ccc"}"#,
+                // Unrelated phase failure for a gap that never shipped — must not affect the ratio.
+                r#"{"ts":"2026-09-01T00:20:00Z","kind":"bot_merge_phase_failure","step":"test","exit_code":14,"gap_id":"CREDIBLE-4","branch":"chump/credible-4"}"#,
+            ],
+        );
+        let section = build_green_first_try_section(&tmp);
+        assert_eq!(section.total_ships, 3);
+        assert_eq!(section.green_first_try, 2);
+        assert!((section.green_first_try_pct() - (200.0 / 3.0)).abs() < 0.01);
+        assert!(section
+            .render_text()
+            .contains("2/3 ships green on first try"));
+        assert!(section
+            .render_json()
+            .contains(r#""total_ships":3,"green_first_try":2"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1112_green_first_try_zero_when_no_ships() {
+        let tmp = tempdir();
+        let section = build_green_first_try_section(&tmp);
+        assert_eq!(section.total_ships, 0);
+        assert_eq!(section.green_first_try, 0);
+        assert_eq!(section.green_first_try_pct(), 0.0);
+        assert!(section
+            .render_text()
+            .contains("No gap_shipped events found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1113_time_to_land_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // CREDIBLE-1: claimed at t0, shipped 100s later.
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"gap_claimed","gap_id":"CREDIBLE-1"}"#,
+                r#"{"ts":"2026-09-01T00:01:40Z","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+                // CREDIBLE-2: claimed at t0, shipped 200s later.
+                r#"{"ts":"2026-09-01T01:00:00Z","kind":"gap_claimed","gap_id":"CREDIBLE-2"}"#,
+                r#"{"ts":"2026-09-01T01:03:20Z","kind":"gap_shipped","gap_id":"CREDIBLE-2"}"#,
+                // CREDIBLE-3: shipped with no matching claim — excluded from the sample.
+                r#"{"ts":"2026-09-01T02:00:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-3"}"#,
+            ],
+        );
+        let section = build_time_to_land_section(&tmp);
+        assert_eq!(section.sample_count, 2);
+        assert_eq!(section.max_seconds, Some(200));
+        assert!(section.render_text().contains("n=2"));
+        assert!(section.render_json().contains(r#""sample_count":2"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1113_time_to_land_empty_when_no_pairs() {
+        let tmp = tempdir();
+        let section = build_time_to_land_section(&tmp);
+        assert_eq!(section.sample_count, 0);
+        assert!(section.p50_seconds.is_none());
+        assert!(section.render_text().contains("No claim→ship pairs found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1115_gate_fp_rate_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"duty_officer_action","signal":"a","tier":"T2","verdict":"refuted","detail":"x"}"#,
+                r#"{"ts":"2026-09-01T00:01:00Z","kind":"duty_officer_action","signal":"b","tier":"T1","verdict":"healed","detail":"x"}"#,
+                r#"{"ts":"2026-09-01T00:02:00Z","kind":"duty_officer_action","signal":"c","tier":"T3","verdict":"suppressed","detail":"x"}"#,
+                // Unrelated event kind must not affect the tally.
+                r#"{"ts":"2026-09-01T00:03:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+            ],
+        );
+        let section = build_gate_false_positive_section(&tmp);
+        assert_eq!(section.total_signals, 3);
+        assert_eq!(section.false_positives, 1);
+        assert!((section.fp_rate_pct() - (100.0 / 3.0)).abs() < 0.01);
+        assert!(section
+            .render_text()
+            .contains("1/3 signals refuted as false positive"));
+        assert!(section
+            .render_json()
+            .contains(r#""total_signals":3,"false_positives":1"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1115_gate_fp_rate_zero_when_no_signals() {
+        let tmp = tempdir();
+        let section = build_gate_false_positive_section(&tmp);
+        assert_eq!(section.total_signals, 0);
+        assert_eq!(section.fp_rate_pct(), 0.0);
+        assert!(section
+            .render_text()
+            .contains("No duty_officer_action events found"));
+        let _ = std::fs::remove_dir_all(&tmp);
     }
 }

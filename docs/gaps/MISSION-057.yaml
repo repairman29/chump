@@ -1,14 +1,13 @@
 - id: MISSION-057
   domain: MISSION
-  title: 'MISSION: chump improve opens PRs against the repo DEFAULT branch (currently targets a feature branch -> DIRTY ->
-    can''t merge)'
+  title: "MISSION: chump improve opens PRs against the repo DEFAULT branch (currently targets a feature branch -> DIRTY -> can't merge)"
   status: done
   priority: P0
   effort: m
   acceptance_criteria:
-  - The change described by "chump improve opens PRs against the repo DEFAULT branch (currently targets a feature branch ->
-    DIRTY -> can't merge)" is implemented in the relevant MISSION code path(s).
-  - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
-  - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+    - "The change described by \"chump improve opens PRs against the repo DEFAULT branch (currently targets a feature branch -> DIRTY -> can't merge)\" is implemented in the relevant MISSION code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
   closed_date: '2026-07-25'
   closed_pr: 3293
+

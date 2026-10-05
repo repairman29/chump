@@ -1,4 +1,19 @@
 #!/usr/bin/env bash
+
+# --- modern-bash re-exec (INFRA-3688) -------------------------------------
+# macOS ships bash 3.2, which lacks `mapfile`/`readarray` and errors on an
+# empty array expanded under `set -u` — silently breaking any guard that uses
+# bash-4 idioms (the actionlint + ci-regression guards among them, which is how
+# the Mac kept pushing split-brained state past dead guardrails). Re-exec the
+# whole hook (and everything it sources) under a bash>=4 if one exists;
+# otherwise warn LOUDLY rather than no-op in silence.
+if [ -z "${CHUMP_HOOK_BASH_REEXEC:-}" ] && [ "${BASH_VERSINFO:-0}" -lt 4 ]; then
+  for _cb in /opt/homebrew/bin/bash /usr/local/bin/bash; do
+    if [ -x "$_cb" ]; then export CHUMP_HOOK_BASH_REEXEC=1; exec "$_cb" "$0" "$@"; fi
+  done
+  echo "⚠ [chump-hook $(basename "$0")] bash ${BASH_VERSINFO:-3}.x too old and no bash>=4 found — guards may silently no-op. Fix: brew install bash" >&2
+fi
+# --------------------------------------------------------------------------
 #
 # Chump pre-push hook: gap-preflight guard + auto-merge armed guard.
 #
@@ -129,6 +144,97 @@ fi
 _HOOK_STDIN="$(cat || true)"
 
 # -----------------------------------------------------------------------
+# INFRA-5126 (INFRA-1861 slice): pre-push phase + total hard timeout.
+#
+# The fast, supposed-to-be-seconds guards below (fmt --check, the fmt
+# auto-fix gate, clippy, merge-tree conflict preview) had NO timeout
+# protection — a hung `cargo`/`git` invocation (disk stall, dead sccache
+# server, lock contention) blocked the push indefinitely with zero
+# diagnostic. This is deliberately separate from the cargo-TEST gate's own
+# INFRA-1744 timeout (up to CHUMP_PREPUSH_TEST_TIMEOUT_S, default 600s) —
+# a full test run legitimately takes minutes, so it is not wrapped here.
+#
+# Each wrapped phase aborts after CHUMP_PREPUSH_PHASE_TIMEOUT_S (default
+# 30s). The cumulative wall-clock spent since hook start aborts the whole
+# hook after CHUMP_PREPUSH_TOTAL_TIMEOUT_S (default 90s), checked at the
+# entry of each wrapped phase. Both cases emit kind=prepush_timeout and
+# exit non-zero (the pre-push contract: non-zero exit aborts `git push`).
+# -----------------------------------------------------------------------
+# INFRA-5126:BEGIN-TIMEOUT-HELPERS
+_PP_PHASE_TIMEOUT_S="${CHUMP_PREPUSH_PHASE_TIMEOUT_S:-30}"
+_PP_TOTAL_TIMEOUT_S="${CHUMP_PREPUSH_TOTAL_TIMEOUT_S:-90}"
+_PP_HOOK_START_EPOCH="$(date +%s)"
+
+# args: phase timeout_s elapsed_s reason
+_pp_emit_timeout_event() {
+    local _phase="$1" _timeout_s="$2" _elapsed_s="$3" _reason="$4"
+    local _pp_root _pp_branch _pp_gap _pp_amb
+    _pp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _pp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    _pp_gap="$(echo "$_pp_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
+    _pp_amb="${CHUMP_AMBIENT_LOG:-$_pp_root/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_pp_amb")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"prepush_timeout","phase":"%s","timeout_s":%s,"elapsed_s":%s,"reason":"%s","branch":"%s","gap_id":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_phase" "$_timeout_s" "$_elapsed_s" "$_reason" "$_pp_branch" "$_pp_gap" \
+        >> "$_pp_amb" 2>/dev/null || true
+}
+
+# Aborts the hook if cumulative wall-clock since hook start already exceeds
+# the total budget. Call at the top of each timeout-wrapped guard, before
+# it starts its (potentially slow) work.
+_pp_check_total_budget() {
+    local _phase="$1"
+    local _now _elapsed
+    _now="$(date +%s)"
+    _elapsed=$(( _now - _PP_HOOK_START_EPOCH ))
+    if [[ "$_elapsed" -ge "$_PP_TOTAL_TIMEOUT_S" ]]; then
+        echo "" >&2
+        echo "[pre-push] BLOCKED (INFRA-5126): total pre-push hook budget (${_PP_TOTAL_TIMEOUT_S}s) exceeded before phase '${_phase}'." >&2
+        echo "[pre-push] Elapsed: ${_elapsed}s. Raise the budget: CHUMP_PREPUSH_TOTAL_TIMEOUT_S=<secs> git push" >&2
+        echo "" >&2
+        _pp_emit_timeout_event "$_phase" "$_PP_TOTAL_TIMEOUT_S" "$_elapsed" "total_budget_exceeded"
+        exit 1
+    fi
+}
+
+# Runs "$@" under a per-phase timeout, after checking the total budget.
+# On phase timeout (rc=124) emits the ambient event + a diagnostic, then
+# returns 124 to the caller — callers already treat any non-zero return
+# from their command as a failure, so this composes with existing
+# guard-specific bypass/diagnostic text without changing control flow.
+_pp_run_timed() {
+    local _phase="$1"; shift
+    _pp_check_total_budget "$_phase"
+    local _t0 _rc _elapsed _phase_timeout
+    # RESILIENT-1448: per-phase budget. fmt --check is a genuine fast guard
+    # (30s is plenty). clippy is a COMPILE-bearing gate: even a WARM,
+    # incremental `cargo clippy --all-targets` re-lints the whole workspace
+    # and runs well over 30s on a small box, so the fast-guard budget
+    # false-killed a legitimate clippy and blocked the push. Give clippy its
+    # own generous-but-bounded budget (mirrors the cargo-test gate INFRA-1744
+    # timeout); a genuinely hung cargo still aborts. clippy is the LAST
+    # budget-checked phase in this hook, so a longer clippy never trips a
+    # later phase total-budget check.
+    _phase_timeout="$_PP_PHASE_TIMEOUT_S"
+    if [[ "$_phase" == "clippy" ]]; then
+        _phase_timeout="${CHUMP_PREPUSH_CLIPPY_TIMEOUT_S:-600}"
+    fi
+    _t0="$(date +%s)"
+    timeout "${_phase_timeout}s" "$@"
+    _rc=$?
+    if [[ "$_rc" -eq 124 ]]; then
+        _elapsed=$(( $(date +%s) - _t0 ))
+        echo "" >&2
+        echo "[pre-push] BLOCKED (INFRA-5126): phase '${_phase}' exceeded ${_phase_timeout}s." >&2
+        echo "[pre-push] Raise the per-phase budget: CHUMP_PREPUSH_PHASE_TIMEOUT_S=<secs> git push (clippy: CHUMP_PREPUSH_CLIPPY_TIMEOUT_S)" >&2
+        echo "" >&2
+        _pp_emit_timeout_event "$_phase" "$_phase_timeout" "$_elapsed" "phase_timeout"
+    fi
+    return "$_rc"
+}
+# INFRA-5126:END-TIMEOUT-HELPERS
+
+# -----------------------------------------------------------------------
 # INFRA-1988 (THE FLOOR Phase 2): silent-noop alarm.
 #
 # If the main Guard 1/2/3 loop NEVER enters its body on a non-trivial push,
@@ -171,6 +277,33 @@ _silent_alarm_check_and_emit() {
     return "$rc"
 }
 trap _silent_alarm_check_and_emit EXIT
+
+# -----------------------------------------------------------------------
+# Guard 0-verify-claim-branch (INFRA-1649, re-do of INFRA-1598)
+#
+# Fast-fail mirror of Guard 5 (below) using the `chump verify-claim-branch`
+# Rust primitive instead of re-parsing claim-*.json with jq. Runs FIRST,
+# ahead of every other guard, so a wrong-branch push (INFRA-1427 failure
+# class: linked-worktree gitdir back-reference resolves HEAD via a
+# different session's branch) is caught before any expensive check runs.
+# Guard 5 stays in place as the harness-neutral fallback for hosts without
+# the `chump` binary on PATH.
+#
+# Bypass: same trailer as Guard 5 — 'Off-Rails-Bypass: <reason>' on HEAD,
+# or CHUMP_OFF_RAILS_CHECK=0 git push.
+# -----------------------------------------------------------------------
+if command -v chump &>/dev/null && [[ "${CHUMP_OFF_RAILS_CHECK:-1}" != "0" ]]; then
+    if ! chump verify-claim-branch >/dev/null 2>&1; then
+        _pp_head_msg="$(git -C "$REPO_ROOT" log -1 --pretty=%B 2>/dev/null || true)"
+        if grep -qE '^Off-Rails-Bypass:' <<<"$_pp_head_msg"; then
+            : # bypass trailer present — Guard 5 below will audit-log it
+        else
+            chump verify-claim-branch >&2 || true
+            echo "[pre-push] Bypass: add 'Off-Rails-Bypass: <reason>' trailer to HEAD commit, or CHUMP_OFF_RAILS_CHECK=0 git push" >&2
+            exit 1
+        fi
+    fi
+fi
 
 # -----------------------------------------------------------------------
 # Guard 0a: chump preflight (INFRA-1671)
@@ -318,7 +451,7 @@ if [[ "${CHUMP_FMT_CHECK:-1}" != "0" ]] && command -v cargo &>/dev/null; then
         push_has_rust=1
     fi
     if [[ "$push_has_rust" -eq 1 ]]; then
-        if ! cargo fmt --all -- --check >/dev/null 2>&1; then
+        if ! _pp_run_timed fmt_check cargo fmt --all -- --check >/dev/null 2>&1; then
             echo "" >&2
             echo "[pre-push] BLOCKED: cargo fmt --check failed (INFRA-749)." >&2
             echo "[pre-push] Unformatted Rust code cannot be pushed — CI will reject it." >&2
@@ -457,7 +590,19 @@ elif command -v git &>/dev/null; then
         # Three-tree merge-tree: base, ours (origin/main), theirs (HEAD).
         # Conflict markers appear as lines starting with +<<<<<<<, +=======,
         # +>>>>>>> in the diff output section.
-        _mp_out="$(git merge-tree "$_mp_base" origin/main HEAD 2>/dev/null || true)"
+        # INFRA-5126: per-phase timeout — a hung merge-tree (rare, but seen
+        # under disk contention) previously blocked the push indefinitely.
+        _pp_check_total_budget merge_tree_preview
+        _mp_rc=0
+        _mp_out="$(timeout "${_PP_PHASE_TIMEOUT_S}s" git merge-tree "$_mp_base" origin/main HEAD 2>/dev/null)" || _mp_rc=$?
+        if [[ "$_mp_rc" -eq 124 ]]; then
+            _pp_emit_timeout_event merge_tree_preview "$_PP_PHASE_TIMEOUT_S" "$_PP_PHASE_TIMEOUT_S" phase_timeout
+            echo "" >&2
+            echo "[pre-push] BLOCKED (INFRA-5126): merge-tree preview exceeded ${_PP_PHASE_TIMEOUT_S}s." >&2
+            echo "[pre-push] Raise the per-phase budget: CHUMP_PREPUSH_PHASE_TIMEOUT_S=<secs> git push" >&2
+            echo "" >&2
+            exit 1
+        fi
         if grep -qE '^\+<{6,7} ' <<<"$_mp_out"; then
             # Extract conflicting file names from the diff header lines.
             # INFRA-1588: avoid SIGPIPE — `head -10` can close the pipe while
@@ -510,7 +655,7 @@ if [[ "${CHUMP_LINT_GATE:-on}" != "off" && "${CHUMP_FMT_GATE:-1}" != "0" ]] \
        || git diff --name-only HEAD 2>/dev/null | grep -qE '\.rs$'; then
         _FMT_HAS_RS=1
     fi
-    if [[ "$_FMT_HAS_RS" == "1" ]] && ! cargo fmt --all -- --check > /dev/null 2>&1; then
+    if [[ "$_FMT_HAS_RS" == "1" ]] && ! _pp_run_timed fmt_gate cargo fmt --all -- --check > /dev/null 2>&1; then
         echo "[pre-push] BLOCKED (INFRA-3512): cargo fmt drift detected — auto-applying the fix." >&2
         cargo fmt --all > /dev/null 2>&1 || true
         echo "[pre-push] Applied. Commit the formatting and re-push:" >&2
@@ -605,11 +750,42 @@ elif command -v cargo &>/dev/null; then
         echo "[pre-push] INFRA-1390: running cargo clippy (diff has .rs changes)..." >&2
         echo "[pre-push] Bypass: CHUMP_CLIPPY_GATE=0 git push  (with Lint-Gate-Bypass: trailer)" >&2
 
-        _WT_CLIPPY_TARGET="$REPO_ROOT_CL/.cargo-test-target"
+        # RESILIENT-1448: reuse a persistent, WARM target dir for the clippy
+        # gate instead of a COLD per-worktree .cargo-test-target rebuilt from
+        # scratch on every push. A cold full `cargo clippy --all-targets` runs
+        # 10min+ on a small box (measured 920s cold vs 130s warm) -> push/phase
+        # timeout -> the branch never reaches origin and no PR is created
+        # (INFRA-2183 cold-per-worktree-target class). Precedence:
+        #   1. CHUMP_PREPUSH_CLIPPY_TARGET_DIR - explicit override.
+        #   2. inherited CARGO_TARGET_DIR - the persistent shared build cache
+        #      the dispatch worker already exports (scripts/dispatch/worker.sh,
+        #      INFRA-1933) and has just built `cargo check/clippy --workspace`
+        #      into, so clippy here is INCREMENTAL. That dir sits outside every
+        #      cargo-target-reaper scan path, so reuse is reap-safe.
+        #   3. a persistent per-worker fallback under ~/.cache, keyed by worker
+        #      id so parallel workers never share one dir; survives across
+        #      worktrees/cycles - NOT the old cold in-worktree path.
+        # Correctness is preserved: cargo recompiles on any real source change
+        # regardless of which target dir it reuses, so clippy still lints the
+        # true working tree and `-D warnings` still gates (warmth only, never a
+        # skipped check). CI re-runs `clippy --workspace --all-targets` at merge.
+        if [[ -n "${CHUMP_PREPUSH_CLIPPY_TARGET_DIR:-}" ]]; then
+            _WT_CLIPPY_TARGET="$CHUMP_PREPUSH_CLIPPY_TARGET_DIR"
+        elif [[ -n "${CARGO_TARGET_DIR:-}" ]]; then
+            _WT_CLIPPY_TARGET="$CARGO_TARGET_DIR"
+        else
+            _clippy_worker_id="${CHUMP_CLIPPY_WORKER_ID:-${WORKER_MACHINE:-host}-${AGENT_ID:-0}}"
+            _WT_CLIPPY_TARGET="${XDG_CACHE_HOME:-$HOME/.cache}/chump-fleet-target/clippy-${_clippy_worker_id}"
+        fi
+        mkdir -p "$_WT_CLIPPY_TARGET" 2>/dev/null || true
 
         # Run clippy; capture exit code.
-        if ! (cd "$REPO_ROOT_CL" && CARGO_TARGET_DIR="$_WT_CLIPPY_TARGET" \
-            cargo clippy --all-targets --quiet -- -D warnings) 2>&1; then
+        # INFRA-5126: per-phase timeout via _pp_run_timed — wrapped in
+        # `bash -c` (positional args, not string interpolation) so the cd +
+        # env-var invocation still runs under `timeout`.
+        if ! _pp_run_timed clippy bash -c \
+            'cd "$0" && CARGO_TARGET_DIR="$1" cargo clippy --all-targets --quiet -- -D warnings' \
+            "$REPO_ROOT_CL" "$_WT_CLIPPY_TARGET" 2>&1; then
             echo "" >&2
             echo "[pre-push] BLOCKED: cargo clippy -D warnings failed (INFRA-1390)." >&2
             echo "[pre-push] Lint errors must be fixed before pushing — CI will reject them." >&2
@@ -704,8 +880,11 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # here: prefer nextest, and fail LOUD (never silent) when absent.
             _TEST_RUNNER_CMD=()
             if command -v cargo-nextest &>/dev/null; then
-                echo "[pre-push] CREDIBLE-278: running cargo nextest run --bin chump --tests (full suite; process-isolated, matches CI)..." >&2
-                _TEST_RUNNER_CMD=(cargo nextest run --bin chump --tests --no-fail-fast)
+                # INFRA-8042: --profile prepush (.config/nextest.toml) kills any
+                # single test still running after 4 min, so one hang fails the
+                # gate by name instead of eating the whole timeout budget.
+                echo "[pre-push] CREDIBLE-278: running cargo nextest run --profile prepush --bin chump --tests (full suite; process-isolated, matches CI; per-test timeout)..." >&2
+                _TEST_RUNNER_CMD=(cargo nextest run --profile prepush --bin chump --tests --no-fail-fast)
             else
                 echo "[pre-push] WARN CREDIBLE-278: cargo-nextest not found on PATH — falling back to 'cargo test'." >&2
                 echo "[pre-push] WARN CREDIBLE-278: cargo test THREADS tests in one process and can false-red on env races that nextest (CI's runner) does not hit." >&2
@@ -1465,6 +1644,19 @@ if [[ -n "$_CI_REG_GUARD" ]] && [[ -x "$_CI_REG_GUARD" ]] && [[ "${CHUMP_CI_REGR
     if ! bash "$_CI_REG_GUARD" >&2; then
         echo "[pre-push] CI regression guard failed — push blocked." >&2
         echo "[pre-push] Bypass (sparingly): CHUMP_CI_REGRESSION_GUARD=0 git push" >&2
+        exit 1
+    fi
+fi
+
+# ── INFRA-2322: actionlint pre-push gate ──────────────────────────────────────
+# When a push touches .github/workflows/*.yml, run actionlint locally (if
+# installed) to catch the matrix-in-if and version-typo classes before CI
+# round-trip. Skips gracefully (non-blocking) when the binary is absent.
+_ACTIONLINT_GUARD="${_CI_REG_ROOT:+$_CI_REG_ROOT/scripts/git-hooks/pre-push-actionlint-guard.sh}"
+if [[ -n "$_ACTIONLINT_GUARD" ]] && [[ -x "$_ACTIONLINT_GUARD" ]] && [[ "${CHUMP_ACTIONLINT_GUARD:-1}" != "0" ]]; then
+    if ! bash "$_ACTIONLINT_GUARD" >&2; then
+        echo "[pre-push] actionlint guard failed — push blocked." >&2
+        echo "[pre-push] Bypass (rare): CHUMP_ACTIONLINT_GUARD=0 git push" >&2
         exit 1
     fi
 fi

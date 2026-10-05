@@ -18,6 +18,21 @@
 // the robotics domain; LLM-agent applications include scale decisions,
 // gap-priority bumps that need fleet-wide agreement, and recovery from
 // split-brain after a network partition.
+//
+// INFRA-2162 (META-125/C3) ambient event registration note: this crate
+// does not yet write to ambient.jsonl (ConsensusCoordinator is an in-memory
+// primitive; no caller wires its decisions to the ambient stream). The
+// following kinds from the EVENT_REGISTRY.yaml consensus-pipeline block
+// are registered with status: planned and anchored here as the future
+// home once that wiring lands:
+//   - consensus_routed_to_curator — C4 curator-subscriber daemon, not built
+//   - consensus_resolved          — ConsensusCoordinator::finalize_vote,
+//                                    below, does not emit yet (see fn doc)
+//   - roadmap_rerank_proposed     — C10 roadmap-pivot subcommand, not built
+//   - roadmap_rerank_applied      — C10 roadmap-pivot subcommand, not built
+// scanner-anchor: "kind":"consensus_routed_to_curator"
+// scanner-anchor: "kind":"roadmap_rerank_proposed"
+// scanner-anchor: "kind":"roadmap_rerank_applied"
 
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
@@ -204,6 +219,13 @@ impl ConsensusCoordinator {
     }
 
     /// Finalize a vote against the collected proofs.
+    // INFRA-2162: this is the "quorum reached and decision final" moment
+    // scripts/ci/event-registry-reserved.txt's old `consensus_resolved`
+    // entry pointed at — it does not yet write to ambient.jsonl (in-memory
+    // only). `chump pe-suite status` already reads `kind=consensus_resolved`
+    // for its convergence-rate metric; wiring a real emit here is the
+    // follow-up that makes that metric non-zero outside demo fixtures.
+    // scanner-anchor: "kind":"consensus_resolved"
     pub fn finalize_vote(&mut self, vote_id: &str, votes: HashMap<String, VoteProof>) {
         if let Some(request) = self.active_votes.remove(vote_id) {
             let record = ConsensusRecord::finalize(request, votes);

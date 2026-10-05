@@ -1,0 +1,12 @@
+- id: EFFECTIVE-349
+  domain: EFFECTIVE
+  title: "RESCUE agent-run produced a NON-FIX: opus-pool agent wrote placeholder stub .rs files ('// Add your code here') instead of editing .github/workflows/ml-pipeline.yml. The task prompt lacks the actual CI failure log + a pointer to the failing workflow file; feed drive_task_directed the red check's logs so the agent fixes the real root cause"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"opus-pool agent wrote placeholder stub .rs files ('// Add your code here') instead of editing .github/workflows/ml-pipeline.yml. The task prompt lacks the actual CI failure log + a pointer to the failing workflow file; feed drive_task_directed the red check's logs so the agent fixes the real root cause\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-08-02'
+

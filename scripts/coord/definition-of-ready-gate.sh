@@ -84,6 +84,19 @@ if [[ "${CHUMP_DOR_SKIP:-0}" == "1" ]]; then
 fi
 
 run_preflight() {
+    # INFRA-1042 extended to the DoR gate (RESILIENT-356 barnacle): a shell/doc-only
+    # diff has NO Rust to verify — fmt/clippy/check are all N/A. Running them anyway
+    # made this gate wedge on the chump-shim clippy timeout (INFRA-469, unhealable on
+    # Linux) and REFUSE to open PRs for pure shell fixes — the merge pipeline blocking
+    # its own repair. Skip the local Rust preflight for doc/shell-only diffs; CI still
+    # runs the authoritative full gate.
+    local _changed
+    _changed="$(git -C "$REPO_ROOT" diff --name-only origin/main...HEAD 2>/dev/null || true)"
+    [[ -z "$_changed" ]] && _changed="$(git -C "$REPO_ROOT" diff --name-only HEAD 2>/dev/null || true)"
+    if [[ -n "$_changed" ]] && ! grep -qE '"'"'\.rs$|(^|/)Cargo\.(toml|lock)$'"'"' <<<"$_changed"; then
+        echo "definition-of-ready-gate: doc/shell-only diff — Rust preflight (fmt/clippy/check) N/A locally; CI remains authoritative"
+        return 0
+    fi
     if command -v chump >/dev/null 2>&1; then
         chump preflight --scope all
         return $?

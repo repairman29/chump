@@ -224,7 +224,17 @@ cmd_tick() {
     if [[ ! -d "$fast_path" ]]; then
         fast_path="$DOCS_ROOT"
     fi
-    _do_scan "$fast_path"
+    if _do_scan "$fast_path"; then
+        return 0
+    fi
+
+    # INFRA-2210: no-idle fallback — docs were clean, don't just idle.
+    # shellcheck source=/dev/null
+    if source "$(dirname "$0")/lib/no-idle.sh" 2>/dev/null && no_idle_try_fallback "md-links"; then
+        printf '[md-links] tick: no-op avoided — took fallback action instead of idling\n'
+        return 0
+    fi
+    return 1
 }
 
 cmd_scan() {
@@ -247,6 +257,11 @@ cmd_help() {
 
 SUBCMD="${1:-help}"
 shift || true
+
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+if [[ "$SUBCMD" != "help" && "$SUBCMD" != "-h" && "$SUBCMD" != "--help" ]]; then
+    source "$(dirname "$0")/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "md-links" || true
+fi
 
 case "$SUBCMD" in
     tick)

@@ -1,0 +1,12 @@
+- id: INFRA-3510
+  domain: INFRA
+  title: "CREDIBLE: [COTG-S.3] the build-vs-source decision (own-vs-rent, logged)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-S.3] the build-vs-source decision (own-vs-rent, logged)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  outcome_id: COTG
+

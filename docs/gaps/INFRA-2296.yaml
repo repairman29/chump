@@ -2,13 +2,10 @@
   domain: INFRA
   title: Mission types ↔ gap-store bridge — add kind column + parent_mission FK + ObjectiveState ↔ status mapping (depends_on INFRA-2247)
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - gap-store gains a kind column and parent_mission FK, and ObjectiveState maps bidirectionally to gap status; a mission with child gaps round-trips through the mapping in a test.
   notes: |
     [2026-05-30T18:30Z] INFRA-2247 (Mission types vendoring) shipped via #2831 at 18:18Z. This gap now claimable — gap-store schema bridge (kind enum + parent_mission FK) can proceed against the chump-coord::mission types now live in main.
   outcome_id: MISSION-010

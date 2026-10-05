@@ -135,6 +135,7 @@ run_test_script 1 "$SCRIPTS_CI/test-rust-first-bypass-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-ac-completeness-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-ac-coverage-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-gap-audit-priorities.sh"
+run_test_script 1 "$SCRIPTS_CI/test-gap-opened-date-coverage.sh"   # INFRA-1611
 run_test_script 1 "$SCRIPTS_CI/test-gap-outcome-migration.sh"   # MISSION-008
 run_test_script 1 "$SCRIPTS_CI/test-event-registry-audit.sh"
 run_test_script 1 "$SCRIPTS_CI/test-env-vars-internal-coverage.sh"
@@ -145,7 +146,9 @@ run_test_script 1 "$SCRIPTS_CI/test-gap-audit-ac.sh"
 run_test_script 1 "$SCRIPTS_CI/test-gap-preflight-ac-gate.sh"
 run_test_script 1 "$SCRIPTS_CI/test-hardcoded-date-guard.sh"
 run_test_script 1 "$SCRIPTS_CI/test-plist-no-tmp-paths.sh"  # INFRA-2419: plist temp-path lint
+run_test_script 1 "$SCRIPTS_CI/test-fleet-clone-index.sh"   # RESILIENT-1351: org clone+index+untether sweep (hermetic, fake gh/almanac)
 run_test_script 1 "$SCRIPTS_CI/test-curator-liveness.sh"    # RESILIENT-246: curator exit-78 + silence regression
+run_test_script 1 "$SCRIPTS_CI/test-orphan-allowlist-daemon.sh"  # INFRA-5426: orphan auto-allowlist PR daemon (hermetic, fake git/gh)
 
 # Hook / commit hygiene gates
 run_test_script 1 "$SCRIPTS_CI/test-hook-silent-noop.sh"
@@ -186,6 +189,8 @@ run_step 2 "cargo test --workspace" \
 
 # Additional Rust-adjacent script checks
 run_test_script 2 "$SCRIPTS_CI/test-no-raw-gh-in-hot-paths.sh"
+run_test_script 2 "$SCRIPTS_CI/test-gh-in-ci-guarded.sh"
+run_test_script 2 "$SCRIPTS_CI/test-gh-token-guard.sh"
 run_test_script 2 "$SCRIPTS_CI/test-no-direct-auto-merge-arm.sh"
 run_test_script 2 "$SCRIPTS_CI/test-preflight-vs-ci-parity.sh"
 run_test_script 2 "$SCRIPTS_CI/test-ci-gates-inventory.sh"

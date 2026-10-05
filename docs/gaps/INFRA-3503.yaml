@@ -1,0 +1,14 @@
+- id: INFRA-3503
+  domain: INFRA
+  title: "EFFECTIVE: [COTG-5.2] fleet-state -> user-language translation (never show PRs/CI)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-5.2] fleet-state -> user-language translation (never show PRs/CI)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:24Z] DISCOVERY NOT-STARTED ~15% -> BUILD from scratch. src/notify_tool.rs REQUIRES jargon tags, user_error_hints.rs ADDS jargon - the opposite of what we need. Build a fleet-state->user-language translation layer + a no-jargon guard.
+  outcome_id: COTG
+

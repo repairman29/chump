@@ -1,9 +1,27 @@
 - id: INFRA-2285
   domain: INFRA
   title: "EFFECTIVE P1: scripts/coord/rescue-stale-pr.sh — one-command DIRTY-PR rescue (rebase + auto-trailer + push + arm)"
-  status: open
+  status: done
+  closed_pr: 3812
   priority: P1
   effort: s
+  notes: |
+    Verification receipt (2026-08-19): YAML/state.db were stale — this gap
+    already shipped in commit 138a08bf / PR #3812 ("INFRA-2285: one-command
+    DIRTY-PR rescue (rebase + auto-trailer + push + arm)").
+    scripts/coord/rescue-stale-pr.sh (228 LOC) implements all 7 AC items:
+    PR-number-driven worktree rebase against origin/main, disjoint both-add
+    conflict auto-resolution vs. same-line-edit refusal (exit 2, "manual
+    rebase needed: <files>"), hook-output gate detection mapping to the 6
+    trailer/env-var pairs (Bot-Merge-Bypass, Test-Gate-Bypass,
+    Event-Registry-Bypass, Off-Rails-Bypass, Lint-Gate-Bypass, Net-new-docs),
+    --dry-run planning mode, and kind=stale_pr_rescued ambient emit
+    (pr_number, gap_id, bypasses_used, elapsed_s). Re-ran
+    scripts/ci/test-rescue-stale-pr.sh live: 8/8 passed (gate detection,
+    trivial-vs-nontrivial conflict classification, dry-run trailer/arm/
+    ambient-emit assertions). Re-closing to sync the registry; no code
+    changes needed. Same pattern as INFRA-1890 / INFRA-1865 / INFRA-1811
+    stale-state syncs.
   description: |
     Concrete friction observation from rescuing #2840 (INFRA-2258) on 2026-05-30T08:30Z: a stale-DIRTY PR rescue required 6 manual steps — git worktree add OR cd to existing; git fetch + rebase; resolve conflicts (trivial here); git add + rebase --continue; git commit --amend with up to 6 trailers (Bot-Merge-Bypass, Test-Gate-Bypass, Event-Registry-Bypass, Off-Rails-Bypass, Lint-Gate-Bypass, Net-new-docs); force-with-lease push with up to 5 env-var bypasses (CHUMP_BYPASS_BOT_MERGE, CHUMP_TEST_GATE, CHUMP_EVENT_REGISTRY_CHECK, CHUMP_OFF_RAILS_CHECK, CHUMP_CLIPPY_GATE, CHUMP_MERGE_PREVIEW); arm auto-merge. Each gate has a real purpose, but ~10min per stale PR × N stale PRs = real throughput tax. The operator's directive 2026-05-30T08:20Z: 'Landing PRs and automating this fleet is what matters.' This IS the automation lever for landing.
   acceptance_criteria:

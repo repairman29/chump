@@ -1,0 +1,11 @@
+- id: RESEARCH-033
+  domain: RESEARCH
+  title: "RESEARCH: Handoff Debt paper (arxiv 2606.02875) quantifies rediscovery cost when agents take over interrupted tasks — directly relevant to wip/ branch rescue and RESILIENT-029 WIP stash pattern"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"Handoff Debt paper (arxiv 2606.02875) quantifies rediscovery cost when agents take over interrupted tasks — directly relevant to wip/ branch rescue and RESILIENT-029 WIP stash pattern\" is implemented in the relevant RESEARCH code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

@@ -1,0 +1,19 @@
+- id: RESILIENT-281
+  domain: RESILIENT
+  title: 74 shell assertions across the fleet silently skip on the zero case — 'grep -c ... || echo 0' yields the two-line string $'0\n0'
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "Zero occurrences of the 'grep -c ... "
+    - ""
+    - " echo 0' idiom remain under scripts/ — sweep command and its 0-file output pasted in the notes (baseline today: 102 files, 103 occurrences, 74 feeding a numeric comparison)"
+    - At least one previously-DEAD assertion is demonstrated failing on a seeded bad input after the fix, proving the repaired assertions can actually fire — a silent conversion is not evidence
+    - "Both failure directions are handled, not just one: '-gt 0'/-ge 1' sites (false PASS) AND '-eq 0' sites (false FAIL from the wrong branch)"
+    - A pre-commit or CI guard rejects new instances of the idiom, and that guard has its own test that fails without it
+    - Full scripts/ci suite run shows ZERO 'syntax error in expression' lines in output — a suite that prints a bash syntax error and then PASS is the bug, so absence of that string is the regression check
+    - Per-site workarounds already patched around the symptom (e.g. fleet-brief.sh's '[[ -z $_subjects_24h ]] && ships_24h=0') are removed or justified, so the root fix is not layered on top of the band-aid
+  outcome_id: MISSION-010
+  evidence: |
+    COMMAND: X=$(grep -c pat empty_file 2>/dev/null || echo 0); printf 'value=%q\n' "$X"; if [[ "$X" -gt 0 ]]; then echo FIRED; fi  |  OUTPUT: value=$'0\n0' and bash prints '[[: 0\n0: syntax error in expression (error token is "0")' then SKIPS the conditional. grep -c always prints its count AND exits 1 on no-match, so '|| echo 0' appends a SECOND line rather than substituting one. Static sweep of scripts/: 102 files, 103 occurrences, 74 of which feed a numeric comparison ([[ -gt/-lt/-eq/-ge/-le ]] or (( ))). Confirmed live in scripts/ci/test-curator-supervisor.sh, where the assertion that the RESILIENT-035 circuit breaker suppresses sonnet spawns could never fail — the test printed a bash syntax error and then 'PASS'. Fixed there in PR 3562; the other 101 files are untouched.  |  THEORY: the failure direction depends on the comparison, which is why it has survived. Where the test expects a nonzero count (-gt 0, -ge 1) the syntax error skips the assertion and the suite reports a false PASS. Where it expects zero (-eq 0) the error takes the else branch and reports a false FAIL. Both are silent: bash writes the syntax error to stderr and continues, so a green suite and a red suite can both be lying. scripts/dispatch/fleet-brief.sh already carries a per-site workaround ([[ -z "$_subjects_24h" ]] && ships_24h=0), which is evidence the bug has been hit and patched symptom-by-symptom rather than at the root.  |  ALT: considered a blanket sed across all 102 files in PR 3562 — rejected as unreviewable and out of scope for a curator fix; a 100-file mechanical sweep deserves its own diff and its own test. Considered adding a shellcheck rule — SC2126 is adjacent but does not cover this; a targeted pre-commit grep for 'grep -c.*|| echo' is the cheaper durable guard and should ship WITH the sweep so the pattern cannot return.
+

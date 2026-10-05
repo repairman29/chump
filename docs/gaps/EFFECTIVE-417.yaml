@@ -1,0 +1,24 @@
+- id: EFFECTIVE-417
+  domain: EFFECTIVE
+  title: Revive the integration-cycle BATCHED-ship lane (chump-integrator) — ship N vetted gaps as 1 PR, not N
+  status: done
+  priority: P1
+  effort: l
+  acceptance_criteria:
+    - "The change described by \"Revive the integration-cycle BATCHED-ship lane (chump-integrator) — ship N vetted gaps as 1 PR, not N\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    WHY: per-PR model is self-inflicted slow — this session re-proved it (~15 PRs, 5+ hrs through the gauntlet). The fix exists but is DORMANT: crates/chump-integrator (3799 LOC, DOC-089 design) batches gaps → one integration branch (git merge --no-ff per gap, commits preserved) → CI once → single PR to main. Batch unit = LOC-budget (CHUMP_INTEGRATOR_LOC_BUDGET=1500), NOT per-mission (missions ship in parts). Each gap is STILL individually vetted on its own branch first; batching only amortizes the final CI+PR + adds an interaction check. Telemetry is re-grained not lost (per-gap commits + gap-id trailers + MergedGapRow/QuarantinedGapRow manifest survive) — consumers need rewiring, not the signal.
+    
+    ROUGH SHAPE (decompose at claim):
+    (a) REVIVE BINARY: cargo install chump-integrator; the daemon 127s because target/release/chump-integrator was never built (diagnosed 2026-08-08). Daemon runs green in --once dry-run.
+    (b) DRIFT-CHECK: written 2026-05-29; verify vs today's gap-store schema + gates (CREDIBLE-212 AC-gate, the 2026-08-08 verify-merge required-checks-only change [CREDIBLE-228], bot-merge). One dry-run cycle clean.
+    (c) BISECT ORACLE (trust-critical): INFRA-2136 SUPERSEDED — real git-bisect never landed; daemon.rs:352 quarantines 'first candidate' heuristic. Replace with real git-bisect: red batch → fingerprint culprit gap → quarantine → ship the rest.
+    (d) PROVE ONE LIVE BATCHED CYCLE: batch 2-3 already-vetted safe gaps → one integration PR → CI once → ship to main. The milestone.
+    (e) TELEMETRY REWIRE: metrics.rs per-gap ship-time, ghost-gap-reaper, gap-status reconciliation → read the batch manifest.
+    Related: DOC-089, INFRA-2129/2136(superseded)/2137(done)/2171, RESILIENT-222 (integrator health check open).
+  closed_date: '2026-08-08'
+  closed_pr: 3529
+  outcome_id: CHUMPOS
+

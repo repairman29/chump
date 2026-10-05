@@ -1,7 +1,8 @@
 - id: RESILIENT-132
   domain: RESILIENT
   title: "RESILIENT: bot-merge interactive ship non-viable on degraded substrate (9 failure modes; lease corrupts every cycle)"
-  status: open
+  status: shipped
+  closed_pr: 3957
   priority: P1
   effort: m
   description: |

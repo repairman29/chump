@@ -1,0 +1,11 @@
+- id: ZERO-WASTE-053
+  domain: ZERO-WASTE
+  title: "ZERO-WASTE: bound the cargo target for days-and-days autonomy — incremental=0 + cargo-sweep GC + arm self-heal (single-disk, no relocate)"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "Make the cargo target BOUNDED so chump runs for days without a disk wedge (single-disk Mac, no relocation possible). (1) worker.sh: export CARGO_INCREMENTAL=0 (kills ~3.7GB useless incremental — fleet builds each gap once) + CARGO_PROFILE_DEV_DEBUG=line-tables-only (shrink debug info) next to the CARGO_TARGET_DIR export. (2) Add a STEADY-STATE GC using the installed cargo-sweep tool (scripts/ops/cargo-sweep-gc.sh: cargo-sweep --time 1 against the shared target, emit ambient event) on a 30-min launchd timer — the existing 3 reapers use crude mtime logic and freed 0 bytes; cargo-sweep understands fingerprints and evicts safely. (3) Arm the RESILIENT-273 disk self-heal (CHUMP_DISK_REACTOR_QUIESCE_EXECUTE=1) as the backstop. Net: target plateaus ~15-30GB steady instead of climbing to 150GB. Test the GC script (synthetic). Do NOT touch Cargo.toml (env-var overrides only). Folds into RESILIENT-275."
+  closed_pr: 3553
+  outcome_id: FLEET-BUILD-SPEED
+

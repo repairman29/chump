@@ -1,0 +1,20 @@
+- id: EFFECTIVE-376
+  domain: EFFECTIVE
+  title: "EFFECTIVE: [almanac] identifier-aware keyword tokenizer — camelCase/snake_case splitting so getUserId is reachable from 'user id'"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Borrowed idea (2026-08-07), verified by reading DeusData/codebase-memory-mcp v0.9.0 (public, MIT) after indexing it as an almanac ref: their FTS5 layer uses a 'cbm_camel_split' tokenizer that is camelCase/snake_case aware. Almanac's keyword leg does not split identifiers, so a query for 'user id' cannot reach a symbol named getUserId, and 'refresh entry' cannot reach refresh_entry unless the underscore form is typed verbatim. This matters more than it sounds: keyword is the ONLY leg that works with zero inference, on every repo, including the ~30 that are keyword-only today (see CREDIBLE-203) and every fresh index before embed/summarize drains. Implementation is a tokenizer change in crates/almanac-core/src/retrieve.rs (tokenize_query + the in-Rust scoring fold), NOT a copy of their C — the idea is free, the code is a different language anyway. The existing OR-tokenize + coverage-ranking + phrase-bonus behavior must survive. Watch the documented unicode trap in that file: the SQL prefilter and the Rust scoring must fold identically or a prefiltered row scores 0.
+  acceptance_criteria:
+    - identifier splitting covers camelCase, PascalCase, snake_case, kebab-case and SCREAMING_SNAKE on BOTH the query side and the indexed side, so getUserId is reachable from 'user id' and refresh_entry from 'refresh entry'
+    - the SQL prefilter and the in-Rust scoring fold identically — a row that passes the prefilter can never score 0 (the unicode-trap invariant already documented in retrieve.rs), asserted by a test
+    - "existing keyword behavior is preserved: OR-tokenization, coverage ranking, verbatim-phrase bonus, and the heading discount (INFRA-3529) all still pass their current tests"
+    - scripts/eval-gate.sh runs on all four suites before and after; the change ships ONLY if no suite regresses past tolerance, and the before/after numbers appear in the commit message
+    - DEPTH.md retrieve.rs row updated in the SAME commit with the new tests and the remaining gaps
+    - "attribution recorded at borrow time (not publish time): a THIRD_PARTY-style note crediting DeusData/codebase-memory-mcp (MIT) for the idea, following their own THIRD_PARTY.md table shape"
+  notes: |
+    Demoted P1->P2 2026-08-07 during queue alignment: I filed ~14 P1s in one session into a pool of 61 (a 23% inflation of the P1 signal). This one is real but is an enhancement, not a blocker — it returns to P1 when a force-multiplier ahead of it lands or when someone needs it.
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: EFFECTIVE-000
+

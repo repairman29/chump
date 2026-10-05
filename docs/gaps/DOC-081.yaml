@@ -1,0 +1,14 @@
+- id: DOC-081
+  domain: DOC
+  title: "CREDIBLE: RESEARCH_INTEGRITY.md cites 15 phantom gap YAMLs — annotate the proprietary-moved refs"
+  status: open
+  priority: P3
+  effort: xs
+  description: |
+    chump gap audit-priorities flags 15 phantom doc refs: docs/process/RESEARCH_INTEGRITY.md cites gap YAMLs that do not exist in docs/gaps/ (EVAL-010/029/030/035/041/042/043/044/073/074/076/081/093, INFRA-079, RESEARCH-002). Likely cause: the 2026-05-05 IP sweep moved empirical eval material to chump-proprietary and the public doc kept bare IDs. Fix in whichever direction is true per ref: annotate as tracked-in-proprietary, or correct/remove the citation. Keeps the PM health check clean so real phantom refs stay visible.
+  acceptance_criteria:
+    - audit-priorities phantom-ref count for RESEARCH_INTEGRITY.md is 0
+    - each ref resolved to proprietary-tracked annotation or corrected citation — none silently deleted
+    - no proprietary content copied into the public doc
+  outcome_id: CREDIBLE-000
+

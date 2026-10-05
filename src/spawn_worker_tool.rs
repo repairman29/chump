@@ -325,10 +325,10 @@ impl axonerai::tool::Tool for SpawnWorkerTool {
 
         repo_path::clear_working_repo();
 
-        // CREDIBLE-256: remove this worker's presence record from NATS-KV now
-        // that it has shipped its patch (or exited via error, handled below) —
-        // deregistration rather than CREDIBLE-246's terminal-marking, so
-        // "who's alive" queries never see an already-finished worker.
+        // CREDIBLE-256 (CREDIBLE-099 slice): deregister this worker's presence
+        // record now that it has shipped its patch (or exited via error,
+        // handled below) — deletes from the `chump_workers` KV bucket rather
+        // than leaving a `Terminal` tombstone (CREDIBLE-246's behavior).
         if let Some(kv) = &presence_kv {
             let _ = chump_coord::presence::deregister_presence(kv, &session_id).await;
         }

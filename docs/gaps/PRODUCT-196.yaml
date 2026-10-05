@@ -1,0 +1,14 @@
+- id: PRODUCT-196
+  domain: PRODUCT
+  title: "[almanac] Ruby + PHP crawler adapters — unparsed languages make prior-art reading impossible"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - A Ruby adapter (tree-sitter-ruby) extracts classes/modules/methods into symbols, following the established 7-language adapter pattern in crates/ast-crawler/src/lib.rs
+    - PHP follows by the same pattern; both appear in detect_language + is_supported
+    - Re-indexing the chatwoot ref (already at ~/.almanac/refs-cache/chatwoot, v4.16.2) yields non-zero Ruby symbols, and a fleet search for 'conversation handoff bot assignee' returns chatwoot hits — measured 2026-08-07 as 0 Ruby files indexed out of 1527, so app/models/conversation.rb and db/schema.rb were invisible
+    - DEPTH.md updated in the same commit
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: MISSION-032
+

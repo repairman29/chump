@@ -1,0 +1,14 @@
+- id: INFRA-3512
+  domain: INFRA
+  title: "RESILIENT: [COTG-2.6] fmt drift must NEVER reach CI — auto-fmt at commit/push (the #1 merge blocker)"
+  status: done
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-2.6] fmt drift must NEVER reach CI — auto-fmt at commit/push (the #1 merge blocker)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-30'
+  closed_pr: 3379
+  outcome_id: COTG
+

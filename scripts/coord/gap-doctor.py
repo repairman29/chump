@@ -427,6 +427,61 @@ def cmd_sync_from_db(args, root: Path) -> int:
     return 0
 
 
+def _prune_yaml_orphans(root: Path, candidate_ids: list) -> None:
+    """EFFECTIVE-219: delete docs/gaps/<ID>.yaml ONLY when a fresh state.db
+    re-check confirms the row is absent. STATE WINS — never trust the
+    caller's snapshot for the actual delete decision; a sibling session
+    could have reserved the ID in the window between the snapshot and now.
+
+    For any candidate whose state.db row turns out to exist after all
+    (divergence caught by the re-check), the YAML is rewritten from
+    state.db instead of deleted, and a note is printed so the operator can
+    see the near-miss.
+    """
+    import subprocess
+
+    db_view_fresh = load_db_status(root)
+    gaps_dir = root / "docs" / "gaps"
+
+    try:
+        common_dir = subprocess.run(
+            ["git", "rev-parse", "--git-common-dir"],
+            cwd=root, capture_output=True, text=True, check=True
+        ).stdout.strip()
+        main_repo = root if common_dir == ".git" else Path(common_dir).parent.resolve()
+    except subprocess.CalledProcessError:
+        main_repo = root
+    ambient = main_repo / ".chump-locks" / "ambient.jsonl"
+    locks_dir = ambient.parent
+    locks_dir.mkdir(parents=True, exist_ok=True)
+
+    from datetime import datetime, timezone
+    pruned = 0
+    for gid in candidate_ids:
+        yaml_path = gaps_dir / f"{gid}.yaml"
+        if gid in db_view_fresh:
+            # Divergence since the snapshot: a row now exists. State wins —
+            # rewrite from DB rather than delete.
+            print(f"[safe-sweep] {gid}: state.db row appeared since snapshot — rewriting YAML, not deleting")
+            cmd_sync_from_db(argparse.Namespace(apply=True), root)
+            continue
+        if not yaml_path.exists():
+            continue
+        yaml_path.unlink()
+        ts = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+        evt = {
+            "ts": ts, "event": "INFO", "kind": "yaml_orphan_pruned",
+            "gap_id": gid, "file_path": str(yaml_path.relative_to(root)),
+            "reason": "yaml_only_no_db_row", "daemon_name": "gap-doctor-safe-sweep",
+        }
+        with ambient.open("a") as f:
+            f.write(json.dumps(evt, separators=(",", ":")) + "\n")
+        pruned += 1
+        print(f"[safe-sweep] pruned orphan {yaml_path.relative_to(root)} (no state.db row)")
+    if pruned:
+        print(f"\n[safe-sweep] pruned {pruned} orphan YAML(s)")
+
+
 def cmd_safe_sweep(args, root: Path) -> int:
     """INFRA-308: cron-friendly safe drift sweep.
 
@@ -557,6 +612,18 @@ def cmd_safe_sweep(args, root: Path) -> int:
         if emitted:
             print(f"\n[safe-sweep] emitted {emitted} ALERT event(s) to {ambient}")
 
+    # EFFECTIVE-219: opt-in orphan pruning for bucket 4 (YAML-only, no DB
+    # row at all). STATE WINS — this branch only ever deletes a
+    # docs/gaps/<ID>.yaml when a *fresh* re-check confirms state.db has NO
+    # row for that ID (not merely status:done/status:closed — literally
+    # absent). If state.db diverges from the bucket-4 snapshot taken above
+    # (e.g. a sibling session reserved the same ID mid-sweep), the file is
+    # rewritten from state.db instead of deleted. Off by default: bucket 4
+    # is reported via ALERT (see above) so an operator can review before
+    # any destructive sweep runs against the accumulated backlog.
+    if getattr(args, "prune_orphans", False) and not args.dry_run and bucket4:
+        _prune_yaml_orphans(root, bucket4)
+
     print(f"\n[safe-sweep] complete (auto-fixed: {len(bucket1) + len(bucket2)}, alerted: {len(bucket3) + len(bucket4)})")
     return 0
 
@@ -576,6 +643,10 @@ def main() -> int:
     # INFRA-308: cron-friendly safe sweep (auto-fix safe buckets, ALERT on unsafe).
     p3 = sub.add_parser("safe-sweep", help="cron-friendly: auto-fix safe drift, ALERT unsafe")
     p3.add_argument("--dry-run", action="store_true", help="show what would happen without mutating")
+    p3.add_argument("--prune-orphans", action="store_true",
+                     help="EFFECTIVE-219: delete bucket-4 (YAML-only, no state.db row) files, "
+                          "state-checked immediately before each delete. Opt-in; default sweep "
+                          "only ALERTs on bucket 4.")
 
     args = ap.parse_args()
     root = repo_root()

@@ -2,7 +2,7 @@
   domain: INFRA
   title: "EFFECTIVE: vendor echeo Ship Velocity Score as Chump gap-value scorer (substrate for INFRA-1764 skill-aware routing)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Read echeo/src/matchmaker.rs calculate_ship_velocity_score and document the formula (cosine similarity plus language boost 0.1 plus type boost 0.05 capped at 1.0)

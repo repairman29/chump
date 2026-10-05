@@ -246,3 +246,18 @@ PYEOF
 # Atomic replace
 mv "$OUTCOMES_TMP" "$OUTCOMES_FILE"
 echo "[decomposition-tracker] outcomes written to $OUTCOMES_FILE" >&2
+
+# ── Emit ambient event so operators see this firing (INFRA-1564) ───────────
+N_RESOLVED="$(grep -c '"outcome"' "$OUTCOMES_FILE" 2>/dev/null || echo 0)"
+EMIT_SCRIPT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
+if [[ -x "$EMIT_SCRIPT" ]]; then
+    "$EMIT_SCRIPT" decomposition_hint_tracked \
+        "n_hints=$N_HINTS" \
+        "n_resolved=$N_RESOLVED" \
+        2>/dev/null || true
+else
+    ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+    mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null
+    printf '{"ts":"%s","kind":"decomposition_hint_tracked","n_hints":%d,"n_resolved":%d}\n' \
+        "$ts" "$N_HINTS" "$N_RESOLVED" >> "$AMBIENT_LOG" 2>/dev/null || true
+fi

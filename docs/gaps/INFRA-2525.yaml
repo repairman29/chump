@@ -2,7 +2,7 @@
   domain: INFRA
   title: "ZERO-WASTE P1: cull bypass env vars — 113 distinct CHUMP_*_(BYPASS|SKIP|IGNORE) escape hatches down to <=3; rule: a gate that needs a routine bypass is fixed or deleted"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - 131 distinct CHUMP_*_(BYPASS

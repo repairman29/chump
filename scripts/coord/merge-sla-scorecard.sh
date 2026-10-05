@@ -64,7 +64,15 @@ done
 
 command -v gh >/dev/null 2>&1 || { echo "[merge-sla-scorecard] gh missing; skip"; exit 0; }
 CHUMP_GH_SCRIPT="merge-sla-scorecard.sh"
-repo="$(chump_gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)"
+# INFRA-2464: cache-first repo nwo (disk-memoized 24h TTL via _cache_repo_nwo)
+# instead of a raw `gh repo view` call every tick — this daemon runs on a 15m
+# cadence (see header), so uncached it was 4 raw repo-view calls/hr for a
+# value that's effectively immutable for the life of the checkout.
+if command -v _cache_repo_nwo >/dev/null 2>&1; then
+    repo="$(_cache_repo_nwo)"
+else
+    repo="$(chump_gh repo view --json nameWithOwner --jq '.nameWithOwner' 2>/dev/null)"
+fi
 [ -z "$repo" ] && { echo "[merge-sla-scorecard] no repo nwo; skip" >&2; exit 1; }
 
 prs_tmp="$(mktemp)"

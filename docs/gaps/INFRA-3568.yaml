@@ -1,0 +1,10 @@
+- id: INFRA-3568
+  domain: INFRA
+  title: "INFRA: Research and design the shared LLM service integration (INFRA-3462 slice)"
+  status: open
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - A design document outlining the shared LLM service integration is created
+    - The design document is reviewed and approved by the team
+

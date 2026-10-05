@@ -1,12 +1,28 @@
 - id: EFFECTIVE-289
   domain: EFFECTIVE
   title: "EFFECTIVE: chump improve picker should skip-and-advance past done/in-flight gaps instead of exiting"
-  status: open
+  status: done
   priority: P1
   effort: m
   acceptance_criteria:
     - "1. When the top-ranked scan gap is dedup-skipped (done or in-flight PR), pick_gap advances to the next implementable gap instead of exiting. 2. Bounded by a max-skips guard. 3. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit."
   outcome_id: EFFECTIVE-000
+  closed_date: '2026-09-03'
+  closed_pr: 3965
   evidence: |
     2026-06-22 BEAST run: improve picked the top scan gap (ML-pipeline path fix), DEDUP correctly found an open PR (#4) already covers it, then EXITED — it did NOT advance to the next-ranked undone gap. For sustained unattended autonomy (MISSION-010), a single improve invocation must iterate: when the top gap is dedup-skipped (done or in-flight), advance to the next implementable gap and land a real PR. AC: pick stage loops through doctrine-ordered gaps until it finds one that passes dedup, implements THAT; add a bounded max-skips. Test: a scan whose top gap is covered by an open PR → improve implements the next undone gap, not exit. Pairs with the stale-scan problem (onboard refresh) — together they're what gate sustained autonomy.
+
+    RESOLUTION: fixed by MISSION-056 (commit 9793101c, PR #3291, 2026-08-20) —
+    src/improve.rs `pick_gap` now returns the FULL ranked candidate list
+    (MISSION-056 comment at improve.rs:630-633), and `run()`'s Stage 2 DEDUP loop
+    (improve.rs:239-285) iterates every candidate in order via `dedup_check`,
+    taking the first `DedupResult::NotRedundant` one — bounded naturally by the
+    candidate list's finite length (no unbounded loop possible). AC-3's exact
+    scenario (top gap covered by an open PR -> next undone candidate picked, not
+    exit) is regression-tested by
+    `dedup_loop_skips_top_redundant_and_picks_next_candidate`
+    (commit 72df8149, PR #3965, 2026-08-19) which fakes `gh` to report an open PR
+    matching only the top candidate's title and asserts the second candidate is
+    chosen. This session's worktree HEAD is on top of origin/main with both
+    commits present — doc-only sync, no code change needed.
 

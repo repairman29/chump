@@ -1,3 +1,307 @@
+# Red Letter
+> Cold Water — adversarial weekly review. No praise.
+---
+
+## Issue #25 — 2026-08-17
+
+> Audit window: commits since 2026-08-10 (Issue #24). **50 commits** to `origin/main` — **18 real work** (PRs #3848–#3872) + **32 automated coherence syncs** (64% of commit traffic). Sandbox: fresh remote clone, chump binary build **succeeded** (11m 14s cold build, chump 0.2.0). `chump gap import` exits 0 — **FIXED**: no malformed YAML files remain. state.sql committed **32 times this cycle** via RESILIENT-194 backlog-sync automation — **FIXED** from Issue #24 C1. `chump gap import` loaded 2847 gaps; **649 of 3496 YAML gaps blocked on import by title-similarity** (primarily pillar-starvation zombie gaps with near-identical titles). Open PRs: **6** (PRs #3851, #3854, #3858, #3866, #3870 + 1 more). `wip/` branches: **484** (UNCHANGED — 6th consecutive cycle at plateau; stale-branch-reaper explicitly skips wip/ branches with no PR per design). Bypass rates: Bot-Merge-Bypass 0/50 (0%), Test-Gate-Bypass 2/50 (4%, improved from 14%), Preflight-Skip-Reason 0/50 (0%). **All 4 proposed follow-up gaps from Issue #24 remain unfiled** (3rd consecutive cycle). Pillar-starvation zombie gaps: **143** (up from 137 in #24, +6). MISSION-028 P0 picker sprawl: `in_progress` since 2026-06-05, 0 implementation commits, 73+ days. MISSION scoreboard ① = **NO** for **15th consecutive cycle**. **6 follow-up gaps filed this cycle** via chump gap reserve: ZERO-WASTE-030, INFRA-3520, ZERO-WASTE-031, MISSION-066, CREDIBLE-167, RESEARCH-033.
+
+---
+
+### Status of Prior Issues (Issue #24)
+
+- **FIXED: G1** (`chump gap import` crash on INFRA-3429.yaml — 39 duplicate `evidence:` fields) → PR #3452 (commit in coherence sync chain, closed_pr=3452). INFRA-3429.yaml now has 1 `evidence:` field. `chump gap import` exits 0. No malformed YAML files remain across all 3496.
+  ```
+  python3 -c "
+  import os
+  malformed = [f for f in os.listdir('docs/gaps') if f.endswith('.yaml') and open(f'docs/gaps/{f}').read().count('\n  evidence:') > 1]
+  print(f'Malformed files: {len(malformed)}')
+  "
+  Malformed files: 0
+
+  chump gap import 2>&1 | tail -1
+  import complete: 2847 inserted, 0 skipped (already present), 649 blocked by title-similarity (INFRA-1434)
+  # exits 0 — FIXED
+  ```
+
+- **FIXED: C1** (state.sql committed only twice in all history; 49 of 50 commits without state.sql update) → RESILIENT-194 `backlog-sync.sh --writer` now runs as automated coherence sync daemon, regenerating state.sql on every cycle. 32 state.sql commits this cycle (2026-08-16 and 2026-08-17), all via `chump(backlog): coherence sync`.
+  ```
+  git log origin/main --since="2026-08-10" --follow --format="%ad %H" --date=short -- .chump/state.sql | wc -l
+  32
+  ```
+
+- **FIXED: Test-Gate-Bypass CREDIBLE-175/278** (pre-push hook uses cargo test; CI uses nextest — PR #3597) — bypass rate dropped from 14% (#24) to 4% this cycle. 2 remaining bypasses both cite `.cargo/config.toml` absent in sandbox (recurring env gap, not the nextest regression).
+
+- **STILL_OPEN_INACTIVE (15 cycles): MISSION ① = NO.** Zero BEAST-MODE commits this cycle.
+  ```
+  git log origin/main --since="2026-08-10" --format='%s' | grep -iE "BEAST|MISSION-01[0-9]"
+  (empty)
+
+  grep "today:" docs/MISSION.md
+  - **① THE BINARY (weekly):** today: **NO**.
+  ```
+
+- **STILL_OPEN_INACTIVE (P0 in_progress, 0 commits, 73+ days): MISSION-028** (picker sprawl — fleet workers use `_pick_and_claim_gap.py`, which was never fixed to be mission-first; MISSION-026/#3055 fixed the wrong picker). Zero implementation commits since gap opened 2026-06-05.
+  ```
+  git log origin/main --all --grep="MISSION-028" --oneline | grep -v cold-water
+  (empty)
+
+  chump gap show MISSION-028 | grep "status:\|priority:"
+  status: in_progress
+  priority: P0
+  ```
+
+- **STILL_OPEN_INACTIVE (6 cycles, 0 commits): MISSION-019, -021, -022, -023, -024** — all BEAST-MODE prerequisite gaps (fleet can claim/push/PR BEAST-MODE work), all P1/open, all 0 implementation commits.
+  ```
+  for gid in MISSION-019 MISSION-021 MISSION-022 MISSION-023 MISSION-024; do
+    echo "$gid: $(git log origin/main --grep=$gid --oneline | wc -l) commits"
+  done
+  MISSION-019: 0 commits
+  MISSION-021: 0 commits
+  MISSION-022: 0 commits
+  MISSION-023: 0 commits
+  MISSION-024: 0 commits
+  ```
+
+- **WORSE: Pillar-starvation zombie gaps 137 → 143** (+6 this cycle; 5th consecutive increase: #21=~100, #22=136, #23=136, #24=137, #25=143). 649 additional similar gaps blocked on import by title-similarity.
+  ```
+  python3 -c "
+  import os, yaml
+  count = sum(1 for f in os.listdir('docs/gaps') if f.endswith('.yaml') and
+    'pillar' in yaml.safe_load(open(f'docs/gaps/{f}').read()).get('title','').lower() and
+    yaml.safe_load(open(f'docs/gaps/{f}').read()).get('status') == 'open')
+  print(count)
+  "
+  143
+
+  # 649 more blocked on import:
+  chump gap import 2>&1 | grep "blocked by title-similarity"
+  import complete: 2847 inserted, 0 skipped (already present), 649 blocked by title-similarity
+  ```
+
+- **WORSE: wip/ branches STUCK at 484** — 6th consecutive cycle with no decrease (324→390→424→453→484→484). stale-branch-reaper.sh explicitly skips wip/ branches with no associated PR (line 10: "branches without any PR are skipped — might be WIP pushed without opening a PR"). No mechanism exists to delete them.
+  ```
+  git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l
+  484
+
+  grep -n "NO.*PR\|without.*PR\|no.*associated" scripts/ops/stale-branch-reaper.sh | head -3
+  10: branches that have an associated PR — branches without any PR are skipped
+  141:   SKIPPED_NO_PR=$((SKIPPED_NO_PR + 1))
+  ```
+
+- **NO_GAP (all 4 from #24 still unfiled — 3rd consecutive cycle):** ZERO-WASTE-55 (wip branch cleanup), CREDIBLE-290 (state.sql commit cadence), ZERO-WASTE-56 (wip branch reaper), INFRA-3510 (cold-water filing mechanism). Proposed IDs from #24 never appeared in docs/gaps/*.yaml or state.sql.
+  ```
+  for id in ZERO-WASTE-55 ZERO-WASTE-056 CREDIBLE-290 ZERO-WASTE-56 INFRA-3510; do
+    ls docs/gaps/${id}.yaml 2>/dev/null && echo "$id: FILED" || echo "$id: NOT FILED"
+  done
+  ZERO-WASTE-55: NOT FILED
+  ZERO-WASTE-056: NOT FILED
+  CREDIBLE-290: NOT FILED
+  ZERO-WASTE-56: NOT FILED
+  INFRA-3510: NOT FILED
+  ```
+  **This cycle: ZERO-WASTE-030, ZERO-WASTE-031, INFRA-3520, MISSION-066, CREDIBLE-167, RESEARCH-033 filed directly.**
+
+---
+
+### The Looming Ghost
+
+**[P1/High] G1 — 649 of 3496 YAML gap files are invisible to `chump gap list` on every fresh clone because title-similarity import blocking (INFRA-1434) silently drops them; the gaps dropped are primarily pillar-starvation zombies whose near-identical titles trigger the block; a cold-node fleet worker cannot pick any of these 649 gaps**
+
+We are failing to operate a gap registry that is complete on cold clone. `chump gap import` exits 0 and reports success — but it silently discards 649 of 3496 YAML files (18.6%) due to INFRA-1434 title-similarity blocking. The blocked gaps are not broken; their YAML is valid. They fail because hundreds of pillar-starvation zombie gaps all share titles of the form `MISSION-EFFECTIVE: pillar starved — only N picked` with Jaccard similarity above CHUMP_GAP_RESERVE_SIMILARITY_BLOCK (0.85). A fleet worker running on a cold node after `chump gap import` cannot claim any of those 649 gaps. The import exit-0 hides the loss.
+
+```bash
+chump gap import 2>&1 | tail -1
+import complete: 2847 inserted, 0 skipped (already present), 649 blocked by title-similarity (INFRA-1434; see ambient.jsonl kind=gap_import_similarity_block).
+# exits 0 — no error signal; 649/3496 = 18.6% of YAML registry invisible
+
+# Sample block:
+# kind=gap_import_similarity_block proposed_id=INFRA-3347 top_match_id=INFRA-3346
+# top_match_title="MISSION-EFFECTIVE: pillar starved — only 0 picked..."
+
+# 143 open pillar-starvation gaps in YAML:
+python3 -c "
+import os, yaml
+count = sum(1 for f in os.listdir('docs/gaps') if f.endswith('.yaml')
+  and 'pillar' in str(yaml.safe_load(open(f'docs/gaps/{f}').read()).get('title','')).lower()
+  and yaml.safe_load(open(f'docs/gaps/{f}').read()).get('status') == 'open')
+print(count)
+"
+143
+```
+
+The title-similarity gate was designed to prevent duplicate filings. It is silently destroying 649 gap records on every cold-node bootstrap. ZERO-WASTE-031 (bulk-close the zombie gaps) addresses the root; this finding documents the blast radius until that lands.
+
+- evidence 1: `chump gap import` reports 649 blocked by title-similarity — confirmed with fresh chump 0.2.0 build (2026-08-17)
+- evidence 2: Sample block event shows INFRA-3346 vs INFRA-3347 — identical `MISSION-EFFECTIVE: pillar starved` titles
+- evidence 3: 143 open pillar-starvation gaps in YAML scan; most blocked variants are INFRA-33xx range; import silence (exit 0) gives no signal to a worker that 18.6% of its pickable work is invisible
+
+*This finding is wrong if: the 649 blocked gaps are all duplicates of the 2847 imported ones, and the import block is correctly deduplicating rather than silently losing unique work. Verify: `chump gap import --verbose 2>&1 | grep "blocked" | head -5` — if the blocked IDs all have a LIVING equivalent already imported, the loss is zero. If any blocked ID is the CANONICAL one and its blocker is a zombie, the loss is real.*
+
+---
+
+### The Opportunity Cost
+
+**[P1/High] O1 — MISSION ① = NO for 15th consecutive cycle; MISSION-028 (picker sprawl, P0 in_progress) has 0 implementation commits in 73+ days; MISSION-019 through -024 (BEAST-MODE prerequisites) all have 0 implementation commits; 18 real-work commits zero-advanced the mission**
+
+We are failing to turn a 50-commit-per-week production rate into any BEAST-MODE progress. This cycle shipped: flake detection, cross-platform bash lint, pre-push actionlint gate, disk-inventory daemon, queue-tender productization, NATS mesh wiring, cross-machine lease visibility, dead bypass env var culling. Zero of those advanced MISSION-010. The scoreboard has read NO for 15 consecutive issues.
+
+MISSION-028 is the root cause: the fleet workers use `_pick_and_claim_gap.py` as their actual picker (worker.sh line 492), which was never made mission-first. MISSION-026/#3055 fixed `_pick_gap.py` (the wrong picker). The fix never reached the workers. The gap has been `in_progress` since 2026-06-05 with no implementation commits.
+
+```bash
+# MISSION-028: in_progress P0, 73+ days, 0 impl commits:
+git log origin/main --all --grep="MISSION-028\|picker.*sprawl\|_pick_and_claim" --oneline | grep -v cold-water
+(empty)
+
+# All BEAST-MODE prerequisite gaps: 0 commits each:
+for gid in MISSION-019 MISSION-021 MISSION-022 MISSION-023 MISSION-024; do
+  echo "$gid: $(git log origin/main --grep=$gid --oneline | grep -v cold-water | wc -l) commits"
+done
+MISSION-019: 0 commits
+MISSION-021: 0 commits
+MISSION-022: 0 commits
+MISSION-023: 0 commits
+MISSION-024: 0 commits
+
+# MISSION ① = NO — 15th cycle:
+grep "today:" docs/MISSION.md
+- **① THE BINARY (weekly):** today: **NO**.
+
+# This cycle's commits contain no MISSION or BEAST-MODE advancement:
+git log origin/main --since="2026-08-10" --format='%s' | grep -iE "BEAST|MISSION-01[0-9]"
+(empty)
+```
+
+- evidence 1: `grep "today:" docs/MISSION.md` → "today: **NO**" — 15th consecutive cycle
+- evidence 2: `git log origin/main --all --grep="MISSION-028" --oneline | grep -v cold-water` → empty (P0 in_progress gap, 73+ days, 0 impl commits)
+- evidence 3: MISSION-019 through MISSION-024 all 0 commits — the fleet literally cannot execute BEAST-MODE work because the prerequisite capabilities (external repo claim/push/PR) are unimplemented
+
+*This finding is wrong if: `scripts/dev/mission-scoreboard.sh` on the operator's local machine returns YES for ① — a zero-human-touch BEAST-MODE merge happened and is not reflected in docs/MISSION.md.*
+
+---
+
+### The Complexity Trap
+
+**[P1/Medium] C1 — 64% of all main-branch commits this cycle are automated coherence syncs (32 of 50); no ceiling or alert exists on sync-to-work ratio; wip/ branches frozen at 484 for 2 consecutive cycles with no deletion mechanism**
+
+We are failing to distinguish infrastructure overhead from productive work. This cycle: 32 coherence syncs, 18 real work commits. Each sync is correct — it updates state.sql and closes merged PRs — but the ratio (64%) crowds real work off the commit timeline, making it difficult to identify genuine ship rate. There is no metric tracking the ratio, no alert threshold, and no planned review. In the same cycle, `wip/` branches froze at 484 for the first time after 5 consecutive increases — but only because no new WIP was stashed, not because any existing branches were cleaned. The stale-branch-reaper explicitly skips no-PR branches at line 10 of its source, and no separate cleanup mechanism exists.
+
+```bash
+# Coherence sync ratio:
+total=$(git log origin/main --since="2026-08-10" --oneline | wc -l)
+syncs=$(git log origin/main --since="2026-08-10" --oneline | grep "coherence sync" | wc -l)
+echo "Syncs: $syncs / Total: $total = $((syncs * 100 / total))%"
+Syncs: 32 / Total: 50 = 64%
+
+# wip/ branch count (frozen at 484 for 2 cycles):
+# Issue #24: 484 | Issue #25: 484
+git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l
+484
+
+# stale-branch-reaper safety rule (wip/ branches with no PR are NEVER deleted):
+grep -n "branches without any PR are skipped" scripts/ops/stale-branch-reaper.sh
+10: # branches that have an associated PR — branches without any PR are skipped
+
+# No metric for sync overhead:
+grep -r "coherence.*sync.*ratio\|sync.*overhead\|sync.*ceiling" docs/ scripts/ 2>/dev/null
+(empty)
+```
+
+- evidence 1: `git log origin/main --since="2026-08-10" --oneline | grep -c "coherence sync"` → 32 (of 50 total commits)
+- evidence 2: `git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l` → 484 (unchanged from Issue #24; 6th consecutive cycle with 324→390→424→453→484→484 history)
+- evidence 3: `grep "branches without any PR are skipped" scripts/ops/stale-branch-reaper.sh` → line 10 — explicit safety rule; no alternative deletion mechanism in any script or launchd plist
+
+*This finding is wrong if: (a) sync commits are intentionally excluded from ship-rate calculations and there is a separate metric for real-work throughput, and (b) wip/ branches are being cleaned by a mechanism not visible in the remote branches list (e.g. local-only deletion without remote push).*
+
+---
+
+### The Reality Check
+
+**[P2/High] R1 — All 4 proposed follow-up gaps from Issue #24 remain unfiled for a 3rd consecutive cycle; this cycle's cold-water agent successfully filed 6 gaps directly via `chump gap reserve` — proving the filing mechanism works in sandbox post-import-fix; the barrier is now confirmed as operator workflow, not technical**
+
+We are failing to close the audit-to-action loop. Issue #24 proposed ZERO-WASTE-55, CREDIBLE-290, ZERO-WASTE-56, and INFRA-3510. None appear in docs/gaps/ or state.sql after 3 weeks. This cycle, the cold-water agent attempted `chump gap reserve` post-import and succeeded: 6 gaps filed (ZERO-WASTE-030, ZERO-WASTE-031, INFRA-3520, MISSION-066, CREDIBLE-167, RESEARCH-033), all verified in both YAML and state.sql. The technical barrier from Issues #22–24 (import crash → empty state.db → colliding IDs) is gone. The unfiled #24 proposals are now a workflow failure, not a tooling failure.
+
+```bash
+# #24 proposed gaps still missing:
+for id in ZERO-WASTE-55 CREDIBLE-290 ZERO-WASTE-56 INFRA-3510; do
+  ls docs/gaps/${id}.yaml 2>/dev/null && echo "$id: FILED" || echo "$id: NOT FILED"
+done
+ZERO-WASTE-55: NOT FILED
+CREDIBLE-290: NOT FILED
+ZERO-WASTE-56: NOT FILED
+INFRA-3510: NOT FILED
+
+# This cycle: gap-reserve works in sandbox post-fix:
+chump gap import 2>&1 | tail -1
+import complete: 2847 inserted, 0 skipped (already present), 649 blocked by title-similarity
+
+# All 6 filed gaps verified:
+for ID in ZERO-WASTE-030 INFRA-3520 ZERO-WASTE-031 MISSION-066 CREDIBLE-167 RESEARCH-033; do
+  in_yaml=$(grep -c "^- id: $ID" docs/gaps/${ID}.yaml 2>/dev/null)
+  in_sql=$(grep -c "^- id: $ID$" .chump/state.sql 2>/dev/null)
+  echo "$ID: yaml=$in_yaml db=$in_sql"
+done
+ZERO-WASTE-030: yaml=1 db=1
+INFRA-3520: yaml=1 db=1
+ZERO-WASTE-031: yaml=1 db=1
+MISSION-066: yaml=1 db=1
+CREDIBLE-167: yaml=1 db=1
+RESEARCH-033: yaml=1 db=1
+```
+
+- evidence 1: `ls docs/gaps/ZERO-WASTE-55.yaml docs/gaps/CREDIBLE-290.yaml docs/gaps/ZERO-WASTE-56.yaml docs/gaps/INFRA-3510.yaml` → all NOT FOUND (3rd consecutive cycle)
+- evidence 2: `chump gap reserve` succeeds in sandbox this cycle — proof that tooling barrier is gone since INFRA-3429 fix
+- evidence 3: All 6 filed gaps pass `yaml=1 db=1` verification — filing pipeline is functional
+
+*This finding is wrong if: the operator filed the 4 #24 proposed gaps under different IDs (not ZERO-WASTE-55, CREDIBLE-290, ZERO-WASTE-56, INFRA-3510) and they appear in state.sql under canonical IDs. Verify: `chump gap list | grep -i "wip.*branch.*accum\|import.*crash\|cold.*water.*unfiled\|state.sql.*cadence"` on local machine.*
+
+---
+
+### The Innovation Lag
+
+**[P2/Medium] I1 — "Handoff Debt" (arxiv.org/pdf/2606.02875, June 2026) quantifies the rediscovery cost when coding agents take over interrupted tasks — directly models Chump's wip/ branch rescue pattern and RESILIENT-029 WIP stash; no internal gap cross-references this finding**
+
+We are failing to apply external measurement of our own failure modes. "Handoff Debt: The Rediscovery Cost When Coding Agents Take Over Interrupted Tasks" (arxiv 2606.02875) benchmarks the additional tokens, time, and error rate incurred when one coding agent must resume a task abandoned by another. The paper quantifies what Chump's RESILIENT-029 WIP stash assumes away: that pushing a wip/ branch preserves enough context for the next agent to resume. The 484 stale wip/ branches in this repo represent 484 potential handoff-debt events. No Chump gap references this paper or applies its measurement to the WIP stash recovery rate. RESEARCH-033 filed this cycle tracks the gap.
+
+```bash
+# No internal citation of Handoff Debt or rediscovery cost:
+grep -r "handoff.*debt\|rediscovery.*cost\|2606.02875\|agent.*takeover" docs/ 2>/dev/null | grep -v RED_LETTER
+(empty)
+
+# 484 wip/ branches = 484 potential handoff events:
+git ls-remote --heads origin | grep 'refs/heads/wip/' | wc -l
+484
+
+# RESILIENT-029 WIP stash design assumes zero rediscovery cost:
+grep -n "WIP_STASH\|wip_branch\|preservation" scripts/ops/stale-worktree-reaper.sh | head -3
+706: wip_branch="wip/$(echo "$gap_id" | tr '[:upper:]' '[:lower:]')-${ts}"
+742: if git -C "$wt" push "$REMOTE" "$wip_branch" 2>/dev/null; then
+749: info "  pushed wip branch: $wip_branch"
+```
+
+External source: ["Handoff Debt: The Rediscovery Cost When Coding Agents Take Over Interrupted Tasks"](https://arxiv.org/pdf/2606.02875) (June 2026). Secondary: ["Effective Strategies for Asynchronous Software Engineering Agents"](https://arxiv.org/pdf/2603.21489) (March 2026) — covers coordination overhead in multi-agent async workflows, directly applicable to Chump's backlog-sync coherence overhead.
+
+*This finding is wrong if: a Chump gap or doc already references handoff cost measurement and applies it to the WIP stash recovery success rate. Verify: `grep -r "handoff.*debt\|rediscovery\|2606.02875" docs/ scripts/` on local machine.*
+
+---
+
+**THE ONE BIG THING:** [P0] MISSION-028 — We are failing at the same thing we have failed at for 15 consecutive weeks: the fleet's actual worker picker (`_pick_and_claim_gap.py`) was never fixed to be mission-first. PR #3055/MISSION-026 fixed the wrong file (`_pick_gap.py`). MISSION-028 has been `in_progress` since 2026-06-05 — 73 days — with zero implementation commits across all time (`git log origin/main --all --grep="MISSION-028" --oneline | grep -v cold-water` → empty). MISSION-019 through MISSION-024 (the BEAST-MODE prerequisite capabilities: claim/push/PR against an external repo) all carry 0 implementation commits. The fleet cannot claim BEAST-MODE work because the picker never routes it there, and the fleet cannot push BEAST-MODE work because the external-repo PR capability is unbuilt. Every week's 50 commits optimize the infrastructure that runs around a mission-direction system that doesn't work. Flagged in Issues #20 through #25: zero implementation progress across all six cycles.
+
+---
+
+### Follow-up Gaps Filed
+
+- **ZERO-WASTE-030**: wip/ remote branches accumulate unbounded (484+, 6th cycle); stale-branch-reaper skips no-PR branches by design (P2/s)
+- **ZERO-WASTE-031**: bulk-close 143 open pillar-starvation zombie gaps + address 649 import-blocked near-duplicates (P1/s)
+- **INFRA-3520**: cold-water proposed gaps from Issues #22–24 never reach canonical registry (3rd cycle unfiled); no automated filing mechanism (P2/s)
+- **MISSION-066**: BEAST-MODE prerequisites MISSION-019 through MISSION-024 all 0 implementation commits; fleet cannot execute BEAST-MODE work (P1/m)
+- **CREDIBLE-167**: 64% of commits this cycle are automated coherence syncs; no metric for sync overhead ceiling or alert threshold (P2/xs)
+- **RESEARCH-033**: Handoff Debt paper (arxiv 2606.02875) quantifies rediscovery cost for interrupted agent tasks — directly models wip/ branch rescue and RESILIENT-029 WIP stash (P2/s)
+
+All 6 verified `yaml=1 db=1` in both docs/gaps/*.yaml and .chump/state.sql.
+
+---
+
 ## Issue #24 — 2026-08-10
 
 > Audit window: commits since 2026-08-03 (Issue #23). **50 non-cold-water commits** to `origin/main` (PRs #3544–#3600). Sandbox: fresh remote clone, chump binary build **succeeded** (12m 19s cold build). `chump gap import` **CRASHED** at gap 2751 — INFRA-3429.yaml still has 39 duplicate `evidence:` fields (3 of 4 malformed files fixed from Issue #23; one missed). `chump gap list` returns only 2 entries (test artifacts from sandbox gap-reserve; not real gaps). state.sql committed only **twice in all of git history** (2026-07-30 and 2026-08-09); 49 of 50 commits this cycle have no state.sql update; 30 gap-YAML files not reflected in state.sql. Evidence from fresh chump binary, git log, state.sql analysis, and MCP GitHub tools. Open PRs: **4** (PRs #3591, #3596, #3598, #3601). `wip/` branches: **484** (up from 453 in #23, +31 — **5th consecutive increase**). Bypass rates this cycle: Bot-Merge-Bypass 0/50 (0%, down from 12% — IMPROVED), Test-Gate-Bypass 7/50 (14%, down from 20%), Preflight-Skip-Reason 0/50 (0%), Verify-Bypass 0/50. **All 5 proposed follow-up gaps from Issue #23 remain unfiled** (2nd consecutive cycle). Pillar-starvation zombie gaps: **137** (up from 136 in #23 — still growing). All 5 P0 gaps still have 0 implementation commits. MISSION scoreboard ① = **NO** for **14th consecutive cycle**.

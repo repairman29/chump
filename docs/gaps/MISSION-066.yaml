@@ -1,0 +1,12 @@
+- id: MISSION-066
+  domain: MISSION
+  title: "MISSION: BEAST-MODE prerequisites MISSION-019 through MISSION-024 all have 0 implementation commits — fleet cannot claim external BEAST-MODE work; MISSION ① = NO for 15th consecutive cycle"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - Each of MISSION-019 through MISSION-024 has at least one implementation commit landed; the BEAST-MODE external-repo prerequisite chain is claimable end-to-end with no prereq blocking on 0-commit status.
+  outcome_id: CHUMPOS
+  evidence: |
+    Mission scoreboard 2026-07-27: THE BINARY shows YES (2 BEAST merges/7d) but flagged 'verify zero-touch + repeatable until instrumented' — the core mission proof is unverified/uninstrumented.
+

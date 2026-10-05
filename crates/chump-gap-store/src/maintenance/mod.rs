@@ -39,6 +39,7 @@
 
 pub mod architect;
 pub mod doctor;
+pub mod enricher;
 pub mod gardener;
 pub mod integrity;
 

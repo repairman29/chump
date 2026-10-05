@@ -1,0 +1,14 @@
+- id: INFRA-3493
+  domain: INFRA
+  title: "RESILIENT: [COTG-2.5] no-untracked-running-infra guard (reproducible fleet)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"[COTG-2.5] no-untracked-running-infra guard (reproducible fleet)\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-29T03:21:23Z] DISCOVERY NOT-STARTED (small) -> BUILD. add a 5th src/inventory.rs detector: launchctl list vs git ls-files (detect_stale_plists at inventory.rs:1395 is the reverse check).
+  outcome_id: COTG
+

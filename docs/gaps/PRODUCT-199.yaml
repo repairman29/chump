@@ -1,0 +1,22 @@
+- id: PRODUCT-199
+  domain: PRODUCT
+  title: "[olive][external_repo:repairman29/olive] Complete workflow-guard test: assert scan STILL runs on non-Dependabot PRs (no coverage lost)"
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"repairman29/olive] Complete workflow-guard test: assert scan STILL runs on non-Dependabot PRs (no coverage lost)\" is implemented in the relevant PRODUCT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    PR #8 added test/unit/workflow-guards.test.ts asserting the scan job SKIPS on Dependabot PRs (if: github.actor != 'dependabot[bot]'). The guard's OTHER half is unproven: scan must STILL run on human/non-Dependabot PRs (the 'no security coverage lost' claim). 
+    
+    FIX: extend test/unit/workflow-guards.test.ts with a second test case asserting the scan job's 'if:' condition does NOT exclude normal actors — i.e., the guard is a dependabot-only skip, not a blanket disable. Parse the workflow yaml, confirm the scan job exists and its 'if:' is exactly the dependabot-actor exclusion (not 'false' or a broader gate).
+    
+    AC:
+    1. A new test case in test/unit/workflow-guards.test.ts asserts scan runs for non-dependabot actors (the if: is dependabot-specific, not a blanket skip).
+    2. Existing dependabot-skip test still passes.
+    3. vitest green; only the test file changes; no workflow/source changes.
+  closed_pr: 10
+  outcome_id: CHUMPOS
+

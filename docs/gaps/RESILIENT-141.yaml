@@ -2,7 +2,7 @@
   domain: RESILIENT
   title: bot-merge RECOVERY_MODE push blocked by its own INFRA-719 guard — fast-path doesn't signal bot-merge-initiated
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Observed 2026-06-08 shipping INFRA-2826 (audit-unjam keystone). 'CHUMP_BOT_MERGE_RECOVERY_MODE=1 bash scripts/coord/bot-merge.sh --gap INFRA-2826 --auto-merge' does fast-path push+PR+auto-merge but its push does NOT set the bot-merge-initiated signal (CHUMP_BOT_MERGE_IN_PROGRESS=1) that pre-push Guard 4 (INFRA-719) requires. The pre-push hook BLOCKED bot-merge's OWN push as a manual direct push ('BLOCKED (INFRA-719): direct push of gap branch ... to a new PR', hook aborted line 1047, exit 1). So the documented recovery path for a wedged bot-merge is itself broken — cannot ship a new gap branch without a forbidden bypass. Part of MISSION-044; reinforces RESILIENT-140.

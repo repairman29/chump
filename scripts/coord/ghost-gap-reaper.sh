@@ -181,7 +181,17 @@ for pr_num in bounced:
     return 0
 }
 
-# ── Phase 2 (INFRA-1909): open-but-already-merged reconciliation ─────────────
+# ── Phase 2 (INFRA-1909, RESILIENT-070): open-but-already-merged reconciliation
+#
+#   RESILIENT-070: a manual run produced zero output while 21 ghost gaps sat
+#   open. Root cause — those 21 gaps already had `closed_pr` populated in
+#   state.db (a prior `chump gap ship` set the field but the status write
+#   didn't stick), so the correct fix needed no GitHub lookup at all. The old
+#   loop only ever tried the gh-search path, which is silent-failure-prone
+#   (offline, rate-limited, or title/branch no longer contains the gap ID) and
+#   never consulted the `closed_pr` field it already had in hand. Now: trust
+#   a numeric `closed_pr` already on the gap first; only fall back to the
+#   cache/gh-search lookup when that field is empty.
 run_phase2() {
     if [[ "${CHUMP_GHOST_GAP_REAPER:-1}" == "0" ]]; then
         echo "[ghost-gap-reaper] INFRA-1909: phase 2 disabled via CHUMP_GHOST_GAP_REAPER=0"
@@ -198,38 +208,53 @@ run_phase2() {
 
     [[ "$_open_json" == "[]" || -z "$_open_json" ]] && return 0
 
-    local _open_ids
-    _open_ids=$(printf '%s' "$_open_json" | python3 -c "
-import json, sys
+    # RESILIENT-070: emit "<id>\t<known_pr_or_empty>" — known_pr is the gap's
+    # own closed_pr field when it's already a plain integer, else empty (fall
+    # back to gh search).
+    local _open_pairs
+    _open_pairs=$(printf '%s' "$_open_json" | python3 -c "
+import json, sys, re
 for g in json.load(sys.stdin):
     gid = g.get('id')
-    if gid:
-        print(gid)
+    if not gid:
+        continue
+    pr = g.get('closed_pr')
+    pr_str = str(pr).strip() if pr not in (None, '') else ''
+    if pr_str and not re.fullmatch(r'\d+', pr_str):
+        pr_str = ''
+    print(f'{gid}\t{pr_str}')
 " 2>/dev/null || true)
 
-    [[ -z "$_open_ids" ]] && return 0
+    [[ -z "$_open_pairs" ]] && return 0
 
     local _reaped=0
-    local _gid _pr_json _pr_num
-    while IFS= read -r _gid; do
+    local _gid _known_pr _pr_json _pr_num
+    while IFS=$'\t' read -r _gid _known_pr; do
         [[ -z "$_gid" ]] && continue
 
-        # INFRA-1081: Cache-first lookup for merged PRs containing the gap_id
-        if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$(_cache_db_path)" ]]; then
-            _pr_json="$(sqlite3 "$(_cache_db_path)" "SELECT json_group_array(json(raw_payload_json)) FROM pr_state WHERE merged_at IS NOT NULL AND (title LIKE '%$_gid%' OR head_ref LIKE '%$_gid%') LIMIT 1")"
+        if [[ -n "$_known_pr" ]]; then
+            # RESILIENT-070: closed_pr already recorded — skip the lookup entirely.
+            _pr_num="$_known_pr"
+            echo "[ghost-gap-reaper] RESILIENT-070: reconciling $_gid — closed_pr=#$_pr_num already recorded, no PR lookup needed"
         else
-            _pr_json=$(gh pr list --search "$_gid" --state merged --json number,mergedAt --limit 1 2>/dev/null || echo "[]")
-        fi
-        [[ -z "$_pr_json" || "$_pr_json" == "[]" ]] && continue
+            # INFRA-1081: Cache-first lookup for merged PRs containing the gap_id
+            if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$(_cache_db_path)" ]]; then
+                _pr_json="$(sqlite3 "$(_cache_db_path)" "SELECT json_group_array(json(raw_payload_json)) FROM pr_state WHERE merged_at IS NOT NULL AND (title LIKE '%$_gid%' OR head_ref LIKE '%$_gid%') LIMIT 1")"
+            else
+                _pr_json=$(gh pr list --search "$_gid" --state merged --json number,mergedAt --limit 1 2>/dev/null || echo "[]")
+            fi
+            [[ -z "$_pr_json" || "$_pr_json" == "[]" ]] && continue
 
-        _pr_num=$(printf '%s' "$_pr_json" | python3 -c "
+            _pr_num=$(printf '%s' "$_pr_json" | python3 -c "
 import json, sys
 d = json.load(sys.stdin)
 print(d[0]['number'] if d else '')
 " 2>/dev/null || true)
-        [[ -z "$_pr_num" ]] && continue
+            [[ -z "$_pr_num" ]] && continue
 
-        echo "[ghost-gap-reaper] INFRA-1909: reconciling $_gid — merged PR #$_pr_num found while gap still open"
+            echo "[ghost-gap-reaper] INFRA-1909: reconciling $_gid — merged PR #$_pr_num found while gap still open"
+        fi
+
         CHUMP_REPO="$REPO_ROOT" CHUMP_BINARY_STALENESS_CHECK=0 \
             CHUMP_GAP_SHIP_SKIP_STALE_CHECK=1 CHUMP_BYPASS_PROOF_OF_MERGE=1 \
             "$_chump" gap ship "$_gid" --closed-pr "$_pr_num" --update-yaml 2>/dev/null || {
@@ -238,7 +263,7 @@ print(d[0]['number'] if d else '')
         }
         _emit_ambient ghost_gap_reaped "gap=$_gid" "pr=$_pr_num" "reaped_via=ghost-gap-reaper"
         (( _reaped++ )) || true
-    done <<< "$_open_ids"
+    done <<< "$_open_pairs"
 
     (( _reaped > 0 )) && echo "[ghost-gap-reaper] INFRA-1909: reaped $_reaped ghost-open gap(s) to status=done"
     return 0

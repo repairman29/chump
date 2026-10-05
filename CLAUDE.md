@@ -10,6 +10,13 @@
 
 ## Mission
 
+> **RIBBON-ONLY FOCUS (operator decision, Jeff 2026-08-22):** the job is the
+> factory — all other products are **parked** until we cut the ribbon (a
+> clean-install, hands-off factory that lands a real outcome in a person's hands
+> on owned iron). Cutting the ribbon is the only thing that matters. This is the
+> **current singular focus of MISSION-010**, not a new mission — see
+> [`docs/MISSION.md` → Ribbon-only focus](./docs/MISSION.md#ribbon-only-focus-operator-decision-jeff-2026-08-22).
+
 > **The load-bearing mission of record lives in [`docs/MISSION.md`](./docs/MISSION.md)**
 > (MISSION-014). Canonical mission gap: **MISSION-010** (self-coordinating fleet, proof on
 > `repairman29/BEAST-MODE`). The Scoreboard in that doc is the one honest measure —
@@ -107,6 +114,7 @@ git fetch origin main --quiet && git status
 ls .chump-locks/*.json 2>/dev/null && cat .chump-locks/*.json || echo "(no active leases)"
 bash scripts/setup/chump-fleet-bootstrap.sh --check  # META-066, must exit 0
 bash scripts/coord/auth-status.sh                    # RESILIENT-086: VALIDITY probe — "can the fleet transact?" Catches the trap where a depleted/stale credential outranks a valid one (exit 2) and prints the exact fix. Don't re-diagnose auth by hand — read this line.
+chump farmer status                                  # RESILIENT-069: lights-on check — sentinel absent + zero exit-78 supervisors + oauth fresh + farmer heartbeat <120s. RED (exit 1) means no NEW claims (chump claim / chump gap reserve refuse); the Farmer's own recovery routes around it.
 tail -30 .chump-locks/ambient.jsonl 2>/dev/null || echo "(no ambient stream yet)"
 scripts/coord/chump-inbox.sh read --no-advance   # INFRA-1115: peer DMs (per OPUS_MESSAGE_PROTOCOL.md)
 chump-coord watch &                              # FLEET-006 (skip if NATS unavailable)
@@ -159,6 +167,16 @@ install missing launchd plists + git hooks. Without this, the productization
 layer (META-063 redundancy gate, META-064 Rust-first gate, META-065 curator,
 INFRA-1257 hourly planner) is dormant code-on-disk, not active discipline.
 
+**Hourly auto-bootstrap (INFRA-1808).** The first manual `chump-fleet-bootstrap.sh`
+install run self-installs an `com.chump.bootstrap-auto-install` LaunchAgent
+that re-runs `chump-fleet-bootstrap.sh --install` every hour (installers are
+idempotent, so this is safe) and emits `kind=fleet_bootstrap_auto_install`
+per cycle. This closes the "shipped installer script, nobody ran it" gap
+that let pr-auto-rebase / claude-reaper / bot-merge-watchdog sit uninstalled
+for days after landing. **It does not remove the need for the manual run
+above on a fresh machine** — something has to bootstrap the bootstrapper
+before the hourly job exists to take over.
+
 `ambient.jsonl` is your peripheral vision — watch for `lease_overlap`, `silent_agent`,
 `edit_burst`, `queue_config_drift`, `pr_stuck`, `subagent_budget_exceeded`,
 `lessons_injection_active`. Full event-kind guide: [CLAUDE_GOTCHAS.md](./docs/process/CLAUDE_GOTCHAS.md).
@@ -195,7 +213,7 @@ chump bootstrap "A CLI tool that syncs files across machines" \
 ## Claim before writing any code
 
 ```bash
-chump claim <GAP-ID> [--paths CSV]   # atomic: fetch + verify + doctor + worktree + lease
+chump claim <GAP-ID> --role <role> [--scope <module-or-concern>] [--paths CSV]   # atomic: fetch + verify + doctor + worktree + lease; --role is mandatory (INFRA-5486)
 chump gap reserve --domain INFRA --title "short title"    # new gap
 ```
 
@@ -270,7 +288,13 @@ Both `ANTHROPIC_API_KEY` (API-key) and `CLAUDE_CODE_OAUTH_TOKEN` (subscription O
 | `api-key` | `CHUMP_AUTH_MODE=api-key` | Force API key; error if absent |
 | `oauth` | `CHUMP_AUTH_MODE=oauth` | Force subscription token; error if absent |
 
-Workers re-evaluate credentials before each `claude -p` spawn. OAUTH tokens are refreshed to `~/.chump/oauth-token.json` every 5 min; workers read from there. On a 401, the fleet falls back to the other mode (if available) and emits `kind=fleet_auth_fallback` to `ambient.jsonl`.
+Workers re-evaluate credentials before each `claude -p` spawn and read `~/.chump/oauth-token.json`. The "refreshed every 5 min" promise is **not implicit** — it only holds while the standalone refresher daemon is installed and alive:
+
+- **Substrate:** `scripts/coord/oauth-token-refresh.sh` (INFRA-2124, hardened INFRA-1865) — extracts the token from the macOS Keychain entry `Claude Code-credentials`, hash-compares against the current file (rewrites + emits `kind=oauth_token_refreshed` only when the token actually changed — no log spam), and validates the extracted token against a real `claude -p` call before it's allowed to overwrite a still-good file (failure → `kind=oauth_token_invalid`, old file kept).
+- **Cadence:** `launchd/com.chump.oauth-refresh.plist`, `StartInterval=300` (5 min). Install (idempotent): `bash scripts/setup/install-oauth-refresh-launchd.sh`. Verify it's actually loaded: `launchctl list | grep com.chump.oauth-refresh` — an installed-but-unloaded plist is exactly how the token went 16d stale (INFRA-1865).
+- **Platform:** macOS-only (Keychain-backed). Linux hosts get a loud `kind=oauth_refresh_unsupported_platform` error rather than a silent no-op — a Linux-native keystore/env-fallback path is still an open operator decision.
+- **Smoke test:** `bash scripts/ci/test-oauth-refresher.sh`.
+- **Staleness detector:** `scripts/coord/infra-watcher-loop.sh` emits `kind=oauth_token_stale_despite_daemon` when the file is stale despite the plist showing loaded — read that event before re-diagnosing this by hand.
 
 Validate: `chump fleet doctor` — exits non-zero if no valid auth path found.
 
@@ -659,7 +683,9 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 ## On-demand docs (read only when you hit the failure surface)
 
 - **Orientation — read once to understand what this repo *actually is*** (cross-cutting capability synthesis, the credibility discipline of claimed-vs-verified, the negative space bucketed scans miss, and the keystone that unlocks productization): [`docs/CODEBASE_REALITY_MAP.md`](./docs/CODEBASE_REALITY_MAP.md) (DOC-068)
+- PWA design-system style guide — token reference (dark/light/high-contrast), full `chump-*` component inventory, composition rules (header/footer/view-chrome/overlay), mobile breakpoints, a11y minimums: [`docs/design/PWA_STYLE_GUIDE.md`](./docs/design/PWA_STYLE_GUIDE.md) (INFRA-1593). Read before touching `web/v2/**`.
 - Ship-assist playbook — wedge taxonomy (7 classes), tooling inventory, decision flow for picking the right rescue tool, top-3 highest-leverage missing gaps, reliability lessons: [`docs/process/SHIP_ASSIST_PLAYBOOK.md`](./docs/process/SHIP_ASSIST_PLAYBOOK.md) (INFRA-2256)
+- bot-merge doc-only fastpath observability — events emitted on success (no failure/timeout class exists — detection is a pure local `git diff` classification), cost tracking, failure-class taxonomy, smoke test command: [`docs/process/BOT_MERGE_DOC_ONLY_OBSERVABILITY.md`](./docs/process/BOT_MERGE_DOC_ONLY_OBSERVABILITY.md) (INFRA-920)
 - Subagents, fleet launcher, disk hygiene, operational gotchas (binary wedge, rebase footgun, syspolicyd, etc.): [`docs/process/CLAUDE_GOTCHAS.md`](./docs/process/CLAUDE_GOTCHAS.md)
 - Subagent dispatch: model defaults, no-clarifying-questions directive, shipping epilogue, WIP-rescue: [`docs/process/SUBAGENT_DISPATCH.md`](./docs/process/SUBAGENT_DISPATCH.md)
 - Script taxonomy, canonical tool per task, entry points per directory: [`scripts/README.md`](./scripts/README.md)
@@ -671,3 +697,4 @@ CI gate: `scripts/ci/test-gap-audit-priorities.sh`
 - `chump scratch` — shared ephemeral state for multi-agent coordination (session-scoped `.chump-locks/scratch` KV store): [`scripts/coord/scratch.sh`](./scripts/coord/scratch.sh) (`chump scratch get|set|del <key>`)
 - `chump claim --discard-wip` — safe-destroy flag to abandon a WIP claim and release the lease for others to pick: [`docs/process/SHIP_ASSIST_PLAYBOOK.md`](./docs/process/SHIP_ASSIST_PLAYBOOK.md) (INFRA-2235; CLAIMING_DISCIPLINE.md never shipped)
 - Voice-lint policy and curator role docs — curator role docs (`.claude/agents/ci-audit.md`, `.claude/agents/handoff.md`, `.claude/agents/target.md`) define lane scope + discipline for CI, handoff, and demo-target curators: [`.claude/agents/`](./.claude/agents/)
+- The Harvester (fleet cartographer) — catalogs load-bearing primitives across the repairman29 fleet so Chump never re-implements what already exists. Three equivalent surfaces: `chump harvest <scan|check|brief|deep-scan|list-clusters>` (INFRA-1823, harness-neutral CLI — the productized capability, wraps `scripts/arsenal/harvest.sh`), the `harvester` skill (`/harvester`), and the `.claude/agents/harvester.md` curator agent. `chump gap decompose` calls `chump harvest check` internally as a pre-flight and cites any prior-art overlap in the sub-gap's notes. Full surface + exit codes: [`docs/arsenal/HARVESTER.md`](./docs/arsenal/HARVESTER.md)

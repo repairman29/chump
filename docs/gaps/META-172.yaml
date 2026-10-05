@@ -2,7 +2,7 @@
   domain: META
   title: "RESILIENT: chump playbook freshness contract — CI gate + section ownership + weekly drift check (load-bearing reference doc must not silently rot)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     Filed 2026-05-30 after operator directive: "we need a way to keep this fresh. This document MUST be updated very frequently." docs/process/CHUMP_PLAYBOOK.md is the integrative how-Chump-should-work reference doc — load-bearing onboarding artifact. A "how it works" doc that silently drifts becomes worse than no doc: actively misleads new operators + sub-agents who read it for ground truth. Need: (a) CI gate that catches structural drift on every push, (b) weekly remote-agent drift-detector that compares prose claims against current reality, (c) section ownership so each section has a clear curator-lane owner accountable for accuracy. Treat this doc like state.db — canonical, with a freshness contract.

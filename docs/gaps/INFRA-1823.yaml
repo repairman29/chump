@@ -2,7 +2,7 @@
   domain: INFRA
   title: "MISSION: productize Harvester into Chump engine (chump harvest CLI subcommand, decompose-hook integration, scheduled rebuild, ambient observability)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
     - Add chump harvest CLI subcommand with at least scan, check GAP-ID, brief SOURCE TARGET, deep-scan CLUSTER actions — usable from any harness (Claude Code, opencode, codex, manual)

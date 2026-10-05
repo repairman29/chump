@@ -2,12 +2,9 @@
   domain: META
   title: "META-131 sub: parallelize fast-checks — run 30 test-*.sh in matrix not sequential"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - the ~30 fast-checks test-*.sh run as a CI matrix rather than sequentially; total fast-checks wall-clock drops measurably; all checks still report to the aggregator.
   outcome_id: MISSION-010
 

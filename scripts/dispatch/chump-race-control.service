@@ -1,0 +1,26 @@
+# CREDIBLE-296 — the Race Control merge-mix board organ. Runs
+# scripts/coord/race-control.sh: classifies the last CHUMP_RACE_WINDOW
+# merged PRs into user-value / self-maintenance / reconcile-waste buckets,
+# writes ~/.chump/metrics/race-control.jsonl, and emits kind=race_control_mix
+# (always) + kind=race_control_waste_alarm (when reconcile-waste% exceeds
+# threshold, non-zero exit) to ambient.jsonl so the duty-officer and board
+# see the signal, not just a log line ("nobody watches the tape" — this is
+# the tape).
+#
+# Non-zero exit on alarm is intentional — it marks the unit failed so
+# chump-organ-watchdog.timer's failed-unit sweep and Roll-Call
+# (scripts/ops/organ-manifest.txt) both see the alarm state, not just the
+# ambient event.
+#
+# CHUMP_REPO_ROOT / paths mirror chump-backlog-sync-writer.service (primary
+# node = helsinki, root).
+[Unit]
+Description=Chump Race Control — merge-mix board + waste-over-threshold alarm (CREDIBLE-296)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/coord/race-control.sh'

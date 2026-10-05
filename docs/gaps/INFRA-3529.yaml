@@ -1,0 +1,17 @@
+- id: INFRA-3529
+  domain: INFRA
+  title: fusion search scoring structurally disadvantages doc-only files vs code
+  status: done
+  priority: P2
+  effort: m
+  description: |
+    Fusion mode blends 3 retriever legs (code, keyword, summary). Symbol-based legs (code, keyword) can never match a markdown file, since markdown has zero extracted symbols by design (see INFRA-3531, the markdown-indexing fix). So a doc-only file can only ever score on 1 of 3 legs while a code file can score on all 3 — even a correctly-summarized, highly-relevant doc (verified: olive's docs/ROADMAP.md, accurate summary) loses ranking to marginally-relevant code files for plain document-shaped queries. Found 2026-08-02 verifying INFRA-3531's fix. Needs a scoring change (e.g. leg-count normalization, or a doc-type boost) — not a blindness bug, a ranking bias.
+  acceptance_criteria:
+    - "The change described by \"fusion search scoring structurally disadvantages doc-only files vs code\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  depends_on: [INFRA-3531]
+  notes: |
+    Shipped in almanac repo directly (external-repo work, no chump PR): commits 2b44d50 (headings-as-symbols + keyword heading-discount) + e993b35 (re-baseline). Receipts: new almanac-docs gate suite — fusion 0/8 MRR 0.00 -> 7/8 MRR 0.57 on doc questions; chump code suite UP (+4% fusion +10% sem_file). 12 new tests. Fleet rollout sweep (force-reindex + summarize/embed all 102 repos) launched 2026-08-06 overnight; per-repo coverage flags are the honest signal until it drains.
+  closed_date: '2026-08-06'
+

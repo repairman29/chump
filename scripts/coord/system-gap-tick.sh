@@ -62,6 +62,21 @@ emit_system_gap_tick() {
   printf '{"ts":"%s","kind":"system_gap_tick","task":"%s"%s,"run_id":"%s"}\n' \
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$task" "$interval_field" "$run_id" \
     >> "$amb" 2>/dev/null || true
+
+  # INFRA-2123: piggyback the event-driven Oracle trigger check on every
+  # tick — cheap (single jq scan of ambient.jsonl, exits fast below
+  # threshold) and this function already fires on a regular cadence from
+  # every caller, so it's a natural hook point without a dedicated daemon.
+  # Backgrounded + disowned so a slow/failing trigger check never blocks
+  # the caller's own tick emission.
+  if [[ "${CHUMP_TICK_DISABLE_ORACLE_TRIGGER:-0}" != "1" ]]; then
+    local repo_root script
+    repo_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    script="$repo_root/scripts/ops/oracle-event-trigger.sh"
+    if [[ -x "$script" ]]; then
+      ( bash "$script" >/dev/null 2>&1 & disown ) 2>/dev/null || true
+    fi
+  fi
 }
 
 # Direct CLI invocation: `system-gap-tick.sh emit <task_name>`

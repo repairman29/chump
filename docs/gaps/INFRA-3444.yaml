@@ -1,0 +1,11 @@
+- id: INFRA-3444
+  domain: INFRA
+  title: "CREDIBLE: docs-delta-guard self-test fails on clean main — CHUMP_DOCS_DELTA_CHECK=0 bypass case rejected"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"docs-delta-guard self-test fails on clean main — CHUMP_DOCS_DELTA_CHECK=0 bypass case rejected\" is implemented in the relevant INFRA code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+

@@ -2,7 +2,7 @@
   domain: META
   title: "ZERO-WASTE: semantic-collision-detector daemon — match active INTENT broadcasts by topic+file-paths, fire WARN on duplicate-effort patterns (NATS handles lock collision, not semantic)"
   status: open
-  priority: P1
+  priority: P2
   effort: m
   description: |
     ZERO-WASTE UPSTREAM fix: extend chump gap reserve similarity check (INFRA-1149) to catch semantic collisions at FILING TIME, not via downstream detector daemon.
@@ -33,9 +33,6 @@
     
     NO new daemon, no new event stream. Pure extension to existing INFRA-1149 path.
   acceptance_criteria:
-    - "TODO: what events emitted on success/failure/timeout"
-    - "TODO: how cost tracked and reported to operator"
-    - "TODO: failure-class taxonomy (distinguish transient vs permanent)"
-    - "TODO: smoke test command to verify observability"
+    - Daemon matches active INTENT broadcasts by topic plus overlapping file paths; emits a WARN event on a detected duplicate; verified with two overlapping synthetic intents.
   outcome_id: MISSION-010
 

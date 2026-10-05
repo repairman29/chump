@@ -265,6 +265,57 @@ pub fn delete_skill(name: &str) -> Result<()> {
     Ok(())
 }
 
+/// INFRA-1615: locate the `skills-bundle/` seed-curriculum directory.
+///
+/// Tries `repo_root/skills-bundle` first (the target project may vendor its
+/// own bundle), then falls back to the chump source checkout the binary was
+/// built from (`CARGO_MANIFEST_DIR`), so `chump init` run inside an unrelated
+/// project still bootstraps the operator-curated seed skills.
+pub fn bundle_source_dir(repo_root: &Path) -> Option<PathBuf> {
+    let candidate = repo_root.join("skills-bundle");
+    if candidate.is_dir() {
+        return Some(candidate);
+    }
+    let manifest_candidate = Path::new(env!("CARGO_MANIFEST_DIR")).join("skills-bundle");
+    if manifest_candidate.is_dir() {
+        return Some(manifest_candidate);
+    }
+    None
+}
+
+/// INFRA-1615: copy each `skills-bundle/<name>/SKILL.md` into
+/// `<skills_root>/<name>/SKILL.md`. Idempotent — skips any name that already
+/// exists on disk rather than overwriting it (an operator may have edited
+/// their local copy). Returns the names actually installed.
+pub fn install_bundle(repo_root: &Path) -> Result<Vec<String>> {
+    let Some(bundle_dir) = bundle_source_dir(repo_root) else {
+        return Ok(Vec::new());
+    };
+    let dest_root = skills_root()?;
+    let mut installed = Vec::new();
+    for entry in std::fs::read_dir(&bundle_dir)? {
+        let entry = entry?;
+        if !entry.file_type()?.is_dir() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().to_string();
+        let src_md = entry.path().join("SKILL.md");
+        if !src_md.exists() {
+            continue;
+        }
+        let dest_dir = dest_root.join(&name);
+        let dest_md = dest_dir.join("SKILL.md");
+        if dest_md.exists() {
+            continue;
+        }
+        std::fs::create_dir_all(&dest_dir)?;
+        std::fs::copy(&src_md, &dest_md)?;
+        installed.push(name);
+    }
+    installed.sort();
+    Ok(installed)
+}
+
 /// Patch a skill in-place: replace old_string with new_string in SKILL.md.
 /// Preferred over edit() for small changes — preserves surrounding content.
 pub fn patch_skill(name: &str, old_string: &str, new_string: &str) -> Result<()> {

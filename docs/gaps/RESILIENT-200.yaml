@@ -1,0 +1,15 @@
+- id: RESILIENT-200
+  domain: RESILIENT
+  title: "Linux node auto-refresh: systemd timer keeps closetjunky/Helsinki chump current with main"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"systemd timer keeps closetjunky/Helsinki chump current with main\" is implemented in the relevant RESILIENT code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    [2026-07-27T02:04:00Z] Verified live: Helsinki refreshed stale(07-23)→current, closetjunky idempotent-skipped, both timers active.
+  closed_pr: 3333
+  outcome_id: MISSION-012
+

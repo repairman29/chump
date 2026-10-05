@@ -1,0 +1,10 @@
+- id: CREDIBLE-261
+  domain: CREDIBLE
+  title: "CREDIBLE: Implement worker deregistration RPC handler (CREDIBLE-099 slice)"
+  status: open
+  priority: P3
+  effort: s
+  acceptance_criteria:
+    - The register_worker_rpc_handlers function is updated to handle worker deregistration RPC requests
+    - The handler removes the worker presence record from the NATS-KV bucket
+

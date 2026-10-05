@@ -2,7 +2,7 @@
   domain: META
   title: "META: Add §14 'Prior wisdom canonical index' to PR_RESCUE_PROCEDURE.md (META-247 slice)"
   status: open
-  priority: P1
+  priority: P3
   effort: xs
   acceptance_criteria:
     - Add a new section §14 titled 'Prior wisdom canonical index' to `PR_RESCUE_PROCEDURE.md`.

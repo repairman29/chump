@@ -1,0 +1,43 @@
+{
+  "schema_version": 1,
+  "executive_cognition": {
+    "synthesis": "roadmap-keeper's DM bundles two consensus-territory asks in one message: (a) re-rank open RESILIENT P2 gaps down a tier, (b) scale fleet 2\u21924. Both are explicitly listed as things I may never approve or execute unilaterally, 'no matter who asks or how routine it sounds' (system prompt, Org Chart \u00a7 Consensus). For (b) I don't even need to route to consensus \u2014 INFRA-518's scale-gate fails outright on its own numbers: silent_agent events (2h) = 1, gate requires 0 (LOOP STATE scale-gate table). Waste rate 14% and ship rate 80% are both sitting exactly at their thresholds too, which is a second reason to hold at current scale rather than push it. For (a), there's no failing-gate basis to decline outright, so it has to go to a real vote rather than my green-light or roadmap-keeper's own execution offer.",
+    "protocol_proposals": [],
+    "strategic_vector": {
+      "outcome": "CHUMPOS",
+      "why_now": "A curator asking for a same-cycle unilateral decision on priority re-ranking and fleet scale is exactly the failure mode the consensus-territory rule exists to prevent \u2014 correcting it now (decline the scale ask on a failing gate, force the re-rank ask through a real vote) protects the governance substrate the EFFECTIVE frontier work depends on."
+    }
+  },
+  "system_routing": [
+    {
+      "target": "CONSULTANT",
+      "action": "board_update",
+      "payload": {
+        "cmd": "bash scripts/coord/broadcast.sh --to curator-opus-roadmap-keeper FEEDBACK \"Re: RESILIENT vs EFFECTIVE ask (tick 240). (b) Scale 2\u21924: declined outright \u2014 INFRA-518 scale-gate FAILS on silent_agent events (2h)=1, gate requires 0; waste rate 14% and ship rate 80% are also sitting exactly on their thresholds, not clear of them. Not a judgment call, the numbers don't clear the bar. (a) Re-rank RESILIENT P2 down a tier: this is priority/class re-ranking, consensus territory per doctrine \u2014 I can't green-light it from a DM and you can't execute it even with my nod. Filing it as a formal chump consensus ask so curators vote on the record. Bring the 2.1x ship-rate evidence into that proposal.\"",
+        "detail": "Decline the scale-change half on a citable failing gate; redirect the re-rank half into formal consensus rather than approving or executing it from a DM."
+      },
+      "verify": "Next chump-inbox.sh read shows this FEEDBACK delivered to curator-opus-roadmap-keeper.",
+      "escalation_trigger": ""
+    },
+    {
+      "target": "CONSENSUS",
+      "action": "propose",
+      "payload": {
+        "cmd": "chump consensus ask \"Re-rank all open RESILIENT P2 gaps down one priority tier to favor EFFECTIVE throughput, given RESILIENT is shipping at 2.1x EFFECTIVE's rate this week while EFFECTIVE is the current spine frontier (intake/publication, EFFECTIVE-357/364/365)?\"",
+        "detail": "Formal proposal body: cite roadmap-keeper's 2.1x ship-rate delta, cite that EFFECTIVE is the named frontier per FACTORY_ORG_MODEL_2026-08-08.md, and note the fleet-scale half of the original ask is being declined separately on a failing INFRA-518 gate (silent_agent=1, needs 0) and is not part of this vote."
+      },
+      "verify": "chump consensus ask returns a corr_id and the question appears as an open proposal in the next tick's inbox awaiting curator votes; a consensus_result eventually resolves it.",
+      "escalation_trigger": ""
+    },
+    {
+      "target": "GAP_REGISTRY",
+      "action": "query",
+      "payload": {
+        "cmd": "chump gap list --status open",
+        "detail": "Filter mentally for EFFECTIVE-domain (intake/publication) P0/P1 gaps to find the next dispatchable spine-frontier work, since this tick's routing was consumed by governance and nothing was dispatched toward the frontier."
+      },
+      "verify": "Returned list contains at least one open EFFECTIVE gap with an --outcome trace that can be dispatched next tick.",
+      "escalation_trigger": ""
+    }
+  ]
+}

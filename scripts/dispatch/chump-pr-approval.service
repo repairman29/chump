@@ -1,0 +1,18 @@
+# RESILIENT-265 — the ATC PR-approval SURFACER. Detects OS-authored PRs on
+# EXTERNAL product repos (default: repairman29/olive) that need Jeff's approval —
+# OPEN, non-draft, mergeable, authored by the OS account — and DMs each to the
+# operator's phone with ✅ Merge / ❌ Reject buttons (the gateway acts on the tap).
+# Internal chump PRs are EXCLUDED (they auto-merge via CI). Dedupes so a PR is
+# surfaced at most once while it sits open. Paired with chump-pr-approval.timer.
+# Path defaults target the primary node (helsinki, root).
+[Unit]
+Description=Chump PR-approval surfacer — DM product-repo PRs needing approval (RESILIENT-265)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+# Source providers.env for GH_TOKEN + DISCORD_TOKEN + CHUMP_READY_DM_USER_ID
+# (export-format, so source it in a shell rather than systemd EnvironmentFile).
+Environment=HOME=/root
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec /root/Projects/chump/scripts/dispatch/pr-approval-surface-beat.sh'

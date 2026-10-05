@@ -1,0 +1,18 @@
+- id: RESILIENT-276
+  domain: RESILIENT
+  title: "no timeout on provider LLM calls: one slot hung 4m45s, failover never fired, and the phone showed an infinite typing indicator"
+  status: open
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "THREE DEFECTS THAT COMPOUND, and the combination is what makes this P1 rather than a slow-model annoyance: (1) no per-call timeout, so a hung slot stalls indefinitely; (2) no slot/model identity in the logs, so the offending slot cannot be named (CREDIBLE-266); (3) the Discord typing indicator persists with no progress and no cap, so from the phone a hung provider and hard thinking look IDENTICAL. The operator had no way to know whether to wait or give up"
+    - FIX 1 — BOUND THE CALL AND FAIL OVER. Put a timeout on the agent-loop provider call and treat expiry as a slot failure, so the cascade advances to the next slot. The 15-slot ladder exists precisely for this and never got a chance to fire. Make the value configurable (CHUMP_PROVIDER_TIMEOUT_S) with a sane default; 4m45s must not be reachable by accident
+    - "FIX 2 — RECORD THE TIMEOUT AS A FAILURE SIGNATURE, not just a retry. A slot that times out repeatedly is a faucet closing, and that is exactly the no-probing detection path EFFECTIVE-366 and RESILIENT-270 depend on: learn it from real traffic instead of spending quota on synthetic pings. Blocked on CREDIBLE-266 for the identity — without it a timeout event cannot name which slot to demote"
+    - FIX 3 — THE PHONE MUST NEVER SHOW AN INFINITE ELLIPSIS. This is now a user-facing surface (RESILIENT-266 shipped it). Either send a progress edit after N seconds, or hard-cap the turn and reply with what is known plus why it stopped. Silence that is indistinguishable from a hang is the same failure class as the operator-recall handler looking healthy while dead
+    - "VERIFY BY REPRODUCTION, not inspection: point a slot at an endpoint that accepts the connection and never responds, send a DM, and assert three things — the call is cut at the configured timeout, the cascade advances to the next slot and answers, and the ambient event names the timed-out slot"
+    - "BASELINE FOR COMPARISON, measured on the same gateway the same evening: two tool-free turns returned in provider_ms 309 and 503 (total 321 and 521), and this one took 289417. Sub-second is the norm; four minutes is the anomaly"
+  depends_on: [CREDIBLE-266]
+  outcome_id: CHUMPOS
+  evidence: |
+    COMMAND: operator DM to the live Discord gateway asking what the fleet is up to, 2026-08-09T20:24:12Z, then read ~/.chump/logs/discord-gateway.err | OUTPUT: INFRA-185 phase timings request_id=d2c55a47-e749-4cd0-9923-67724e201513 compaction_ms=0 provider_ms=289417 tools_ms=53 other_ms=10 rounds=3 total_ms=289480. The stall is visible between two consecutive log lines: iter=2 called the LLM at 20:24:15.890999Z and the next event is at 20:29:01.378160Z — 4m45s inside ONE provider call. Tools took 53ms total, so the fleet lookup itself was fast | THEORY: there is no bounded timeout on the agent loop LLM call, so a slow or hung slot stalls the whole turn instead of failing over. Searched src/agent_loop/ for timeout and Duration::from_secs and found NONE; other subsystems do set them (src/memory_tool.rs:67/95/541 use 10s, src/telegram.rs:78 sets one). No CHUMP_*TIMEOUT* env var is set either | ALT: rejected the model was simply thinking — rounds=3 with tools_ms=53 means the work was trivial; and two earlier turns the same evening on the same gateway returned in provider_ms 309 and 503. Also rejected network-wide failure — the turn eventually COMPLETED, so the connection was alive the whole time
+

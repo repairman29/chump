@@ -1,0 +1,16 @@
+# RESILIENT-418 — pairs with chump-cascade-unblock-detector.service.
+# Fires every 5 min (matches the launchd StartInterval 300s it replaces).
+[Unit]
+Description=Run the Chump cascade-unblock detector every 5 minutes (RESILIENT-418/INFRA-2070)
+[Timer]
+OnBootSec=3min
+OnUnitActiveSec=5min
+# RESILIENT-1455: OnUnitInactiveSec pairs with OnUnitActiveSec so this Type=oneshot
+# timer self-perpetuates. A oneshot goes inactive after each run, leaving OnUnitActiveSec
+# with no live "active" anchor -> NextElapse goes n/a and the timer fires once, never again.
+# OnUnitInactiveSec re-arms from the inactive edge (the anchor a oneshot has). Mirrors the
+# chump-farmer.timer fix (#4808 / RESILIENT-313).
+OnUnitInactiveSec=5min
+Persistent=true
+[Install]
+WantedBy=timers.target

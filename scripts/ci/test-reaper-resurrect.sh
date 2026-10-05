@@ -153,7 +153,7 @@ if [[ ! -f "$HW_PLIST" ]]; then
 else
     # After <key>KeepAlive</key> the value should be a <dict> (not <true/> or <false/>).
     # Use grep: look for <dict> within 3 lines after <key>KeepAlive</key>.
-    _ka_is_dict=$(grep -A 3 '<key>KeepAlive</key>' "$HW_PLIST" 2>/dev/null | grep -c '<dict>' || echo "0")
+    _ka_is_dict=$(grep -A 3 '<key>KeepAlive</key>' "$HW_PLIST" 2>/dev/null | grep -c '<dict>' || true)
     [[ "${_ka_is_dict:-0}" -gt 0 ]] \
         && ok "Test 7: KeepAlive value is a <dict> (conditional restart config)" \
         || fail "Test 7: <dict> not found within 3 lines after <key>KeepAlive</key>; KeepAlive must be a conditional dict"

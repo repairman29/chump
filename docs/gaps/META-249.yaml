@@ -2,7 +2,7 @@
   domain: META
   title: "META: Implement CI gate `test-rescue-class-cites-procedure.sh` for PR body §5/§6 citations (META-247 slice)"
   status: open
-  priority: P1
+  priority: P2
   effort: s
   acceptance_criteria:
     - Create `scripts/ci/test-rescue-class-cites-procedure.sh` with executable permissions.

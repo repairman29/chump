@@ -1,0 +1,16 @@
+- id: CREDIBLE-203
+  domain: CREDIBLE
+  title: "CREDIBLE: almanac semantic coverage holes — holler, sheckleshare, dice keyword-only; slidemate 29 percent fed; built assets pollute jeffadkins-dev index"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Found by the 2026-08-05 hardened fleet survey: fleet-wide answers silently degrade where the semantic layer is missing, and the degradation clusters on strategically loud repos. Receipts (almanac coverage + live searches): holler (the feedback-intake repo), sheckleshare, dice have NO embeddings — keyword-only, each printed the run-embed note; slidemate is the worst-fed repo at 29% (2707/9277) yet is a load-bearing source for Sales/CS capability claims; games 66%, space-shooter 74%; jeffadkins-dev search results are polluted by minified built bundles (starfall/assets/index-*.js, rune-gatherer/assets/*) that should be almanac-exclude'd. Rough shape: (a) embed+summarize backfill for holler/sheckleshare/dice, prioritize slidemate to full; (b) almanac exclude entries for built-asset dirs in jeffadkins-dev (and sweep other repos for the same pattern via coverage + a minified-file heuristic); (c) surface per-repo coverage in search-fleet output so a hit list from a half-fed repo carries its own discount.
+  acceptance_criteria:
+    - holler, sheckleshare, dice answer semantic (no keyword-only note)
+    - slidemate >= 90 percent summarized
+    - jeffadkins-dev search returns no minified-bundle hits
+    - search-fleet output flags hits from repos under a coverage threshold
+  skills_required: "external_repo:repairman29/almanac"
+  outcome_id: CREDIBLE-000
+

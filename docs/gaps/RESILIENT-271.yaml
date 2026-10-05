@@ -1,0 +1,12 @@
+- id: RESILIENT-271
+  domain: RESILIENT
+  title: "RESILIENT: wire the built chump-coord assign daemon — host-targeted dispatch is dormant (preferred_machine can't route without it)"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - the chump-coord assign daemon is wired and running so preferred_machine/host-targeted gaps route to the named host; a machine-tagged gap is dispatched there, verified by an assignment log entry.
+  outcome_id: FLEET-BUILD-SPEED
+  evidence: |
+    chump-coord assign daemon is BUILT (crates/chump-coord/src/assign.rs — publishes WorkEnvelopes to chump.work.<pri>.<class>.<machine>) and preferred_machine is a wired gap field (web_server.rs:7223, --preferred-machine CLI main.rs:10221), but 'launchctl list' shows NO assign/coord daemon running on the Mac. Host-targeted push dispatch is dormant; fleet is pull-only, cannot steer a gap to a chosen runner.
+

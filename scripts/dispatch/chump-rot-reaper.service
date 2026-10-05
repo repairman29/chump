@@ -1,0 +1,20 @@
+# RESILIENT-324 — the rot-reaper organ. Runs scripts/ops/rot-reaper.sh: for each
+# open PR (author repairman29) whose mergeable == CONFLICTING and is older than
+# CHUMP_ROT_REAPER_MIN_AGE_HOURS (default 4h), closes it with an explanatory
+# comment and re-queues its gap. This is the drain the armed-rebaser cannot do —
+# the armed-rebaser only rebases *behind* PRs and CANNOT resolve a real merge
+# conflict, so without this organ the back-pressure breaker's stuck-pile drains
+# to 4–5 and the fleet stays halted in the hysteresis dead-zone forever.
+#
+# CHUMP_REPO_ROOT / paths mirror chump-armed-rebaser.service (primary node =
+# helsinki, root). Non-root nodes: adjust per docs/process/LINUX_NODE_ONBOARDING.md.
+[Unit]
+Description=Chump rot-reaper — drain CONFLICTING+old PRs so back-pressure can't deadlock (RESILIENT-324)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+ExecStart=/bin/bash -lc 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/ops/rot-reaper.sh'

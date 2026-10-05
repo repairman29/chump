@@ -1,0 +1,16 @@
+- id: RESILIENT-217
+  domain: RESILIENT
+  title: bot-merge.sh recovery-mode 'pr create/update' step silently no-ops instead of creating a PR
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - 1. In scripts/coord/bot-merge.sh's recovery-mode PR-creation step (~line 1712-1721), the `gh pr create` call's success/failure is checked explicitly instead of being swallowed by `
+    - ""
+    - " true` with an empty fallback.\n2. If gh pr create fails (non-zero exit) and no existing PR was found, the recovery path emits a distinct ambient event (e.g. kind=botmerge_recovery_pr_create_failed) with the gh stderr/reason, prints an actionable error to stderr, and exits 1 -- it must NOT log \"pr create/update done\" or exit 0 as if it succeeded.\n3. A test in scripts/ci/test-bot-merge-*.sh (new or existing file) proves: (a) when gh pr create fails, the script exits non-zero and emits the failure event; (b) when gh pr create or an existing PR lookup succeeds, the script exits 0 as before. Test fails against the pre-fix script and passes against the fix.\n4. cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing bot-merge tests."
+  notes: |
+    [2026-08-01T17:43:56Z] CREDIBLE-178: closed via PR #3443 with UNCOVERED acceptance criteria "misses":[1]. Verify the work is complete before trusting status=done.
+  closed_date: '2026-08-01'
+  closed_pr: 3443
+  outcome_id: RESILIENT-000
+

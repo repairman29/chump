@@ -1,0 +1,21 @@
+# RESILIENT-305 — drives chump-organ-reconcile.service so the node's systemd
+# organ state converges to the repo-declared manifest on boot and every few
+# minutes. This is the "drift self-heals" beat: even if a deploy re-enables a
+# pager or an organ dies, the next tick re-asserts the manifest.
+[Unit]
+Description=Chump organ-reconcile beat — converge helsinki systemd state to the repo organ manifest (RESILIENT-305)
+
+[Timer]
+OnBootSec=1min
+OnUnitActiveSec=3min
+# RESILIENT-1455: OnUnitInactiveSec pairs with OnUnitActiveSec so this Type=oneshot
+# timer self-perpetuates. A oneshot goes inactive after each run, leaving OnUnitActiveSec
+# with no live "active" anchor -> NextElapse goes n/a and the timer fires once, never again.
+# OnUnitInactiveSec re-arms from the inactive edge (the anchor a oneshot has). Mirrors the
+# chump-farmer.timer fix (#4808 / RESILIENT-313).
+OnUnitInactiveSec=3min
+AccuracySec=30s
+Persistent=true
+
+[Install]
+WantedBy=timers.target

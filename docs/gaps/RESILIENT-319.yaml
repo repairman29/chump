@@ -1,0 +1,13 @@
+- id: RESILIENT-319
+  domain: RESILIENT
+  title: "COTG: data-node (Postgres) + integrator as role-gated installers — repeatable, not hand-stood-up"
+  status: open
+  priority: P2
+  effort: m
+  acceptance_criteria:
+    - a data role installs Postgres (pkg/init/service, host-agnostic systemd+runit), binds tailnet-only, creates the fleet DB — reproducing tonights hand Pixel setup (Postgres 18.2 on 100.84.132.93)
+    - a factory role installs chump-integrator (batched merge train) DRY-RUN by default, LIVE gated on trunk-green
+    - both flow through the role-aware installer; --role data on a fresh box yields a reachable Postgres, --role factory yields the integrator timer
+  notes: |
+    [2026-08-19T20:16:14Z] Both hand-installed tonight (Pixel Postgres, CJ integrator). Depends on the role model (sibling gap ).
+

@@ -1,0 +1,16 @@
+- id: CREDIBLE-169
+  domain: CREDIBLE
+  title: preflight-CI-parity parser reads only run_lines[0] — hides mirrored scripts behind a leading build line (INFRA-1867)
+  status: done
+  priority: P2
+  effort: s
+  acceptance_criteria:
+    - "The change described by \"preflight-CI-parity parser reads only run_lines[0] — hides mirrored scripts behind a leading build line (INFRA-1867)\" is implemented in the relevant CREDIBLE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-07-28'
+  closed_pr: 3343
+  outcome_id: CHUMPOS
+  evidence: |
+    MISSION-045 session 2026-07-27: audit.yml outcome-gate step was flagged UNMIRRORED for 3 iterations though the script WAS in preflight.rs's mirror set. Root cause: scripts/ci/test-preflight-ci-parity.sh:293 sets run_cmd=run_lines[0], so gate_script_path() only sees the first line of a multi-line run: block. Safe fix = extract the actual invoked test (bash scripts/ci/test-*.sh), not the first scripts/ci path (naive join would mis-match 'source .../lib/discover-chump-bin.sh' lines). Mitigated in #3331 by forcing a single-line run:.
+

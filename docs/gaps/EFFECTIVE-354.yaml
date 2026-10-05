@@ -1,0 +1,14 @@
+- id: EFFECTIVE-354
+  domain: EFFECTIVE
+  title: "EFFECTIVE: cascade implement stubs real external bugs (no diagnosis, no source fix) — worker competence is the core 'can chump do the jobs' blocker"
+  status: done
+  priority: P1
+  effort: m
+  acceptance_criteria:
+    - "The change described by \"cascade implement stubs real external bugs (no diagnosis, no source fix) — worker competence is the core 'can chump do the jobs' blocker\" is implemented in the relevant EFFECTIVE code path(s)."
+    - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
+    - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  notes: |
+    CORRECTION (2026-08-05): my earlier 'cascade = local Ollama only / worker is the wall' was WRONG — an artifact of running dogfoods from a shell that did NOT source ~/.chump/providers.env. The cascade IS configured: ~/.chump/providers.env has OPENROUTER_API_KEY (verified working, 338 models incl deepseek-v4-pro, qwen3.8-max, kat-coder-pro). Dogfoods 2-6 fell back to Ollama slot-0 (weak→stub, or crash when Ollama blipped) purely because of the missing env. Re-running correctly (dogfood7) with OPENAI_API_BASE=openrouter + OPENAI_MODEL=deepseek/deepseek-v4-pro + grounding. SECONDARY FINDING to verify: on this host launchd has no OPENAI_API_BASE and worker.sh doesn't source providers.env — so an ad-hoc 'chump improve' falls to Ollama; need to confirm the REAL fleet workers wire OpenRouter (via a path not yet found) or this is a regression worth a gap. Pipeline mechanics (353 routing / 199 junk / 200 stub-guard / 354 grounding) all merged + sound; the grounding MEASUREMENT is what dogfood7 answers.
+  closed_pr: 3476
+
