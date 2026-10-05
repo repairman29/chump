@@ -383,10 +383,13 @@ with open(sys.argv[3], 'a') as f:
 echo "--- Assertion 6: Wall-clock budget check ---"
 {
     ELAPSED=$((SECONDS - ${PIPELINE_START_TS:-$START_TS}))
-    if [[ $ELAPSED -le 60 ]]; then
-        ok "Assertion 6: pipeline completed in ${ELAPSED}s (budget: 60s; setup ${SETUP_S:-0}s not counted)"
+    # INFRA-849: measure the pipeline with setup time excluded (origin/main's fix) AND
+    # keep the budget env-overridable (CHUMP_INTEGRATION_BUDGET_S) so it never flaps on CI.
+    BUDGET="${CHUMP_INTEGRATION_BUDGET_S:-60}"
+    if [[ $ELAPSED -le $BUDGET ]]; then
+        ok "Assertion 6: pipeline completed in ${ELAPSED}s (budget: ${BUDGET}s; setup ${SETUP_S:-0}s not counted)"
     else
-        fail "Assertion 6: pipeline took ${ELAPSED}s, exceeds 60s budget (setup ${SETUP_S:-0}s not counted)"
+        fail "Assertion 6: pipeline took ${ELAPSED}s, exceeds ${BUDGET}s budget (setup ${SETUP_S:-0}s not counted)"
     fi
 }
 

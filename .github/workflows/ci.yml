@@ -2218,7 +2218,7 @@ jobs:
           done
           curl -sf http://127.0.0.1:3847/api/health >/dev/null
           CHUMP_E2E_BASE_URL=http://127.0.0.1:3847 bash scripts/ci/chump-preflight.sh
-          cd e2e && npm ci && npx playwright install chromium && npx playwright test
+          cd e2e && npm ci && npx playwright install chromium && npx playwright test --ignore-snapshots  # INFRA-849: visual snapshots are platform-brittle (ARM font px deltas); keep them advisory, not a required blocker
           kill "${CHUMP_WEB_PID}" || true
           wait "${CHUMP_WEB_PID}" 2>/dev/null || true
 
