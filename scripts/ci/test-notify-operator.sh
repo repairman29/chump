@@ -22,6 +22,13 @@ PASS=0; FAIL=0
 ok()   { echo "  PASS: $1"; PASS=$((PASS+1)); }
 bad()  { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
+# This suite exercises the delivery/escalation MACHINERY (rate ceiling, halt
+# bypass, buffering). Since 2026-09-13 that machinery is gated OFF by default
+# (Jeff's "kill everything automated" order — see test-kill-autopost-dms.sh,
+# which owns the default-off policy). Enable it here so the machinery is under
+# test; the kill-switch policy is asserted by the dedicated test.
+export CHUMP_OPERATOR_AUTOPOST_DM=1
+
 echo "=== RESILIENT-263: operator escalation channel ==="
 
 LIB="$REPO_ROOT/scripts/coord/lib/notify-operator.sh"
@@ -154,6 +161,21 @@ else
     bad "security_incident emitted [$emits] — page path regressed, escalations lost"
 fi
 
+# 9f. RESILIENT-1092: the hourly board_ceo_briefing must not page the phone —
+#     without a registry entry it falls through to the fail-loud PAGE default,
+#     turning a scheduled strategy briefing into a 24x/day false-alarm page.
+if grep -qE '^board_ceo_briefing[[:space:]]+direct\b' "$REG"; then
+    ok "registry classifies board_ceo_briefing as direct"
+else
+    bad "board_ceo_briefing is not classified direct — hourly briefing will page the phone"
+fi
+emits="$(_verdict_emits board_ceo_briefing)"
+if grep -q "operator_direct_message" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "board_ceo_briefing emits operator_direct_message, not operator_paged"
+else
+    bad "board_ceo_briefing emitted [$emits] — expected operator_direct_message and no operator_paged"
+fi
+
 # 9e. The new operator_direct_message emit MUST NOT be counted by the page-rate
 #     vital sign (that metric is the cry-wolf tripwire this whole fix protects).
 VITAL="$REPO_ROOT/scripts/ops/vital-signs.sh"
@@ -161,6 +183,128 @@ if [[ -f "$VITAL" ]] && grep -q "operator_direct_message" "$VITAL"; then
     bad "vital-signs.sh counts operator_direct_message as a page — it must not"
 else
     ok "operator_direct_message is not counted against the operator page-rate"
+fi
+
+# 10. RESILIENT-1095: global page-rate ceiling on the `direct` path. Direct
+#     messages skip the RESILIENT-1093 curation queue by design ("deliver
+#     every time"), which made them the one cross-source burst path with no
+#     ceiling at all — three direct messages in one window is three separate
+#     DMs. Fire 3 direct-verdict signals with a ceiling of 2: the first 2
+#     must attempt immediate delivery, the 3rd must be held and coalesced
+#     into the curation queue instead.
+TMPDIR2="$(mktemp -d)"
+trap 'rm -rf "$TMPDIR2"' RETURN 2>/dev/null || true
+
+RATE_LOG="${TMPDIR2}/rate.log"
+QUEUE="${TMPDIR2}/queue.jsonl"
+AMBIENT="${TMPDIR2}/ambient.jsonl"
+
+out="$(bash -c "
+    unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID
+    export CHUMP_NOTIFY_RATE_CEILING=2
+    export CHUMP_NOTIFY_RATE_WINDOW_S=300
+    export CHUMP_NOTIFY_RATE_LOG='$RATE_LOG'
+    export CHUMP_DISCORD_CURATION_QUEUE='$QUEUE'
+    export CHUMP_AMBIENT_LOG='$AMBIENT'
+    source '$LIB'
+    CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply one'
+    CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply two'
+    CHUMP_NOTIFY_KIND='discord_advisor_reply' notify_operator 'reply three'
+" 2>&1)"
+
+immediate_attempts="$(grep -c '^\[notify-operator\] SKIP:' <<<"$out" || true)"
+if [[ "$immediate_attempts" == "2" ]]; then
+    ok "2 direct messages under the ceiling attempt immediate delivery"
+else
+    bad "expected 2 immediate delivery attempts under the ceiling, got ${immediate_attempts} -- output: $out"
+fi
+
+if grep -q 'DIRECT held' <<<"$out"; then
+    ok "the 3rd direct message over the ceiling is held, not sent immediately"
+else
+    bad "the 3rd direct message was not held at the ceiling -- output: $out"
+fi
+
+if [[ -s "$QUEUE" ]] && [[ "$(wc -l < "$QUEUE" | tr -d ' ')" == "1" ]]; then
+    ok "the held direct message landed in the curation queue (exactly 1 entry)"
+else
+    bad "expected exactly 1 entry in the curation queue after the ceiling was hit"
+fi
+
+held_count="$(grep -c '"kind":"operator_notify_rate_held"' "$AMBIENT" 2>/dev/null || true)"
+if [[ "$held_count" == "1" ]]; then
+    ok "operator_notify_rate_held emitted once for the held message"
+else
+    bad "expected 1 operator_notify_rate_held event, got '${held_count}'"
+fi
+
+# 10b. Halt severity must bypass the rate ceiling entirely, same as it
+#      bypasses curation — an emergency can never be held for a later flush.
+halt_out="$(bash -c "
+    unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID
+    export CHUMP_NOTIFY_RATE_CEILING=2
+    export CHUMP_NOTIFY_RATE_WINDOW_S=300
+    export CHUMP_NOTIFY_RATE_LOG='$RATE_LOG'
+    export CHUMP_DISCORD_CURATION_QUEUE='$QUEUE'
+    export CHUMP_AMBIENT_LOG='$AMBIENT'
+    source '$LIB'
+    CHUMP_NOTIFY_SEVERITY='halt' notify_operator 'fleet is on fire'
+" 2>&1)"
+if grep -q '^\[notify-operator\] SKIP:' <<<"$halt_out"; then
+    ok "halt severity still attempts immediate delivery even after the ceiling was hit"
+else
+    bad "halt severity did not attempt immediate delivery -- output: $halt_out"
+fi
+
+rm -rf "$TMPDIR2"
+
+# 11. RESILIENT-1094: unclassified (no registry entry) non-halt signals must
+#     BUFFER, not page. Before this change every new organ DMing without a
+#     registry line paged the phone by default — this proves that's gone.
+BUF="$(mktemp)"; rm -f "$BUF"
+emits="$(bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID; \
+    export CHUMP_AMBIENT_LOG='$(mktemp)'; export CHUMP_DISCORD_COS_BUFFER='$BUF'; \
+    source '$LIB' 2>/dev/null; \
+    CHUMP_NOTIFY_KIND='totally_novel_unregistered_kind_$$' notify_operator 'regression probe' >/dev/null 2>&1; \
+    cat \"\$CHUMP_AMBIENT_LOG\"")"
+if grep -q "operator_notify_buffered" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "unclassified kind emits operator_notify_buffered, not operator_paged"
+else
+    bad "unclassified kind emitted [$emits] — expected operator_notify_buffered only (RESILIENT-1094 regression)"
+fi
+if [[ -f "$BUF" ]] && grep -q "totally_novel_unregistered_kind_$$" "$BUF" && grep -q "regression probe" "$BUF"; then
+    ok "unclassified signal lands durably in the discord-cos buffer"
+else
+    bad "unclassified signal did NOT land in the buffer — RESILIENT-1094's never-silently-drop guarantee is broken"
+fi
+rm -f "$BUF"
+
+# 12. A kind with NO CHUMP_NOTIFY_KIND at all (the original unclassified-caller
+#     case) must also buffer, not page.
+BUF="$(mktemp)"; rm -f "$BUF"
+emits="$(bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID CHUMP_NOTIFY_KIND; \
+    export CHUMP_AMBIENT_LOG='$(mktemp)'; export CHUMP_DISCORD_COS_BUFFER='$BUF'; \
+    source '$LIB' 2>/dev/null; \
+    notify_operator 'no kind at all' >/dev/null 2>&1; \
+    cat \"\$CHUMP_AMBIENT_LOG\"")"
+if grep -q "operator_notify_buffered" <<<"$emits" && ! grep -q "operator_paged" <<<"$emits"; then
+    ok "no-kind caller buffers instead of paging"
+else
+    bad "no-kind caller emitted [$emits] — expected operator_notify_buffered only"
+fi
+rm -f "$BUF"
+
+# 13. CHUMP_NOTIFY_SEVERITY=halt must still bypass the buffer and page,
+#     regardless of registry state — the fail-loud escape hatch is preserved.
+emits="$(bash -c "unset DISCORD_TOKEN CHUMP_READY_DM_USER_ID; \
+    export CHUMP_AMBIENT_LOG='$(mktemp)'; \
+    source '$LIB' 2>/dev/null; \
+    CHUMP_NOTIFY_SEVERITY=halt CHUMP_NOTIFY_KIND='totally_novel_unregistered_kind_$$' notify_operator 'halt probe' >/dev/null 2>&1; \
+    cat \"\$CHUMP_AMBIENT_LOG\"")"
+if ! grep -q "operator_notify_buffered" <<<"$emits"; then
+    ok "halt severity bypasses the buffer entirely (no operator_notify_buffered emitted)"
+else
+    bad "halt severity emitted [$emits] — halt must never be buffered, always fail loud"
 fi
 
 echo ""

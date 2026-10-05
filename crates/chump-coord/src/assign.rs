@@ -17,6 +17,14 @@
 //! - `replicas:N` on a gap → publish N copies (consumes INFRA-311 speculative override).
 //! - **Offline fallback**: when NATS is unreachable, `assign` exits cleanly and
 //!   workers continue running their existing pull loop (worker.sh).
+//! - **Delta publish (ZERO-WASTE-003)**: each cycle only publishes gaps whose
+//!   open+unclaimed routing fingerprint (priority/class/machine/replicas) is
+//!   new or changed since the prior cycle. A steady-state backlog publishes
+//!   ~0 envelopes per cycle instead of re-flooding the bus with the full open
+//!   set every `poll_interval`. The daemon's in-memory [`DeltaState`] starts
+//!   empty, so the first cycle after process start always republishes the
+//!   full open set once (fail-open — there is no persisted state to miss or
+//!   corrupt across a restart).
 //!
 //! Subject scheme: `chump.work.<priority>.<class>.<machine>`
 //!   priority: P0 | P1 | P2 | P3
@@ -28,7 +36,7 @@ use anyhow::{anyhow, Result};
 use bytes::Bytes;
 use chump_gap_store::{GapRow, GapStore};
 use serde::{Deserialize, Serialize};
-use std::collections::HashSet;
+use std::collections::{HashMap, HashSet};
 use std::path::PathBuf;
 use std::time::Duration;
 
@@ -181,11 +189,76 @@ fn envelope_for(row: &GapRow, seq: u32, replicas: u32) -> WorkEnvelope {
     }
 }
 
-/// One cycle of the assign daemon: read open gaps, publish to NATS for any
-/// gap not currently claimed.
+/// Routing fingerprint for a gap: the fields that, if unchanged since the
+/// prior cycle, mean the gap doesn't need to be re-published (ZERO-WASTE-003).
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+struct DeltaFingerprint {
+    priority: String,
+    class: String,
+    machine: String,
+    replicas: u32,
+}
+
+fn fingerprint_for(row: &GapRow) -> DeltaFingerprint {
+    DeltaFingerprint {
+        priority: row.priority.clone(),
+        class: class_for(row),
+        machine: if row.preferred_machine.is_empty() {
+            "any".to_string()
+        } else {
+            row.preferred_machine.clone()
+        },
+        replicas: replicas_for(row),
+    }
+}
+
+/// Carries the "what did we publish last cycle" snapshot so `assign_cycle`
+/// can skip gaps whose open+unclaimed routing state hasn't changed.
+///
+/// A fresh/default `DeltaState` (e.g. right after daemon start) has no prior
+/// fingerprints, so every open+unclaimed gap looks "new" on the first cycle —
+/// that's the intentional fail-open full-republish (AC2), not a bug.
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct DeltaState {
+    published: HashMap<String, DeltaFingerprint>,
+}
+
+/// Pure planning step (no I/O): decide which open+unclaimed gaps are new or
+/// changed since `prior`, and compute the next delta state. Split out from
+/// [`assign_cycle`] so the delta logic is testable with a fixed `GapRow` set
+/// and no NATS broker (ZERO-WASTE-003 AC4).
+fn plan_publish<'a>(
+    rows: &'a [GapRow],
+    claimed: &HashSet<String>,
+    prior: &DeltaState,
+) -> (Vec<&'a GapRow>, DeltaState) {
+    let mut next = DeltaState::default();
+    let mut to_publish = Vec::new();
+    for row in rows {
+        if claimed.contains(&row.id) {
+            continue;
+        }
+        let fp = fingerprint_for(row);
+        if prior.published.get(&row.id) != Some(&fp) {
+            to_publish.push(row);
+        }
+        next.published.insert(row.id.clone(), fp);
+    }
+    (to_publish, next)
+}
+
+/// One cycle of the assign daemon: read open gaps, publish to NATS only for
+/// gaps whose open+unclaimed routing state is new or changed since the prior
+/// cycle (`delta`). Claimed gaps are dropped from the next delta state, so a
+/// freshly-claimed gap naturally stops being republished without needing an
+/// explicit tombstone.
 ///
 /// Returns the count of envelopes published.
-pub async fn assign_cycle(client: &CoordClient, store: &GapStore) -> Result<usize> {
+pub async fn assign_cycle(
+    client: &CoordClient,
+    store: &GapStore,
+    delta: &mut DeltaState,
+) -> Result<usize> {
     let rows = store.list(Some("open"))?;
     let mut published = 0usize;
 
@@ -198,14 +271,13 @@ pub async fn assign_cycle(client: &CoordClient, store: &GapStore) -> Result<usiz
         .map(|(id, _)| id)
         .collect();
 
-    for row in rows {
-        if claimed.contains(&row.id) {
-            continue;
-        }
-        let subject = subject_for(&row);
-        let replicas = replicas_for(&row);
+    let (to_publish, next_delta) = plan_publish(&rows, &claimed, delta);
+
+    for row in to_publish {
+        let subject = subject_for(row);
+        let replicas = replicas_for(row);
         for seq in 1..=replicas {
-            let env = envelope_for(&row, seq, replicas);
+            let env = envelope_for(row, seq, replicas);
             let payload: Bytes = serde_json::to_vec(&env)?.into();
             client
                 .nats
@@ -221,6 +293,7 @@ pub async fn assign_cycle(client: &CoordClient, store: &GapStore) -> Result<usiz
         .flush()
         .await
         .map_err(|e| anyhow!("NATS flush: {}", e))?;
+    *delta = next_delta;
     Ok(published)
 }
 
@@ -241,13 +314,14 @@ pub async fn run_assign_daemon(repo_root: PathBuf, poll_interval: Duration) -> R
     };
     let db_path = GapStore::db_path(&repo_root);
     let store = GapStore::open(&repo_root)?;
+    let mut delta = DeltaState::default();
     eprintln!(
         "[chump-coord assign] daemon up: watching {} every {:?}",
         db_path.display(),
         poll_interval
     );
     loop {
-        match assign_cycle(&client, &store).await {
+        match assign_cycle(&client, &store, &mut delta).await {
             Ok(n) if n > 0 => {
                 eprintln!("[chump-coord assign] published {} envelope(s)", n);
             }
@@ -298,6 +372,7 @@ pub fn worker_accepts(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serial_test::serial;
 
     fn row_with(id: &str, prio: &str, domain: &str, machine: &str, skills: &str) -> GapRow {
         GapRow {
@@ -427,5 +502,89 @@ mod tests {
         assert_eq!(sanitize_token("runtime"), "runtime");
         // a full subject built from the cleaned token is dot-split-safe (3 dots)
         assert_eq!(format!("chump.work.{}.any", clean).matches('.').count(), 3);
+    }
+
+    // ── ZERO-WASTE-003: delta publish ──────────────────────────────────────
+
+    #[test]
+    fn delta_publish_unchanged_backlog_publishes_nothing() {
+        let rows = vec![row_with("INFRA-1", "P1", "INFRA", "", "")];
+        let claimed = HashSet::new();
+        let (first, delta_after_cycle_1) = plan_publish(&rows, &claimed, &DeltaState::default());
+        assert_eq!(first.len(), 1, "first cycle republishes the full open set");
+
+        // Same gap set, same claims, second cycle: nothing changed.
+        let (second, _) = plan_publish(&rows, &claimed, &delta_after_cycle_1);
+        assert_eq!(
+            second.len(),
+            0,
+            "unchanged backlog must publish 0 on the second cycle"
+        );
+    }
+
+    #[test]
+    fn delta_publish_new_gap_publishes_exactly_one() {
+        let rows_cycle_1 = vec![row_with("INFRA-1", "P1", "INFRA", "", "")];
+        let claimed = HashSet::new();
+        let (_, delta) = plan_publish(&rows_cycle_1, &claimed, &DeltaState::default());
+
+        let rows_cycle_2 = vec![
+            row_with("INFRA-1", "P1", "INFRA", "", ""),
+            row_with("INFRA-2", "P2", "INFRA", "", ""),
+        ];
+        let (to_publish, _) = plan_publish(&rows_cycle_2, &claimed, &delta);
+        assert_eq!(to_publish.len(), 1);
+        assert_eq!(to_publish[0].id, "INFRA-2");
+    }
+
+    #[test]
+    fn delta_publish_claim_drops_gap_from_next_cycle() {
+        let rows = vec![row_with("INFRA-1", "P1", "INFRA", "", "")];
+        let (_, delta) = plan_publish(&rows, &HashSet::new(), &DeltaState::default());
+
+        // INFRA-1 gets claimed between cycles; `rows` still comes back from
+        // `store.list(Some("open"))` (claim doesn't change gap status), but
+        // the claimed-set filter drops it before it reaches the delta diff.
+        let claimed_now: HashSet<String> = ["INFRA-1".to_string()].into_iter().collect();
+        let (to_publish, next_delta) = plan_publish(&rows, &claimed_now, &delta);
+        assert_eq!(
+            to_publish.len(),
+            0,
+            "claimed gap publishes 0 (no tombstone)"
+        );
+        assert!(
+            !next_delta.published.contains_key("INFRA-1"),
+            "claimed gap must drop out of delta state"
+        );
+    }
+
+    #[test]
+    fn delta_publish_changed_fingerprint_republishes() {
+        let claimed = HashSet::new();
+        let rows_cycle_1 = vec![row_with("INFRA-1", "P2", "INFRA", "", "")];
+        let (_, delta) = plan_publish(&rows_cycle_1, &claimed, &DeltaState::default());
+
+        // Priority bumped P2 -> P0 between cycles: same gap id, changed fingerprint.
+        let rows_cycle_2 = vec![row_with("INFRA-1", "P0", "INFRA", "", "")];
+        let (to_publish, _) = plan_publish(&rows_cycle_2, &claimed, &delta);
+        assert_eq!(
+            to_publish.len(),
+            1,
+            "changed routing fingerprint republishes"
+        );
+    }
+
+    #[tokio::test]
+    #[serial]
+    async fn broker_down_exits_ok_without_wedging() {
+        // FLEET-034 fail-open path (AC3): a dead broker must exit 0, not hang
+        // or error, so a supervisor can restart the daemon cleanly.
+        std::env::set_var("CHUMP_NATS_URL", "nats://127.0.0.1:1");
+        std::env::set_var("CHUMP_NATS_TIMEOUT_MS", "50");
+        let tmp = tempfile::tempdir().expect("tempdir");
+        let result = run_assign_daemon(tmp.path().to_path_buf(), Duration::from_millis(10)).await;
+        std::env::remove_var("CHUMP_NATS_URL");
+        std::env::remove_var("CHUMP_NATS_TIMEOUT_MS");
+        assert!(result.is_ok(), "broker-down path must exit 0: {:?}", result);
     }
 }

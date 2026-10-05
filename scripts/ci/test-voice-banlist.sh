@@ -69,6 +69,10 @@ BANNED_WORDS=(
 # We keep it simple: ban "leverage" as a standalone word in docs prose.
 BANNED_WORDS+=("leverage")
 
+# Product-marketing words (INFRA-1736): flags hype/PM-speak that erodes trust
+# with a technical, tired-senior-engineer audience.
+BANNED_WORDS+=("user journey" "feature" "platform" "ecosystem")
+
 # ── Check for bypass trailer ──────────────────────────────────────────────────
 _has_bypass() {
   # Check all commit messages in this PR range, or just HEAD.

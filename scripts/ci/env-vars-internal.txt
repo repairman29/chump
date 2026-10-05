@@ -17,6 +17,10 @@ HOSTNAME
 PATH
 USER
 XDG_CONFIG_HOME
+# Set by the GitHub Actions runner (RESILIENT-018 detects a CI job with no token)
+GITHUB_ACTIONS
+GITHUB_JOB
+GITHUB_WORKFLOW
 
 # ── Tier 3: runtime state set by the fleet / harness ──────────────────────
 CHUMP_GAP_ID
@@ -54,6 +58,8 @@ GH_TOKEN
 GITHUB_TOKEN
 SSH_KEY_PATH
 CHUMP_PROFILE_KEY_PATH
+CHUMP_BOT_MERGE_LAND_MODE
+CHUMP_AUTO_INSTALL_HOOKS
 
 # ── Tier 3: fleet automation flags ────────────────────────────────────────
 CHUMP_ALLOW_GAP_REWRITE
@@ -357,6 +363,8 @@ CHUMP_DISABLE_OFFLINE_CHECK
 CHUMP_GAP_RESERVE_NO_SIMILARITY
 CHUMP_GAP_RESERVE_SIMILARITY_WARN
 CHUMP_GAP_RESERVE_SIMILARITY_BLOCK
+# ── CREDIBLE-072: reserve-time pillar merge-share cap/floor (0 disables) ─────
+CHUMP_PILLAR_CAP
 # ── INFRA-1434: import-time title similarity check (mirrors INFRA-1149) ──────
 CHUMP_GAP_IMPORT_NO_SIMILARITY
 CHUMP_GAP_IMPORT_SIMILARITY_BLOCK
@@ -2412,6 +2420,9 @@ CHUMP_RESERVE_ALLOW_STALE
 CHUMP_BATPHONE_TOKEN
 # detected in: (standard input)
 CHUMP_GAP_SERVER
+# Operator-only mode: makes the configured gap server authoritative and
+# refuses local mutations when it is unavailable.
+CHUMP_GAP_SERVER_MODE
 CHUMP_UNVERIFIED_SHIP_ESCALATE_N
 # detected in: (standard input)
 CHUMP_UNVERIFIED_SHIP_PARK_M
@@ -2553,3 +2564,729 @@ CHUMP_CI_FLEET_SWEEP_DISABLE
 CHUMP_CI_FLEET_SWEEP_OWNER
 # detected in: (standard input)
 CHUMP_CI_FLEET_SWEEP_STATE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AUTO_CLOSE_GAP
+# detected in: (standard input)
+CHUMP_BENCH_MODE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_LOCK_PRIMITIVE_DIR
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FIX_TRUNK_HARNESS_LOG
+# detected in: (standard input)
+CHUMP_URGENT_INBOX
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_ROLE
+CHUMP_COMPLETION_MAX_TOKENS
+# detected in: (standard input)
+CHUMP_FLOOR_MODEL
+# detected in: (standard input)
+CHUMP_MODEL_LADDER_MANIFEST
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BINARY_BUILD_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_EYES_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_GIT_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_INSTALL_BUDGET_S
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_SEED_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_SUBSTRATE_TIMEOUT_S
+CHUMP_AUTO_BLOCK_THRESHOLD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_ID_OVERRIDE
+CHUMP_WORKER_AGENT_ID
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_ROLE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_SERVER_BIND
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_ARTIFACT_LOOKBACK
+# detected in: (standard input)
+CHUMP_NODE_ARTIFACT_WORKFLOW
+# detected in: (standard input)
+CHUMP_NODE_SKIP_ARTIFACT_PULL
+# detected in: (standard input)
+CHUMP_NODE_TARGET
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PROVIDERS_ENV
+# detected in: (standard input)
+CHUMP_SKIP_NODE_REFRESH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PREPUSH_PHASE_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_PREPUSH_TOTAL_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GENERATE_INVENTORY
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PARITY_JSON
+# detected in: (standard input)
+CHUMP_PARITY_JSON_LINE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CSS_BASELINE
+# detected in: (standard input)
+CHUMP_CSS_TOKEN_INDEX
+CHUMP_PREFLIGHT_SKIP_CLI_MISC
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SUBSTRATE_PG_CONN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SHARED_TARGET_HOT_OVERRIDE
+# detected in: (standard input)
+CHUMP_SHARED_TARGET_IDLE_MIN
+
+# Tier 2: fleet-health API staleness threshold (RESILIENT-1055) — seconds
+# before a node heartbeat is graded stale by GET /api/fleet/nodes. Defaults to
+# 900 (sentinel cadence 5m x stale-mult 3); override to stay coherent with the
+# sentinel's CHUMP_SENTINEL_CADENCE_MIN / CHUMP_SENTINEL_STALE_MULT.
+CHUMP_SENTINEL_STALE_SECS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FAKE_FREETIER_PROBE
+# detected in: (standard input)
+CHUMP_FAKE_SUB_PROBE
+# detected in: (standard input)
+CHUMP_FREETIER_PROBE_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_SUB_AUTO_REPROMOTE
+# detected in: (standard input)
+CHUMP_SUB_PROBE_TIMEOUT_S
+# detected in: (standard input)
+CHUMP_SUB_REPROMOTE_EVERY_CYCLES
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_STORE_BACKEND
+# detected in: (standard input)
+CHUMP_TEAM_API_KEY
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DISCORD_CURATION_QUEUE
+# detected in: (standard input)
+CHUMP_NOTIFY_CURATE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NOTIFY_KIND_COVERAGE_ALLOW_DRIFT
+CHUMP_NOTIFY_RATE_CEILING
+# detected in: (standard input)
+CHUMP_NOTIFY_RATE_LOG
+# detected in: (standard input)
+CHUMP_NOTIFY_RATE_WINDOW_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CAPABILITY_STALE_MIN
+CHUMP_DISCORD_COS_BUFFER
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_CURL_BIN
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_HEALTH_PORT
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_MISS_THRESHOLD
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_NODES_DIR
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_REMOTE_HEAL
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_SELF
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_SSH_BIN
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_STATE_DIR
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_INSTALL_SYSTEMD_DIR
+CHUMP_WORKER_DOMAIN_FILTER
+# detected in: (standard input)
+CHUMP_WORKER_MACHINE
+# detected in: (standard input)
+CHUMP_WORKER_SESSION
+# detected in: (standard input)
+CHUMP_WORKER_SKILLS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CONFIG_DRIFT_LIVE_GLOB
+# detected in: (standard input)
+CHUMP_CONFIG_DRIFT_TRACKED_GLOB
+# detected in: (standard input)
+CHUMP_STARVE_AUTO_RELAX
+# detected in: (standard input)
+CHUMP_STARVE_AUTO_SHUTDOWN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_EFFECT_VERIFIER_DEDUP_WINDOW_S
+# detected in: (standard input)
+CHUMP_EFFECT_VERIFIER_MIN_PICKABLE
+# detected in: (standard input)
+CHUMP_EFFECT_VERIFIER_MIN_TICKS
+# detected in: (standard input)
+CHUMP_EFFECT_VERIFIER_STATE_DB
+# detected in: (standard input)
+CHUMP_EFFECT_VERIFIER_STATE_DIR
+# detected in: (standard input)
+CHUMP_EFFECT_VERIFIER_WINDOW_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SELF_MODEL_MANIFEST
+# detected in: (standard input)
+CHUMP_SELF_MODEL_OUT
+# detected in: (standard input)
+CHUMP_SELF_MODEL_SYSTEMCTL_BIN
+CHUMP_APEX_WATCHDOG_HEAL_ESCALATE
+# detected in: (standard input)
+CHUMP_APEX_WATCHDOG_RECALL_SCRIPT
+
+# Operator kill-switch for automated operator DMs (Jeff, 2026-09-13).
+# Default OFF; set to 1/true/on/yes to re-enable pages/digests/briefings DMs.
+CHUMP_OPERATOR_AUTOPOST_DM
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_LOCK_POLL_INTERVAL_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORCH_LOG_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PLAYBOOK
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BIN_BLOAT_FAIL_ON_WARN
+# detected in: (standard input)
+CHUMP_BIN_BLOAT_THRESHOLD_KB
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PLANS_DIR
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_URGENT_INBOX_POLL_INTERVAL_S
+# detected in: (standard input)
+CHUMP_URGENT_INBOX_POLL_LOOP_DISABLE
+# detected in: (standard input)
+CHUMP_URGENT_INBOX_POLL_LOOP_MAX_TICKS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_SENTINEL_UNIT
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_SYSTEMCTL_CMD
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_T1_ESCALATE_THRESHOLD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DUTY_OFFICER_SENTINEL_TIMER
+CHUMP_HEALTH_SENTINEL_SYSTEMCTL_BIN
+# INFRA-6701: recently-merged-PR overlap advisory lookback window (default 7 days)
+CHUMP_GAP_RESERVE_MERGED_PR_WINDOW_DAYS
+# META-555: opt-in effect-verify live-check timeout (default 30s)
+CHUMP_EFFECT_VERIFY_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SENTINEL_COORDINATION_ORGANS
+# detected in: (standard input)
+CHUMP_SENTINEL_SUDO
+# detected in: (standard input)
+CHUMP_SENTINEL_SYSTEM_ORGANS
+# detected in: (standard input)
+CHUMP_SENTINEL_WATCHED_HEALERS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GH_PROBE_SKIP
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_ALMANAC_FLOOR
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_ALMANAC_STATE
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_WINDOW_S
+# detected in: (standard input)
+CHUMP_VISION_ACUITY_STATE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SUBSTRATE_PW
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SVC_FORCE_MECHANISM
+# detected in: (standard input)
+CHUMP_SVC_SYSTEMCTL_BIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_INSTALL_CLONE_DIR
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_MCP_CONFIG
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PROCESS_ORGAN_HEARTBEAT_MAX_AGE_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_AUDIT_DONE_SWEEP_LOG
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_IGNORE_WASTE_PAUSE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_MERGE_LOCK_TTL_SECS
+# detected in: (standard input)
+CHUMP_NATS_MERGE_QUEUE_BUCKET
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORGAN_MANIFEST_PLATFORM
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PROCESS_ORGAN_REGISTRY_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_FARMER_HEARTBEAT
+# detected in: (standard input)
+CHUMP_ORGAN_RECONCILE_FARMER_HEARTBEAT_DURABLE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SUB_AUTH_DEAD_RECALL_THRESHOLD
+# detected in: (standard input)
+CHUMP_SUB_AUTH_PRECHECK
+# detected in: (standard input)
+CHUMP_SUB_AUTH_PRECHECK_EVERY_CYCLES
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DISK_CHECK_DISABLE
+# detected in: (standard input)
+CHUMP_DISK_CHECK_PATH
+# detected in: (standard input)
+CHUMP_DISK_PRESSURE_PATHS
+# detected in: (standard input)
+CHUMP_DISK_PRESSURE_PCT
+# detected in: (standard input)
+CHUMP_WORKTREE_REAPER_INTERVAL
+# RESILIENT-1448: pre-push clippy warm-target + budget knobs (bash pre-push hook)
+CHUMP_PREPUSH_CLIPPY_TARGET_DIR
+CHUMP_PREPUSH_CLIPPY_TIMEOUT_S
+CHUMP_CLIPPY_WORKER_ID
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN
+# RESILIENT-1123: main-sat gate sustained-red threshold (board-vitals.sh)
+CHUMP_BOARD_VITALS_MAIN_SAT_RED_MIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_POSTSHIP_STALL_THRESHOLD_S
+# detected in: (standard input)
+CHUMP_SHIP_GROUNDTRUTH_RECHECK
+# detected in: (standard input)
+CHUMP_STALL_THRESHOLD_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_WORKER_HEAD_REEXEC
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_STUB_CALLS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PROVIDER_2_ENABLED
+# detected in: (standard input)
+CHUMP_PROVIDER_3_ENABLED
+CHUMP_ORPHAN_ALLOWLIST_DAEMON
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_COVERAGE_SCRIPT
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_GH_BIN
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_GIT_BIN
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_HEAD_SHA
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_INTERVAL_S
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_REPO_ROOT
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_RESERVED
+# detected in: (standard input)
+CHUMP_ORPHAN_DAEMON_STATE
+# detected in: (standard input)
+CHUMP_REGISTRY_GATE_MODE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CLAIM_IGNORE_MAIN_HEALTH
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_INSTALL_ATC_RUN_HOME_OVERRIDE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_WEB_PORT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_STATE_DB_YAML_SYNC_INTERVAL_S
+# detected in: (standard input)
+CHUMP_STATE_DB_YAML_SYNC_MODE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SUBAGENT_TOKEN_BUDGET
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SUBAGENT_DOLLAR_BUDGET
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLAKE_DB
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PR_CLASSIFIER_AMBIENT
+# detected in: (standard input)
+CHUMP_PR_CLASSIFIER_MAX
+# detected in: (standard input)
+CHUMP_PR_CLASSIFIER_PR_JSON
+# detected in: (standard input)
+CHUMP_TEST_CALL_LOG
+CHUMP_NODE_INSTALL_ALLOW_NONROOT_PLACE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PROVIDER_11_KEY
+CHUMP_IDEA_DROP_DB
+# detected in: (standard input)
+CHUMP_IDEA_DROP_MIGRATION
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GIT_COMMIT_RATE_LIMIT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_VISION_KEEPER_MIN_SUMMARY_PCT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_KEEPALIVE_DISCORD
+# detected in: (standard input)
+CHUMP_KEEPALIVE_EMBED
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CARGO_REAPER_GIT_DIR
+# detected in: (standard input)
+CHUMP_DF_BIN
+# detected in: (standard input)
+CHUMP_INFRA_WATCHER_DISK_MARGIN_GB
+# detected in: (standard input)
+CHUMP_INFRA_WATCHER_PLIST_DIR
+# detected in: (standard input)
+CHUMP_JOURNALD_CONF_DIR
+# detected in: (standard input)
+CHUMP_JOURNALD_DRY_RUN
+# detected in: (standard input)
+CHUMP_JOURNALD_MAX_USE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORGAN_WATCHDOG_AUTONOMY_RECALL_SCRIPT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_NONINTERACTIVE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_NODE_MODE
+# detected in: (standard input)
+CHUMP_NODE_WORK_ENABLED
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALMANAC_FLEET_INDEX_MARKER
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ORCH_SVC_ABSTRACTION
+# detected in: (standard input)
+CHUMP_SVC_BACKOFF_COOLDOWN_S
+# detected in: (standard input)
+CHUMP_SVC_NODE
+# detected in: (standard input)
+CHUMP_SVC_RAPID_DEATH_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GUEST_PR_CAP
+# detected in: (standard input)
+CHUMP_IMPROVE_GH_IDENTITY
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DIVERGENCE_WINDOW_HOURS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_VERIFY_COMPREHEND_GATE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_COST_CAP_PARK_FILE
+# detected in: (standard input)
+CHUMP_COST_CAP_PROBE_CMD
+# detected in: (standard input)
+CHUMP_COST_CAP_WATCH_DEBOUNCE_SECS
+# detected in: (standard input)
+CHUMP_COST_CAP_WATCH_LOOKBACK
+# detected in: (standard input)
+CHUMP_COST_CAP_WATCH_POLL_S
+# detected in: (standard input)
+CHUMP_FAKE_COST_CAP_PROBE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_FLEET_TARGET_SIZE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GAP_SHIP_HYGIENE_SIMILARITY
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_MEMORY_DB
+# detected in: (standard input)
+CHUMP_NOTIFY_CMD_OVERRIDE_UNUSED
+# detected in: (standard input)
+CHUMP_PEER_BUDGET_USD
+# detected in: (standard input)
+CHUMP_PEER_CLAUDE_BIN
+# detected in: (standard input)
+CHUMP_PEER_EXECUTE
+# detected in: (standard input)
+CHUMP_PEER_MEMORY_DB
+# detected in: (standard input)
+CHUMP_PEER_MODEL
+# detected in: (standard input)
+CHUMP_PEER_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_STALE_BRANCH_HOURS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_LEASE_HEARTBEAT_TTL_S
+# detected in: (standard input)
+CHUMP_REAPER_SAFETY_CHECK
+# detected in: (standard input)
+CHUMP_REAPER_SESSION_TIMEOUT_S
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALMANAC_CENSUS_SCRIPT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DROPS_FILE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_PREFLIGHT_LOAD_DEFER_DISABLE
+# detected in: (standard input)
+CHUMP_PREFLIGHT_LOAD_THRESHOLD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CLAIM_MODE
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_GH_REQUIRED
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_COST_PER_SECOND
+# detected in: (standard input)
+CHUMP_VERIFY_CLAIM_BRANCH_FORCE_TIMEOUT
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DAEMON_ACTIVATOR_LAUNCHCTL_CMD
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_A2A_ROLE_FRESHNESS_MIN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_SOMETHING_DB
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_DAEMON_CONTRACT_EXPECTATIONS
+# detected in: (standard input)
+CHUMP_DAEMON_CONTRACT_PLIST_DIRS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALMANAC_CENSUS_MIN_PCT

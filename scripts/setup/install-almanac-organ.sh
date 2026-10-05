@@ -29,9 +29,14 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 LIVENESS_SCRIPT="$REPO_ROOT/scripts/ops/almanac-liveness-refresh.sh"
-STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
-ALMANAC_REPO="${CHUMP_ALMANAC_REPO:-$HOME/Projects/almanac}"
-ALMANAC_BIN="${CHUMP_ALMANAC_BIN:-$ALMANAC_REPO/target/release/almanac}"
+export CHUMP_STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
+export CHUMP_ALMANAC_REPO="${CHUMP_ALMANAC_REPO:-$HOME/Projects/almanac}"
+export CHUMP_ALMANAC_BIN="${CHUMP_ALMANAC_BIN:-$CHUMP_ALMANAC_REPO/target/release/almanac}"
+# Bare aliases so the rest of this script (written before RESILIENT-1111's
+# rename to exported CHUMP_* vars) keeps working without a full rename.
+STATE_DIR="$CHUMP_STATE_DIR"
+ALMANAC_REPO="$CHUMP_ALMANAC_REPO"
+ALMANAC_BIN="$CHUMP_ALMANAC_BIN"
 
 MODE="install"; DRY=0
 for a in "$@"; do
@@ -80,11 +85,38 @@ info "ALMANAC_DIR=$ALMANAC_REPO"
 # before any cargo build could happen below.
 toolchain_preflight
 
-# AC3: this slice stops here on a clean host — clone/build is a later
-# INFRA-3635 slice, not this skeleton.
-if [ ! -d "$ALMANAC_REPO" ]; then
-  info "no almanac checkout at $ALMANAC_REPO — stopping before clone/build (skeleton phase, INFRA-3635 slice)"
-  exit 0
+# INFRA-4660 (INFRA-3637 slice): clone+build was carved out into
+# install-almanac.sh (RESILIENT-403) instead of being re-derived here.
+# Call it on a clean host (install mode only) so ensure_eyes actually
+# results in a live checkout instead of silently no-op'ing forever.
+# --check never mutates; it falls through to do_check() below, which
+# already reports a missing binary/checkout as a failure.
+if [ ! -d "$ALMANAC_REPO" ] && [ "$MODE" != "check" ]; then
+  installer="$REPO_ROOT/scripts/setup/install-almanac.sh"
+  if [ -x "$installer" ]; then
+    info "no almanac checkout at $ALMANAC_REPO — cloning+building via install-almanac.sh"
+    if [ "$DRY" = 1 ]; then
+      bash "$installer" --dry-run || true
+    else
+      bash "$installer" || { no "install-almanac.sh failed — see above"; exit 1; }
+    fi
+  else
+    no "no almanac checkout at $ALMANAC_REPO and install-almanac.sh not found — cannot provision eyes"
+    exit 1
+  fi
+elif [ "$MODE" != "check" ]; then
+  # INFRA-3637: the checkout already exists, so the full install above is
+  # skipped — but chump-mcp.json + the managed git hooks may never have been
+  # wired on this node. Wire them (no clone/build); best-effort, non-fatal.
+  installer="$REPO_ROOT/scripts/setup/install-almanac.sh"
+  if [ -x "$installer" ]; then
+    info "almanac checkout present — wiring chump-mcp.json + git hooks (install-almanac.sh --wire-only)"
+    if [ "$DRY" = 1 ]; then
+      bash "$installer" --wire-only --dry-run || true
+    else
+      bash "$installer" --wire-only || no "almanac MCP/hook wiring incomplete — see above (non-fatal)"
+    fi
+  fi
 fi
 
 if [ ! -x "$LIVENESS_SCRIPT" ]; then

@@ -1,0 +1,34 @@
+- id: RESILIENT-1035
+  domain: RESILIENT
+  title: "RIBBON BLOCKER [P1-worthy] MERGED != RUNNING at node level: merged code never reaches the nodes, every cores fix is dead on arrival."
+  status: done
+  priority: P1
+  effort: m
+  description: |
+    merged code never reaches the nodes, every cores fix is dead on arrival.
+    VERIFIED: mugman HEAD 71f4c8f5 lacks RESILIENT-1016 (merged 1h ago), still
+    27 failed, self-reap never activates. No working node auto-deploy (cuphead
+    refresh-runner-binary is a broken Mac-path script). Need a per-node
+    auto-deploy organ on a timer: git pull origin/main -> rebuild-or-fetch-prebuilt-aarch64
+    (1015) -> reinstall via chump-node-install --role -> restart changed
+    organs. Until it runs, 100%-ONLINE is UNREACHABLE regardless of merge
+    rate; the ribbon chain dispatch->build->merge->LIVE breaks at the last
+    hop.
+
+    Shipped in PR #4474: node-refresh-chump.sh kept the installed chump
+    binary current but never re-ran chump-node-install.sh, so a merged organ
+    change (e.g. RESILIENT-1016's muscle worker.sh) never reached a live node
+    even after the binary refreshed. Added chump-node-install.sh
+    --reconcile-organs-only (fast path: detect_host + install_organs, skips
+    clone/creds/binary/substrate/eyes) and wired node-refresh-chump.sh to call
+    it on every refresh-cycle exit path (skip-if-current, artifact-pull,
+    local-build), keyed by CHUMP_NODE_ROLE. Covered by
+    scripts/ci/test-resilient-1035-node-organ-reconcile.sh.
+  acceptance_criteria:
+    - Per-node auto-deploy organ runs on a timer, reconciling organs (not just
+      the binary) after every refresh cycle so merged code reaches running
+      nodes
+    - A test proves organs get reconciled/restarted on refresh
+      (scripts/ci/test-resilient-1035-node-organ-reconcile.sh)
+    - cargo fmt + clippy + check pass with no regression
+  closed_pr: 4474

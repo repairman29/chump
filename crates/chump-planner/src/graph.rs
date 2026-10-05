@@ -13,7 +13,7 @@
 //! is to file META-CYCLE-DETECTED and let a human break it, not to silently
 //! reorder the graph).
 
-use crate::gap::{Gap, GapId};
+use crate::gap::{Gap, GapId, Priority};
 use crate::parse::extract_see_also;
 use petgraph::graph::{DiGraph, NodeIndex};
 use petgraph::visit::EdgeRef;
@@ -338,6 +338,23 @@ impl DependencyGraph {
         }
         out
     }
+
+    /// INFRA-5037: effective priority of `gap` — the minimum (most urgent)
+    /// priority band among `gap`'s own priority and the priorities of every
+    /// gap it transitively unblocks. A P3 gap gating a P0 gap is P0-urgent
+    /// in practice even though its own `priority` field never changes.
+    pub fn effective_priority(
+        &self,
+        gap: &Gap,
+        gaps: &[Gap],
+        open_set: &HashSet<GapId>,
+    ) -> Priority {
+        let by_id: HashMap<&GapId, &Gap> = gaps.iter().map(|g| (&g.id, g)).collect();
+        self.unblocks(&gap.id, open_set)
+            .iter()
+            .filter_map(|id| by_id.get(id).map(|g| g.priority))
+            .fold(gap.priority, Priority::min)
+    }
 }
 
 #[cfg(test)]
@@ -411,6 +428,33 @@ mod tests {
         assert!(unblocked.contains(&GapId("INFRA-2".into())));
         assert!(unblocked.contains(&GapId("INFRA-3".into())));
         assert!(!unblocked.contains(&GapId("INFRA-9".into())));
+    }
+
+    #[test]
+    fn effective_priority_propagates_cross_band_minimum() {
+        // INFRA-3 (P3) blocks INFRA-2 (P1) blocks INFRA-1 (P0).
+        // Closing INFRA-3 transitively unblocks INFRA-2 then INFRA-1, so
+        // INFRA-3's effective priority should be P0 even though its own
+        // priority field stays P3.
+        let mut gaps = vec![
+            mk("INFRA-1", vec!["INFRA-2"]),
+            mk("INFRA-2", vec!["INFRA-3"]),
+            mk("INFRA-3", vec![]),
+        ];
+        gaps[0].priority = Priority::P0;
+        gaps[1].priority = Priority::P1;
+        gaps[2].priority = Priority::P3;
+        let g = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let gap3 = gaps.iter().find(|g| g.id.0 == "INFRA-3").unwrap();
+        assert_eq!(g.effective_priority(gap3, &gaps, &open), Priority::P0);
+
+        // A gap with no dependents keeps its own priority.
+        let gap1 = gaps.iter().find(|g| g.id.0 == "INFRA-1").unwrap();
+        assert_eq!(g.effective_priority(gap1, &gaps, &open), Priority::P0);
+
+        // Original priority field is unchanged.
+        assert_eq!(gap3.priority, Priority::P3);
     }
 
     #[test]

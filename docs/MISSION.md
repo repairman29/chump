@@ -5,7 +5,8 @@
 > Scoreboard, it didn't count — no matter how busy it looked.
 >
 > Filed as MISSION-014. Canonical mission gap: **MISSION-010**. Current
-> multiplier: **MISSION-012** (self-deploy).
+> multiplier: re-derived from the live scoreboard (see Goal 1 below); the former
+> multiplier **MISSION-012** (self-deploy) is done.
 
 ## Ribbon-only focus (operator decision, Jeff 2026-08-22)
 
@@ -54,8 +55,12 @@ repo without a human, what is it for?"* →
 ## Goals (the capabilities that make the mission true — each measurable)
 
 1. **Self-deploy** — a merged fix reaches the running system with no human.
-   (**MISSION-012**.) *Metric: manual deploy steps per ship = 0.*
-   **← CURRENT MULTIPLIER: until this lands, every merge is inert.**
+   (**MISSION-012**, done — closed via #3040; scoreboard ③ auto-deploy is in
+   place.) *Metric: manual deploy steps per ship = 0.*
+   **Next lever (re-derived 2026-10, from the scoreboard, not self-deploy):**
+   ① is YES but not yet repeatable (**MISSION-066** owns making it stick), and
+   ② mission-ship ratio was last recorded at ~⅓ against a ≥ ⅔ target (Goal 3).
+   Re-run `scripts/dev/mission-scoreboard.sh` before treating either as current.
 2. **Self-heal** — the fleet recovers from any halt with no human terminal.
    (**RESILIENT-087** + the pty/auth fragility class: RESILIENT-086/088/092.)
    *Metric: unattended-recovery rate.*
@@ -72,7 +77,10 @@ repo without a human, what is it for?"* →
 Run **`scripts/dev/mission-scoreboard.sh`** (read-only, safe anytime). It reports:
 
 - **① THE BINARY (weekly):** Did Chump merge a zero-human-touch PR in
-  BEAST-MODE this week? — *today: **NO**.*
+  BEAST-MODE this week? — *verified **YES** since the week of 2026-08-05
+  (4/10 zero-touch BEAST-MODE merges that week, per the DOC-080 reconciliation
+  record). Caveat: one good week is not "repeatably" — MISSION-066 owns making
+  it stick, and the live value is whatever the scoreboard prints today.*
 - **② Mission-ship ratio (24h):** mission merges ÷ total (target ≥ ⅔).
 - **③ Deploy-lag:** is the running binary current with `main`? (Goal 1 proxy.)
 - **④ Fleet liveness:** last-merge age + 24h ship count.

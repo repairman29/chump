@@ -11,7 +11,16 @@
     - "All operator escape-hatches still work post-cutover: CHUMP_OPERATOR_RECOVERY=1 admin-merge cycle, recovery-queue handoff to background daemon, --auto-merge arming via gh pr merge; verified by scripts/ci/test-chump-ship-recovery-paths.sh added in this PR"
     - Ambient emit kind=rust_migration_landed gap=INFRA-2001 lines_out=3044 lines_in=0 on cutover commit; bash_loc counter in fleet stats decremented by 3044
     - "Rollback plan documented: if Rust binary regression detected, revert PR restores bash body + shim feature flag in one commit; 24h hot-rollback window; cutover MUST NOT happen during fleet-busy window (>3 PRs in flight)"
+  depends_on:
+    - INFRA-7898
   notes: |
     Phase 2 cutover of META-107 sub-gap INFRA-2001 (chump-ship). HIGHEST-RISK cutover of the six (3044 LOC + ship-path is critical-path). Sibling cutovers: INFRA-2060/2061/2062/2063/2065. Recommend cutting over LAST or second-to-last in the sequence after the smaller cutovers prove the pattern.
+
+    BLOCKED (2026-09-26, verified while claimed on this gap): none of this gap's acceptance criteria are currently satisfiable, and forcing a cutover now would be an unsafe/destructive action against the fleet's own ship path (this very gap is being shipped through scripts/coord/bot-merge.sh --auto-merge, i.e. the bot-merge bash branch this gap would delete):
+
+    1. AC1 (7-day parallel-run with CHUMP_SHIP_RUST=1 default) has not happened: the shim in scripts/coord/bot-merge.sh:8 still defaults CHUMP_SHIP_RUST to 0 (`${CHUMP_SHIP_RUST:-0}`), and there is zero `kind=ship_divergence_detected` history in ambient.jsonl. No soak window has actually run.
+    2. Structural blocker: crates/chump-ship/src/bot_merge.rs `BotMergePath::ship()` is a hard stub — it unconditionally returns `ShipError::BotMergeDoubleInstance` with a "Phase 1: not implemented" message (bot_merge.rs:70-73, ship.rs:36). Only `ManualShipPath` (the `--mode manual` / non-auto-merge path) is implemented. Removing the bash bot-merge branch today would delete the only working bot-merge implementation and break the fleet's ship pipeline outright.
+
+    Filed INFRA-7898 (P1) to port BotMergePath for real; INFRA-2064 depends on it and cannot be picked for actual cutover work until it ships AND a genuine 7-day default-on soak with zero divergence has run. Do not bypass this by flipping the default or deleting the bash body without both preconditions holding — that is exactly the "cutover MUST NOT happen during fleet-busy window" / rollback-plan risk this gap's own AC #6 warns about, generalized to "don't cut over a stubbed replacement."
   outcome_id: MISSION-010
 

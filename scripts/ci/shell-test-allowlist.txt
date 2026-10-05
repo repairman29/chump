@@ -33,3 +33,11 @@ scripts/ci/test-chump-scan.sh
 # of the "-coord" suffix). Genuine cross-process race test, not chump-binary
 # logic that belongs in cargo test.
 scripts/ci/test-multi-machine-lease.sh
+
+# reason: INFRA-1604 deep claim-collision detection — end-to-end `chump
+# claim` CLI test needing a synthesized fixture git repo (init + self-remote
+# + worktree add) plus multiple `.chump-locks/*.json` sibling lease files on
+# disk. Mirrors the INFRA-1394 precedent (test-claim-hot-file-overlap.sh,
+# grandfathered pre-gate) — genuine filesystem/CLI integration, not unit
+# logic that belongs in cargo test.
+scripts/ci/test-deep-claim-collision.sh

@@ -840,6 +840,260 @@ pub fn build_claim_bust_section(repo_root: &Path) -> ClaimBustSection {
     ClaimBustSection { rows }
 }
 
+// ── Green-First-Try Rate Section (CREDIBLE-1112, slice of CREDIBLE-272) ─────
+
+/// Ship-pipeline green-first-try%: of the gaps that shipped (`kind=gap_shipped`),
+/// what fraction had zero `kind=bot_merge_phase_failure` events recorded against
+/// the same `gap_id` before shipping — i.e. the pipeline went green without a
+/// failed phase (fmt/clippy/test/push/pr-create) forcing a retry.
+#[derive(Debug, Default, Clone)]
+pub struct GreenFirstTrySection {
+    pub total_ships: u64,
+    pub green_first_try: u64,
+}
+
+impl GreenFirstTrySection {
+    pub fn green_first_try_pct(&self) -> f64 {
+        if self.total_ships == 0 {
+            0.0
+        } else {
+            (self.green_first_try as f64 / self.total_ships as f64) * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.total_ships == 0 {
+            return "═══ Green-First-Try% (CREDIBLE-1112) ═══\n  No gap_shipped events found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Green-First-Try% (CREDIBLE-1112) ═══\n  {}/{} ships green on first try ({:.1}%)\n",
+            self.green_first_try,
+            self.total_ships,
+            self.green_first_try_pct(),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"total_ships":{},"green_first_try":{},"green_first_try_pct":{:.1}}}"#,
+            self.total_ships,
+            self.green_first_try,
+            self.green_first_try_pct(),
+        )
+    }
+}
+
+/// Scan ambient.jsonl and correlate `gap_shipped` events against
+/// `bot_merge_phase_failure` events sharing the same `gap_id`.
+pub fn build_green_first_try_section(repo_root: &Path) -> GreenFirstTrySection {
+    use std::collections::HashSet;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut failed_gap_ids: HashSet<String> = HashSet::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "bot_merge_phase_failure" {
+            continue;
+        }
+        if let Some(gap_id) = extract_field(line, "gap_id") {
+            failed_gap_ids.insert(gap_id);
+        }
+    }
+
+    let mut section = GreenFirstTrySection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_shipped" {
+            continue;
+        }
+        let gap_id = match extract_field(line, "gap_id") {
+            Some(id) => id,
+            None => continue,
+        };
+        section.total_ships += 1;
+        if !failed_gap_ids.contains(&gap_id) {
+            section.green_first_try += 1;
+        }
+    }
+    section
+}
+
+// ── Time-to-Land Section (CREDIBLE-1113, slice of CREDIBLE-272) ─────────────
+
+/// Ship-pipeline time-to-land: wall-clock seconds from `kind=gap_claimed` to
+/// `kind=gap_shipped` for the same `gap_id`, aggregated as p50/p90/max.
+#[derive(Debug, Default, Clone)]
+pub struct TimeToLandSection {
+    pub sample_count: u64,
+    pub p50_seconds: Option<u64>,
+    pub p90_seconds: Option<u64>,
+    pub max_seconds: Option<u64>,
+}
+
+impl TimeToLandSection {
+    pub fn render_text(&self) -> String {
+        if self.sample_count == 0 {
+            return "═══ Time-to-Land (CREDIBLE-1113) ═══\n  No claim→ship pairs found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Time-to-Land (CREDIBLE-1113) ═══\n  n={} p50={}s p90={}s max={}s\n",
+            self.sample_count,
+            self.p50_seconds.unwrap_or(0),
+            self.p90_seconds.unwrap_or(0),
+            self.max_seconds.unwrap_or(0),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"sample_count":{},"p50_seconds":{},"p90_seconds":{},"max_seconds":{}}}"#,
+            self.sample_count,
+            opt_u64(self.p50_seconds),
+            opt_u64(self.p90_seconds),
+            opt_u64(self.max_seconds),
+        )
+    }
+}
+
+fn opt_u64(v: Option<u64>) -> String {
+    match v {
+        Some(n) => n.to_string(),
+        None => "null".to_string(),
+    }
+}
+
+fn percentile_u64_slice(sorted: &[u64], pct: usize) -> Option<u64> {
+    if sorted.is_empty() {
+        return None;
+    }
+    let rank = (pct * sorted.len()).div_ceil(100);
+    let idx = rank.saturating_sub(1).min(sorted.len() - 1);
+    Some(sorted[idx])
+}
+
+/// Scan ambient.jsonl and correlate `gap_claimed` events against `gap_shipped`
+/// events sharing the same `gap_id`, taking the earliest claim before each ship.
+pub fn build_time_to_land_section(repo_root: &Path) -> TimeToLandSection {
+    use std::collections::HashMap;
+
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut claimed_at: HashMap<String, u64> = HashMap::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_claimed" {
+            continue;
+        }
+        let (Some(gap_id), Some(ts)) = (
+            extract_field(line, "gap_id"),
+            extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)),
+        ) else {
+            continue;
+        };
+        claimed_at
+            .entry(gap_id)
+            .and_modify(|existing| *existing = (*existing).min(ts))
+            .or_insert(ts);
+    }
+
+    let mut durations: Vec<u64> = Vec::new();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "gap_shipped" {
+            continue;
+        }
+        let (Some(gap_id), Some(shipped_ts)) = (
+            extract_field(line, "gap_id"),
+            extract_field(line, "ts").and_then(|t| parse_iso8601_to_unix(&t)),
+        ) else {
+            continue;
+        };
+        if let Some(&claim_ts) = claimed_at.get(&gap_id) {
+            if shipped_ts >= claim_ts {
+                durations.push(shipped_ts - claim_ts);
+            }
+        }
+    }
+
+    let mut section = TimeToLandSection {
+        sample_count: durations.len() as u64,
+        ..Default::default()
+    };
+    durations.sort_unstable();
+    section.p50_seconds = percentile_u64_slice(&durations, 50);
+    section.p90_seconds = percentile_u64_slice(&durations, 90);
+    section.max_seconds = durations.last().copied();
+    section
+}
+
+// ── Gate False-Positive Rate Section (CREDIBLE-1115, slice of CREDIBLE-272) ─
+
+/// Ship-pipeline gate FP rate: of the halt-class/gate signals routed through
+/// the duty-officer quiet gate (`kind=duty_officer_action`), what fraction
+/// were determined to be false positives (`verdict=refuted`) rather than
+/// genuine (`verdict=healed|suppressed|runbook_needed`).
+#[derive(Debug, Default, Clone)]
+pub struct GateFalsePositiveSection {
+    pub total_signals: u64,
+    pub false_positives: u64,
+}
+
+impl GateFalsePositiveSection {
+    pub fn fp_rate_pct(&self) -> f64 {
+        if self.total_signals == 0 {
+            0.0
+        } else {
+            (self.false_positives as f64 / self.total_signals as f64) * 100.0
+        }
+    }
+
+    pub fn render_text(&self) -> String {
+        if self.total_signals == 0 {
+            return "═══ Gate FP Rate (CREDIBLE-1115) ═══\n  No duty_officer_action events found.\n"
+                .to_string();
+        }
+        format!(
+            "═══ Gate FP Rate (CREDIBLE-1115) ═══\n  {}/{} signals refuted as false positive ({:.1}%)\n",
+            self.false_positives,
+            self.total_signals,
+            self.fp_rate_pct(),
+        )
+    }
+
+    pub fn render_json(&self) -> String {
+        format!(
+            r#"{{"total_signals":{},"false_positives":{},"fp_rate_pct":{:.1}}}"#,
+            self.total_signals,
+            self.false_positives,
+            self.fp_rate_pct(),
+        )
+    }
+}
+
+/// Scan ambient.jsonl for `kind=duty_officer_action` events and tally verdicts.
+pub fn build_gate_false_positive_section(repo_root: &Path) -> GateFalsePositiveSection {
+    let ambient = repo_root.join(".chump-locks/ambient.jsonl");
+    let contents = std::fs::read_to_string(&ambient).unwrap_or_default();
+
+    let mut section = GateFalsePositiveSection::default();
+    for line in contents.lines() {
+        let kind = extract_field(line, "kind").unwrap_or_default();
+        if kind != "duty_officer_action" {
+            continue;
+        }
+        section.total_signals += 1;
+        if extract_field(line, "verdict").as_deref() == Some("refuted") {
+            section.false_positives += 1;
+        }
+    }
+    section
+}
+
 // ── Combined KPI Report ──────────────────────────────────────────────────────
 
 /// Full KPI report wrapping all sections.
@@ -852,6 +1106,9 @@ pub struct KpiReport {
     pub leverage: LeverageSection,
     pub tokens_per_ship: TokensPerShipReport,
     pub handoff_rate: HandoffRateSection,
+    pub green_first_try: GreenFirstTrySection,
+    pub time_to_land: TimeToLandSection,
+    pub gate_false_positive: GateFalsePositiveSection,
 }
 
 impl KpiReport {
@@ -873,12 +1130,18 @@ impl KpiReport {
         out.push_str(&self.tokens_per_ship.render_text());
         out.push('\n');
         out.push_str(&self.handoff_rate.render_text());
+        out.push('\n');
+        out.push_str(&self.green_first_try.render_text());
+        out.push('\n');
+        out.push_str(&self.time_to_land.render_text());
+        out.push('\n');
+        out.push_str(&self.gate_false_positive.render_text());
         out
     }
 
     pub fn render_json(&self) -> String {
         format!(
-            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{}}}"#,
+            r#"{{"ship_rate":{},"mission_history":{},"cost_savings":{},"free_tier_savings":{},"leverage":{},"tokens_per_ship":{},"handoff_rate":{},"green_first_try":{},"time_to_land":{},"gate_false_positive":{}}}"#,
             self.ship_rate.render_json(),
             self.mission_history.render_json(),
             self.cost_savings.render_json(),
@@ -886,6 +1149,9 @@ impl KpiReport {
             self.leverage.render_json(),
             self.tokens_per_ship.render_json(),
             self.handoff_rate.render_json(),
+            self.green_first_try.render_json(),
+            self.time_to_land.render_json(),
+            self.gate_false_positive.render_json(),
         )
     }
 }
@@ -1124,7 +1390,36 @@ pub fn build_full_report(repo_root: &Path, window_days: u64) -> KpiReport {
         leverage: build_leverage_section(repo_root),
         tokens_per_ship: build_report(repo_root, window_days),
         handoff_rate: build_handoff_rate_section(repo_root, window_days),
+        green_first_try: build_green_first_try_section(repo_root),
+        time_to_land: build_time_to_land_section(repo_root),
+        gate_false_positive: build_gate_false_positive_section(repo_root),
     }
+}
+
+/// Parse a `YYYY-MM-DD` close date (the TEXT `closed_date` the ship path writes)
+/// to a unix timestamp at midnight UTC, dependency-free (days-from-civil). Lets
+/// the ship gauge count closes recorded without the INTEGER `closed_at`
+/// (CREDIBLE-1485/1486 — the split-brain where the writer sets `closed_date` but
+/// the reader read `closed_at`).
+fn parse_closed_date(s: &str) -> Option<i64> {
+    let s = s.trim();
+    if s.len() < 10 {
+        return None;
+    }
+    let y: i64 = s.get(0..4)?.parse().ok()?;
+    let m: i64 = s.get(5..7)?.parse().ok()?;
+    let d: i64 = s.get(8..10)?.parse().ok()?;
+    if !(1..=12).contains(&m) || !(1..=31).contains(&d) {
+        return None;
+    }
+    // Howard Hinnant's days_from_civil: days since 1970-01-01.
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let doy = (153 * (if m > 2 { m - 3 } else { m + 9 }) + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    let days = era * 146_097 + doe - 719_468;
+    Some(days * 86_400)
 }
 
 fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
@@ -1138,18 +1433,28 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
     };
     let now = current_unix();
 
-    let pillar_of = |title: &str| -> Option<&'static str> {
+    // CREDIBLE-421: title-prefix tagging (`EFFECTIVE: ...`) is opt-in and most
+    // gaps are titled `<DOMAIN>-<NUM>: ...` instead, so a title-only check
+    // left 70% of 30d ships "untagged" even though the gap's `domain` field
+    // already carries the pillar. Fall back to domain when the title has no
+    // explicit prefix.
+    let pillar_of = |title: &str, domain: &str| -> Option<&'static str> {
         let up = title.to_uppercase();
         if up.starts_with("EFFECTIVE:") {
-            Some("effective")
+            return Some("effective");
         } else if up.starts_with("CREDIBLE:") {
-            Some("credible")
+            return Some("credible");
         } else if up.starts_with("RESILIENT:") {
-            Some("resilient")
+            return Some("resilient");
         } else if up.starts_with("ZERO-WASTE:") {
-            Some("zero_waste")
-        } else {
-            None
+            return Some("zero_waste");
+        }
+        match domain.to_uppercase().as_str() {
+            "EFFECTIVE" => Some("effective"),
+            "CREDIBLE" => Some("credible"),
+            "RESILIENT" => Some("resilient"),
+            "ZERO-WASTE" | "ZERO_WASTE" | "ZEROWASTE" => Some("zero_waste"),
+            _ => None,
         }
     };
 
@@ -1164,10 +1469,16 @@ fn build_ship_rate_section(repo_root: &Path) -> ShipRateSection {
         let mut untagged = 0;
 
         for g in &done_gaps {
-            if let Some(closed) = g.closed_at {
-                if (closed as u64) >= cutoff {
+            // CREDIBLE-1485/1486: the ship path reliably sets closed_date (TEXT
+            // YYYY-MM-DD) but historically NOT closed_at (INTEGER unix ts) — only
+            // 4 of 2481 done gaps had closed_at vs 1731 with closed_date — so
+            // reading closed_at alone undercounted ships ~10-40x (kpi said 3/1d
+            // while git showed 30 closes/24h). Prefer closed_at; fall back to
+            // parsing closed_date so the gauge counts every real close.
+            if let Some(closed) = g.closed_at.or_else(|| parse_closed_date(&g.closed_date)) {
+                if closed >= cutoff as i64 {
                     total += 1;
-                    match pillar_of(&g.title) {
+                    match pillar_of(&g.title, &g.domain) {
                         Some("effective") => effective += 1,
                         Some("credible") => credible += 1,
                         Some("resilient") => resilient += 1,
@@ -1761,6 +2072,100 @@ pub fn build_impact_section(repo_root: &Path) -> ImpactRatingSection {
     }
 }
 
+// ── Debt Index — Crown Gauge + NBA (CREDIBLE-357) ───────────────────────────
+//
+// Maps the live gap registry (`.chump/state.db`) onto `debt_index::Capability`
+// so the crown gauge (live_pct/debt/top-5 dormant-by-Crit) and the
+// next_best_action candidate list are computed from real, current fleet
+// state rather than a fixture. Priority maps to criticality (P0/P1 -> Crit,
+// P2 -> Warn, else Info); status maps to liveness (done/shipped -> Complete,
+// in_progress/claimed -> Running, else Pending — dormant); effort maps to
+// `stages_short` (xs=1 .. xl=5, unknown effort defaults to 2) as the "how far
+// behind" proxy since the registry doesn't track literal pipeline stages.
+pub struct DebtIndexSection {
+    pub gauge: crate::debt_index::CrownGauge,
+    pub nba_text: String,
+    pub nba_candidate_count: usize,
+}
+
+impl DebtIndexSection {
+    pub fn render_text(&self) -> String {
+        format!("{}\n{}", self.gauge.render_text(), self.nba_text)
+    }
+
+    pub fn render_json(&self) -> String {
+        let top5 = self
+            .gauge
+            .top5_dormant_names
+            .iter()
+            .map(|n| format!("{:?}", n))
+            .collect::<Vec<_>>()
+            .join(",");
+        format!(
+            r#"{{"live_pct":{:.4},"debt":{:.2},"top5_dormant":[{}],"nba_candidate_count":{}}}"#,
+            self.gauge.live_pct, self.gauge.debt, top5, self.nba_candidate_count,
+        )
+    }
+}
+
+fn gap_priority_to_criticality(priority: &str) -> crate::live_pct::Criticality {
+    use crate::live_pct::Criticality;
+    match priority {
+        "P0" | "P1" => Criticality::Crit,
+        "P2" => Criticality::Warn,
+        _ => Criticality::Info,
+    }
+}
+
+fn gap_status_to_stage_status(status: &str) -> crate::live_pct::StageStatus {
+    use crate::live_pct::StageStatus;
+    match status {
+        "done" | "shipped" => StageStatus::Complete,
+        "in_progress" | "claimed" | "running" => StageStatus::Running,
+        _ => StageStatus::Pending,
+    }
+}
+
+fn gap_effort_to_stages_short(effort: &str) -> u32 {
+    match effort {
+        "xs" => 1,
+        "s" => 2,
+        "m" => 3,
+        "l" => 4,
+        "xl" => 5,
+        _ => 2,
+    }
+}
+
+/// Build the crown-gauge + NBA section from the current gap registry.
+pub fn build_debt_index_section(repo_root: &Path) -> DebtIndexSection {
+    let capabilities: Vec<crate::debt_index::Capability> =
+        match chump_gap_store::GapStore::open(repo_root) {
+            Ok(store) => store
+                .list(None)
+                .unwrap_or_default()
+                .into_iter()
+                .map(|g| crate::debt_index::Capability {
+                    name: format!("{} {}", g.id, g.title),
+                    criticality: gap_priority_to_criticality(&g.priority),
+                    status: gap_status_to_stage_status(&g.status),
+                    stages_short: gap_effort_to_stages_short(&g.effort),
+                })
+                .collect(),
+            Err(_) => Vec::new(),
+        };
+
+    let gauge = crate::debt_index::compute_crown_gauge(&capabilities);
+    let nba_text = crate::debt_index::render_nba_candidates(&capabilities);
+    let nba_candidate_count = crate::debt_index::next_best_action_candidates(&capabilities).len();
+
+    DebtIndexSection {
+        gauge,
+        nba_text,
+        nba_candidate_count,
+    }
+}
+
 // ── Integration Cycle Dashboard (INFRA-2143) ────────────────────────────────
 //
 // Cross-references: INFRA-2132 (integration_cycle_* ambient events read here),
@@ -2261,6 +2666,28 @@ mod tests {
         }
     }
 
+    fn seed_gap_store_with_domain(dir: &Path, entries: &[(&str, &str, i64)]) {
+        let chump_dir = dir.join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(dir)
+            .output();
+
+        let store = chump_gap_store::GapStore::open(dir).unwrap();
+        for (domain, title, closed_ts) in entries {
+            let reserved = store.reserve(domain, title, "P1", "s").unwrap();
+            let iso = unix_to_iso_date(*closed_ts);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_at=?1, closed_date=?2, closed_pr=999 WHERE id=?3",
+                rusqlite::params![closed_ts, iso, reserved],
+            )
+            .unwrap();
+        }
+    }
+
     fn unix_to_iso_date(ts: i64) -> String {
         let d = (ts / 86_400) + 2_440_588;
         let f = d + 1401 + ((((4 * d + 274_277) / 146_097) * 3) / 4) - 38;
@@ -2502,6 +2929,56 @@ mod tests {
     }
 
     #[test]
+    fn credible1485_ship_rate_counts_closed_date_without_closed_at() {
+        // The split-brain: the ship path writes closed_date (TEXT) but historically
+        // NOT closed_at (INTEGER), so a gauge reading closed_at alone undercounted
+        // ~10-40x. Seed a done gap with closed_date=today and closed_at=NULL — the
+        // real-world shape — and assert the 1d window counts it.
+        let tmp = tempdir();
+        std::fs::create_dir_all(tmp.join(".chump")).unwrap();
+        let _ = std::process::Command::new("git")
+            .args(["init", "-b", "main"])
+            .current_dir(&tmp)
+            .output();
+        let reserved = {
+            let store = chump_gap_store::GapStore::open(&tmp).unwrap();
+            let id = store
+                .reserve("INFRA", "closed_date only", "P1", "s")
+                .unwrap();
+            let today = unix_to_iso_date(current_unix() as i64);
+            let conn = store.conn_for_test();
+            conn.execute(
+                "UPDATE gaps SET status='done', closed_at=NULL, closed_date=?1, closed_pr=999 WHERE id=?2",
+                rusqlite::params![today, id],
+            )
+            .unwrap();
+            id
+        };
+        let _ = reserved;
+        let section = build_ship_rate_section(&tmp);
+        assert!(
+            section.windows[0].total >= 1,
+            "1d window must count a gap closed with closed_date but no closed_at (CREDIBLE-1485): {:?}",
+            section.windows[0]
+        );
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1485_parse_closed_date() {
+        assert_eq!(parse_closed_date("1970-01-01"), Some(0));
+        assert_eq!(parse_closed_date("1970-01-02"), Some(86_400));
+        let t = parse_closed_date("2026-10-01").unwrap();
+        assert!(
+            t > 1_700_000_000 && t % 86_400 == 0,
+            "midnight-aligned, got {t}"
+        );
+        assert_eq!(parse_closed_date(""), None);
+        assert_eq!(parse_closed_date("2026-13-01"), None);
+        assert_eq!(parse_closed_date("not-a-date"), None);
+    }
+
+    #[test]
     fn infra617_ship_rate_pillar_classification() {
         let tmp = tempdir();
         let now = current_unix() as i64;
@@ -2521,6 +2998,32 @@ mod tests {
         assert!(section.windows[0].resilient >= 1, "resilient pillar");
         assert!(section.windows[0].zero_waste >= 1, "zero_waste pillar");
         assert!(section.windows[0].untagged >= 1, "untagged");
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible421_ship_rate_pillar_classification_falls_back_to_domain() {
+        // CREDIBLE-421: most gaps are titled "<DOMAIN>-<NUM>: ..." rather than
+        // an explicit "EFFECTIVE: ..." prefix, so the domain field must also
+        // classify a ship into its pillar instead of leaving it untagged.
+        let tmp = tempdir();
+        let now = current_unix() as i64;
+        seed_gap_store_with_domain(
+            &tmp,
+            &[
+                ("EFFECTIVE", "EFFECTIVE-1: speed up", now),
+                ("CREDIBLE", "CREDIBLE-2: add scorecard", now),
+                ("RESILIENT", "RESILIENT-3: watchdog", now),
+                ("ZERO-WASTE", "ZERO-WASTE-4: trim", now),
+                ("INFRA", "INFRA-5: unrelated plumbing", now),
+            ],
+        );
+        let section = build_ship_rate_section(&tmp);
+        assert_eq!(section.windows[0].effective, 1, "effective via domain");
+        assert_eq!(section.windows[0].credible, 1, "credible via domain");
+        assert_eq!(section.windows[0].resilient, 1, "resilient via domain");
+        assert_eq!(section.windows[0].zero_waste, 1, "zero_waste via domain");
+        assert_eq!(section.windows[0].untagged, 1, "only INFRA stays untagged");
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
@@ -3203,6 +3706,121 @@ mod tests {
         let section = build_agent_throughput_section(&tmp, Some("2026-08-18"));
         assert!(section.date.is_empty());
         assert!(section.render_text().contains("No throughput data found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1112_green_first_try_pct_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // CREDIBLE-1: shipped clean, no phase failure recorded.
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-1","pr_number":"101","commit_sha":"aaa"}"#,
+                // CREDIBLE-2: hit a clippy failure before shipping — NOT green-first-try.
+                r#"{"ts":"2026-09-01T00:05:00Z","kind":"bot_merge_phase_failure","step":"clippy","exit_code":13,"gap_id":"CREDIBLE-2","branch":"chump/credible-2"}"#,
+                r#"{"ts":"2026-09-01T00:10:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-2","pr_number":"102","commit_sha":"bbb"}"#,
+                // CREDIBLE-3: shipped clean, no phase failure recorded.
+                r#"{"ts":"2026-09-01T00:15:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-3","pr_number":"103","commit_sha":"ccc"}"#,
+                // Unrelated phase failure for a gap that never shipped — must not affect the ratio.
+                r#"{"ts":"2026-09-01T00:20:00Z","kind":"bot_merge_phase_failure","step":"test","exit_code":14,"gap_id":"CREDIBLE-4","branch":"chump/credible-4"}"#,
+            ],
+        );
+        let section = build_green_first_try_section(&tmp);
+        assert_eq!(section.total_ships, 3);
+        assert_eq!(section.green_first_try, 2);
+        assert!((section.green_first_try_pct() - (200.0 / 3.0)).abs() < 0.01);
+        assert!(section
+            .render_text()
+            .contains("2/3 ships green on first try"));
+        assert!(section
+            .render_json()
+            .contains(r#""total_ships":3,"green_first_try":2"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1112_green_first_try_zero_when_no_ships() {
+        let tmp = tempdir();
+        let section = build_green_first_try_section(&tmp);
+        assert_eq!(section.total_ships, 0);
+        assert_eq!(section.green_first_try, 0);
+        assert_eq!(section.green_first_try_pct(), 0.0);
+        assert!(section
+            .render_text()
+            .contains("No gap_shipped events found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1113_time_to_land_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                // CREDIBLE-1: claimed at t0, shipped 100s later.
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"gap_claimed","gap_id":"CREDIBLE-1"}"#,
+                r#"{"ts":"2026-09-01T00:01:40Z","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+                // CREDIBLE-2: claimed at t0, shipped 200s later.
+                r#"{"ts":"2026-09-01T01:00:00Z","kind":"gap_claimed","gap_id":"CREDIBLE-2"}"#,
+                r#"{"ts":"2026-09-01T01:03:20Z","kind":"gap_shipped","gap_id":"CREDIBLE-2"}"#,
+                // CREDIBLE-3: shipped with no matching claim — excluded from the sample.
+                r#"{"ts":"2026-09-01T02:00:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-3"}"#,
+            ],
+        );
+        let section = build_time_to_land_section(&tmp);
+        assert_eq!(section.sample_count, 2);
+        assert_eq!(section.max_seconds, Some(200));
+        assert!(section.render_text().contains("n=2"));
+        assert!(section.render_json().contains(r#""sample_count":2"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1113_time_to_land_empty_when_no_pairs() {
+        let tmp = tempdir();
+        let section = build_time_to_land_section(&tmp);
+        assert_eq!(section.sample_count, 0);
+        assert!(section.p50_seconds.is_none());
+        assert!(section.render_text().contains("No claim→ship pairs found"));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1115_gate_fp_rate_computed_correctly() {
+        let tmp = tempdir();
+        write_ambient(
+            &tmp,
+            &[
+                r#"{"ts":"2026-09-01T00:00:00Z","kind":"duty_officer_action","signal":"a","tier":"T2","verdict":"refuted","detail":"x"}"#,
+                r#"{"ts":"2026-09-01T00:01:00Z","kind":"duty_officer_action","signal":"b","tier":"T1","verdict":"healed","detail":"x"}"#,
+                r#"{"ts":"2026-09-01T00:02:00Z","kind":"duty_officer_action","signal":"c","tier":"T3","verdict":"suppressed","detail":"x"}"#,
+                // Unrelated event kind must not affect the tally.
+                r#"{"ts":"2026-09-01T00:03:00Z","kind":"gap_shipped","gap_id":"CREDIBLE-1"}"#,
+            ],
+        );
+        let section = build_gate_false_positive_section(&tmp);
+        assert_eq!(section.total_signals, 3);
+        assert_eq!(section.false_positives, 1);
+        assert!((section.fp_rate_pct() - (100.0 / 3.0)).abs() < 0.01);
+        assert!(section
+            .render_text()
+            .contains("1/3 signals refuted as false positive"));
+        assert!(section
+            .render_json()
+            .contains(r#""total_signals":3,"false_positives":1"#));
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn credible1115_gate_fp_rate_zero_when_no_signals() {
+        let tmp = tempdir();
+        let section = build_gate_false_positive_section(&tmp);
+        assert_eq!(section.total_signals, 0);
+        assert_eq!(section.fp_rate_pct(), 0.0);
+        assert!(section
+            .render_text()
+            .contains("No duty_officer_action events found"));
         let _ = std::fs::remove_dir_all(&tmp);
     }
 }

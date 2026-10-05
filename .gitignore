@@ -209,4 +209,9 @@ docs/business/contracts/
 /f.txt
 /path
 /migration.sql
+# CREDIBLE-1078: regenerable src/*.rs reference audit report
+/ci_src_path_inventory.txt
 /schema_migration.sql
+
+# Local provider config. A real key was committed here in April 2026; never track this file.
+config/config.yaml

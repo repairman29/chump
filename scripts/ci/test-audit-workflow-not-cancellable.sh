@@ -59,12 +59,28 @@ if [[ -f "$AUDIT_YML" ]]; then
         fail "audit.yml workflow-level cancel-in-progress is '$cancel_val' (expected 'true') — stale-run pileup regression (INFRA-2516)"
     fi
 
-    if [[ "$group_line" == *github.sha* || "$group_line" == *github.run_id* ]]; then
-        fail "audit.yml concurrency group is keyed per-SHA/run-id — never collides, cancel-in-progress is a no-op (INFRA-2516 regression): $group_line"
+    # INFRA-1852-parity (2026-09-07): the group must be keyed per-PR/ref for the
+    # PR / merge_group path (INFRA-2516 pileup protection), but PUSH events must
+    # use a unique-per-run key (github.run_id) so rapid main pushes never cancel
+    # each other's audit — otherwise ci.yml's per-commit `verified` aggregate
+    # polls for a cancelled audit and fail-closes (~7.5h trunk freeze 2026-09-07).
+    # So: github.sha is still forbidden (INFRA-2516: per-SHA never collides for
+    # the PR path so cancel is a no-op), and github.run_id is REQUIRED but ONLY
+    # inside a push-gated conditional (github.event_name == 'push').
+    if [[ "$group_line" == *github.sha* ]]; then
+        fail "audit.yml concurrency group is keyed per-SHA — never collides, cancel-in-progress is a no-op for PR fixups (INFRA-2516 regression): $group_line"
+    elif [[ "$group_line" == *github.run_id* ]]; then
+        if [[ "$group_line" == *"event_name == 'push'"* ]]; then
+            ok "audit.yml concurrency group: push→run_id (no self-cancel), PR/ref→per-PR (INFRA-1852 parity)"
+        else
+            fail "audit.yml concurrency group uses github.run_id unconditionally — PR fixups stop cancelling, runner-pool pileup regression (INFRA-2516): $group_line"
+        fi
     elif [[ "$group_line" == *pull_request.number* || "$group_line" == *github.ref* ]]; then
-        ok "audit.yml concurrency group is keyed per-PR/ref (not per-SHA/run-id)"
+        # No run_id at all — main pushes share the ref group and cancel each
+        # other; this is the INFRA-1852 trunk-freeze regression.
+        fail "audit.yml concurrency group has no push→run_id split — main pushes share the ref group and self-cancel, ci.yml verified fail-closes (INFRA-1852 regression): $group_line"
     else
-        fail "audit.yml concurrency group does not look per-PR/ref — verify manually: $group_line"
+        fail "audit.yml concurrency group does not look per-PR/ref with a push→run_id split — verify manually: $group_line"
     fi
 fi
 

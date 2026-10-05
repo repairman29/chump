@@ -1,0 +1,22 @@
+# RESILIENT-1109 — pairs with chump-effect-verifier.service.
+# 15-minute cadence: the check needs CHUMP_EFFECT_VERIFIER_MIN_TICKS (default
+# 3) farmer_heartbeat events in its trailing window (default 30min) to trust
+# the sample, so running much tighter than the window just re-samples the same
+# ticks. Matches the organ-success-verifier / outcome-verify-heal-consumer
+# "cheap, frequent-enough" cadence philosophy.
+[Unit]
+Description=Run the Chump effect verifier every 15 minutes (RESILIENT-1109)
+
+[Timer]
+OnBootSec=5min
+OnUnitActiveSec=15min
+# RESILIENT-1455: OnUnitInactiveSec pairs with OnUnitActiveSec so this Type=oneshot
+# timer self-perpetuates. A oneshot goes inactive after each run, leaving OnUnitActiveSec
+# with no live "active" anchor -> NextElapse goes n/a and the timer fires once, never again.
+# OnUnitInactiveSec re-arms from the inactive edge (the anchor a oneshot has). Mirrors the
+# chump-farmer.timer fix (#4808 / RESILIENT-313).
+OnUnitInactiveSec=15min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

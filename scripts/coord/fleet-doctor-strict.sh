@@ -33,16 +33,58 @@
 #                        (unmet requires=) skip; dead organs in an
 #                        organ-reconcile.sh backoff cooldown are distinguished
 #                        from dead-and-unowned ones in the failure detail.
+#   15. self-healer-heartbeat — RESILIENT-1053 (originally scoped as RESILIENT-1052; re-filed to avoid a duplicate-PR collision with #4515): the self-healers watch every
+#                        OTHER organ but nothing watched THEM (chump-organ-
+#                        reconcile.timer is deliberately excluded from
+#                        organ-manifest.txt). FAILs + pages
+#                        (kind=self_healer_heartbeat_stale) if
+#                        organ_watchdog_tick or organ_reconcile_applied/noop
+#                        goes stale past its cadence, or has never ticked at
+#                        all while the other has.
+#   16. tracked-config-drift — RESILIENT-1106 (Track A, RESILIENT-1102 /
+#                        docs/design/DESIGN_GAPS_SELF_RUNNING.md): #4593
+#                        pulled worker self-heal policy into tracked
+#                        scripts/setup/*.env files, but a node's hand-deployed,
+#                        git-UNTRACKED launcher (~/node1-worker-run.sh,
+#                        ~/.chump/providers.env) can still hard-set the SAME
+#                        var to a DIFFERENT value and silently win — exactly
+#                        the class of drift #4593 tried to close. FAILs +
+#                        pages (kind=tracked_config_drift) when a live
+#                        untracked file's literal `VAR=value` assignment
+#                        disagrees with the tracked file's canonical value.
+#                        Skips (not fail) when no untracked override files
+#                        are present on this node — nothing outside git to
+#                        drift from.
+#   17. checkout-parked-off-main — RESILIENT-1512: REPO_ROOT's checked-out
+#                        branch sitting on something other than `main` for
+#                        longer than CHECKOUT_PARKED_STALE_S pages
+#                        (kind=checkout_parked_off_main) — the hub-node
+#                        failure mode where a stale/parked checkout silently
+#                        degrades `gap ship` proof-of-merge and other
+#                        main-relative tooling until someone notices by hand.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
 #   DISK_MIN_GB               default 5    — fail if free disk below N GB
+#   DISK_PRESSURE_PCT         default 90   — fail if REPO_ROOT (or any path in
+#                              CHUMP_DISK_PRESSURE_PATHS) is at/above N percent used
+#   CHUMP_DISK_PRESSURE_PATHS default REPO_ROOT — space-separated extra mounts to check
+#                              (e.g. "/ /mnt/cjdata1" on a CJ coordinator node)
 #   DIRTY_PR_HOURS            default 24   — DIRTY PRs older than N hours are flagged
 #   P0_MAX                    default 5    — fail if more than N open P0 gaps
 #   PILLAR_MIN                default 2    — fail if any pillar has fewer than N pickable gaps
 #   SILENT_DEATH_MERGE_HOURS  default 12   — last-merge older than N hours triggers check 1
 #   CHUMP_DOCTOR_AUTOHEAL     default 0    — set 1 to auto-restore missing scripts + bounce daemons
+#   CHUMP_CONFIG_DRIFT_TRACKED_GLOB  default "scripts/setup/*.env" — tracked
+#                              config-as-code files that hold canonical policy
+#   CHUMP_CONFIG_DRIFT_LIVE_GLOB     default "$HOME/*-worker-run.sh
+#                              $HOME/.chump/providers.env
+#                              $HOME/.chump/chumpd.env" — untracked, node-local
+#                              files that may hand-set the same vars
+#   CHECKOUT_PARKED_STALE_S   default 3600 — REPO_ROOT checked out on a
+#                              non-main branch for longer than N seconds fails
 #
+
 # Bypass: CHUMP_FLEET_DOCTOR=0 exits 0 (for scripted contexts that want raw signal).
 #
 # Rust-First-Bypass: read-only health aggregator over existing CLI tools; no
@@ -177,9 +219,32 @@ check_disk() {
         register_check "disk" "fail" \
             "only ${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB)" \
             "bash $REPO_ROOT/scripts/coord/chump-target-reaper.sh --apply  # or manual cleanup"
+        return
+    fi
+
+    # RESILIENT-1444: percentage-based guard — a large filesystem can clear
+    # the absolute-GB floor above while still being critically full (e.g.
+    # 15 GB free on a 115 GB disk is 87% used). Checks REPO_ROOT plus any
+    # extra mounts in CHUMP_DISK_PRESSURE_PATHS (space-separated).
+    local pressure_pct="${DISK_PRESSURE_PCT:-90}"
+    local pressure_paths="${CHUMP_DISK_PRESSURE_PATHS:-$REPO_ROOT}"
+    local path pct worst_path="" worst_pct=0
+    for path in $pressure_paths; do
+        pct="$(df -k "$path" 2>/dev/null | awk 'NR==2 { gsub(/%/,"",$5); print $5 }')"
+        [[ -z "$pct" || ! "$pct" =~ ^[0-9]+$ ]] && continue
+        if [[ "$pct" -gt "$worst_pct" ]]; then
+            worst_pct="$pct"
+            worst_path="$path"
+        fi
+    done
+
+    if [[ -n "$worst_path" && "$worst_pct" -ge "$pressure_pct" ]]; then
+        register_check "disk" "fail" \
+            "$worst_path is ${worst_pct}% used (threshold: <${pressure_pct}%) — RESILIENT-1444 disk-pressure guard" \
+            "bash $REPO_ROOT/scripts/ops/stale-worktree-reaper.sh --execute  # reap abandoned worktrees, then chump-target-reaper.sh --apply"
     else
         register_check "disk" "pass" \
-            "${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB)" \
+            "${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB); ${worst_path:-$REPO_ROOT} at ${worst_pct}% used (threshold: <${pressure_pct}%)" \
             ""
     fi
 }
@@ -648,22 +713,35 @@ check_almanac_freshness() {
 #                         21 days — this makes it RED within hours instead.
 check_backlog_sync_freshness() {
     local max_h="${CHUMP_BACKLOG_SYNC_STALE_HOURS:-24}"
-    local last_epoch
-    last_epoch="$(git -C "$REPO_ROOT" log -1 --format='%ct' origin/main -- .chump/state.sql 2>/dev/null)"
+    local last_epoch reg_ref="origin/main"
+    # Registry privacy: the writer publishes to the private `registry` remote.
+    # Measure freshness THERE when it is configured; origin/main only carries
+    # the legacy (pre-cutover) file. A configured-but-unfetchable registry is a
+    # FAIL, never a quiet fallback to the frozen legacy copy.
+    if git -C "$REPO_ROOT" remote get-url registry >/dev/null 2>&1; then
+        reg_ref="registry/main"
+        if ! git -C "$REPO_ROOT" fetch --quiet registry main 2>/dev/null; then
+            register_check "backlog-sync-freshness" "fail" \
+                "registry remote is configured but could not be fetched — cannot prove the registry is fresh" \
+                "check the node's registry deploy key / network: git -C $REPO_ROOT fetch registry main"
+            return
+        fi
+    fi
+    last_epoch="$(git -C "$REPO_ROOT" log -1 --format='%ct' "$reg_ref" -- .chump/state.sql 2>/dev/null)"
     if [[ -z "$last_epoch" ]]; then
         register_check "backlog-sync-freshness" "fail" \
-            "no commit history for .chump/state.sql on origin/main — backlog-sync writer has never published" \
+            "no commit history for .chump/state.sql on $reg_ref — backlog-sync writer has never published there" \
             "install the writer organ: sudo bash scripts/setup/install-helsinki-atc.sh (see chump-backlog-sync-writer.timer)"
         return
     fi
     local age_h=$(( ( $(date +%s) - last_epoch ) / 3600 ))
     if (( age_h >= max_h )); then
         register_check "backlog-sync-freshness" "fail" \
-            "origin/main .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
+            "$reg_ref .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
             "check: systemctl status chump-backlog-sync-writer.timer; re-arm: sudo bash scripts/setup/install-helsinki-atc.sh"
         return
     fi
-    register_check "backlog-sync-freshness" "pass" "origin/main .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
+    register_check "backlog-sync-freshness" "pass" "$reg_ref .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
 }
 
 #  14. organ-roll-call-live — INFRA-3646 (TREK-20): the static Roll-Call
@@ -701,6 +779,23 @@ _organ_roll_call_is_applicable() {
             dep:*)
                 "$systemctl_bin" is-active --quiet "${rtok#dep:}" 2>/dev/null \
                     || { printf -v "$reason_var" 'missing_dep:%s' "${rtok#dep:}"; return 1; }
+                ;;
+            file:*)
+                # RESILIENT-1436: mirrors organ_is_applicable() in
+                # scripts/ops/lib/organ-manifest-lib.sh — the CJ-legacy
+                # chump-cj-worker/disk-monitor/sync organs declare
+                # requires=...,file:~/cj-*-run.sh (a host-specific asset with
+                # no tracked unit file). Before this case existed, `file:`
+                # fell through to the `*)` unknown-spec branch below, which
+                # marked these organs not-applicable and SKIPped them —
+                # invisible to the live roll-call even when systemd-supervised.
+                local fpath="${rtok#file:}"
+                case "$fpath" in
+                    '~/'*)     fpath="${HOME:-/root}/${fpath#\~/}" ;;
+                    '$HOME/'*) fpath="${HOME:-/root}/${fpath#\$HOME/}" ;;
+                esac
+                [[ -e "$fpath" ]] \
+                    || { printf -v "$reason_var" 'missing_file:%s' "$fpath"; return 1; }
                 ;;
             *)
                 printf -v "$reason_var" 'unknown_requires_spec:%s' "$rtok"; return 1 ;;
@@ -1074,6 +1169,312 @@ check_auth_probe() {
     fi
 }
 
+# ── Check 15 (RESILIENT-1053, originally scoped as RESILIENT-1052 — see below): self-healer heartbeat — is anyone paging when
+#    the self-healers themselves go dark? ──────────────────────────────────
+#
+# organ-watchdog.sh and organ-reconcile.sh heal every OTHER organ, but
+# nothing in this file checked THEM: organ-roll-call-live (check 14) reads
+# organ-manifest.txt, and chump-organ-reconcile.timer is *intentionally*
+# excluded from that manifest (see the NOTE in organ-manifest.txt — its
+# liveness was left to install-helsinki-atc.sh, which only runs on deploy or
+# boot, not continuously). If either healer's timer silently stops ticking
+# between deploys, every organ it protects rots unattended and nothing
+# pages — the exact meta-failure this check closes.
+#
+# Both healers emit an unconditional per-run ambient event on every
+# successful cycle:
+#   organ-watchdog.sh   -> kind=organ_watchdog_tick        (every ~5 min)
+#   organ-reconcile.sh  -> kind=organ_reconcile_applied OR
+#                          kind=organ_reconcile_noop        (every ~3 min)
+# Treat the newest of those as a heartbeat: if either has never ticked while
+# the OTHER has (proof ambient logging works on this node), or either has
+# gone stale past its cadence + buffer, FAIL and emit a paging ambient event
+# (kind=self_healer_heartbeat_stale) so the silence itself becomes visible.
+# If NEITHER has ever ticked, this isn't the primary node (or a fresh
+# checkout with no ambient history) — skip rather than false-alarm.
+#
+# Thresholds (override via env)
+#   SELF_HEALER_WATCHDOG_STALE_S   default 1200 (20min) — watchdog cadence is 5min
+#   SELF_HEALER_RECONCILE_STALE_S  default 1200 (20min) — reconcile cadence is 3min
+check_self_healer_heartbeat() {
+    local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    if [[ ! -f "$amb" ]]; then
+        register_check "self-healer-heartbeat" "skip" "no ambient.jsonl present — nothing to check" ""
+        return
+    fi
+    if ! command -v python3 &>/dev/null; then
+        register_check "self-healer-heartbeat" "skip" "python3 unavailable — skipping self-healer heartbeat scan" ""
+        return
+    fi
+
+    local watchdog_max_s="${SELF_HEALER_WATCHDOG_STALE_S:-1200}"
+    local reconcile_max_s="${SELF_HEALER_RECONCILE_STALE_S:-1200}"
+
+    local result
+    result="$(python3 -c '
+import sys, json, datetime
+def epoch(ts):
+    try: return int(datetime.datetime.strptime(ts.replace("Z","+0000"),"%Y-%m-%dT%H:%M:%S%z").timestamp())
+    except Exception: return 0
+last_watchdog = 0
+last_reconcile = 0
+for line in open(sys.argv[1], "r", errors="replace"):
+    try: d = json.loads(line)
+    except Exception: continue
+    k = d.get("kind")
+    e = epoch(d.get("ts", ""))
+    if k == "organ_watchdog_tick":
+        last_watchdog = max(last_watchdog, e)
+    elif k in ("organ_reconcile_applied", "organ_reconcile_noop"):
+        last_reconcile = max(last_reconcile, e)
+print(last_watchdog)
+print(last_reconcile)
+' "$amb" 2>/dev/null)"
+
+    local last_watchdog last_reconcile
+    last_watchdog="$(printf '%s' "$result" | sed -n 1p)"; last_watchdog="${last_watchdog:-0}"
+    last_reconcile="$(printf '%s' "$result" | sed -n 2p)"; last_reconcile="${last_reconcile:-0}"
+
+    if [[ "$last_watchdog" -eq 0 && "$last_reconcile" -eq 0 ]]; then
+        register_check "self-healer-heartbeat" "skip" \
+            "no organ_watchdog_tick or organ_reconcile_applied/noop events in ambient.jsonl — self-healers have never ticked on this node (fresh checkout or not the primary node)" ""
+        return
+    fi
+
+    local now_ts
+    now_ts="$(date -u +%s)"
+    local fails=()
+
+    if [[ "$last_watchdog" -eq 0 ]]; then
+        fails+=("chump-organ-watchdog.timer has NEVER ticked (no organ_watchdog_tick event) while organ-reconcile has — the watchdog is dead and unowned")
+    else
+        local watchdog_age=$(( now_ts - last_watchdog ))
+        if (( watchdog_age >= watchdog_max_s )); then
+            fails+=("chump-organ-watchdog.timer silent for ${watchdog_age}s (threshold ${watchdog_max_s}s) — stopped ticking")
+        fi
+    fi
+
+    if [[ "$last_reconcile" -eq 0 ]]; then
+        fails+=("chump-organ-reconcile.timer has NEVER ticked (no organ_reconcile_applied/noop event) while organ-watchdog has — the reconcile is dead and unowned")
+    else
+        local reconcile_age=$(( now_ts - last_reconcile ))
+        if (( reconcile_age >= reconcile_max_s )); then
+            fails+=("chump-organ-reconcile.timer silent for ${reconcile_age}s (threshold ${reconcile_max_s}s) — stopped ticking")
+        fi
+    fi
+
+    if [[ "${#fails[@]}" -gt 0 ]]; then
+        local detail
+        detail="$(printf '%s; ' "${fails[@]}")"
+        detail="${detail%; }"
+        # Write directly rather than routing through ambient-emit.sh: its
+        # INFRA-101 schema gate only recognizes a small legacy "event" enum
+        # and rejects brand-new kinds outright (silently, via the caller's
+        # `|| true`) unless CHUMP_AMBIENT_SCHEMA_CHECK=0 is threaded through —
+        # exactly the kind of silent paging failure this check exists to
+        # eliminate, so it must not depend on that path.
+        local detail_json
+        detail_json="$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"self_healer_heartbeat_stale","detail":"%s","source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$detail_json" >> "$amb" 2>/dev/null || true
+        register_check "self-healer-heartbeat" "fail" "$detail" \
+            "systemctl status chump-organ-watchdog.timer chump-organ-reconcile.timer; sudo systemctl restart chump-organ-watchdog.timer chump-organ-reconcile.timer; sudo bash scripts/setup/install-helsinki-atc.sh"
+        return
+    fi
+
+    register_check "self-healer-heartbeat" "pass" \
+        "organ-watchdog ticked $(( now_ts - last_watchdog ))s ago, organ-reconcile ticked $(( now_ts - last_reconcile ))s ago (thresholds ${watchdog_max_s}s/${reconcile_max_s}s)" ""
+}
+
+#  16. tracked-config-drift — RESILIENT-1106: #4593 moved worker self-heal
+#      policy into tracked scripts/setup/*.env config-as-code files so it
+#      could be reviewed and reproduced in git. But a node's hand-deployed,
+#      git-UNTRACKED launcher (~/node1-worker-run.sh) or machine-local
+#      ~/.chump/providers.env can still hard-set the same var name to a
+#      DIFFERENT literal value and silently win at runtime — the exact
+#      "nothing in git could review, reproduce, or heal the policy" failure
+#      mode #4593 closed for the UNSET case, but not for the OVERRIDDEN case.
+#      This check diffs each tracked file's canonical value against any live
+#      untracked file's literal (non-`:=`) assignment of the same var.
+check_tracked_config_drift() {
+    if ! command -v python3 &>/dev/null; then
+        register_check "tracked-config-drift" "skip" "python3 unavailable — skipping config-drift scan" ""
+        return
+    fi
+
+    local tracked_glob="${CHUMP_CONFIG_DRIFT_TRACKED_GLOB:-$REPO_ROOT/scripts/setup/*.env}"
+    local -a tracked_files=()
+    # shellcheck disable=SC2206
+    tracked_files=( $tracked_glob )
+    if [[ ! -e "${tracked_files[0]:-}" ]]; then
+        register_check "tracked-config-drift" "skip" "no tracked config-as-code files match '$tracked_glob'" ""
+        return
+    fi
+
+    local live_glob="${CHUMP_CONFIG_DRIFT_LIVE_GLOB:-$HOME/*-worker-run.sh $HOME/.chump/providers.env $HOME/.chump/chumpd.env}"
+    local -a live_files=()
+    local pattern
+    for pattern in $live_glob; do
+        # shellcheck disable=SC2206
+        local -a expanded=( $pattern )
+        [[ -e "${expanded[0]:-}" ]] && live_files+=( "${expanded[@]}" )
+    done
+    if [[ "${#live_files[@]}" -eq 0 ]]; then
+        register_check "tracked-config-drift" "skip" \
+            "no untracked live override files present (checked: $live_glob) — nothing outside git to drift from" ""
+        return
+    fi
+
+    local drift_out
+    drift_out="$(python3 -c '
+import re, sys, json
+
+tracked_paths = sys.argv[1].split("\x1e")
+live_paths = sys.argv[2].split("\x1e")
+
+# Canonical values from tracked config-as-code: both plain "VAR=value" and
+# bash default-assignment ": \"${VAR:=value}\"" forms.
+canon = {}
+canon_src = {}
+default_re = re.compile(r"^\s*:\s*\"\$\{(\w+):=([^}]*)\}\"")
+plain_re = re.compile(r"^\s*(?:export\s+)?(\w+)=([^\s#]*)")
+for p in tracked_paths:
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.rstrip("\n")
+                m = default_re.match(line)
+                if not m:
+                    m = plain_re.match(line)
+                if m:
+                    var, val = m.group(1), m.group(2).strip()
+                    canon[var] = val
+                    canon_src[var] = p
+    except OSError:
+        continue
+
+# Live overrides: only HARD assignments (no ":=") count as an override that
+# silently wins over the tracked default. Last assignment in a file wins,
+# mirroring shell semantics.
+live = {}
+live_src = {}
+for p in live_paths:
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if ":=" in line:
+                    continue
+                m = plain_re.match(line)
+                if m:
+                    var, val = m.group(1), m.group(2).strip()
+                    live[var] = val
+                    live_src[var] = p
+    except OSError:
+        continue
+
+drifted = []
+for var, cval in canon.items():
+    if var in live and live[var] != cval:
+        drifted.append({
+            "var": var, "tracked_value": cval, "live_value": live[var],
+            "tracked_file": canon_src[var], "live_file": live_src[var],
+        })
+
+print(json.dumps({"checked": len(canon), "drifted": drifted}))
+' "$(IFS=$'\x1e'; echo "${tracked_files[*]}")" "$(IFS=$'\x1e'; echo "${live_files[*]}")" 2>/dev/null)"
+
+    if [[ -z "$drift_out" ]]; then
+        register_check "tracked-config-drift" "skip" "config-drift scan produced no output (parse error?)" ""
+        return
+    fi
+
+    local checked_count drift_count
+    checked_count="$(printf '%s' "$drift_out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checked"])' 2>/dev/null || echo 0)"
+    drift_count="$(printf '%s' "$drift_out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["drifted"]))' 2>/dev/null || echo 0)"
+
+    if [[ "$drift_count" -gt 0 ]]; then
+        local detail
+        detail="$(printf '%s' "$drift_out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["drifted"]
+parts = []
+for x in d:
+    parts.append("%s: tracked=%r (%s) vs live=%r (%s)" % (x["var"], x["tracked_value"], x["tracked_file"], x["live_value"], x["live_file"]))
+print("; ".join(parts))
+' 2>/dev/null)"
+        local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        local detail_json
+        detail_json="$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"tracked_config_drift","detail":"%s","source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$detail_json" >> "$amb" 2>/dev/null || true
+        register_check "tracked-config-drift" "fail" "$detail" \
+            "reconcile the live override to match the tracked value, or if the live value is intentional, update the tracked scripts/setup/*.env file and ship it so the policy is reviewable in git"
+        return
+    fi
+
+    register_check "tracked-config-drift" "pass" \
+        "$checked_count tracked var(s) checked against ${#live_files[@]} live file(s) — no drift" ""
+}
+
+#  17. checkout-parked-off-main — RESILIENT-1512: the canonical gap-store
+#      checkout (this REPO_ROOT) was observed sitting on a feature branch
+#      (fix/apex-watchdog-skip-not-always-on) with ~8.9k dirty files while
+#      local main was 17 commits / 21h behind origin — invisible until a
+#      `chump gap ship` refused to close a gap whose PR had already merged.
+#      Tracks a marker file recording (branch, first-seen-ts) so a checkout
+#      that's merely mid-rebase for a few minutes doesn't page, but one
+#      parked off main for over CHECKOUT_PARKED_STALE_S does.
+check_checkout_parked_off_main() {
+    if [[ ! -d "$REPO_ROOT/.git" ]]; then
+        register_check "checkout-parked-off-main" "skip" "no .git under REPO_ROOT" ""
+        return
+    fi
+    local branch
+    branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"
+    local marker="$REPO_ROOT/.chump-locks/checkout-off-main.marker"
+    local stale_s="${CHECKOUT_PARKED_STALE_S:-3600}"
+    local now_ts
+    now_ts="$(date -u +%s)"
+
+    if [[ "$branch" == "main" ]]; then
+        rm -f "$marker" 2>/dev/null || true
+        register_check "checkout-parked-off-main" "pass" "checkout is on main" ""
+        return
+    fi
+
+    mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
+    local marker_branch="" marker_ts=0
+    if [[ -f "$marker" ]]; then
+        marker_branch="$(sed -n 1p "$marker" 2>/dev/null)"
+        marker_ts="$(sed -n 2p "$marker" 2>/dev/null)"; marker_ts="${marker_ts:-0}"
+    fi
+
+    if [[ "$marker_branch" != "$branch" ]]; then
+        # Just switched onto this branch (or marker absent) — start the clock.
+        printf '%s\n%s\n' "$branch" "$now_ts" > "$marker" 2>/dev/null || true
+        register_check "checkout-parked-off-main" "pass" \
+            "checkout on '$branch' (just detected — starting ${stale_s}s clock)" ""
+        return
+    fi
+
+    local age=$(( now_ts - marker_ts ))
+    if (( age >= stale_s )); then
+        local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"checkout_parked_off_main","branch":"%s","age_s":%d,"source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$age" >> "$amb" 2>/dev/null || true
+        register_check "checkout-parked-off-main" "fail" \
+            "REPO_ROOT has sat on '$branch' for ${age}s (threshold ${stale_s}s) instead of main — gap ship proof-of-merge and other main-relative tooling degrade on this checkout" \
+            "cd $REPO_ROOT && git status (triage/commit or stash the branch's changes), then git checkout main"
+        return
+    fi
+
+    register_check "checkout-parked-off-main" "pass" \
+        "checkout on '$branch' for ${age}s (threshold ${stale_s}s) — not yet stale" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1097,6 +1498,9 @@ check_organ_roll_call_live
 check_required_status_checks
 check_ops_defect_selfdiag
 check_auth_probe
+check_self_healer_heartbeat
+check_tracked_config_drift
+check_checkout_parked_off_main
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

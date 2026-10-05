@@ -6,14 +6,17 @@
 # Forward mode (CREDIBLE-028): queries state.db for gaps with status=done and
 # closed_pr=N, then verifies each PR is actually merged on GitHub.
 #
-# File-overlap check (CREDIBLE-268 FIX 3): for each forward-mode gap whose PR
-# IS merged, extracts file-path-looking tokens from the gap's
-# acceptance_criteria and compares them against the PR's changed-file list.
-# ACs that name files but share none with the PR diff are the fingerprint of
-# an over-broad auto-flip (e.g. a PR merely CITING a gap rather than doing
-# its work) — see PR #3556, which changed 2 files and closed 5 gaps by
-# citing them. Extension of the existing forward-mode gate, not a new
-# detector (deliberate: MINE BEFORE BUILD).
+# File-overlap check (CREDIBLE-268 FIX 3, made unconditional in CREDIBLE-1297):
+# for each forward-mode gap whose PR IS merged, extracts file-path-looking
+# tokens from the gap's acceptance_criteria and compares them against the
+# PR's changed-file list. ACs that name files but share none with the PR
+# diff are the fingerprint of an over-broad auto-flip (e.g. a PR merely
+# CITING a gap rather than doing its work) — see PR #3556, which changed 2
+# files and closed 5 gaps by citing them. Extension of the existing
+# forward-mode gate, not a new detector (deliberate: MINE BEFORE BUILD).
+# CREDIBLE-1297: this check now ALWAYS fails the gate on a mismatch
+# (independent of --strict) and logs the offending gap IDs — CI must fail
+# whenever it fires, not just advise.
 #
 # Reverse mode (CREDIBLE-039): queries state.db for gaps with status=open and
 # closed_pr=N, then checks if that PR is merged → emits stale_post_merge_gap.
@@ -117,7 +120,8 @@ if ! command -v gh &>/dev/null; then
         warn "gh CLI not found and CHUMP_GH_REQUIRED=0 — skipping GitHub PR state check"
         exit 0
     fi
-    fail "gh CLI not found — cannot verify PR states. Set CHUMP_GH_REQUIRED=0 to skip in offline environments."
+    fail "gh CLI not found — cannot verify PR states.
+How to bypass cleanly: set CHUMP_GH_REQUIRED=0 to skip in offline environments where gh is unavailable"
 fi
 
 # Probe GitHub API reachability (CREDIBLE-031 + INFRA-539 pattern)
@@ -128,7 +132,8 @@ if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" ]]; then
             warn "GitHub API unreachable and CHUMP_GH_REQUIRED=0 — skipping"
             exit 0
         fi
-        fail "GitHub API unreachable (gh api /rate_limit timed out after ${_probe_timeout}s). Set CHUMP_GH_REQUIRED=0 to skip."
+        fail "GitHub API unreachable (gh api /rate_limit timed out after ${_probe_timeout}s).
+How to bypass cleanly: set CHUMP_GH_REQUIRED=0 to skip when GitHub is unreachable"
     fi
 fi
 
@@ -160,11 +165,11 @@ FILE_OVERLAP_IDS=()
 # fingerprint of a closure that rode in on a citation rather than the work
 # itself (PR #3556: 2 files changed, 5 gaps closed by naming them in prose).
 #
-# Deliberately advisory, not blocking by default: filenames named in ACs are
-# a design sketch, not a contract, so a real implementation can legitimately
-# land in different files than first proposed. Emits gap_closed_no_file_overlap
-# for operator review; only affects overall_drift under --strict (same as
-# every other check in this gate).
+# CREDIBLE-1297: unconditional drift (not gated on --strict). A PR that
+# touches none of the files its closed gap's ACs name is the fingerprint of
+# a citation-only closure (PR #3556), which is exactly the failure class this
+# gate exists to catch — advisory-only made it too easy to ignore in
+# practice. Emits gap_closed_no_file_overlap for operator review either way.
 check_file_overlap() {
     local gap_id="$1" pr_num="$2"
     local ac_text
@@ -198,7 +203,7 @@ check_file_overlap() {
             emit_alert "gap_closed_no_file_overlap" \
                 '"gap_id":"'"$gap_id"'","pr":'"$pr_num"',"ac_files_sample":"'"${ac_files[0]}"'"'
         fi
-        [[ "$STRICT" -eq 1 ]] && overall_drift=1
+        overall_drift=1
     fi
     return 0
 }
@@ -379,6 +384,7 @@ if [[ "$overall_drift" -eq 0 ]]; then
     exit 0
 else
     echo "Closure consistency drift detected (--strict mode)."
+    printf '[FAIL] %s\n' "How to bypass cleanly: fix the drifted gap(s) via 'chump gap ship <ID>' (stale_post_merge_gap) or revert status to in_progress (premature_close); if the drift is a false positive set CHUMP_PREMATURE_CLOSURE_ALLOW_GH_FAIL=1 (gh-API flake) or re-run with --auto-fix" >&2
     gate_emit_result "CREDIBLE-028" "fail" "gap_drift_premature_close" "$overall_drift drift(s)"
     exit 1
 fi

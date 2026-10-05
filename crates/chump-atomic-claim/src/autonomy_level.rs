@@ -110,6 +110,40 @@ impl AutonomyLevel {
             AutonomyLevel::Unleashed => "UNLEASHED",
         }
     }
+
+    /// EFFECTIVE-086 AC #1/#2: whether this level permits auto-merge at
+    /// all. Levels 0-2 (STOP/OBSERVE/ASSIST) never auto-merge — ASSIST
+    /// builds PRs but every one waits for a human. Levels 3-5
+    /// (SUPERVISED/AUTONOMOUS/UNLEASHED) defer to the existing
+    /// chump-policy chain (trust ladder, lane, human-review gates) —
+    /// this is a *ceiling*, not a replacement for that chain.
+    pub fn allows_auto_merge(self) -> bool {
+        self >= AutonomyLevel::Supervised
+    }
+
+    /// EFFECTIVE-086 AC #3: worker-concurrency ceiling for this level,
+    /// binding into the existing fleet scaling gate
+    /// (docs/process/FLEET_SLOS.md / INFRA-518 scale-up criteria) rather
+    /// than introducing a parallel cap. `None` means "no level-imposed
+    /// ceiling" — the fleet scaling gate's own criteria are the only
+    /// limit (UNLEASHED).
+    ///
+    ///   0 STOP        -> 0 (no workers)
+    ///   1 OBSERVE      -> 0 (propose only, zero writes)
+    ///   2 ASSIST       -> 1 (build, but every PR waits on a human)
+    ///   3 SUPERVISED   -> 2 (matches the 2->3 scale-up tier's starting point)
+    ///   4 AUTONOMOUS   -> 4 (matches the fleet scaling gate's 3->4 tier ceiling)
+    ///   5 UNLEASHED    -> None (uncapped by level; scaling gate still applies)
+    pub fn max_workers(self) -> Option<u32> {
+        match self {
+            AutonomyLevel::Stop => Some(0),
+            AutonomyLevel::Observe => Some(0),
+            AutonomyLevel::Assist => Some(1),
+            AutonomyLevel::Supervised => Some(2),
+            AutonomyLevel::Autonomous => Some(4),
+            AutonomyLevel::Unleashed => None,
+        }
+    }
 }
 
 impl From<AutonomyLevel> for i64 {
@@ -275,6 +309,35 @@ mod tests {
         assert_eq!(AutonomyLevel::Supervised.name(), "SUPERVISED");
         assert_eq!(AutonomyLevel::Autonomous.name(), "AUTONOMOUS");
         assert_eq!(AutonomyLevel::Unleashed.name(), "UNLEASHED");
+    }
+
+    /// EFFECTIVE-086 AC #4: exercise every level 0-5 and assert its
+    /// allowed/forbidden action set — auto-merge ceiling + worker-count
+    /// ceiling — matches the graduated dial's contract.
+    #[test]
+    fn autonomy_level_action_set_matrix() {
+        let cases = [
+            (AutonomyLevel::Stop, false, Some(0)),
+            (AutonomyLevel::Observe, false, Some(0)),
+            (AutonomyLevel::Assist, false, Some(1)),
+            (AutonomyLevel::Supervised, true, Some(2)),
+            (AutonomyLevel::Autonomous, true, Some(4)),
+            (AutonomyLevel::Unleashed, true, None),
+        ];
+        for (level, expect_auto_merge, expect_max_workers) in cases {
+            assert_eq!(
+                level.allows_auto_merge(),
+                expect_auto_merge,
+                "{:?} auto-merge allowance mismatch",
+                level
+            );
+            assert_eq!(
+                level.max_workers(),
+                expect_max_workers,
+                "{:?} max-workers ceiling mismatch",
+                level
+            );
+        }
     }
 
     #[test]

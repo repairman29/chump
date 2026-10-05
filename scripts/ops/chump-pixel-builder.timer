@@ -1,0 +1,14 @@
+[Unit]
+# RESILIENT-1044: keep a Pixel-built binary waiting for green-main so nodes never
+# have to cold-build. Pairs with chump-pixel-builder.service.
+Description=periodic owned-iron build-offload — build the green-main chump binary on the Pixel — RESILIENT-1044
+
+[Timer]
+# First run 3 min after boot, then every 30 min (matches node-refresh cadence so
+# an owned-built asset is usually ready before a node's refresh looks for it).
+OnBootSec=3min
+OnUnitActiveSec=30min
+Persistent=true
+
+[Install]
+WantedBy=timers.target

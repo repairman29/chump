@@ -94,7 +94,15 @@
 #   CHUMP_BINARY_REFRESH_UNIT            — unit name for the binary-refresh
 #                                           organ (default
 #                                           chump-node-refresh.service)
+#   CHUMP_ORGAN_WATCHDOG_AUTONOMY_RECALL_SCRIPT — RESILIENT-1498: override for
+#                                           operator-recall.sh (section 6,
+#                                           invoked unconditionally every
+#                                           cycle for AUTONOMY_HALT et al.)
+#                                           deliberately separate from
+#                                           CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT
+#                                           (section 3, WORKER_HALT only)
 #
+
 # Exit codes:
 #   0  normal (whether or not any organ needed healing)
 #   1  systemctl unavailable (non-Linux dev box, or not installed) — quiet
@@ -141,6 +149,12 @@ DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/in
 # watchdog's door instead of the installer's.
 BACKOFF_DIR="${CHUMP_ORGAN_RECONCILE_BACKOFF_DIR:-$REPO_ROOT/.chump-locks/organ-backoff}"
 
+# INFRA-1737: loop-stop sentinel — checked at the top of every per-unit
+# iteration below so an operator can halt this watchdog's backoff scan mid-
+# cycle by touching the file, without waiting for the whole 5-minute cycle
+# to finish or killing the process.
+STOP_SENTINEL="$REPO_ROOT/.chump-locks/loop-stop-requested"
+
 mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
 
 emit() {  # kind, extra-json (no leading/trailing comma)
@@ -163,6 +177,31 @@ organ_watchdog_in_backoff() {  # unit
     if [[ "$unit" == *.service ]]; then
         [[ -f "$BACKOFF_DIR/${unit%.service}.timer.json" ]] && return 0
     fi
+    return 1
+}
+
+# RESILIENT-1016 follow-up: does `unit`'s ExecStart point ONLY at script
+# file(s) that no longer exist on disk? A launchd->systemd port whose backing
+# script was removed or renamed (a retired organ, e.g. merge-mix-board after
+# INFRA-3844, or a foreign-home-path port that never resolves on this node)
+# sits `failed` forever, and the blind reset-failed+restart below just
+# resurrects it every 5-minute cycle — the self-healer perpetuating a failure
+# it can never heal. Returns 0 (obsolete, reap it) ONLY when the ExecStart
+# references at least one absolute *.sh path AND none of those paths exist, so
+# units that exec a binary, or a script that really is present, are never
+# falsely reaped.
+organ_exec_target_missing() {  # unit -> 0 if all referenced .sh ExecStart targets are missing
+    local unit="$1" execline paths p found_sh=0
+    execline="$("$SYSTEMCTL_BIN" show "$unit" -p ExecStart 2>/dev/null)"
+    [[ -z "$execline" ]] && return 1
+    paths="$(printf '%s\n' "$execline" | grep -oE "/[^ \"']+\.sh" 2>/dev/null || true)"
+    [[ -z "$paths" ]] && return 1
+    while IFS= read -r p; do
+        [[ -z "$p" ]] && continue
+        found_sh=1
+        [[ -f "$p" ]] && return 1    # a referenced script exists -> not obsolete
+    done <<< "$paths"
+    [[ "$found_sh" == 1 ]] && return 0
     return 1
 }
 
@@ -286,6 +325,10 @@ FAILED_SERVICES="$("$SYSTEMCTL_BIN" list-units --all --type=service --state=fail
 if [[ -n "$FAILED_SERVICES" ]]; then
     while IFS= read -r unit; do
         [[ -z "$unit" ]] && continue
+        if [[ -f "$STOP_SENTINEL" ]]; then
+            echo "[organ-watchdog] stop requested: $STOP_SENTINEL exists, exiting" >&2
+            exit 0
+        fi
         if organ_watchdog_in_backoff "$unit"; then
             echo "[organ-watchdog] SKIP (backed off by organ-reconcile): $unit"
             # scanner-anchor: "kind":"organ_watchdog_backoff_skip"  (RESILIENT-347;
@@ -294,6 +337,25 @@ if [[ -n "$FAILED_SERVICES" ]]; then
             # curated decision instead of blindly resurrecting the unit every
             # cycle, which is the churn RESILIENT-347 exists to end)
             emit organ_watchdog_backoff_skip "\"unit\":\"$unit\""
+            continue
+        fi
+        if organ_exec_target_missing "$unit"; then
+            echo "[organ-watchdog] REAP (ExecStart script missing on disk — obsolete/removed organ, NOT resurrecting): $unit"
+            if [[ "$DRY_RUN" == "1" ]]; then
+                echo "[organ-watchdog]   (dry-run) would disable + reset-failed $unit (and its .timer)"
+                continue
+            fi
+            "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
+            "$SYSTEMCTL_BIN" disable --now "${unit%.service}.timer" 2>/dev/null || true
+            "$SYSTEMCTL_BIN" reset-failed "$unit" 2>/dev/null || true
+            "$SYSTEMCTL_BIN" reset-failed "${unit%.service}.timer" 2>/dev/null || true
+            # scanner-anchor: "kind":"organ_watchdog_reaped_missing_exec" (RESILIENT-1016
+            # follow-up; the watchdog reaped an obsolete port whose backing script no
+            # longer exists on disk instead of blindly restarting it into perpetual
+            # failure — closes the self-healer-perpetuates-failure loop VERIFIED on CJ
+            # 2026-09-07 where merge-mix-board, script removed by INFRA-3844, was
+            # restarted every 5 min and never left `systemctl --failed`)
+            emit organ_watchdog_reaped_missing_exec "\"unit\":\"$unit\""
             continue
         fi
         echo "[organ-watchdog] FAILED: $unit"
@@ -406,6 +468,10 @@ if [[ -n "$ALL_TIMERS" ]]; then
     _did_daemon_reload=0   # daemon-reload at most once per cycle, lazily
     while IFS= read -r timer; do
         [[ -z "$timer" ]] && continue
+        if [[ -f "$STOP_SENTINEL" ]]; then
+            echo "[organ-watchdog] stop requested: $STOP_SENTINEL exists, exiting" >&2
+            exit 0
+        fi
         # Only ACTIVE timers here — an inactive one was already handled by §2.
         "$SYSTEMCTL_BIN" is-active --quiet "$timer" 2>/dev/null || continue
         # Skip-list (superseded/decommissioned timers we deliberately leave dark).
@@ -782,6 +848,34 @@ if [[ "${CHUMP_ORGAN_WATCHDOG_BINARY_HEAL:-0}" == "1" ]]; then
             fi
         fi
     fi
+fi
+
+# ── 6. Sustained AUTONOMY_LEVEL=0 kill-switch halt (RESILIENT-1498) ─────────
+# 2026-09-26 incident: AUTONOMY_LEVEL sat at 0 for ~2 days with zero operator
+# page. RESILIENT-321 already taught scripts/dispatch/operator-recall.sh how
+# to detect + page on a sustained AUTONOMY_HALT (fleet_stopped_kill_switch
+# events older than CHUMP_AUTONOMY_HALT_MIN_SECS while AUTONOMY_LEVEL is
+# still 0) — but the only place that invoked the FULL auto-detect scan
+# (operator-recall.sh with no --condition) on a schedule was control.sh, a
+# tmux PANE spawned by run-fleet.sh. A halted/absent interactive fleet
+# session means control.sh never runs, so the detector code existed but was
+# never *called* for the whole 2-day window. This watchdog, in contrast, is
+# a root systemd timer (chump-organ-watchdog.timer) that runs independent of
+# AUTONOMY_LEVEL, tmux, or any interactive session — the correct place to
+# anchor a halt-class detector that must survive the very condition it
+# detects. operator-recall.sh itself owns detection, cooldown-gated ambient
+# emission, and the webhook POST (CHUMP_OPERATOR_RECALL_URL) — this section
+# only guarantees it actually gets invoked every cycle.
+# Deliberately a SEPARATE override var from CHUMP_ORGAN_WATCHDOG_RECALL_SCRIPT
+# (section 3, WORKER_HALT): that one is only invoked on a sustained
+# zero-worker condition, while this call fires unconditionally every cycle —
+# sharing the var would make every section-3 test's "recall must not be
+# called yet" assertion see an unrelated call from this section.
+RECALL_SCRIPT_AUTONOMY="${CHUMP_ORGAN_WATCHDOG_AUTONOMY_RECALL_SCRIPT:-$REPO_ROOT/scripts/dispatch/operator-recall.sh}"
+if [[ "$DRY_RUN" == "1" ]]; then
+    echo "[organ-watchdog] (dry-run) would invoke operator-recall.sh full scan (AUTONOMY_HALT, etc.)"
+elif [[ -x "$RECALL_SCRIPT_AUTONOMY" ]]; then
+    CHUMP_AMBIENT_LOG="$AMBIENT_LOG" "$RECALL_SCRIPT_AUTONOMY" 2>&1 | grep '^\[operator-recall\]' || true
 fi
 
 # Heartbeat — always emit so a dead watchdog is itself observable (paired

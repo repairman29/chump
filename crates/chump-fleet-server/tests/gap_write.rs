@@ -19,7 +19,7 @@ use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use tower::ServiceExt; // for `.oneshot()`
 
-use chump_fleet_server::mission::BATPHONE_TOKEN_ENV;
+use chump_fleet_server::mission::{create_mission_gap, MissionRequest, BATPHONE_TOKEN_ENV};
 use chump_fleet_server::{db::FleetStore, routes};
 
 fn test_dir() -> PathBuf {
@@ -182,7 +182,114 @@ async fn gap_write_auth_op_validation_and_reserve_with_outcome() {
         "expected outcome forwarded via follow-up `gap set`, log:\n{log}"
     );
 
+    // RESILIENT-1030: this is a P0 reserve with no `evidence` field in the
+    // body. Before the fix, `chump gap reserve` would refuse P0/P1
+    // RESILIENT/MISSION/CREDIBLE gaps without `--evidence` and this whole
+    // dispatch would 500. Assert the route auto-exempts an already-authed
+    // bat-phone dispatch via `--no-evidence-required` instead.
+    assert!(
+        log.contains("--no-evidence-required"),
+        "expected the evidence gate to be auto-exempted for an authed P0 dispatch, log:\n{log}"
+    );
+
+    // ── RESILIENT-1030: GET /api/gaps — same bearer auth, then a fresh
+    // fake `chump` that answers `gap list --status open --json` so we can
+    // assert the route passes the queue JSON through unmodified. Kept in
+    // this same test function (not a separate #[tokio::test]) because both
+    // tests mutate the shared-process CHUMP_BATPHONE_TOKEN/CHUMP_BIN env
+    // vars, and Rust runs tests in the same binary on parallel threads by
+    // default — a second test fn here would race this one.
+    async fn get_gaps(app: axum::Router, auth: Option<&str>) -> (StatusCode, Value) {
+        let mut builder = Request::builder().method("GET").uri("/api/gaps");
+        if let Some(a) = auth {
+            builder = builder.header("authorization", a);
+        }
+        let req = builder.body(Body::empty()).unwrap();
+        let resp = app.oneshot(req).await.unwrap();
+        let status = resp.status();
+        let bytes = axum::body::to_bytes(resp.into_body(), usize::MAX)
+            .await
+            .unwrap();
+        let val: Value = serde_json::from_slice(&bytes).unwrap_or(Value::Null);
+        (status, val)
+    }
+
+    let gaps_dir = dir.join("get-gaps");
+    std::fs::create_dir_all(&gaps_dir).unwrap();
+    let gap_list_bin = gaps_dir.join("fake-chump-gap-list");
+    std::fs::write(
+        &gap_list_bin,
+        r#"#!/bin/sh
+echo '[{"id":"RESILIENT-1030","status":"open"}]'
+exit 0
+"#,
+    )
+    .unwrap();
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mut perms = std::fs::metadata(&gap_list_bin).unwrap().permissions();
+        perms.set_mode(0o755);
+        std::fs::set_permissions(&gap_list_bin, perms).unwrap();
+    }
+
+    // No token configured -> fail closed 503.
     std::env::remove_var(BATPHONE_TOKEN_ENV);
+    std::env::remove_var("CHUMP_BIN");
+    let (status, _) = get_gaps(build_app(&gaps_dir), Some("Bearer anything")).await;
+    assert_eq!(status, StatusCode::SERVICE_UNAVAILABLE);
+
+    // Token configured, wrong bearer -> 401.
+    std::env::set_var(BATPHONE_TOKEN_ENV, "s3cret-token");
+    let (status, _) = get_gaps(build_app(&gaps_dir), Some("Bearer wrong")).await;
+    assert_eq!(status, StatusCode::UNAUTHORIZED);
+
+    // Correct bearer -> 200 with the queue JSON passed through untouched.
+    std::env::set_var("CHUMP_BIN", &gap_list_bin);
+    let (status, body) = get_gaps(build_app(&gaps_dir), Some("Bearer s3cret-token")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(body[0]["id"].as_str(), Some("RESILIENT-1030"));
+
+    std::env::remove_var(BATPHONE_TOKEN_ENV);
+    std::env::remove_var("CHUMP_BIN");
+
+    // ── EFFECTIVE-1519: `create_mission_gap` must append exactly one
+    // `"stage":"draft"` entry to `logs/launch.log` on a successful mission
+    // creation. Reuses the same fake-chump reserve dir as above (`dir`,
+    // `fake_bin`) so the shell-out path is deterministic.
+    std::env::set_var("CHUMP_BIN", &fake_bin);
+    let outcome = create_mission_gap(
+        &dir,
+        MissionRequest {
+            title: "launch-log test mission".to_string(),
+            intent: None,
+            description: None,
+            priority: None,
+            outcome: None,
+            domain: None,
+            effort: None,
+            acceptance_criteria: None,
+            platform: Some("twitter".to_string()),
+            user_id: Some("jeff".to_string()),
+        },
+    )
+    .expect("create_mission_gap should succeed with the fake chump binary");
+    assert_eq!(outcome.gap_id, "INFRA-8471");
+
+    let launch_log = std::fs::read_to_string(dir.join("logs/launch.log"))
+        .expect("logs/launch.log should exist after a successful mission creation");
+    let draft_entries: Vec<&str> = launch_log
+        .lines()
+        .filter(|l| l.contains("\"stage\":\"draft\""))
+        .collect();
+    assert_eq!(
+        draft_entries.len(),
+        1,
+        "expected exactly one draft-stage log entry, got:\n{launch_log}"
+    );
+    assert!(draft_entries[0].contains("\"platform\":\"twitter\""));
+    assert!(draft_entries[0].contains("\"user_id\":\"jeff\""));
+
     std::env::remove_var("CHUMP_BIN");
     let _ = std::fs::remove_dir_all(&dir);
 }

@@ -206,6 +206,14 @@ pub(crate) fn track_git_commit_storm(
     }
     *counter += outcome.git_commit_calls as u32;
     if *counter > max_consecutive_commits {
+        // EFFECTIVE-824: log the storm detection event so operators can spot
+        // this breaker tripping in the logs, not just infer it from the
+        // aborted-run error text.
+        tracing::warn!(
+            consecutive_git_commits = *counter,
+            threshold = max_consecutive_commits,
+            "git_commit storm breaker tripped: aborting run"
+        );
         return Some(format!(
             "Aborting: {} consecutive git_commit calls with no intervening successful write. \
              The model appears to be storming on git_commit without making progress. \
@@ -862,6 +870,132 @@ impl<'a> IterationController<'a> {
     }
 }
 
+// ── EFFECTIVE-1138: `chump loop <cmd> --interval N [--max-iters M]` ────────
+// Ephemeral scheduler: repeatedly runs an arbitrary command on a fixed
+// interval until either `--max-iters` is reached or SIGINT/SIGTERM arrives.
+// Process-wide signal flag; safe because `run_ephemeral_loop` is only ever
+// invoked as the whole of a dedicated `chump loop` process/RPC call, never
+// alongside other signal-sensitive machinery in the same process.
+static LOOP_SHUTDOWN_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+extern "C" fn loop_on_signal(sig: i32) {
+    LOOP_SHUTDOWN_SIGNAL.store(sig, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Repeatedly spawns `cmd` (argv[0] + args) every `interval_secs` seconds,
+/// printing one JSON line per iteration to stdout with `run`, `status`,
+/// `start_ts`, and `end_ts` fields. Stops after `max_iters` iterations
+/// (if `Some`), or immediately on SIGINT/SIGTERM (returns exit code 0).
+pub fn run_ephemeral_loop(cmd: &[String], interval_secs: u64, max_iters: Option<u64>) -> i32 {
+    if cmd.is_empty() {
+        eprintln!("chump loop: no command supplied");
+        return 1;
+    }
+
+    // SAFETY: handler only stores an atomic; async-signal-safe.
+    unsafe {
+        let handler = loop_on_signal as extern "C" fn(i32) as *const () as usize;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
+    }
+
+    let mut run: u64 = 0;
+    loop {
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        run += 1;
+        let start_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let status = std::process::Command::new(&cmd[0]).args(&cmd[1..]).status();
+        let end_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+        let status_code = match &status {
+            Ok(s) => s.code().unwrap_or(-1),
+            Err(_) => -1,
+        };
+        println!(
+            "{}",
+            serde_json::json!({
+                "run": run,
+                "status": status_code,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+            })
+        );
+
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        // Sleep in small slices so a signal arriving mid-interval is
+        // observed promptly instead of after the full interval elapses.
+        let mut slept = 0u64;
+        while slept < interval_secs {
+            if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+                return 0;
+            }
+            let chunk = (interval_secs - slept).min(1);
+            std::thread::sleep(std::time::Duration::from_secs(chunk));
+            slept += chunk;
+        }
+    }
+}
+
+/// Parses `--interval N` and optional `--max-iters M` out of a `chump loop`
+/// argv tail, returning `(cmd, interval_secs, max_iters)`. The remaining
+/// (non-flag) tokens form the command to execute.
+pub fn parse_ephemeral_loop_args(
+    args: &[String],
+) -> Result<(Vec<String>, u64, Option<u64>), String> {
+    let mut cmd = Vec::new();
+    let mut interval: Option<u64> = None;
+    let mut max_iters: Option<u64> = None;
+
+    let mut i = 0;
+    while i < args.len() {
+        match args[i].as_str() {
+            "--interval" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| "--interval requires a value".to_string())?;
+                interval = Some(
+                    v.parse::<u64>()
+                        .map_err(|_| format!("invalid --interval value: {v}"))?,
+                );
+                i += 2;
+            }
+            "--max-iters" => {
+                let v = args
+                    .get(i + 1)
+                    .ok_or_else(|| "--max-iters requires a value".to_string())?;
+                max_iters = Some(
+                    v.parse::<u64>()
+                        .map_err(|_| format!("invalid --max-iters value: {v}"))?,
+                );
+                i += 2;
+            }
+            other => {
+                cmd.push(other.to_string());
+                i += 1;
+            }
+        }
+    }
+
+    let interval = interval.ok_or_else(|| "--interval is required".to_string())?;
+    Ok((cmd, interval, max_iters))
+}
+
 #[cfg(test)]
 mod tests {
     //! Unit tests for the fail-storm circuit breaker. The `execute` method itself
@@ -1108,6 +1242,31 @@ mod tests {
         std::env::set_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS", "7");
         assert_eq!(max_consecutive_tool_fails(), 7);
         std::env::remove_var("CHUMP_MAX_CONSECUTIVE_TOOL_FAILS");
+    }
+
+    #[test]
+    fn parse_ephemeral_loop_args_extracts_interval_and_max_iters() {
+        let args: Vec<String> = vec!["--interval", "5", "--max-iters", "3", "echo", "hi"]
+            .into_iter()
+            .map(String::from)
+            .collect();
+        let (cmd, interval, max_iters) = parse_ephemeral_loop_args(&args).unwrap();
+        assert_eq!(cmd, vec!["echo".to_string(), "hi".to_string()]);
+        assert_eq!(interval, 5);
+        assert_eq!(max_iters, Some(3));
+    }
+
+    #[test]
+    fn parse_ephemeral_loop_args_requires_interval() {
+        let args: Vec<String> = vec!["echo".to_string(), "hi".to_string()];
+        assert!(parse_ephemeral_loop_args(&args).is_err());
+    }
+
+    #[test]
+    fn run_ephemeral_loop_stops_at_max_iters() {
+        let cmd = vec!["true".to_string()];
+        let exit_code = run_ephemeral_loop(&cmd, 0, Some(2));
+        assert_eq!(exit_code, 0);
     }
 }
 

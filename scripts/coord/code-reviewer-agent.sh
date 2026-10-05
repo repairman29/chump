@@ -183,8 +183,15 @@ You are reviewing this Chump PR. Reply on TWO lines:
 
 Line 1 — the verdict, EXACTLY one of:
 APPROVE: <one-sentence reason>
-CONCERN: <comma-separated list of concerns>
+CONCERN: <comma-separated list of concerns, EACH one citing the specific file:line it applies to, e.g. "src/foo.rs:42 unwrap() on a Result from an untrusted source">
 ESCALATE: <reason this needs human review>
+
+Every CONCERN you raise MUST point at a specific file:line in the diff above. Do
+NOT reuse a boilerplate concern (e.g. "new unwrap()/expect() in production",
+"new external dependencies added") unless you can point at the exact line that
+justifies it. A concern with no file:line citation will be treated as
+ungrounded and will NOT block the merge on its own — it only wastes the
+reviewer's credibility. Cite evidence, don't recite a checklist.
 
 Line 2 — the SPIRIT lens, EXACTLY one of:
 SPIRIT: GENUINE - <why the change genuinely does what the gap needs>
@@ -335,6 +342,41 @@ else
             fi
         done
     fi
+
+    # INFRA-5005: fast-fail when NO llm auth path is configured at all — an
+    # OAuth-only environment with no ANTHROPIC_API_KEY, no OAuth token on
+    # disk, and no other provider slot enabled. Without this check the
+    # gateway call below still runs and provider_cascade's exhaustion path
+    # sleeps up to CHUMP_CASCADE_EXHAUSTED_BACKOFF_S (default 30s) retrying
+    # once before giving up (INFRA-363) — wasted latency when there is
+    # nothing to retry. Detecting the fully-unconfigured case up front lets
+    # the reviewer SKIP immediately instead of stalling bot-merge for ~30s.
+    # Any other configured path (API key, OAuth token, local/cloud provider
+    # slot) still goes through the gateway unchanged — this only short-
+    # circuits the genuinely-nothing-configured case.
+    _has_llm_auth=0
+    [[ -n "${ANTHROPIC_API_KEY:-}" ]] && _has_llm_auth=1
+    [[ -n "${CLAUDE_CODE_OAUTH_TOKEN:-}" ]] && _has_llm_auth=1
+    [[ -n "${OPENAI_API_KEY:-}" ]] && _has_llm_auth=1
+    [[ -n "${OPENAI_API_BASE:-}" ]] && _has_llm_auth=1
+    if [[ $_has_llm_auth -eq 0 && -s "${CHUMP_OAUTH_TOKEN_PATH:-$HOME/.chump/oauth-token.json}" ]]; then
+        _has_llm_auth=1
+    fi
+    if [[ $_has_llm_auth -eq 0 ]]; then
+        for _n in 1 2 3 4 5 6 7 8 9; do
+            _var="CHUMP_PROVIDER_${_n}_ENABLED"
+            if [[ "${!_var:-}" == "1" ]]; then
+                _has_llm_auth=1
+                break
+            fi
+        done
+    fi
+    if [[ $_has_llm_auth -eq 0 ]]; then
+        yellow "No LLM auth path configured (no ANTHROPIC_API_KEY, no OAuth token, no provider slot) — SKIPPING (GitHub required checks still gate this merge)."
+        echo "SKIP: reviewer gateway unavailable (no provider configured for chump llm-complete)"
+        exit 3
+    fi
+
     # INFRA-3462: route the Tier-2 review through the SHARED LLM service via the
     # `chump llm-complete` gateway (ProviderCascade — full auth ladder incl OAuth,
     # 429 backoff, slot fallback) instead of a bespoke `curl` + `x-api-key` that
@@ -413,6 +455,26 @@ if [[ "$HARMONY" == "REGRESSION-RISK" && "$VERDICT" == "APPROVE" ]]; then
     VERDICT="CONCERN"
     REASON="regression risk (HARMONY lens): ${_harm_reason:-breaks existing behaviour}"
     VERDICT_LINE="CONCERN: $REASON"
+fi
+
+
+# ── 7d. Grounding check (CREDIBLE-207): CONCERN must cite file:line evidence ──
+# The prompt now requires each concern to point at specific file:line evidence
+# in the diff. A CONCERN with no such citation is treated as ungrounded — not
+# proof the change is fine (still worth a human look), but not something that
+# should silently auto-block a clean PR on a hallucinated boilerplate reason
+# either. (CREDIBLE-207, PR #3495 EFFECTIVE-373: reviewer raised CONCERN citing
+# "new unwrap()/expect() in production" + "new external dependencies added" —
+# BOTH demonstrably false in that diff — because it dumped its entire
+# boilerplate concern-reason list instead of specific verified findings.) An
+# ungrounded CONCERN downgrades to ESCALATE so a human decides, instead of
+# blocking the merge on an unverifiable claim.
+if [[ "$VERDICT" == "CONCERN" ]] && ! echo "$REASON" | grep -qE '[A-Za-z0-9_./-]+\.[A-Za-z0-9_]+:[0-9]+'; then
+    yellow "CONCERN has no file:line citation — treating as ungrounded, downgrading to ESCALATE (CREDIBLE-207)."
+    _orig_reason="$REASON"
+    REASON="reviewer raised CONCERN without citing file:line evidence — ungrounded, needs human triage. Original: ${_orig_reason}"
+    VERDICT="ESCALATE"
+    VERDICT_LINE="ESCALATE: $REASON"
 fi
 
 green "Verdict: $VERDICT"

@@ -168,7 +168,9 @@ info(f"Cargo (fmt/clippy/check) gates: {'MIRRORED' if cargo_mirrored else 'NOT m
 # Infrastructure/rollup jobs in ci.yml that are not real CI gates for parity
 CI_YML_INFRA_JOBS = {
     "changes", "test", "test-e2e", "coverage", "integration-test",
-    "clippy-required", "cargo-test-required", "fast-checks-required", "cargo-test",
+    "clippy-required", "cargo-test-required", "fast-checks-required",
+    "fast-checks-heavy-required",  # RESILIENT-304: rollup mirror, not a real gate
+    "cargo-test",
     "audit-required", "clippy-stub", "cargo-test-stub",
     "fast-checks-stub", "audit-stub",
     "tauri-cowork-e2e", "e2e",  # META-267: matrixed pwa/battle-sim/golden-path into single job
@@ -367,12 +369,44 @@ def is_mirrored(run_cmd):
 
 
 # ── RESILIENT-586: Auto-recognize gates added in the same PR diff ────────────
-def get_added_jobs_from_diff(yml_path):
-    """Return set of job names that were added in the current git diff (PR)."""
+def get_merge_base_ref():
+    """Return the merge-base of origin/main and HEAD, or None if unavailable.
+
+    RESILIENT-1495: a clean CI checkout has an empty `git diff HEAD` (the
+    working tree matches HEAD), so diffing against HEAD never finds the
+    PR's own added gates. Diff against the merge-base with origin/main
+    instead, which captures everything the PR itself changed.
+    """
     import subprocess
     try:
+        subprocess.run(
+            ["git", "fetch", "-q", "origin", "main"],
+            capture_output=True, text=True, timeout=15
+        )
+    except Exception:
+        pass
+    try:
         result = subprocess.run(
-            ["git", "diff", "HEAD", "--", str(yml_path)],
+            ["git", "merge-base", "origin/main", "HEAD"],
+            capture_output=True, text=True, timeout=10
+        )
+        ref = result.stdout.strip()
+        return ref if ref else None
+    except Exception:
+        return None
+
+
+_MERGE_BASE_REF = get_merge_base_ref()
+
+
+def get_added_jobs_from_diff(yml_path):
+    """Return set of job names that were added in the current PR (vs. merge-base)."""
+    import subprocess
+    if not _MERGE_BASE_REF:
+        return set()
+    try:
+        result = subprocess.run(
+            ["git", "diff", _MERGE_BASE_REF, "HEAD", "--", str(yml_path)],
             capture_output=True, text=True, timeout=10
         )
         added_jobs = set()
@@ -454,6 +488,94 @@ if os.environ.get("CHUMP_PARITY_REPORT") == "1":
     else:
         print("  DELTA detail: (none — full parity)")
     print()
+
+# INFRA-5205 (INFRA-3792 slice, INFRA-2084 AC3): machine-parseable JSON
+# rendering of the same AC1 inventory. Emitted on its own marked line so a
+# caller can `grep` it out of the human-readable report without re-running
+# the classification engine. Never affects exit code.
+if os.environ.get("CHUMP_PARITY_JSON") == "1":
+    import json as _json
+    total_gates = len(gates)
+    coverage_pct = round((mirrored_count / total_gates) * 100, 1) if total_gates else 0.0
+    payload = {
+        "ci_gates": total_gates,
+        "mirrored_in_preflight": mirrored_count,
+        "tier_d": tier_d_count,
+        "allowlisted": allowlisted_count,
+        "delta_unmirrored": [
+            {"workflow": wf_name, "job": job, "step": step_name, "ci_path": ci_path}
+            for (wf_name, job, step_name, ci_path, _run_cmd) in unmirrored
+        ],
+        "delta_unmirrored_count": len(unmirrored),
+        "coverage_pct": coverage_pct,
+    }
+    print("CHUMP_PARITY_JSON_LINE:" + _json.dumps(payload))
+
+# INFRA-5119 (INFRA-1861 slice): generated inventory dump — one row per CI
+# gate mapping it to its local mirror (preflight command, Tier-D reason, or
+# allowlist reason), OR flagging it MISSING when it has none. This is the
+# machine-generated artifact CI_GATES_INVENTORY.md's hand-maintained tables
+# should agree with; regenerate via:
+#   CHUMP_GENERATE_INVENTORY=docs/process/CI_GATES_GENERATED_INVENTORY.md \
+#     bash scripts/ci/test-preflight-ci-parity.sh
+# Never affects exit code — a separate artifact, not a gate.
+generate_path = os.environ.get("CHUMP_GENERATE_INVENTORY")
+if generate_path:
+    def match_reason(step_name, run_cmd, sp):
+        if is_cargo_gate(run_cmd) and cargo_mirrored:
+            return "MIRRORED", "`cargo fmt/clippy/check` (chump preflight steps 1-3)"
+        if sp and sp in mirrored_scripts:
+            return "MIRRORED", f"`chump preflight` runs `{sp}`"
+        for entry in tier_d_entries:
+            if entry in step_name or entry in run_cmd or (entry.endswith(".yml") and entry in run_cmd):
+                return "TIER-D", f"cannot mirror locally — see Tier D entry `{entry}`"
+        for exc in allowlisted:
+            if exc and (exc == step_name or exc == sp or exc in step_name or exc in run_cmd):
+                return "ALLOWLISTED", f"`scripts/ci/preflight-ci-parity-exceptions.txt` entry `{exc}`"
+        return "MISSING", "no mirror, no Tier-D entry, no allowlist entry — file a gap (AC-2)"
+
+    lines_out = []
+    lines_out.append("# CI Gate → Preflight Mirror Inventory (generated)")
+    lines_out.append("")
+    lines_out.append("<!-- AUTO-GENERATED by scripts/ci/test-preflight-ci-parity.sh"
+                      " (CHUMP_GENERATE_INVENTORY mode). Do not hand-edit; regenerate:")
+    lines_out.append("     CHUMP_GENERATE_INVENTORY=docs/process/CI_GATES_GENERATED_INVENTORY.md"
+                      " bash scripts/ci/test-preflight-ci-parity.sh -->")
+    lines_out.append("")
+    lines_out.append(f"Scanned {len(gates)} CI gate step(s) across 1 primary workflow (`{ci_yml.name}`)"
+                      f" + {len(sibling_ymls)} sibling workflow(s). INFRA-5119 (INFRA-1861 slice).")
+    lines_out.append("")
+    lines_out.append("| Workflow | Job | Step | Status | Preflight equivalent |")
+    lines_out.append("|---|---|---|---|---|")
+    missing_rows = []
+    for (wf_name, job, step_name, run_cmd) in gates:
+        sp = gate_script_path(run_cmd)
+        status, reason = match_reason(step_name, run_cmd, sp)
+        step_disp = step_name.replace("|", "\\|")
+        lines_out.append(f"| `{wf_name}` | `{job}` | {step_disp} | {status} | {reason} |")
+        if status == "MISSING":
+            missing_rows.append((wf_name, job, step_name))
+    lines_out.append("")
+    if missing_rows:
+        lines_out.append(f"## MISSING preflight equivalents ({len(missing_rows)}) — AC-2")
+        lines_out.append("")
+        lines_out.append("Each of these must be filed as a gap and added to Tier C of"
+                          " `docs/process/CI_GATES_INVENTORY.md` (or reclassified Tier-D"
+                          " / allowlisted if it genuinely cannot be mirrored):")
+        lines_out.append("")
+        for (wf_name, job, step_name) in missing_rows:
+            lines_out.append(f"- `{wf_name}` job=`{job}` step='{step_name}'")
+    else:
+        lines_out.append("## MISSING preflight equivalents (0) — AC-2")
+        lines_out.append("")
+        lines_out.append("None. Every scanned CI gate has a mirror, a Tier-D reason, or an"
+                          " allowlist entry.")
+    lines_out.append("")
+
+    gen_path = pathlib.Path(generate_path)
+    gen_path.parent.mkdir(parents=True, exist_ok=True)
+    gen_path.write_text("\n".join(lines_out) + "\n")
+    info(f"Generated inventory written to {generate_path} ({len(gates)} gates, {len(missing_rows)} missing)")
 
 if unmirrored:
     fail(f"{len(unmirrored)} CI gate(s) lack a preflight mirror and are not allowlisted.")

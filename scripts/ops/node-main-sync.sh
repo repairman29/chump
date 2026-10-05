@@ -12,6 +12,13 @@
 # slice can safely chain build/swap/restart/self-test after this step
 # succeeds.
 #
+# SEE ALSO (RESILIENT-1080): this script uses `git reset --hard`, which is safe
+# ONLY on a dedicated build MIRROR with no node-local edits. For a live WORKER
+# SCRIPT-HOST checkout (~/chump, which carries linked worktrees + node-local
+# tracked customizations such as the muscle-node organ-manifest.txt stopgap),
+# use scripts/ops/node-script-host-refresh.sh instead — it fast-forwards
+# worktree-safely and never discards node-local work.
+#
 # Usage: scripts/ops/node-main-sync.sh   (one-shot; safe to run on a cadence)
 #
 # Env overrides:

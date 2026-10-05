@@ -37,33 +37,10 @@ warn() { echo "[install-sccache] WARN: $*" >&2; }
 
 OS_KIND="$(uname -s)"
 
-# ── 1. install sccache ──────────────────────────────────────────────────
-log "checking for sccache …"
-if ! command -v sccache >/dev/null 2>&1; then
-    case "$OS_KIND" in
-        Linux)
-            log "sccache not found — installing via 'cargo install sccache' (Ubuntu CJ has no brew)"
-            cargo install sccache --locked
-            ;;
-        Darwin)
-            if command -v brew >/dev/null 2>&1; then
-                log "sccache not found — installing via brew"
-                brew install sccache
-            else
-                log "sccache not found, brew not found — installing via 'cargo install sccache'"
-                cargo install sccache --locked
-            fi
-            ;;
-        *)
-            warn "unrecognized OS '$OS_KIND' — install sccache manually (cargo install sccache)"
-            exit 1
-            ;;
-    esac
-else
-    log "sccache already installed ($(sccache --version | head -1))"
-fi
-
-# ── 2. pick a LOCAL cache dir — prefer an external/USB data disk ────────
+# ── dir-selection helpers — defined up top so scripts/ci/test-sccache-dir-selection.sh
+# can `source` this file (BASH_SOURCE guard below skips the install/write/verify
+# side effects) and exercise detect_sccache_dir() directly against a faked
+# $HOME + df output. INFRA-7113.
 # Never a cloud path (no Cloudflare/R2 — see docs/process/SCCACHE_R2_CACHE.md
 # for that separate, CI-only, opt-in mechanism).
 # INFRA-3661: generalized past the INFRA-3660 cjdata3-specific pin — any
@@ -95,7 +72,7 @@ detect_sccache_dir() {
         return
     fi
     local home_avail_kb
-    home_avail_kb="$(df -Pk "$HOME" 2>/dev/null | awk 'NR==2{print $4}')"
+    home_avail_kb="$(df -Pk /home 2>/dev/null | awk 'NR==2{print $4}')"
     if [[ -n "$home_avail_kb" ]] && (( home_avail_kb >= SCCACHE_HOME_FREE_THRESHOLD_KB )) \
        && _sccache_dir_writable "$HOME/.cache/sccache"; then
         echo "$HOME/.cache/sccache"
@@ -135,19 +112,23 @@ detect_sccache_dir() {
     fi
 }
 
-SCCACHE_DIR_RESOLVED="$(detect_sccache_dir)"
-SCCACHE_CACHE_SIZE_RESOLVED="${SCCACHE_CACHE_SIZE:-10G}"
-log "cache dir: $SCCACHE_DIR_RESOLVED (cap $SCCACHE_CACHE_SIZE_RESOLVED)"
-mkdir -p "$SCCACHE_DIR_RESOLVED"
+# ── availability-gate mold + cranelift (INFRA-3660 / INFRA-3764) ────────
+# Pure functions (no side effects) so scripts/ci/test-sccache-codegen-gating.sh
+# can source this file for its function defs only (same pattern as
+# detect_sccache_dir() above) and exercise the gating logic against a faked
+# PATH/rustup without installing anything or writing .cargo/config.toml.
+_mold_available() {
+    command -v mold >/dev/null 2>&1
+}
 
-# ── availability-gate mold + cranelift (INFRA-3660) ─────────────────────
-# INFRA-2242 originally wrote these unconditionally; on a host missing the
-# binary/component that broke the build outright. Only emit each block when
-# this machine actually has the thing.
-MOLD_BLOCK=""
-if command -v mold >/dev/null 2>&1; then
-    log "mold found — enabling fast linker for linux targets"
-    MOLD_BLOCK='
+_cranelift_available() {
+    rustup component list --installed 2>/dev/null | grep -q '^rustc-codegen-cranelift'
+}
+
+build_mold_block() {
+    _mold_available || return 0
+    cat <<'EOF'
+
 # INFRA-2242 / INFRA-3660: mold linker — written only because `mold` is on
 # PATH on this machine. Linux-only (macOS does not get this section).
 # Drops link phase 10-15% on warm rebuilds.
@@ -156,15 +137,13 @@ rustflags = ["-C", "link-arg=-fuse-ld=mold"]
 
 [target.aarch64-unknown-linux-gnu]
 rustflags = ["-C", "link-arg=-fuse-ld=mold"]
-'
-else
-    log "mold not found — omitting fast-linker section (build stays on the default linker)"
-fi
+EOF
+}
 
-CRANELIFT_BLOCK=""
-if rustup component list --installed 2>/dev/null | grep -q '^rustc-codegen-cranelift'; then
-    log "cranelift codegen backend found — enabling for dev profile"
-    CRANELIFT_BLOCK='
+build_cranelift_block() {
+    _cranelift_available || return 0
+    cat <<'EOF'
+
 # INFRA-2242 / INFRA-3660: cranelift codegen backend — DEV-PROFILE ONLY,
 # written only because rustc-codegen-cranelift is installed on this machine.
 # Release builds stay on llvm (cranelift release codegen is not
@@ -175,10 +154,64 @@ codegen-backend = "cranelift"
 # Required for the per-profile codegen-backend syntax above.
 [unstable]
 codegen-backend = true
-'
+EOF
+}
+
+# Everything below has side effects (installs sccache, writes .cargo/config.toml,
+# runs cargo check) — skip it when this file is sourced (e.g. by the test
+# harness above) so tests can call detect_sccache_dir() / build_mold_block() /
+# build_cranelift_block() in isolation.
+if [[ "${BASH_SOURCE[0]}" != "${0}" ]]; then
+    return 0
+fi
+
+# ── 1. install sccache ──────────────────────────────────────────────────
+log "checking for sccache …"
+if ! command -v sccache >/dev/null 2>&1; then
+    case "$OS_KIND" in
+        Linux)
+            log "sccache not found — installing via 'cargo install sccache' (Ubuntu CJ has no brew)"
+            cargo install sccache --locked
+            ;;
+        Darwin)
+            log "sccache not found — installing via brew"
+            brew install sccache
+            ;;
+        *)
+            warn "unrecognized OS '$OS_KIND' — install sccache manually (cargo install sccache)"
+            exit 1
+            ;;
+    esac
+else
+    log "sccache already installed ($(sccache --version | head -1))"
+fi
+
+# ── 2. pick a LOCAL cache dir — prefer an external/USB data disk ────────
+# (helpers defined above, before the sourced-guard)
+SCCACHE_DIR_RESOLVED="$(detect_sccache_dir)"
+SCCACHE_CACHE_SIZE_RESOLVED="${SCCACHE_CACHE_SIZE:-10G}"
+log "cache dir: $SCCACHE_DIR_RESOLVED (cap $SCCACHE_CACHE_SIZE_RESOLVED)"
+mkdir -p "$SCCACHE_DIR_RESOLVED"
+
+# ── availability-gate mold + cranelift (INFRA-3660) ─────────────────────
+# INFRA-2242 originally wrote these unconditionally; on a host missing the
+# binary/component that broke the build outright. Only emit each block when
+# this machine actually has the thing. (build_mold_block / build_cranelift_block
+# defined above, before the sourced-guard, so they're independently testable —
+# see scripts/ci/test-sccache-codegen-gating.sh.)
+if _mold_available; then
+    log "mold found — enabling fast linker for linux targets"
+else
+    log "mold not found — omitting fast-linker section (build stays on the default linker)"
+fi
+MOLD_BLOCK="$(build_mold_block)"
+
+if _cranelift_available; then
+    log "cranelift codegen backend found — enabling for dev profile"
 else
     log "cranelift component not installed — omitting codegen-backend section"
 fi
+CRANELIFT_BLOCK="$(build_cranelift_block)"
 
 log "writing .cargo/config.toml"
 mkdir -p .cargo

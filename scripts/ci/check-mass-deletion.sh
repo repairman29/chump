@@ -114,12 +114,24 @@ if [[ -z "$PR_CONTEXT" ]]; then
     PR_CONTEXT="$(git log --pretty=format:"%s %b" "${MERGE_BASE}..HEAD" 2>/dev/null | tr '[:upper:]' '[:lower:]' || true)"
 fi
 
+# INFRA-5744: an explicit "Revert" commit subject already justifies the
+# deletion (mirrors check-pr-scope.sh Rule B) — without this, a legitimate
+# revert PR that doesn't happen to repeat the deleted file's name/dir in
+# the title/body still false-positived on this check.
+_revert_count_b="$(git log --pretty=format:%s "${MERGE_BASE}..HEAD" 2>/dev/null \
+    | grep -icE "^revert" || true)"
+has_revert_commit_b=0
+[[ "$_revert_count_b" -gt 0 ]] && has_revert_commit_b=1
+
 # Get all files with their net line-count change (deletions - insertions, per file)
 # We flag a file if: net deletions > THRESHOLD and file path not in PR context
 THRESHOLD=100
 flagged_files=()
 total_flagged_deletions=0
 
+if [[ "$has_revert_commit_b" -eq 1 ]]; then
+    pass "Explicit Revert commit detected — mass-deletion check N/A"
+else
 while IFS=$'\t' read -r insertions deletions filepath; do
     # Skip binary files and empty entries
     [[ -z "$filepath" || "$insertions" == "-" ]] && continue
@@ -144,11 +156,32 @@ while IFS=$'\t' read -r insertions deletions filepath; do
         fi
     done
 
+    # INFRA-8033: the exact-basename check above misses PRs whose commit
+    # message describes a deletion in prose ("remove obsolete root-bootstrap
+    # test") without quoting the full hyphenated filename
+    # (test-resilient-1097-organ-deploy-bootstrap.sh) — that's what tripped
+    # pr-hygiene on #4854/INFRA-7895 mid-rescue even though the PR body
+    # (once opened) did mention the deletion. Fall back to matching any
+    # single significant word (>=5 chars, skipping the generic "test"
+    # prefix) from the basename — a deletion is "unrelated" only when NONE
+    # of its distinguishing words show up anywhere in context.
+    if [[ "$mentioned" -eq 0 && -n "$base" ]]; then
+        IFS='-_' read -r -a base_words <<< "$base"
+        for word in "${base_words[@]}"; do
+            [[ "$word" == "test" || ${#word} -lt 5 ]] && continue
+            if echo "$PR_CONTEXT" | grep -qF "$word"; then
+                mentioned=1
+                break
+            fi
+        done
+    fi
+
     if [[ "$mentioned" -eq 0 ]]; then
         flagged_files+=("$filepath (net -${net_del} lines)")
         total_flagged_deletions=$((total_flagged_deletions + net_del))
     fi
 done < <(git diff --numstat "${MERGE_BASE}..HEAD" 2>/dev/null || true)
+fi
 
 if [[ ${#flagged_files[@]} -gt 0 ]]; then
     report_violation "Mass deletion from files not mentioned in PR title/body (threshold: ${THRESHOLD} lines):"
@@ -235,6 +268,7 @@ elif [[ "$WARN_ONLY" -eq 1 ]]; then
     exit 0
 else
     fail "CREDIBLE-027/CREDIBLE-038: $VIOLATIONS violation(s) found. Fix before pushing."
+    fail "How to bypass cleanly: mention the affected file paths in the PR title/body (Rule A/B), add label 'cross-cutting-acknowledged' (Rule C), or use --warn-only for local dry-runs; there is no blanket bypass — the gate demotes automatically once the mention/label is present"
     gate_emit_result "CREDIBLE-027" "fail" "mass-deletion" "$VIOLATIONS mass-deletion violation(s)"
     exit 1
 fi

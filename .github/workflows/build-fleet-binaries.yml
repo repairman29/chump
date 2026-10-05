@@ -53,7 +53,20 @@ permissions:
 jobs:
   build:
     name: build (${{ matrix.target }})
-    runs-on: ubuntu-latest
+    # RESILIENT-1038: pinned, NOT ubuntu-latest. The produced binary dynamically
+    # links against the runner's glibc; ubuntu-latest silently rolls forward
+    # (24.04 -> 26.04 etc.) and its glibc floor keeps climbing past what the
+    # fleet's actual Linux nodes (closetjunky, mugman/Oracle Ampere aarch64,
+    # both confirmed Ubuntu 22.04 / glibc 2.35) ship. VERIFIED: a binary built
+    # on ubuntu-latest (glibc 2.39, as of 2026-09) refuses to even run
+    # (`--version` exits 1: "GLIBC_2.39 not found") on a glibc-2.35 node, so
+    # node-refresh-chump.sh's artifact-pull version-check always rejects it and
+    # falls back to a ~30min local cargo build — CI itself stays green because
+    # its own version-check step runs the native binary on the SAME (newer)
+    # runner, so this breakage is invisible to build-fleet-binaries.yml and
+    # only bites on the real downstream nodes. Pin to the LTS the fleet nodes
+    # actually run so the artifact is runnable where it's pulled.
+    runs-on: ubuntu-22.04
     timeout-minutes: 60
     strategy:
       fail-fast: false
@@ -97,19 +110,37 @@ jobs:
           # Keep x86_64 and aarch64 caches separate — different target dirs.
           key: fleet-bin-${{ matrix.target }}
 
-      - name: Build --release --bin chump
+      - name: Build --release --bin chump + chump-fleet-server
         env:
           # Cross linker for the aarch64 target (no-op / unset for native x86_64).
           CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER: aarch64-linux-gnu-gcc
         run: |
           set -euo pipefail
-          cargo build --release --bin chump --target ${{ matrix.target }}
+          # RESILIENT-1046: build BOTH fleet-node binaries in one cargo
+          # invocation so they share the warm target dir + rust-cache and land
+          # in the same per-SHA artifact. `chump` is the worker binary (root
+          # package `chump`); the `chump-fleet-server` audit/dashboard organ
+          # lives in a SEPARATE crate (package `chump-fleet-server`) — the "see
+          # everything out" API half of the operating covenant — and must be
+          # PULLABLE prebuilt so a 2-core Oracle node never cargo-builds it
+          # locally (that starves the live fleet).
+          #
+          # `--bin NAME` alone only resolves bins in the default-run package set,
+          # so `--bin chump-fleet-server` failed with "no bin target named
+          # chump-fleet-server in default-run packages" (the eae3bb4b3 breakage).
+          # Select each package explicitly with `-p` so both bins resolve.
+          cargo build --release --target ${{ matrix.target }} \
+            -p chump --bin chump \
+            -p chump-fleet-server --bin chump-fleet-server
           BIN="target/${{ matrix.target }}/release/chump"
+          FS_BIN="target/${{ matrix.target }}/release/chump-fleet-server"
           test -x "$BIN" || { echo "::error::$BIN missing after build"; exit 1; }
-          # Sanity: on the native target, prove the binary runs and its version
-          # SHA matches the commit we built. (Skipped for the cross target — an
-          # aarch64 ELF cannot execute on the x86_64 runner; the ARM node
-          # validates that one at pull time.)
+          test -x "$FS_BIN" || { echo "::error::$FS_BIN missing after build"; exit 1; }
+          # Sanity: on the native target, prove the binaries run and the worker
+          # binary's version SHA matches the commit we built. (Skipped for the
+          # cross target — an aarch64 ELF cannot execute on the x86_64 runner;
+          # the ARM node validates at pull time.) chump-fleet-server --version
+          # prints only its crate version (no git SHA), so we only assert it runs.
           if [ "${{ matrix.cross }}" != "true" ]; then
             VER="$("$BIN" --version)"
             echo "built: $VER"
@@ -117,8 +148,11 @@ jobs:
               *"${GITHUB_SHA:0:12}"*) echo "version SHA matches commit ✓" ;;
               *) echo "::error::version '$VER' does not embed ${GITHUB_SHA:0:12}"; exit 1 ;;
             esac
+            FS_VER="$("$FS_BIN" --version)"
+            echo "fleet-server built: $FS_VER"
           fi
           sha256sum "$BIN" | tee "$BIN.sha256"
+          sha256sum "$FS_BIN" | tee "$FS_BIN.sha256"
 
       - name: Stage artifact
         run: |
@@ -126,6 +160,8 @@ jobs:
           mkdir -p dist
           cp "target/${{ matrix.target }}/release/chump" "dist/chump"
           cp "target/${{ matrix.target }}/release/chump.sha256" "dist/chump.sha256"
+          cp "target/${{ matrix.target }}/release/chump-fleet-server" "dist/chump-fleet-server"
+          cp "target/${{ matrix.target }}/release/chump-fleet-server.sha256" "dist/chump-fleet-server.sha256"
           # Record the exact SHA + target inside the artifact for provenance.
           printf '%s\n' "${GITHUB_SHA}" > dist/COMMIT_SHA
           printf '%s\n' "${{ matrix.target }}" > dist/TARGET
@@ -143,9 +179,10 @@ jobs:
       - name: Summary
         run: |
           {
-            echo "## chump fleet binary — ${{ matrix.target }}"
+            echo "## chump fleet binaries — ${{ matrix.target }}"
             echo
             echo "- commit: \`${GITHUB_SHA}\`"
             echo "- artifact: \`chump-${{ matrix.target }}-${GITHUB_SHA}\`"
+            echo "- binaries: \`chump\`, \`chump-fleet-server\`"
             echo "- pull: node fetches this by \`head_sha=${GITHUB_SHA}\`"
           } >> "$GITHUB_STEP_SUMMARY"

@@ -13,11 +13,18 @@
 # mode (CHUMP_PARITY_REPORT=1) so the inventory never drifts from what the
 # gate actually enforces.
 #
-# Usage: bash scripts/ci/preflight-vs-ci-parity-audit.sh
+# Usage: bash scripts/ci/preflight-vs-ci-parity-audit.sh [--json]
+#   --json  emit machine-parseable JSON only (INFRA-5205 AC3), no prose report
 
 set -uo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+if [[ "${1:-}" == "--json" ]]; then
+    CHUMP_PARITY_REPORT=1 CHUMP_PARITY_JSON=1 bash "$SCRIPT_DIR/test-preflight-ci-parity.sh" 2>/dev/null \
+        | sed -n 's/^CHUMP_PARITY_JSON_LINE://p'
+    exit 0
+fi
 
 CHUMP_PARITY_REPORT=1 bash "$SCRIPT_DIR/test-preflight-ci-parity.sh"
 exit 0

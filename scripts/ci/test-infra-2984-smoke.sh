@@ -21,9 +21,14 @@ echo "Test 3: chump gap show <existing gap> succeeds"
 out="$(chump gap show INFRA-2984 2>&1)"
 [[ "$out" == *"INFRA-2984"* ]] && echo "  PASS" || { echo "  FAIL: $out"; exit 1; }
 
-echo "Test 4: chump gap preflight warns on a nonexistent gap"
+echo "Test 4: chump gap preflight fails (non-zero exit) on a nonexistent gap"
+# CREDIBLE-1486: preflight must exit non-zero on NotFound — a dangling exit 0
+# here is what let `chump dispatch` treat a missing gap as pickable.
+set +e
 out="$(chump gap preflight INFRA-999999999 2>&1)"
-[[ "$out" == *"not found in state.db"* ]] && echo "  PASS" || { echo "  FAIL: $out"; exit 1; }
+rc=$?
+set -e
+[[ "$rc" -ne 0 && "$out" == *"not found in state.db"* ]] && echo "  PASS" || { echo "  FAIL (rc=$rc): $out"; exit 1; }
 
 echo ""
 echo "All INFRA-2984 smoke tests passed."

@@ -47,28 +47,28 @@ daemons:
   - daemon: dev.chump.queue-driver
     description: BEHIND PR scan + DIRTY PR rebase per INFRA-1081/INFRA-1137
     expected_kinds:
-      - queue_driver_tick
-      - queue_driver_behind_refreshed
-      - queue_driver_dirty_rebased
-      - queue_driver_no_action
+      - queue_driver_iter_attempted
+      - cascade_rebase_triggered
+      - dirty_pr_auto_resolved
+      - cascade_auto_resolved
     min_per_hour: 1
     eligibility: "true"
 
   - daemon: dev.chump.stale-pr-reaper
     description: closes/cancels PRs stuck >24h per INFRA-NNN
     expected_kinds:
-      - stale_pr_reaped
-      - stale_pr_no_candidate
-      - stale_pr_reaper_tick
+      - ghost_status_closed
+      - pr_retired_stale_conflicting
+      - reaper_holding_for_trunk_red
+      - curator_skip_active_rebase
     min_per_hour: 1
     eligibility: "true"
 
   - daemon: dev.chump.disk-health-monitor
-    description: emits disk_critical / disk_warning per INFRA-2304
+    description: emits disk_critical / disk_low per INFRA-2304
     expected_kinds:
-      - disk_health_tick
       - disk_critical
-      - disk_warning
-      - disk_ok
+      - disk_low
+      - disk_critical_auto_remediated
     min_per_hour: 1
     eligibility: "true"

@@ -53,3 +53,13 @@ When INFRA-2092 lands the real Pixel migration, update the default in both
 scripts (or set `CHUMP_GAP_STORE_TAILNET_HOST`/`CHUMP_GAP_STORE_URL` at
 provision time) and re-date this note — don't let the two scripts drift
 again.
+
+## 2026-09-26 decision note (GCP exit, Jeff)
+
+Phase 2 is now scoped and re-homed: the tiny, no-user-base apps leaving Firebase
+(smuggler, postsub, trove-web, pov-video) get a self-hosted Supabase OSS stack on
+**cuphead** (Oracle Always Free A1, arm64, 23 GB), not a new dedicated box and never CJ.
+Guard rails in **RESILIENT-314**: swap + OOM guard, a MemoryMax-capped slice, data on a
+separate free block volume, backups to OCI Object Storage plus CJ. Peak Vinyl Club (real
+members) goes to hosted Supabase free tier instead (PRODUCT-304). Olive/Upshift unchanged.
+Plan: `workspace-docs/GCP_EXIT.md`; gaps PRODUCT-303..309.

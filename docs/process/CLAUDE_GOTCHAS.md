@@ -806,6 +806,41 @@ bash scripts/ci/test-atomic-claim-collision.sh            # full regression scri
 
 ---
 
+<a id="deep-claim-collision"></a>
+### deep-claim-collision — declared lease paths[] intersect a sibling's (INFRA-1604)
+
+**Symptom:** `chump claim <GAP-ID> --paths <CSV>` exits 15 with
+`[claim] INFRA-1604: LEASE PATH COLLISION with sibling session … (gap …) —
+overlapping paths: …`.
+
+**Root cause:** INFRA-1394 only blocks when a gap's AC *text* mentions one of
+5 hardcoded hot files. Real collisions happen across dozens of files that
+never get named in AC text, but ARE declared in each lease's `paths[]` field
+(INFRA-1240) — that's what the lease system's `--paths` flag exists for.
+INFRA-1604 computes the actual set intersection of this claim's declared
+paths against every sibling lease's declared paths, with glob (`src/foo/*.rs`
+overlaps `src/foo/bar.rs`) and directory-prefix (`docs/` overlaps
+`docs/gaps/X.yaml`) matching — structural, not heuristic. The INFRA-1394
+AC-text scan still runs too, as a secondary defense-in-depth check for leases
+whose `paths[]` is incomplete or omitted.
+
+**Recovery:**
+```bash
+# See exactly which paths collide and with whom (printed to stderr, and in
+# ambient.jsonl as kind=lease_path_collision):
+grep '"kind":"lease_path_collision"' .chump-locks/ambient.jsonl | tail -5
+# If the overlap is real and you still need to proceed (e.g. the sibling's
+# work is stale, or you've coordinated a merge-driver split):
+chump claim <GAP-ID> --role <role> --paths <CSV> --force-overlap
+```
+
+**Test command:**
+```bash
+bash scripts/ci/test-deep-claim-collision.sh
+```
+
+---
+
 <a id="worktree-path-confusion"></a>
 ### worktree-path-confusion — macOS /tmp → /private/tmp symlink corrupts gitdir (INFRA-779)
 
@@ -1487,6 +1522,118 @@ even on failure, so `statusCheckRollup.state` stays `SUCCESS`.
 - `changes` — `dorny/paths-filter` can fail transiently (network/runner issue); COE makes failure neutral so downstream jobs safely skip rather than blocking
 - `test-e2e` — aggregates e2e shards (which already have COE); COE here guards against runner errors in the aggregator itself
 
+## `chump-chat` selector confirmed NOT stale — it's an app-init timing/routing race (INFRA-1433 / INFRA-4301, 2026-09-04)
+
+Definitive answer to the open question in INFRA-1433 ("dead selector, renamed
+to `chat-room`? OR app fails to mount in CI's xvfb env?"): **the selector is
+current, not renamed.** `customElements.define('chump-chat', ChumpChat)` still
+lives at `web/v2/chat.js:417`, and `e2e-tauri/run.mjs:116` still waits on
+`By.css('chump-chat')` — same string, both sides. Grepping `web/v2/` for
+`chat-room` or any other candidate rename turns up nothing; there is no
+renamed element to point the test at.
+
+**Actual root cause: two competing initial-view mechanisms race on boot,**
+and the outcome depends on script-execution order rather than a single
+declared default:
+
+1. `<chump-nav>` (`web/v2/app.js:456` `connectedCallback`) resolves an
+   *initial cadence* (URL `?cadence=` > URL `?view=` map > `chumpPrefs`
+   `last_cadence` > `'now'`) and, for the `'now'` cadence, its
+   `default_view` is `'cockpit'` (`web/v2/app.js:378`) — **not** `'chat'`.
+   It dispatches `chump:navigate` with `detail: 'cockpit'`
+   (`web/v2/app.js:571`) synchronously from inside its `connectedCallback`,
+   which fires the instant `customElements.define('chump-nav', ChumpNav)`
+   runs (`web/v2/app.js:593`) and upgrades the already-parsed `<chump-nav>`
+   element.
+2. Separately, the `DOMContentLoaded` handler at `web/v2/app.js:5330`
+   defaults to `'chat'` (`chumpPrefs.get('last-view', 'chat')`) and appends
+   `VIEWS.chat()` (`<chump-view-chat>`, which mounts `<chump-chat>`) directly
+   into `#main-content`.
+
+The `document.addEventListener('chump:navigate', …)` router listener itself
+isn't registered until `web/v2/app.js:5314` — **after** the `ChumpNav` class
+body and its `customElements.define` call (line 593) earlier in the same
+file. So step 1's synchronous `'cockpit'` dispatch fires into a
+document with no listener yet attached and is silently dropped; step 2's
+`DOMContentLoaded`-time append (which runs after all module scripts,
+including the listener registration, have executed) is what actually lands
+in `#main-content`. On a normal-speed machine this ordering is stable and
+`<chump-chat>` does appear — which is why the flake reproduces on **slow**
+CI VMs specifically (per the existing INFRA-1342 note on 18+ `type="module"`
+scripts delaying `DOMContentLoaded`), not on every run: the race is between
+"listener registration + `DOMContentLoaded` append" finishing, vs. anything
+downstream (a stored `chumpPrefs.last-view` other than `'chat'`, a `?view=`
+URL param, or the cadence nav's own default reasserting itself, e.g. via a
+prefs write from a *previous* CI run's leftover `localStorage` state, or a
+user-set cadence in local dev) resolving to a non-chat view before that
+`DOMContentLoaded` append happens. **In a genuinely fresh browser profile
+(no `localStorage`, no URL params) — which is what CI's xvfb session and
+`tauri-driver` provide by default — `'chat'` wins and `<chump-chat>` mounts;
+the flake class is state-carryover / ordering-sensitivity, not a missing
+element.** This is consistent with `RESILIENT-016`'s decision to move
+`tauri-cowork-e2e` off the PR-blocking path to nightly-only
+(`.github/workflows/ci.yml:291`, `if: false` with a comment pointing at
+`ci-nightly.yml`) rather than treating it as a hard app regression.
+
+No selector rename is needed. If this class of flake resurfaces, the fix
+belongs in the boot sequence (e.g. register the `chump:navigate` listener
+*before* `customElements.define('chump-nav', …)` so the cadence nav's
+initial dispatch isn't silently dropped, and make `'chat'` vs. `'cockpit'`
+agree as the single source of truth for the default view) — not in the
+e2e test's selector.
+
+**INFRA-5211 re-verification (2026-09-07):** re-checked both AC items against
+current `main` and both are already answered by the analysis above —
+`customElements.define('chump-chat', ChumpChat)` (`web/v2/chat.js:417`) still
+matches `By.css('chump-chat')` (`e2e-tauri/run.mjs:116`) verbatim, and
+`tauri-cowork-e2e` is still `if: false` (PR-blocking disabled) per
+`RESILIENT-016` (`.github/workflows/ci.yml:291-296`). The wait itself was
+raised to `120_000` ms for the element-located step and `60_000` ms for the
+shadow-root step in `e2e-tauri/run.mjs` (no longer a flat 60 s), consistent
+with the timing-race diagnosis — not a missing/renamed selector. No new
+repro was needed beyond what's captured above; see also INFRA-4636 (closed
+not-a-bug for the sibling "update the selector" slice).
+
+**INFRA-6338 root-cause pinpointed (2026-09-14):** live `ci-nightly.yml` run
+`34817040814` confirmed the app *does* mount in xvfb — `#app-title` locates
+in seconds, no fatal D-Bus/X11/WebKit error, only cosmetic AT-SPI/DRI3
+warnings. `<chump-chat>` only exists in the DOM while the Chat sub-tab of the
+"Now" cadence is active; since commit `f9a21b6d` (PRODUCT-132 / PR #2066,
+2026-05-15) the "now" cadence's `default_view` is `'cockpit'`, not `'chat'`
+(`web/v2/app.js:378`). `e2e-tauri/run.mjs` loads the app fresh and waits on
+`chump-chat` without ever clicking the Chat sub-tab, so the wait times out
+every run — silently broken since 2026-05-15. Fix (left as a follow-up,
+not shipped here): have `e2e-tauri/run.mjs` click `[data-view="chat"]`
+before waiting on `chump-chat`, mirroring `e2e/tests/api-and-pwa.spec.ts`'s
+Playwright pattern. Full writeup:
+`docs/audits/INFRA-6338-chump-chat-selector-investigation.md`.
+
+**INFRA-6916 re-verification (2026-09-16):** re-checked against current
+`main` two days after INFRA-6338 landed — no drift. `chump-chat` is still
+defined at `web/v2/chat.js:417`, the "now" cadence's `default_view` is still
+`'cockpit'` (`web/v2/app.js:378`), and `tauri-cowork-e2e` is still `if: false`
+(`.github/workflows/ci.yml:296`). Separately, the same selector appears in
+three Playwright specs (`e2e/tests/api-and-pwa.spec.ts`,
+`e2e/tests/daily-driver-llm.spec.ts`) that never execute on the PR-blocking
+path: the `PWA shell` / `PWA mobile viewport` / `Chat /task path` describe
+blocks are gated behind `CHUMP_E2E_INCLUDE_FLAKES=1` (INFRA-1332 quarantine,
+only set in the non-blocking `e2e-pwa-flakes` advisory job in
+`integrations.yml`), and the LLM-reply test is gated behind
+`CHUMP_E2E_LLM=1` (unset in CI). So the selector's absence from ordinary CI
+logs has two independent, already-diagnosed causes — the Tauri/Selenium
+timing race above, and these Playwright specs being intentionally skipped —
+neither a rename nor a headless-mount failure. No code change needed; this
+gap re-confirms INFRA-6338's diagnosis still holds.
+
+**INFRA-7412 shipped the fix (2026-09-18):** `e2e-tauri/run.mjs` now clicks
+`[data-view="chat"]` before waiting on `chump-chat` (`e2e-tauri/run.mjs:114-115`),
+mirroring the Playwright specs. **INFRA-5525 re-verification (2026-09-25):**
+re-checked all three AC branches (stale selector / app-init failure / missing
+X11-D-Bus dep) — no drift, all still ruled out per the analysis above, and
+confirmed the fix holds: live `ci-nightly.yml` run `36104297256`
+(2026-09-25T06:45Z) shows `tauri-cowork-e2e` job-level `conclusion: success`.
+Full writeup: `docs/audits/INFRA-5525-chump-chat-selector-investigation.md`.
+
 **Ongoing enforcement:** `scripts/ci/test-rollup-not-blocked-by-flaky-job.sh` parses
 `ci.yml` and asserts every non-required job has either `continue-on-error: true` or
 a PR-trigger exclusion. Run it after any ci.yml change.
@@ -2149,3 +2296,38 @@ bypasses that mask CI state.
 **Fix**: call `.flush().await` on the subscribing client right after `subscribe()`, before doing anything that depends on the subscription being live. `flush()` forces a round-trip to the server, so by the time it returns the subscription is guaranteed registered. See `crates/chump-coord/tests/ambient_distribution.rs`.
 
 **Related — stale test referencing removed functionality**: `chump-gap-store::tests::test_reserve_skips_yaml_drift` was reported failing in the same gap but no longer exists in the tree — it was removed in #2727 (INFRA-2177, "drop docs/gaps YAML rollup from gap reserve — use state.db only") along with the functionality it tested. Before debugging a named test failure, `grep` for the test function first — if it's gone, the report is stale and the fix is a no-op.
+
+## Decisions queue — `/api/decisions` contract (INFRA-1563, 2026-09-25)
+
+Sibling to `/api/roadmap` (INFRA-1338): `web/v2/app.js`'s `<chump-view-decisions>`
+component calls `GET /api/decisions` to render the operator-decision queue —
+the human-in-loop surface for the Phase 3 Orchestrator MVP (operator confirms
+decisions the orchestrator/picker/bot-merge can't make unilaterally).
+
+**Source of truth**: `.chump-locks/ambient.jsonl`, not a database table. Any
+fleet code that needs an operator call — demoting/promoting a gap's priority,
+approving a merge, clarifying scope — emits:
+
+```json
+{"ts":"...","kind":"operator_decision_needed","id":"dec-<unique>","decision_kind":"gap_demote|gap_promote|merge_approval|scope_clarify","gap_id":"INFRA-1234","pr_number":4821,"summary":"...","priority":"P1"}
+```
+
+`GET /api/decisions` (`src/routes/decisions.rs`) scans the ambient stream for
+`operator_decision_needed` events and excludes any whose `id` already has a
+matching `operator_decision_resolved` event later in the stream. It does
+**not** cache — reads the whole file per request, same cost model as
+`operator_recall`'s ambient scans.
+
+**Resolving a decision**: `POST /api/decisions/{id}/resolve` with any JSON
+body appends `{"kind":"operator_decision_resolved","id":"<id>","response":<body>}`
+to ambient.jsonl. There is no mutation of the original `operator_decision_needed`
+line — resolution is purely additive, same append-only discipline as the rest
+of the ambient stream.
+
+**Both event kinds are registered** in `docs/observability/EVENT_REGISTRY.yaml`
+— an emitter that fires `operator_decision_needed` without registering it
+trips the emit-without-register CI gate (`scripts/ci/test-event-registry-coverage.sh`).
+
+**Smoke test**: `scripts/ci/test-decisions-endpoint.sh` — emits a synthetic
+`operator_decision_needed` line, asserts it's in the GET response, resolves
+it, asserts it disappears.

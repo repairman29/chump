@@ -1,7 +1,7 @@
 - id: EFFECTIVE-365
   domain: EFFECTIVE
   title: "EFFECTIVE: publisher co-pilot per PUBLISHER.md — draft, approval queue, drive, track; human keeps the irreversible click"
-  status: open
+  status: done
   priority: P1
   effort: m
   description: |
@@ -11,5 +11,7 @@
     - "Proven: a shipped giveaway/product gets approval-ready launch drafts (Show HN / Reddit / LinkedIn) in-voice, gated on Jeffs explicit send"
   notes: |
     2026-08-05 v2 survey (hardened, multi-pass): primary prior art is richer than first found — postsub (SubstackIntegrationService 449 LOC, ContentScheduler, rssGenerator, templateService: the Substack/newsletter lane nearly whole), echeovid SmartPublishingHub (433 LOC), jarvis skills/video-creation (recordDemo + per-product templates incl. recordOliveDemo — demo video/screenshot artifacts, already pointed at olive). beast-mode launch scripts remain secondary. All claimed capability: real code by line count, integrations unverified (Substack has no official API).
+  closed_date: '2026-09-08'
+  closed_pr: 4535
   outcome_id: COTG
 

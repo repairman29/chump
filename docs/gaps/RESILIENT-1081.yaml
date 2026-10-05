@@ -1,0 +1,37 @@
+- id: RESILIENT-1081
+  domain: RESILIENT
+  title: "organ-manifest is CJ-shaped — role=muscle reconcile reaps a non-CJ muscle node's worker with no replacement"
+  status: open
+  priority: P0
+  effort: s
+  description: |
+    2026-09-08: scripts/ops/organ-manifest.txt declares exactly ONE muscle
+    worker: `enabled chump-cj-worker.service role=muscle
+    requires=bin:chump,bin:git,file:~/cj-worker-run.sh`. The requires= gate
+    (file:~/cj-worker-run.sh) is met only on CJ. On any OTHER muscle node
+    (mugman runs chump-node1-worker.service -> ~/node1-worker-run.sh) the
+    cj-worker organ is SKIP (unmet requires) and the node's real worker unit is
+    not in the role-filtered manifest at all — so `organ-reconcile.sh --apply`
+    with CHUMP_ORGAN_RECONCILE_ROLE=muscle DRIFT-REMOVEs it as "out-of-role",
+    leaving the muscle node with NO worker. The manifest code comments already
+    flag this as known follow-up debt ("manifest matches node reality — it
+    previously said chump-worker@1.service"). Hand-fixed live on mugman with a
+    node-local manifest stopgap (declared chump-node1-worker.service role=muscle
+    requires=bin:chump,bin:git,file:~/node1-worker-run.sh) so the reconcile keeps
+    it; that stopgap is uncommitted and will be clobbered the moment ~/chump is
+    advanced again (see RESILIENT-1080).
+  acceptance_criteria:
+    - "a non-CJ muscle node (e.g. mugman) survives a full role=muscle organ-reconcile pass with its worker still enabled+active — the reconcile must not reap the only worker a muscle node has"
+    - "the muscle worker is declared node-generically in the committed manifest (not hard-pinned to cj-worker-run.sh): either a node-neutral worker unit template, or per-node worker declarations, so ANY muscle node gets a worker from the repo-declared manifest"
+    - "CI extends the RESILIENT-1016 muscle-self-clean shape to assert a muscle node that is NOT CJ retains exactly one enabled worker after reconcile (regression guard for the CJ-shaped-manifest starve)"
+  evidence: |
+    VERIFIED LIVE 2026-09-08 on mugman (role_assigned=muscle per
+    docs/fleet/nodes/mugman.json). After ~/chump was advanced to green-main, the
+    role=muscle reconcile logged "DRIFT-REMOVE: chump-node1-worker.service is
+    active/enabled ... out-of-role" and reaped it (clean SIGTERM ran the worker's
+    WIP checkpoint, INFRA-686 — no work lost). Re-running the reconcile
+    re-reaped the healthy worker every pass, confirming a permanent starve, not a
+    one-off. Adding a node-local manifest line for chump-node1-worker.service
+    made the next reconcile KEEP it (worker active, 2 worker.sh procs running).
+  outcome_id: MISSION-010
+  opened_date: '2026-09-08'

@@ -46,8 +46,38 @@ RC_FILE="$TMP/fake-rc"
 touch "$RC_FILE"
 
 BUILD_LOG="$TMP/build-calls.log"
+HOOK_CALL_LOG="$TMP/hook-calls.log"
+# Fake `almanac` understands just enough of `repos` / `index` / `hook
+# install` / `hook status` to exercise install-almanac.sh's INFRA-7576
+# wiring without a real almanac checkout: it always reports the target repo
+# as already-registered (so the test proves the hook-install call itself,
+# not the register-then-retry fallback) and always reports both managed
+# hooks as present. Written straight to a file (not embedded in an eval'd
+# string) so its own "$1"/"$2"/"$*" references aren't consumed by the outer
+# eval in install-almanac.sh's build_almanac().
+FAKE_ALMANAC_SRC="$TMP/fake-almanac-source.sh"
+cat > "$FAKE_ALMANAC_SRC" <<EOF
+#!/bin/sh
+echo "\$*" >> '$HOOK_CALL_LOG'
+case "\$1" in
+  repos) echo "  fakerepo  deadbeef  worktree  [$TMP]" ;;
+  index) echo fake-index-ok ;;
+  hook)
+    case "\$2" in
+      install) echo "hooks installed for \$3" ;;
+      status)
+        echo "hooks for \$3:"
+        echo "  post-commit    present   \$3/.git/hooks/post-commit"
+        echo "  post-merge     present   \$3/.git/hooks/post-merge"
+        ;;
+    esac
+    ;;
+  *) echo fake-almanac ;;
+esac
+EOF
+chmod +x "$FAKE_ALMANAC_SRC"
 FAKE_BUILD="echo ran >> '$BUILD_LOG'; mkdir -p '$REPO/target/release'; \
-printf '#!/bin/sh\necho fake-almanac\n' > '$REPO/target/release/almanac'; \
+cp '$FAKE_ALMANAC_SRC' '$REPO/target/release/almanac'; \
 printf '#!/bin/sh\necho fake-almanac-mcp\n' > '$REPO/target/release/almanac-mcp'; \
 chmod +x '$REPO/target/release/almanac' '$REPO/target/release/almanac-mcp'"
 
@@ -97,6 +127,23 @@ else
     fail "rc file was not wired to source the chump env file"
 fi
 
+# ── INFRA-7576: chump-mcp.json wiring + dynamic hook install ────────────────
+MCP_CONFIG="$TMP/chump-mcp.json"
+if grep -q '"almanac"' "$MCP_CONFIG" 2>/dev/null \
+   && grep -q "\"command\": \"$INSTALL_DIR/almanac-mcp\"" "$MCP_CONFIG" 2>/dev/null; then
+    ok "chump-mcp.json contains the 'almanac' server entry"
+else
+    fail "chump-mcp.json missing (or wrong) 'almanac' server entry"
+    cat "$MCP_CONFIG" 2>/dev/null || echo "(no such file: $MCP_CONFIG)"
+fi
+
+if grep -q "^hook install $TMP\$" "$HOOK_CALL_LOG" 2>/dev/null; then
+    ok "git hooks installed via 'almanac hook install' (not a hardcoded link)"
+else
+    fail "'almanac hook install' was not called for $TMP"
+    cat "$HOOK_CALL_LOG" 2>/dev/null || true
+fi
+
 # ── Test 2: --check reports success after install ───────────────────────────
 if run_install --check >"$TMP/check1.log" 2>&1; then
     ok "--check passes after a fresh install"
@@ -142,6 +189,44 @@ if CHUMP_ALMANAC_REPO="$BAD_REPO" \
     fail "install should have failed with an unreachable clone URL"
 else
     ok "unreachable clone URL fails cleanly (non-zero exit, no crash)"
+fi
+
+# ── Test 5 (INFRA-3637): --wire-only on an existing checkout wires mcp + hooks, never builds ─
+rm -f "$MCP_CONFIG"
+: > "$HOOK_CALL_LOG"
+BUILDS_BEFORE="$(wc -l < "$BUILD_LOG" | tr -d ' ')"
+if run_install --wire-only >"$TMP/wire.log" 2>&1; then
+    ok "--wire-only exits 0 on an existing checkout"
+else
+    fail "--wire-only failed"
+    cat "$TMP/wire.log"
+fi
+if [[ "$(wc -l < "$BUILD_LOG" | tr -d ' ')" -eq "$BUILDS_BEFORE" ]]; then
+    ok "--wire-only did not build"
+else
+    fail "--wire-only ran a build"
+fi
+if grep -q '"almanac"' "$MCP_CONFIG" 2>/dev/null; then
+    ok "--wire-only wrote the 'almanac' entry into chump-mcp.json"
+else
+    fail "--wire-only did not wire chump-mcp.json"
+fi
+if grep -q "^hook install $TMP\$" "$HOOK_CALL_LOG" 2>/dev/null; then
+    ok "--wire-only ran 'almanac hook install'"
+else
+    fail "--wire-only did not run 'almanac hook install'"
+fi
+
+# ── Test 6 (INFRA-3637): --wire-only with no built binaries fails cleanly ─
+if CHUMP_ALMANAC_REPO="$TMP/no-such-checkout" \
+   ALMANAC_INSTALL_DIR="$TMP/no-such-install" \
+   CHUMP_ENV_FILE="$TMP/chump-env-wire-bad" \
+   CHUMP_ALMANAC_RC_FILES="$TMP/fake-rc-wire-bad" \
+   CHUMP_REPO_ROOT="$TMP" \
+   bash "$SCRIPT" --wire-only >"$TMP/wire-bad.log" 2>&1; then
+    fail "--wire-only should fail with no built binaries"
+else
+    ok "--wire-only with no binaries fails cleanly (non-zero, no crash)"
 fi
 
 echo

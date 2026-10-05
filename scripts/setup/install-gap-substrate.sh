@@ -6,13 +6,17 @@
 # live on CJ (/etc/systemd/system/chump-postgrest.service,
 # ~/.chump/postgrest.conf) into one idempotent script.
 #
-# Schema: applies the CHECKED-IN supabase/migrations/0001_team_foundation.sql
-# + 0002_shared_gaps.sql verbatim — 0001_team_foundation.sql's own header
-# documents "Self-hosted (future) — supabase start locally on the team's
-# hardware; same migration applies" as a first-class deployment model, and
-# that's exactly what's already live on CJ (verified against the running
-# chump_fleet database: same shared_gaps/shared_claims/worker_capabilities
-# shape, same fleet-default sentinel team, RLS disabled). Self-hosted has no
+# Schema: applies the same tables/types/constraints as the checked-in
+# supabase/migrations/0001_team_foundation.sql + 0002_shared_gaps.sql, but via
+# the Rust chump-gap-substrate-init binary
+# (crates/chump-gap-store/src/backend/postgres.rs::init_shared_schema,
+# INFRA-3631/INFRA-5402 slice) rather than piping the SQL files through psql
+# — 0001_team_foundation.sql's own header documents "Self-hosted (future) —
+# supabase start locally on the team's hardware; same migration applies" as a
+# first-class deployment model, and that's exactly what's already live on CJ
+# (verified against the running chump_fleet database: same
+# shared_gaps/shared_claims/worker_capabilities shape, same fleet-default
+# sentinel team, RLS disabled). Self-hosted has no
 # Supabase Auth issuing JWTs, so this script additionally disables RLS on the
 # gap-store-facing tables (auth.uid()-gated policies would deny every anon
 # request) and seeds a single sentinel "fleet-default" team row so the
@@ -59,10 +63,6 @@ PG_AUTHENTICATOR="chump_authenticator"
 PG_ANON="chump_anon"
 FLEET_TEAM_ID="00000000-0000-0000-0000-000000000000"
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
-MIGRATIONS=(
-  "$REPO_ROOT/supabase/migrations/0001_team_foundation.sql"
-  "$REPO_ROOT/supabase/migrations/0002_shared_gaps.sql"
-)
 NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"
 POSTGREST_CONF="$STATE_DIR/postgrest.conf"
 
@@ -250,34 +250,45 @@ SQL
   log "roles ensured: $PG_ANON (nologin), $PG_AUTHENTICATOR (login)"
 }
 
-# ---------- 3. SCHEMA (checked-in migrations, idempotent) ----------
+# ---------- 3. SCHEMA (Rust init_schema, idempotent — INFRA-3631/INFRA-5402) ----------
+# Applies the same tables/types/constraints as the checked-in
+# supabase/migrations/000{1,2}_*.sql via
+# crates/chump-gap-store/src/backend/postgres.rs::PostgresBackend::init_shared_schema
+# (chump-gap-substrate-init binary) rather than piping the SQL files through
+# psql. Every statement is `CREATE ... IF NOT EXISTS`, so re-running against
+# an already-initialized DB is a clean no-op — no attempt to recreate
+# existing objects, and repeated apply_schema calls always exit 0.
 apply_schema() {
-  for f in "${MIGRATIONS[@]}"; do
-    [[ -f "$f" ]] || die "migration file missing: $f"
-  done
   if [[ "$DRY" == 1 ]]; then
-    log "DRY: would apply ${MIGRATIONS[*]} to $DB_NAME"
+    log "DRY: would build+run chump-gap-substrate-init against $DB_NAME"
     return 0
   fi
 
-  # Coarse idempotency: the migration files themselves aren't safe to
-  # re-run (CREATE POLICY has no IF NOT EXISTS in Postgres), so gate the
-  # whole apply on whether the schema is already there.
-  local have_schema
-  have_schema="$(psql_admin -d "$DB_NAME" -c "SELECT to_regclass('public.shared_gaps')")"
-  if [[ -n "$have_schema" && "$have_schema" != "" ]]; then
-    log "schema already present (shared_gaps exists) — skipping migration apply (no-op)"
-  else
-    for f in "${MIGRATIONS[@]}"; do
-      log "applying $(basename "$f")"
-      # Pipe via stdin rather than `-f <path>`: when psql_admin runs as
-      # `sudo -u postgres`, the postgres OS user has no read access into an
-      # arbitrary caller's worktree/home directory, so `-f` fails with
-      # "Permission denied" even though the invoking user can read the file.
-      psql_admin -d "$DB_NAME" < "$f"
-    done
-    log "schema applied (teams, shared_gaps, shared_claims, worker_capabilities, ...)"
-  fi
+  command -v cargo >/dev/null 2>&1 || die "cargo not found — needed to build chump-gap-substrate-init"
+
+  # PG15+ revokes CREATE on the `public` schema from non-owners by default;
+  # chump_authenticator is a plain login role, not the DB owner, so grant it
+  # explicitly (idempotent — re-granting an already-held privilege is a
+  # no-op). CREATE EXTENSION also wants superuser on most installs; run it
+  # once via the admin connection so init_shared_schema's own (idempotent)
+  # `CREATE EXTENSION IF NOT EXISTS` finds it already there.
+  psql_admin -d "$DB_NAME" -c "
+    CREATE EXTENSION IF NOT EXISTS pgcrypto;
+    GRANT CREATE ON SCHEMA public TO $PG_AUTHENTICATOR;
+  " >/dev/null
+
+  log "building chump-gap-substrate-init (postgres-backend feature)"
+  ( cd "$REPO_ROOT" && cargo build --quiet --release \
+      -p chump-gap-store --bin chump-gap-substrate-init --features postgres-backend ) \
+    || die "failed to build chump-gap-substrate-init"
+
+  local bin="$REPO_ROOT/target/release/chump-gap-substrate-init"
+  [[ -x "$bin" ]] || die "chump-gap-substrate-init not found after build: $bin"
+
+  local conn="host=$DB_HOST port=$DB_PORT user=$PG_AUTHENTICATOR password=$SUBSTRATE_PW dbname=$DB_NAME"
+  log "applying shared schema via chump-gap-substrate-init"
+  "$bin" "$conn" || die "chump-gap-substrate-init failed applying schema to $DB_NAME"
+  log "schema applied (teams, shared_gaps, shared_claims, worker_capabilities, ...)"
 
   # Self-hosted has no Supabase Auth issuing JWTs — auth.uid()-gated RLS
   # policies on these tables would deny every anon request, so disable RLS

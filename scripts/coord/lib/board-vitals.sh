@@ -31,6 +31,11 @@
 #   * oauth_expired — ≥3 oauth_token_refresh_failed in-window with NO recovery
 #                   since (routine oauth_token_refreshed successes never page).
 #   * cost_cap    — a cost_cap_exceeded in-window (sub cap / OpenRouter credit).
+#   * almanac_coverage_low — the almanac index's summarized_pct (written by
+#                   almanac-vision-keeper.sh's acuity state file, CREDIBLE-300)
+#                   is at or below the 95% mission floor. An unreadable/missing
+#                   state file means "unknown", not "0%" — it never pages (the
+#                   keeper not having run yet is not a coverage regression).
 # oauth_expired + cost_cap residentize operator-recall.sh's proven signals+bar.
 # The `[board-vitals] tick` proof-of-life line (RESILIENT-410) still prints
 # EVERY beat regardless — that is journal observability, NOT a DM.
@@ -62,6 +67,12 @@
 #   CHUMP_BOARD_VITALS_DROUGHT_MIN     merge-stall threshold minutes (default 180 = 3h)
 #   CHUMP_BOARD_VITALS_WORKER_SILENT_MIN worker not-producing threshold min (default 40)
 #   CHUMP_BOARD_VITALS_MAIN_RED_MIN    sustained main-red threshold minutes (default 30)
+#   CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN main-red threshold minutes for the
+#                                      distinct "sustained_main_red" ambient
+#                                      signal (default 2880 = 48h, RESILIENT-1128)
+#   CHUMP_BOARD_VITALS_MAIN_SAT_RED_MIN main-red threshold minutes for the
+#                                      distinct "main_sat_sustained_red" ambient
+#                                      signal (default 2880 = 48h, RESILIENT-1123)
 #   CHUMP_BOARD_VITALS_MAIN_RED_LIVE   0 disables the live per-beat invocation of
 #                                      main-health-watchdog.sh (RESILIENT-414);
 #                                      default 1. Without this, main_red_detected
@@ -74,6 +85,13 @@
 #                                      test hook).
 #   CHUMP_BOARD_VITALS_FLOOR_WINDOW_S  window for oauth/cost signal counts (default 7200 = 2h)
 #   CHUMP_BOARD_VITALS_OAUTH_FAIL_THR  oauth_token_refresh_failed count to page (default 3)
+#   CHUMP_BOARD_VITALS_ALMANAC_STATE   almanac-vision-keeper.sh acuity state file to read
+#                                      summarized_pct from (default
+#                                      $CHUMP_VISION_ACUITY_STATE, else
+#                                      $HOME/.almanac/vision-acuity.state; test hook)
+#   CHUMP_BOARD_VITALS_ALMANAC_FLOOR   summarized_pct floor, page at-or-below (default 95;
+#                                      clamped to never drop below 95 — CREDIBLE-1476, mirrors
+#                                      the CREDIBLE-1210 clamp in almanac-vision-keeper.sh)
 #   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the merge-stall diagnosis (default sonnet)
 #   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM diagnosis on merge_stall (default 1)
 #
@@ -276,6 +294,20 @@ print(n)
 PY
 }
 
+# Read the almanac index's summarized_pct off almanac-vision-keeper.sh's
+# acuity state file ("<symbol_pct> <summary_pct>", CREDIBLE-300). Prints the
+# integer summary_pct on stdout, or nothing if the file is missing/unreadable/
+# malformed — callers must treat empty output as "unknown", never as 0, so a
+# keeper that simply hasn't run yet cannot masquerade as a coverage collapse.
+_bv_almanac_coverage_pct() {
+    local state_file
+    state_file="${CHUMP_BOARD_VITALS_ALMANAC_STATE:-${CHUMP_VISION_ACUITY_STATE:-$HOME/.almanac/vision-acuity.state}}"
+    [[ -f "$state_file" ]] || return 0
+    local sym sum
+    read -r sym sum _ < "$state_file" 2>/dev/null || return 0
+    [[ "$sum" =~ ^[0-9]+$ ]] && printf '%s\n' "$sum"
+}
+
 # Resolve notify_operator (source notify-operator.sh; stub if absent so the lib
 # stays testable). Sets a module flag so we source once.
 _bv_ensure_notify() {
@@ -354,6 +386,17 @@ ${snapshot}"
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 board_vitals_check() {
+    # ── guard · summarized_pct must be >95% (CREDIBLE-1045/CREDIBLE-300 slice) ──
+    # summarized_pct here is whatever the caller has set in-scope (e.g. a test
+    # mocking the almanac coverage value) — unset means "not being checked",
+    # not a failure.
+    if [[ -n "${summarized_pct:-}" ]]; then
+        if ! [[ "$summarized_pct" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v v="$summarized_pct" 'BEGIN{exit !(v>95)}'; then
+            echo "summarized_pct must be >95% – aborting" >&2
+            return 1
+        fi
+    fi
+
     [[ "${CHUMP_BOARD_VITALS_ENABLED:-1}" == "0" ]] && return 0
     _bv_harden_env
 
@@ -366,6 +409,26 @@ board_vitals_check() {
     main_red_min="${CHUMP_BOARD_VITALS_MAIN_RED_MIN:-30}"
 
     local incidents=0
+
+    # ── 0 · ALMANAC: summarized_pct guard (CREDIBLE-300/CREDIBLE-1303) ────────
+    # summarized_pct is read from almanac-vision-keeper.sh's acuity state, not
+    # assumed — an unreadable/missing file is "unknown" and never pages (the
+    # keeper not having run yet is not itself a coverage regression).
+    local almanac_floor coverage
+    almanac_floor="${CHUMP_BOARD_VITALS_ALMANAC_FLOOR:-95}"
+    # CREDIBLE-1476 (CREDIBLE-300 slice): mirror the CREDIBLE-1210 clamp in
+    # almanac-vision-keeper.sh — the 95% mission floor must never be weakened
+    # via a careless/misconfigured env override.
+    if [[ "$almanac_floor" =~ ^[0-9]+$ ]] && (( almanac_floor < 95 )); then
+        echo "[board-vitals] CHUMP_BOARD_VITALS_ALMANAC_FLOOR=$almanac_floor is below the 95% mission floor — clamping to 95" >&2
+        almanac_floor=95
+    fi
+    coverage="$(_bv_almanac_coverage_pct)"
+    if [[ "$coverage" =~ ^[0-9]+$ ]] && (( coverage <= almanac_floor )); then
+        incidents=$((incidents+1))
+        _bv_maybe_page "almanac_coverage_low" \
+"🔴 **Almanac coverage — summarized_pct guard.** The chump index is ${coverage}% summarized, at or below the ${almanac_floor}% mission floor (CREDIBLE-300). almanac-vision-keeper.sh should be driving summarize to completion each pass — check it's alive and not stuck. (board-vitals.sh, pages once per $(( ${CHUMP_BOARD_VITALS_WINDOW_S:-7200} / 60 ))m)"
+    fi
 
     # ── 1 · BOX: disk ────────────────────────────────────────────────────────
     local disk_pct
@@ -469,6 +532,45 @@ board_vitals_check() {
         incidents=$((incidents+1))
         _bv_maybe_page "main_red" \
 "🔴 **main CI red ${main_red_span}m.** main has been failing for ${main_red_span}m (threshold ${main_red_min}m) — the whole fleet builds on red. A human should look. (board-vitals.sh)"
+    fi
+
+    # ── 4b · MAIN red SUSTAINED past 48h (RESILIENT-1128, RESILIENT-417 slice) ─
+    # The 30m page above (section 4) is the "look now" signal. This is a
+    # distinct, longer-horizon signal: main has been red for a genuinely
+    # extreme span (default 2880m = 48h). It rides the same _bv_main_red_span_min
+    # computed in 3b — which already resets to 0 the moment a non-benign-red
+    # streak is broken by a green/clean/passing/no_runs line — so a transient
+    # red that clears within the window never trips this (AC3: no false
+    # positives for transient red). Emits its own ambient kind so downstream
+    # consumers (fresh-eyes, operator-recall, dashboards) can distinguish
+    # "red, someone's on it" from "red for two days, something is structurally
+    # broken" without re-deriving the span themselves.
+    local sustained_main_red_min
+    sustained_main_red_min="${CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN:-2880}"
+    if (( main_red_span >= sustained_main_red_min )); then
+        # scanner-anchor: "kind":"sustained_main_red"
+        _bv_emit "sustained_main_red" \
+            "\"main_red_span_min\":${main_red_span},\"threshold_min\":${sustained_main_red_min}"
+    fi
+
+    # ── 4c · main-sat gate SUSTAINED red (RESILIENT-1123, RESILIENT-416 slice) ─
+    # Same underlying span as 4/4b (_bv_main_red_span_min, section 3b) — no new
+    # log-scanning, this is purely an independently-configurable threshold +
+    # its own ambient kind so a consumer that only cares about the "main-sat"
+    # gate (as opposed to the 30m look-now page or the 48h structural-outage
+    # signal) can watch one kind without re-deriving the span itself. Default
+    # threshold matches the 48h precedent from RESILIENT-1128; distinct env
+    # var so the two thresholds can be tuned independently. Read-only: this
+    # section only ever emits a diagnostic event, never mutates state (AC2),
+    # and — because main_red_span resets to 0 the instant a benign status line
+    # lands — a transient red that clears before the window never trips it
+    # (AC3, mirrors the false-positive guarantee proven for RESILIENT-1128).
+    local main_sat_red_min
+    main_sat_red_min="${CHUMP_BOARD_VITALS_MAIN_SAT_RED_MIN:-2880}"
+    if (( main_red_span >= main_sat_red_min )); then
+        # scanner-anchor: "kind":"main_sat_sustained_red"
+        _bv_emit "main_sat_sustained_red" \
+            "\"main_red_span_min\":${main_red_span},\"threshold_min\":${main_sat_red_min}"
     fi
 
     # ── 5 · FLOOR: credential / credit needs — genuinely Jeff's to fix ───────

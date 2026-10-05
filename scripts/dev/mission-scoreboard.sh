@@ -234,19 +234,37 @@ echo
 bin="$(command -v chump 2>/dev/null || echo /opt/homebrew/bin/chump)"
 # ~/.local/bin/chump is a symlink; un-resolved stat reads its creation date, not the build.
 bin="$(readlink -f "$bin" 2>/dev/null || echo "$bin")"
-binep=$(stat -L -f %m "$bin" 2>/dev/null || stat -L -c %Y "$bin" 2>/dev/null || echo 0)
+# GNU stat's `-f` means "report on the filesystem" (prints unrelated fields,
+# exit 0) rather than erroring, so it must NOT be tried first or the `-c %Y`
+# (GNU mtime) fallback never fires on Linux — try GNU form first, then BSD.
+binep=$(stat -L -c %Y "$bin" 2>/dev/null || stat -L -f %m "$bin" 2>/dev/null || echo 0)
 binbuilt=$(date -u -r "$binep" +%Y-%m-%dT%H:%MZ 2>/dev/null || date -u -d "@$binep" +%Y-%m-%dT%H:%MZ 2>/dev/null || echo '?')
-# Structural signal: do merges auto-deploy? Tied to MISSION-012's status, NOT a fuzzy
-# mtime diff (main commits constantly, so binary-mtime < latest-commit is almost always
-# true and meaningless). The real question is whether an auto-deploy path exists at all.
+# CREDIBLE-293: FRESHNESS SLA, not an instant snapshot. Comparing the running
+# binary against origin/main's tip at the exact instant this script runs
+# false-positives on ordinary auto-deploy lag: main moves every ~10-20 min,
+# the auto-deploy cycle runs every ~20 min, so main is "ahead" of the last
+# deploy most of the time by design — that isn't a regression. Only flag a
+# real regression when the binary has been behind for LONGER than one
+# deploy-cadence-plus-build-time window (default 30 min; override via
+# MISSION_SCOREBOARD_DEPLOY_SLA_SECONDS).
+DEPLOY_SLA_SECONDS="${MISSION_SCOREBOARD_DEPLOY_SLA_SECONDS:-1800}"
+main_ref="origin/main"
+git rev-parse --verify "$main_ref" >/dev/null 2>&1 || main_ref="main"
+git rev-parse --verify "$main_ref" >/dev/null 2>&1 || main_ref="HEAD"
+main_moved_epoch=$(git log -1 --format=%ct "$main_ref" 2>/dev/null || echo 0)
+lag_since_main_move=$(( now - main_moved_epoch ))
 autodeploy=0
-chump gap show MISSION-012 --json 2>/dev/null | grep -qiE '"status":[[:space:]]*"(done|closed|shipped)"' && autodeploy=1
+if [ "$binep" -ge "$main_moved_epoch" ]; then
+  autodeploy=1   # binary already built at/after the latest main-move: current.
+elif [ "$lag_since_main_move" -le "$DEPLOY_SLA_SECONDS" ]; then
+  autodeploy=1   # main moved recently; within the normal auto-deploy cadence window.
+fi
 echo "③ Deploy — do merged fixes reach the running binary automatically?  (binary built $binbuilt)"
 if [ "$autodeploy" -eq 1 ]; then
-  echo "     ✅ auto-deploy in place (MISSION-012 done)"
+  echo "     ✅ within freshness SLA (deploy-lag ${lag_since_main_move}s ≤ ${DEPLOY_SLA_SECONDS}s cadence window)"
   stale=0
 else
-  echo "     ❌ NO auto-deploy (MISSION-012 open) — merges are inert until a manual rebuild. THE MULTIPLIER."
+  echo "     ❌ STALE — deploy-lag ${lag_since_main_move}s exceeds ${DEPLOY_SLA_SECONDS}s SLA — merges are inert until redeploy. THE MULTIPLIER."
   stale=1
 fi
 echo

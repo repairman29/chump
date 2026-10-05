@@ -188,9 +188,15 @@ grep -Eq '^(Environment|ExecStart)=.*%h' "$CJ_INSTALLED" \
     && fail "installed chump-organ-watchdog.service leaked a %h specifier (expands to /root at runtime): $(cat "$CJ_INSTALLED")"
 grep -q '/root/Projects/chump' "$CJ_INSTALLED" \
     && fail "installed chump-organ-watchdog.service leaked an un-rewritten /root/Projects/chump path for a non-root run-user: $(cat "$CJ_INSTALLED")"
-grep -q '/home/jeff/Projects/chump/scripts/ops/organ-watchdog.sh' "$CJ_INSTALLED" \
-    || fail "installed chump-organ-watchdog.service ExecStart not host-rewritten to the run-user home: $(cat "$CJ_INSTALLED")"
-ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape): exec path host-rewritten, no /root/Projects path, no %h"
+# RESILIENT-1102: the repo path is now rewritten to this box's ACTUAL checkout
+# ($REPO_ROOT, where the installer runs from) — NOT an assumed
+# $RUN_HOME/Projects/chump, which does not exist on an owned node and killed the
+# organ with status=200/CHDIR. A stale Projects/chump repo path must NOT survive.
+grep -q "${REPO_ROOT}/scripts/ops/organ-watchdog.sh" "$CJ_INSTALLED" \
+    || fail "installed chump-organ-watchdog.service ExecStart not rewritten to the real checkout ($REPO_ROOT): $(cat "$CJ_INSTALLED")"
+grep -q 'Projects/chump/scripts/ops/organ-watchdog.sh' "$CJ_INSTALLED" \
+    && fail "installed chump-organ-watchdog.service still bakes a Projects/chump repo path (RESILIENT-1102): $(cat "$CJ_INSTALLED")"
+ok "chump-organ-watchdog.service installs for a non-root run-user (CJ shape): exec path rewritten to the real checkout, no Projects/chump ghost, no %h"
 
 # RESILIENT-200 class guard: NO dispatch *.service may resolve its home via %h
 # in an active directive — the installer host-rewrite keys off "/root/" literals
@@ -222,8 +228,185 @@ for u in "$TMP/cj-dest"/*.service; do
     && fail "$b HOME still resolves under /root for run-user jeff: $(grep -n '^Environment=HOME=' "$u")"
   grep -q '^WorkingDirectory=' "$u" \
     || fail "$b has no WorkingDirectory= (systemd cwd defaults to /, breaking cwd-based chump gap / gh repo view)"
+  # RESILIENT-1102: the WorkingDirectory must be a directory that EXISTS. Before
+  # the fix, every organ baked $RUN_HOME/Projects/chump — a path that does not
+  # exist on an owned node (repo at $HOME/chump) — so systemd killed it at CHDIR
+  # (status=200/CHDIR) before it ran. This class had ZERO coverage; assert that
+  # the baked cwd resolves on disk. (Here the installer ran from $REPO_ROOT, the
+  # real checkout, so the rewritten WorkingDirectory points there and exists.)
+  # The baked WorkingDirectory must resolve to a directory that EXISTS. Before
+  # the fix it was an assumed $RUN_HOME/Projects/chump (absent on owned nodes),
+  # so systemd killed the organ at CHDIR (status=200/CHDIR) before it ran.
+  # (Note: we assert on WorkingDirectory only, NOT a blanket grep for
+  # Projects/chump — some units, e.g. chump-gap-closure-reconcile.service,
+  # legitimately list $HOME/Projects/chump as ONE runtime self-resolving repo
+  # candidate guarded by `-d "$c/.git"`, which is robust, not the bug.)
+  _wd="$(sed -n 's/^WorkingDirectory=//p' "$u" | head -1)"
+  [ -d "$_wd" ] \
+    || fail "$b WorkingDirectory '$_wd' does not exist on disk — systemd would kill it at CHDIR (status=200/CHDIR; RESILIENT-1102)"
 done
 [ "$installed_svcs" -gt 0 ] || fail "no .service units were installed to the stubbed dest dir — roster/install path broke"
-ok "all $installed_svcs generated organs run with HOME off /root + cwd at the repo root (INFRA-3647 keystone)"
+ok "all $installed_svcs generated organs run with HOME off /root + cwd at the real checkout that EXISTS on disk (INFRA-3647 + RESILIENT-1102)"
+
+# ── Test: host-rewrite generalizes past hardcoded /root (RESILIENT-1051) ───
+# Several tracked units (chump-nba-dispatch.service, chump-gap-drain.service,
+# chump-digest.service) are CJ-native (User=jeff, /home/jeff/... paths), not
+# helsinki-shaped. Before this fix the host-rewrite sed only ever matched
+# "/root" literals, so installing the SAME roster for a THIRD node (e.g.
+# RUN_USER=ubuntu) shipped /home/jeff verbatim into the installed unit's
+# active directives (User=, Environment=HOME=, WorkingDirectory=, ExecStart=)
+# — a WorkingDirectory/HOME that doesn't exist on that node, causing
+# CHDIR/127 failures on every cycle for those organs on every node except
+# jeff's own.
+mkdir -p "$TMP/ubuntu-dest" "$TMP/ubuntu-bins" "$TMP/ubuntu-cargo-bin" "$TMP/ubuntu-locks"
+cat > "$TMP/ubuntu-bins/systemctl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/ubuntu-bins/systemctl"
+cat > "$TMP/ubuntu-cargo-bin/chump-integrator" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/ubuntu-cargo-bin/chump-integrator"
+
+CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
+    CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/ubuntu-dest" \
+    CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/ubuntu-bins/systemctl" \
+    CHUMP_RUN_USER=ubuntu \
+    CARGO_BIN_DIR="$TMP/ubuntu-cargo-bin" \
+    NODE_AMBIENT="$TMP/ubuntu-locks/ambient.jsonl" \
+    bash "$SCRIPT" --auto >"$TMP/ubuntu-out.log" 2>&1
+ubuntu_rc=$?
+[ "$ubuntu_rc" -eq 0 ] || fail "--auto for CHUMP_RUN_USER=ubuntu must exit 0; got $ubuntu_rc: $(cat "$TMP/ubuntu-out.log")"
+
+for jeff_native in chump-nba-dispatch.service chump-gap-drain.service chump-digest.service; do
+    installed="$TMP/ubuntu-dest/$jeff_native"
+    [ -f "$installed" ] || fail "$jeff_native was not installed to the stubbed dest dir"
+    # Exclude the real checkout path ($REPO_ROOT) from the leak check: repo paths
+    # are legitimately rewritten to it (RESILIENT-1102), and on a dev box it may
+    # itself live under /home/jeff — that is the real repo, not an un-rewritten
+    # source leak. Any OTHER /home/jeff or User=jeff is a genuine leak.
+    leaked="$(grep -v '^#' "$installed" | grep -F -v "$REPO_ROOT" | grep -E 'home/jeff|^User=jeff' || true)"
+    [ -z "$leaked" ] \
+        || fail "$jeff_native leaked an un-rewritten /home/jeff path for run-user ubuntu (RESILIENT-1051): $leaked"
+    grep -q '^User=ubuntu' "$installed" \
+        || fail "$jeff_native missing User=ubuntu (host-rewrite from a jeff-shaped source): $(grep -n '^User=' "$installed")"
+    grep -q '^Environment=HOME=/home/ubuntu$' "$installed" \
+        || fail "$jeff_native HOME not rewritten to /home/ubuntu: $(grep -n '^Environment=HOME=' "$installed")"
+    # RESILIENT-1102: WorkingDirectory is now the box's REAL checkout ($REPO_ROOT,
+    # where the installer ran), not an assumed $HOME/Projects/chump ghost — and
+    # it must EXIST on disk (a non-existent cwd is status=200/CHDIR at runtime).
+    grep -q "^WorkingDirectory=${REPO_ROOT}\$" "$installed" \
+        || fail "$jeff_native WorkingDirectory not rewritten to the real checkout ($REPO_ROOT): $(grep -n '^WorkingDirectory=' "$installed")"
+    _wd="$(sed -n 's/^WorkingDirectory=//p' "$installed" | head -1)"
+    [ -d "$_wd" ] \
+        || fail "$jeff_native WorkingDirectory '$_wd' does not exist — systemd CHDIR kill (status=200/CHDIR; RESILIENT-1102)"
+done
+ok "jeff-shaped source units (nba-dispatch, gap-drain, digest) host-rewrite cleanly for run-user ubuntu — repo path -> the real (existing) checkout, no /home/jeff leak, no Projects/chump ghost (RESILIENT-1051 + 1102)"
+
+# ── RESILIENT-1446: a root-run deploy honors CHUMP_RUN_USER from node.env ──
+# The split-identity hub bug: chump-organ-deploy runs install-helsinki-atc.sh AS
+# ROOT from a root-owned checkout, so RUN_USER derived only via `stat %U` was
+# root -> root-shaped units, while the worker/store/oauth live under the worker
+# user -> farmer heartbeat split -> RESILIENT-069 RED -> fleet dark. The node's
+# real identity is persisted in ~/.chump/node.env's CHUMP_RUN_USER; the installer
+# must honor it even when CHUMP_RUN_USER is NOT already exported. Assert that a
+# node.env-provided CHUMP_RUN_USER (with the env var UNSET) still shapes units.
+mkdir -p "$TMP/ne-dest" "$TMP/ne-bins" "$TMP/ne-cargo-bin" "$TMP/ne-locks" "$TMP/ne-state"
+cat > "$TMP/ne-bins/systemctl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/ne-bins/systemctl"
+cat > "$TMP/ne-cargo-bin/chump-integrator" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/ne-cargo-bin/chump-integrator"
+cat > "$TMP/ne-state/node.env" <<'EOF'
+export CHUMP_NODE_ROLE=all
+export CHUMP_RUN_USER=ubuntu
+EOF
+# CHUMP_RUN_USER deliberately NOT in the environment — it must come from node.env.
+env -u CHUMP_RUN_USER \
+    CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
+    CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/ne-dest" \
+    CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/ne-bins/systemctl" \
+    CHUMP_STATE_DIR="$TMP/ne-state" \
+    CARGO_BIN_DIR="$TMP/ne-cargo-bin" \
+    NODE_AMBIENT="$TMP/ne-locks/ambient.jsonl" \
+    bash "$SCRIPT" --auto >"$TMP/ne-out.log" 2>&1
+ne_rc=$?
+[ "$ne_rc" -eq 0 ] || fail "--auto with node.env CHUMP_RUN_USER=ubuntu must exit 0; got $ne_rc: $(cat "$TMP/ne-out.log")"
+NE_INSTALLED="$TMP/ne-dest/chump-organ-watchdog.service"
+[ -f "$NE_INSTALLED" ] || fail "chump-organ-watchdog.service not installed (node.env run-user path): $(cat "$TMP/ne-out.log")"
+grep -q '^User=ubuntu' "$NE_INSTALLED" \
+    || fail "node.env CHUMP_RUN_USER=ubuntu was not honored — unit not shaped for ubuntu: $(grep -n '^User=' "$NE_INSTALLED")"
+ok "install-helsinki-atc.sh honors CHUMP_RUN_USER from node.env when the env var is unset (root-run deploy emits run-user-shaped units — RESILIENT-1446)"
+
+# ── RESILIENT-1446: repo-retarget source guard ────────────────────────────
+# When the checkout the (root) installer runs from is owned by a DIFFERENT user
+# than the run-user, the baked WorkingDirectory must be re-targeted to the
+# run-user's OWN checkout (else the run-user cannot cd into a root-owned tree ->
+# 200/CHDIR). A full functional test needs a second-user-owned checkout (not
+# creatable without root in CI), so assert the source-level guard exists.
+grep -q '_checkout_owner' "$SCRIPT" \
+    || fail "install-helsinki-atc.sh missing the RESILIENT-1446 repo-retarget guard for a checkout owned by a non-run-user"
+ok "install-helsinki-atc.sh re-targets the baked repo path to the run-user's checkout when the checkout owner differs (RESILIENT-1446 source guard)"
+
+# ── RESILIENT-1452: same-owner node-clone retarget (de-split the hand dropins) ──
+# A box that is BOTH a chump-node-install.sh node (self-deploy organ runs from
+# $NODE_DIR/repo, default ~/.chumpnode/repo) AND the sole hub (a real checkout
+# at $RUN_HOME/chump) has the SAME owner on both trees, so RESILIENT-1446's
+# owner-mismatch guard is a no-op and every organ — including the farmer — gets
+# placed shaped for the shadow node clone. That's exactly what forced the hand
+# drop-ins chump-farmer.service.d/zz-ubuntu-home.conf +
+# chump-farmer.timer.d/zz-refire.conf. Reproduce that box shape hermetically:
+# copy the installer + its dispatch unit sources into a path that ends in
+# ".chumpnode/repo" (so $REPO_ROOT resolves there), point
+# CHUMP_INSTALL_ATC_RUN_HOME_OVERRIDE at a fake $HOME containing a real hub
+# checkout at $HOME/chump owned by the SAME user, and assert the installed
+# chump-farmer.service ends up pointed at the hub, not the node clone.
+NC_RUNHOME="$TMP/nc-runhome"
+NC_NODE_REPO="$TMP/nc-noderoot/.chumpnode/repo"
+mkdir -p "$NC_RUNHOME/chump/.git" "$NC_NODE_REPO/scripts" "$NC_NODE_REPO/scripts/coord" \
+    "$TMP/nc-dest" "$TMP/nc-bins" "$TMP/nc-cargo-bin" "$TMP/nc-locks"
+# The --auto flow shells out to several sibling scripts by $REPO_ROOT-relative
+# path (organ-reconcile.sh, install-node-refresh-systemd.sh, ...) after the
+# unit-install loop, so the node-clone checkout needs the full scripts/{dispatch,
+# setup,ops} + scripts/coord/lib trees present, not just the installer + units.
+cp -r "$REPO_ROOT/scripts/dispatch" "$REPO_ROOT/scripts/setup" "$REPO_ROOT/scripts/ops" "$NC_NODE_REPO/scripts/"
+cp -r "$REPO_ROOT/scripts/coord/lib" "$NC_NODE_REPO/scripts/coord/"
+cp "$SCRIPT" "$NC_NODE_REPO/scripts/setup/install-helsinki-atc.sh"
+cat > "$TMP/nc-bins/systemctl" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/nc-bins/systemctl"
+cat > "$TMP/nc-cargo-bin/chump-integrator" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/nc-cargo-bin/chump-integrator"
+
+_nc_run_user="$(id -un)"
+CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
+    CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/nc-dest" \
+    CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/nc-bins/systemctl" \
+    CHUMP_INSTALL_ATC_RUN_HOME_OVERRIDE="$NC_RUNHOME" \
+    CHUMP_RUN_USER="$_nc_run_user" \
+    CARGO_BIN_DIR="$TMP/nc-cargo-bin" \
+    NODE_AMBIENT="$TMP/nc-locks/ambient.jsonl" \
+    bash "$NC_NODE_REPO/scripts/setup/install-helsinki-atc.sh" --auto >"$TMP/nc-out.log" 2>&1
+nc_rc=$?
+[ "$nc_rc" -eq 0 ] || fail "--auto from a node-clone-shaped checkout must exit 0; got $nc_rc: $(cat "$TMP/nc-out.log")"
+NC_FARMER="$TMP/nc-dest/chump-farmer.service"
+[ -f "$NC_FARMER" ] || fail "chump-farmer.service not installed from node-clone-shaped checkout: $(cat "$TMP/nc-out.log")"
+grep -q "^WorkingDirectory=${NC_RUNHOME}/chump\$" "$NC_FARMER" \
+    || fail "chump-farmer.service WorkingDirectory not re-targeted to the hub checkout ($NC_RUNHOME/chump) — still shaped for the node clone (RESILIENT-1452): $(grep -n '^WorkingDirectory=' "$NC_FARMER")"
+grep -q "${NC_NODE_REPO}" "$NC_FARMER" \
+    && fail "chump-farmer.service still references the node-clone path $NC_NODE_REPO — RESILIENT-1452 retarget did not fire: $(cat "$NC_FARMER")"
+ok "chump-farmer.service host-rewrite retargets a same-owner node-clone checkout (\$HOME/.chumpnode/repo) to the real hub checkout (\$HOME/chump) with no hand-applied drop-in (RESILIENT-1452)"
 
 echo "ALL PASS"

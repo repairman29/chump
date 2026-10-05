@@ -43,6 +43,9 @@ STATE_FILE="${CHUMP_DAEMON_ACTIVATOR_STATE_FILE:-$CHUMP_DIR/daemon-activator-sta
 DRY_RUN="${CHUMP_DAEMON_ACTIVATOR_DRY_RUN:-0}"
 LAUNCHCTL="${CHUMP_DAEMON_ACTIVATOR_LAUNCHCTL_CMD:-launchctl}"
 
+# INFRA-1798: mandatory Glance phase — drain + act on inbox before any work.
+source "$SCRIPT_DIR/lib/inbox-glance.sh" 2>/dev/null && chump_inbox_glance "daemon-activator" || true
+
 for _a in "$@"; do
     case "$_a" in
     --dry-run) DRY_RUN=1 ;;

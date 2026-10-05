@@ -23,6 +23,7 @@
 # Tracked in-repo so `chump-node-install.sh` installs it on EVERY owned node (COTG).
 set -uo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
 REPO="${CHUMP_REPO_ROOT:-$HOME/Projects/chump}"
 INV="$STATE_DIR/resource-inventory.json"
@@ -37,12 +38,38 @@ DISK_PLACE_PCT="${CHUMP_ORCH_DISK_PLACE_PCT:-90}" # root%>= this triggers placem
 HOUSEKEEPING="${CHUMP_ORCH_HOUSEKEEPING:-chump-rot-reaper.service chump-worktree-reaper.service chump-disk-monitor.service}"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
 BACKPRESSURE_MAX_AGE_S="${CHUMP_ORCH_BACKPRESSURE_MAX_AGE_S:-900}"  # stale signal (>15min) is ignored, not trusted
+# RESILIENT-291 (PLACE half): the capacity planner + its output. effective_max()
+# consumes worker_budget from this plan so the worker CEILING is capacity-derived
+# (cores/mem/GPU/load/disk + orchestration+embed overhead) rather than a blind
+# cores-1 or an autonomy-only cap. Falls back cleanly when the plan is absent.
+CAPACITY_PLANNER="${CHUMP_ORCH_CAPACITY_PLANNER:-$REPO/scripts/ops/node-capacity-plan.sh}"
+CAPACITY_PLAN="${CHUMP_ORCH_CAPACITY_PLAN:-$STATE_DIR/node-capacity-plan.json}"
+PLAN_REFRESH_EVERY="${CHUMP_ORCH_PLAN_REFRESH_EVERY:-5}"  # re-run the planner every N ticks
 mkdir -p "$STATE_DIR"
 log(){ printf '[%s] %s\n' "$(date -u +%H:%M:%S)" "$*"; }
 
-# effective_max — the enforced cap, single source of truth for both enforce_cap() and scale().
+# plan_worker_budget — read worker_budget from the capacity plan JSON, or "" if
+# unreadable/absent. Grep-based (no jq dependency), tolerant of formatting.
+plan_worker_budget() {
+  [ -f "$CAPACITY_PLAN" ] || { echo ""; return; }
+  grep -o '"worker_budget"[[:space:]]*:[[:space:]]*[0-9]\+' "$CAPACITY_PLAN" 2>/dev/null \
+    | head -1 | grep -o '[0-9]\+$'
+}
+
+# refresh_plan — re-run the capacity planner so the plan tracks live signals. Best
+# effort: a planner failure never breaks the orchestration loop (falls back to env/cores-1).
+refresh_plan() {
+  [ -x "$CAPACITY_PLANNER" ] || [ -f "$CAPACITY_PLANNER" ] || return 0
+  CHUMP_REPO_ROOT="$REPO" CHUMP_STATE_DIR="$STATE_DIR" bash "$CAPACITY_PLANNER" >/dev/null 2>&1 || true
+}
+
+# effective_max — the enforced cap, single source of truth for both enforce_cap()
+# and scale(). Precedence: capacity-plan worker_budget > CHUMP_ORCH_WORKER_MAX env
+# > cores-1. The plan is the PLACE-half brain; this loop is the enforcement around it.
 effective_max() {
-  local max=$WORKER_MAX; [ "$max" = 0 ] && max=$((CORES-1)); [ "$max" -lt 1 ] && max=1
+  local max; max="$(plan_worker_budget)"
+  if [ -z "$max" ]; then max=$WORKER_MAX; [ "$max" = 0 ] && max=$((CORES-1)); fi
+  [ "$max" -lt 1 ] 2>/dev/null && max=1
   echo "$max"
 }
 
@@ -146,9 +173,24 @@ sense() {
     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$CORES" "$LOAD1" "$LOADPCT" "$RAM_AVAIL_MB" "$ROOT_PCT" "${BEST_VOL_MNT:-none}" "$((${BEST_VOL_FREE_KB:-0}/1024/1024))" "$WORKERS_UP" > "$INV"
 }
 
+# heal() — INFRA-3649 AC3: HOUSEKEEPING organs are declared as chump-*.service
+# names for historical reasons, but on a non-systemd-supervised node (CJ:
+# housekeeping runs as bare ~/.chump/organs/<name>.sh loops, not systemd
+# units) a blind `systemctl is-active`/`restart` silently no-ops — is-active
+# returns "unknown"/non-zero for a unit that was never registered, restart
+# errors out (swallowed by `|| true`), and the organ is never actually
+# revived. svc-abstraction.sh's svc_is_alive/svc_revive pick the right
+# supervisor (systemd unit vs bare process) PER ORGAN, so the same heal()
+# body works whether this node runs HOUSEKEEPING as real units or as process
+# organs — and svc_revive already carries the backoff guard + the
+# kind=organ_self_healed emit (AC2/AC4), so heal() doesn't need its own.
+# shellcheck source=svc-abstraction.sh
+source "${CHUMP_ORCH_SVC_ABSTRACTION:-$SCRIPT_DIR/svc-abstraction.sh}"
 heal() {
+  local u name
   for u in $HOUSEKEEPING; do
-    systemctl is-active "$u" >/dev/null 2>&1 || { log "HEAL: $u down -> restart"; sudo systemctl restart "$u" 2>/dev/null || true; }
+    name="${u%.service}"; name="${name#chump-}"
+    svc_is_alive "$name" >/dev/null 2>&1 || { log "HEAL: $name down -> revive"; svc_revive "$name" >/dev/null 2>&1 || true; }
   done
 }
 
@@ -205,8 +247,14 @@ place() {
 # Sourceable for tests (RESILIENT-328): only run the daemon loop when executed directly.
 if [[ "${BASH_SOURCE[0]:-$0}" == "${0}" ]]; then
   log "node-orchestrator up (interval ${INTERVAL}s, autoplace=$AUTOPLACE)"
+  _tick=0
   while true; do
     sense
+    # PLACE half (RESILIENT-291): refresh the capacity plan on a cadence so
+    # effective_max()'s worker_budget tracks live signals; enforce_cap/scale
+    # below then hold the worker count to the capacity-derived ceiling.
+    [ "$(( _tick % PLAN_REFRESH_EVERY ))" -eq 0 ] && refresh_plan
+    _tick=$(( _tick + 1 ))
     heal
     enforce_cap
     enforce_cargo_jobs

@@ -272,6 +272,87 @@ else
     exit 1
 fi
 
+# ── (g) Non-candidates are not filed; (h) an artifact is filed only once ──
+echo "--- test (g)/(h): candidate filter + file-once"
+
+G_REPO="$WORK_DIR/g-repo"
+git init --quiet "$G_REPO"
+git -C "$G_REPO" config user.email "test@chump"
+git -C "$G_REPO" config user.name "test"
+git -C "$G_REPO" checkout -b main --quiet 2>/dev/null || true
+mkdir -p "$G_REPO/.claude/agents" "$G_REPO/scripts/coord" "$G_REPO/scripts/ci" "$G_REPO/docs/gaps"
+printf '# stub\n' > "$G_REPO/CLAUDE.md"
+printf '# stub\n' > "$G_REPO/AGENTS.md"
+printf '# stub\n' > "$G_REPO/.claude/agents/target.md"
+git -C "$G_REPO" add -A
+git -C "$G_REPO" commit --quiet -m "chore: baseline"
+git -C "$G_REPO" remote add origin "$G_REPO"
+G_BASE="$(git -C "$G_REPO" rev-parse HEAD)"
+
+printf 'x\n' > "$G_REPO/scripts/ci/test-some-gate.sh"
+printf 'x\n' > "$G_REPO/docs/gaps/INFRA-9001.yaml"
+printf 'x\n' > "$G_REPO/scripts/ci/some-allowlist.txt"
+printf 'x\n' > "$G_REPO/scripts/coord/sync.rs"
+printf 'x\n' > "$G_REPO/scripts/coord/real-worker-daemon.sh"
+git -C "$G_REPO" add -A
+git -C "$G_REPO" commit --quiet -m "feat(INFRA-9001): ship things"
+
+G_COUNT_FILE="$WORK_DIR/g-count"
+printf '0' > "$G_COUNT_FILE"
+G_MOCK="$WORK_DIR/g-mock"
+mkdir -p "$G_MOCK"
+cat > "$G_MOCK/chump" <<MOCKEOF3
+#!/usr/bin/env bash
+if [[ "\${1:-}" == "gap" && "\${2:-}" == "reserve" ]]; then
+    count=\$(cat "$G_COUNT_FILE" 2>/dev/null || echo 0)
+    printf '%s' "\$((count + 1))" > "$G_COUNT_FILE"
+    echo "EFFECTIVE-\$((9500 + count))"
+    exit 0
+fi
+exit 0
+MOCKEOF3
+chmod +x "$G_MOCK/chump"
+
+run_g() {
+    (
+        cd "$G_REPO"
+        PATH="$G_MOCK:$PATH" \
+        CHUMP_AMBIENT_LOG="$TMP_AMBIENT" \
+        CHUMP_SESSION_ID="test-quartermaster" \
+        CHUMP_DIR="$TMP_CHUMP_DIR/g" \
+        CHUMP_QUARTERMASTER_NO_BROADCAST=1 \
+            bash "$REPO_ROOT/$SCRIPT" run 2>&1
+    ) || true
+}
+
+mkdir -p "$TMP_CHUMP_DIR/g"
+write_g_cp() { printf '{"last_audit_sha":"%s","last_audit_ts":%s}\n' "$1" "$(($(date +%s) - 300))" > "$TMP_CHUMP_DIR/g/quartermaster-checkpoint.json"; }
+
+write_g_cp "$G_BASE"
+run_g
+G_FILED="$(cat "$G_COUNT_FILE")"
+if [[ "$G_FILED" -eq 1 ]]; then
+    echo "  ok (g): only the daemon was filed (test/yaml/txt/rs skipped)"
+else
+    echo "FAIL (g): expected exactly 1 gap (the daemon), got $G_FILED"
+    exit 1
+fi
+
+# (h) touch the daemon again in a later commit; it must not be refiled.
+G_HEAD1="$(git -C "$G_REPO" rev-parse HEAD)"
+printf 'y\n' >> "$G_REPO/scripts/coord/real-worker-daemon.sh"
+git -C "$G_REPO" add -A
+git -C "$G_REPO" commit --quiet -m "fix(INFRA-9002): tweak real-worker-daemon.sh"
+write_g_cp "$G_HEAD1"
+run_g
+G_FILED2="$(cat "$G_COUNT_FILE")"
+if [[ "$G_FILED2" -eq 1 ]]; then
+    echo "  ok (h): already-filed artifact not refiled"
+else
+    echo "FAIL (h): artifact refiled (count $G_FILED2, expected 1)"
+    exit 1
+fi
+
 # ── Scanner-anchor presence check ────────────────────────────────────────
 echo "--- bonus: scanner-anchor comments present"
 for kind in shelfware_detected shelfware_audit_run quartermaster_heartbeat; do
@@ -283,4 +364,4 @@ done
 echo "  ok: all 3 scanner-anchor comments present"
 
 echo ""
-echo "test-quartermaster-audit-loop: PASS (all 6 AC assertions + scanner-anchor bonus)"
+echo "test-quartermaster-audit-loop: PASS (all 6 AC assertions + candidate-filter/file-once + scanner-anchor bonus)"

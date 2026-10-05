@@ -22,6 +22,16 @@
 #   scripts/coord/broadcast.sh [--to <recipient>] [--reply-to <parent-corr-id>] [--urgency INFO|WARN|CRIT|EMERGENCY] ALERT   kind=<kind> "<message>"
 #   scripts/coord/broadcast.sh --reply-to <proposal-corr-id> FEEDBACK preference <subject> "<rationale>" +1|-1
 #
+# INFRA-1945 (A2A slice B): role-typed routing. --to role:<name> (e.g.
+# --to role:shepherd) resolves against the most-recent fresh (<=30min)
+# entry in .chump-locks/fleet-registry.jsonl whose role==<name>, and
+# sends to that session's inbox — the caller doesn't need to know
+# which date-variant session-id is currently alive for a role. Emits
+# kind=a2a_role_resolved {role, resolved_session, ts} on success. On no
+# alive match: falls back to the slice-C dead-letter queue (same shape
+# a2a-dead-letter-reaper.sh writes) and emits kind=a2a_role_resolve_failed,
+# or exits 1 under --strict.
+#
 # EFFECTIVE-028 — corr_id threading (--reply-to):
 #   --reply-to <parent-corr-id>
 #     Sets corr_id=<parent-corr-id> in the emitted payload so this event
@@ -69,6 +79,15 @@
 #     .chump-locks/inbox/<sender>-sent-pending.jsonl with
 #     {ts, corr_id, to, expires_at} so a sender can audit outstanding
 #     unconfirmed sends without blocking (see a2a-delivery-tail.sh).
+#
+# INFRA-1948 (schema validation, slice E of INFRA-1862):
+#   --strict  — reject calls whose required fields are missing/defaulted
+#     instead of silently substituting a placeholder. Today's non-strict
+#     default lets `STUCK <gap-id>` (no reason) silently emit
+#     reason="unspecified" — the exact positional-arg-confusion failure
+#     mode that motivated INFRA-1862. Opt-in per INFRA-1862 AC #7
+#     (backward-compat): existing callers are unaffected until they add
+#     --strict. Flip to default after a 7-day clean window per AC #7.
 
 # ── INFRA-1998: Rust pass-through (opt-in via CHUMP_MESSAGING_RUST=1) ─────────
 if [[ "${CHUMP_MESSAGING_RUST:-0}" == "1" ]]; then
@@ -387,8 +406,13 @@ REPLY_TO=""
 URGENCY="INFO"
 NO_FANOUT="${CHUMP_NO_FANOUT:-0}"
 AWAIT=0
+STRICT=0
 while :; do
     case "${1:-}" in
+        --strict)
+            STRICT=1
+            shift
+            ;;
         --await)
             AWAIT="${2:-0}"
             [[ "$AWAIT" =~ ^[0-9]+$ ]] || { echo "Usage: $0 --await <seconds>" >&2; exit 1; }
@@ -435,6 +459,93 @@ done
 EVENT="$1"
 shift
 
+# INFRA-1945 (INFRA-1862 slice B): role-typed routing. When --to starts
+# with "role:" (e.g. role:shepherd), resolve it against the most-recent
+# fresh (<=30min) entry in .chump-locks/fleet-registry.jsonl whose
+# role==<name>, and rewrite TO to that session's id so the rest of the
+# script (inbox write, "to" field, sent-pending record) is unchanged.
+# scanner-anchor: "kind":"a2a_role_resolved"
+# scanner-anchor: "kind":"a2a_role_resolve_failed"
+_resolve_role_to_session() {
+    local role="$1" registry="$LOCK_DIR/fleet-registry.jsonl" max_age_min="${CHUMP_A2A_ROLE_FRESHNESS_MIN:-30}"
+    [[ -f "$registry" ]] || return 0
+    python3 -c "
+import json, sys
+from datetime import datetime, timezone
+
+role, path, max_age_min = sys.argv[1], sys.argv[2], float(sys.argv[3])
+
+def parse_ts(ts):
+    try:
+        return datetime.strptime(ts, '%Y-%m-%dT%H:%M:%SZ').replace(tzinfo=timezone.utc)
+    except Exception:
+        return None
+
+now = datetime.now(timezone.utc)
+best_session, best_ts = None, None
+try:
+    with open(path) as f:
+        for line in f:
+            line = line.strip()
+            if not line:
+                continue
+            try:
+                entry = json.loads(line)
+            except Exception:
+                continue
+            if entry.get('role') != role:
+                continue
+            dt = parse_ts(entry.get('ts') or '')
+            if dt is None:
+                continue
+            if (now - dt).total_seconds() / 60.0 > max_age_min:
+                continue
+            if best_ts is None or dt > best_ts:
+                best_ts = dt
+                best_session = entry.get('session_id') or entry.get('session')
+except OSError:
+    pass
+if best_session:
+    print(best_session)
+" "$role" "$registry" "$max_age_min"
+}
+
+if [[ "$TO" == role:* ]]; then
+    ROLE_NAME="${TO#role:}"
+    RESOLVED_SESSION="$(_resolve_role_to_session "$ROLE_NAME" 2>/dev/null || true)"
+    if [[ -n "$RESOLVED_SESSION" ]]; then
+        TO="$RESOLVED_SESSION"
+        printf '{"ts":"%s","kind":"a2a_role_resolved","role":"%s","resolved_session":"%s","session":"%s"}\n' \
+            "$TS" "$ROLE_NAME" "$TO" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+    elif [[ "$STRICT" == "1" ]]; then
+        echo "[broadcast --strict] no alive session for role:$ROLE_NAME (checked $LOCK_DIR/fleet-registry.jsonl, ${CHUMP_A2A_ROLE_FRESHNESS_MIN:-30}min freshness window)" >&2
+        exit 1
+    else
+        # No --strict: fall back to the slice-C dead-letter queue (same
+        # shape a2a-dead-letter-reaper.sh writes) rather than silently
+        # dropping the message or guessing a recipient.
+        mkdir -p "$LOCK_DIR/inbox" 2>/dev/null || true
+        python3 -c "
+import json, sys
+entry = {
+    'ts': sys.argv[1],
+    'to': 'role:' + sys.argv[2],
+    'sender': sys.argv[3],
+    'original_ts': sys.argv[1],
+    'age_min': 0,
+    'msg_summary': (sys.argv[4] + ' role-routing miss: no alive role:' + sys.argv[2])[:200],
+    'dedupe_key': 'role-miss:' + sys.argv[2] + ':' + sys.argv[1],
+    'original_msg': {'role': sys.argv[2], 'event': sys.argv[4], 'session': sys.argv[3]},
+}
+with open(sys.argv[5], 'a') as f:
+    f.write(json.dumps(entry) + '\n')
+" "$TS" "$ROLE_NAME" "$SESSION_ID" "$EVENT" "$LOCK_DIR/inbox/dead-letter.jsonl" 2>/dev/null || true
+        printf '{"ts":"%s","kind":"a2a_role_resolve_failed","role":"%s","session":"%s"}\n' \
+            "$TS" "$ROLE_NAME" "$SESSION_ID" >> "$AMBIENT" 2>/dev/null || true
+        TO=""
+    fi
+fi
+
 # INFRA-1255: corr_id derivation. Precedence:
 #   --reply-to > --corr flag > env > gap-id > branch name > ts.
 # EFFECTIVE-028: --reply-to sets highest precedence so the emitted event
@@ -469,12 +580,38 @@ print(json.dumps(d))
 " "$json" "$REPLY_TO"
 }
 
+# INFRA-1948: strict-mode field validation. Called after an event's
+# positional args are parsed but before the JSON payload is built. Exits 1
+# with a message pointing at the expected shape when a required field is
+# missing or was silently defaulted to a placeholder — the class of bug
+# that shipped a STUCK event with reason=unspecified instead of failing.
+_strict_check() {
+    local field="$1" value="$2" usage="$3"
+    [[ "$STRICT" == "1" ]] || return 0
+    if [[ -z "$value" ]]; then
+        echo "[broadcast --strict] missing required field: $field" >&2
+        echo "Usage: $usage" >&2
+        exit 1
+    fi
+}
+
+_strict_check_gap_id() {
+    local gap="$1" usage="$2"
+    [[ "$STRICT" == "1" ]] || return 0
+    if [[ ! "$gap" =~ ^[A-Z][A-Z0-9]*-[0-9]+$ ]]; then
+        echo "[broadcast --strict] malformed gap id: '$gap' (expected DOMAIN-NNN, e.g. INFRA-1862)" >&2
+        echo "Usage: $usage" >&2
+        exit 1
+    fi
+}
+
 case "$EVENT" in
 
     INTENT)
         GAP="${1:-}"
         FILES="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 INTENT <gap-id> [files]" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] INTENT <gap-id> [files]"
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event INTENT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" files "$FILES" to "$TO" model "$MODEL" harness "$HARNESS")")"
@@ -496,6 +633,7 @@ case "$EVENT" in
         # used as both the JSON "to" field AND the inbox target.
         EFFECTIVE_TO="${TO:-$POS_TO}"
         [[ -n "$GAP" && -n "$EFFECTIVE_TO" ]] || { echo "Usage: $0 [--to <recipient>] HANDOFF <gap-id> [<to-session>]" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] [--to <recipient>] HANDOFF <gap-id> [<to-session>]"
         CORR_ID="$(_derive_corr "$GAP")"
         JSON="$(_maybe_add_parent_corr_id "$(build_json event HANDOFF session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" to "$EFFECTIVE_TO")")"
         emit_to_file "$JSON"
@@ -509,6 +647,14 @@ case "$EVENT" in
     STUCK)
         GAP="${1:-}"; REASON="${2:-unspecified}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 STUCK <gap-id> \"<reason>\"" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] STUCK <gap-id> \"<reason>\""
+        _strict_check "reason" "${2:-}" "$0 [--strict] STUCK <gap-id> \"<reason>\"  (reason must not be omitted — got positional-arg confusion defaulting to 'unspecified')"
+        # INFRA-5763 (AC #2): in non-strict mode, warn on stderr when the
+        # reason was omitted and silently defaulted — the exact
+        # positional-arg-confusion failure mode --strict exists to catch.
+        if [[ "$STRICT" != "1" && -z "${2:-}" ]]; then
+            printf '[broadcast] WARN: STUCK %s called with no reason — defaulting reason=unspecified (use --strict to make this an error)\n' "$GAP" >&2
+        fi
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event STUCK session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" reason "$REASON" to "$TO")")"
@@ -526,6 +672,7 @@ case "$EVENT" in
     DONE)
         GAP="${1:-}"; COMMIT="${2:-}"
         [[ -n "$GAP" ]] || { echo "Usage: $0 DONE <gap-id> [commit-sha]" >&2; exit 1; }
+        _strict_check_gap_id "$GAP" "$0 [--strict] DONE <gap-id> [commit-sha]"
         CORR_ID="$(_derive_corr "$GAP")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event DONE session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" gap "$GAP" commit "$COMMIT" to "$TO" model "$MODEL" harness "$HARNESS")")"
@@ -561,6 +708,7 @@ case "$EVENT" in
         KIND_ARG="${1:-}"; MSG="${2:-}"
         KIND="${KIND_ARG#kind=}"
         [[ -n "$KIND" ]] || { echo "Usage: $0 ALERT kind=<kind> \"<message>\"" >&2; exit 1; }
+        _strict_check "message" "$MSG" "$0 [--strict] ALERT kind=<kind> \"<message>\""
         CORR_ID="$(_derive_corr "")"
         if [[ -n "$TO" ]]; then
             JSON="$(_maybe_add_parent_corr_id "$(build_json event ALERT session "$SESSION_ID" operator_id "$OPERATOR_ID" ts "$TS" corr_id "$CORR_ID" urgency "$URGENCY" kind "$KIND" reason "$MSG" to "$TO")")"

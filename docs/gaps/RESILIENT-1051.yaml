@@ -1,0 +1,50 @@
+- id: RESILIENT-1051
+  domain: RESILIENT
+  title: "RESILIENT: harden the ftue-cold-install.sh --engine docker convergence so the clean-container bring-up goes fully green in CI (then promote it from advisory to gating)"
+  status: open
+  priority: P2
+  effort: m
+  description: |
+    2026-09-07: scripts/ci/ftue-cold-install.sh (RESILIENT-1050) landed with a
+    verified host-agnostic --selfcheck GATE and an ADVISORY --engine docker
+    fidelity layer. The FIRST live CI run (PR #4510, run 34164933384) proved
+    systemd-in-docker IS functional on the ubuntu-22.04 runner — the clean
+    container came up and the real installer ran — but the container did NOT
+    fully converge; 4 of the 5 assertions failed for real, environment-shaped
+    reasons the harness must close before the docker step can gate:
+      1. (1a/1b) worker organ + unit: the container image had no rust toolchain,
+         so chump-node-install.sh's toolchain_preflight/ensure_rust path stalls
+         the run before/around ORGANS; worker.sh never materialized and the unit
+         stayed inactive. (The 4a/4b provenance passes were MISLEADING — they read
+         a provenance file the harness pre-stages BEFORE the installer, so they do
+         not prove the installer reached ensure_binary.)
+      2. (2) /healthz: the harness copies $NODE_DIR/bin/chump-fleet-server to the
+         stable path, but no real chump-fleet-server binary is staged in the
+         container, so the fleet-server unit has nothing to serve.
+      3. (3) refresh timer: install-node-refresh-systemd.sh uses `systemctl
+         --user`; the container's per-user systemd session / XDG_RUNTIME_DIR
+         needs to be genuinely live (loginctl linger + a running user manager),
+         not just the dir mounted.
+      4. (5) organ-reconcile --check flags manifest-wide "auto-paging is NOT
+         neutered" DRIFT on brain/data units (chump-heartbeat-monitor,
+         chump-sla-scorecard, chump-board-ceo-briefing) that a fresh MUSCLE node
+         never installs — --check validates WHOLE-manifest invariants, not "what
+         is installed on THIS node". Assertion (5) should instead enumerate the
+         actually-installed chump-* units and assert none are out-of-role for the
+         muscle filter (the RESILIENT-1016 test shape), not shell out to the full
+         --check.
+  acceptance_criteria:
+    - "container image (ftue-cold-install.sh docker Dockerfile) provisions rust so chump-node-install.sh's toolchain_preflight passes without a multi-minute rustup on every run (pin/cache a toolchain layer)"
+    - "a real chump-fleet-server binary is staged into the container (pulled artifact or built once outside the 2-core constraint) so /healthz actually serves"
+    - "the container's `systemctl --user` session is genuinely live (linger + user manager) so the refresh timer installs+enables"
+    - "assertion (5) checks the node's ACTUALLY-INSTALLED chump-* units against the muscle role filter, not the whole-manifest organ-reconcile --check auto-paging invariants"
+    - "worker unit reaches active (or the harness neutralizes worker.sh's inner fleet loop) so (1b) is a true signal, not a flap"
+    - "the --engine docker run converges GREEN in CI, after which .github/workflows/ftue-cold-install.yml promotes the docker step from continue-on-error (advisory) to gating"
+  notes: |
+    The --selfcheck GATE (contract + real /healthz up→curl→teardown) is already
+    verified green and is what gates the PR today; this gap is purely about
+    raising the container fidelity layer to green so it can gate too. Do NOT edit
+    scripts/setup/chump-node-install.sh to accommodate the harness — the harness
+    must adapt to the real installer (call it, don't edit it). The real-box
+    variant in docs/process/COTG_NODE_INSTALL.md is the bare-metal counterpart.
+  outcome_id: RESILIENT-000
