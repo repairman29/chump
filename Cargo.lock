@@ -1392,6 +1392,7 @@ dependencies = [
  "chump-verify",
  "chump-waste-tally",
  "console-subscriber",
+ "coord-mesh",
  "dhat",
  "dotenvy",
  "fastembed",
@@ -2430,6 +2431,10 @@ dependencies = [
  "time",
  "url",
 ]
+
+[[package]]
+name = "coord-mesh"
+version = "0.1.0"
 
 [[package]]
 name = "core-foundation"

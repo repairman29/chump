@@ -3,6 +3,7 @@ members = [
     "chump-tool-macro",
     "desktop/src-tauri",
     "crates/chump-agent-lease",
+    "crates/coord-mesh",
     "crates/chump-xml-adapter",
     "crates/chump-mcp-lifecycle",
     "crates/chump-cancel-registry",
@@ -144,6 +145,7 @@ dhat = { version = "0.3", optional = true }
 # exist on crates.io at the pinned versions; workspace builds still use `path`.
 chump-tool-macro = { path = "chump-tool-macro", version = "0.2.0" }
 chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.3.0" }
+coord-mesh = { path = "crates/coord-mesh", version = "0.1.0" }
 chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.2.0" }
 chump-planner = { path = "crates/chump-planner", version = "0.1.0" }
 chump-ship = { path = "crates/chump-ship", version = "0.2.0" }
