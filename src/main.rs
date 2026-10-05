@@ -19818,6 +19818,52 @@ async fn main() -> Result<()> {
     // (Rescue/Comprehend) exit non-zero honestly rather than faking success.
     if args.get(1).map(String::as_str) == Some("trek") {
         let repo_root = repo_path::repo_root();
+        let mission_store = chump_coord::mission::FileBackedMissionStore::default_root();
+
+        // `chump trek --list` (INFRA-3658, RIBBON-03): read every persisted
+        // Mission record back so a walked-away operator can see what past
+        // trek runs produced.
+        if args.get(2).map(String::as_str) == Some("--list") {
+            use chump_coord::mission::MissionStore;
+            match mission_store.list() {
+                Ok(mut ids) => {
+                    ids.sort();
+                    if ids.is_empty() {
+                        println!("(no trek runs recorded yet)");
+                    } else {
+                        for id in ids {
+                            match mission_store.load(&id) {
+                                Ok(pm) => println!("{}", trek::format_mission_summary(&pm)),
+                                Err(e) => eprintln!("trek --list: {id}: {e:#}"),
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("trek --list: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
+        // `chump trek status <mission-id>` (INFRA-3658, RIBBON-03).
+        if args.get(2).map(String::as_str) == Some("status") {
+            use chump_coord::mission::MissionStore;
+            let Some(id) = args.get(3) else {
+                eprintln!("Usage: chump trek status <mission-id>");
+                std::process::exit(1);
+            };
+            match mission_store.load(id) {
+                Ok(pm) => println!("{}", trek::format_mission_detail(&pm)),
+                Err(e) => {
+                    eprintln!("trek status: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
         let Some(job) = args.get(2).filter(|a| !a.starts_with("--")) else {
             eprintln!("Usage: chump trek \"<what you're trying to do, in plain language>\" [--yes] [--json]");
             std::process::exit(1);
@@ -19825,7 +19871,7 @@ async fn main() -> Result<()> {
         let yes = args.iter().any(|a| a == "--yes");
         let json = args.iter().any(|a| a == "--json");
         let spawner = trek::RealEngineSpawner;
-        let outcome = trek::run_trek(&repo_root, job, yes, &spawner);
+        let outcome = trek::run_trek(&repo_root, job, yes, &spawner, &mission_store);
         if json {
             let j = match &outcome {
                 trek::TrekOutcome::Landed { mode, exit_code } => serde_json::json!({
