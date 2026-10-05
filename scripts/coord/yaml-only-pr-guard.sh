@@ -17,7 +17,7 @@ else
     files="$(git diff --name-only "${1:-origin/main}..HEAD" 2>/dev/null)"
 fi
 [[ -z "$files" ]] && exit 0
-if printf '%s\n' "$files" | grep -qvE '^docs/gaps/[A-Za-z0-9-]+\.yaml$'; then
+if grep -qvE '^docs/gaps/[A-Za-z0-9-]+\.yaml$' <<<"$files"; then
     exit 0
 fi
 exit 1
