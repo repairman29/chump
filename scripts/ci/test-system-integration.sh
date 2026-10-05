@@ -11,7 +11,9 @@
 #   3. bot-merge.sh --dry-run calls stubbed gh (PR create logged)
 #   4. gap ship marks the gap status as done
 #   5. Ambient event emitted for gap_shipped kind
-#   6. Full pipeline completes under 60 seconds
+#   6. Pipeline (claim -> commit -> ship) completes under 60 seconds. The clock
+#      starts after the setup `gap reserve`, which on a cold CI state.db spends
+#      ~60-90s importing docs/gaps/*.yaml and is not part of the pipeline.
 #
 # Run:
 #   CHUMP_INTEGRATION_TEST=1 bash scripts/ci/test-system-integration.sh
@@ -163,6 +165,11 @@ echo "--- Assertion 1: Claim creates lease JSON ---"
 
     # Extract gap ID from output (format: INFRA-NNNN)
     GAP_ID=$(echo "$RESERVE_OUT" | grep -Eo '[A-Z]+-[0-9]+' | tail -1)
+    # The reserve above is test setup (it creates the gap the pipeline runs on);
+    # start the Assertion 6 budget clock here.
+    SETUP_S=$((SECONDS - START_TS))
+    PIPELINE_START_TS=$SECONDS
+    echo "  setup (gap reserve): ${SETUP_S}s"
 
     if [[ -z "$GAP_ID" ]]; then
         skip "Assertion 1: could not reserve test gap (binary may need real DB) — skipping"
@@ -375,15 +382,14 @@ with open(sys.argv[3], 'a') as f:
 # ── ASSERTION 6: Full pipeline under 60 seconds ───────────────────────────────
 echo "--- Assertion 6: Wall-clock budget check ---"
 {
-    ELAPSED=$((SECONDS - START_TS))
-    # INFRA-849: 60s was unrealistic on cold-sccache CI runners (~93s legit); the
-    # budget exists to catch gross regressions, not to flap on cache temperature.
-    # 180s keeps the regression signal; override with CHUMP_INTEGRATION_BUDGET_S.
-    BUDGET="${CHUMP_INTEGRATION_BUDGET_S:-180}"
+    ELAPSED=$((SECONDS - ${PIPELINE_START_TS:-$START_TS}))
+    # INFRA-849: measure the pipeline with setup time excluded (origin/main's fix) AND
+    # keep the budget env-overridable (CHUMP_INTEGRATION_BUDGET_S) so it never flaps on CI.
+    BUDGET="${CHUMP_INTEGRATION_BUDGET_S:-60}"
     if [[ $ELAPSED -le $BUDGET ]]; then
-        ok "Assertion 6: pipeline completed in ${ELAPSED}s (budget: ${BUDGET}s)"
+        ok "Assertion 6: pipeline completed in ${ELAPSED}s (budget: ${BUDGET}s; setup ${SETUP_S:-0}s not counted)"
     else
-        fail "Assertion 6: pipeline took ${ELAPSED}s, exceeds ${BUDGET}s budget"
+        fail "Assertion 6: pipeline took ${ELAPSED}s, exceeds ${BUDGET}s budget (setup ${SETUP_S:-0}s not counted)"
     fi
 }
 
