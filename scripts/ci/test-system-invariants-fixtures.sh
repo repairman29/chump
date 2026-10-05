@@ -165,6 +165,60 @@ test_inv_7() {
 }
 test_inv_7
 
+# ── INV-5 duplicate fixture: two plists baked under the same worktree path ───
+test_inv_5_dupes() {
+    local inv="INV-5"
+    [[ -n "$SINGLE_INV" && "$SINGLE_INV" != "$inv" ]] && return 0
+    echo "--- $inv: duplicate worktree paths detected ---"
+    local tmp; tmp="$(mktemp -d)"
+    mkdir -p "$tmp/agents"
+    printf '<string>/x/.chump/worktrees/infra-1/run.sh</string>\n' > "$tmp/agents/a.plist"
+    printf '<string>/x/.chump/worktrees/infra-1/run.sh</string>\n' > "$tmp/agents/b.plist"
+    local out
+    out=$(REPO_ROOT="$tmp" CHUMP_LAUNCH_AGENTS_DIR="$tmp/agents" run_inv "$inv")
+    if echo "$out" | grep -q "duplicate worktree paths"; then
+        pass "$inv (duplicate detected)"
+    else
+        fail "$inv-dupes" "expected duplicate worktree path detection"
+    fi
+    rm -rf "$tmp"
+}
+test_inv_5_dupes
+
+# ── Auto-file: 2 consecutive failing ticks file ONE gap; dry-run files none ──
+test_auto_file() {
+    [[ -n "$SINGLE_INV" && "$SINGLE_INV" != "AUTO" ]] && return 0
+    echo "--- auto-file on 2 consecutive failures ---"
+    local tmp; tmp="$(mktemp -d)"
+    local calls="$tmp/reserve-calls"
+    mkdir -p "$tmp/bin"
+    cat > "$tmp/bin/chump" <<MOCK
+#!/usr/bin/env bash
+[[ "\$1 \$2" == "gap reserve" ]] && echo "\$*" >> "$calls" && echo INFRA-99999
+exit 0
+MOCK
+    chmod +x "$tmp/bin/chump"
+    local hb="/tmp/chump-reaper-autofile-fixture.heartbeat"
+    touch -t 200001010000 "$hb" 2>/dev/null || true
+    # dry-run: two failing ticks, nothing filed
+    for _ in 1 2; do PATH="$tmp/bin:$PATH" REPO_ROOT="$tmp" run_inv INV-3 >/dev/null; done
+    for _ in 1 2; do PATH="$tmp/bin:$PATH" REPO_ROOT="$tmp/dry" bash -c '
+        export CHUMP_SKIP_INV_1=1 CHUMP_SKIP_INV_2=1 CHUMP_SKIP_INV_4=1 CHUMP_SKIP_INV_5=1 CHUMP_SKIP_INV_6=1 CHUMP_SKIP_INV_7=1
+        bash "$0" --inv INV-3 --dry-run' "$MONITOR" >/dev/null 2>&1 || true; done
+    # a third live tick must not file a second gap
+    PATH="$tmp/bin:$PATH" REPO_ROOT="$tmp" run_inv INV-3 >/dev/null
+    rm -f "$hb"
+    local n=0; [[ -f "$calls" ]] && n=$(wc -l < "$calls" | tr -d ' ')
+    if [[ "$n" -eq 1 ]] && grep -q -- "--title invariant INV-3 broken" "$calls"; then
+        pass "auto-file (exactly 1 gap for INV-3; dry-run filed none)"
+    else
+        fail "AUTO" "expected exactly 1 reserve call for INV-3, got $n"
+        cat "$calls" 2>/dev/null || true
+    fi
+    rm -rf "$tmp"
+}
+test_auto_file
+
 # ── Summary ──────────────────────────────────────────────────────────────────
 echo ""
 echo "=== results: $PASS passed, $FAIL failed ==="
