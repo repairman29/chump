@@ -97,6 +97,13 @@ events:
     trigger: any Claude session begins; confirms the URGENT-INBOX polling hook registered and ran, independent of whether unread messages were found
     consumers: [ambient.jsonl audit trail]
 
+  - kind: electrician_reconciled
+    effect_metric: self
+    emitter: scripts/ops/electrician.sh (deterministic fleet-wiring daemon)
+    trigger: each electrician reconcile shift — reconciles DESIRED wiring (the repo's declared timers/services) against the node's actual systemd state, wiring/starting/healing as needed
+    consumers: [operator visibility, ambient.jsonl audit trail]
+    fields_required: [ts, kind, wired, started, healed, active_timers, failed]
+
   - kind: collision_prediction
     effect_metric: self
     emitter: src/collision_prediction.rs (META-076, first implementation of docs/design/COLLISION_PREDICTION_SCHEMA.md)
