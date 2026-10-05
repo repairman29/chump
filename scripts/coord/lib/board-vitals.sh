@@ -386,6 +386,17 @@ ${snapshot}"
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 board_vitals_check() {
+    # ── guard · summarized_pct must be >95% (CREDIBLE-1045/CREDIBLE-300 slice) ──
+    # summarized_pct here is whatever the caller has set in-scope (e.g. a test
+    # mocking the almanac coverage value) — unset means "not being checked",
+    # not a failure.
+    if [[ -n "${summarized_pct:-}" ]]; then
+        if ! [[ "$summarized_pct" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v v="$summarized_pct" 'BEGIN{exit !(v>95)}'; then
+            echo "summarized_pct must be >95% – aborting" >&2
+            return 1
+        fi
+    fi
+
     [[ "${CHUMP_BOARD_VITALS_ENABLED:-1}" == "0" ]] && return 0
     _bv_harden_env
 
