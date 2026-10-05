@@ -2462,6 +2462,18 @@ async fn main() -> Result<()> {
         std::process::exit(commands::consensus_ask::run(&sub_args));
     }
 
+    // `chump unwedge <GAP-ID> [--stall-threshold-s N] [--dry-run]` (EFFECTIVE-1136,
+    // EFFECTIVE-178 slice) — on-demand kill + recover of a wedged bot-merge
+    // run: detects a stalled `bot-merge.sh --gap <ID>` process past the
+    // stall threshold, kills it (+ children), aborts any in-progress
+    // rebase/merge and clears stale git locks, then invokes
+    // `chump claim <ID> --force-recover` to reconcile the lease/worktree.
+    // Emits kind=gap_unwedged.
+    if args.get(1).map(String::as_str) == Some("unwedge") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::unwedge::run(&sub_args));
+    }
+
     // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
     // file a Voice-of-Agent (VOA) report: writes docs/gaps/VOA-NNNN.yaml +
     // docs/voice/VOA-NNNN-FULL.yaml and emits kind=voice_of_agent_filed.

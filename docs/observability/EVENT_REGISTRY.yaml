@@ -13586,3 +13586,14 @@ events:
       exclude it from the pending list.
     consumers: [web-pwa, orchestrator]
     fields_required: [ts, kind, id, response]
+
+  # ── EFFECTIVE-1136 (EFFECTIVE-178 slice): on-demand unwedge ─────────────────
+  - kind: gap_unwedged
+    effect_metric: self
+    emitter: src/commands/unwedge.rs (chump unwedge <GAP-ID>)
+    trigger: operator or fleet code runs `chump unwedge <GAP-ID>` to recover
+      from a stalled bot-merge.sh run — fires once per invocation, recording
+      whether a wedge was actually detected and which pids (if any) were
+      killed before the claim-recover flow ran.
+    consumers: [fleet-brief, observability]
+    fields_required: [ts, kind, gap_id, wedge_detected, killed_pids]
