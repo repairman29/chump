@@ -32,6 +32,7 @@
 //! the underlying mechanism that produces the INFRA-1427 failure mode above.
 
 use chump_agent_lease::{current_session_id, list_active, Lease};
+use chump_verify::claim_branch_observability;
 use std::path::Path;
 use std::process::Command;
 
@@ -158,13 +159,53 @@ pub fn verify(current_branch: &str, session_id: &str, leases: &[Lease]) -> Verdi
     Verdict::PeerLeasesOnly
 }
 
+/// Emits the INFRA-1649 structured observability event to stdout and the
+/// `cost reported: $X` line to stderr, then returns `exit_code` so callers
+/// can `return emit_observability_event(...)` as their final statement.
+fn emit_observability_event(
+    status: claim_branch_observability::RunStatus,
+    started: std::time::Instant,
+    failure_class: claim_branch_observability::FailureClass,
+    exit_code: i32,
+) -> i32 {
+    let duration_ms = started.elapsed().as_millis() as u64;
+    let cost_per_second = claim_branch_observability::cost_per_second_from_env();
+    let event = claim_branch_observability::build_event(
+        status,
+        duration_ms,
+        failure_class,
+        cost_per_second,
+    );
+    println!("{event}");
+    eprintln!("cost reported: ${}", event["cost_estimate"]);
+    exit_code
+}
+
 pub fn run_cli(args: &[String]) -> i32 {
+    use claim_branch_observability::{FailureClass, RunStatus};
+    let started = std::time::Instant::now();
     let want_json = args.iter().any(|a| a == "--json");
     let repo_root = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
 
-    let Some(branch) = current_branch(&repo_root) else {
+    // Test-only hook (INFRA-1649): simulate a hung `git` subprocess without
+    // actually blocking, so the timeout/transient observability path is
+    // deterministically exercisable in CI.
+    if std::env::var("CHUMP_VERIFY_CLAIM_BRANCH_FORCE_TIMEOUT").as_deref() == Ok("1") {
+        eprintln!("chump verify-claim-branch: TIMEOUT waiting for git to resolve the branch");
+        return emit_observability_event(RunStatus::Timeout, started, FailureClass::Transient, 124);
+    }
+
+    // --branch <name> overrides git branch detection (explicit callers /
+    // tests that don't want to depend on the cwd's actual HEAD).
+    let branch_override = args
+        .iter()
+        .position(|a| a == "--branch")
+        .and_then(|i| args.get(i + 1))
+        .cloned();
+
+    let Some(branch) = branch_override.or_else(|| current_branch(&repo_root)) else {
         eprintln!("chump verify-claim-branch: could not resolve current git branch");
-        return 1;
+        return emit_observability_event(RunStatus::Failure, started, FailureClass::Permanent, 1);
     };
 
     // INFRA-779 sentinel: linked-worktree gitdir back-reference corruption.
@@ -203,7 +244,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"no_leases\",\"branch\":\"{branch}\"}}");
             }
-            0
+            emit_observability_event(RunStatus::Success, started, FailureClass::None, 0)
         }
         Verdict::PeerLeasesOnly => {
             eprintln!(
@@ -213,7 +254,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             if want_json {
                 println!("{{\"verdict\":\"peer_leases_only\",\"branch\":\"{branch}\"}}");
             }
-            0
+            emit_observability_event(RunStatus::Success, started, FailureClass::None, 0)
         }
         Verdict::Ok { gap_id } => {
             // scanner-anchor: "kind":"claim_branch_verified"
@@ -227,7 +268,7 @@ pub fn run_cli(args: &[String]) -> i32 {
             } else {
                 println!("chump verify-claim-branch: OK — branch '{branch}' matches claimed gap {gap_id}");
             }
-            0
+            emit_observability_event(RunStatus::Success, started, FailureClass::None, 0)
         }
         Verdict::Mismatch {
             gap_id,
@@ -255,7 +296,7 @@ pub fn run_cli(args: &[String]) -> i32 {
                 eprintln!("Use: cd to your claim worktree OR run `chump --release` if abandoning this claim.");
                 eprintln!();
             }
-            1
+            emit_observability_event(RunStatus::Failure, started, FailureClass::Permanent, 1)
         }
     }
 }

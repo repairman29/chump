@@ -191,6 +191,44 @@ else
     ok "unreachable clone URL fails cleanly (non-zero exit, no crash)"
 fi
 
+# ── Test 5 (INFRA-3637): --wire-only on an existing checkout wires mcp + hooks, never builds ─
+rm -f "$MCP_CONFIG"
+: > "$HOOK_CALL_LOG"
+BUILDS_BEFORE="$(wc -l < "$BUILD_LOG" | tr -d ' ')"
+if run_install --wire-only >"$TMP/wire.log" 2>&1; then
+    ok "--wire-only exits 0 on an existing checkout"
+else
+    fail "--wire-only failed"
+    cat "$TMP/wire.log"
+fi
+if [[ "$(wc -l < "$BUILD_LOG" | tr -d ' ')" -eq "$BUILDS_BEFORE" ]]; then
+    ok "--wire-only did not build"
+else
+    fail "--wire-only ran a build"
+fi
+if grep -q '"almanac"' "$MCP_CONFIG" 2>/dev/null; then
+    ok "--wire-only wrote the 'almanac' entry into chump-mcp.json"
+else
+    fail "--wire-only did not wire chump-mcp.json"
+fi
+if grep -q "^hook install $TMP\$" "$HOOK_CALL_LOG" 2>/dev/null; then
+    ok "--wire-only ran 'almanac hook install'"
+else
+    fail "--wire-only did not run 'almanac hook install'"
+fi
+
+# ── Test 6 (INFRA-3637): --wire-only with no built binaries fails cleanly ─
+if CHUMP_ALMANAC_REPO="$TMP/no-such-checkout" \
+   ALMANAC_INSTALL_DIR="$TMP/no-such-install" \
+   CHUMP_ENV_FILE="$TMP/chump-env-wire-bad" \
+   CHUMP_ALMANAC_RC_FILES="$TMP/fake-rc-wire-bad" \
+   CHUMP_REPO_ROOT="$TMP" \
+   bash "$SCRIPT" --wire-only >"$TMP/wire-bad.log" 2>&1; then
+    fail "--wire-only should fail with no built binaries"
+else
+    ok "--wire-only with no binaries fails cleanly (non-zero, no crash)"
+fi
+
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]

@@ -890,6 +890,10 @@ jobs:
         if: matrix.shard == 4
         run: bash scripts/ci/test-rollup-cascade-cancel.sh
 
+      - name: cascade-cancellation status description fixture (INFRA-5430)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-cascade-cancellation-status-description.sh
+
       - name: bounced-PR detector fixture (INFRA-781)
         if: matrix.shard == 4
         run: bash scripts/ci/test-bounced-pr-detector.sh
@@ -939,6 +943,14 @@ jobs:
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
         if: matrix.shard == 4
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
+
+      - name: gh-in-ci GH_TOKEN guard — test scripts calling gh api/gh pr must guard (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-in-ci-guarded.sh
+
+      - name: gh-token-guard smoke test — skip-with-WARN when GH_TOKEN unset (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-token-guard.sh
 
       - name: no-new-bypass-env-vars — forbid new CHUMP_*_BYPASS/SKIP/IGNORE_* (INFRA-2429)
         if: matrix.shard == 4

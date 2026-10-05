@@ -89,7 +89,9 @@
 #                                      summarized_pct from (default
 #                                      $CHUMP_VISION_ACUITY_STATE, else
 #                                      $HOME/.almanac/vision-acuity.state; test hook)
-#   CHUMP_BOARD_VITALS_ALMANAC_FLOOR   summarized_pct floor, page at-or-below (default 95)
+#   CHUMP_BOARD_VITALS_ALMANAC_FLOOR   summarized_pct floor, page at-or-below (default 95;
+#                                      clamped to never drop below 95 — CREDIBLE-1476, mirrors
+#                                      the CREDIBLE-1210 clamp in almanac-vision-keeper.sh)
 #   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the merge-stall diagnosis (default sonnet)
 #   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM diagnosis on merge_stall (default 1)
 #
@@ -384,6 +386,17 @@ ${snapshot}"
 
 # ── MAIN ─────────────────────────────────────────────────────────────────────
 board_vitals_check() {
+    # ── guard · summarized_pct must be >95% (CREDIBLE-1045/CREDIBLE-300 slice) ──
+    # summarized_pct here is whatever the caller has set in-scope (e.g. a test
+    # mocking the almanac coverage value) — unset means "not being checked",
+    # not a failure.
+    if [[ -n "${summarized_pct:-}" ]]; then
+        if ! [[ "$summarized_pct" =~ ^[0-9]+([.][0-9]+)?$ ]] || ! awk -v v="$summarized_pct" 'BEGIN{exit !(v>95)}'; then
+            echo "summarized_pct must be >95% – aborting" >&2
+            return 1
+        fi
+    fi
+
     [[ "${CHUMP_BOARD_VITALS_ENABLED:-1}" == "0" ]] && return 0
     _bv_harden_env
 
@@ -403,6 +416,13 @@ board_vitals_check() {
     # keeper not having run yet is not itself a coverage regression).
     local almanac_floor coverage
     almanac_floor="${CHUMP_BOARD_VITALS_ALMANAC_FLOOR:-95}"
+    # CREDIBLE-1476 (CREDIBLE-300 slice): mirror the CREDIBLE-1210 clamp in
+    # almanac-vision-keeper.sh — the 95% mission floor must never be weakened
+    # via a careless/misconfigured env override.
+    if [[ "$almanac_floor" =~ ^[0-9]+$ ]] && (( almanac_floor < 95 )); then
+        echo "[board-vitals] CHUMP_BOARD_VITALS_ALMANAC_FLOOR=$almanac_floor is below the 95% mission floor — clamping to 95" >&2
+        almanac_floor=95
+    fi
     coverage="$(_bv_almanac_coverage_pct)"
     if [[ "$coverage" =~ ^[0-9]+$ ]] && (( coverage <= almanac_floor )); then
         incidents=$((incidents+1))

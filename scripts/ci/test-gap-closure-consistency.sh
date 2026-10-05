@@ -120,7 +120,8 @@ if ! command -v gh &>/dev/null; then
         warn "gh CLI not found and CHUMP_GH_REQUIRED=0 — skipping GitHub PR state check"
         exit 0
     fi
-    fail "gh CLI not found — cannot verify PR states. Set CHUMP_GH_REQUIRED=0 to skip in offline environments."
+    fail "gh CLI not found — cannot verify PR states.
+How to bypass cleanly: set CHUMP_GH_REQUIRED=0 to skip in offline environments where gh is unavailable"
 fi
 
 # Probe GitHub API reachability (CREDIBLE-031 + INFRA-539 pattern)
@@ -131,7 +132,8 @@ if [[ "${CHUMP_GH_PROBE_SKIP:-0}" != "1" ]]; then
             warn "GitHub API unreachable and CHUMP_GH_REQUIRED=0 — skipping"
             exit 0
         fi
-        fail "GitHub API unreachable (gh api /rate_limit timed out after ${_probe_timeout}s). Set CHUMP_GH_REQUIRED=0 to skip."
+        fail "GitHub API unreachable (gh api /rate_limit timed out after ${_probe_timeout}s).
+How to bypass cleanly: set CHUMP_GH_REQUIRED=0 to skip when GitHub is unreachable"
     fi
 fi
 

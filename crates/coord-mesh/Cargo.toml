@@ -1,0 +1,18 @@
+[package]
+name = "coord-mesh"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+[dependencies]
+
+# INFRA-1815-sideA / INFRA-2264: the AC for this gap specified a git
+# dependency on `https://github.com/infra/mesh-bridge.git`, but that URL
+# 404s (no such repo exists) — pointing an active dependency at it would
+# make `cargo test` fail to resolve dependencies for every contributor and
+# CI run. Until the internal sibling repo's `coord-mesh` crate actually
+# ships a real git remote (per INFRA-1815 / CP-008), this crate stays a
+# local workspace member mirroring the same public surface so
+# `crates/chump-coord`'s `mesh-bridge` feature has something real to
+# switch its git dep to once the remote exists.
+# mesh-bridge = { git = "https://github.com/infra/mesh-bridge.git" }

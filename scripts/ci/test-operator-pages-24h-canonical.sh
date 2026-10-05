@@ -86,6 +86,20 @@ faculty_val="$(printf '%s' "$faculty_json" | jq -r '.faculties[] | select(.key==
   && _ok "vital-signs and faculty-collector agree ($vital_val == $faculty_val)" \
   || _fail "DRIFT: vital-signs=$vital_val faculty-collector=$faculty_val"
 
+# ── 5. no second operator_pages_24h emitter has been reintroduced ───────────
+# INFRA-3848 made lib/operator-pages-24h.sh the sole computation, with
+# vital-signs.sh and faculty-collector.sh sourcing it rather than each
+# re-scanning ambient.jsonl for the page kind-set independently. This guards
+# against either reader silently reverting to an inline/independent
+# computation — exactly how the original 3-name drift happened.
+for consumer in "$VITAL" "$FACULTY"; do
+  if grep -q 'source.*lib/operator-pages-24h\.sh' "$consumer"; then
+    _ok "$(basename "$consumer") sources the canonical lib/operator-pages-24h.sh helper"
+  else
+    _fail "$(basename "$consumer") no longer sources lib/operator-pages-24h.sh — a reintroduced independent computation re-creates the operator_pages_24h drift risk"
+  fi
+done
+
 echo
 echo "[test-operator-pages-24h-canonical] $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

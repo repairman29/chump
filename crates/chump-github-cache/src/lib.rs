@@ -47,8 +47,24 @@
 //! - **NO cutover.** The Python receiver keeps running. Phase 2
 //!   (separate gap) flips the smee.io target to the Rust receiver's
 //!   port and decommissions Python.
-//! - **NO bulk-refill REST loop in `refresh-open-prs`.** Stub returns
-//!   immediately in Phase 1; real refill comes in a follow-up sub-gap.
+//!
+//! ## INFRA-3833 additions
+//!
+//! - [`SqliteCache::refresh_open_prs`] replaces the old stub with a real
+//!   bulk REST refill (`GET /repos/{owner}/{repo}/pulls?state=open`) via
+//!   `reqwest`, matching `cache_refresh_open_prs` in
+//!   `scripts/coord/lib/github_cache.sh`. See [`crate::refill`] for
+//!   owner/repo + token resolution and the graceful-degradation contract
+//!   (any resolution/auth/network failure returns `Ok(0)`, not an error —
+//!   matches the prior stub's always-exit-0 behavior so existing
+//!   callsites that only check the exit code keep working).
+//! - [`SqliteCache::log_pr_write`] + the `pr_state_write_log` table
+//!   (migration 002) record which receiver (`python` | `rust`) wrote
+//!   each `pr_state` row, enabling
+//!   `scripts/ops/github-cache-divergence-audit.sh` to diff the two
+//!   receivers' views of the same PR during the 14-day parallel-run
+//!   validation window instead of the cutover being claimed without
+//!   data (INFRA-2062 AC1).
 //!
 //! ## Why rusqlite, not sqlx
 //!
@@ -64,6 +80,7 @@
 #![warn(missing_docs)]
 
 pub mod error;
+pub mod refill;
 pub mod schema;
 pub mod webhook;
 
@@ -72,14 +89,19 @@ use std::path::{Path, PathBuf};
 use rusqlite::{params, Connection, OptionalExtension};
 
 pub use error::CacheError;
+pub use refill::refresh_open_prs;
 pub use schema::{CheckRun, PrState, PrSummary};
 
 /// SQL schema embedded at compile time.
 ///
 /// Applied idempotently in [`SqliteCache::open`]; safe to run against
 /// existing DBs that already have the tables (uses `CREATE TABLE IF NOT
-/// EXISTS`).
-const SCHEMA_SQL: &str = include_str!("../migrations/001_initial_schema.sql");
+/// EXISTS`). Migration 002 (INFRA-3833) adds `pr_state_write_log`.
+const SCHEMA_SQL: &str = concat!(
+    include_str!("../migrations/001_initial_schema.sql"),
+    "\n",
+    include_str!("../migrations/002_write_log.sql"),
+);
 
 /// Reader-side GitHub cache surface.
 ///
@@ -263,6 +285,49 @@ impl SqliteCache {
             ],
         )?;
         Ok(())
+    }
+
+    /// Append a row to `pr_state_write_log` (INFRA-3833).
+    ///
+    /// `source` should be `"python"` (legacy webhook receiver) or
+    /// `"rust"` (`crate::webhook`). Append-only — unlike [`Self::upsert_pr`]
+    /// this never overwrites a prior entry, so
+    /// `scripts/ops/github-cache-divergence-audit.sh` can compare what
+    /// each receiver independently observed for the same PR number.
+    pub fn log_pr_write(
+        &self,
+        pr: &PrState,
+        source: &str,
+        written_at: &str,
+    ) -> Result<(), CacheError> {
+        let conn = self.conn.lock().expect("cache mutex poisoned");
+        conn.execute(
+            "INSERT INTO pr_state_write_log \
+             (number, source, mergeable_state, auto_merge_enabled, draft, title, written_at) \
+             VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![
+                pr.number as i64,
+                source,
+                pr.mergeable_state,
+                pr.auto_merge_enabled as i64,
+                pr.draft as i64,
+                pr.title,
+                written_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// Bulk REST refill of `pr_state` (INFRA-3833).
+    ///
+    /// Replaces the Phase 1 stub. See [`crate::refill::refresh_open_prs`]
+    /// for the resolution + graceful-degradation contract: any failure to
+    /// resolve a repo/token, or any network/HTTP failure, returns `Ok(0)`
+    /// rather than propagating an error — matching the prior stub's
+    /// always-exit-0 behavior so existing callsites that only check the
+    /// process exit code keep working.
+    pub async fn refresh_open_prs(&self, repo_override: Option<&str>) -> Result<u64, CacheError> {
+        refill::refresh_open_prs(self, repo_override).await
     }
 }
 
@@ -585,5 +650,51 @@ mod tests {
         let cache = SqliteCache::open(&path).unwrap();
         let got = cache.lookup_pr(1).await.unwrap();
         assert!(got.is_some());
+    }
+
+    #[tokio::test]
+    async fn log_pr_write_is_append_only_per_source() {
+        // INFRA-3833: two sources logging the same PR number must both
+        // survive (not overwrite each other) so the divergence audit can
+        // diff them.
+        let cache = SqliteCache::open_in_memory().unwrap();
+        let mut pr = make_pr(1, "feat: thing", "clean", false);
+        cache
+            .log_pr_write(&pr, "python", "2026-05-25T19:00:00Z")
+            .unwrap();
+        pr.mergeable_state = Some("dirty".to_string());
+        cache
+            .log_pr_write(&pr, "rust", "2026-05-25T19:00:05Z")
+            .unwrap();
+
+        let conn = cache.conn.lock().unwrap();
+        let count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pr_state_write_log WHERE number = 1",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            count, 2,
+            "both sources' writes must be preserved, not upserted over each other"
+        );
+
+        let rust_state: String = conn
+            .query_row(
+                "SELECT mergeable_state FROM pr_state_write_log WHERE number = 1 AND source = 'rust'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(rust_state, "dirty");
+        let python_state: String = conn
+            .query_row(
+                "SELECT mergeable_state FROM pr_state_write_log WHERE number = 1 AND source = 'python'",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(python_state, "clean");
     }
 }

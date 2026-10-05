@@ -105,6 +105,15 @@ FORCE_SKIP_PROCESS_CHECK=0
 # INFRA-1074: CHUMP_REAPER_SAFETY_CHECK=0 disables heartbeat+index safety checks
 # (for testing the reaper itself without tripping the guards).
 REAPER_SAFETY_CHECK="${CHUMP_REAPER_SAFETY_CHECK:-1}"
+# RESILIENT-205: a state.db lease (interactive `chump claim`, no JSON sidecar
+# per RESILIENT-099) carries no heartbeat of its own — only expires_at, which
+# is set hours out at claim time. A worker that dies (or a claim never
+# cleanly released) leaves that row hard-blocking the worktree for the rest
+# of expires_at even though nothing is touching the worktree any more. A
+# worktree with no process activity (lsof) and no git-index/log writes for
+# longer than this many seconds is treated as a dead session rather than an
+# active one.
+SESSION_TIMEOUT_S="${CHUMP_REAPER_SESSION_TIMEOUT_S:-${CHUMP_LEASE_HEARTBEAT_TTL_S:-600}}"
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --dry-run)  DRY_RUN=1 ;;
@@ -120,6 +129,11 @@ done
 
 REMOTE="${REMOTE:-origin}"
 BASE="${BASE:-main}"
+# RESILIENT-1507: opt-in, off-origin backup remote for wip/ snapshot branches.
+# Unset by default — wip/ branches then stay on the local ref only. Must never
+# resolve to origin/$REMOTE (enforced at push time below); origin rejects
+# refs/heads/wip/** creation/update by repository rule.
+WIP_PUSH_REMOTE="${WIP_PUSH_REMOTE:-}"
 # INFRA-2020: scan paths — default covers both .claude/worktrees (git linked worktrees)
 # and /tmp/chump-* (chump claim convention). Override via WORKTREE_SCAN_PATHS env var.
 # The /tmp/chump-* glob is intentional: claim creates /tmp/chump-<gap-id>/ directories.
@@ -218,12 +232,92 @@ worktree_within_grace() {
 }
 
 # Best-effort ambient event that never breaks the reaper if the helper is absent.
+#
+# RESILIENT-205: callers reporting on a state.db lease pass a
+# "last_activity_s":<epoch> field alongside the usual payload. If that
+# timestamp is older than SESSION_TIMEOUT_S, the session holding the lease is
+# dead (no heartbeat/activity, just an unexpired expires_at row) — log
+# "dead-session lease detected" and return early instead of emitting the
+# normal (blocking) event, so the caller proceeds to clean it up rather than
+# treating the worktree as still active.
 reaper_ambient_event() {
     local kind="$1" fields="$2"
     local out="${LOCKS_DIR:-$REPO_ROOT/.chump-locks}/ambient.jsonl"
+    if [[ "$fields" == *'"last_activity_s"'* ]]; then
+        local _activity_epoch _now_epoch _age_s
+        _activity_epoch="$(printf '%s' "$fields" | grep -o '"last_activity_s":[0-9]*' | head -1 | cut -d: -f2)"
+        _now_epoch="$(date -u +%s)"
+        if [[ -n "$_activity_epoch" ]]; then
+            _age_s=$(( _now_epoch - _activity_epoch ))
+            if [[ "$_age_s" -gt "$SESSION_TIMEOUT_S" ]]; then
+                log "DEAD_SESSION_LEASE $kind age=${_age_s}s timeout=${SESSION_TIMEOUT_S}s — dead-session lease detected"
+                [[ -d "$(dirname "$out")" ]] && printf '{"ts":"%s","kind":"dead_session_lease_detected","reaper":"worktree",%s}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$fields" >>"$out" 2>/dev/null || true
+                return 0
+            fi
+        fi
+    fi
     [[ -d "$(dirname "$out")" ]] || return 0
     printf '{"ts":"%s","kind":"%s","reaper":"worktree",%s}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$kind" "$fields" >>"$out" 2>/dev/null || true
+}
+
+# RESILIENT-205: does this worktree's lease belong to a dead session?
+#
+# A state.db lease has no heartbeat column (RESILIENT-099) — only expires_at,
+# set hours out at claim time. A dead worker leaves that row blocking the
+# worktree until expiry. Rather than waiting out expires_at, treat the
+# session as dead when BOTH hold: no process currently touches the worktree
+# (lsof), AND the worktree's own activity signal (.git/index mtime, falling
+# back to the directory mtime) is older than SESSION_TIMEOUT_S.
+_worktree_last_activity_epoch() {
+    local wt_path="$1" git_index=""
+    if [[ -f "$wt_path/.git" ]]; then
+        local gitdir; gitdir=$(sed 's/^gitdir: //' "$wt_path/.git" 2>/dev/null || true)
+        [[ -n "$gitdir" && -f "$gitdir/index" ]] && git_index="$gitdir/index"
+    elif [[ -f "$wt_path/.git/index" ]]; then
+        git_index="$wt_path/.git/index"
+    fi
+    if [[ -n "$git_index" ]]; then
+        stat -c %Y "$git_index" 2>/dev/null || stat -f %m "$git_index" 2>/dev/null
+        return
+    fi
+    [[ -d "$wt_path" ]] || return 1
+    stat -c %Y "$wt_path" 2>/dev/null || stat -f %m "$wt_path" 2>/dev/null
+}
+
+_is_dead_session_lease() {
+    local wt_path="$1"
+    if [[ $FORCE_SKIP_PROCESS_CHECK -eq 0 ]] && command -v lsof >/dev/null 2>&1; then
+        lsof +D "$wt_path" 2>/dev/null | grep -qv '^COMMAND' && return 1
+    fi
+    local activity_epoch; activity_epoch="$(_worktree_last_activity_epoch "$wt_path")"
+    [[ -z "$activity_epoch" ]] && return 1
+    local now_epoch; now_epoch="$(date -u +%s)"
+    local age_s=$(( now_epoch - activity_epoch ))
+    reaper_ambient_event "worktree_reaper_skipped_active" \
+        "\"worktree\":\"$wt_path\",\"reason\":\"state_db_lease\",\"last_activity_s\":$activity_epoch"
+    [[ "$age_s" -gt "$SESSION_TIMEOUT_S" ]]
+}
+
+# Clears the dead-session lease (state.db row) and logs the cleanup so
+# downstream processing (reap/no-reap) is unblocked. Does not itself remove
+# the worktree — the normal reapability checks below decide that.
+_reap_dead_session_lease() {
+    local wt_path="$1" wt_name="$2"
+    local statedb="${CHUMP_STATE_DB:-$REPO_ROOT/.chump/state.db}"
+    if [[ $DRY_RUN -eq 1 ]]; then
+        info "  [dry-run] would clear dead-session lease for $wt_path"
+        log "DEAD_SESSION_LEASE_WOULD_CLEAN $wt_path"
+        return 0
+    fi
+    if command -v sqlite3 >/dev/null 2>&1 && [[ -f "$statedb" ]]; then
+        sqlite3 "$statedb" \
+            "DELETE FROM leases WHERE worktree='$wt_path' OR worktree='$wt_name';" \
+            2>/dev/null || true
+    fi
+    info "  dead-session lease cleaned for $wt_path"
+    log "DEAD_SESSION_LEASE_CLEANED $wt_path — dead-session lease cleaned"
 }
 # -----------------------------------------------------------------------------
 
@@ -408,7 +502,13 @@ process_worktree() {
         SKIPPED=$((SKIPPED+1)); return 0
     fi
 
-    if is_active_lease "$wt_name"; then
+    if is_active_lease "$wt_name" && _is_dead_session_lease "$wt_path"; then
+        # RESILIENT-205: the lease is unexpired but the session behind it is
+        # dead (no process activity, no git-index/log writes within
+        # SESSION_TIMEOUT_S) — clean the dead-session lease and fall through
+        # to the normal reapability checks instead of hard-blocking.
+        _reap_dead_session_lease "$wt_path" "$wt_name"
+    elif is_active_lease "$wt_name"; then
         info "  active lease references this worktree — keeping"
         # INFRA-1291: emit worktree_reap_protected (distinct from the generic
         # worktree_reaper_skipped_active) so observers can track heartbeat-TTL
@@ -749,12 +849,23 @@ process_worktree() {
             return 1
         fi
 
-        # Best-effort push for OFF-machine recoverability. A push failure no longer
-        # costs the work — the verified LOCAL ref above already preserves it.
-        if git -C "$wt" push "$REMOTE" "$wip_branch" 2>/dev/null; then
-            info "  pushed wip branch: $wip_branch"
+        # RESILIENT-1507: NEVER push wip/ snapshot branches to origin. A dirty-tree
+        # auto-stash can contain untracked files that must not leave the node, and
+        # (as of 2026-10-02) origin rejects refs/heads/wip/** outright (repository
+        # rule, no bypass) — pushing there always failed anyway, logging a
+        # misleading "offline?" warning. The verified LOCAL ref above (RESILIENT-235)
+        # is the recovery point. Only push when the operator has explicitly
+        # configured a DIFFERENT remote via WIP_PUSH_REMOTE for off-machine backup.
+        if [[ -n "$WIP_PUSH_REMOTE" ]]; then
+            if [[ "$WIP_PUSH_REMOTE" == "$REMOTE" || "$WIP_PUSH_REMOTE" == "origin" ]]; then
+                warn "  WIP_PUSH_REMOTE=$WIP_PUSH_REMOTE refuses to resolve to origin — work preserved on LOCAL ref $wip_branch only"
+            elif git -C "$wt" push "$WIP_PUSH_REMOTE" "$wip_branch" 2>/dev/null; then
+                info "  pushed wip branch to configured remote $WIP_PUSH_REMOTE: $wip_branch"
+            else
+                warn "  push of $wip_branch to $WIP_PUSH_REMOTE failed — work preserved on LOCAL ref $wip_branch"
+            fi
         else
-            warn "  push of $wip_branch failed (offline?) — work preserved on LOCAL ref $wip_branch"
+            info "  WIP_PUSH_REMOTE unset — keeping $wip_branch on LOCAL ref only (not pushed to $REMOTE)"
         fi
         # scanner-anchor: "kind":"worktree_work_stashed_before_reap"
         printf '{"ts":"%s","kind":"worktree_work_stashed_before_reap","gap_id":"%s","branch":"%s","uncommitted_lines":%d,"unpushed_commits":%d,"original_worktree":"%s"}\n' \

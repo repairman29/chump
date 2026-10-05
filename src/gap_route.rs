@@ -162,9 +162,22 @@ pub async fn route_gap_mutation(
     body: &GapMutationBody,
 ) -> anyhow::Result<GapMutationResult> {
     let url = format!("{}/api/gap", server_base.trim_end_matches('/'));
+    route_gap_mutation_to_url(&url, token, body).await
+}
+
+/// POST `body` to an EXACT `url` (the full `.../api/gap` endpoint) with
+/// bearer auth. INFRA-8061: the universal gap-intake filer configures the
+/// endpoint via `CHUMP_GAP_URL` (a full URL), so it needs to post to the URL
+/// verbatim rather than have `/api/gap` appended. `route_gap_mutation` above
+/// is the base-URL convenience wrapper that delegates here.
+pub async fn route_gap_mutation_to_url(
+    url: &str,
+    token: &str,
+    body: &GapMutationBody,
+) -> anyhow::Result<GapMutationResult> {
     let client = reqwest::Client::new();
     let resp = client
-        .post(&url)
+        .post(url)
         .bearer_auth(token)
         .json(body)
         .send()

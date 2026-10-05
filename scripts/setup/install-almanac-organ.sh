@@ -104,6 +104,19 @@ if [ ! -d "$ALMANAC_REPO" ] && [ "$MODE" != "check" ]; then
     no "no almanac checkout at $ALMANAC_REPO and install-almanac.sh not found — cannot provision eyes"
     exit 1
   fi
+elif [ "$MODE" != "check" ]; then
+  # INFRA-3637: the checkout already exists, so the full install above is
+  # skipped — but chump-mcp.json + the managed git hooks may never have been
+  # wired on this node. Wire them (no clone/build); best-effort, non-fatal.
+  installer="$REPO_ROOT/scripts/setup/install-almanac.sh"
+  if [ -x "$installer" ]; then
+    info "almanac checkout present — wiring chump-mcp.json + git hooks (install-almanac.sh --wire-only)"
+    if [ "$DRY" = 1 ]; then
+      bash "$installer" --wire-only --dry-run || true
+    else
+      bash "$installer" --wire-only || no "almanac MCP/hook wiring incomplete — see above (non-fatal)"
+    fi
+  fi
 fi
 
 if [ ! -x "$LIVENESS_SCRIPT" ]; then

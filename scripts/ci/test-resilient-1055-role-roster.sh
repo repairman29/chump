@@ -171,4 +171,80 @@ grep -q "^WorkingDirectory=${REAL2}\$" "$DESTS" || fail "symlink repo_root: Work
 grep -q "Projects/chump" "$DESTS" && fail "symlink repo_root: the bootstrap symlink path leaked into the unit (still load-bearing): $(grep -n 'Projects/chump' "$DESTS")"
 pass "organ_unit_host_rewrite: a symlinked repo_root collapses to the real checkout — the bootstrap symlink is not baked in and can be retired"
 
+# ── 7. RESILIENT-1508: organ_unit_execstart_resolves ────────────────────────
+# Proves the installer can tell, PER UNIT, whether its own ExecStart binary
+# actually resolves on the PATH/User baked into that unit — the gate that
+# would have refused to enable cuphead's self-doctor/paramedic/conductor
+# (pinned to a /root/.chumpnode checkout whose bin/ was never built) instead
+# of silently enabling an exit-127 timer.
+mkdir -p "$TMP/fakebin"
+touch "$TMP/fakebin/chump"; chmod +x "$TMP/fakebin/chump"
+
+RESOLVES="$TMP/resolves.service"
+cat > "$RESOLVES" <<EOF
+[Unit]
+Description=x
+[Service]
+User=ubuntu
+Environment=PATH=$TMP/fakebin:/usr/bin:/bin
+ExecStart=/bin/bash -c 'set -a; source /home/ubuntu/.chump/providers.env 2>/dev/null; set +a; exec chump self-rescue-loop'
+EOF
+reason=""
+organ_unit_execstart_resolves "$RESOLVES" reason \
+  || fail "execstart_resolves: should resolve when chump is on the unit's own PATH (reason=$reason)"
+pass "organ_unit_execstart_resolves: resolves a bare command present on the unit's Environment=PATH="
+
+UNRESOLVED="$TMP/unresolved.service"
+cat > "$UNRESOLVED" <<EOF
+[Unit]
+Description=x
+[Service]
+User=root
+Environment=PATH=/root/.cargo/bin:/usr/local/bin:/usr/bin:/bin
+ExecStart=/bin/bash -c 'set -a; source /root/.chump/providers.env 2>/dev/null; set +a; exec chump self-rescue-loop'
+EOF
+reason=""
+if organ_unit_execstart_resolves "$UNRESOLVED" reason; then
+  fail "execstart_resolves: should NOT resolve when chump is absent from the unit's own PATH"
+fi
+[[ "$reason" == missing_bin_on_unit_path:chump ]] || fail "execstart_resolves: wrong reason: $reason"
+pass "organ_unit_execstart_resolves: refuses (missing_bin_on_unit_path) the exact cuphead exit-127 shape — User=root/PATH=/root/.cargo/bin with no chump symlinked there"
+
+ABSPATH="$TMP/abspath.service"
+cat > "$ABSPATH" <<EOF
+[Unit]
+Description=x
+[Service]
+ExecStart=$TMP/fakebin/chump self-rescue-loop
+EOF
+reason=""
+organ_unit_execstart_resolves "$ABSPATH" reason \
+  || fail "execstart_resolves: an absolute ExecStart path should resolve via -x directly (reason=$reason)"
+pass "organ_unit_execstart_resolves: resolves a direct absolute-path ExecStart"
+
+ABSMISSING="$TMP/absmissing.service"
+cat > "$ABSMISSING" <<EOF
+[Unit]
+Description=x
+[Service]
+ExecStart=$TMP/fakebin/does-not-exist self-rescue-loop
+EOF
+reason=""
+if organ_unit_execstart_resolves "$ABSMISSING" reason; then
+  fail "execstart_resolves: a non-existent absolute ExecStart path must not resolve"
+fi
+[[ "$reason" == binary_not_executable:* ]] || fail "execstart_resolves: wrong reason: $reason"
+pass "organ_unit_execstart_resolves: refuses a non-existent absolute ExecStart path"
+
+# ── 8. RESILIENT-1508: install-helsinki-atc.sh rosters the self-rescue organs
+# and gates their enable on organ_unit_execstart_resolves.
+ATC_INSTALLER="$REPO_ROOT/scripts/setup/install-helsinki-atc.sh"
+for u in chump-self-doctor chump-paramedic chump-conductor; do
+  grep -q "^  ${u}.service\$" "$ATC_INSTALLER" || fail "install-helsinki-atc.sh SYSTEM_UNITS missing ${u}.service"
+  grep -q "^  ${u}.timer\$" "$ATC_INSTALLER" || fail "install-helsinki-atc.sh SYSTEM_UNITS missing ${u}.timer"
+  grep "^SYSTEM_TIMERS=(" "$ATC_INSTALLER" | grep -q "${u}.timer" || fail "install-helsinki-atc.sh SYSTEM_TIMERS missing ${u}.timer"
+done
+grep -q "organ_unit_execstart_resolves" "$ATC_INSTALLER" || fail "install-helsinki-atc.sh does not call organ_unit_execstart_resolves before enabling"
+pass "install-helsinki-atc.sh rosters self-doctor/paramedic/conductor and gates enable on organ_unit_execstart_resolves"
+
 echo "ALL PASS"

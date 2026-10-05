@@ -103,6 +103,28 @@ fn main() -> ExitCode {
         println!("chump-fleet-server {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
     }
+    // --query-logs <stage> (EFFECTIVE-1519): print `logs/launch.log` entries
+    // matching the given stage (draft/approve/send/publish) and exit —
+    // doesn't start the server.
+    if let Some(stage) = args
+        .windows(2)
+        .find(|w| w[0] == "--query-logs")
+        .map(|w| w[1].clone())
+    {
+        let repo_root = resolve_repo_root();
+        return match chump_fleet_server::mission::handle_log_query(&repo_root, &stage) {
+            Ok(lines) => {
+                for line in lines {
+                    println!("{line}");
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("[chump-fleet-server] --query-logs failed: {e}");
+                ExitCode::from(1)
+            }
+        };
+    }
     // Optional --port N (alternative to CHUMP_FLEET_SERVER_PORT env var).
     let port_override: Option<u16> = args
         .windows(2)

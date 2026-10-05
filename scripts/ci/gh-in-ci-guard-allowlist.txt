@@ -1,0 +1,18 @@
+# RESILIENT-018: Allow-list of scripts/ci/test-*.sh that call `gh api`/`gh pr`
+# without (yet) sourcing scripts/ci/lib/ci-guards.sh. These pre-date the
+# GH_TOKEN-guard mandate. Follow-up migration tracked in INFRA (see
+# docs/gaps/ for the retroactive-migration gap filed alongside RESILIENT-018).
+#
+# Format: relative path from repo root (no leading slash)
+# Comments (#) and blank lines are ignored.
+# DO NOT ADD NEW ENTRIES without filing a migration gap — new test scripts
+# must source ci-guards.sh from the start.
+
+scripts/ci/test-bot-autonomous.sh
+scripts/ci/test-dispatch-prompt-self-verify.sh
+scripts/ci/test-github-api-telemetry-shim.sh
+scripts/ci/test-no-direct-auto-merge-arm-fixture.sh
+scripts/ci/test-pwa-pr-actions.sh
+scripts/ci/test-rust-first-bypass-gate.sh
+scripts/ci/test-rust-first-gate.sh
+scripts/ci/test-status.sh

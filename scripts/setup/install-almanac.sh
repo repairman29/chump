@@ -28,6 +28,8 @@
 #
 # Usage:
 #   scripts/setup/install-almanac.sh              # clone/update + build + install + wire config + wire mcp + install hooks
+#   scripts/setup/install-almanac.sh --wire-only  # INFRA-3637: no clone/build; wire config + mcp + hooks using
+#                                                 # the binaries already built/installed (existing checkout)
 #   scripts/setup/install-almanac.sh --check       # verify only, exit non-zero if incomplete
 #   scripts/setup/install-almanac.sh --dry-run
 #
@@ -71,6 +73,7 @@ MODE="install"; DRY=0
 for a in "$@"; do
   case "$a" in
     --check) MODE="check";;
+    --wire-only) MODE="wire";;
     --dry-run) DRY=1;;
     -h|--help) grep '^#' "$0" | sed 's/^# \{0,1\}//'; exit 0;;
     *) echo "unknown arg: $a" >&2; exit 2;;
@@ -323,6 +326,28 @@ do_check() {
   return "$fail"
 }
 
+# INFRA-3637: a node whose almanac checkout already exists never re-runs the
+# full install, so before this it never got chump-mcp.json or the git hooks.
+# Wire them from whatever binaries are already there; never clone or build.
+do_wire() {
+  local dest_dir almanac_bin mcp_bin
+  dest_dir="$(resolve_install_dir)"
+  if [ -x "$dest_dir/almanac" ] && [ -x "$dest_dir/almanac-mcp" ]; then
+    almanac_bin="$dest_dir/almanac"; mcp_bin="$dest_dir/almanac-mcp"
+  elif [ -x "$ALMANAC_REPO/target/release/almanac" ] && [ -x "$ALMANAC_REPO/target/release/almanac-mcp" ]; then
+    almanac_bin="$ALMANAC_REPO/target/release/almanac"; mcp_bin="$ALMANAC_REPO/target/release/almanac-mcp"
+  else
+    no "--wire-only: no built almanac + almanac-mcp in $dest_dir or $ALMANAC_REPO/target/release — run a full install"
+    return 1
+  fi
+  local fail=0
+  wire_config "$mcp_bin"
+  wire_mcp_json "$mcp_bin" || { emit almanac_mcp_wire_failed "\"config\":\"$CHUMP_MCP_CONFIG\""; fail=1; }
+  install_git_hooks "$almanac_bin" || { emit almanac_hook_install_failed "\"repo\":\"$REPO_ROOT\""; fail=1; }
+  return "$fail"
+}
+
 if [ "$MODE" = "check" ]; then do_check; exit $?; fi
+if [ "$MODE" = "wire" ]; then do_wire; exit $?; fi
 do_install
 do_check

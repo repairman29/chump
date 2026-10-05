@@ -22,7 +22,7 @@ mod scaffold_holes;
 // (18+ across the binary) keep working without churn.
 pub use chump_ambient_cli::{ambient_emit, ambient_rotate, ambient_stream};
 // EFFECTIVE-394: verify cluster extracted to crates/chump-verify; re-export so existing crate::pr_ac_coverage / crate::external_verify_merge / crate::confidence references keep resolving unchanged.
-pub use chump_verify::{confidence, external_verify_merge, pr_ac_coverage};
+pub use chump_verify::{confidence, external_verify_merge, organ_muster, pr_ac_coverage};
 mod almanac_tool;
 mod approval_resolver;
 mod asi_telemetry;
@@ -45,7 +45,14 @@ mod blocker_detect;
 mod briefing;
 mod browser;
 mod browser_tool;
-mod calc_tool;
+// INFRA-7938 (INFRA-1965 slice): calc_tool now lives in the lib crate
+// (src/lib.rs); re-exported here so existing `crate::calc_tool::X` call
+// sites in this binary keep resolving unchanged.
+pub use chump::calc_tool;
+// INFRA-4667 (INFRA-1687 slice): subcommand_registry lives in the lib crate
+// (src/lib.rs); re-exported here so existing `crate::subcommand_registry::X`
+// call sites in this binary keep resolving unchanged.
+pub use chump::subcommand_registry;
 mod cancel_registry;
 mod cascade_stats;
 mod checkpoint_db;
@@ -132,6 +139,7 @@ mod disk_cmd; // INFRA-2196: chump disk status|plan|budget (META-128/C5)
 mod done_auditor; // INFRA-3495: anti-over-claim watchdog — audit DONE gaps for uncovered AC
 mod evangelist; // INFRA-1783: chump evangelize <repo-path> — HIDDEN_GEMS.md generation (INFRA-1746 phase 3)
 mod front_door; // EFFECTIVE-330 (COTG-0.0): plain-language front-door mode router
+mod gap_file; // INFRA-8061: universal gap-intake filer (POST CHUMP_GAP_URL + durable local spool)
 mod gap_route; // INFRA-3689: route gap mutations to the fleet-server when local checkout is non-canonical
 mod gap_scoring; // INFRA-1816: gap-value scorer, vendored from repairman29/echeo — substrate for INFRA-1764
 mod gen;
@@ -148,6 +156,7 @@ mod hooks;
 mod improve; // EFFECTIVE-177: chump improve <owner/repo> — autonomous-improve loop
 mod inference_router; // INFRA-1843: two-tier LLM dispatch (Reflexive on-device + Neocortex cloud), CP-011
 mod ingest; // INFRA-1780: chump ingest <repo-path> (phase 1a — validation + read-only safety)
+mod ingest_backlog; // MISSION-055: chump ingest <repo-path> --import-backlog — import a repo's DEFINED backlog as fleet gaps
 mod ingest_librarian; // INFRA-1781: Phase 1 Librarian audit + triage report (INFRA-1746 phase 1b)
 mod ingest_orchestrate; // INFRA-1784: orchestration + certificate + auto-gaps (INFRA-1746 phase 5)
 mod ingest_preflight; // INFRA-1778: chump ingest-preflight — gh auth + push-access safety rail
@@ -193,6 +202,7 @@ mod pending_peer_approval;
 mod perception;
 mod peripheral_sensor;
 mod phi_proxy;
+mod pillar_cap; // CREDIBLE-072: per-pillar weekly merge-share cap/floor at gap reserve
 mod pilot_metrics;
 mod plan_mode;
 mod platform_router;
@@ -325,6 +335,7 @@ mod e2e_bot_tests;
 mod embed_inprocess;
 
 mod metrics;
+mod metrics_registry;
 
 /// INFRA-3448: the recovery discipline the OS should apply to a STUCK gap.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -2449,6 +2460,18 @@ async fn main() -> Result<()> {
     {
         let sub_args: Vec<String> = args.iter().skip(3).cloned().collect();
         std::process::exit(commands::consensus_ask::run(&sub_args));
+    }
+
+    // `chump unwedge <GAP-ID> [--stall-threshold-s N] [--dry-run]` (EFFECTIVE-1136,
+    // EFFECTIVE-178 slice) — on-demand kill + recover of a wedged bot-merge
+    // run: detects a stalled `bot-merge.sh --gap <ID>` process past the
+    // stall threshold, kills it (+ children), aborts any in-progress
+    // rebase/merge and clears stale git locks, then invokes
+    // `chump claim <ID> --force-recover` to reconcile the lease/worktree.
+    // Emits kind=gap_unwedged.
+    if args.get(1).map(String::as_str) == Some("unwedge") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::unwedge::run(&sub_args));
     }
 
     // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
@@ -9888,6 +9911,23 @@ async fn main() -> Result<()> {
     //   chump gap import [--yaml docs/gaps.yaml]
     if args.get(1).map(String::as_str) == Some("gap") {
         let subcmd = args.get(2).map(String::as_str).unwrap_or("help");
+
+        // INFRA-8061: the UNIVERSAL gap-intake filer — one portable filing path
+        // (POST CHUMP_GAP_URL, durable local spool + retry). Needs no local
+        // store, no tailscale, no SSH; usable from the Mac, cuphead, cloud
+        // ephemeral agents, and a stranger running their own chump. Handled
+        // before any store/worktree resolution below since it writes only over
+        // HTTP + a local spool file.
+        if subcmd == "file" {
+            match gap_file::run(&args).await {
+                Ok(()) => std::process::exit(0),
+                Err(e) => {
+                    eprintln!("chump gap file: {e}");
+                    std::process::exit(1);
+                }
+            }
+        }
+
         let repo_root = repo_path::repo_root();
         // INFRA-247: per-file YAML mirrors and the .chump/.last-yaml-op
         // freshness marker are *worktree-local* artifacts — they must land
@@ -10690,6 +10730,24 @@ async fn main() -> Result<()> {
                     }
                 }
             }
+            // `chump gap pillar-share` (CREDIBLE-072) — one-line 7-day
+            // per-pillar merge share, flagging pillars over the reserve-time
+            // cap and EFFECTIVE/CREDIBLE under the floor.
+            "pillar-share" => {
+                let rows = store.list(None).unwrap_or_default();
+                let shares = pillar_cap::compute_shares(
+                    rows.iter().map(|g| {
+                        (
+                            g.title.as_str(),
+                            g.domain.as_str(),
+                            g.status.as_str(),
+                            g.closed_at,
+                        )
+                    }),
+                    chrono::Utc::now().timestamp(),
+                );
+                println!("{}", shares.status_line());
+            }
             "reserve" => {
                 let has_flag_domain = args.iter().any(|a| a == "--domain");
                 let domain = flag("--domain").or_else(|| {
@@ -10716,7 +10774,68 @@ async fn main() -> Result<()> {
                         .filter(|s| !s.is_empty())
                         .unwrap_or_else(|| "New gap".into())
                 });
-                let priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                let mut priority = flag("--priority").unwrap_or_else(|| "P2".into());
+                // ── CREDIBLE-072: per-pillar weekly merge-share cap / floor ─────
+                // A NEW gap in a pillar that already holds >30% of the last 7
+                // days' merges is demoted to P2; when EFFECTIVE+CREDIBLE are
+                // under 50% combined, a NEW gap in either is bumped one tier
+                // (P0 bumps held to the P0 budget). `--cap-override <reason>`
+                // keeps the requested priority and is logged. Every decision
+                // other than "keep" emits kind=pillar_cap_demote.
+                let mut pillar_cap_event: Option<String> = None;
+                if pillar_cap::enabled() {
+                    if let Some(pillar) = pillar_cap::pillar_of(&title, &domain) {
+                        let rows = store.list(None).unwrap_or_default();
+                        let shares = pillar_cap::compute_shares(
+                            rows.iter().map(|g| {
+                                (
+                                    g.title.as_str(),
+                                    g.domain.as_str(),
+                                    g.status.as_str(),
+                                    g.closed_at,
+                                )
+                            }),
+                            chrono::Utc::now().timestamp(),
+                        );
+                        let open_p0 = rows
+                            .iter()
+                            .filter(|g| g.status == "open" && g.priority == "P0")
+                            .count();
+                        let cap_override = flag("--cap-override");
+                        let decision = pillar_cap::decide(pillar, &priority, &shares, open_p0);
+                        let (decision_label, new_priority) = match (&cap_override, &decision) {
+                            (_, pillar_cap::Decision::Keep) => ("keep", None),
+                            (Some(_), _) => ("override", None),
+                            (None, pillar_cap::Decision::Demote { to })
+                            | (None, pillar_cap::Decision::Bump { to }) => {
+                                (decision.label(), Some(to.to_string()))
+                            }
+                        };
+                        if decision_label != "keep" {
+                            let from = priority.clone();
+                            let to = new_priority.clone().unwrap_or_else(|| priority.clone());
+                            if !args.iter().any(|a| a == "--quiet") {
+                                eprintln!(
+                                    "[reserve] CREDIBLE-072: {pillar} is {:.0}% of 7d merges — {decision_label} {from} → {to}",
+                                    shares.pct(pillar)
+                                );
+                            }
+                            let ts = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                            let reason = cap_override
+                                .clone()
+                                .unwrap_or_default()
+                                .replace(['"', '\\'], "");
+                            // gap_id is filled in once the reserve succeeds.
+                            pillar_cap_event = Some(format!(
+                                r#"{{"ts":"{ts}","kind":"pillar_cap_demote","gap_id":"{{GAP_ID}}","pillar":"{pillar}","current_share":{:.1},"decision":"{decision_label}","from":"{from}","to":"{to}","override_reason":"{reason}"}}"#,
+                                shares.pct(pillar)
+                            ));
+                        }
+                        if let Some(p) = new_priority {
+                            priority = p;
+                        }
+                    }
+                }
                 let effort = flag("--effort").unwrap_or_else(|| "m".into());
                 let stack_on = flag("--stack-on");
                 // CREDIBLE-107: --evidence required for P0/P1 RESILIENT/MISSION/CREDIBLE gaps.
@@ -11869,6 +11988,20 @@ async fn main() -> Result<()> {
                         // write-and-autostage path this replaced is gone).
                         // Use `chump gap show <ID>` for human-readable
                         // per-gap inspection.
+                        // CREDIBLE-072: audit the pillar-cap decision with the real id.
+                        if let Some(line) = pillar_cap_event.take() {
+                            let line = line.replace("{GAP_ID}", &id);
+                            let ambient_path =
+                                worktree_root.join(".chump-locks").join("ambient.jsonl");
+                            if let Ok(mut f) = std::fs::OpenOptions::new()
+                                .append(true)
+                                .create(true)
+                                .open(&ambient_path)
+                            {
+                                use std::io::Write as _;
+                                let _ = writeln!(f, "{line}");
+                            }
+                        }
                         if json_out {
                             println!("{{\"id\":\"{id}\",\"yaml_path\":\"\"}}");
                         } else {
@@ -12095,8 +12228,56 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     Ok(gap_store::PreflightResult::NotFound) => {
-                        eprintln!("[preflight] WARN {} — not found in state.db (run `chump gap import` first).", gap_id);
-                        return Ok(());
+                        // CREDIBLE-1486: a worktree's local state.db is a snapshot
+                        // taken at worktree-creation time (same INFRA-3002 class as
+                        // `chump claim`'s self-heal) — a gap reserved/imported on
+                        // origin/main afterward is invisible here until someone
+                        // manually runs `chump gap restore --from-sql`. Before this
+                        // fix, NotFound still printed a WARN but returned `Ok(())`
+                        // (exit 0), so callers that gate on exit code alone — like
+                        // `chump dispatch`'s preflight step — treated a MISSING gap
+                        // as "pickable", proceeded to claim, and failed hard there
+                        // instead of at the check meant to catch exactly this.
+                        // Self-heal by syncing just this gap's row from
+                        // `.chump/state.sql` (the tracked YAML mirror) and retrying
+                        // once; only exit non-zero if the gap is genuinely absent
+                        // from both the live store and the tracked mirror.
+                        let sql_path = repo_root.join(".chump").join("state.sql");
+                        let healed = store
+                            .sync_gap_from_state_sql(&sql_path, &gap_id)
+                            .unwrap_or(false);
+                        if healed {
+                            eprintln!(
+                                "[preflight] {} was missing from local state.db — synced from state.sql (CREDIBLE-1486)",
+                                gap_id
+                            );
+                            match store.preflight(&gap_id) {
+                                Ok(gap_store::PreflightResult::Available) => {
+                                    println!("[preflight] OK {} — open and unclaimed.", gap_id);
+                                    return Ok(());
+                                }
+                                Ok(gap_store::PreflightResult::Done) => {
+                                    eprintln!("[preflight] FAIL {} — already done.", gap_id);
+                                    std::process::exit(1);
+                                }
+                                Ok(gap_store::PreflightResult::Claimed(s)) => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — live-claimed by session {}.",
+                                        gap_id, s
+                                    );
+                                    std::process::exit(1);
+                                }
+                                _ => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — not found in state.db (run `chump gap import` first).",
+                                        gap_id
+                                    );
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        eprintln!("[preflight] FAIL {} — not found in state.db (run `chump gap import` first).", gap_id);
+                        std::process::exit(1);
                     }
                     Err(e) => {
                         eprintln!("chump gap preflight: {e:#}");
@@ -12322,6 +12503,60 @@ async fn main() -> Result<()> {
                             eprintln!(
                                 "shipped {gap_id} — why: status flipped to done{pr_note}, session={session_id}"
                             );
+                        }
+                        // ZERO-WASTE-059: dedup-check + AC-hygiene scan runs in the
+                        // SAME op as the ship, so a stale/duplicate sibling or a
+                        // vague-AC gap in this domain surfaces immediately instead
+                        // of needing a later standalone reconcile-stale-gap PR.
+                        // Advisory only — never blocks or fails the ship.
+                        if let Ok(Some(shipped_gap)) = store.get(&gap_id) {
+                            let similarity_threshold: f64 =
+                                std::env::var("CHUMP_GAP_SHIP_HYGIENE_SIMILARITY")
+                                    .ok()
+                                    .and_then(|s| s.trim().parse().ok())
+                                    .unwrap_or(0.65);
+                            if let Ok(report) = store.queue_hygiene_check_on_ship(
+                                &gap_id,
+                                &shipped_gap.title,
+                                &shipped_gap.domain,
+                                similarity_threshold,
+                            ) {
+                                if !report.is_clean() {
+                                    let ts =
+                                        chrono::Utc::now().format("%Y-%m-%dT%H:%M:%SZ").to_string();
+                                    let event = serde_json::json!({
+                                        "ts": ts,
+                                        "kind": "ship_queue_hygiene_flagged",
+                                        "gap": gap_id,
+                                        "dup_candidates": report.dup_candidates.iter()
+                                            .map(|(id, title, _, score)| serde_json::json!({"id": id, "title": title, "score": score}))
+                                            .collect::<Vec<_>>(),
+                                        "vague_ac_gaps": report.vague_ac_gaps.iter()
+                                            .map(|(id, title)| serde_json::json!({"id": id, "title": title}))
+                                            .collect::<Vec<_>>(),
+                                    });
+                                    let ambient_log = repo_root.join(".chump-locks/ambient.jsonl");
+                                    let _ = std::fs::OpenOptions::new()
+                                        .append(true)
+                                        .create(true)
+                                        .open(&ambient_log)
+                                        .and_then(|mut f| {
+                                            use std::io::Write;
+                                            writeln!(f, "{event}")
+                                        });
+                                    for (id, title, _, score) in &report.dup_candidates {
+                                        eprintln!(
+                                            "  [hygiene] possible duplicate still open: {id} ({title}, score={score:.2})"
+                                        );
+                                    }
+                                    for (id, title) in &report.vague_ac_gaps {
+                                        eprintln!(
+                                            "  [hygiene] vague-AC gap in domain {}: {id} ({title})",
+                                            shipped_gap.domain
+                                        );
+                                    }
+                                }
+                            }
                         }
                         // INFRA-1144: atomically close orphan PRs for this gap
                         // (complements INFRA-1139 sweeper). Emits orphan_pr_closed_at_ship
@@ -14513,6 +14748,9 @@ async fn main() -> Result<()> {
                         "  --clone-path <path>       Override the resolved clone path (used with --external-repo)."
                     );
                     println!("  -h, --help                Show this help");
+                    println!();
+                    println!("Exit codes: 0 success/nothing-to-do, 1 not-open error,");
+                    println!("  11 refused — parent already has open child slices (INFRA-8067).");
                     return Ok(());
                 }
                 let gap_id = args.get(3).cloned().unwrap_or_else(|| {
@@ -14633,6 +14871,46 @@ async fn main() -> Result<()> {
                         parent.effort
                     );
                     std::process::exit(0);
+                }
+
+                // INFRA-8067: refuse to re-slice a parent that already has
+                // open child slices — root-cause fix for RESILIENT-1437 (the
+                // gap-store's slice-bloat: the EFFECTIVE-310 decompose
+                // reflex in scripts/dispatch/worker.sh re-slicing the same
+                // parent gap repeatedly). The RESILIENT-1364 guard above
+                // (parent.status != "open") only blocks a SECOND run once
+                // the FIRST run finished cleanly and wrote
+                // status=decomposed. A run that filed slices but was
+                // interrupted before that final write (crash, kill -9,
+                // wedge) leaves the parent looking "fresh" — still
+                // status=open, no "Decomposed into" notes marker — so every
+                // subsequent strike-threshold hit re-decomposes it into
+                // another near-duplicate batch of slices. Counting slices
+                // directly off the title convention `"... (<parent> slice)"`
+                // (and depends_on) rather than the parent's own notes
+                // bookkeeping catches exactly that orphaned-slices case.
+                let open_slice_count = store.count_open_slices(&gap_id).unwrap_or(0);
+                if open_slice_count >= 1 {
+                    eprintln!(
+                        "decompose: {gap_id} already has {open_slice_count} open slice(s); refusing to re-slice"
+                    );
+                    if json_out {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "refused": true,
+                                "reason": "already_has_open_slices",
+                                "open_slice_count": open_slice_count,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    }
+                    // Distinct exit code: callers (EFFECTIVE-310 reflex in
+                    // scripts/dispatch/worker.sh) must treat 11 as "refused,
+                    // do not reset strikes" — separate from 0 (success/
+                    // nothing-to-do) and 1 (hard error) above.
+                    std::process::exit(11);
                 }
 
                 if !dry_run {
@@ -15466,7 +15744,7 @@ async fn main() -> Result<()> {
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
                     println!(
-                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply]"
+                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply] [--metrics]"
                     );
                     println!();
                     println!(
@@ -15477,6 +15755,11 @@ async fn main() -> Result<()> {
                         "--apply files one leaf gap per hole via chump-gap-store instead of \
                          just printing specs (INFRA-2515 A2A voting still applies to what those \
                          leaf gaps become — this only reserves them)."
+                    );
+                    println!(
+                        "--metrics compares shipped leaf gaps (depends_on GAP-ID) against a \
+                         baseline of shipped open-ended gaps (no depends_on) in the same domain: \
+                         mean ship cycle-time and file-collision rate for each group."
                     );
                     return Ok(());
                 }
@@ -15492,6 +15775,116 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| repo_root.clone());
                 let as_json = json_out || args.iter().any(|a| a == "--json");
                 let do_apply = args.iter().any(|a| a == "--apply");
+                let do_metrics = args.iter().any(|a| a == "--metrics");
+
+                if do_metrics {
+                    let domain = store
+                        .get(&gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.domain)
+                        .unwrap_or_else(|| {
+                            gap_id.split('-').next().unwrap_or("EFFECTIVE").to_string()
+                        });
+                    let closed = store.list(Some("closed")).unwrap_or_default();
+                    let done = store.list(Some("done")).unwrap_or_default();
+                    let all_closed: Vec<_> = closed.into_iter().chain(done).collect();
+
+                    let files_for_pr = |pr: i64| -> Vec<String> {
+                        let out = std::process::Command::new("git")
+                            .args(["log", "--all", "--merges", "--format=%H"])
+                            .arg("--grep")
+                            .arg(format!("#{pr}"))
+                            .current_dir(&repo_root)
+                            .output();
+                        let Ok(out) = out else { return Vec::new() };
+                        let sha = String::from_utf8_lossy(&out.stdout)
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if sha.is_empty() {
+                            return Vec::new();
+                        }
+                        std::process::Command::new("git")
+                            .args(["show", "--stat", "--format=", &sha])
+                            .current_dir(&repo_root)
+                            .output()
+                            .map(|o| {
+                                String::from_utf8_lossy(&o.stdout)
+                                    .lines()
+                                    .filter_map(|l| l.split('|').next())
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    };
+
+                    let to_metric = |g: &gap_store::GapRow| -> scaffold_holes::GapMetric {
+                        let cycle_time_secs = g.closed_at.map(|c| c - g.created_at);
+                        let files_touched = g.closed_pr.map(files_for_pr).unwrap_or_default();
+                        scaffold_holes::GapMetric {
+                            id: g.id.clone(),
+                            cycle_time_secs,
+                            files_touched,
+                        }
+                    };
+
+                    let scaffold_leaves: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| g.domain == domain && g.depends_on.contains(&gap_id))
+                        .map(to_metric)
+                        .collect();
+                    let open_ended: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| {
+                            g.domain == domain
+                                && !g.depends_on.contains(&gap_id)
+                                && (g.depends_on.is_empty() || g.depends_on == "[]")
+                        })
+                        .map(to_metric)
+                        .collect();
+
+                    let report = scaffold_holes::compare_scaffold_vs_open_ended(
+                        &scaffold_leaves,
+                        &open_ended,
+                    );
+
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "scaffold_leaf_count": report.scaffold_leaf_count,
+                                "open_ended_count": report.open_ended_count,
+                                "scaffold_leaf_mean_cycle_secs": report.scaffold_leaf_mean_cycle_secs,
+                                "open_ended_mean_cycle_secs": report.open_ended_mean_cycle_secs,
+                                "scaffold_leaf_collision_rate": report.scaffold_leaf_collision_rate,
+                                "open_ended_collision_rate": report.open_ended_collision_rate,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "--- scaffold-and-holes metrics for {gap_id} (domain {domain}) ---"
+                        );
+                        println!(
+                            "scaffold leaves: {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.scaffold_leaf_count,
+                            report.scaffold_leaf_mean_cycle_secs,
+                            report.scaffold_leaf_collision_rate
+                        );
+                        println!(
+                            "open-ended:      {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.open_ended_count,
+                            report.open_ended_mean_cycle_secs,
+                            report.open_ended_collision_rate
+                        );
+                    }
+                    return Ok(());
+                }
 
                 let holes = match scaffold_holes::find_todo_holes_in_dir(&scan_dir) {
                     Ok(h) => h,
@@ -18679,7 +19072,7 @@ async fn main() -> Result<()> {
                 eprintln!("Server '{name}' is disabled in chump-mcp.json — enable it first.");
                 std::process::exit(1);
             }
-            let mut cmd_parts = vec![entry.command.clone()];
+            let mut cmd_parts = vec![mcp_discovery::expand_command(&entry.command)];
             cmd_parts.extend(entry.args.clone());
             println!("Restart '{name}': {}", cmd_parts.join(" "));
             println!();
@@ -19600,6 +19993,52 @@ async fn main() -> Result<()> {
     // (Rescue/Comprehend) exit non-zero honestly rather than faking success.
     if args.get(1).map(String::as_str) == Some("trek") {
         let repo_root = repo_path::repo_root();
+        let mission_store = chump_coord::mission::FileBackedMissionStore::default_root();
+
+        // `chump trek --list` (INFRA-3658, RIBBON-03): read every persisted
+        // Mission record back so a walked-away operator can see what past
+        // trek runs produced.
+        if args.get(2).map(String::as_str) == Some("--list") {
+            use chump_coord::mission::MissionStore;
+            match mission_store.list() {
+                Ok(mut ids) => {
+                    ids.sort();
+                    if ids.is_empty() {
+                        println!("(no trek runs recorded yet)");
+                    } else {
+                        for id in ids {
+                            match mission_store.load(&id) {
+                                Ok(pm) => println!("{}", trek::format_mission_summary(&pm)),
+                                Err(e) => eprintln!("trek --list: {id}: {e:#}"),
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("trek --list: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
+        // `chump trek status <mission-id>` (INFRA-3658, RIBBON-03).
+        if args.get(2).map(String::as_str) == Some("status") {
+            use chump_coord::mission::MissionStore;
+            let Some(id) = args.get(3) else {
+                eprintln!("Usage: chump trek status <mission-id>");
+                std::process::exit(1);
+            };
+            match mission_store.load(id) {
+                Ok(pm) => println!("{}", trek::format_mission_detail(&pm)),
+                Err(e) => {
+                    eprintln!("trek status: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
         let Some(job) = args.get(2).filter(|a| !a.starts_with("--")) else {
             eprintln!("Usage: chump trek \"<what you're trying to do, in plain language>\" [--yes] [--json]");
             std::process::exit(1);
@@ -19607,7 +20046,7 @@ async fn main() -> Result<()> {
         let yes = args.iter().any(|a| a == "--yes");
         let json = args.iter().any(|a| a == "--json");
         let spawner = trek::RealEngineSpawner;
-        let outcome = trek::run_trek(&repo_root, job, yes, &spawner);
+        let outcome = trek::run_trek(&repo_root, job, yes, &spawner, &mission_store);
         if json {
             let j = match &outcome {
                 trek::TrekOutcome::Landed { mode, exit_code } => serde_json::json!({

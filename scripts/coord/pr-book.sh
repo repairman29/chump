@@ -80,7 +80,7 @@ if [[ "$MODE" == "settle" ]]; then
   # generic calibration component (RESILIENT-974), and rewrite the calibration
   # log — same shape as before this refactor: one {predicted,outcome} row per
   # resolved PR plus a trailing {kind:pr_book_calibration,brier} summary row.
-  RES="$(calibration_settle "$LEDGER" "$OMAP" "$CALIB" pr price pr_book_prediction pr_book_calibration)"
+  RES="$(calibration_settle "$LEDGER" "$OMAP" "$CALIB" pr p_merge pr_book_prediction pr_book_calibration)"
   BRIER="$(echo "$RES" | jq -r '.brier // "n/a"')"
   RESOLVED="$(echo "$RES" | jq -r '.resolved')"
   PREDS="$(echo "$RES" | jq -r '.predictions')"
@@ -115,7 +115,10 @@ LONG="$(echo "$RAW" | jq "$M"' [.[]|select(price<0.40)]|length' 2>/dev/null)"; [
 printf "  -- EV %.1f of %s open  |  lock>=70:%s flip:%s long<40:%s\n" "$EV" "$N" "$LOCK" "$FLIP" "$LONG"
 
 # append predictions to the ledger (fuel for --settle)
-echo "$RAW" | jq -c "$M"' .[]|{ts:"'"$TS"'",pr:.number,sha:.headRefOid,price:(price),state:.mergeStateStatus}' 2>/dev/null >> "$LEDGER"
+# column is p_merge (not bare "price"/"p") — INFRA-3850: namespaces the
+# pr_book table's probability column so it can't collide with nba.p / rating.p_win
+# when ledger/ambient rows from different tables are joined or scanned together.
+echo "$RAW" | jq -c "$M"' .[]|{ts:"'"$TS"'",pr:.number,sha:.headRefOid,p_merge:(price),state:.mergeStateStatus}' 2>/dev/null >> "$LEDGER"
 
 # emit odds onto the shared ambient board so the OS can consume the score.
 # Brier: read the SAME canonical trailing {kind:pr_book_calibration,brier}

@@ -91,6 +91,28 @@ pub struct ClaimArgs {
     /// session (e.g. a module or concern name). Stored for later validation;
     /// not yet enforced against a scope registry.
     pub scope: Option<String>,
+    /// INFRA-5775 (INFRA-1863 slice): explicit override allowing `--paths`
+    /// to span more than one top-level directory. Requires `reason` to also
+    /// be set. Without this flag, a multi-top-level-dir `--paths` is
+    /// auto-narrowed to the most-specific common parent directory instead
+    /// of being rejected outright.
+    pub broad: bool,
+    /// INFRA-5775: human-readable justification for a `--broad` claim.
+    /// Mandatory whenever `--broad` is set (enforced at the gate, not at
+    /// parse time, since the requirement only applies when `--paths`
+    /// actually spans multiple top-level directories).
+    pub reason: Option<String>,
+    /// INFRA-5758 (INFRA-1689 slice): optional `<file>::<symbol>` region
+    /// scope, e.g. `src/foo.rs::dispatch_fanout`. Appended to the lease's
+    /// `paths` array alongside any `--paths` CSV entries so overlap
+    /// detection sees it; `ast-crawler::region` (INFRA-5759) later resolves
+    /// the `symbol` half to an AST line range. Mutually exclusive with
+    /// `--no-region`.
+    pub region: Option<String>,
+    /// INFRA-5758: explicit opt-out of region-scoped leasing even when a
+    /// `<file>::<symbol>`-shaped value would otherwise be inferred (e.g.
+    /// forces a plain whole-file lease). Mutually exclusive with `--region`.
+    pub no_region: bool,
 }
 
 impl ClaimArgs {
@@ -106,6 +128,11 @@ impl ClaimArgs {
                        --role ROLE      (mandatory) Role hint for the claiming session (e.g. shepherd, target)\n  \
                        --scope SCOPE    (optional) Scope hint for the claiming session (e.g. a module or concern)\n  \
                        --paths CSV      Record path scope (comma-separated globs); enables overlap detection\n  \
+                       --region FILE::SYMBOL  Record a symbol-region scope (e.g. src/foo.rs::my_fn);\n                              \
+                                        merged into the lease's paths array alongside --paths\n  \
+                       --no-region      Opt out of region-scoped leasing (mutually exclusive with --region)\n  \
+                       --broad          Allow --paths to span >1 top-level directory (requires --reason)\n  \
+                       --reason TEXT    Justification for --broad (mandatory when --broad is set)\n  \
                        --session ID     Explicit session ID (default derived from env / pid)\n  \
                        --no-doctor      Skip gap-doctor reconciliation (faster, but skips drift repair)\n  \
                        --no-import      Skip yaml->state.db re-import (faster, but assumes registry is fresh)\n  \
@@ -164,6 +191,10 @@ impl ClaimArgs {
         let mut rename = false;
         let mut role: Option<String> = None;
         let mut scope: Option<String> = None;
+        let mut broad = false;
+        let mut reason: Option<String> = None;
+        let mut region: Option<String> = None;
+        let mut no_region = false;
 
         let mut i = 2;
         while i < args.len() {
@@ -244,6 +275,33 @@ impl ClaimArgs {
                     );
                     i += 2;
                 }
+                "--broad" => {
+                    broad = true;
+                    i += 1;
+                }
+                "--reason" => {
+                    reason = Some(
+                        args.get(i + 1)
+                            .ok_or_else(|| anyhow!("--reason needs a value"))?
+                            .to_string(),
+                    );
+                    i += 2;
+                }
+                "--region" => {
+                    let v = args
+                        .get(i + 1)
+                        .ok_or_else(|| anyhow!("--region needs a value"))?
+                        .to_string();
+                    if !v.contains("::") {
+                        bail!("--region must be <file>::<symbol> (got {v})");
+                    }
+                    region = Some(v);
+                    i += 2;
+                }
+                "--no-region" => {
+                    no_region = true;
+                    i += 1;
+                }
                 other => bail!("unknown flag: {other}"),
             }
         }
@@ -270,6 +328,10 @@ impl ClaimArgs {
             if let Err(msg) = crate::role_registry::validate_role(&repo_root, r) {
                 bail!("{msg}");
             }
+        }
+
+        if region.is_some() && no_region {
+            bail!("--region and --no-region are mutually exclusive");
         }
 
         let worktree_base = std::env::var("CHUMP_WORKTREE_BASE")
@@ -299,7 +361,24 @@ impl ClaimArgs {
             rename,
             role,
             scope,
+            broad,
+            reason,
+            region,
+            no_region,
         })
+    }
+
+    /// INFRA-5758: merge `--paths` CSV with `--region` (if set) into a single
+    /// CSV suitable for the existing paths-array writers, which are agnostic
+    /// to whether an entry is a plain path or a `file::symbol` region. A
+    /// `--no-region` claim (or no `--region` at all) is a pure passthrough.
+    pub fn paths_csv_with_region(&self) -> Option<String> {
+        match (&self.paths, &self.region) {
+            (None, None) => None,
+            (Some(p), None) => Some(p.clone()),
+            (None, Some(r)) => Some(r.clone()),
+            (Some(p), Some(r)) => Some(format!("{p},{r}")),
+        }
     }
 }
 
@@ -710,7 +789,7 @@ pub fn run_check_only(args: ClaimArgs) -> Result<CheckReport> {
 
 /// Run the atomic claim. Each step is a separate function so the unit
 /// tests can exercise individual pieces in isolation.
-pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
+pub fn run_claim(mut args: ClaimArgs) -> Result<ClaimReport> {
     // RESILIENT-073: fleet kill switch — fail-closed autonomy level gate.
     // FIRST: must run BEFORE any state mutation OR any chump op that can
     // fail. Reads ~/.chump/AUTONOMY_LEVEL: 0 or missing/corrupt → STOP.
@@ -804,6 +883,41 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         }
     }
 
+    // INFRA-5775 (INFRA-1863 slice): broad-scope claim guard. A `--paths`
+    // declaration spanning >1 top-level directory either needs an explicit
+    // `--broad --reason '<text>'` override, or gets auto-narrowed to the
+    // most-specific directory common to every declared path.
+    if let Some(paths_csv) = args.paths.clone() {
+        match check_broad_scope_and_narrow(&paths_csv, args.broad, args.reason.as_deref()) {
+            Ok(Some(narrowed)) => {
+                eprintln!(
+                    "[claim] INFRA-5775: --paths '{}' spans >1 top-level directory; \
+                     auto-narrowed to '{}'. Pass --broad --reason '<text>' to keep the \
+                     original scope.",
+                    paths_csv, narrowed
+                );
+                args.paths = Some(narrowed);
+            }
+            Ok(None) => {
+                if args.broad {
+                    let early_session_id = args
+                        .session_id
+                        .clone()
+                        .unwrap_or_else(|| derive_session_id(&args.gap_id));
+                    let ambient_log_early = args.repo_root.join(".chump-locks/ambient.jsonl");
+                    emit_broad_scope_claim(
+                        &ambient_log_early,
+                        &args.gap_id,
+                        &early_session_id,
+                        &paths_csv,
+                        args.reason.as_deref().unwrap_or(""),
+                    );
+                }
+            }
+            Err(e) => return Err(e),
+        }
+    }
+
     // INFRA-1885: lease-breadth cap — reject claims of exact top-level dirs
     // without a more specific sub-path. Forces file-level granularity so
     // broad leases don't block other sessions from filing event-registry
@@ -831,16 +945,28 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // miss the case where two DIFFERENT gap IDs both touch the same file —
     // check declared --paths directly against every open PR's real file
     // list via `gh pr list --json files`.
+    //
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE gates whether an
+    // overlap blocks the claim (`blocking`, default) or merely warns and
+    // lets the claim proceed (`advisory`).
     if let Some(paths_csv) = &args.paths {
         if let Some((pr_num, other_gap, overlap_paths)) =
             check_paths_overlap_open_prs(&args.repo_root, paths_csv)
         {
-            bail!(
-                "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
-                pr_num,
-                other_gap,
-                overlap_paths.join(", "),
-            );
+            match overlap_outcome(claim_mode_from_env(), pr_num, &other_gap, &overlap_paths) {
+                OverlapOutcome::Block(msg) => bail!(msg),
+                OverlapOutcome::Warn(msg) => {
+                    eprintln!("[claim] WARN: {msg}");
+                    let ambient_path = args.repo_root.join(".chump-locks/ambient.jsonl");
+                    emit_claim_overlap_advisory_event(
+                        &ambient_path,
+                        &args.gap_id,
+                        pr_num,
+                        &other_gap,
+                        &overlap_paths,
+                    );
+                }
+            }
         }
     }
 
@@ -1487,6 +1613,12 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
     // the main checkout's cache was warm.
     nugget_prefetch::link_github_cache(&args.repo_root, &worktree_path);
 
+    // 6c-pre4. INFRA-3834: symlink the worktree's .chump/state.db to the
+    // main checkout's copy so `chump gap reserve` run inside the worktree
+    // allocates IDs against the canonical counter instead of a
+    // worktree-local one that can silently collide with main.
+    nugget_prefetch::link_state_db(&args.repo_root, &worktree_path);
+
     // 6c-pre2. INFRA-1730: orphan-branch auto-rename. By this point the
     // 5b stomp-check has already run (above) and would have bailed if an
     // OPEN PR covers this exact branch — so if the remote still has the
@@ -1600,12 +1732,16 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         );
     }
 
-    // 7b. Write JSON lease file to .chump-locks/<session>.json.
+    // 7b. Write JSON lease file to .chump-locks/<session>.json. INFRA-5758:
+    // a `--region <file>::<symbol>` value is merged into the same CSV as
+    // `--paths` — the paths-array writers are agnostic to region-suffixed
+    // entries.
+    let paths_csv_with_region = args.paths_csv_with_region();
     let lease_file = match write_or_merge_lease(
         &lock_dir,
         &session_id,
         &args.gap_id,
-        args.paths.as_deref(),
+        paths_csv_with_region.as_deref(),
         14_400, // 4h TTL
         false,
     ) {
@@ -1648,7 +1784,7 @@ pub fn run_claim(args: ClaimArgs) -> Result<ClaimReport> {
         &ambient_log,
         &args.gap_id,
         &session_id,
-        args.paths.as_deref().unwrap_or(""),
+        paths_csv_with_region.as_deref().unwrap_or(""),
         14_400, // 4h TTL in seconds
     );
 
@@ -1776,6 +1912,127 @@ fn emit_lease_broad_dir_claim(
 }
 
 // ── end INFRA-1885 ───────────────────────────────────────────────────────────
+
+/// INFRA-5775 (INFRA-1863 slice): return the first path component (the
+/// top-level directory) of a repo-relative path. A bare filename with no
+/// slash counts as its own "directory" for this purpose.
+fn top_level_dir_of(path: &str) -> &str {
+    path.split('/').next().unwrap_or(path)
+}
+
+/// INFRA-5775: check whether `paths_csv` spans more than one top-level
+/// directory (AC1) and, if so, either validate the `--broad --reason`
+/// override or compute an auto-narrowed replacement (AC2).
+///
+/// Returns:
+///   - `Ok(None)` — single top-level directory, or a valid `--broad` +
+///     `--reason` override (caller keeps the original paths).
+///   - `Ok(Some(narrowed_csv))` — no override supplied; caller should
+///     replace the declared paths with `narrowed_csv`.
+///   - `Err(_)` — `--broad` was set without `--reason`.
+fn check_broad_scope_and_narrow(
+    paths_csv: &str,
+    broad: bool,
+    reason: Option<&str>,
+) -> Result<Option<String>> {
+    let paths: Vec<&str> = paths_csv
+        .split(',')
+        .map(|p| p.trim())
+        .filter(|p| !p.is_empty())
+        .collect();
+    if paths.len() < 2 {
+        return Ok(None);
+    }
+
+    let mut top_dirs: Vec<&str> = paths.iter().map(|p| top_level_dir_of(p)).collect();
+    top_dirs.sort_unstable();
+    top_dirs.dedup();
+    if top_dirs.len() <= 1 {
+        return Ok(None);
+    }
+
+    if broad {
+        let has_reason = reason.map(|r| !r.trim().is_empty()).unwrap_or(false);
+        if !has_reason {
+            bail!(
+                "INFRA-5775: --broad requires --reason '<text>' explaining why a claim \
+                 spanning multiple top-level directories ({dirs}) is necessary.",
+                dirs = top_dirs.join(", ")
+            );
+        }
+        return Ok(None);
+    }
+
+    Ok(Some(common_parent_dir(&paths)))
+}
+
+/// INFRA-5775: compute the most-specific directory common to every path in
+/// `paths` (longest common path-component prefix). Falls back to the repo
+/// root ("." ) when the paths share no common ancestor directory — which is
+/// always the case when their top-level directories already diverge.
+fn common_parent_dir(paths: &[&str]) -> String {
+    let component_lists: Vec<Vec<&str>> = paths.iter().map(|p| p.split('/').collect()).collect();
+    let min_len = component_lists.iter().map(|c| c.len()).min().unwrap_or(0);
+
+    let mut common_len = 0;
+    for i in 0..min_len {
+        let candidate = component_lists[0][i];
+        if component_lists[1..].iter().all(|cl| cl[i] == candidate) {
+            common_len = i + 1;
+        } else {
+            break;
+        }
+    }
+
+    if common_len == 0 {
+        ".".to_string()
+    } else {
+        component_lists[0][..common_len].join("/")
+    }
+}
+
+/// INFRA-5775: emit `kind=broad_scope_claim` to ambient.jsonl when a
+/// `--broad --reason` override is used to keep a multi-top-level-dir
+/// `--paths` claim. Best-effort — silently no-ops if the file isn't
+/// writable.
+// scanner-anchor: "kind":"broad_scope_claim"
+fn emit_broad_scope_claim(
+    ambient_log: &Path,
+    gap_id: &str,
+    session_id: &str,
+    paths_csv: &str,
+    reason: &str,
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"broad_scope_claim\",\
+         \"session_id\":\"{sid}\",\"gap\":\"{gap}\",\
+         \"paths\":\"{paths}\",\"reason\":\"{reason}\"}}\n",
+        ts = ts,
+        sid = json_escape(session_id),
+        gap = json_escape(gap_id),
+        paths = json_escape(paths_csv),
+        reason = json_escape(reason),
+    );
+    if let Some(parent) = ambient_log.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_log)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
+// ── end INFRA-5775 ───────────────────────────────────────────────────────────
 
 /// INFRA-1025 AC6: check whether <remote>/<branch> exists on the remote.
 /// Uses `git ls-remote --exit-code` which exits 2 when the ref is absent.
@@ -2336,6 +2593,90 @@ pub fn check_open_pr_for_gap(repo_root: &Path, gap_id: &str) -> Option<(u64, Str
         }
     }
     None
+}
+
+/// INFRA-3765 (INFRA-1688 slice): claim-time path-overlap enforcement mode.
+/// `Blocking` (default) refuses the claim on overlap; `Advisory` lets it
+/// proceed after emitting a warning.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ClaimMode {
+    Blocking,
+    Advisory,
+}
+
+/// Reads `CHUMP_CLAIM_MODE` (default `blocking`). Any value other than the
+/// literal `advisory` (case-insensitive) resolves to `Blocking`, so a typo
+/// fails closed rather than silently disabling the overlap guard.
+pub fn claim_mode_from_env() -> ClaimMode {
+    match std::env::var("CHUMP_CLAIM_MODE") {
+        Ok(v) if v.trim().eq_ignore_ascii_case("advisory") => ClaimMode::Advisory,
+        _ => ClaimMode::Blocking,
+    }
+}
+
+/// INFRA-3765 (INFRA-1688 slice): decision outcome for a detected
+/// path-overlap — either a hard block (message for `bail!`) or a warning
+/// (message to log) that lets the claim proceed. Pure/testable: takes the
+/// already-detected overlap tuple rather than re-deriving it.
+pub enum OverlapOutcome {
+    Block(String),
+    Warn(String),
+}
+
+pub fn overlap_outcome(
+    mode: ClaimMode,
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) -> OverlapOutcome {
+    let msg = format!(
+        "[claim] paths overlap with open PR #{} (gap {}, paths: {})",
+        pr_num,
+        other_gap,
+        overlap_paths.join(", "),
+    );
+    match mode {
+        ClaimMode::Blocking => OverlapOutcome::Block(msg),
+        ClaimMode::Advisory => OverlapOutcome::Warn(msg),
+    }
+}
+
+/// INFRA-3765: emit a structured ambient event when an advisory-mode claim
+/// proceeds despite a detected path overlap, so the fleet can audit how
+/// often advisory mode is masking real collisions.
+// scanner-anchor: "kind":"claim_overlap_advisory"
+fn emit_claim_overlap_advisory_event(
+    ambient_path: &Path,
+    gap_id: &str,
+    pr_num: u64,
+    other_gap: &str,
+    overlap_paths: &[String],
+) {
+    let secs = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_secs())
+        .unwrap_or(0);
+    let (y, mo, d, h, mi, s) = secs_to_ymdhms(secs);
+    let ts = format!("{y:04}-{mo:02}-{d:02}T{h:02}:{mi:02}:{s:02}Z");
+    let line = format!(
+        "{{\"ts\":\"{ts}\",\"kind\":\"claim_overlap_advisory\",\
+         \"gap_id\":\"{}\",\"overlap_pr\":{},\"other_gap\":\"{}\",\"paths\":\"{}\"}}\n",
+        json_escape(gap_id),
+        pr_num,
+        json_escape(other_gap),
+        json_escape(&overlap_paths.join(", ")),
+    );
+    if let Some(parent) = ambient_path.parent() {
+        let _ = std::fs::create_dir_all(parent);
+    }
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(ambient_path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
 }
 
 /// INFRA-4996 (INFRA-2434 slice): check whether any file in `paths_csv`
@@ -5262,6 +5603,80 @@ mod nugget_prefetch {
         }
     }
 
+    /// INFRA-3834: link a freshly-created worktree's `.chump/state.db` to
+    /// the main checkout's copy, mirroring the INFRA-1733 `github_cache.db`
+    /// symlink above. Without this, `chump gap reserve` run inside the
+    /// worktree allocates IDs against a worktree-local `gap_counters` row
+    /// that starts from the same baseline as main's — producing IDs that
+    /// silently collide with gaps already assigned in the canonical,
+    /// shared `state.db`. Symlinking makes the worktree read/write the
+    /// same file (and the same SQLite locking/WAL machinery already used
+    /// by concurrent fleet workers against the main checkout), so an ID
+    /// allocated from a worktree can never collide with one allocated
+    /// from main or from a sibling worktree.
+    ///
+    /// Creates a symlink `<worktree>/.chump/state.db` -> the main
+    /// checkout's `.chump/state.db`, using an absolute, canonicalized
+    /// target. Deliberately NOT a fixed `../../...` relative hop like the
+    /// github_cache.db symlink above: this repo's actual worktree layout
+    /// nests worktrees under `<repo>/.claude/worktrees/<name>`, three
+    /// levels below repo_root, not two — a hardcoded `../../` resolves to
+    /// the wrong directory and silently produces a dangling/misplaced
+    /// symlink. Canonicalizing avoids re-encoding a depth assumption that
+    /// can drift again if the worktree layout changes.
+    /// Best-effort: any failure is logged and swallowed so the claim
+    /// proceeds regardless (the worktree falls back to an independent,
+    /// locally-initialized state.db, reproducing the pre-fix collision
+    /// risk — but never blocks the claim).
+    pub fn link_state_db(repo_root: &Path, worktree_path: &Path) {
+        let main_db = repo_root.join(".chump/state.db");
+        let worktree_chump_dir = worktree_path.join(".chump");
+        let worktree_db = worktree_chump_dir.join("state.db");
+
+        if let Err(e) = std::fs::create_dir_all(&worktree_chump_dir) {
+            log::warn!(
+                "INFRA-3834: failed to create {} for state.db linking: {}",
+                worktree_chump_dir.display(),
+                e
+            );
+            return;
+        }
+
+        if !main_db.exists() {
+            log::warn!(
+                "INFRA-3834: main checkout has no {} — leaving worktree state.db to be initialized independently",
+                main_db.display()
+            );
+            return;
+        }
+
+        if worktree_db.exists() || worktree_db.symlink_metadata().is_ok() {
+            // Already linked (e.g. --resume on an existing worktree) or a
+            // real file was initialized before this ran — don't clobber it.
+            return;
+        }
+
+        let target = match std::fs::canonicalize(&main_db) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!(
+                    "INFRA-3834: failed to canonicalize {}: {}",
+                    main_db.display(),
+                    e
+                );
+                return;
+            }
+        };
+        if let Err(e) = std::os::unix::fs::symlink(&target, &worktree_db) {
+            log::warn!(
+                "INFRA-3834: failed to symlink {} -> {}: {}",
+                worktree_db.display(),
+                target.display(),
+                e
+            );
+        }
+    }
+
     /// Read (title, description) from the gap registry. Description is read
     /// from the `description` column if present; otherwise we fall back to
     /// acceptance_criteria (still richer than title alone).
@@ -5387,6 +5802,82 @@ mod nugget_prefetch {
             std::env::remove_var("CHUMP_CLAIM_SKIP_NUGGET_SEARCH");
             // Must not panic or hang, even with no env / no DB.
             prefetch_and_print(Path::new("/nonexistent"), "INFRA-NOPE", "test-session");
+        }
+
+        /// INFRA-3834: a fresh worktree's `.chump/state.db` must become a
+        /// symlink to the main checkout's copy, not an independent file —
+        /// otherwise a gap_counters row in the worktree starts from the
+        /// same baseline as main's and can allocate a colliding ID.
+        #[test]
+        fn link_state_db_symlinks_to_main_checkout() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(repo_root.join(".chump")).unwrap();
+            std::fs::create_dir_all(&worktree_path).unwrap();
+            std::fs::write(repo_root.join(".chump/state.db"), b"canonical").unwrap();
+
+            link_state_db(&repo_root, &worktree_path);
+
+            let worktree_db = worktree_path.join(".chump/state.db");
+            let meta = std::fs::symlink_metadata(&worktree_db)
+                .expect("worktree state.db should exist after linking");
+            assert!(
+                meta.file_type().is_symlink(),
+                "worktree .chump/state.db should be a symlink, not a real file"
+            );
+            // Content resolves through the symlink to the main checkout's db,
+            // i.e. a gap_counters allocation in the worktree is the SAME
+            // allocation as one in main — collision is structurally impossible.
+            let content = std::fs::read(&worktree_db).unwrap();
+            assert_eq!(content, b"canonical");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+
+        #[test]
+        fn link_state_db_does_not_clobber_existing_file() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-noclobber-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(repo_root.join(".chump")).unwrap();
+            std::fs::create_dir_all(worktree_path.join(".chump")).unwrap();
+            std::fs::write(repo_root.join(".chump/state.db"), b"canonical").unwrap();
+            std::fs::write(worktree_path.join(".chump/state.db"), b"already-here").unwrap();
+
+            link_state_db(&repo_root, &worktree_path);
+
+            let content = std::fs::read(worktree_path.join(".chump/state.db")).unwrap();
+            assert_eq!(content, b"already-here");
+
+            let _ = std::fs::remove_dir_all(&tmp);
+        }
+
+        #[test]
+        fn link_state_db_noop_when_main_has_none() {
+            let tmp = std::env::temp_dir().join(format!(
+                "chump-test-link-state-db-nomaindb-{}-{:?}",
+                std::process::id(),
+                std::thread::current().id()
+            ));
+            let repo_root = tmp.join("main");
+            let worktree_path = tmp.join("worktree");
+            std::fs::create_dir_all(&repo_root).unwrap();
+            std::fs::create_dir_all(&worktree_path).unwrap();
+
+            // Must not panic even though main has no .chump/state.db.
+            link_state_db(&repo_root, &worktree_path);
+            assert!(!worktree_path.join(".chump/state.db").exists());
+
+            let _ = std::fs::remove_dir_all(&tmp);
         }
     }
 }
@@ -6246,6 +6737,101 @@ mod tests {
         assert_eq!(s.matches('-').count(), 4);
     }
 
+    // INFRA-3765 (INFRA-1688 slice): CHUMP_CLAIM_MODE default + parsing.
+    #[test]
+    fn claim_mode_defaults_to_blocking_when_unset() {
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Blocking);
+    }
+
+    #[test]
+    fn claim_mode_advisory_is_case_insensitive() {
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_MODE", "Advisory");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Advisory);
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+    }
+
+    #[test]
+    fn claim_mode_unrecognized_value_fails_closed_to_blocking() {
+        unsafe {
+            std::env::set_var("CHUMP_CLAIM_MODE", "bogus");
+        }
+        assert_eq!(claim_mode_from_env(), ClaimMode::Blocking);
+        unsafe {
+            std::env::remove_var("CHUMP_CLAIM_MODE");
+        }
+    }
+
+    // AC2: blocking semantics unchanged — overlap produces a Block outcome.
+    #[test]
+    fn overlap_outcome_blocking_mode_blocks() {
+        let outcome = overlap_outcome(
+            ClaimMode::Blocking,
+            42,
+            "INFRA-999",
+            &["src/foo.rs".to_string()],
+        );
+        match outcome {
+            OverlapOutcome::Block(msg) => {
+                assert!(msg.contains("#42"));
+                assert!(msg.contains("INFRA-999"));
+                assert!(msg.contains("src/foo.rs"));
+            }
+            OverlapOutcome::Warn(_) => panic!("expected Block in blocking mode"),
+        }
+    }
+
+    // AC3: advisory mode emits a structured warning and succeeds (no block).
+    #[test]
+    fn overlap_outcome_advisory_mode_warns() {
+        let outcome = overlap_outcome(
+            ClaimMode::Advisory,
+            7,
+            "INFRA-111",
+            &["src/bar.rs".to_string()],
+        );
+        match outcome {
+            OverlapOutcome::Warn(msg) => {
+                assert!(msg.contains("#7"));
+                assert!(msg.contains("INFRA-111"));
+                assert!(msg.contains("src/bar.rs"));
+            }
+            OverlapOutcome::Block(_) => panic!("expected Warn in advisory mode"),
+        }
+    }
+
+    #[test]
+    fn claim_overlap_advisory_event_is_emitted_to_ambient() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-claim-mode-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&dir).unwrap();
+        let ambient_path = dir.join("ambient.jsonl");
+        emit_claim_overlap_advisory_event(
+            &ambient_path,
+            "INFRA-3765",
+            7,
+            "INFRA-111",
+            &["src/bar.rs".to_string()],
+        );
+        let contents = std::fs::read_to_string(&ambient_path).unwrap();
+        assert!(contents.contains("claim_overlap_advisory"));
+        assert!(contents.contains("INFRA-3765"));
+        assert!(contents.contains("INFRA-111"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
     // INFRA-1328: gh_owner_repo URL parser — pure logic, no network.
     #[test]
     fn gh_owner_repo_parses_https_url() {
@@ -6750,6 +7336,199 @@ mod tests {
         let argv: Vec<String> = vec!["claim".into(), "INFRA-6624".into(), "--scope".into()];
         let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
         assert!(format!("{err:#}").contains("--scope needs a value"));
+    }
+
+    // INFRA-5758 (INFRA-1689 slice): --region flag.
+    #[test]
+    fn from_argv_region_flag_alongside_paths() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--paths".into(),
+            "docs/foo.md".into(),
+            "--region".into(),
+            "src/foo.rs::dispatch_fanout".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert_eq!(args.region.as_deref(), Some("src/foo.rs::dispatch_fanout"));
+        assert!(!args.no_region);
+        assert_eq!(
+            args.paths_csv_with_region().as_deref(),
+            Some("docs/foo.md,src/foo.rs::dispatch_fanout")
+        );
+    }
+
+    #[test]
+    fn from_argv_region_flag_without_paths() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--region".into(),
+            "src/foo.rs::dispatch_fanout".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.paths.is_none());
+        assert_eq!(
+            args.paths_csv_with_region().as_deref(),
+            Some("src/foo.rs::dispatch_fanout")
+        );
+    }
+
+    #[test]
+    fn from_argv_region_missing_double_colon_errors() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--region".into(),
+            "src/foo.rs".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("--region must be <file>::<symbol>"));
+    }
+
+    #[test]
+    fn from_argv_no_region_flag() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--no-region".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.no_region);
+        assert!(args.region.is_none());
+        assert!(args.paths_csv_with_region().is_none());
+    }
+
+    #[test]
+    fn from_argv_region_and_no_region_mutually_exclusive() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5758".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--region".into(),
+            "src/foo.rs::dispatch_fanout".into(),
+            "--no-region".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("mutually exclusive"));
+    }
+
+    #[test]
+    fn write_basic_lease_stores_region_entry_in_paths_array() {
+        // AC3: round-trip a lease whose paths CSV contains a `file::symbol`
+        // region entry through the real on-disk writer (not just the struct).
+        let tmp = std::env::temp_dir().join(format!(
+            "infra5758-region-{}",
+            std::time::SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        std::fs::create_dir_all(&tmp).unwrap();
+
+        let lease_path = write_basic_lease(
+            &tmp,
+            "test-session-region",
+            "INFRA-5758",
+            Some("docs/foo.md,src/foo.rs::dispatch_fanout"),
+            14_400,
+        )
+        .expect("write");
+
+        let body = std::fs::read_to_string(&lease_path).unwrap();
+        let parsed: serde_json::Value = serde_json::from_str(&body).unwrap();
+        assert_eq!(
+            parsed["paths"],
+            serde_json::json!(["docs/foo.md", "src/foo.rs::dispatch_fanout"])
+        );
+
+        let _ = std::fs::remove_dir_all(&tmp);
+    }
+
+    #[test]
+    fn from_argv_broad_and_reason_flags() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5775".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--paths".into(),
+            "src/foo.rs,docs/bar.md".into(),
+            "--broad".into(),
+            "--reason".into(),
+            "cross-cutting rename".into(),
+        ];
+        let args = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap();
+        assert!(args.broad);
+        assert_eq!(args.reason.as_deref(), Some("cross-cutting rename"));
+    }
+
+    #[test]
+    fn from_argv_reason_missing_value_errors() {
+        let argv: Vec<String> = vec![
+            "claim".into(),
+            "INFRA-5775".into(),
+            "--role".into(),
+            "shepherd".into(),
+            "--reason".into(),
+        ];
+        let err = ClaimArgs::from_argv(&argv, PathBuf::from(".")).unwrap_err();
+        assert!(format!("{err:#}").contains("--reason needs a value"));
+    }
+
+    // INFRA-5775 (INFRA-1863 slice): broad-scope claim guard.
+    #[test]
+    fn broad_scope_single_top_dir_passes_through() {
+        let result = check_broad_scope_and_narrow("src/foo.rs,src/bar.rs", false, None).unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_without_broad_auto_narrows() {
+        let result = check_broad_scope_and_narrow("src/foo.rs,docs/bar.md", false, None).unwrap();
+        assert_eq!(result, Some(".".to_string()));
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_narrows_to_shared_ancestor() {
+        // Both paths share "src/module" as their deepest common ancestor
+        // even though the *top-level* dir ("src") is the same for both —
+        // this exercises common_parent_dir's prefix computation directly.
+        let narrowed = common_parent_dir(&["src/module/a.rs", "src/module/sub/b.rs"]);
+        assert_eq!(narrowed, "src/module");
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_with_broad_and_reason_passes() {
+        let result = check_broad_scope_and_narrow(
+            "src/foo.rs,docs/bar.md",
+            true,
+            Some("cross-cutting rename"),
+        )
+        .unwrap();
+        assert_eq!(result, None);
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_with_broad_missing_reason_errors() {
+        let err = check_broad_scope_and_narrow("src/foo.rs,docs/bar.md", true, None).unwrap_err();
+        assert!(format!("{err:#}").contains("--broad requires --reason"));
+    }
+
+    #[test]
+    fn broad_scope_multi_dir_with_broad_empty_reason_errors() {
+        let err =
+            check_broad_scope_and_narrow("src/foo.rs,docs/bar.md", true, Some("  ")).unwrap_err();
+        assert!(format!("{err:#}").contains("--broad requires --reason"));
     }
 
     #[test]

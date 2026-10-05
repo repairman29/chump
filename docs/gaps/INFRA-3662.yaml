@@ -1,0 +1,37 @@
+- id: INFRA-3662
+  domain: INFRA
+  title: "MISSION: THRU-04 —  Per-N-worker CARGO_TARGET_DIR on USB to end fingerprint clobbering"
+  status: already_satisfied
+  priority: P2
+  effort: m
+  description: |
+    Shared target dir causes sibling-worktree fingerprint clobbering (INFRA-1138, CLAUDE_GOTCHAS.md:341) → perpetual from-scratch recompiles. At capped FLEET_SIZE, give each worker (or group of <=2) a distinct target dir on USB; keep sccache object-sharing. Mines docs/process/CLAUDE_GOTCHAS.md:341, worker.sh:172-174, run-fleet.sh:355-361.
+  acceptance_criteria:
+    1. Each worker (or <=2 group) has a distinct CARGO_TARGET_DIR under USB with combined footprint <= USB free; sccache hit-rate parity vs single-target
+    2. Zero 'phantom fingerprint from sibling worktree' trailers over 24h
+  notes: |
+    Decomposed into 7 slices: INFRA-7869, INFRA-7870, INFRA-7871, INFRA-7872, INFRA-7873, INFRA-7874, INFRA-7875
+
+    [2026-10-01] Already satisfied: scripts/dispatch/run-fleet.sh already implements
+    both ACs on main, shipped under this same gap ID in PR #4125 (commit 4377acd39,
+    "per-N-worker CARGO_TARGET_DIR on USB to end fingerprint clobbering"). AC1:
+    CHUMP_CARGO_TARGET_GROUP_SIZE (default 2, validated/clamped) splits FLEET_SIZE
+    workers into ceil(N/group_size) groups, each assigned its own
+    CARGO_TARGET_DIR=$CHUMP_CARGO_TARGET_ROOT/group-<N> (run-fleet.sh:484-525,
+    1124-1131); _detect_cargo_target_root() autodetects a mounted USB/cjdata* disk
+    (mirrors install-sccache.sh's INFRA-3660 autodetect) and falls back to the
+    existing single-target location when no USB mount exists, so combined footprint
+    stays bounded (FLEET_SIZE/group_size distinct dirs, not FLEET_SIZE) rather than
+    exceeding USB free space; sccache (rustc-wrapper in .cargo/config.toml) continues
+    sharing compiled object code fleet-wide regardless of group assignment, so
+    hit-rate is unaffected — only fingerprint/incremental state is now group-local.
+    AC2: isolating fingerprint/incremental cache per group is precisely what ends the
+    "couldn't read tests/foo.rs" cross-worktree fingerprint-poisoning class
+    (INFRA-1138) for the persistent worker.sh loop's cargo check/clippy invocations,
+    which the earlier INFRA-1138 fix only covered for the per-worker test-gate's
+    cargo test. docs/process/CLAUDE_GOTCHAS.md documents the fix. The gap's own
+    state.db/docs/gaps record was missing at claim time (likely lost in a prior sync)
+    despite the code already being shipped under this ID; this closure just
+    reconciles the registry with reality, no code change needed.
+  closed_date: '2026-10-01'
+  outcome_id: MISSION-010

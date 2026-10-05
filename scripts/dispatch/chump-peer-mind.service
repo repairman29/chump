@@ -1,0 +1,24 @@
+# RESILIENT-1497 — the free Opus peer's cadenced judgment tick. Reads fleet
+# state + ambient + its own chump_memory.db running context, forms a
+# chief-of-staff judgment, and acts on non-gated fleet work only (file gaps,
+# dispatch, reprioritize, update the daily digest). Gated actions (repo
+# visibility, spend, credentials, deletes, outward sends) are surfaced to
+# Jeff/first-mate, never self-approved (META-901). Paired with
+# chump-peer-mind.timer (~20 min cadence). Mirrors the host-rewrite
+# convention documented in chump-duty-officer.service: HOME/CHUMP_REPO_ROOT
+# below assume helsinki (/root); install-helsinki-atc.sh / chump-node-
+# install.sh rewrite these for the run-user HOME on other owned nodes
+# (cuphead/CJ: ubuntu/jeff HOME).
+[Unit]
+Description=Chump peer-mind — cadenced Opus judgment tick, non-gated fleet work only (RESILIENT-1497)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=CHUMP_REPO_ROOT=/root/Projects/chump
+Environment=CHUMP_PEER_EXECUTE=1
+Environment=CHUMP_PEER_MODEL=opus
+ExecStart=/bin/bash -lc "set -a; source /root/.chump/providers.env 2>/dev/null; set +a; cd /root/Projects/chump; exec bash scripts/coord/duty-officer-loop.sh judgment-tick"
+TimeoutStartSec=360
