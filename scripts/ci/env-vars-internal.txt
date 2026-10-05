@@ -17,6 +17,10 @@ HOSTNAME
 PATH
 USER
 XDG_CONFIG_HOME
+# Set by the GitHub Actions runner (RESILIENT-018 detects a CI job with no token)
+GITHUB_ACTIONS
+GITHUB_JOB
+GITHUB_WORKFLOW
 
 # ── Tier 3: runtime state set by the fleet / harness ──────────────────────
 CHUMP_GAP_ID

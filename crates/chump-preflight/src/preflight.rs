@@ -1157,6 +1157,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // merge-conflict clobbers silently dropping registry kinds.
         "scripts/ci/test-event-registry-audit-regression.sh",
         "scripts/ci/test-no-raw-gh-in-hot-paths.sh",
+        // RESILIENT-018: gh-in-ci GH_TOKEN guard lint gate + its own smoke
+        // test. Pure shell, no network — greps scripts/ci/test-*.sh for
+        // unguarded gh calls and exercises check_gh_token_or_skip directly.
+        "scripts/ci/test-gh-in-ci-guarded.sh",
+        "scripts/ci/test-gh-token-guard.sh",
         "scripts/ci/check-path-filter-coverage.sh",
         "scripts/ci/test-env-var-coverage.sh",
         "scripts/ci/test-merged-check-guard.sh",
