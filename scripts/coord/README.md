@@ -246,3 +246,31 @@ Protected branches (never pruned): `main`, `master`, `develop`, `staging`,
 `production`, `release/*`, `gh-readonly-queue/*`, `release-plz-*`.
 
 Emits `kind=branch_reaper_pruned` to `ambient.jsonl` per deletion.
+
+## `chump-coord assign` — delta publish, not a full-backlog firehose (ZERO-WASTE-003)
+
+`chump-coord assign` (FLEET-034, `crates/chump-coord/src/assign.rs`) polls
+`state.db` every `poll_interval` and publishes `WorkEnvelope`s to
+`chump.work.<priority>.<class>.<machine>` for open+unclaimed gaps.
+
+**It is a delta publisher, not a full-backlog re-broadcast.** Each cycle
+computes a routing fingerprint (priority + class + machine + replicas) per
+open+unclaimed gap and diffs it against the previous cycle's `DeltaState`
+(in-memory, process-lifetime). Only gaps that are **new** (never seen),
+**changed** (fingerprint differs — e.g. priority bump), or **newly
+unclaimed** get published; an unchanged backlog publishes ~0 envelopes per
+cycle. A gap that gets claimed between cycles simply drops out of the next
+`DeltaState` snapshot — no tombstone envelope is published for it.
+
+- **First cycle after daemon start always republishes the full open set
+  once.** `DeltaState` starts empty on every process start (it is not
+  persisted to disk), so every open+unclaimed gap looks "new" on cycle 1 —
+  this is the intentional fail-open behavior, not a bug or a missing-state
+  error path.
+- **Broker-down path is unchanged (FLEET-034):** if NATS is unreachable at
+  startup, `assign` logs the condition and exits `0` so a supervisor can
+  restart it; workers fall back to the existing pull loop.
+- Consumers that previously relied on every open gap being re-announced
+  every `poll_interval` (e.g. for a crude periodic refresh) must switch to
+  treating `chump.work.>` as an edge-triggered change feed, not a
+  level-triggered snapshot — cross-check `state.db` directly for full state.
