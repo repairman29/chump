@@ -9487,6 +9487,20 @@ events:
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, detail]
 
+  - kind: checkout_parked_off_main
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh (RESILIENT-1512)
+    trigger: >
+      Emitted when check_checkout_parked_off_main finds REPO_ROOT's
+      currently checked-out branch is not `main` and has stayed that way
+      for longer than CHECKOUT_PARKED_STALE_S (default 3600s). Closes the
+      hub-node failure mode where a gap-store checkout sat parked on a
+      feature branch (with thousands of dirty files) for hours, invisible
+      until a `chump gap ship` proof-of-merge check refused to close a
+      gap whose PR had already merged 3h earlier.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, branch, age_s]
+
   - kind: wedge_detected
     effect_metric: resilient
     emitter: scripts/coord/wizard-daemon.sh step3 (META-107)
