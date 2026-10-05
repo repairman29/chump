@@ -10334,6 +10334,9 @@ events:
         chump_hold_label        — PR carries the CHUMP_HOLD label
         rebase_conflict         — gh pr update-branch returned non-zero (conflict or API error)
         rate_limit_reached      — CHUMP_UNBLOCK_RATE_LIMIT exceeded for this run
+        failing_after_fresh_base — (RESILIENT-1521 stale sweep) PR was refreshed onto an advanced
+                                   base and is still BLOCKED; routed once to ci-audit via kind=pr_stuck
+      Stale-sweep events carry source_pr=0 and signature_hash=stale_sweep.
     consumers: [ops-audit]
     fields_required: [ts, kind, source, source_pr, signature_hash, pr_number, reason]
     expected_volume: "0–N per cascade run (N = blocked PRs that hit safety guards)"
