@@ -1,7 +1,7 @@
 - id: INFRA-1945
   domain: INFRA
   title: "INFRA-1862 slice B: role-typed routing — broadcast.sh --to role:shepherd routes to alive shepherd-* sessions (uses fleet-registry.jsonl from operator's 17:31Z directive)"
-  status: open
+  status: done
   priority: P2
   effort: s
   acceptance_criteria:
@@ -15,5 +15,7 @@
     - "Done definition — wizard sends 'broadcast.sh --to role:shepherd' and it lands in the alive shepherd's inbox without needing the wizard to know which date-variant or session-id to address"
   notes: |
     filed 17:42Z 2026-05-24 by wizard owning the offline decompose-curator task (per operator 17:31Z directive); slice of INFRA-1862 (META-074 child B A2A WORLD-CLASS)
+  closed_date: '2026-10-04'
+  closed_pr: 5035
   outcome_id: MISSION-010
 

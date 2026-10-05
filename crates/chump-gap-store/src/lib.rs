@@ -6031,6 +6031,38 @@ impl GapStore {
         }
         Ok(closed)
     }
+
+    /// INFRA-8067: count `parent_id`'s existing OPEN child slices — the
+    /// root-cause fix for RESILIENT-1437 (the decompose reflex re-slicing
+    /// the same parent repeatedly).
+    ///
+    /// `decomposed_parent_rollup` (above) can only find children once the
+    /// parent's `notes` field carries the "Decomposed into N slices: ..."
+    /// marker, which `chump gap decompose --apply` writes LAST, after every
+    /// slice is filed. If that run is interrupted (crash, OOM, kill -9)
+    /// after filing slices but before writing the marker, the parent is
+    /// still `status=open` with no notes marker, so a second decompose run
+    /// sees a "fresh" parent and re-files the same slices again — observed
+    /// in the field as the gap-store's 92% slice-bloat (RESILIENT-1437).
+    ///
+    /// This scans OPEN gaps directly for the slice-naming convention
+    /// (`"... (<parent_id> slice)"`, exactly what `chump gap decompose
+    /// --apply` titles each filed slice) and for any gap whose
+    /// `depends_on` references `parent_id`, so it finds orphaned slices
+    /// even when the parent's own bookkeeping never landed.
+    pub fn count_open_slices(&self, parent_id: &str) -> Result<usize> {
+        let suffix = format!("({parent_id} slice)");
+        let needle = format!("\"{parent_id}\"");
+        let open_gaps = self.list(Some("open"))?;
+        let count = open_gaps
+            .iter()
+            .filter(|g| {
+                g.id != parent_id
+                    && (g.title.trim_end().ends_with(&suffix) || g.depends_on.contains(&needle))
+            })
+            .count();
+        Ok(count)
+    }
 }
 
 // ────────── repos table (MISSION-033) ──────────
@@ -7424,6 +7456,168 @@ mod tests {
         // the terminal-status guard in the UPDATE).
         let closed_again = store.auto_close_decomposed_parents().unwrap();
         assert!(closed_again.is_empty());
+    }
+
+    // ── INFRA-8067: re-slice guard (RESILIENT-1437 root-cause fix) ────
+    //
+    // RESILIENT-1437: the gap-store was ~92% redundant machine-filed
+    // slices because the EFFECTIVE-310 decompose reflex in
+    // scripts/dispatch/worker.sh could re-slice the same parent gap
+    // repeatedly. `chump gap decompose` only ever guarded on
+    // parent.status != "open" (RESILIENT-1364) — a decompose run that
+    // files slices but is interrupted (crash/kill/wedge) BEFORE writing
+    // the parent's final status=decomposed + notes marker leaves that
+    // parent looking "fresh" (still status=open, no notes marker) to
+    // every subsequent run, which re-files a near-duplicate batch of
+    // slices. `count_open_slices` is the fix: it finds a parent's open
+    // slices directly from the slice title convention (and depends_on),
+    // independent of whether the parent's own bookkeeping ever landed.
+
+    #[test]
+    fn count_open_slices_is_zero_for_a_fresh_parent() {
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        assert_eq!(
+            store.count_open_slices(&parent).unwrap(),
+            0,
+            "a parent with no filed slices must report zero open slices"
+        );
+    }
+
+    #[test]
+    fn count_open_slices_finds_slices_even_without_the_parent_notes_marker() {
+        // This is the exact orphaned-slices scenario from RESILIENT-1437:
+        // slices got filed (title carries the "(<parent> slice)" suffix
+        // `chump gap decompose --apply` uses) but the run never reached
+        // the final `store.set_fields(parent, status=decomposed, notes=...)`
+        // write — e.g. it was killed mid-flight. The parent is still
+        // status=open with empty notes, so `decomposed_parent_rollup`
+        // (which parses the notes marker) finds nothing — but
+        // `count_open_slices` must still see the orphaned slices, because
+        // it is what the decompose command's new re-slice guard depends
+        // on.
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let _child = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: first slice ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+
+        // Parent was NEVER demoted/marked decomposed (simulating the crash).
+        assert_eq!(store.get(&parent).unwrap().unwrap().status, "open");
+        assert!(store.decomposed_parent_rollup(&parent).unwrap().is_none());
+
+        assert_eq!(
+            store.count_open_slices(&parent).unwrap(),
+            1,
+            "must find the orphaned slice by its title convention even with no notes marker"
+        );
+    }
+
+    #[test]
+    fn count_open_slices_ignores_slices_that_are_no_longer_open() {
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+        let child = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: first slice ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+        store
+            .set_fields(
+                &child,
+                GapFieldUpdate {
+                    status: Some("done".into()),
+                    closed_pr: Some(1),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+
+        assert_eq!(
+            store.count_open_slices(&parent).unwrap(),
+            0,
+            "a done slice must not count as an open slice"
+        );
+    }
+
+    #[test]
+    fn a_parent_with_open_slices_is_sliced_at_most_once() {
+        // The regression this gap exists to prevent: simulate two
+        // decompose "runs" using the same store primitives
+        // `chump gap decompose --apply` uses (reserve + set_fields), and
+        // assert the guard `count_open_slices` relies on blocks the
+        // second run from ever filing a duplicate batch.
+        let (store, _dir) = test_store();
+        let parent = store
+            .reserve("RESILIENT", "umbrella parent", "P1", "m")
+            .unwrap();
+
+        // ── Run 1: a genuinely fresh parent — must be allowed to slice. ──
+        assert_eq!(store.count_open_slices(&parent).unwrap(), 0);
+        let slice1 = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: do the thing ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+        let slice2 = store
+            .reserve(
+                "RESILIENT",
+                &format!("RESILIENT: do the other thing ({parent} slice)"),
+                "P2",
+                "s",
+            )
+            .unwrap();
+        // Run 1 is interrupted before writing status=decomposed + notes —
+        // the exact crash window RESILIENT-1437 exploited.
+
+        // ── Run 2: reflex hits strike threshold again, tries to decompose
+        // the "same" parent (still status=open from its point of view). ──
+        let open_slices_before_run_2 = store.count_open_slices(&parent).unwrap();
+        assert_eq!(
+            open_slices_before_run_2, 2,
+            "the two slices from run 1 must already be visible to the guard"
+        );
+        // This is the guard `chump gap decompose` now checks before doing
+        // ANY LLM work or filing ANY new slice (src/main.rs): count >= 1
+        // means refuse. We assert the refusal condition directly rather
+        // than re-implementing the CLI's LLM-calling code path here.
+        let run_2_must_refuse = open_slices_before_run_2 >= 1;
+        assert!(
+            run_2_must_refuse,
+            "run 2 must be refused — parent already has open slices"
+        );
+
+        // Prove the refusal: the gap store still has exactly the 2 slices
+        // from run 1 — a buggy second run (pre-INFRA-8067) would have
+        // filed 2 MORE near-duplicate slices here, for 4 total.
+        let open_gaps = store.list(Some("open")).unwrap();
+        let slice_count = open_gaps
+            .iter()
+            .filter(|g| g.title.ends_with(&format!("({parent} slice)")))
+            .count();
+        assert_eq!(
+            slice_count, 2,
+            "parent must have been sliced AT MOST ONCE — found {slice_count} slices, expected exactly 2 from the single allowed run"
+        );
+        assert!(open_gaps.iter().any(|g| g.id == slice1));
+        assert!(open_gaps.iter().any(|g| g.id == slice2));
     }
 
     #[test]

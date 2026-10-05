@@ -9,10 +9,17 @@ set -e
 REPO_ROOT=$(git rev-parse --show-toplevel)
 cd "$REPO_ROOT"
 
+# INFRA-2088: canonical sandbox primitive — single source of truth for the
+# CHUMP_HOME/CHUMP_REPO/CHUMP_REPO_ROOT/CHUMP_STATE_DB/CHUMP_LOCK_DIR
+# isolation-var list, so a future new var only needs updating here.
+# shellcheck source=lib/test-sandbox.sh
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
+
 PASS=0
 FAIL=0
 TMPROOT=$(mktemp -d)
-trap 'rm -rf "$TMPROOT"' EXIT
+trap 'unset CHUMP_HOME CHUMP_REPO CHUMP_REPO_ROOT CHUMP_STATE_DB CHUMP_LOCK_DIR; rm -rf "$TMPROOT"' EXIT
 
 pass() { echo "[PASS] $1"; PASS=$((PASS+1)); }
 fail() { echo "[FAIL] $1"; FAIL=$((FAIL+1)); }
@@ -60,15 +67,15 @@ FLOCK_EOF
     # a remote pointing back at this sandbox (so origin/main resolves).
     git -C "$sandbox" remote add origin "$sandbox" 2>/dev/null || true
     git -C "$sandbox" fetch -q origin 2>/dev/null || true
-    # INFRA-2080: gap-reserve.sh was migrated from docs/gaps.yaml to state.db
-    # (INFRA-2000 / PR #2637). Seed the sandbox's own state.db with the fixture
-    # YAML so `chump gap reserve` reads the sandbox data, not the real repo's db.
-    # CHUMP_GAP_IMPORT_NO_SIMILARITY=1 bypasses the title-dedup check that would
-    # otherwise open and compare against the real db.
-    CHUMP_HOME="$sandbox" \
-    CHUMP_REPO="$sandbox" \
-    CHUMP_GAP_IMPORT_NO_SIMILARITY=1 \
-    chump gap import --yaml "$sandbox/docs/gaps.yaml" >/dev/null 2>&1 || true
+    # INFRA-2080/INFRA-2088: gap-reserve.sh was migrated from docs/gaps.yaml to
+    # state.db (INFRA-2000 / PR #2637). Seed the sandbox's own state.db with
+    # the fixture via the canonical sandbox primitive so `chump gap reserve`
+    # reads the sandbox data, not the real repo's db. chump_test_sandbox_setup
+    # exports CHUMP_HOME/CHUMP_REPO/CHUMP_REPO_ROOT/CHUMP_STATE_DB/CHUMP_LOCK_DIR
+    # for the rest of this process (consumed by reserve_in_sandbox below).
+    local fixture_file="$sandbox/.fixture-gaps.yaml"
+    printf '%s' "$fixture_yaml" | sed '/^gaps:$/d' > "$fixture_file"
+    chump_test_sandbox_setup "$sandbox" --seed-yaml "$fixture_file"
 }
 
 # EFFECTIVE-466: is_skippable_gap — a gap is "skippable" (already spoken for)
@@ -121,16 +128,14 @@ reserve_in_sandbox() {
     (
         cd "$sandbox"
         export PATH="$sandbox/bin:$PATH"
-        # INFRA-2080: point CHUMP_HOME and CHUMP_REPO at the sandbox so that
-        # `chump gap reserve` (invoked by gap-reserve.sh) resolves its state.db
-        # to $sandbox/.chump/state.db rather than the real repo's db.
-        CHUMP_HOME="$sandbox" \
-        CHUMP_REPO="$sandbox" \
+        # INFRA-2088: CHUMP_HOME/CHUMP_REPO/CHUMP_REPO_ROOT/CHUMP_STATE_DB/
+        # CHUMP_LOCK_DIR are already exported by chump_test_sandbox_setup
+        # (called in sandbox_setup above) and point at this $sandbox — no
+        # per-call env re-derivation needed.
         CHUMP_GAP_RESERVE_SKIP_PR=1 \
         CHUMP_RESERVE_SCAN_OPEN_PRS=0 \
         CHUMP_SESSION_ID="test-pad-$$" \
         CHUMP_ALLOW_MAIN_WORKTREE=1 \
-        CHUMP_LOCK_DIR="$sandbox/.chump-locks" \
         FLEET_029_AMBIENT_GLANCE_SKIP=1 \
         scripts/coord/gap-reserve.sh "$domain" "$title" 2>/dev/null
     )
