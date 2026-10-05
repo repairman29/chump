@@ -1137,6 +1137,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // pure local (fifo + subshell, no network).
         "scripts/ci/test-parse-token-usage-dead-writer-timeout.sh",
         "scripts/ci/test-event-registry-coverage.sh",
+        // INFRA-3579: integrations.yml pull_request concurrency group must stay
+        // keyed on github.sha (not pull_request.number) — regression of this
+        // guard reintroduces the 0-step CANCELLED self-hosted checkout class
+        // that INFRA-1655 root-caused to concurrency-group cancellation.
+        "scripts/ci/test-integrations-yml-concurrency-group-key.sh",
         // MISSION-045: outcome-gate keystone — proves P0/P1 reserves are blocked
         // without an outcome (when outcomes exist), the audited flag + empty-DB
         // skip work. Fast (~2s), pure local (chump binary + temp dirs, no network).
@@ -1157,6 +1162,11 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // merge-conflict clobbers silently dropping registry kinds.
         "scripts/ci/test-event-registry-audit-regression.sh",
         "scripts/ci/test-no-raw-gh-in-hot-paths.sh",
+        // RESILIENT-018: gh-in-ci GH_TOKEN guard lint gate + its own smoke
+        // test. Pure shell, no network — greps scripts/ci/test-*.sh for
+        // unguarded gh calls and exercises check_gh_token_or_skip directly.
+        "scripts/ci/test-gh-in-ci-guarded.sh",
+        "scripts/ci/test-gh-token-guard.sh",
         "scripts/ci/check-path-filter-coverage.sh",
         "scripts/ci/test-env-var-coverage.sh",
         "scripts/ci/test-merged-check-guard.sh",

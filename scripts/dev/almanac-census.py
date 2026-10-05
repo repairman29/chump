@@ -51,12 +51,18 @@ Usage:
     python3 scripts/dev/almanac-census.py "<concept>" --fixture PATH [--json]
     python3 scripts/dev/almanac-census.py "<concept>" --almanac-bin PATH
 
-Exit code is always 0 — this is a report for a human to act on (extract,
-adopt, or ignore), not an enforcement gate.
+Exit code is always 0 for the default census report — this is a report for
+a human to act on (extract, adopt, or ignore), not an enforcement gate.
+
+The `--summarize-pct` mode (CREDIBLE-352, CREDIBLE-300 slice) is the one
+exception: CREDIBLE-891 (CREDIBLE-300 slice) enforces the mission floor
+there — if the computed summarized_pct is at or below 95%, it logs an error
+to stderr and exits non-zero instead of silently emitting a degraded metric.
 """
 
 import argparse
 import json
+import os
 import shutil
 import subprocess
 import sys
@@ -509,6 +515,26 @@ def main() -> int:
         loaded = load_sites(args.concept or "", args.limit, args.fixture, bin_path)
         pct = compute_summarized_pct(loaded["sites"])
         print(f"almanac_coverage_summarized_pct : {pct}")
+        # CREDIBLE-891 (CREDIBLE-300 slice): enforce the >95% mission floor
+        # here, not just report it. `compute_summarized_pct` returns a 0.0-1.0
+        # ratio; the floor is expressed as a percentage, so compare pct*100.
+        # The floor env override is clamped to never drop below 95%, mirroring
+        # the CREDIBLE-1210 clamp used by the sibling watchdog/keeper scripts.
+        min_pct = float(os.environ.get("CHUMP_ALMANAC_CENSUS_MIN_PCT", "95"))
+        if min_pct < 95:
+            print(
+                f"[almanac-census] CHUMP_ALMANAC_CENSUS_MIN_PCT={min_pct} is below "
+                "the 95% mission floor — clamping to 95",
+                file=sys.stderr,
+            )
+            min_pct = 95.0
+        if pct * 100 <= min_pct:
+            print(
+                f"[almanac-census] summarized_pct must be >{min_pct}% — "
+                f"got {pct * 100:.2f}% — aborting",
+                file=sys.stderr,
+            )
+            return 2
         return 0
 
     if args.concept is None:

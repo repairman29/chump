@@ -6013,6 +6013,17 @@ events:
     trigger: any CI gate completes (pass / fail / bypassed / skipped)
     consumers: [gate-fire-rate, fleet-brief, curator]
     fields_required: [ts, kind, gate, outcome, rule_fired, evidence, pr_or_branch]
+
+  # ── RESILIENT-018: gh-api-in-ci GH_TOKEN guard ───────────────────────────
+  - kind: ci_gh_token_missing_skip
+    effect_metric: self
+    emitter: scripts/ci/lib/ci-guards.sh check_gh_token_or_skip; src/github_rate_limit.rs
+      fetch_rate_limit_blocking (RESILIENT-018)
+    trigger: a gh-api/gh-pr-dependent CI script or background poller ran inside
+      a GitHub Actions job that never exported GH_TOKEN/GITHUB_TOKEN; the gh
+      call is skipped (WARN, not a hard failure) instead of failing persistently
+    consumers: [fleet-brief, curator]
+    fields_required: [ts, kind, workflow_name, job_name]
   # ── INFRA-1003: auto-rerun out-of-scope PR check ─────────────────────────
   - kind: auto_rerun_out_of_scope
     effect_metric: self
@@ -13589,3 +13600,14 @@ events:
       exclude it from the pending list.
     consumers: [web-pwa, orchestrator]
     fields_required: [ts, kind, id, response]
+
+  # ── EFFECTIVE-1136 (EFFECTIVE-178 slice): on-demand unwedge ─────────────────
+  - kind: gap_unwedged
+    effect_metric: self
+    emitter: src/commands/unwedge.rs (chump unwedge <GAP-ID>)
+    trigger: operator or fleet code runs `chump unwedge <GAP-ID>` to recover
+      from a stalled bot-merge.sh run — fires once per invocation, recording
+      whether a wedge was actually detected and which pids (if any) were
+      killed before the claim-recover flow ran.
+    consumers: [fleet-brief, observability]
+    fields_required: [ts, kind, gap_id, wedge_detected, killed_pids]

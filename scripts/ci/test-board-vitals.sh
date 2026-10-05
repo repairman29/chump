@@ -467,6 +467,27 @@ MS3="$TMP/main-sat-red-transient.jsonl"
 _notemitted "long-past red span since recovered to green → main_sat_sustained_red NOT emitted" \
     "$MS3" '"kind":"main_sat_sustained_red"'
 
+echo "[test-board-vitals] CREDIBLE-1113: summarized_pct >95% guard"
+SPG_OUT="$TMP/summarized-pct-guard.out"
+( summarized_pct=94; source "$LIB"; board_vitals_check ) >"$SPG_OUT" 2>&1
+SPG_RC=$?
+[[ "$SPG_RC" -eq 1 ]] && _ok "summarized_pct=94 → exit 1" || _fail "summarized_pct=94 → expected exit 1, got $SPG_RC"
+_emitted "summarized_pct=94 → exact abort message printed" "$SPG_OUT" 'summarized_pct must be >95% – aborting'
+
+SPG_OK_A="$TMP/no-amb.jsonl"; : > "$SPG_OK_A"
+SPG_OUT2="$TMP/summarized-pct-ok.out"
+( set -a
+  summarized_pct=96
+  CHUMP_AMBIENT_LOG="$SPG_OK_A"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-spg-ok"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >"$SPG_OUT2" 2>&1
+SPG_RC2=$?
+[[ "$SPG_RC2" -eq 0 ]] && _ok "summarized_pct=96 → exit 0" || _fail "summarized_pct=96 → expected exit 0, got $SPG_RC2"
+_notemitted "summarized_pct=96 → no abort message printed" "$SPG_OUT2" 'summarized_pct must be >95%'
+
 echo
 echo "[test-board-vitals] PASS=$PASS FAIL=$FAIL"
 [[ "$FAIL" -eq 0 ]] || exit 1

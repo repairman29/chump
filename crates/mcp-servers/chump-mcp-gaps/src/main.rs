@@ -217,6 +217,33 @@ async fn handle_gap_reserve(params: &Value) -> Result<Value> {
         .and_then(|v| v.as_str())
         .unwrap_or("INFRA");
 
+    let priority = params.get("priority").and_then(|v| v.as_str());
+
+    // CREDIBLE-343 / CREDIBLE-392: P0/P1 gaps must carry acceptance criteria
+    // unless the caller explicitly opts out with `no_ac_required`.
+    let acceptance_criteria = params
+        .get("acceptance-criteria")
+        .or_else(|| params.get("acceptance_criteria"))
+        .or_else(|| params.get("acceptance"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+
+    let no_ac_required = params
+        .get("no-ac-required")
+        .or_else(|| params.get("no_ac_required"))
+        .and_then(|v| v.as_bool())
+        .unwrap_or(false);
+
+    let is_high_priority = priority
+        .map(|p| p.eq_ignore_ascii_case("P0") || p.eq_ignore_ascii_case("P1"))
+        .unwrap_or(false);
+
+    if is_high_priority && acceptance_criteria.is_empty() && !no_ac_required {
+        return Err(anyhow!(
+            "error: acceptance criteria required for P0/P1 gaps"
+        ));
+    }
+
     let mut args: Vec<String> = vec![
         "--domain".to_string(),
         domain.to_string(),
@@ -224,18 +251,43 @@ async fn handle_gap_reserve(params: &Value) -> Result<Value> {
         title.to_string(),
     ];
 
+    if let Some(p) = priority {
+        args.push("--priority".to_string());
+        args.push(p.to_string());
+    }
+
     for (flag, field) in &[
-        ("--priority", "priority"),
         ("--effort", "effort"),
         ("--description", "description"),
-        ("--acceptance-criteria", "acceptance"),
         ("--depends-on", "deps"),
-        ("--notes", "notes"),
     ] {
         if let Some(val) = params.get(*field).and_then(|v| v.as_str()) {
             args.push(flag.to_string());
             args.push(val.to_string());
         }
+    }
+
+    if !acceptance_criteria.is_empty() {
+        args.push("--acceptance-criteria".to_string());
+        args.push(acceptance_criteria.to_string());
+    }
+
+    // Bypass audit trail: record "AC bypassed" in notes so `chump gap
+    // audit-priorities` and human reviewers can see the P0/P1 was reserved
+    // without acceptance criteria on purpose.
+    let notes = params.get("notes").and_then(|v| v.as_str()).unwrap_or("");
+    let notes = if is_high_priority && no_ac_required && acceptance_criteria.is_empty() {
+        if notes.is_empty() {
+            "AC bypassed".to_string()
+        } else {
+            format!("{}\nAC bypassed", notes)
+        }
+    } else {
+        notes.to_string()
+    };
+    if !notes.is_empty() {
+        args.push("--notes".to_string());
+        args.push(notes);
     }
 
     // pillar maps to --notes or prepended to title prefix; we prepend to title if present.
@@ -400,9 +452,10 @@ async fn handle_method(method: &str, params: &Value) -> Result<Value> {
                             "effort": { "type": "string", "description": "xs, s, m, l, or xl (default: s)" },
                             "pillar": { "type": "string", "description": "Pillar tag: EFFECTIVE, CREDIBLE, RESILIENT, ZERO-WASTE, or MISSION" },
                             "description": { "type": "string", "description": "Full description of the gap" },
-                            "acceptance": { "type": "string", "description": "Acceptance criteria (pipe-separated)" },
+                            "acceptance": { "type": "string", "description": "Acceptance criteria (pipe-separated). Alias: acceptance_criteria / acceptance-criteria." },
                             "deps": { "type": "string", "description": "Comma-separated gap IDs this gap depends on" },
-                            "notes": { "type": "string", "description": "Additional notes" }
+                            "notes": { "type": "string", "description": "Additional notes" },
+                            "no_ac_required": { "type": "boolean", "description": "Bypass the P0/P1 acceptance-criteria requirement (audited: adds 'AC bypassed' to notes). Alias: no-ac-required." }
                         },
                         "required": ["title"]
                     }

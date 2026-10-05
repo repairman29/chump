@@ -17,6 +17,10 @@ HOSTNAME
 PATH
 USER
 XDG_CONFIG_HOME
+# Set by the GitHub Actions runner (RESILIENT-018 detects a CI job with no token)
+GITHUB_ACTIONS
+GITHUB_JOB
+GITHUB_WORKFLOW
 
 # ── Tier 3: runtime state set by the fleet / harness ──────────────────────
 CHUMP_GAP_ID
@@ -3281,3 +3285,8 @@ CHUMP_SOMETHING_DB
 CHUMP_DAEMON_CONTRACT_EXPECTATIONS
 # detected in: (standard input)
 CHUMP_DAEMON_CONTRACT_PLIST_DIRS
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_ALMANAC_CENSUS_MIN_PCT

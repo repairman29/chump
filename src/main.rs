@@ -2462,6 +2462,18 @@ async fn main() -> Result<()> {
         std::process::exit(commands::consensus_ask::run(&sub_args));
     }
 
+    // `chump unwedge <GAP-ID> [--stall-threshold-s N] [--dry-run]` (EFFECTIVE-1136,
+    // EFFECTIVE-178 slice) — on-demand kill + recover of a wedged bot-merge
+    // run: detects a stalled `bot-merge.sh --gap <ID>` process past the
+    // stall threshold, kills it (+ children), aborts any in-progress
+    // rebase/merge and clears stale git locks, then invokes
+    // `chump claim <ID> --force-recover` to reconcile the lease/worktree.
+    // Emits kind=gap_unwedged.
+    if args.get(1).map(String::as_str) == Some("unwedge") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::unwedge::run(&sub_args));
+    }
+
     // `chump voice --wedge-class <id> --minutes-lost <int> ...` (INFRA-2258) —
     // file a Voice-of-Agent (VOA) report: writes docs/gaps/VOA-NNNN.yaml +
     // docs/voice/VOA-NNNN-FULL.yaml and emits kind=voice_of_agent_filed.
@@ -12216,8 +12228,56 @@ async fn main() -> Result<()> {
                         std::process::exit(1);
                     }
                     Ok(gap_store::PreflightResult::NotFound) => {
-                        eprintln!("[preflight] WARN {} — not found in state.db (run `chump gap import` first).", gap_id);
-                        return Ok(());
+                        // CREDIBLE-1486: a worktree's local state.db is a snapshot
+                        // taken at worktree-creation time (same INFRA-3002 class as
+                        // `chump claim`'s self-heal) — a gap reserved/imported on
+                        // origin/main afterward is invisible here until someone
+                        // manually runs `chump gap restore --from-sql`. Before this
+                        // fix, NotFound still printed a WARN but returned `Ok(())`
+                        // (exit 0), so callers that gate on exit code alone — like
+                        // `chump dispatch`'s preflight step — treated a MISSING gap
+                        // as "pickable", proceeded to claim, and failed hard there
+                        // instead of at the check meant to catch exactly this.
+                        // Self-heal by syncing just this gap's row from
+                        // `.chump/state.sql` (the tracked YAML mirror) and retrying
+                        // once; only exit non-zero if the gap is genuinely absent
+                        // from both the live store and the tracked mirror.
+                        let sql_path = repo_root.join(".chump").join("state.sql");
+                        let healed = store
+                            .sync_gap_from_state_sql(&sql_path, &gap_id)
+                            .unwrap_or(false);
+                        if healed {
+                            eprintln!(
+                                "[preflight] {} was missing from local state.db — synced from state.sql (CREDIBLE-1486)",
+                                gap_id
+                            );
+                            match store.preflight(&gap_id) {
+                                Ok(gap_store::PreflightResult::Available) => {
+                                    println!("[preflight] OK {} — open and unclaimed.", gap_id);
+                                    return Ok(());
+                                }
+                                Ok(gap_store::PreflightResult::Done) => {
+                                    eprintln!("[preflight] FAIL {} — already done.", gap_id);
+                                    std::process::exit(1);
+                                }
+                                Ok(gap_store::PreflightResult::Claimed(s)) => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — live-claimed by session {}.",
+                                        gap_id, s
+                                    );
+                                    std::process::exit(1);
+                                }
+                                _ => {
+                                    eprintln!(
+                                        "[preflight] FAIL {} — not found in state.db (run `chump gap import` first).",
+                                        gap_id
+                                    );
+                                    std::process::exit(1);
+                                }
+                            }
+                        }
+                        eprintln!("[preflight] FAIL {} — not found in state.db (run `chump gap import` first).", gap_id);
+                        std::process::exit(1);
                     }
                     Err(e) => {
                         eprintln!("chump gap preflight: {e:#}");
@@ -15684,7 +15744,7 @@ async fn main() -> Result<()> {
                     .any(|a| matches!(a.as_str(), "--help" | "-h"))
                 {
                     println!(
-                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply]"
+                        "Usage: chump gap scaffold-holes <GAP-ID> [--path DIR] [--json] [--apply] [--metrics]"
                     );
                     println!();
                     println!(
@@ -15695,6 +15755,11 @@ async fn main() -> Result<()> {
                         "--apply files one leaf gap per hole via chump-gap-store instead of \
                          just printing specs (INFRA-2515 A2A voting still applies to what those \
                          leaf gaps become — this only reserves them)."
+                    );
+                    println!(
+                        "--metrics compares shipped leaf gaps (depends_on GAP-ID) against a \
+                         baseline of shipped open-ended gaps (no depends_on) in the same domain: \
+                         mean ship cycle-time and file-collision rate for each group."
                     );
                     return Ok(());
                 }
@@ -15710,6 +15775,116 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| repo_root.clone());
                 let as_json = json_out || args.iter().any(|a| a == "--json");
                 let do_apply = args.iter().any(|a| a == "--apply");
+                let do_metrics = args.iter().any(|a| a == "--metrics");
+
+                if do_metrics {
+                    let domain = store
+                        .get(&gap_id)
+                        .ok()
+                        .flatten()
+                        .map(|g| g.domain)
+                        .unwrap_or_else(|| {
+                            gap_id.split('-').next().unwrap_or("EFFECTIVE").to_string()
+                        });
+                    let closed = store.list(Some("closed")).unwrap_or_default();
+                    let done = store.list(Some("done")).unwrap_or_default();
+                    let all_closed: Vec<_> = closed.into_iter().chain(done).collect();
+
+                    let files_for_pr = |pr: i64| -> Vec<String> {
+                        let out = std::process::Command::new("git")
+                            .args(["log", "--all", "--merges", "--format=%H"])
+                            .arg("--grep")
+                            .arg(format!("#{pr}"))
+                            .current_dir(&repo_root)
+                            .output();
+                        let Ok(out) = out else { return Vec::new() };
+                        let sha = String::from_utf8_lossy(&out.stdout)
+                            .lines()
+                            .next()
+                            .unwrap_or("")
+                            .trim()
+                            .to_string();
+                        if sha.is_empty() {
+                            return Vec::new();
+                        }
+                        std::process::Command::new("git")
+                            .args(["show", "--stat", "--format=", &sha])
+                            .current_dir(&repo_root)
+                            .output()
+                            .map(|o| {
+                                String::from_utf8_lossy(&o.stdout)
+                                    .lines()
+                                    .filter_map(|l| l.split('|').next())
+                                    .map(|s| s.trim().to_string())
+                                    .filter(|s| !s.is_empty())
+                                    .collect()
+                            })
+                            .unwrap_or_default()
+                    };
+
+                    let to_metric = |g: &gap_store::GapRow| -> scaffold_holes::GapMetric {
+                        let cycle_time_secs = g.closed_at.map(|c| c - g.created_at);
+                        let files_touched = g.closed_pr.map(files_for_pr).unwrap_or_default();
+                        scaffold_holes::GapMetric {
+                            id: g.id.clone(),
+                            cycle_time_secs,
+                            files_touched,
+                        }
+                    };
+
+                    let scaffold_leaves: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| g.domain == domain && g.depends_on.contains(&gap_id))
+                        .map(to_metric)
+                        .collect();
+                    let open_ended: Vec<_> = all_closed
+                        .iter()
+                        .filter(|g| {
+                            g.domain == domain
+                                && !g.depends_on.contains(&gap_id)
+                                && (g.depends_on.is_empty() || g.depends_on == "[]")
+                        })
+                        .map(to_metric)
+                        .collect();
+
+                    let report = scaffold_holes::compare_scaffold_vs_open_ended(
+                        &scaffold_leaves,
+                        &open_ended,
+                    );
+
+                    if as_json {
+                        println!(
+                            "{}",
+                            serde_json::to_string_pretty(&serde_json::json!({
+                                "parent": gap_id,
+                                "scaffold_leaf_count": report.scaffold_leaf_count,
+                                "open_ended_count": report.open_ended_count,
+                                "scaffold_leaf_mean_cycle_secs": report.scaffold_leaf_mean_cycle_secs,
+                                "open_ended_mean_cycle_secs": report.open_ended_mean_cycle_secs,
+                                "scaffold_leaf_collision_rate": report.scaffold_leaf_collision_rate,
+                                "open_ended_collision_rate": report.open_ended_collision_rate,
+                            }))
+                            .unwrap_or_default()
+                        );
+                    } else {
+                        println!(
+                            "--- scaffold-and-holes metrics for {gap_id} (domain {domain}) ---"
+                        );
+                        println!(
+                            "scaffold leaves: {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.scaffold_leaf_count,
+                            report.scaffold_leaf_mean_cycle_secs,
+                            report.scaffold_leaf_collision_rate
+                        );
+                        println!(
+                            "open-ended:      {} shipped, mean cycle {:?}s, collision rate {:.2}",
+                            report.open_ended_count,
+                            report.open_ended_mean_cycle_secs,
+                            report.open_ended_collision_rate
+                        );
+                    }
+                    return Ok(());
+                }
 
                 let holes = match scaffold_holes::find_todo_holes_in_dir(&scan_dir) {
                     Ok(h) => h,
@@ -19818,6 +19993,52 @@ async fn main() -> Result<()> {
     // (Rescue/Comprehend) exit non-zero honestly rather than faking success.
     if args.get(1).map(String::as_str) == Some("trek") {
         let repo_root = repo_path::repo_root();
+        let mission_store = chump_coord::mission::FileBackedMissionStore::default_root();
+
+        // `chump trek --list` (INFRA-3658, RIBBON-03): read every persisted
+        // Mission record back so a walked-away operator can see what past
+        // trek runs produced.
+        if args.get(2).map(String::as_str) == Some("--list") {
+            use chump_coord::mission::MissionStore;
+            match mission_store.list() {
+                Ok(mut ids) => {
+                    ids.sort();
+                    if ids.is_empty() {
+                        println!("(no trek runs recorded yet)");
+                    } else {
+                        for id in ids {
+                            match mission_store.load(&id) {
+                                Ok(pm) => println!("{}", trek::format_mission_summary(&pm)),
+                                Err(e) => eprintln!("trek --list: {id}: {e:#}"),
+                            }
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("trek --list: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
+        // `chump trek status <mission-id>` (INFRA-3658, RIBBON-03).
+        if args.get(2).map(String::as_str) == Some("status") {
+            use chump_coord::mission::MissionStore;
+            let Some(id) = args.get(3) else {
+                eprintln!("Usage: chump trek status <mission-id>");
+                std::process::exit(1);
+            };
+            match mission_store.load(id) {
+                Ok(pm) => println!("{}", trek::format_mission_detail(&pm)),
+                Err(e) => {
+                    eprintln!("trek status: {e:#}");
+                    std::process::exit(1);
+                }
+            }
+            return Ok(());
+        }
+
         let Some(job) = args.get(2).filter(|a| !a.starts_with("--")) else {
             eprintln!("Usage: chump trek \"<what you're trying to do, in plain language>\" [--yes] [--json]");
             std::process::exit(1);
@@ -19825,7 +20046,7 @@ async fn main() -> Result<()> {
         let yes = args.iter().any(|a| a == "--yes");
         let json = args.iter().any(|a| a == "--json");
         let spawner = trek::RealEngineSpawner;
-        let outcome = trek::run_trek(&repo_root, job, yes, &spawner);
+        let outcome = trek::run_trek(&repo_root, job, yes, &spawner, &mission_store);
         if json {
             let j = match &outcome {
                 trek::TrekOutcome::Landed { mode, exit_code } => serde_json::json!({
