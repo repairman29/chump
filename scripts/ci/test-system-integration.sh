@@ -376,10 +376,14 @@ with open(sys.argv[3], 'a') as f:
 echo "--- Assertion 6: Wall-clock budget check ---"
 {
     ELAPSED=$((SECONDS - START_TS))
-    if [[ $ELAPSED -le 60 ]]; then
-        ok "Assertion 6: pipeline completed in ${ELAPSED}s (budget: 60s)"
+    # INFRA-849: 60s was unrealistic on cold-sccache CI runners (~93s legit); the
+    # budget exists to catch gross regressions, not to flap on cache temperature.
+    # 180s keeps the regression signal; override with CHUMP_INTEGRATION_BUDGET_S.
+    BUDGET="${CHUMP_INTEGRATION_BUDGET_S:-180}"
+    if [[ $ELAPSED -le $BUDGET ]]; then
+        ok "Assertion 6: pipeline completed in ${ELAPSED}s (budget: ${BUDGET}s)"
     else
-        fail "Assertion 6: pipeline took ${ELAPSED}s, exceeds 60s budget"
+        fail "Assertion 6: pipeline took ${ELAPSED}s, exceeds ${BUDGET}s budget"
     fi
 }
 
