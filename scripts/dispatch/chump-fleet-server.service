@@ -3,7 +3,7 @@
 # it serves the metric-gauge API (~48 gauges, dark until something serves them)
 # and is the home for bat-phone intake.
 #
-# Endpoints (bind 127.0.0.1:7070, CHUMP_FLEET_SERVER_PORT):
+# Endpoints (bind 0.0.0.0:7070 all-ifaces via CHUMP_FLEET_SERVER_BIND, CHUMP_FLEET_SERVER_PORT; RESILIENT-1091 restored localhost+tailnet, public dropped at firewall):
 #   GET /api/dashboard-summary  -> {today_ships, ci_qa_score, active_leases}
 #   GET /api/events /api/segments /api/sessions/active /api/trace/pr/{n}
 #   WS  /api/live       GET /healthz

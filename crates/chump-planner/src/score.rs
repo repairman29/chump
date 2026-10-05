@@ -111,6 +111,7 @@ pub struct TelemetryInputs<'a> {
 
 pub fn score(
     gap: &Gap,
+    gaps: &[Gap],
     graph: &DependencyGraph,
     open_set: &HashSet<GapId>,
     telemetry: &TelemetryInputs<'_>,
@@ -120,7 +121,14 @@ pub fn score(
     let mut breakdown: Vec<(&'static str, f64)> = Vec::new();
     let mut total = 0.0;
 
-    let prio = weights.priority(gap.priority);
+    // INFRA-7792/INFRA-3612: score on the EFFECTIVE priority band — the
+    // minimum (most urgent) priority among the gap's own priority and every
+    // gap it transitively unblocks — not the raw `gap.priority` field. A P3
+    // gap gating a P0 gap should outrank a bare P2 with no dependents. For a
+    // gap with no dependents this is identical to `gap.priority` (unchanged
+    // picker behavior).
+    let effective = graph.effective_priority(gap, gaps, open_set);
+    let prio = weights.priority(effective);
     breakdown.push(("priority", prio));
     total += prio;
 
@@ -220,6 +228,7 @@ mod tests {
         let open = HashSet::from([g.id.clone()]);
         let s = score(
             &g,
+            std::slice::from_ref(&g),
             &graph,
             &open,
             &TelemetryInputs::default(),
@@ -255,8 +264,16 @@ mod tests {
         let today = chrono::NaiveDate::from_ymd_opt(2026, 5, 13).unwrap();
         let w = Weights::default();
 
-        let s0 = score(&p0, &graph, &open, &TelemetryInputs::default(), today, &w);
-        let s1 = score(&p1, &graph, &open, &telem, today, &w);
+        let s0 = score(
+            &p0,
+            &gaps,
+            &graph,
+            &open,
+            &TelemetryInputs::default(),
+            today,
+            &w,
+        );
+        let s1 = score(&p1, &gaps, &graph, &open, &telem, today, &w);
         assert!(
             s1.total > s0.total,
             "P1+2unblockers+roadmap+xs ({}) should beat P0 alone+M ({})",
@@ -278,7 +295,15 @@ mod tests {
         };
         let today = chrono::NaiveDate::from_ymd_opt(2026, 5, 13).unwrap();
         let w = Weights::default();
-        let s = score(&g, &graph, &open, &telem, today, &w);
+        let s = score(
+            &g,
+            std::slice::from_ref(&g),
+            &graph,
+            &open,
+            &telem,
+            today,
+            &w,
+        );
         let has_cap = s
             .breakdown
             .iter()
@@ -288,5 +313,62 @@ mod tests {
             "expected pillar_cap penalty in breakdown: {:?}",
             s.breakdown
         );
+    }
+
+    #[test]
+    fn score_uses_effective_priority_not_raw_priority() {
+        // INFRA-7792: a P3 gap that transitively unblocks a P0 gap should
+        // score on the P0 band, not its own P3 field.
+        // INFRA-1 (P0) depends_on INFRA-3 (P3) — so INFRA-3 blocks INFRA-1,
+        // i.e. closing INFRA-3 unblocks INFRA-1.
+        let p0 = mk("INFRA-1", Priority::P0, Effort::S, vec!["INFRA-3"]);
+        let p3 = mk("INFRA-3", Priority::P3, Effort::S, vec![]);
+        let gaps = vec![p0.clone(), p3.clone()];
+        let graph = DependencyGraph::build(&gaps);
+        let open: HashSet<GapId> = gaps.iter().map(|x| x.id.clone()).collect();
+        let today = chrono::NaiveDate::from_ymd_opt(2026, 5, 13).unwrap();
+        let w = Weights::default();
+
+        let s_gated = score(
+            &p3,
+            &gaps,
+            &graph,
+            &open,
+            &TelemetryInputs::default(),
+            today,
+            &w,
+        );
+        let prio_component = s_gated
+            .breakdown
+            .iter()
+            .find(|(k, _)| *k == "priority")
+            .map(|(_, v)| *v)
+            .unwrap();
+        assert_eq!(
+            prio_component, w.p0,
+            "INFRA-3 (P3) gates INFRA-1 (P0); expected effective P0 weight in score, got {prio_component}"
+        );
+
+        // A gap with no dependents keeps scoring on its own priority band.
+        let solo = mk("INFRA-9", Priority::P3, Effort::S, vec![]);
+        let solo_gaps = vec![solo.clone()];
+        let solo_graph = DependencyGraph::build(&solo_gaps);
+        let solo_open: HashSet<GapId> = solo_gaps.iter().map(|x| x.id.clone()).collect();
+        let s_solo = score(
+            &solo,
+            &solo_gaps,
+            &solo_graph,
+            &solo_open,
+            &TelemetryInputs::default(),
+            today,
+            &w,
+        );
+        let solo_prio = s_solo
+            .breakdown
+            .iter()
+            .find(|(k, _)| *k == "priority")
+            .map(|(_, v)| *v)
+            .unwrap();
+        assert_eq!(solo_prio, w.p3);
     }
 }

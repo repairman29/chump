@@ -12,7 +12,18 @@
 //! - `GET /api/gaps` (RESILIENT-1030, authed) — open-gap queue state.
 //! - `POST /api/gap` (authed) — reserve/set/ship gap mutation.
 //! - `POST /api/mission` (authed) — external mission intake.
+//! - `GET /api/doc/{name}` (INFRA-5663) — allow-listed durable doc render
+//!   (`roadmap` → `docs/ROADMAP.md`, `mission` → `docs/MISSION.md`) at HEAD.
+//! - `POST /api/sentinel-heartbeat` (RESILIENT-1055, authed) — per-node
+//!   fleet-health-sentinel heartbeat ingest sink.
+//! - `GET /api/fleet/nodes` (RESILIENT-1055, unauthed read; INFRA-5663) —
+//!   cross-node systemd organ health, aggregated server-side (which organs
+//!   failed per node, with server-computed staleness) so the operator reads
+//!   one route instead of SSH-crawling every node. The write side
+//!   (`POST /api/sentinel-heartbeat`) stays fail-closed; safe only on tailnet.
 //! - `WS  /api/live`
+//! - `GET /` — static daily cockpit page (INFRA-5663) served from
+//!   `web/cockpit-live/` via a `tower_http::ServeDir` fallback.
 //!
 //! ## Env vars
 //!
@@ -86,14 +97,33 @@ fn main() -> ExitCode {
         println!("  CHUMP_FLEET_SERVER_PORT  (default 7070)");
         println!("  CHUMP_FLEET_SERVER_BIND  (default 127.0.0.1; RESILIENT-1030 tailnet exposure)");
         println!("  CHUMP_FLEET_DB           (default <repo>/.chump/fleet_events.db)");
-        println!(
-            "  CHUMP_FLEET_SCRUBBER_DIR (default <repo>/web/fleet-scrubber; mounted at /scrubber)"
-        );
         return ExitCode::SUCCESS;
     }
     if args.iter().any(|a| a == "--version" || a == "-V") {
         println!("chump-fleet-server {}", env!("CARGO_PKG_VERSION"));
         return ExitCode::SUCCESS;
+    }
+    // --query-logs <stage> (EFFECTIVE-1519): print `logs/launch.log` entries
+    // matching the given stage (draft/approve/send/publish) and exit —
+    // doesn't start the server.
+    if let Some(stage) = args
+        .windows(2)
+        .find(|w| w[0] == "--query-logs")
+        .map(|w| w[1].clone())
+    {
+        let repo_root = resolve_repo_root();
+        return match chump_fleet_server::mission::handle_log_query(&repo_root, &stage) {
+            Ok(lines) => {
+                for line in lines {
+                    println!("{line}");
+                }
+                ExitCode::SUCCESS
+            }
+            Err(e) => {
+                eprintln!("[chump-fleet-server] --query-logs failed: {e}");
+                ExitCode::from(1)
+            }
+        };
     }
     // Optional --port N (alternative to CHUMP_FLEET_SERVER_PORT env var).
     let port_override: Option<u16> = args

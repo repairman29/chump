@@ -42,12 +42,21 @@
 #   CHUMP_FLEET_SERVER_BIN     stable install path (default ~/.local/bin/chump-fleet-server)
 #   CHUMP_FLEET_SERVER_UNIT    long-running unit name (default chump-fleet-server.service)
 #   CHUMP_FLEET_SERVER_PORT    bind port (default 7070)
-#   CHUMP_FLEET_SERVER_BIND    bind address (default 127.0.0.1; a tailnet IP exposes
-#                              the authed create/audit API — see main.rs caveat)
+#   CHUMP_FLEET_SERVER_BIND    bind address (default 127.0.0.1). Read endpoints
+#                              are unauthenticated, so tailnet exposure is an
+#                              explicit operator choice: set this to the node's
+#                              Tailscale IPv4 address after verifying the host.
 #   CHUMP_PROVIDERS_ENV        creds sourced by the service (default ~/.chump/providers.env)
 #   CADENCE_MIN                refresh cadence in minutes (default 30)
 
 set -euo pipefail
+
+# RESILIENT-1055: $USER isn't exported under a `sudo -E env …` bring-up, so under
+# `set -u` the linger step (`loginctl enable-linger "$USER"`) aborted this whole
+# installer with "USER: unbound variable" — leaving the /healthz organ
+# half-installed. Resolve it from the effective login name as a fallback (same
+# fix as install-node-refresh-systemd.sh).
+USER="${USER:-$(id -un 2>/dev/null || echo root)}"
 
 UNIT_DIR="$HOME/.config/systemd/user"
 CADENCE_MIN="${CADENCE_MIN:-30}"
@@ -69,11 +78,13 @@ done
 REPO_ROOT="${CHUMP_NODE_REPO:-}"
 if [[ -z "$REPO_ROOT" ]]; then
     for c in "$HOME/chump-host" "$HOME/Projects/Chump" "$HOME/chump"; do
-        [[ -d "$c/.git" ]] && { REPO_ROOT="$c"; break; }
+        git -C "$c" rev-parse --is-inside-work-tree >/dev/null 2>&1 && { REPO_ROOT="$c"; break; }
     done
 fi
 
-TARGET_BIN="${CHUMP_FLEET_SERVER_BIN:-$HOME/.local/bin/chump-fleet-server}"
+DEFAULT_TARGET_BIN="${CHUMP_NODE_DIR:+$CHUMP_NODE_DIR/bin/chump-fleet-server}"
+DEFAULT_TARGET_BIN="${DEFAULT_TARGET_BIN:-$HOME/.local/bin/chump-fleet-server}"
+TARGET_BIN="${CHUMP_FLEET_SERVER_BIN:-$DEFAULT_TARGET_BIN}"
 PORT="${CHUMP_FLEET_SERVER_PORT:-7070}"
 BIND="${CHUMP_FLEET_SERVER_BIND:-127.0.0.1}"
 PROVIDERS_ENV="${CHUMP_PROVIDERS_ENV:-$HOME/.chump/providers.env}"
@@ -101,7 +112,8 @@ if [[ "${1:-}" == "--uninstall" ]]; then
     exit 0
 fi
 
-[[ -n "$REPO_ROOT" && -d "$REPO_ROOT/.git" ]] || { echo "FATAL: no chump checkout found (set CHUMP_NODE_REPO)" >&2; exit 1; }
+[[ -n "$REPO_ROOT" ]] && git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1 \
+    || { echo "FATAL: no chump checkout found (set CHUMP_NODE_REPO)" >&2; exit 1; }
 [[ -n "$REFRESH_SRC" ]] || { echo "FATAL: cannot locate node-refresh-fleet-server.sh (set CHUMP_NODE_REPO)" >&2; exit 1; }
 chmod +x "$REFRESH_SRC" 2>/dev/null || true
 
@@ -213,18 +225,42 @@ systemctl --user daemon-reload
 # --- 3. first refresh: install the binary (pull or bootstrap), restart unit ---
 echo "[install-fleet-server-node] running first refresh (pull prebuilt or bootstrap) …"
 CHUMP_NODE_REPO="$REPO_ROOT" CHUMP_FLEET_SERVER_BIN="$TARGET_BIN" CHUMP_FLEET_SERVER_UNIT="$FLEET_UNIT" \
-    bash "$REFRESH_SRC" || echo "WARN: first refresh returned non-zero (see its log)"
+    bash "$REFRESH_SRC" || {
+        # A known executable may have been staged by the node installer or a
+        # prior successful artifact pull. It is still a real, verifiable
+        # control-plane binary even if today's network refresh is unavailable;
+        # only an absent binary makes this install incomplete.
+        if [[ -x "$TARGET_BIN" ]]; then
+            echo "WARN: first fleet-server refresh failed; retaining the existing verified binary at $TARGET_BIN" >&2
+        else
+            echo "FATAL: first fleet-server refresh failed and no executable cockpit binary exists" >&2
+            exit 1
+        fi
+    }
 
 # --- 4. ensure the server is actually up (refresh only bounces on a CHANGE) ---
-if [[ -x "$TARGET_BIN" ]]; then
-    case "$UNIT_MODE" in
-        system)       sudo -n systemctl restart "$FLEET_UNIT" 2>/dev/null || sudo -n systemctl start "$FLEET_UNIT" 2>/dev/null || true ;;
-        *)            systemctl --user restart "$FLEET_UNIT" 2>/dev/null || systemctl --user start "$FLEET_UNIT" 2>/dev/null || true ;;
-    esac
-else
-    echo "WARN: $TARGET_BIN not present after refresh — service will not start until a binary is available" >&2
+if [[ ! -x "$TARGET_BIN" ]]; then
+    echo "FATAL: $TARGET_BIN not present after refresh — cockpit is not installed" >&2
+    exit 1
 fi
-systemctl --user enable --now "$REFRESH_UNIT.timer"
+case "$UNIT_MODE" in
+    system)
+        sudo -n systemctl restart "$FLEET_UNIT" 2>/dev/null \
+            || sudo -n systemctl start "$FLEET_UNIT" 2>/dev/null \
+            || { echo "FATAL: could not start system unit $FLEET_UNIT" >&2; exit 1; }
+        sudo -n systemctl is-active --quiet "$FLEET_UNIT" \
+            || { echo "FATAL: system unit $FLEET_UNIT is not active" >&2; exit 1; }
+        ;;
+    *)
+        systemctl --user restart "$FLEET_UNIT" 2>/dev/null \
+            || systemctl --user start "$FLEET_UNIT" 2>/dev/null \
+            || { echo "FATAL: could not start --user unit $FLEET_UNIT" >&2; exit 1; }
+        systemctl --user is-active --quiet "$FLEET_UNIT" \
+            || { echo "FATAL: --user unit $FLEET_UNIT is not active" >&2; exit 1; }
+        ;;
+esac
+systemctl --user enable --now "$REFRESH_UNIT.timer" \
+    || { echo "FATAL: could not enable refresh timer $REFRESH_UNIT.timer" >&2; exit 1; }
 
 echo ""
 echo "=== status ==="

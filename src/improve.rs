@@ -91,6 +91,7 @@ pub fn run(args: &[String]) -> i32 {
 
 // ── CLI parsing ───────────────────────────────────────────────────────────
 
+#[derive(Default)]
 struct Opts {
     /// `owner/repo` of the external repo to improve.
     owner_repo: String,
@@ -100,6 +101,128 @@ struct Opts {
     apply: bool,
     /// Directory where the repo is cloned (default: ~/.chump/external/<owner>/<repo>/clone/).
     clone_dir: Option<PathBuf>,
+    /// MISSION-049: `--mode own|guest` operator/test override. `None` = auto-detect
+    /// (target owner == our GH identity -> own-repo throughput; else guest).
+    mode_arg: Option<String>,
+    /// MISSION-049: resolved own-repo vs guest-repo mode. Set once in `run_inner`
+    /// right after parsing args (placeholder `Own` until then); test-constructed
+    /// `Opts` literals that skip resolution stay `Own` (today's throughput behavior).
+    mode: ImproveMode,
+    /// MISSION-049: our GH identity (`gh api user`), resolved alongside `mode`.
+    /// Used as the fork owner in Guest mode. `None` if unresolvable (identity
+    /// probe failed) — Guest behavior (PR-cap, no self-merge) still applies, the
+    /// fork step just best-effort direct-pushes instead.
+    guest_identity: Option<String>,
+}
+
+/// MISSION-049: own-repo (throughput, self-merge on merit) vs guest-repo (bounded
+/// single contribution, maintainer decides, NEVER self-merge) behavior switch.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub(crate) enum ImproveMode {
+    /// Target owner == our GH identity: current (EFFECTIVE-177) throughput behavior.
+    #[default]
+    Own,
+    /// Target owner is a 3rd party: fork + ONE bounded PR + PR-cap + no self-merge.
+    Guest,
+}
+
+impl std::fmt::Display for ImproveMode {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "{}",
+            match self {
+                ImproveMode::Own => "own",
+                ImproveMode::Guest => "guest",
+            }
+        )
+    }
+}
+
+/// MISSION-049: resolve OUR GitHub identity — the account `gh pr create` / `git
+/// push` authenticates as — used to auto-detect own-repo vs guest-repo mode.
+/// `CHUMP_IMPROVE_GH_IDENTITY` overrides for tests/operator pin; otherwise shells
+/// out to `gh api user`. Returns `None` on any failure (offline, unauthenticated,
+/// missing binary) rather than guessing — callers then treat the unknown identity
+/// as Guest (the safer default: a false "own" classification self-merges into a
+/// 3rd-party repo, which is the exact hostile behavior this gap exists to prevent).
+fn resolve_gh_identity(gh_bin: &str) -> Option<String> {
+    if let Ok(v) = std::env::var("CHUMP_IMPROVE_GH_IDENTITY") {
+        let v = v.trim();
+        if !v.is_empty() {
+            return Some(v.to_string());
+        }
+    }
+    let out = Command::new(gh_bin)
+        .args(["api", "user", "--jq", ".login"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let login = String::from_utf8_lossy(&out.stdout).trim().to_string();
+    if login.is_empty() {
+        None
+    } else {
+        Some(login)
+    }
+}
+
+/// MISSION-049: decide own-repo vs guest-repo mode for `owner_repo`, plus the
+/// identity to fork under in Guest mode. `mode_arg` (`--mode own|guest`) pins the
+/// decision explicitly; otherwise auto-detect: target owner == our GH identity ->
+/// Own, anything else (including an unresolvable identity) -> Guest.
+fn resolve_mode(
+    owner_repo: &str,
+    mode_arg: Option<&str>,
+    gh_bin: &str,
+) -> (ImproveMode, Option<String>) {
+    let identity = resolve_gh_identity(gh_bin);
+    if let Some(forced) = mode_arg {
+        let mode = if forced.eq_ignore_ascii_case("own") {
+            ImproveMode::Own
+        } else {
+            ImproveMode::Guest
+        };
+        return (mode, identity);
+    }
+    let owner = owner_repo.split('/').next().unwrap_or("");
+    match &identity {
+        Some(id) if id.eq_ignore_ascii_case(owner) => (ImproveMode::Own, identity),
+        _ => (ImproveMode::Guest, identity),
+    }
+}
+
+/// MISSION-049: how many open PRs we (the resolved GH identity) already have on
+/// `owner_repo`. Guest mode refuses to open a new PR once this meets
+/// `CHUMP_GUEST_PR_CAP` (default 1) — batch related work into the existing PR and
+/// wait for the maintainer rather than flooding them. `Ok(0)` on any lookup
+/// failure (fail-open: a cap check that can't run must not block the cycle,
+/// though the PR will still need to create successfully to actually open).
+fn guest_open_pr_count(owner_repo: &str, identity: &str, gh_bin: &str) -> u32 {
+    let out = Command::new(gh_bin)
+        .args([
+            "pr", "list", "--repo", owner_repo, "--author", identity, "--state", "open", "--json",
+            "number", "--jq", "length",
+        ])
+        .output();
+    match out {
+        Ok(o) if o.status.success() => String::from_utf8_lossy(&o.stdout)
+            .trim()
+            .parse::<u32>()
+            .unwrap_or(0),
+        _ => 0,
+    }
+}
+
+/// MISSION-049: `CHUMP_GUEST_PR_CAP` — max open PRs we may hold on a 3rd-party
+/// repo at once before refusing to open another. Default 1 (per the operator's
+/// "optimize acceptance probability, not throughput" guest-mode directive).
+fn guest_pr_cap() -> u32 {
+    std::env::var("CHUMP_GUEST_PR_CAP")
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(1)
 }
 
 fn parse_args(args: &[String]) -> Result<Opts> {
@@ -112,6 +235,7 @@ fn parse_args(args: &[String]) -> Result<Opts> {
     let mut gap_id: Option<String> = None;
     let mut apply = false;
     let mut clone_dir: Option<PathBuf> = None;
+    let mut mode_arg: Option<String> = None;
 
     let mut i = 0;
     while i < args.len() {
@@ -132,11 +256,22 @@ fn parse_args(args: &[String]) -> Result<Opts> {
                         anyhow::anyhow!("--clone-dir requires a value")
                     })?));
             }
+            "--mode" => {
+                i += 1;
+                mode_arg = Some(
+                    args.get(i)
+                        .ok_or_else(|| anyhow::anyhow!("--mode requires a value (own|guest)"))?
+                        .clone(),
+                );
+            }
             a if a.starts_with("--gap=") => {
                 gap_id = Some(a.trim_start_matches("--gap=").to_string());
             }
             a if a.starts_with("--clone-dir=") => {
                 clone_dir = Some(PathBuf::from(a.trim_start_matches("--clone-dir=")));
+            }
+            a if a.starts_with("--mode=") => {
+                mode_arg = Some(a.trim_start_matches("--mode=").to_string());
             }
             a if !a.starts_with('-') => {
                 if owner_repo.is_some() {
@@ -149,12 +284,21 @@ fn parse_args(args: &[String]) -> Result<Opts> {
         i += 1;
     }
 
+    if let Some(m) = &mode_arg {
+        if !m.eq_ignore_ascii_case("own") && !m.eq_ignore_ascii_case("guest") {
+            bail!("--mode must be 'own' or 'guest', got {m:?}");
+        }
+    }
+
     Ok(Opts {
         owner_repo: owner_repo
             .ok_or_else(|| anyhow::anyhow!("Usage: chump improve <owner/repo> [options]"))?,
         gap_id,
         apply,
         clone_dir,
+        mode_arg,
+        mode: ImproveMode::Own, // placeholder — resolved in run_inner via resolve_mode()
+        guest_identity: None,
     })
 }
 
@@ -168,6 +312,13 @@ fn print_usage() {
     println!("  --gap <ID>         Skip the scout; use this gap ID as the work description.");
     println!("  --apply            Execute for real (push + merge). Default: dry-run.");
     println!("  --clone-dir <path> Path to an existing repo clone. Default: ~/.chump/external/<owner>/<repo>/clone/.");
+    println!("  --mode <own|guest> Override auto-detected mode (MISSION-049). Default: auto —");
+    println!("                     target owner == our GH identity -> own; else -> guest.");
+    println!();
+    println!("GUEST mode (3rd-party repo, auto-detected or --mode guest):");
+    println!("  forks upstream, opens ONE bounded PR, and NEVER self-merges — the upstream");
+    println!("  maintainer decides. Refuses a new PR once we already hold");
+    println!("  CHUMP_GUEST_PR_CAP (default 1) open PRs on that repo.");
     println!();
     println!("Dry-run prints the planned chain and the scout's pick without touching the repo.");
     println!("--apply chains all 4 stages: pick → dedup → implement → verify-merge.");
@@ -177,12 +328,14 @@ fn print_usage() {
     println!("  CHUMP_IMPROVE_GH_BIN      — path to gh CLI      (default: gh)");
     println!("  CHUMP_IMPROVE_CHUMP_BIN   — path to chump binary (default: auto-resolve)");
     println!("  CHUMP_IMPROVE_DISABLED    — set to 1 to kill-switch this subcommand");
+    println!("  CHUMP_IMPROVE_GH_IDENTITY — override our GH identity (mode auto-detect; testing)");
+    println!("  CHUMP_GUEST_PR_CAP        — max open PRs we hold on a guest repo (default: 1)");
 }
 
 // ── Core logic ────────────────────────────────────────────────────────────
 
 fn run_inner(args: &[String]) -> Result<i32> {
-    let opts = parse_args(args)?;
+    let mut opts = parse_args(args)?;
 
     if !opts.owner_repo.contains('/') {
         bail!(
@@ -191,8 +344,27 @@ fn run_inner(args: &[String]) -> Result<i32> {
         );
     }
 
-    let mode = if opts.apply { "APPLY" } else { "DRY-RUN" };
-    println!("[improve] mode={mode} repo={}", opts.owner_repo);
+    // MISSION-049: resolve own-repo vs guest-repo mode BEFORE anything else — it
+    // gates whether we fork, whether we cap new PRs, and (in verify_and_merge)
+    // whether we're ever allowed to self-merge.
+    let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
+    let (resolved_mode, guest_identity) =
+        resolve_mode(&opts.owner_repo, opts.mode_arg.as_deref(), &gh_bin);
+    opts.mode = resolved_mode;
+    opts.guest_identity = guest_identity;
+
+    let run_mode_label = if opts.apply { "APPLY" } else { "DRY-RUN" };
+    println!(
+        "[improve] mode={run_mode_label} repo={} guest_mode={}",
+        opts.owner_repo, opts.mode
+    );
+    if opts.mode == ImproveMode::Guest {
+        println!(
+            "[improve] GUEST mode: will fork + open ONE bounded PR, NEVER self-merge \
+             (CHUMP_GUEST_PR_CAP={})",
+            guest_pr_cap()
+        );
+    }
 
     let clone_dir = resolve_clone_dir(&opts);
 
@@ -243,7 +415,6 @@ fn run_inner(args: &[String]) -> Result<i32> {
     // same already-shipped RLS gap 3 runs running, SKIP every time).
     println!("\n[improve] Stage 2: DEDUP — finding the first candidate that isn't already done...");
 
-    let gh_bin = std::env::var("CHUMP_IMPROVE_GH_BIN").unwrap_or_else(|_| "gh".to_string());
     let mut chosen: Option<ProposedGap> = None;
     for cand in &candidates {
         // INFRA-3508 (COTG-S.1): before the repo-local dedup check, resolve the
@@ -358,6 +529,26 @@ fn run_inner(args: &[String]) -> Result<i32> {
         );
         (url, n, None)
     } else {
+        // MISSION-049: PR-cap gate, Guest mode only, FRESH-implement path only — a
+        // RESUME (above) isn't opening a NEW PR so it never counts against the cap.
+        // Optimize acceptance probability, not throughput: refuse to pile a 2nd PR
+        // onto a maintainer who hasn't responded to the 1st yet.
+        if opts.mode == ImproveMode::Guest {
+            if let Some(identity) = opts.guest_identity.as_deref() {
+                let open = guest_open_pr_count(&opts.owner_repo, identity, &gh_bin);
+                let cap = guest_pr_cap();
+                if open >= cap {
+                    println!(
+                        "[improve] GUEST PR-CAP reached: {open} open PR(s) by {identity} on \
+                         {} (cap={cap}) — batch into the existing PR, wait for the maintainer, \
+                         skipping this cycle.",
+                        opts.owner_repo
+                    );
+                    emit_guest_pr_cap_reached(&opts.owner_repo, identity, open, cap);
+                    return Ok(0);
+                }
+            }
+        }
         println!("\n[improve] Stage 3: IMPLEMENT — spawning agent in clone...");
         // COTG-1.1: thread the typed autonomy FSM (Planning → Executing). The typestate
         // makes the stage order compile-time-enforced.
@@ -1798,12 +1989,20 @@ fn implement_gap(opts: &Opts, clone_dir: &Path, gap: &ProposedGap) -> Result<Str
     if let Some(grounding) = locate_relevant_files(&work_dir, gap) {
         gap_description.push_str(&grounding);
     }
+    // MISSION-049: Guest mode forks upstream under our identity instead of
+    // direct-pushing a branch — a 3rd-party maintainer never has to grant us
+    // push access. Own-repo mode keeps the original direct-push behavior.
+    let fork_owner = if opts.mode == ImproveMode::Guest {
+        opts.guest_identity.clone()
+    } else {
+        None
+    };
     let input = ExternalRepoInput {
         external_repo: opts.owner_repo.clone(),
         repo_local_path: work_dir.to_string_lossy().to_string(),
         proposed_gap_description: gap_description,
         base_branch,
-        fork_owner: None, // direct-push to a branch; operator can set fork via --gap override
+        fork_owner,
     };
 
     // MISSION-063: sign commits as a named Chump agent (provable zero-touch).
@@ -2118,8 +2317,19 @@ fn verify_and_merge(opts: &Opts, pr_num: u64, _gap_title: &str) -> Result<String
             .clone()
             .unwrap_or_else(|| "EFFECTIVE-177".to_string()),
     ];
-    if opts.apply {
+    // MISSION-049: Guest mode NEVER self-merges, no matter what `--apply` says at
+    // the `chump improve` level — `--apply` there still means "push the PR for
+    // real," but the merge decision belongs to the upstream maintainer. Omitting
+    // `--apply` here makes the sub-invocation judge-only: it still reports
+    // Verdict: MERGE/HELD on the real gates, it just never calls `gh pr merge`.
+    let self_merge_allowed = opts.apply && opts.mode == ImproveMode::Own;
+    if self_merge_allowed {
         args.push("--apply".to_string());
+    } else if opts.apply && opts.mode == ImproveMode::Guest {
+        println!(
+            "[improve] GUEST mode: judging PR #{pr_num} on merit but NOT self-merging — \
+             left open for the upstream maintainer."
+        );
     }
 
     // Pass through the GH bin override if set (so tests see the same fake binary
@@ -2245,6 +2455,24 @@ fn emit_already_satisfied_skipped(repo: &str, gap_id: &str, evidence: &str) {
             ("repo".to_string(), repo.to_string()),
             ("gap".to_string(), gap_id.to_string()),
             ("evidence".to_string(), evidence.to_string()),
+        ],
+        ..Default::default()
+    });
+}
+
+/// MISSION-049: emit `kind=guest_pr_cap_reached` — Guest mode refused to open a new
+/// PR because we already hold `cap` (or more) open PRs on the target repo.
+///
+/// scanner-anchor: kind=guest_pr_cap_reached (MISSION-049)
+fn emit_guest_pr_cap_reached(repo: &str, identity: &str, open: u32, cap: u32) {
+    let _ = crate::ambient_emit::emit(&crate::ambient_emit::EmitArgs {
+        kind: "guest_pr_cap_reached".to_string(),
+        source: Some("chump-improve".to_string()),
+        fields: vec![
+            ("repo".to_string(), repo.to_string()),
+            ("identity".to_string(), identity.to_string()),
+            ("open_prs".to_string(), open.to_string()),
+            ("cap".to_string(), cap.to_string()),
         ],
         ..Default::default()
     });
@@ -3748,29 +3976,62 @@ fn resolve_chump_bin() -> String {
     "chump".to_string()
 }
 
+/// RESILIENT-1105: parsed contents of `~/.chump/oauth-token.json`, token plus
+/// its claimed expiry (epoch millis, per `scripts/coord/oauth-token-refresh.sh`
+/// RESILIENT-056's `claudeAiOauth.expiresAt` capture).
+struct OauthTokenFile {
+    token: String,
+    expires_at: Option<i64>,
+}
+
+/// Pure parse of the token-file JSON body — split out from the HOME-reading
+/// wrapper so it's unit-testable without touching the filesystem or env.
+fn parse_oauth_token_json(content: &str) -> Option<OauthTokenFile> {
+    let v: serde_json::Value = serde_json::from_str(content).ok()?;
+    // Try the three key names worker.sh checks, in the same order.
+    let token = ["token", "access_token", "accessToken"]
+        .iter()
+        .find_map(|key| {
+            v.get(*key)
+                .and_then(|x| x.as_str())
+                .filter(|s| !s.is_empty())
+        })?
+        .to_string();
+    // expires_at may be written as a JSON number or a numeric string
+    // (oauth-token-refresh.sh writes it quoted via printf).
+    let expires_at = v.get("expires_at").and_then(|x| {
+        x.as_i64()
+            .or_else(|| x.as_str().and_then(|s| s.trim().parse().ok()))
+    });
+    Some(OauthTokenFile { token, expires_at })
+}
+
 /// RESILIENT-106: read the OAUTH token from `~/.chump/oauth-token.json`.
 ///
 /// Mirrors the pattern from `scripts/dispatch/worker.sh` (INFRA-620, lines 211-232).
-/// Tries keys "token", "access_token", and "accessToken" in that order.
 ///
 /// Returns `None` silently on any error (missing file, parse failure, empty value)
 /// so the caller degrades gracefully.
 ///
 /// IMPORTANT: callers MUST NOT log or print the returned value — it's a credential.
 fn read_oauth_token_file() -> Option<String> {
+    read_oauth_token_file_full().map(|f| f.token)
+}
+
+/// Shared HOME-reading wrapper for [`read_oauth_token_file`] and
+/// [`token_expires_at`] so both read the same file exactly once per call.
+fn read_oauth_token_file_full() -> Option<OauthTokenFile> {
     let home = std::env::var("HOME").ok()?;
     let token_path = PathBuf::from(home).join(".chump/oauth-token.json");
     let content = std::fs::read_to_string(&token_path).ok()?;
-    let v: serde_json::Value = serde_json::from_str(&content).ok()?;
-    // Try the three key names worker.sh checks, in the same order.
-    for key in ["token", "access_token", "accessToken"] {
-        if let Some(s) = v.get(key).and_then(|x| x.as_str()) {
-            if !s.is_empty() {
-                return Some(s.to_string());
-            }
-        }
-    }
-    None
+    parse_oauth_token_json(&content)
+}
+
+/// RESILIENT-1105: the OAUTH token's claimed expiry (epoch millis) from
+/// `~/.chump/oauth-token.json`, or `None` if the file/field is unavailable.
+#[allow(dead_code)]
+pub(crate) fn token_expires_at() -> Option<i64> {
+    read_oauth_token_file_full().and_then(|f| f.expires_at)
 }
 
 /// Detect the default branch of the cloned repo.
@@ -4535,6 +4796,85 @@ mod tests {
         assert!(id.email.ends_with("@closetjunky.chump.fleet"));
     }
 
+    // ── MISSION-049: own-repo vs guest-repo mode ───────────────────────────
+
+    #[test]
+    fn mission049_resolve_mode_own_when_identity_matches_owner() {
+        let fake_gh = TempDir::new().unwrap();
+        let gh_path = fake_gh.path().join("gh");
+        write_fake_gh(&gh_path, "repairman29", 0);
+        let (mode, identity) =
+            resolve_mode("repairman29/BEAST-MODE", None, gh_path.to_str().unwrap());
+        assert_eq!(mode, ImproveMode::Own);
+        assert_eq!(identity, Some("repairman29".to_string()));
+    }
+
+    #[test]
+    fn mission049_resolve_mode_guest_when_identity_differs_from_owner() {
+        let fake_gh = TempDir::new().unwrap();
+        let gh_path = fake_gh.path().join("gh");
+        write_fake_gh(&gh_path, "repairman29", 0);
+        let (mode, identity) = resolve_mode("ehippy/derelict", None, gh_path.to_str().unwrap());
+        assert_eq!(mode, ImproveMode::Guest);
+        assert_eq!(identity, Some("repairman29".to_string()));
+    }
+
+    #[test]
+    fn mission049_resolve_mode_guest_when_identity_unresolvable() {
+        // gh exits non-zero (e.g. unauthenticated) -> identity unknown -> fail
+        // SAFE to Guest rather than risk a false "own" self-merge.
+        let fake_gh = TempDir::new().unwrap();
+        let gh_path = fake_gh.path().join("gh");
+        write_fake_gh(&gh_path, "", 1);
+        let (mode, identity) = resolve_mode("ehippy/derelict", None, gh_path.to_str().unwrap());
+        assert_eq!(mode, ImproveMode::Guest);
+        assert_eq!(identity, None);
+    }
+
+    #[test]
+    fn mission049_resolve_mode_explicit_override_wins() {
+        let fake_gh = TempDir::new().unwrap();
+        let gh_path = fake_gh.path().join("gh");
+        write_fake_gh(&gh_path, "repairman29", 0);
+        // Owner matches identity, but --mode guest forces Guest anyway.
+        let (mode, _) = resolve_mode(
+            "repairman29/BEAST-MODE",
+            Some("guest"),
+            gh_path.to_str().unwrap(),
+        );
+        assert_eq!(mode, ImproveMode::Guest);
+    }
+
+    #[test]
+    fn mission049_guest_pr_cap_defaults_to_one_and_env_overrides() {
+        // Single test (not two) — CHUMP_GUEST_PR_CAP is process-global env, and
+        // cargo runs tests in parallel threads within this binary; splitting this
+        // into separate set/remove tests would race on the same var.
+        std::env::remove_var("CHUMP_GUEST_PR_CAP");
+        assert_eq!(guest_pr_cap(), 1);
+        std::env::set_var("CHUMP_GUEST_PR_CAP", "3");
+        assert_eq!(guest_pr_cap(), 3);
+        std::env::remove_var("CHUMP_GUEST_PR_CAP");
+    }
+
+    #[test]
+    fn mission049_guest_open_pr_count_parses_gh_output() {
+        let fake_gh = TempDir::new().unwrap();
+        let gh_path = fake_gh.path().join("gh");
+        write_fake_gh(&gh_path, "2", 0);
+        let n = guest_open_pr_count("ehippy/derelict", "repairman29", gh_path.to_str().unwrap());
+        assert_eq!(n, 2);
+    }
+
+    #[test]
+    fn mission049_guest_open_pr_count_fails_open_to_zero() {
+        let fake_gh = TempDir::new().unwrap();
+        let gh_path = fake_gh.path().join("gh");
+        write_fake_gh(&gh_path, "garbage", 1);
+        let n = guest_open_pr_count("ehippy/derelict", "repairman29", gh_path.to_str().unwrap());
+        assert_eq!(n, 0);
+    }
+
     #[test]
     fn mission063_email_default_derived_from_codename_and_node() {
         let id = build_identity(Some("Rivet"), None, "closetjunky");
@@ -4688,6 +5028,7 @@ mod tests {
             gap_id: None,
             apply: false,
             clone_dir: Some(clone_dir),
+            ..Default::default()
         };
 
         let picked = pick_gap_from_scan(&opts, opts.clone_dir.as_ref().unwrap())
@@ -4716,6 +5057,7 @@ mod tests {
             gap_id: Some("NONEXISTENT-EFFECTIVE-353-SENTINEL".to_string()),
             apply: false,
             clone_dir: Some(clone_dir.clone()),
+            ..Default::default()
         };
 
         let picked = pick_gap(&opts, &clone_dir).unwrap().remove(0);
@@ -4903,6 +5245,7 @@ Some prose from the agent.
             gap_id: None,
             apply: false,
             clone_dir: Some(clone_dir.clone()),
+            ..Default::default()
         };
 
         // Run just the pick stage + dedup logic without spawning any processes.
@@ -5071,6 +5414,43 @@ Some prose from the agent.
         assert!(result.is_none(), "missing file path should yield None");
     }
 
+    // ── RESILIENT-1105: expires_at persisted alongside token ───────────────
+
+    /// parse_oauth_token_json: a quoted numeric `expires_at` (as written by
+    /// oauth-token-refresh.sh) is parsed into the correct i64.
+    #[test]
+    fn oauth_token_file_expires_at_string_parsed() {
+        let content = r#"{"token":"tok_abc123","expires_at":"1735689600000"}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.token, "tok_abc123");
+        assert_eq!(parsed.expires_at, Some(1735689600000));
+    }
+
+    /// parse_oauth_token_json: a bare numeric `expires_at` is also accepted.
+    #[test]
+    fn oauth_token_file_expires_at_number_parsed() {
+        let content = r#"{"token":"tok_abc123","expires_at":1735689600000}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.expires_at, Some(1735689600000));
+    }
+
+    /// parse_oauth_token_json: missing `expires_at` field yields None, not an error.
+    #[test]
+    fn oauth_token_file_expires_at_missing_is_none() {
+        let content = r#"{"token":"tok_abc123"}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.expires_at, None);
+    }
+
+    /// read_oauth_token_file keeps returning just the token string — existing
+    /// callers (configure_claude_auth_env) are unaffected by the expires_at slice.
+    #[test]
+    fn oauth_token_file_read_token_unaffected_by_expires_at() {
+        let content = r#"{"token":"tok_abc123","expires_at":"1735689600000"}"#;
+        let parsed = parse_oauth_token_json(content).expect("should parse");
+        assert_eq!(parsed.token, "tok_abc123");
+    }
+
     // ── EFFECTIVE-201: doctrine-order picking tests ────────────────────────
 
     /// Build a minimal `ProposedGap` with the given layer and confidence for
@@ -5123,6 +5503,7 @@ Some prose from the agent.
             gap_id: None,
             apply: false,
             clone_dir: Some(clone_dir.clone()),
+            ..Default::default()
         };
 
         let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
@@ -5160,6 +5541,7 @@ Some prose from the agent.
             gap_id: None,
             apply: false,
             clone_dir: Some(clone_dir.clone()),
+            ..Default::default()
         };
 
         let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);
@@ -5195,6 +5577,7 @@ Some prose from the agent.
             gap_id: None,
             apply: false,
             clone_dir: Some(clone_dir.clone()),
+            ..Default::default()
         };
 
         let picked = pick_gap_from_scan(&opts, &clone_dir).unwrap().remove(0);

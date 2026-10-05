@@ -9,7 +9,7 @@
 #
 # Usage:
 #   chump-node-install.sh --role brain|muscle|all [--home DIR] [--self-test-only] [--dry-run]
-#                          [--creds-file PATH]
+#                          [--creds-file PATH] [--control-plane-only] [--with-fleet-server]
 #
 # Zero-touch creds (INFRA-3629, the "bot told to do it" path — no human ever
 # opens an editor): supply creds from exactly ONE source and the CREDS phase
@@ -22,13 +22,18 @@
 # only the source used and which required keys are present/missing are logged.
 # If ~/.chump/providers.env already exists it is left alone (idempotent).
 #
-# Phases: DETECT -> HOME -> CREDS -> BINARY -> ORGANS -> SUPERVISE -> SELF-TEST
+# Phases: DETECT -> HOME -> CREDS -> BINARY -> ORGANS -> SUPERVISE -> SELF-TEST.
+# A missing or deliberately-disabled work provider produces a successful
+# control-plane install: inventory, health, refresh, and the cockpit substrate
+# are safe to use, while the token-consuming worker remains stopped.
 # Idempotent + non-destructive: installs into $NODE_DIR (default ~/.chumpnode) and
 # supervises via the host's native supervisor; state stays at ~/.chump.
 set -uo pipefail
 
 # ---------- args ----------
 ROLE="brain"; NODE_DIR="${CHUMP_NODE_DIR:-$HOME/.chumpnode}"; SELF_TEST_ONLY=0; DRY=0; CREDS_FILE=""
+CONTROL_PLANE_ONLY=0
+WITH_FLEET_SERVER=0
 RECONCILE_ORGANS_ONLY=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -36,6 +41,8 @@ while [ $# -gt 0 ]; do
     --home) NODE_DIR="$2"; shift 2;;
     --self-test-only|--check) SELF_TEST_ONLY=1; shift;;
     --dry-run) DRY=1; shift;;
+    --control-plane-only) CONTROL_PLANE_ONLY=1; shift;;
+    --with-fleet-server) WITH_FLEET_SERVER=1; shift;;
     --creds-file) CREDS_FILE="$2"; shift 2;;
     # RESILIENT-1035: fast path for the per-node auto-deploy timer
     # (scripts/ops/node-refresh-chump.sh). A full run re-clones/re-fetches
@@ -138,7 +145,10 @@ svc_install() {
 [Unit]
 Description=ChumpOS organ $name
 [Service]
-ExecStart=$cmd
+# providers.env accepts both KEY=value and `export KEY=value`; source it via
+# bash so every installer-supported form reaches the organ without writing a
+# secret value into the unit file.
+ExecStart=/bin/bash -c 'set -a; [ -r "$CREDS" ] && . "$CREDS"; set +a; exec "$cmd"'
 Restart=always
 Environment=CHUMP_NODE_DIR=$NODE_DIR
 [Install]
@@ -147,6 +157,14 @@ EOF"
       run "systemctl daemon-reload"
       ;;
     *) run "mkdir -p '$SVC_DIR'"; run "echo '$cmd' > '$SVC_DIR/$name.cmd'";;
+  esac
+}
+svc_down() {
+  local name="$1"
+  case "$SUPERVISOR" in
+    runit) run "sv down '$SVC_DIR/$name' 2>/dev/null || true";;
+    systemd) run "systemctl disable --now 'chump-$name' 2>/dev/null || true";;
+    *) :;;
   esac
 }
 svc_up() {
@@ -267,6 +285,29 @@ REQUIRED_CRED_KEYS="CLAUDE_CODE_OAUTH_TOKEN GH_TOKEN"
 # operator does wire one in — no separate manual step or editor.
 OPTIONAL_CRED_KEYS="DISCORD_TOKEN CHUMP_TEAM_URL CHUMP_TEAM_API_KEY"
 
+# A node remains useful before an LLM provider is configured: it can keep a
+# verified binary current, expose local state, retain its health signals, and
+# accept a provider later. Keep "provider-ready" separate from "installed" so
+# a token outage never turns first boot into a false failure. The explicit
+# --control-plane-only switch also covers a present-but-exhausted subscription.
+provider_creds_ready() {
+  [ -f "$CREDS" ] || return 1
+  local k
+  for k in $REQUIRED_CRED_KEYS; do
+    grep -qE "^(export )?$k=.+" "$CREDS" || return 1
+  done
+  return 0
+}
+
+worker_execution_enabled() {
+  [ "$CONTROL_PLANE_ONLY" != 1 ] || return 1
+  if [ -n "${CHUMP_NODE_WORK_ENABLED:-}" ]; then
+    [ "$CHUMP_NODE_WORK_ENABLED" = 1 ]
+  else
+    provider_creds_ready
+  fi
+}
+
 # Zero-touch acquire (INFRA-3629): materialize $CREDS from --creds-file or
 # $CHUMP_BOOTSTRAP_CREDS. Never echoes secret VALUES — only which source was
 # used. Leaves an existing file untouched (idempotent, no clobber).
@@ -286,90 +327,105 @@ materialize_creds() {
   fi
 }
 
-# Interactive acquire (INFRA-3688): prompt user for GitHub auth method and
-# run claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN. Writes
-# ~/.chump/providers.env with CHUMP_AUTH_MODE=oauth and the acquired tokens.
-# Never echoes secret values to stdout or logs. File created with mode 0600.
-# Returns 0 on success, non-zero on failure.
-acquire_creds() {
-  [ -f "$CREDS" ] && { ok "creds already exist at $CREDS — skipping acquire"; return 0; }
-  echo
-  printf '\033[1m=== Interactive Credential Acquisition ===\033[0m\n'
-  printf 'No pre-supplied creds found. Two ways to authenticate:\n'
-  printf '  1) GitHub Device Flow (gh auth login) — recommended\n'
-  printf '  2) Paste a GH_TOKEN directly\n'
-  printf '\n'
-  local choice=""
-  while [ -z "$choice" ]; do
-    printf 'Choose method [1/2]: '
-    read -r choice
-    case "$choice" in
-      1|2) ;;
-      *) choice="";;
-    esac
-  done
-
-  local gh_token=""
-  if [ "$choice" = 1 ]; then
-    info ACQUIRE "running gh auth login --hostname github.com --git-protocol https --web"
-    if command -v gh >/dev/null 2>&1; then
-      gh auth login --hostname github.com --git-protocol https --web || {
-        no "gh auth login failed"
-        return 1
-      }
-      gh_token="$(gh auth token 2>/dev/null)" || {
-        no "failed to retrieve GH_TOKEN from gh"
-        return 1
-      }
-    else
-      no "gh CLI not found — install GitHub CLI first, then re-run"
-      return 1
-    fi
-  else
-    printf 'Paste your GitHub personal access token (will not echo): '
-    stty -echo 2>/dev/null
-    read -r gh_token
-    stty echo 2>/dev/null
-    printf '\n'
-    if [ -z "$gh_token" ]; then
-      no "empty token — aborting"
-      return 1
-    fi
-  fi
-
-  local oauth_token=""
-  if command -v claude >/dev/null 2>&1; then
-    info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
-    oauth_token="$(claude setup-token 2>/dev/null)" || true
-    [ -z "$oauth_token" ] && no "claude setup-token failed or returned empty — falling back to manual entry"
-  else
-    no "claude CLI not found — falling back to manual entry"
-  fi
-
-  if [ -z "$oauth_token" ]; then
-    printf 'Paste your CLAUDE_CODE_OAUTH_TOKEN (will not echo): '
-    stty -echo 2>/dev/null
-    read -r oauth_token
-    stty echo 2>/dev/null
-    printf '\n'
-  fi
-
-  if [ -z "$oauth_token" ]; then
-    no "empty CLAUDE_CODE_OAUTH_TOKEN — aborting"
-    return 1
-  fi
-
-  # Write providers.env with mode 0600, never echoing values
+# Writes/updates a single KEY=VALUE pair in $CREDS, preserving every other
+# line already in the file (e.g. a previously-acquired sibling key, or
+# DISCORD_TOKEN) and forcing mode 0600. Never echoes the value.
+write_cred_key() {
+  local key="$1" value="$2"
   mkdir -p "$STATE_DIR"
   (
     umask 077
-    cat > "$CREDS" <<EOF
-CHUMP_AUTH_MODE=oauth
-GH_TOKEN=$gh_token
-CLAUDE_CODE_OAUTH_TOKEN=$oauth_token
-EOF
+    touch "$CREDS"
+    grep -vE "^(export )?${key}=" "$CREDS" > "$CREDS.tmp" 2>/dev/null || true
+    mv "$CREDS.tmp" "$CREDS"
+    printf '%s=%s\n' "$key" "$value" >> "$CREDS"
   )
   chmod 600 "$CREDS" 2>/dev/null || true
+}
+
+# Space-separated subset of $REQUIRED_CRED_KEYS not yet present (with a
+# non-empty value) in $CREDS. Empty output means the required set is
+# already satisfied — the idempotent "nothing to do" case.
+creds_missing_required_keys() {
+  local missing="" k
+  for k in $REQUIRED_CRED_KEYS; do
+    if [ -f "$CREDS" ] && grep -qE "^(export )?$k=.+" "$CREDS"; then :; else missing="$missing $k"; fi
+  done
+  printf '%s' "$missing" | sed -E 's/^ //'
+}
+
+# Interactive acquire (INFRA-3688 / INFRA-3626): prompt the user only for the
+# REQUIRED_CRED_KEYS that are still missing — GitHub auth via `gh auth login`
+# (device flow) or a pasted GH_TOKEN, and CLAUDE_CODE_OAUTH_TOKEN via
+# `claude setup-token` (or manual paste as fallback). Merges each acquired
+# key into $CREDS via write_cred_key so any key the caller already had
+# (zero-touch materialize, a prior partial run, DISCORD_TOKEN, etc.) is left
+# untouched — idempotent. Never echoes secret values to stdout or logs.
+# File ends at mode 0600. Returns 0 on success, non-zero on failure.
+acquire_creds() {
+  local missing
+  missing="$(creds_missing_required_keys)"
+  [ -z "$missing" ] && { ok "creds already satisfy required keys at $CREDS — skipping acquire"; return 0; }
+
+  echo
+  printf '\033[1m=== Interactive Credential Acquisition ===\033[0m\n'
+  printf 'Missing required creds:%s\n' "$missing"
+
+  case " $missing " in
+    *' GH_TOKEN '*)
+      printf '\nTwo ways to authenticate with GitHub:\n'
+      printf '  1) GitHub Device Flow (gh auth login) — recommended\n'
+      printf '  2) Paste a GH_TOKEN directly\n\n'
+      local choice=""
+      while [ -z "$choice" ]; do
+        printf 'Choose method [1/2]: '
+        read -r choice
+        case "$choice" in 1|2) ;; *) choice="";; esac
+      done
+
+      local gh_token=""
+      if [ "$choice" = 1 ]; then
+        command -v gh >/dev/null 2>&1 || { no "gh CLI not found — install GitHub CLI first, then re-run"; return 1; }
+        info ACQUIRE "running gh auth login --hostname github.com --git-protocol https --web"
+        gh auth login --hostname github.com --git-protocol https --web || { no "gh auth login failed"; return 1; }
+        gh_token="$(gh auth token 2>/dev/null)" || { no "failed to retrieve GH_TOKEN from gh"; return 1; }
+      else
+        printf 'Paste your GitHub personal access token (will not echo): '
+        stty -echo 2>/dev/null
+        read -r gh_token
+        stty echo 2>/dev/null
+        printf '\n'
+      fi
+      [ -z "$gh_token" ] && { no "empty GH_TOKEN — aborting"; return 1; }
+      write_cred_key GH_TOKEN "$gh_token"
+      ok "GH_TOKEN acquired (value not logged)"
+      ;;
+  esac
+
+  case " $missing " in
+    *' CLAUDE_CODE_OAUTH_TOKEN '*)
+      local oauth_token=""
+      if command -v claude >/dev/null 2>&1; then
+        info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
+        oauth_token="$(claude setup-token 2>/dev/null)" || true
+        [ -z "$oauth_token" ] && no "claude setup-token failed or returned empty — falling back to manual entry"
+      else
+        no "claude CLI not found — falling back to manual entry"
+      fi
+      if [ -z "$oauth_token" ]; then
+        printf 'Paste your CLAUDE_CODE_OAUTH_TOKEN (will not echo): '
+        stty -echo 2>/dev/null
+        read -r oauth_token
+        stty echo 2>/dev/null
+        printf '\n'
+      fi
+      [ -z "$oauth_token" ] && { no "empty CLAUDE_CODE_OAUTH_TOKEN — aborting"; return 1; }
+      write_cred_key CLAUDE_CODE_OAUTH_TOKEN "$oauth_token"
+      ok "CLAUDE_CODE_OAUTH_TOKEN acquired (value not logged)"
+      ;;
+  esac
+
+  write_cred_key CHUMP_AUTH_MODE oauth
   ok "creds written to $CREDS (mode 600; values not logged)"
   return 0
 }
@@ -377,10 +433,18 @@ EOF
 # ---------- 3b. CREDS CHECK ----------
 check_creds() {
   materialize_creds
-  [ -f "$CREDS" ] || { no "creds missing: $CREDS (supply --creds-file PATH or \$CHUMP_BOOTSTRAP_CREDS)"; return 1; }
-  local missing=""
+  # INFRA-3626: when required keys are still missing after the zero-touch
+  # sources above, invoke the interactive acquisition step instead of only
+  # failing — but only when attached to a real terminal and not explicitly
+  # suppressed, so an unattended/CI run degrades to the prior fail-loud
+  # behavior rather than blocking on a `read` that will never return.
+  if [ -n "$(creds_missing_required_keys)" ] && [ -t 0 ] && [ "${CHUMP_NODE_NONINTERACTIVE:-0}" != 1 ]; then
+    acquire_creds || true
+  fi
+  [ -f "$CREDS" ] || { no "creds missing: $CREDS (supply --creds-file PATH or \$CHUMP_BOOTSTRAP_CREDS, or run interactively to be prompted)"; return 1; }
+  local missing="" k
   for k in $REQUIRED_CRED_KEYS; do
-    grep -qE "^(export )?$k=" "$CREDS" || missing="$missing $k"
+    grep -qE "^(export )?$k=.+" "$CREDS" || missing="$missing $k"
   done
   [ -n "$missing" ] && { no "creds present but missing keys:$missing — supply via --creds-file/\$CHUMP_BOOTSTRAP_CREDS and re-run"; return 1; }
   ok "creds ok ($(grep -cE '^(export )?[A-Z_]+=' "$CREDS") keys, incl OAuth+GH, mode $(stat -c %a "$CREDS" 2>/dev/null || stat -f %Lp "$CREDS" 2>/dev/null))"
@@ -413,21 +477,87 @@ write_node_env() {
   fi
   local _chump_localhost="localhost"
   team_url="${team_url:-http://${_chump_localhost}:3000}"
+  # AC4 (INFRA-6498): never write an empty CHUMP_TEAM_API_KEY — downstream
+  # consumers treat "" as "unset" but some (curl Authorization headers) treat
+  # it as "set to nothing", which is worse than an obviously-fake value.
+  team_api_key="${team_api_key:-placeholder-team-api-key}"
   local store_backend="${CHUMP_STORE_BACKEND:-postgrest}"
+  # RESILIENT-1446: the node's real worker/store identity — the user the organs
+  # must run as (git/ssh/cargo/oauth) and whose ~/.chump holds the canonical gap
+  # store + oauth token + farmer heartbeat. Persist it so a LATER root-privileged
+  # placer/deploy (chump-organ-deploy runs install-helsinki-atc.sh AS ROOT) emits
+  # RUN-USER-shaped units even when it runs from a root-owned checkout, instead of
+  # root-shaped units that split the node (farmer heartbeat in /root/.chump vs the
+  # worker reading the run-user's ~/.chump -> RESILIENT-069 RED -> fleet dark).
+  # Derivation: an explicit override wins; else the owner of this node's repo;
+  # else the installing user.
+  local run_user="${CHUMP_RUN_USER:-$(stat -c %U "$NODE_DIR/repo" 2>/dev/null || id -un 2>/dev/null || echo root)}"
+  local work_enabled=0 node_mode="control-plane"
+  if [ "$CONTROL_PLANE_ONLY" != 1 ] && provider_creds_ready; then
+    work_enabled=1
+    node_mode="work-ready"
+  fi
   mkdir -p "$STATE_DIR"
   ( umask 077
     {
       printf 'export CHUMP_STATE_DIR=%s\n' "$STATE_DIR"
+      # INFRA-3632: pin the exact var GapStore::db_path() reads
+      # (crates/chump-gap-store/src/lib.rs) so every shell/organ that sources
+      # this file resolves the ONE canonical state.db instead of falling back
+      # to repo_root().join(".chump/state.db") — the fallback a git worktree's
+      # cwd would otherwise silently hit (split-brain store, INFRA-3632 AC2).
+      printf 'export CHUMP_STATE_DB=%s\n' "$STATE_DB"
       printf 'export CHUMP_TEAM_URL=%s\n' "$team_url"
       printf 'export CHUMP_TEAM_API_KEY=%s\n' "$team_api_key"
       printf 'export CHUMP_STORE_BACKEND=%s\n' "$store_backend"
+      # RESILIENT-1083: persist this node's role OUTSIDE the repo so the recurring
+      # organ-reconcile can self-scope to it (and survive `git reset --hard`).
+      printf 'export CHUMP_NODE_ROLE=%s\n' "$ROLE"
+      # RESILIENT-1446: persist the node's run-user so a root-run placer/deploy
+      # emits run-user-shaped units (see the local run_user derivation above).
+      printf 'export CHUMP_RUN_USER=%s\n' "$run_user"
+      # OOTB contract: safe control-plane operation is valid without a provider;
+      # workers start only after a credentialed re-install enables work mode.
+      printf 'export CHUMP_NODE_WORK_ENABLED=%s\n' "$work_enabled"
+      printf 'export CHUMP_NODE_MODE=%s\n' "$node_mode"
     } > "$node_env"
   )
   # Source now so subsequent phases inherit the canonical settings.
   # shellcheck disable=SC1090
   . "$node_env"
-  export CHUMP_STATE_DIR CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND
-  ok "node.env written + sourced: $node_env"
+  export CHUMP_STATE_DIR CHUMP_STATE_DB CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER
+  ok "node.env written + sourced: $node_env (mode=$CHUMP_NODE_MODE, run-user=$CHUMP_RUN_USER)"
+  install_shell_hook "$node_env"
+}
+
+# ---------- 3d. INTERACTIVE-SHELL HOOK (INFRA-3632 AC1) ----------
+# Without this, an interactive `chump gap list` (or any bare shell invocation
+# of the binary) never sees CHUMP_STATE_DB/CHUMP_TEAM_URL/etc — node.env sits
+# on disk, unread, and the CLI falls back to resolving .chump/state.db off
+# whatever repo the shell's cwd happens to be in (the split-brain this gap
+# exists to close). Idempotent: guarded by a marker comment so re-running
+# install never duplicates the block.
+install_shell_hook() {
+  local node_env="$1"
+  local marker="# chump-node-install: source node.env (INFRA-3632)"
+  # .bashrc is the one file virtually every interactive bash session reads
+  # (directly for non-login shells; via .profile's `. "$HOME/.bashrc"` for
+  # login shells) — create it if a fresh account doesn't have one yet, so the
+  # hook isn't silently skipped on a brand-new user.
+  [ -f "$HOME/.bashrc" ] || : > "$HOME/.bashrc"
+  # .profile is read by plain POSIX sh login shells (Termux may default to
+  # one) — hook it too, but only if it already exists; a bash-only box's
+  # .profile just re-sources .bashrc anyway, so creating one isn't needed.
+  local f
+  for f in "$HOME/.bashrc" "$HOME/.profile"; do
+    [ -f "$f" ] || continue
+    grep -qF "$marker" "$f" 2>/dev/null && continue
+    {
+      printf '\n%s\n' "$marker"
+      printf 'if [ -f "%s" ]; then . "%s"; fi\n' "$node_env" "$node_env"
+    } >> "$f"
+    ok "interactive-shell hook installed: $f sources $node_env"
+  done
 }
 
 # ---------- 4. BINARY ----------
@@ -796,7 +926,11 @@ ensure_seed() {
   fi
   local out
   if out="$(run_timeout "${CHUMP_SEED_TIMEOUT_S:-60}" "$bin" gap sync --pull --state-db "$STATE_DB" --gaps-dir "$gaps_dir" --json 2>&1)"; then
-    ok "seed: canonical store synced from docs/gaps ($out)"
+    # INFRA-7308: concise success message (count, not the raw JSON blob) —
+    # inserted+updated is "gaps loaded" from the docs/gaps YAML mirror this cycle.
+    local loaded
+    loaded="$(printf '%s' "$out" | jq -r '(.inserted // 0) + (.updated // 0)' 2>/dev/null || echo "?")"
+    ok "seed: canonical store synced from docs/gaps ($loaded gap(s) loaded)"
   else
     # AC2: substrate-unreachable (missing state.db dir, locked db, etc.) is a
     # clear warning, not a hard install failure — the node is still usable
@@ -865,10 +999,218 @@ reconcile_role_organs() {
     no "manifest organ set reconcile had issues — see $LOG_DIR/organ-reconcile-*.log; non-fatal (e.g. non-root), re-run to retry"
   fi
 }
+
+# RESILIENT-1055: PLACE the role's manifest unit FILES before reconcile enables
+# them. THE ROOT BUG this closes: reconcile_role_organs above only runs
+# `systemctl enable --now <unit>` — it never COPIES the tracked unit file into
+# /etc/systemd/system. On a fresh box those files don't exist, so every
+# manifest organ enable-failed -> `backoff:` forever, and bring-up was
+# incomplete no matter how many times it ran (the exact cuphead/mugman symptom:
+# ~17 manifest units with NO file on the box, reconcile logging perpetual
+# backoff). This function copies each role-matched manifest unit (and its paired
+# .service/.timer sibling) from scripts/dispatch/, HOST-REWRITTEN via the shared
+# organ-unit-install-lib.sh, into /etc/systemd/system — so `enable --now` finds
+# a real, correctly-pathed unit. It also:
+#   * rewrites the tracked units' baked ~/Projects/chump repo path to this box's
+#     actual $NODE_DIR/repo (node-install clones there, not ~/Projects/chump),
+#   * symlinks the installed binary onto the organs' PATH ($RUN_HOME/.cargo/bin)
+#     so `requires=bin:chump` organs resolve and organ ExecStarts find `chump`,
+#   * always places chump-organ-reconcile.{service,timer} (the manifest
+#     self-excludes it) and scopes ITS recurring reconcile to this node's role
+#     via a drop-in, so the timer-driven self-heal converges to the role roster
+#     instead of the whole manifest (which would re-add out-of-role organs).
+# Systemd hosts only; writes into the invoking user's systemd --user unit dir
+# (INFRA-7895, INFRA-7757 slice) — no root required, no sudo bootstrap dance.
+place_role_unit_files() {
+  [ "${HOST_KIND:-}" = "linux-systemd" ] || { info ORGANS "unit-file placement is systemd-only (host=${HOST_KIND:-unset}) — skipping"; return 0; }
+  local repo="$NODE_DIR/repo"
+  local manifest="$repo/scripts/ops/organ-manifest.txt"
+  local dispatch="$repo/scripts/dispatch"
+  local lib_manifest="$repo/scripts/ops/lib/organ-manifest-lib.sh"
+  local lib_unit="$repo/scripts/ops/lib/organ-unit-install-lib.sh"
+  if [ ! -f "$manifest" ] || [ ! -f "$lib_manifest" ] || [ ! -f "$lib_unit" ]; then
+    info ORGANS "manifest/libs not found under $repo — skipping unit-file placement"
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: place role-matched manifest unit files (role=$ROLE) into \$HOME/.config/systemd/user"; return 0; fi
+
+  # shellcheck source=/dev/null
+  . "$lib_manifest"; . "$lib_unit"
+  local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
+  # INFRA-7895 (INFRA-7757 slice): unconditionally place into the invoking
+  # user's systemd --user unit dir — no root/UID check, no sudo bootstrap.
+  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-$HOME/.config/systemd/user}"
+  mkdir -p "$dest_dir"
+  info ORGANS "placing role-matched manifest unit files (role=$ROLE, user=$run_user, home=$run_home, dest=$dest_dir)"
+
+  # Make `chump` resolvable on the organs' injected PATH ($RUN_HOME/.cargo/bin).
+  if [ -x "$BIN" ]; then
+    mkdir -p "$run_home/.cargo/bin" 2>/dev/null || true
+    ln -sf "$BIN" "$run_home/.cargo/bin/chump" 2>/dev/null || true
+  fi
+
+  local PAGING_OFF=() ENABLED=(); declare -A ORGAN_ROLE ORGAN_REQUIRES
+  organ_manifest_parse "$manifest" PAGING_OFF ENABLED ORGAN_ROLE ORGAN_REQUIRES || { no "manifest parse failed — skipping placement"; return 0; }
+
+  local rf; rf="$(organ_role_filter)"
+  declare -A _want_base    # base-unit-name -> 1 for role-matched units
+  local unit role tok in_role
+  for unit in "${ENABLED[@]}"; do
+    role="${ORGAN_ROLE[$unit]:-brain}"
+    in_role=0
+    if [ -z "$rf" ]; then in_role=1
+    else
+      IFS=',' read -ra _toks <<< "$rf"
+      for tok in "${_toks[@]}"; do [ "$tok" = "$role" ] && { in_role=1; break; }; done
+    fi
+    [ "$in_role" = 1 ] || continue
+    local base="${unit%.service}"; base="${base%.timer}"
+    _want_base["$base"]=1
+  done
+  # Self-heal beat: organ-reconcile is intentionally absent from the manifest
+  # (self-exclusion), so add it explicitly for EVERY role.
+  _want_base["chump-organ-reconcile"]=1
+
+  declare -A _KEEP_ROOT=( [chump-organ-deploy.service]=1 [chump-organ-deploy.timer]=1 )
+  local placed=() skipped_nofile=() base f keep suffix
+  for base in "${!_want_base[@]}"; do
+    for suffix in service timer; do
+      f="${base}.${suffix}"
+      local src="$dispatch/$f" dest="$dest_dir/$f"
+      [ -f "$src" ] || continue    # not every base has both a .service and a .timer
+      keep=0; [ -n "${_KEEP_ROOT[$f]:-}" ] && keep=1
+      # RESILIENT-1102: pass this box's ACTUAL repo ($NODE_DIR/repo, where
+      # node-install clones — NOT ~/Projects/chump) so the shared rewriter bakes
+      # a WorkingDirectory/ExecStart that exists. The repo-path rewrite now lives
+      # in organ_unit_host_rewrite itself (single source of truth), so both this
+      # placer and install-helsinki-atc.sh converge identically — no post-hoc sed.
+      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep" "$repo"; then
+        placed+=("$f")
+      fi
+    done
+    # A base named in the role set but with NO tracked file at all (the
+    # CJ-legacy hand-installed chump-cj-* units) — record it; the manifest's
+    # file: requires guard makes the reconcile skip it cleanly, so this is a
+    # note, not an error.
+    if [ ! -f "$dispatch/${base}.service" ] && [ ! -f "$dispatch/${base}.timer" ]; then
+      skipped_nofile+=("$base")
+    fi
+  done
+
+  systemctl --user daemon-reload 2>/dev/null || true
+
+  # Scope the recurring organ-reconcile timer to THIS node's role (unless --role
+  # all) so the timer-driven self-heal converges to the role roster, not the
+  # whole manifest. A drop-in beats editing the unit (survives re-copy).
+  if [ -f "$dest_dir/chump-organ-reconcile.service" ] && [ "$ROLE" != all ]; then
+    mkdir -p "$dest_dir/chump-organ-reconcile.service.d"
+    cat > "$dest_dir/chump-organ-reconcile.service.d/zz-node-role.conf" <<EOF
+# RESILIENT-1055 — scope this node's recurring reconcile to its --role roster so
+# the timer-driven self-heal never re-adds out-of-role organs. Written by
+# chump-node-install.sh at bring-up (role=$ROLE).
+[Service]
+Environment=CHUMP_ORGAN_RECONCILE_ROLE=$rf
+EOF
+    systemctl --user daemon-reload 2>/dev/null || true
+  elif [ "$ROLE" = all ]; then
+    # RESILIENT-1446: a sole hub (--role all) runs the WHOLE manifest — an empty
+    # role-filter makes organ-reconcile enable every organ and reap NOTHING. A
+    # stale zz-node-role.conf left from a prior brain/muscle bring-up would pin
+    # CHUMP_ORGAN_RECONCILE_ROLE and make the recurring reconcile's RESILIENT-1016
+    # drift-removal reap the out-of-role layer (a muscle scope reaps the entire
+    # brain incl. the farmer -> RESILIENT-069 RED -> fleet dark). Remove it so
+    # node.env's CHUMP_NODE_ROLE=all governs and a node transitioned TO all sheds
+    # the old scope with no hand-edit.
+    if [ -f "$dest_dir/chump-organ-reconcile.service.d/zz-node-role.conf" ]; then
+      rm -f "$dest_dir/chump-organ-reconcile.service.d/zz-node-role.conf"
+      systemctl --user daemon-reload 2>/dev/null || true
+      info ORGANS "role=all: removed stale zz-node-role.conf so the recurring reconcile runs the whole manifest and reaps nothing (RESILIENT-1446)"
+    fi
+  fi
+
+  # INFRA-7895 (INFRA-7757 slice): arm every unit-file just placed, not only
+  # the reconcile beat — reconcile_role_organs (organ-reconcile.sh) still
+  # converges the full manifest afterward, but placement no longer leaves a
+  # freshly-copied unit dark until that separate pass runs.
+  local pf
+  for pf in "${placed[@]}"; do
+    systemctl --user enable --now "$pf" 2>/dev/null || true
+  done
+
+  ok "placed ${#placed[@]} role-matched unit file(s): ${placed[*]:-none}"
+  [ "${#skipped_nofile[@]}" -gt 0 ] && info ORGANS "role-matched but no tracked file (skipped, guarded by requires=file:): ${skipped_nofile[*]}"
+  return 0
+}
+# RESILIENT-1099: render the tracked, node-neutral
+# scripts/dispatch/worker-launcher.template.sh into a live per-node launcher
+# at $ORGAN_DIR/worker.sh. Node identity is the ONLY per-node input this
+# function supplies (AGENT_ID / WORKER_MACHINE / FLEET_SESSION /
+# WORKER_SKILLS / FLEET_DOMAIN_FILTER / REPO_ROOT) — self-heal policy and
+# model-routing are sourced by worker.sh itself from the tracked
+# worker-policy.env / model-escalation-ladder.env, so this launcher never
+# carries fleet policy that could drift between nodes. Replaces the
+# untracked, hand-copied ~/nodeN-worker-run.sh class of launcher (the exact
+# drift that froze the fleet ~15h on 2026-09-08: see
+# scripts/setup/worker-policy.env header).
+#
+# Falls back to a minimal inline launcher (same shape as before RESILIENT-1099)
+# if the template isn't present yet in this node's checkout (e.g. mid-upgrade
+# from a pre-RESILIENT-1099 clone) so a fresh install never hard-fails here.
+render_worker_launcher() {
+  local repo="${CHUMP_NODE_REPO:-$NODE_DIR/repo}"
+  local template="$repo/scripts/dispatch/worker-launcher.template.sh"
+  local agent_id="${CHUMP_WORKER_AGENT_ID:-$(hostname -s 2>/dev/null || echo node1)-worker}"
+  local machine="${CHUMP_WORKER_MACHINE:-$(hostname -s 2>/dev/null || echo node1)}"
+  local session="${CHUMP_WORKER_SESSION:-$machine}"
+  local skills="${CHUMP_WORKER_SKILLS:-}"
+  local domain="${CHUMP_WORKER_DOMAIN_FILTER:-}"
+  # INFRA-471: model class + effort band for this launcher. Defaults preserve
+  # the pre-existing single-worker behavior (sonnet; xs,s,m). scripts/dispatch/
+  # spawn-worker-fleet.sh renders ADDITIONAL launchers with different classes
+  # (e.g. a haiku/xs instance that eats the xs backlog a sonnet worker refuses).
+  local model="${CHUMP_WORKER_MODEL:-sonnet}"
+  local effort="${CHUMP_WORKER_EFFORT:-xs,s,m}"
+
+  if [ ! -f "$template" ]; then
+    info ORGANS "worker-launcher.template.sh not found in checkout — falling back to minimal inline launcher"
+    run "cat > '$ORGAN_DIR/worker.sh' <<'WK'
+#!/usr/bin/env bash
+export AGENT_ID=\"\${CHUMP_WORKER_AGENT_ID:-\$(hostname -s 2>/dev/null || echo node1)-worker}\"
+export REPO_ROOT=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
+export FLEET_LOG_DIR=\"\${FLEET_LOG_DIR:-$LOG_DIR}\"
+exec bash \"\$REPO_ROOT/scripts/dispatch/worker.sh\"
+WK"
+    run "chmod +x '$ORGAN_DIR/worker.sh'"
+    return 0
+  fi
+
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: render $template -> $ORGAN_DIR/worker.sh (AGENT_ID=$agent_id WORKER_MACHINE=$machine FLEET_SESSION=$session WORKER_SKILLS=$skills FLEET_DOMAIN_FILTER=$domain REPO_ROOT=$repo FLEET_MODEL=$model FLEET_EFFORT_FILTER=$effort)"
+    return 0
+  fi
+
+  sed \
+    -e "s|__AGENT_ID__|$agent_id|g" \
+    -e "s|__WORKER_MACHINE__|$machine|g" \
+    -e "s|__FLEET_SESSION__|$session|g" \
+    -e "s|__WORKER_SKILLS__|$skills|g" \
+    -e "s|__FLEET_DOMAIN_FILTER__|$domain|g" \
+    -e "s|__REPO_ROOT__|$repo|g" \
+    -e "s|__FLEET_MODEL__|$model|g" \
+    -e "s|__FLEET_EFFORT_FILTER__|$effort|g" \
+    "$template" > "$ORGAN_DIR/worker.sh"
+  chmod +x "$ORGAN_DIR/worker.sh"
+  ok "rendered worker launcher (agent_id=$agent_id machine=$machine skills=${skills:-any} domain=${domain:-any} model=$model effort=$effort)"
+}
 install_organs() {
   # write the heartbeat organ (brain's proof-of-life: refresh heartbeat + node profile)
   run "cat > '$ORGAN_DIR/node-heartbeat.sh' <<'HB'
-#!/data/data/com.termux/files/usr/bin/env bash
+#!/usr/bin/env bash
+# Portable shebang: the earlier /data/data/com.termux/.../env path exists ONLY on
+# Termux, so on any other host (systemd Linux, macOS) exec of this script failed
+# with 126 ("bad interpreter") and the organ crash-looped. /usr/bin/env resolves
+# bash on every supported host, matching the process-organ-heal/fleet-health
+# sentinel wrappers written alongside it below.
 STATE=\"\${CHUMP_STATE_DIR:-\$HOME/.chump}\"
 while true; do
   date -u +%Y-%m-%dT%H:%M:%SZ > \"\$STATE/node-heartbeat\"
@@ -922,20 +1264,92 @@ FHS"
   # internally), so a fresh --role muscle install self-starts the worker
   # instead of silently staying loaded-not-active.
   if [ "$ROLE" = muscle ] || [ "$ROLE" = all ]; then
-    run "cat > '$ORGAN_DIR/worker.sh' <<'WK'
-#!/usr/bin/env bash
-export AGENT_ID=\"\${CHUMP_WORKER_AGENT_ID:-\$(hostname -s 2>/dev/null || echo node1)-worker}\"
-export REPO_ROOT=\"\${CHUMP_NODE_REPO:-$NODE_DIR/repo}\"
-export FLEET_LOG_DIR=\"\${FLEET_LOG_DIR:-$LOG_DIR}\"
-exec bash \"\$REPO_ROOT/scripts/dispatch/worker.sh\"
-WK"
-    run "chmod +x '$ORGAN_DIR/worker.sh'"
+    render_worker_launcher
   fi
   local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
+
+  # INFRA-4351 (INFRA-3641 slice): gate the local svc_install/svc_up organs
+  # above against scripts/ops/organ-manifest.txt itself, not just the
+  # hardcoded brain/muscle/common_organs() role split above. Each local
+  # organ's systemd unit name (svc_install writes "chump-$name.service")
+  # doubles as its organ-manifest.txt lookup key — an organ explicitly
+  # declared paging_off there, or scoped away from this node's role/platform,
+  # or missing a requires= precondition, is skipped here too instead of
+  # svc_install/svc_up running for it unconditionally. An organ that has no
+  # line in the manifest at all keeps today's behavior (installed whenever
+  # role-selected above) — the manifest is additive coverage, not a second
+  # required declaration, so undeclared local organs don't regress to
+  # "never installs".
+  local manifest_lib="$NODE_DIR/repo/scripts/ops/lib/organ-manifest-lib.sh"
+  [ -f "$manifest_lib" ] || manifest_lib="$(dirname "$0")/../ops/lib/organ-manifest-lib.sh"
+  # CHUMP_ORGAN_MANIFEST: same override organ-reconcile.sh honors (RESILIENT-746
+  # tests drive it this way) — lets tests point install_organs at a synthetic
+  # manifest without touching the real fleet-wide organ-manifest.txt.
+  local manifest="${CHUMP_ORGAN_MANIFEST:-}"
+  if [ -z "$manifest" ]; then
+    manifest="$NODE_DIR/repo/scripts/ops/organ-manifest.txt"
+    [ -f "$manifest" ] || manifest="$(dirname "$0")/../ops/organ-manifest.txt"
+  fi
+  local have_manifest=0
+  local M_PAGING_OFF=() M_ENABLED=()
+  declare -A M_ROLE M_REQUIRES M_PLATFORMS
+  if [ -f "$manifest_lib" ] && [ -f "$manifest" ]; then
+    # shellcheck source=/dev/null
+    . "$manifest_lib"
+    organ_manifest_parse "$manifest" M_PAGING_OFF M_ENABLED M_ROLE M_REQUIRES M_PLATFORMS && have_manifest=1
+  fi
+  local rf; rf="$(organ_role_filter)"
+  local current_platform; current_platform="systemd"
+  [ "$have_manifest" = 1 ] && current_platform="$(organ_current_platform 2>/dev/null || echo systemd)"
+
   echo "$list" | while IFS='|' read -r name exec; do
     [ -z "$name" ] && continue
-    svc_install "$name" "$exec"; svc_up "$name"; ok "organ installed+up: $name"
+    unit="chump-$name.service"
+    if [ "$have_manifest" = 1 ]; then
+      declared=0
+      for entry in "${M_ENABLED[@]:-}"; do [ "$entry" = "$unit" ] && { declared=1; break; }; done
+      paging=0
+      for entry in "${M_PAGING_OFF[@]:-}"; do [ "$entry" = "$unit" ] && { paging=1; break; }; done
+      if [ "$paging" = 1 ]; then
+        info ORGANS "$name skipped: organ-manifest.txt declares $unit paging_off"
+        continue
+      fi
+      if [ "$declared" = 1 ]; then
+        m_role="${M_ROLE[$unit]:-brain}"
+        in_role=0
+        if [ -z "$rf" ]; then in_role=1
+        else
+          IFS=',' read -ra _rf_toks <<< "$rf"
+          for entry in "${_rf_toks[@]}"; do [ "$entry" = "$m_role" ] && { in_role=1; break; }; done
+        fi
+        if [ "$in_role" = 0 ]; then
+          info ORGANS "$name skipped: organ-manifest.txt scopes $unit to role=$m_role, this install is role=$ROLE"
+          continue
+        fi
+        if ! organ_platform_matches "${M_PLATFORMS[$unit]:-}" "$current_platform"; then
+          info ORGANS "$name skipped: organ-manifest.txt scopes $unit to platforms=${M_PLATFORMS[$unit]:-systemd}, this host is $current_platform"
+          continue
+        fi
+        reason=""
+        if ! organ_is_applicable "$unit" "${M_REQUIRES[$unit]:-}" reason; then
+          info ORGANS "$name skipped: organ-manifest.txt requires unmet ($reason)"
+          continue
+        fi
+      fi
+    fi
+    svc_install "$name" "$exec"
+    if [ "$name" = worker ] && ! worker_execution_enabled; then
+      svc_down "$name"
+      info ORGANS "worker installed but deliberately stopped (mode=control-plane; add working provider credentials and re-run without --control-plane-only to enable it)"
+      continue
+    fi
+    svc_up "$name"; ok "organ installed+up: $name"
   done
+  # RESILIENT-1055: PLACE the role's manifest unit files (host-rewritten) BEFORE
+  # reconcile enables them — otherwise reconcile's `enable --now` hits a
+  # never-copied unit and backs it off forever. Placement + reconcile together
+  # are what make a fresh `--role` box come up with its COMPLETE role roster.
+  place_role_unit_files
   reconcile_role_organs
 }
 
@@ -1007,6 +1421,63 @@ ensure_eyes() {
 }
 
 # ---------- 6. SUPERVISE (survive reboot) ----------
+# Linux nodes must refresh the same verified binary the worker resolves
+# ($NODE_DIR/bin/chump). Calling the existing installer here closes the old
+# hand-run gap where a fresh node had a one-time binary but no durable update
+# path after its first boot.
+install_binary_refresh() {
+  [ "$HOST_KIND" = linux-systemd ] || return 0
+  local refresh="$NODE_DIR/repo/scripts/setup/install-node-refresh-systemd.sh"
+  [ -f "$refresh" ] || refresh="$(dirname "$0")/install-node-refresh-systemd.sh"
+  if [ ! -f "$refresh" ]; then
+    no "binary refresh installer missing: $refresh"
+    return 1
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: CHUMP_NODE_REPO='$NODE_DIR/repo' CHUMP_NODE_BIN='$BIN' bash '$refresh'"
+    return 0
+  fi
+  if CHUMP_NODE_REPO="$NODE_DIR/repo" CHUMP_NODE_BIN="$BIN" CHUMP_NODE_ROLE="$ROLE" bash "$refresh"; then
+    ok "binary refresh timer installed for canonical binary: $BIN"
+  else
+    no "binary refresh timer install failed; node cannot claim a durable installation"
+    return 1
+  fi
+}
+
+# The cockpit is an opt-in control-plane organ: nodes that only need a local
+# CLI do not need to expose HTTP, while CJ/Pixel can request it explicitly with
+# --with-fleet-server. The server installer itself only pulls a prebuilt binary
+# (never cargo-builds on a live node); make its absence a hard failure here so
+# an opted-in cockpit is never reported as installed when it cannot serve.
+install_fleet_server() {
+  [ "$WITH_FLEET_SERVER" = 1 ] || return 0
+  [ "$HOST_KIND" = linux-systemd ] || {
+    info FLEET-SERVER "not installed on host=$HOST_KIND (Linux systemd only)"
+    return 0
+  }
+  local installer="$NODE_DIR/repo/scripts/setup/install-fleet-server-node.sh"
+  [ -f "$installer" ] || installer="$(dirname "$0")/install-fleet-server-node.sh"
+  if [ ! -f "$installer" ]; then
+    no "fleet-server installer missing: $installer"
+    return 1
+  fi
+  local server_bin="$NODE_DIR/bin/chump-fleet-server"
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: CHUMP_NODE_REPO='$NODE_DIR/repo' CHUMP_NODE_DIR='$NODE_DIR' CHUMP_FLEET_SERVER_BIN='$server_bin' bash '$installer'"
+    return 0
+  fi
+  if ! CHUMP_NODE_REPO="$NODE_DIR/repo" CHUMP_NODE_DIR="$NODE_DIR" CHUMP_FLEET_SERVER_BIN="$server_bin" bash "$installer"; then
+    no "fleet-server installer failed"
+    return 1
+  fi
+  if [ ! -x "$server_bin" ]; then
+    no "fleet-server binary unavailable after install: $server_bin (wait for a prebuilt artifact, then re-run)"
+    return 1
+  fi
+  ok "fleet-server installed at canonical node path: $server_bin"
+}
+
 install_supervise() {
   case "$HOST_KIND" in
     termux)
@@ -1018,18 +1489,58 @@ sshd 2>/dev/null; termux-wake-lock 2>/dev/null
 BT"
       run "chmod +x '$BOOT_DIR/10-chump-node.sh'"; ok "reboot hook: $BOOT_DIR/10-chump-node.sh"
       ;;
-    linux-systemd) ok "systemd enables organs on boot (done in svc_up)";;
+    linux-systemd)
+      ok "systemd enables organs on boot (done in svc_up)"
+      install_binary_refresh
+      install_fleet_server
+      ;;
     *) info SUPERVISE "manual supervision on $HOST_KIND";;
   esac
 }
 
 # ---------- 7. SELF-TEST (defines 'installed') ----------
+# INFRA-3641 AC3: --dry-run on a systemd host prints the EXACT manifest-derived
+# organ set this role WOULD supervise (unit, kind, applicable/skip + reason) —
+# read-only, no systemctl mutation, no live-status query needed since nothing
+# has actually been installed yet. Reuses organ-role-roster.sh (already the
+# read-only "what would this role run" primitive RESILIENT-1055 shipped) so
+# there is no second per-host organ-listing implementation to drift.
+self_test_dry_run_organs() {
+  [ "$HOST_KIND" = linux-systemd ] || { info SELF-TEST "--dry-run organ roster is systemd-only (host=$HOST_KIND) — skipping"; return 0; }
+  local roster="$NODE_DIR/repo/scripts/ops/organ-role-roster.sh"
+  [ -f "$roster" ] || roster="$(dirname "$0")/../ops/organ-role-roster.sh"
+  if [ ! -f "$roster" ]; then info SELF-TEST "organ-role-roster.sh not found — skipping dry-run roster"; return 0; fi
+  local rf; rf="$(organ_role_filter)"
+  info SELF-TEST "--dry-run: manifest-derived organ set this role WOULD supervise (role=$ROLE, role-filter=[${rf:-all}])"
+  CHUMP_ORGAN_RECONCILE_ROLE="$rf" bash "$roster" | while IFS=$'\t' read -r state unit kind reason; do
+    [ -z "$unit" ] && continue
+    if [ "$state" = SKIP ]; then printf '  SKIP  %s (%s) — %s\n' "$unit" "$kind" "$reason"
+    else printf '  WOULD-SUPERVISE  %s (%s)\n' "$unit" "$kind"; fi
+  done
+}
 self_test() {
   info SELF-TEST "verifying node is installed & healthy"
+  if [ "$DRY" = 1 ]; then self_test_dry_run_organs; return 0; fi
+  # `--self-test-only` starts a fresh process; restore the persisted mode so it
+  # judges a control-plane install by its honest contract rather than demanding
+  # a provider that was intentionally absent at first boot.
+  local node_env="$STATE_DIR/node.env"
+  if [ -f "$node_env" ]; then
+    # shellcheck disable=SC1090
+    . "$node_env"
+  fi
+  if [ "$CONTROL_PLANE_ONLY" = 1 ]; then
+    CHUMP_NODE_WORK_ENABLED=0
+    CHUMP_NODE_MODE="control-plane"
+  fi
   local fail=0
   [ -n "$HOST_KIND" ] && ok "host detected: $HOST_KIND/$ARCH" || { no "host detect"; fail=1; }
-  check_creds || fail=1
-  if [ -d "$NODE_DIR/repo/.git" ]; then
+  if provider_creds_ready && [ "${CHUMP_NODE_WORK_ENABLED:-1}" = 1 ]; then
+    check_creds || fail=1
+  else
+    info CREDS "provider unavailable or intentionally disabled — control-plane mode is healthy; worker execution remains stopped"
+  fi
+  if git -C "$NODE_DIR/repo" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     local head_sha origin_sha
     head_sha="$(git -C "$NODE_DIR/repo" rev-parse HEAD 2>/dev/null)"
     origin_sha="$(git -C "$NODE_DIR/repo" rev-parse origin/main 2>/dev/null)"
@@ -1070,10 +1581,40 @@ self_test() {
       fail=1
     fi
   fi
+  # INFRA-3632 AC1: interactive-shell hook present (node.env sourced by .bashrc
+  # / .profile), so a bare `chump gap list` from a fresh shell actually sees
+  # CHUMP_STATE_DB instead of silently falling back to cwd-relative resolution.
+  if grep -qF "chump-node-install: source node.env" "$HOME/.bashrc" 2>/dev/null \
+     || grep -qF "chump-node-install: source node.env" "$HOME/.profile" 2>/dev/null; then
+    ok "interactive-shell hook: node.env sourced from .bashrc/.profile"
+  else
+    no "interactive-shell hook missing — re-run chump-node-install.sh to wire .bashrc/.profile"
+    fail=1
+  fi
+  # INFRA-3632 AC2/AC3: the ONE canonical-store contract, verified LIVE with
+  # the actual binary (not just a sqlite3 row-count proxy). A bare
+  # `chump gap list` run from $HOME (no repo context) and from the installed
+  # repo worktree must both resolve to the SAME state.db — the split-brain
+  # this gap exists to close is exactly "cwd silently picks a different file".
+  if [ -x "$BIN" ] && [ -f "$node_env" ]; then
+    local cnt_home cnt_repo
+    cnt_home="$(cd "$HOME" 2>/dev/null && env -i HOME="$HOME" PATH="$PATH" sh -c '. "'"$node_env"'"; "'"$BIN"'" gap list --status open --json' 2>/dev/null | grep -c '"id"')"
+    cnt_repo="$(cd "$NODE_DIR/repo" 2>/dev/null && env -i HOME="$HOME" PATH="$PATH" sh -c '. "'"$node_env"'"; "'"$BIN"'" gap list --status open --json' 2>/dev/null | grep -c '"id"')"
+    if [ -n "$cnt_home" ] && [ "$cnt_home" = "$cnt_repo" ]; then
+      ok "canonical store: \`chump gap list\` from \$HOME and from the repo worktree agree ($cnt_home open gaps)"
+    else
+      no "canonical store MISMATCH: \$HOME resolved $cnt_home open gaps, repo worktree resolved $cnt_repo — two different state.db files in play"
+      fail=1
+    fi
+  fi
   # each role organ supervised & up (INFRA-3650: common_organs, e.g.
   # process-organ-heal, must be part of the "installed" bar for every role)
   local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue
+    if [ "$name" = worker ] && ! worker_execution_enabled; then
+      info SELF-TEST "worker intentionally stopped (control-plane mode)"
+      continue
+    fi
     if [ "$(svc_status "$name")" = up ]; then ok "organ up: $name"; else no "organ DOWN: $name"; fi
   done
   # heartbeat freshness (< 180s old)
@@ -1083,7 +1624,11 @@ self_test() {
     [ "$age" -lt 180 ] 2>/dev/null && ok "heartbeat fresh (${age}s)" || no "heartbeat stale (${age}s)"
   else no "no heartbeat yet (organ just started; re-run --self-test-only in ~70s)"; fi
   # aggregate organ-down check (subshell above can't set fail; re-check here)
-  echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue; [ "$(svc_status "$name")" = up ] || exit 1; done || fail=1
+  echo "$list" | while IFS='|' read -r name _; do
+    [ -z "$name" ] && continue
+    [ "$name" = worker ] && ! worker_execution_enabled && continue
+    [ "$(svc_status "$name")" = up ] || exit 1
+  done || fail=1
   # RESILIENT-746: the role's MANIFEST-declared organ set (organ-manifest.txt,
   # role-scoped via organ_role_filter) must also be UP — the ORGANS phase is
   # only "installed" once the fleet-wide organ-reconcile source of truth
@@ -1131,7 +1676,7 @@ self_test() {
     else no "eyes: almanac organ incomplete (re-run: bash $eyes_script)"; fail=1; fi
   fi
   echo
-  if [ "$fail" = 0 ]; then printf '\033[42m INSTALLED ✓ \033[0m role=%s host=%s\n' "$ROLE" "$HOST_KIND"; return 0
+  if [ "$fail" = 0 ]; then printf '\033[42m INSTALLED ✓ \033[0m role=%s host=%s mode=%s\n' "$ROLE" "$HOST_KIND" "${CHUMP_NODE_MODE:-work-ready}"; return 0
   else printf '\033[41m NOT FULLY INSTALLED \033[0m — fix the ✗ above\n'; return 1; fi
 }
 
@@ -1154,14 +1699,20 @@ fi
 if [ "$SELF_TEST_ONLY" = 1 ]; then self_test; exit $?; fi
 toolchain_preflight
 ensure_home || { no "HOME phase failed (repo clone/fetch) — fix and re-run"; exit 1; }
-check_creds || info CREDS "fix creds before organs will authenticate"
+if check_creds; then
+  info CREDS "provider credentials accepted — worker mode will be enabled"
+elif [ "$CONTROL_PLANE_ONLY" = 1 ]; then
+  info CREDS "provider intentionally disabled — installing control-plane only"
+else
+  info CREDS "provider unavailable — installing a healthy control plane; worker remains stopped until credentials are supplied"
+fi
 write_node_env
 ensure_binary || info BINARY "install a binary, then re-run"
 ensure_seed
 install_organs
 ensure_substrate
 ensure_eyes
-install_supervise
+install_supervise || { no "SUPERVISE phase failed — fix the binary refresh timer and re-run"; exit 1; }
 # RESILIENT-318: install the self-management suite (orchestrator + reapers + disk-monitor).
 # RESILIENT-1015: SUBSTRATE/EYES are already async (see run_phase_async), so
 # they no longer eat this budget — this check guards the one remaining

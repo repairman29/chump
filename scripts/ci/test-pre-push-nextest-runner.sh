@@ -140,6 +140,13 @@ if echo "$OUT" | grep -q "CREDIBLE-278: running cargo nextest run"; then
 else
     fail "hook should announce it chose nextest (out=$OUT)"
 fi
+if grep -qE '^cargo nextest run --profile prepush ' "$INVOKE_LOG" \
+   && grep -qE '^\[profile\.prepush\]' "$REPO_ROOT/.config/nextest.toml" 2>/dev/null \
+   && grep -qE '^slow-timeout = .*terminate-after' "$REPO_ROOT/.config/nextest.toml"; then
+    ok "INFRA-8042: hook runs nextest with the prepush profile (per-test timeout)"
+else
+    fail "INFRA-8042: expected 'cargo nextest run --profile prepush' and a terminating slow-timeout in .config/nextest.toml ($(cat "$INVOKE_LOG"))"
+fi
 
 # ── Test 2: cargo-nextest absent → loud fallback to cargo test ─────────────
 echo "--- Test 2: cargo-nextest NOT on PATH → hook falls back to cargo test, loudly ---"

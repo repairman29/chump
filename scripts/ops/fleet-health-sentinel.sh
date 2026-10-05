@@ -60,12 +60,16 @@
 #   --dry-run            detect + report only; never heal, never page.
 #   --loop [--cadence-min N]  run forever, one pass every N min (default 5) —
 #                        for the Restart=always organ-service supervisor path.
-#   --nodes FILE         node topology (default scripts/ops/fleet-nodes.conf).
+#   --nodes FILE         node topology (default $CHUMP_FLEET_NODES_CONF, else ~/.chump/fleet-nodes.conf).
 #
 # ENV:
 #   CHUMP_STATE_DIR              heartbeat dir (default ~/.chump)
 #   CHUMP_AMBIENT_LOG            ambient jsonl (default <repo>/.chump-locks/ambient.jsonl)
-#   CHUMP_FLEET_SERVER_URL       if set, POST heartbeat to $URL/api/sentinel-heartbeat
+#   CHUMP_FLEET_SERVER_URL       POST heartbeat to $URL/api/sentinel-heartbeat
+#                                (default http://127.0.0.1:7070; point at
+#                                cuphead's tailnet addr on a non-server node).
+#                                Authed with CHUMP_BATPHONE_TOKEN (from env or
+#                                ~/.chump/providers.env), same as /api/gap.
 #   CHUMP_SENTINEL_CADENCE_MIN   cadence for --loop / staleness math (default 5)
 #   CHUMP_SENTINEL_STALE_MULT    heartbeat-stale multiplier (default 3 → 15min)
 #   CHUMP_SENTINEL_PAGE_SINK     TEST/audit hook: also append page payloads here
@@ -135,10 +139,48 @@ SYSTEMCTL_SYS="${CHUMP_SENTINEL_SYSTEMCTL_SYS:-systemctl}"
 # heal with a fake systemctl and no privilege prefix), not fall back to sudo.
 SUDO="${CHUMP_SENTINEL_SUDO-sudo -n}"
 
+# ── RESILIENT-1309 / RESILIENT-1326: coordination organs run ONLY on the ──────
+# coordination home (CJ). The self-drive / merge / paging organs (board-cycle,
+# nba-dispatch, duty-officer, merge-serializer, next-best-action) must be active
+# on exactly ONE node, co-located with the live canonical state.db. On a
+# NON-coordination node the sentinel USED to re-arm them (via the SYSTEM_ORGANS
+# default AND a host CHUMP_SENTINEL_WATCHED_HEALERS override), resurrecting the
+# retired organs within ~2min and driving the split-brain paging + cross-node
+# merge race. Node role lives in ~/.chump/node.env (CHUMP_NODE_ROLE,
+# RESILIENT-1083) — the SAME lever organ-reconcile self-scopes on, and it
+# survives the deploy mirror's `git reset --hard`. On any non-coordination role
+# we STRIP the coordination organs from BOTH watch/heal sets regardless of
+# source (built-in default OR env override), so a lingering host drop-in cannot
+# re-introduce them. Back-compat: role brain / all / EMPTY = coordination home →
+# lists unchanged (CJ and any pre-role node keep coordinating).
+_SENTINEL_NODE_ENV="${CHUMP_STATE_DIR:-$HOME/.chump}/node.env"
+# shellcheck disable=SC1090
+[[ -f "$_SENTINEL_NODE_ENV" ]] && . "$_SENTINEL_NODE_ENV" 2>/dev/null || true
+COORDINATION_ORGANS="${CHUMP_SENTINEL_COORDINATION_ORGANS:-chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer chump-merge-serializer.timer chump-next-best-action.timer}"
+_sentinel_is_coordination_role() {  # brain / all / empty = coordination home
+  case "${1:-}" in brain|all|"") return 0 ;; *) return 1 ;; esac
+}
+_sentinel_strip_coordination() {  # $1 = space-separated unit list -> filtered list
+  local _in="$1" _out="" _tok _c _skip
+  for _tok in $_in; do
+    _skip=0
+    for _c in $COORDINATION_ORGANS; do [[ "$_tok" == "$_c" ]] && { _skip=1; break; }; done
+    [[ $_skip -eq 0 ]] && _out="$_out $_tok"
+  done
+  printf "%s" "${_out# }"
+}
+if ! _sentinel_is_coordination_role "${CHUMP_NODE_ROLE:-}"; then
+  SYSTEM_ORGANS="$(_sentinel_strip_coordination "$SYSTEM_ORGANS")"
+  WATCHED_HEALERS="$(_sentinel_strip_coordination "$WATCHED_HEALERS")"
+  echo "[fleet-health-sentinel] RESILIENT-1309: node role=${CHUMP_NODE_ROLE:-<empty>} (non-coordination) — coordination organs excluded from watch/heal sets" >&2
+fi
+
 MODE="local"
 DRY=0
 LOOP=0
-NODES_FILE="$SCRIPT_DIR/fleet-nodes.conf"
+# Node topology carries SSH targets and public addresses, and this repo is PUBLIC, so the real file
+# lives outside the tree. scripts/ops/fleet-nodes.conf.example shows the format.
+NODES_FILE="${CHUMP_FLEET_NODES_CONF:-$HOME/.chump/fleet-nodes.conf}"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -388,24 +430,70 @@ race_signature_check() {
     fi
 }
 
+# ── per-organ detail (RESILIENT-1055) ────────────────────────────────────────
+# Print the CURRENTLY-failed chump unit NAMES + each healer's present/active
+# state as JSON fragment: "failed_units":[...],"healers":[...]. Queried live at
+# heartbeat time (post-heal), so it is ground truth of what is failed RIGHT NOW
+# — the detail that turns "33 units failed and nobody noticed" into an API read.
+# Portable to bash 3.2 (the Mac board): no arrays, plain string concatenation.
+organ_detail_json() {
+    local units_json="" u first=1
+    while IFS= read -r u; do
+        [[ -z "$u" ]] && continue
+        [[ $first -eq 1 ]] && first=0 || units_json="$units_json,"
+        units_json="$units_json\"$u\""
+    done < <(failed_chump_units)
+
+    local healers_json="" h active first_h=1
+    for h in $REQUIRED_HEALERS; do
+        if unit_exists "$h" && unit_active "$h"; then active=true; else active=false; fi
+        [[ $first_h -eq 1 ]] && first_h=0 || healers_json="$healers_json,"
+        healers_json="$healers_json{\"unit\":\"$h\",\"required\":true,\"active\":$active}"
+    done
+    for h in $WATCHED_HEALERS; do
+        unit_exists "$h" || continue
+        if unit_active "$h"; then active=true; else active=false; fi
+        [[ $first_h -eq 1 ]] && first_h=0 || healers_json="$healers_json,"
+        healers_json="$healers_json{\"unit\":\"$h\",\"required\":false,\"active\":$active}"
+    done
+    printf '"failed_units":[%s],"healers":[%s]' "$units_json" "$healers_json"
+}
+
+# ── push the heartbeat to the fleet-server ingest sink (RESILIENT-1055) ───────
+# Defaults the URL to localhost:7070 (the canonical fleet-server bind) and
+# authenticates with the SAME CHUMP_BATPHONE_TOKEN the fleet-server's other
+# write routes require, sourcing it from providers.env when a systemd --user
+# timer started with no interactive env. Fail-soft: a missing server/token/curl
+# never breaks the pass. Non-server nodes point CHUMP_FLEET_SERVER_URL at
+# cuphead's tailnet address to feed the cross-node aggregator.
+push_heartbeat() {
+    local server_url="${CHUMP_FLEET_SERVER_URL:-http://127.0.0.1:7070}"
+    [[ -z "$server_url" ]] && return 0
+    command -v curl >/dev/null 2>&1 || return 0
+    local tok="${CHUMP_BATPHONE_TOKEN:-}"
+    if [[ -z "$tok" && -f "$HOME/.chump/providers.env" ]]; then
+        tok="$(grep -E '^(export )?CHUMP_BATPHONE_TOKEN=' "$HOME/.chump/providers.env" 2>/dev/null \
+            | tail -1 | sed -E 's/^(export )?CHUMP_BATPHONE_TOKEN=//; s/^"(.*)"$/\1/; s/^'"'"'(.*)'"'"'$/\1/')"
+    fi
+    curl -fsS -m 5 -X POST "${server_url%/}/api/sentinel-heartbeat" \
+        -H 'content-type: application/json' \
+        ${tok:+-H "Authorization: Bearer $tok"} \
+        --data-binary @"$HEARTBEAT_FILE" >/dev/null 2>&1 || true
+}
+
 write_heartbeat() {
     mkdir -p "$STATE_DIR" 2>/dev/null || true
-    local ep; ep="$(now_epoch)"
-    printf '{"ts":"%s","epoch":%s,"node":"%s","failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s}\n' \
-        "$(ts_iso)" "$ep" "$NODE_ID" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" \
+    local ep detail; ep="$(now_epoch)"; detail="$(organ_detail_json)"
+    printf '{"ts":"%s","epoch":%s,"node":"%s","failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s,%s}\n' \
+        "$(ts_iso)" "$ep" "$NODE_ID" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" "$detail" \
         > "$HEARTBEAT_FILE" 2>/dev/null || true
     echo "$ep" > "$REAPER_HB" 2>/dev/null || true
-    # best-effort push outward so grading can move server-side once fleet-server is up
-    if [[ -n "${CHUMP_FLEET_SERVER_URL:-}" ]] && command -v curl >/dev/null 2>&1; then
-        curl -fsS -m 5 -X POST "${CHUMP_FLEET_SERVER_URL%/}/api/sentinel-heartbeat" \
-            -H 'content-type: application/json' \
-            --data-binary @"$HEARTBEAT_FILE" >/dev/null 2>&1 || true
-    fi
+    push_heartbeat
 }
 
 snapshot_json() {
-    printf '{"node":"%s","epoch":%s,"failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s}\n' \
-        "$NODE_ID" "$(now_epoch)" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE"
+    printf '{"node":"%s","epoch":%s,"failed":%s,"healed":%s,"unhealed":%s,"healers_down":%s,"healers_fixed":%s,"race_active":%s,%s}\n' \
+        "$NODE_ID" "$(now_epoch)" "$SNAP_FAILED" "$SNAP_HEALED" "$SNAP_UNHEALED" "$SNAP_HEALERS_DOWN" "$SNAP_HEALERS_FIXED" "$SNAP_RACE_ACTIVE" "$(organ_detail_json)"
 }
 
 do_local_pass() {

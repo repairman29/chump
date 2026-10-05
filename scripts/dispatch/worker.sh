@@ -85,6 +85,19 @@ if [[ -f "$CHUMP_MODEL_LADDER_MANIFEST" ]]; then
     set +a
 fi
 
+# Config-under-management: the worker self-heal policy (CHUMP_STARVE_AUTO_RELAX
+# etc.) is single-sourced from this repo-committed file instead of a node's
+# hand-deployed, git-untracked ~/node1-worker-run.sh launcher — the file whose
+# unset CHUMP_STARVE_AUTO_RELAX let a narrow filter stand the fleet down 138x
+# on 2026-09-08. The file uses ":=" assignment so an explicit launcher/env
+# value still wins (a node can opt out), while the unset drift-state gets the
+# fleet's intended default. See scripts/setup/worker-policy.env for rationale.
+CHUMP_WORKER_POLICY_ENV="${CHUMP_WORKER_POLICY_ENV:-$REPO_ROOT/scripts/setup/worker-policy.env}"
+if [[ -f "$CHUMP_WORKER_POLICY_ENV" ]]; then
+    # shellcheck disable=SC1090
+    source "$CHUMP_WORKER_POLICY_ENV"
+fi
+
 # INFRA-461: derive a unique per-worker session ID so leases written by this
 # worker (or any chump/coord subprocess it invokes) DO NOT stomp the
 # operator's interactive session via the .chump-locks/.wt-session-id
@@ -230,7 +243,12 @@ _stall_threshold_default="${CHUMP_STALL_THRESHOLD_S:-120}"
 
 mkdir -p "$FLEET_LOG_DIR"
 
-log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; }
+# INFRA-6128: shared execution logging (start/end/step) to a central log.
+# shellcheck source=../lib/orchestrator-log.sh
+source "$(dirname "${BASH_SOURCE[0]}")/../lib/orchestrator-log.sh"
+orch_log_start "worker.sh" "$@"
+
+log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; orch_log_step "$*"; }
 
 # ── INFRA-3832: reap a hung cycle's WHOLE process tree ─────────────────────────
 # The first-output watchdog and stall detector used to `kill $_claude_pid`, but
@@ -326,7 +344,7 @@ remove_heartbeat_and_daemon() {
     rm -f "$_hb_gapid_file" 2>/dev/null || true
     remove_heartbeat
 }
-trap remove_heartbeat_and_daemon EXIT
+trap 'remove_heartbeat_and_daemon; orch_log_end "worker.sh" "$?"' EXIT
 
 # INFRA-620: re-read CLAUDE_CODE_OAUTH_TOKEN from ~/.chump/oauth-token.json
 # before each claude -p spawn. Prevents auth_storm when the inherited token
@@ -335,8 +353,19 @@ trap remove_heartbeat_and_daemon EXIT
 # unless we actively re-read a file that run-fleet.sh's refresher keeps current).
 # Falls back to ANTHROPIC_API_KEY when token file is missing/empty/expired.
 refresh_oauth_token() {
-    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-}"
-    [[ -z "$token_file" ]] && return 0  # api_key mode — nothing to do
+    # RESILIENT-1506: an operator who explicitly forced API-key mode does
+    # not want this function to silently promote OAuth back over it just
+    # because oauth-token.json happens to exist on disk.
+    [[ "${CHUMP_AUTH_MODE:-}" == "api-key" ]] && return 0
+    # RESILIENT-1506: default to the well-known oauth-token.json path when
+    # CHUMP_OAUTH_TOKEN_FILE isn't exported (e.g. providers.env's
+    # CLAUDE_CODE_OAUTH_TOKEN line got stripped, or worker.sh was invoked
+    # outside run-fleet.sh). The refresher daemon
+    # (scripts/coord/oauth-token-refresh.sh) keeps this file current
+    # regardless of what env vars a given launch passed through, so reading
+    # it natively survives a providers.env cleanup that would otherwise
+    # silently skip this whole function.
+    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-${HOME}/.chump/oauth-token.json}"
     local tok=""
     if [[ -f "$token_file" ]]; then
         tok=$(python3 -c "
@@ -378,6 +407,79 @@ classify_rc() {
         137) echo "OOM_KILL" ;;
         *)   echo "ERROR_$1" ;;
     esac
+}
+
+# RESILIENT-1449: ground-truth ship detection. Does a PR actually exist for
+# this cycle's branch? Checks cheapest-first: webhook cache (github_cache.db)
+# → canonical gap status → gh fallback. Prints the evidence token (a PR number,
+# or "status:<state>") and returns 0 when found; prints nothing + returns 1
+# otherwise. Shared by BOTH the CREDIBLE-154 rc==0 path AND the non-zero-rc
+# reclassification below: a session that shipped correctly (branch pushed, PR
+# created, auto-merge armed) then sat quietly polling `gh pr view` for its own
+# merge produces no stdout for 120s, so the INFRA-705 stall-detector kills it
+# (rc=143) — yet the PR was created and may already have MERGED (e.g.
+# RESILIENT-1123 logged rc=1 but PR #4812 merged). rc alone therefore cannot
+# decide "failed"; ground truth (a PR for the branch) is the authoritative
+# signal, so it must be consulted before ANY failed/unverified verdict.
+#
+# RESILIENT-1451 (RESILIENT-1449 follow-up): the branch-head-keyed lookups
+# (cache `head_ref=`, `gh pr list --head`) both go BLIND once the PR has
+# merged — a fast auto-merge DELETES the head branch, and GitHub's `--head`
+# filter no longer resolves a deleted ref, so a cycle that shipped AND merged
+# (RESILIENT-1447 -> PR #4816, RESILIENT-1450 -> PR #4817, both MERGED) found
+# no evidence and was logged kind=unverified_ship. The async bot-merge
+# pipeline can also create the PR AFTER this cycle's rc is observed, so the
+# branch may briefly have no PR at all yet. Fix: when the branch-keyed lookup
+# comes up empty, fall back to a GAP-ID-keyed lookup — PR titles are always
+# "<GAP_ID>: <summary>" (chump-commit.sh convention), so a title match finds
+# the PR by identity regardless of whether the head branch still exists or
+# which order the branch-push vs. PR-create race landed in.
+_detect_ship_evidence() {
+    local _gap_id="$1" _branch="$2" _ev="" _cache_db="${REPO_ROOT}/.chump/github_cache.db"
+    if [ -f "$_cache_db" ]; then
+        _ev="$(sqlite3 "$_cache_db" \
+            "SELECT number FROM pr_state WHERE head_ref='${_branch}' LIMIT 1" 2>/dev/null || true)"
+        if [ -z "$_ev" ]; then
+            # RESILIENT-1451: branch may be gone (merged + deleted) — fall
+            # back to a title match keyed on GAP ID, not the live head ref.
+            _ev="$(sqlite3 "$_cache_db" \
+                "SELECT number FROM pr_state WHERE title LIKE '${_gap_id}:%' ORDER BY number DESC LIMIT 1" 2>/dev/null || true)"
+        fi
+    fi
+    if [ -z "$_ev" ]; then
+        local _gap_now
+        _gap_now="$(CHUMP_REPO="$REPO_ROOT" chump gap show "$_gap_id" 2>/dev/null \
+            | grep -m1 -oE 'status: *[a-z_]+' | awk '{print $2}' || true)"
+        case "$_gap_now" in ready_to_ship|done|shipped) _ev="status:$_gap_now" ;; esac
+    fi
+    if [ -z "$_ev" ]; then
+        _ev="$(gh pr list --head "$_branch" --state all --json number \
+            --jq '.[0].number // empty' 2>/dev/null || true)"
+    fi
+    if [ -z "$_ev" ]; then
+        # RESILIENT-1451: same branch-deleted-after-merge gap as the cache
+        # lookup above, for the live-gh fallback path — search by GAP ID in
+        # the PR title instead of the (possibly deleted) head branch.
+        _ev="$(gh pr list --search "${_gap_id} in:title" --state all --json number \
+            --jq '.[0].number // empty' 2>/dev/null || true)"
+    fi
+    [ -n "$_ev" ] && { printf '%s\n' "$_ev"; return 0; }
+    return 1
+}
+
+# RESILIENT-1449: has this cycle already SHIPPED (per its own log)? Once
+# bot-merge has created the PR and armed auto-merge, its success output is
+# flushed to the cycle log; the session then commonly sits QUIET polling
+# `gh pr view` for the merge to land. That quiet is a post-ship merge-wait,
+# NOT a hang — so the INFRA-705 stall-detector must recognize it and extend
+# its timeout (analogous to the RESILIENT-157 build-descendant carve-out)
+# instead of killing at the normal 120s no-output threshold. Matches the
+# stable PR-created / auto-merge-armed markers bot-merge.sh prints on success.
+_cycle_log_shows_ship() {
+    local _log="${1:-$cycle_log}"
+    [ -f "$_log" ] || return 1
+    grep -qE 'github\.com/[^ ]+/pull/[0-9]+|armed for auto-merge|auto-merge armed|created and verified|PR #[0-9]+ (created|armed)' \
+        "$_log" 2>/dev/null
 }
 
 # RESILIENT-575: classify a `claude -p` (sub) cycle-log failure as an
@@ -422,6 +524,71 @@ classify_model_capability_failure() {
     echo "none"
 }
 
+# RESILIENT-1086 / RESILIENT-676: probe the free-tier cascade for a LIVE
+# provider. Echoes the first entry (model@base:KEY_ENV) whose base answers
+# HTTP 200 on {base}/models with its Bearer key, and returns 0; returns 1 if
+# NONE are live (e.g. every entry is a 402/credit-dead OpenRouter). Mirrors the
+# free-tier probe loop in scripts/coord/auth-status.sh and the entry format in
+# src/execute_gap.rs::parse_free_tier_providers. Used to (a) refuse to demote
+# onto a dead floor (RESILIENT-676) and (b) bias the cascade toward the
+# confirmed-live provider instead of collapsing onto a dead one (RESILIENT-1086).
+# CI seam: CHUMP_FAKE_FREETIER_PROBE="live:<entry>" → prints entry, returns 0;
+# any other value → returns 1 (hermetic, no network).
+probe_free_tier_live() {
+    if [[ -n "${CHUMP_FAKE_FREETIER_PROBE:-}" ]]; then
+        case "$CHUMP_FAKE_FREETIER_PROBE" in
+            live:*) printf '%s\n' "${CHUMP_FAKE_FREETIER_PROBE#live:}"; return 0 ;;
+            *) return 1 ;;
+        esac
+    fi
+    local _list="${1:-${CHUMP_FREE_TIER_PROVIDERS:-}}"
+    [[ -n "${_list//[[:space:]]/}" ]] || return 1
+    local _oldifs="$IFS" _entry _key_env _model_base _model _base _key_val _code
+    IFS=','
+    for _entry in $_list; do
+        IFS="$_oldifs"
+        _entry="${_entry#"${_entry%%[![:space:]]*}"}"   # ltrim
+        _entry="${_entry%"${_entry##*[![:space:]]}"}"   # rtrim
+        [[ -z "$_entry" || "$_entry" != *@* ]] && { IFS=','; continue; }
+        _key_env="${_entry##*:}"
+        _model_base="${_entry%:*}"
+        _model="${_model_base%@*}"
+        _base="${_model_base#*@}"
+        [[ -z "$_model" || -z "$_base" || -z "$_key_env" ]] && { IFS=','; continue; }
+        _key_val="${!_key_env:-}"
+        [[ -z "$_key_val" ]] && { IFS=','; continue; }   # empty key → skip, never false-live
+        _code="$(curl -s -o /dev/null -w '%{http_code}' \
+            --max-time "${CHUMP_FREETIER_PROBE_TIMEOUT_S:-10}" \
+            -H "Authorization: Bearer $_key_val" \
+            "${_base%/}/models" 2>/dev/null || echo 000)"
+        if [[ "$_code" == "200" ]]; then
+            printf '%s\n' "$_entry"
+            IFS="$_oldifs"
+            return 0
+        fi
+        IFS=','
+    done
+    IFS="$_oldifs"
+    return 1
+}
+
+# RESILIENT-1086: cheap liveness probe of the Anthropic sub (claude -p, haiku).
+# Returns 0 if the sub answers PONG, non-zero otherwise. Mirrors the oauth
+# probe in scripts/coord/auth-status.sh. Uses the ambient CLAUDE_CODE_OAUTH_TOKEN
+# (sourced from ~/.chump/providers.env by the worker wrapper). Used to
+# auto-repromote off the free-tier floor once the sub recovers, so a demotion
+# is never sticky (2026-09-08: sub recovered but worker stayed pinned to a dead
+# floor 40min until manual restart).
+# CI seam: CHUMP_FAKE_SUB_PROBE=live → 0; anything else → 1 (hermetic, no network).
+probe_sub_live() {
+    if [[ -n "${CHUMP_FAKE_SUB_PROBE:-}" ]]; then
+        [[ "$CHUMP_FAKE_SUB_PROBE" == "live" ]] && return 0 || return 1
+    fi
+    command -v claude >/dev/null 2>&1 || return 1
+    ( cd /tmp && timeout "${CHUMP_SUB_PROBE_TIMEOUT_S:-45}" \
+        claude -p "Reply with exactly: PONG" --model haiku 2>/dev/null | grep -q PONG )
+}
+
 # INFRA-206: per-agent domain affinity. If FLEET_AGENT_DOMAINS is set (comma-
 # separated, e.g. "INFRA,EVAL,DOC"), agent K is assigned domains[(K-1) % N],
 # overriding the fleet-wide FLEET_DOMAIN_FILTER for this worker only.
@@ -437,9 +604,30 @@ fi
 
 # INFRA-686: graceful SIGTERM handler — commit WIP + push + release lease before exit.
 # Reads global vars set by the gap dispatch loop (GAP_ID, branch, wt_path).
+#
+# RESILIENT-1454: when SIGTERM arrives while the worker is blocked deep in an
+# active `claude -p` child (now common via RESILIENT-1453 auto-restart-on-
+# converge), two things used to go wrong: (1) the still-running claude child
+# keeps mutating $wt_path concurrently with the `git add -A && commit` below,
+# racing the checkpoint; (2) bash exits quickly but the orphaned claude child
+# (and its process-tree descendants) stays alive in the systemd cgroup, so
+# the unit doesn't actually stop until systemd's TimeoutStopSec (default 90s)
+# escalates to SIGKILL — hard-killing the in-flight subprocess instead of the
+# checkpoint ever covering it. Reaping the claude-child tree FIRST (bounded,
+# TERM-then-KILL via the existing _kill_cycle_tree helper) fixes both: the
+# worktree is quiescent before the commit, and the cgroup empties within
+# seconds instead of waiting out the full stop timeout.
 _sigterm_wip_checkpoint() {
     log "SIGTERM received — running WIP checkpoint (INFRA-686)"
     local _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    # RESILIENT-1454: reap any still-running claude -p child (and its
+    # descendants) BEFORE touching the worktree, so the checkpoint commit
+    # below reflects a quiescent tree and systemd doesn't have to wait out
+    # TimeoutStopSec for an orphaned grandchild to die on its own.
+    if [[ -n "${_claude_pid:-}" ]] && kill -0 "$_claude_pid" 2>/dev/null; then
+        log "RESILIENT-1454: claude -p child ($_claude_pid) still alive at SIGTERM — reaping before checkpoint"
+        _kill_cycle_tree "$_claude_pid"
+    fi
     # Only act if we're mid-gap (GAP_ID and wt_path set by the loop)
     if [[ -n "${GAP_ID:-}" && -n "${wt_path:-}" && -d "${wt_path:-/nonexistent}" ]]; then
         local _has_changes=0
@@ -453,10 +641,14 @@ _sigterm_wip_checkpoint() {
                 printf '{"ts":"%s","kind":"wip_sigterm_checkpoint","agent_id":"%s","gap_id":"%s","branch":"%s"}\n' \
                     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                     "$AGENT_ID" "$GAP_ID" "${branch:-}" >> "$_amb" 2>/dev/null || true
-                if git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null; then
+                # RESILIENT-1454: bound the push so a hung network/credential
+                # prompt can't itself eat the TimeoutStopSec budget — the
+                # local commit above already preserved the work either way.
+                if (command -v timeout >/dev/null 2>&1 && timeout 20s git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null) \
+                    || (! command -v timeout >/dev/null 2>&1 && git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null); then
                     log "INFRA-686: WIP commit pushed for $GAP_ID → origin/${branch:-}"
                 else
-                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline or no remote)"
+                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline, no remote, or push timed out)"
                 fi
             fi
         fi
@@ -520,9 +712,56 @@ _check_binary_freshness() {
 }
 _check_binary_freshness
 
+# RESILIENT-1450: re-exec self when the tracked worker.sh HEAD changes.
+# node-converge (RESILIENT-1189) hard-resets $REPO_ROOT to origin/main on a
+# ~10min cadence but NEVER restarts the already-running worker process, so a
+# merged worker.sh fix sits on disk while this loop keeps executing the SHA it
+# was exec'd with (observed: #4815/RESILIENT-1449 sat inert for a day). Record
+# the HEAD this process started at; at every cycle boundary (never mid-gap),
+# compare against the live HEAD and `exec` this same script fresh when it
+# moved — cheap (one `git rev-parse`), safe (only runs between gaps, after
+# lease/worktree cleanup for the prior cycle), and picks up the new code
+# without waiting on a systemd Restart=always bounce.
+# RESILIENT-1453: content-scope the re-exec (was whole-repo HEAD in RESILIENT-1450,
+# which re-exec'd the worker on EVERY converge — even when worker.sh was byte-for-byte
+# identical — because origin/main moves on nearly every 10min tick for unrelated
+# reasons; #4817/#4844 both re-exec'd with a 0-line worker.sh diff). Compare the
+# sha256 of the tracked worker.sh instead, so this fires ONLY when the worker's own
+# code actually changed. Also stamp that hash so node-converge (RESILIENT-1453) can
+# see what the running worker is executing and bounce the SERVICE externally the
+# moment worker.sh changes — the external path is the real closer, because THIS
+# in-process check can only run between gaps and a merged fix would otherwise sit
+# inert for the whole duration of an in-flight gap (the "merged != running" disease).
+_worker_code_hash() { sha256sum "$REPO_ROOT/scripts/dispatch/worker.sh" 2>/dev/null | cut -d' ' -f1; }
+_WORKER_START_CODE_HASH="$(_worker_code_hash)"
+# Stamp = the worker.sh content THIS process is running. Lives under .chump-locks/
+# (gitignored, so it survives node-converge's `git reset --hard`).
+if [[ -n "$_WORKER_START_CODE_HASH" ]]; then
+    _wstamp="$REPO_ROOT/.chump-locks/worker-code.stamp"
+    mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
+    if printf '%s\n' "$_WORKER_START_CODE_HASH" > "$_wstamp.tmp.$$" 2>/dev/null; then
+        mv -f "$_wstamp.tmp.$$" "$_wstamp" 2>/dev/null || rm -f "$_wstamp.tmp.$$" 2>/dev/null || true
+    fi
+fi
+_check_worker_head_reexec() {
+    [[ "${CHUMP_WORKER_HEAD_REEXEC:-1}" == "0" ]] && return 0
+    [[ -z "$_WORKER_START_CODE_HASH" ]] && return 0
+    local _now_hash
+    _now_hash="$(_worker_code_hash)"
+    [[ -z "$_now_hash" || "$_now_hash" == "$_WORKER_START_CODE_HASH" ]] && return 0
+    local _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    printf '{"ts":"%s","kind":"worker_reexec_on_head_change","source":"worker.sh","agent_id":"%s","prev_sha":"%s","new_sha":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${AGENT_ID:-}" "$_WORKER_START_CODE_HASH" "$_now_hash" \
+        >> "$_amb" 2>/dev/null || true
+    log "RESILIENT-1453: worker.sh content changed ($_WORKER_START_CODE_HASH -> $_now_hash); re-exec'ing self at cycle boundary"
+    exec bash "$REPO_ROOT/scripts/dispatch/worker.sh"
+}
+
 cycle=0
 while :; do
     cycle=$((cycle + 1))
+
+    _check_worker_head_reexec
 
     # ── RESILIENT-073: fleet kill switch — AUTONOMY_LEVEL check ─────────────
     # Pure file read: ~/.chump/AUTONOMY_LEVEL must be >= 1 to proceed.
@@ -547,18 +786,115 @@ while :; do
     fi
     # ── end RESILIENT-073 ────────────────────────────────────────────────────
 
+    # ── RESILIENT-1443: sub-auth precheck — page loudly, never demote silently ──
+    # 2026-09-21 CJ incident: after a reboot the claude CLI OAuth session
+    # lapsed (not durable across reboot) and the worker fell through to the
+    # dead free-tier floor with no signal at all — farmer_heartbeat stayed
+    # green while the fleet shipped 0 PRs for hours (false-healthy). When this
+    # worker is configured to run on the Anthropic sub (CHUMP_AUTH_MODE=oauth),
+    # verify the sub actually answers BEFORE claiming a gap. A dead sub pages
+    # the operator (kind=worker_sub_auth_dead, wired into operator-recall.sh's
+    # AUTH_DEAD condition) and pauses this cycle instead of silently
+    # proceeding to dispatch on a demoted backend.
+    # Cadence: probe once on cycle 1, then every
+    # CHUMP_SUB_AUTH_PRECHECK_EVERY_CYCLES (default 5) cycles thereafter —
+    # each probe is a real `claude -p` call, not free. Disable: set
+    # CHUMP_SUB_AUTH_PRECHECK=0.
+    if [[ "${CHUMP_SUB_AUTH_PRECHECK:-1}" != "0" ]] \
+       && [[ "${CHUMP_AUTH_MODE:-}" == "oauth" ]]; then
+        _sap_every="${CHUMP_SUB_AUTH_PRECHECK_EVERY_CYCLES:-5}"
+        if (( cycle == 1 || cycle % _sap_every == 0 )); then
+            if probe_sub_live; then
+                # AC3: sub recovered (e.g. operator re-ran claude /login) —
+                # clear the dead marker and fall through to normal dispatch,
+                # resuming on the sub without any manual restart.
+                rm -f "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.sub-auth-dead" 2>/dev/null || true
+            else
+                _sap_marker="$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.sub-auth-dead"
+                mkdir -p "$(dirname "$_sap_marker")" 2>/dev/null || true
+                _amb_sap="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                mkdir -p "$(dirname "$_amb_sap")" 2>/dev/null || true
+                printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"worker_sub_auth_dead","agent_id":"%s","cycle":%s,"note":"claude CLI OAuth session dead/logged-out — CHUMP_AUTH_MODE=oauth configured but sub does not answer. NOT demoting to free-tier silently; run: claude then /login on this host, verify with: claude -p OK"}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                    "$AGENT_ID" "$cycle" >> "$_amb_sap" 2>/dev/null || true
+                log "ALERT RESILIENT-1443: kind=worker_sub_auth_dead — sub (claude CLI OAuth) is logged out; pausing ${IDLE_SLEEP_S:-60}s instead of silently demoting to free-tier. Fix: claude then /login."
+                : > "$_sap_marker" 2>/dev/null || true
+                sleep "${IDLE_SLEEP_S:-60}"
+                continue
+            fi
+        fi
+    fi
+    # ── end RESILIENT-1443 ───────────────────────────────────────────────────
+
+    # ── RESILIENT-1086: auto-repromote off the free-tier floor when the sub
+    # recovers ────────────────────────────────────────────────────────────────
+    # RESILIENT-575 demotes this worker to chump-local after a sub outage. That
+    # demotion USED to be sticky: the sub recovered (probe PONG rc=0) but the
+    # worker stayed pinned to the free-tier floor until a manual `systemctl
+    # restart` — on 2026-09-08 that left mugman wedged 40min emitting 18x rc=75
+    # against a dead OpenRouter floor. Re-probe the sub on a cadence while
+    # demoted; the first time it answers, return FLEET_BACKEND to the sub
+    # (claude), archive the outage marker, and emit fleet_backend_repromote.
+    # The demotion is an in-process env flip, so the marker file is the record
+    # of "am I currently demoted"; keying off both avoids repromoting a worker
+    # that was never demoted this run.
+    if [[ "$FLEET_BACKEND" == "chump-local" ]] \
+       && [[ "${CHUMP_SUB_AUTO_REPROMOTE:-1}" != "0" ]] \
+       && [[ -f "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" ]]; then
+        _reprom_every="${CHUMP_SUB_REPROMOTE_EVERY_CYCLES:-3}"
+        if (( cycle % _reprom_every == 0 )); then
+            if probe_sub_live; then
+                log "RESILIENT-1086: sub recovered (probe PONG) — repromoting worker $AGENT_ID chump-local → claude"
+                export FLEET_BACKEND="claude"
+                : > "$FLEET_LOG_DIR/agent-${AGENT_ID}.sub-outage-fails" 2>/dev/null || true
+                _amb_rp="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+                mkdir -p "$(dirname "$_amb_rp")" 2>/dev/null || true
+                printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_repromote","agent_id":"%s","from_backend":"chump-local","to_backend":"claude","cycle":%s}\n' \
+                    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                    "$AGENT_ID" "$cycle" >> "$_amb_rp" 2>/dev/null || true
+                mv "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" \
+                   "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json.repromoted-$(date +%s)" 2>/dev/null || true
+            else
+                log "RESILIENT-1086: still demoted to chump-local; sub probe failed (cycle $cycle) — staying on floor"
+            fi
+        fi
+    fi
+    # ── end RESILIENT-1086 auto-repromote ─────────────────────────────────────
+
     # FLEET-054: auto-pause when waste rate spikes. Workers check for the
     # .chump/fleet-paused sentinel before each claim cycle. The sentinel blocks
     # claim (work); it does NOT block gap reserve (filing is always allowed).
     # See INFRA-2424 for the reserve/claim split rationale.
+    #
+    # META-937 (META-823 slice): a gap whose title contains the "corrective"
+    # keyword is exempt from this pause — it exists specifically to fix the
+    # condition that caused the waste-SLO breach, so blocking it alongside
+    # ordinary work is self-defeating. When paused, check whether at least
+    # one open+pickable "corrective" gap exists; if so, let the cycle
+    # continue but restrict the picker (FLEET_REQUIRE_TITLE_SUBSTR) so it can
+    # ONLY claim corrective-tagged gaps while the pause is active.
+    unset FLEET_REQUIRE_TITLE_SUBSTR
     _pause_file="${CHUMP_FLEET_PAUSE_FILE:-$REPO_ROOT/.chump/fleet-paused}"
     if [[ -f "$_pause_file" ]]; then
-        log "FLEET-054: fleet-paused sentinel present ($( cat "$_pause_file" | head -1 )) — waste spike in progress; sleeping ${IDLE_SLEEP_S}s before retry"
-        _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
-        printf '{"ts":"%s","kind":"worker_paused_waste_spike","agent_id":"%s","pause_file":"%s"}\n' \
-            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_pause_file" >> "$_amb" 2>/dev/null || true
-        sleep "${IDLE_SLEEP_S:-60}"
-        continue
+        _corrective_count="$(chump gap list --status open --json 2>/dev/null | python3 -c '
+import json, sys
+try:
+    gaps = json.load(sys.stdin)
+except Exception:
+    gaps = []
+print(sum(1 for g in gaps if "corrective" in (g.get("title") or "").lower()))
+' 2>/dev/null || echo 0)"
+        if [[ "${_corrective_count:-0}" -gt 0 ]]; then
+            log "FLEET-054/META-937: fleet-paused sentinel present, but $_corrective_count corrective gap(s) pickable — bypassing pause for corrective work only"
+            export FLEET_REQUIRE_TITLE_SUBSTR="corrective"
+        else
+            log "FLEET-054: fleet-paused sentinel present ($( cat "$_pause_file" | head -1 )) — waste spike in progress; sleeping ${IDLE_SLEEP_S}s before retry"
+            _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+            printf '{"ts":"%s","kind":"worker_paused_waste_spike","agent_id":"%s","pause_file":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_pause_file" >> "$_amb" 2>/dev/null || true
+            sleep "${IDLE_SLEEP_S:-60}"
+            continue
+        fi
     fi
 
     # ── RESILIENT-069: farmer readiness gate ────────────────────────────────
@@ -673,23 +1009,82 @@ PY
     # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
     # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
     # a gap while a worker is mid-flight (pre-push); the branch covers it after
-    # the PR is pushed but before it merges (when the lease has expired). One
-    # cheap `git ls-remote` per cycle; best-effort (empty on failure/offline so
-    # Layers A+C still hold). The github_cache webhook DB is not authoritative
-    # here (observed sparse/stale — #3795 absent), so origin refs are used.
-    in_progress_gaps="$(
-        git -C "$REPO_ROOT" ls-remote --heads origin 'refs/heads/chump/*' 2>/dev/null \
-        | grep -oE 'refs/heads/chump/.+-fleet-[0-9]' 2>/dev/null \
-        | sed -E 's#refs/heads/chump/(.+)-fleet-[0-9]$#\1#' \
+    # the PR is pushed but before it merges (when the lease has expired).
+    #
+    # RESILIENT-1509 fix: a pushed branch alone is NOT proof of in-progress
+    # work anymore. 1,437 dead wip/*-style branches accumulated on origin
+    # (crashed workers, abandoned claims) and ~91 open gaps whose ONLY
+    # blocker was a stale leftover branch sat permanently unpickable. A
+    # branch now only counts when it has an open PR (cheap local cache
+    # lookup, no gh API call) OR a commit within CHUMP_STALE_BRANCH_HOURS
+    # (default 6h). Best-effort throughout: any failure here just falls
+    # back to the empty set (Layers A+C still hold the anti-spin guarantee).
+    _stale_branch_hours="${CHUMP_STALE_BRANCH_HOURS:-6}"
+    in_progress_gaps=""
+    if git -C "$REPO_ROOT" fetch origin --prune --quiet \
+            'refs/heads/chump/*:refs/remotes/origin/chump/*' 2>/dev/null; then
+        _branch_rows="$(
+            git -C "$REPO_ROOT" for-each-ref \
+                --format='%(refname:short) %(committerdate:unix)' \
+                refs/remotes/origin/chump/ 2>/dev/null
+        )"
+        if [ -n "$_branch_rows" ]; then
+            _cache_db="$REPO_ROOT/.chump/github_cache.db"
+            in_progress_gaps="$(
+                printf '%s\n' "$_branch_rows" \
+                | while IFS=' ' read -r _ref _ts; do
+                    _branch="${_ref#origin/}"
+                    _gid="$(printf '%s' "$_branch" | sed -nE 's#^chump/(.+)-fleet-[0-9]+$#\1#p' | tr '[:lower:]' '[:upper:]')"
+                    [ -z "$_gid" ] && continue
+                    _has_pr=0
+                    if command -v sqlite3 >/dev/null 2>&1 && [ -f "$_cache_db" ]; then
+                        _row="$(sqlite3 "$_cache_db" \
+                            "SELECT 1 FROM pr_state WHERE head_ref='${_branch//\'/\'\'}' AND merged_at IS NULL LIMIT 1" \
+                            2>/dev/null || true)"
+                        [ -n "$_row" ] && _has_pr=1
+                    fi
+                    printf '%s\t%s\t%s\n' "$_gid" "${_ts:-0}" "$_has_pr"
+                done \
+                | python3 "$REPO_ROOT/scripts/dispatch/_in_progress_branches.py" \
+                    "$(date -u +%s)" "$_stale_branch_hours" \
+                | tr '\n' ' '
+            )"
+        fi
+    fi
+
+    # RESILIENT-1510: gaps whose PR already merged into origin/main recently,
+    # but whose gap-store status hasn't flipped to done yet (auto-close lag).
+    # Without this, a worker can re-pick a gap moments after its own PR
+    # merged — cuphead picked RESILIENT-1497 four times on 2026-10-02, two
+    # picks AFTER PR #4983 merged at 08:20Z, because `chump gap list --json`
+    # still showed status=open. Commit subjects on this branch are always
+    # "<GAP-ID>: ... (#NNNN)" (see bot-merge.sh squash-merge format), so a
+    # leading gap-id token on a recent origin/main commit is a reliable
+    # merged-PR signal independent of gap-store propagation lag. Best-effort
+    # (empty on failure/offline — Layers A-C above still hold).
+    merged_recent_gaps="$(
+        git -C "$REPO_ROOT" log origin/main --since="${MERGED_RECENT_GAPS_WINDOW:-60 minutes ago}" --format='%s' 2>/dev/null \
+        | grep -oE '^[A-Z][A-Z-]*-[0-9]+' 2>/dev/null \
         | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
     )"
+    if [ -n "$merged_recent_gaps" ]; then
+        log "RESILIENT-1510: excluding recently-merged gaps from pick (auto-close lag guard): $merged_recent_gaps"
+    fi
 
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
     # as chump claim so the lease is scoped to this worker's session.
+    #
+    # RESILIENT-1509: stderr is no longer discarded. A crash, a failed
+    # claim, or an over-broad exclusion all used to look identical to a
+    # genuinely empty queue ("no pickable gap" for 276 cycles on cuphead
+    # while 467 open gaps had no blocker). The claimer now also emits a
+    # JSON per-exclusion-reason dump to stderr on every empty cycle (see
+    # _pick_and_claim_gap.py); surface both here.
     gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
     printf '%s' "$gap_json" > "$gap_json_file"
+    _pick_stderr_file="$(mktemp -t fleet-pick-stderr.XXXXXX)"
     pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
             FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
             FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
@@ -697,12 +1092,19 @@ PY
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
             ACTIVE_GAPS="$active_gaps" \
             IN_PROGRESS_GAPS="$in_progress_gaps" \
+            MERGED_RECENT_GAPS="$merged_recent_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
             WORKER_ID="$AGENT_ID" \
             COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
-            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
+            FLEET_REQUIRE_TITLE_SUBSTR="${FLEET_REQUIRE_TITLE_SUBSTR:-}" \
+            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>"$_pick_stderr_file" || true)"
     rm -f "$gap_json_file"
+    _pick_stderr="$(cat "$_pick_stderr_file" 2>/dev/null || true)"
+    rm -f "$_pick_stderr_file"
+    if [ -n "$_pick_stderr" ]; then
+        log "claimer stderr: $_pick_stderr"
+    fi
 
     if [ -z "$pick" ]; then
         # INFRA-315: increment starvation counter; emit ambient ALERT once
@@ -1060,6 +1462,11 @@ print('1' if (p == 'P0' and dom == 'MISSION' and e in ('m', 'l', 'xl')) else '0'
     # chump claim call and proceed directly to spawning the agent.
 
     # ── Spawn agent (claude or chump-local) ───────────────────────────────
+    # RESILIENT-1229: re-create FLEET_LOG_DIR every cycle, not just at
+    # startup (L244) — if the dir is removed mid-run (e.g. tmp cleanup),
+    # every subsequent cycle log write fails rc=1 and the node dark-outs
+    # silently (13h CJ dark-out, 2026-09-15, 147 No-such-file errors).
+    mkdir -p "$FLEET_LOG_DIR"
     cycle_log="$FLEET_LOG_DIR/agent-${AGENT_ID}-cycle${cycle}-${GAP_ID}.log"
 
     # INFRA-1160 + RESILIENT-135: scale the per-cycle claude -p timeout by gap
@@ -1465,6 +1872,15 @@ Operator or sibling worker can rescue this branch via:
                 # Complements the first-output watchdog: that one fires on zero
                 # initial output; this one fires on mid-cycle output stalls.
                 _stall_threshold="${CHUMP_STALL_THRESHOLD_S:-120}"
+                # RESILIENT-1449: once the cycle has SHIPPED (PR created +
+                # auto-merge armed, visible in the cycle log) the session
+                # commonly sits QUIET polling `gh pr view` for its own PR's
+                # merge. That is a post-ship merge-wait, NOT a hang — so use a
+                # much larger no-output threshold during that phase instead of
+                # the 120s one, so a real ship is not stall-killed (which would
+                # mis-count it as failed). Still bounded so a session genuinely
+                # wedged AFTER shipping is eventually reaped.
+                _postship_threshold="${CHUMP_POSTSHIP_STALL_THRESHOLD_S:-900}"
                 # RESILIENT-157: true (0) if a cargo/rustc/clippy-driver/sccache
                 # build is an ACTIVE DESCENDANT of $1 (the claude -p pid) — i.e.
                 # the cycle is silently COMPILING (a workspace clippy/build can run
@@ -1500,7 +1916,16 @@ Operator or sibling worker can rescue this branch via:
                             _sd_last_active=$SECONDS
                         fi
                         _sd_idle=$(( SECONDS - _sd_last_active ))
-                        if [[ $_sd_idle -ge $_stall_threshold ]]; then
+                        # RESILIENT-1449: extend the threshold once the cycle
+                        # has shipped — a quiet post-ship merge-poll is not a
+                        # stall. Non-shipped cycles keep the strict 120s bound,
+                        # so protection against genuinely-hung sessions is
+                        # unchanged.
+                        _eff_threshold=$_stall_threshold
+                        if _cycle_log_shows_ship "$cycle_log"; then
+                            _eff_threshold=$_postship_threshold
+                        fi
+                        if [[ $_sd_idle -ge $_eff_threshold ]]; then
                             # RESILIENT-157: a clippy/cargo build streams no output
                             # for minutes — that's compiling, not stalled. Defer the
                             # kill while a build descendant is live; reset the idle
@@ -1521,7 +1946,7 @@ Operator or sibling worker can rescue this branch via:
                                 "${AGENT_ID:-unknown}" \
                                 "$_sd_idle" \
                                 >> "${CHUMP_LOCKS_DIR:-.chump-locks}/ambient.jsonl" 2>/dev/null || true
-                            log "INFRA-705: stall-detector firing (no output for ${_sd_idle}s ≥ threshold ${_stall_threshold}s) — killing cycle"
+                            log "INFRA-705: stall-detector firing (no output for ${_sd_idle}s ≥ threshold ${_eff_threshold}s) — killing cycle"
                             # INFRA-3832: reap the whole tree (see _kill_cycle_tree)
                             # so the hung claude grandchild dies now, not at
                             # FLEET_TIMEOUT_S.
@@ -1654,9 +2079,21 @@ Operator or sibling worker can rescue this branch via:
                 if [[ "$_model_pinned" -eq 1 && -n "$_cl_model" ]]; then
                     export OPENAI_MODEL="$_cl_model"
                     if [[ -n "${CHUMP_FREE_TIER_PROVIDERS:-}" ]]; then
+                        # RESILIENT-1086: pin the escalated model as the PREFERRED
+                        # provider, but PRESERVE the rest of the configured cascade
+                        # as fallback — NEVER collapse the list to a single entry.
+                        # The prior code replaced the whole list with one
+                        # `${model}@${first_base:KEY}`; when that first base was a
+                        # credit-dead provider (OpenRouter 402) the live entries
+                        # (Groq gpt-oss-20b / Cerebras) were dropped and every
+                        # cycle died rc=75 BILLING_EXHAUSTED, never falling through
+                        # to a working floor (2026-09-08 total-stall). Prepending
+                        # keeps the escalated model first while the Rust cascade
+                        # (src/provider_cascade.rs) still falls through the dead
+                        # OpenRouter entries to the live Groq/Cerebras floor.
                         _prov_suffix="${CHUMP_FREE_TIER_PROVIDERS%%,*}"   # first entry
                         _prov_suffix="@${_prov_suffix#*@}"               # strip model, keep @base:KEY
-                        export CHUMP_FREE_TIER_PROVIDERS="${_cl_model}${_prov_suffix}"
+                        export CHUMP_FREE_TIER_PROVIDERS="${_cl_model}${_prov_suffix},${CHUMP_FREE_TIER_PROVIDERS}"
                     fi
                 elif [[ -z "${CHUMP_FREE_TIER_PROVIDERS:-}" && -n "$_cl_model" ]]; then
                     # No provider list configured — legacy single-model path:
@@ -1857,6 +2294,28 @@ Operator or sibling worker can rescue this branch via:
         chump gap strike "$GAP_ID" >/dev/null 2>&1 || _strike_rc=$?
         [[ "$_strike_rc" -eq 10 ]] || return 0
         log "EFFECTIVE-310: $GAP_ID hit strike threshold on chump-local — frontier decompose"
+
+        # INFRA-8067: root-cause fix for RESILIENT-1437 (gap-store
+        # slice-bloat). Before EVER invoking the real --apply decompose (or
+        # resetting strikes on its success), cheaply check whether $GAP_ID
+        # already has open child slices — e.g. a prior --apply run that
+        # filed slices but was killed/wedged before writing the parent's
+        # status=decomposed marker, leaving it looking "fresh" to this same
+        # reflex on every subsequent strike-threshold hit. `chump gap
+        # decompose --dry-run` hits that guard (new in `chump gap decompose`,
+        # see src/main.rs) before building any provider or calling an LLM —
+        # it's a cheap local SQL check, no API keys/env sourcing needed — and
+        # exits 11 specifically when the parent is already sliced.
+        local _precheck_rc=0
+        chump gap decompose "$GAP_ID" --dry-run >/dev/null 2>>"$cycle_log" || _precheck_rc=$?
+        if [[ "$_precheck_rc" -eq 11 ]]; then
+            log "EFFECTIVE-310: $GAP_ID already has open child slices (INFRA-8067 guard) — skipping re-decompose, leaving strikes in place so this does not silently loop as if resolved"
+            printf '{"ts":"%s","kind":"gap_decompose_refused","source":"worker.sh","agent":"%s","gap_id":"%s","backend":"%s","reason":"already_has_open_slices"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$FLEET_BACKEND" \
+                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+            return 0
+        fi
+
         # EFFECTIVE-512: pin openrouter + deepseek-v4-pro exactly as
         # gap-drain.sh:38-40 does, scoped to THIS decompose call via a subshell
         # so the surrounding worker loop env is untouched.
@@ -1951,29 +2410,58 @@ Operator or sibling worker can rescue this branch via:
                 _sub_fallback_threshold="${CHUMP_SUB_FALLBACK_THRESHOLD:-2}"
                 log "RESILIENT-575: sub backend failure class=$_sub_fail_class consecutive=$_sub_fail_n/$_sub_fallback_threshold on $GAP_ID"
                 if [[ "$_sub_fail_n" -ge "$_sub_fallback_threshold" ]] && [[ "${CHUMP_SUB_FALLBACK:-1}" != "0" ]]; then
+                    # ── RESILIENT-676/1086: probe-before-switch ────────────────
+                    # NEVER demote onto a dead floor. When the sub fails, the
+                    # old code blindly switched to chump-local — but if every
+                    # free-tier provider is 402/credit-dead (the exact 2026-09-08
+                    # rc=75 total-stall: 3 dead OpenRouter entries), that "floor"
+                    # can't run a single gap, so the worker just trades a
+                    # rate-limited sub for a dead floor and spins rc=75 forever.
+                    # Probe the cascade first; only demote if a provider is
+                    # actually live, and page (fleet_backend_no_live_floor) when
+                    # none is. The probe runs only on the demotion path (after 2
+                    # consecutive sub failures), so its per-entry curl timeout is
+                    # not in any hot loop.
+                    _live_floor="$(probe_free_tier_live || true)"
                     _amb_sf="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
                     mkdir -p "$(dirname "$_amb_sf")" "$REPO_ROOT/.chump-locks/backend-outage" 2>/dev/null || true
-                    printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_auto_fallback","agent_id":"%s","from_backend":"claude","to_backend":"chump-local","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s"}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
-                        "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
-                        >> "$_amb_sf" 2>/dev/null || true
-                    log "ALERT RESILIENT-575: kind=fleet_backend_auto_fallback sub backend failing (${_sub_fail_class} x${_sub_fail_n}) — switching worker $AGENT_ID to chump-local free-tier cascade"
-                    export FLEET_BACKEND="chump-local"
-                    : > "$_sub_fail_ctr_file" 2>/dev/null || true
-                    printf '{"backend":"claude","since":"%s","agent":"%s","fail_class":"%s"}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_sub_fail_class" \
-                        > "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" 2>/dev/null || true
-                    # AC2: unblock gaps this worker auto-blocked while the sub
-                    # was silently failing — a working backend just returned
-                    # (the free-tier cascade), so those cooldowns no longer
-                    # reflect a bad gap, only a dead backend window.
-                    _unblocked_n=$(ls "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null | wc -l | tr -d ' ')
-                    rm -f "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null || true
-                    printf '{"ts":"%s","session":"%s","kind":"fleet_backend_outage_unblock","agent_id":"%s","unblocked_count":%s}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
-                        "$AGENT_ID" "${_unblocked_n:-0}" \
-                        >> "$_amb_sf" 2>/dev/null || true
-                    log "RESILIENT-575: unblocked ${_unblocked_n:-0} cooldown record(s) for worker $AGENT_ID now that chump-local is active"
+                    if [[ -z "$_live_floor" ]]; then
+                        # No live floor — stay on the sub (it may recover) and PAGE.
+                        printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_no_live_floor","agent_id":"%s","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s","note":"sub failing AND no live free-tier provider (all 402/dead) — NOT demoting to a dead floor (RESILIENT-676/1086)"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
+                            >> "$_amb_sf" 2>/dev/null || true
+                        log "ALERT RESILIENT-1086: sub failing (${_sub_fail_class} x${_sub_fail_n}) AND no live free-tier provider (all 402/dead) — NOT demoting to a dead floor; staying on claude + paging operator"
+                    else
+                        printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"fleet_backend_auto_fallback","agent_id":"%s","from_backend":"claude","to_backend":"chump-local","fail_class":"%s","consecutive_failures":%d,"gap_id":"%s"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "$_sub_fail_class" "$_sub_fail_n" "$GAP_ID" \
+                            >> "$_amb_sf" 2>/dev/null || true
+                        log "ALERT RESILIENT-575: kind=fleet_backend_auto_fallback sub backend failing (${_sub_fail_class} x${_sub_fail_n}) — switching worker $AGENT_ID to chump-local free-tier cascade (live floor: ${_live_floor%%@*})"
+                        export FLEET_BACKEND="chump-local"
+                        # RESILIENT-1086: bias the cascade toward the confirmed-
+                        # live provider so chump-local doesn't burn cycles on the
+                        # dead OpenRouter entries before reaching the live floor.
+                        # (Prepend only when not already first — avoid churn.)
+                        if [[ "${CHUMP_FREE_TIER_PROVIDERS%%,*}" != "$_live_floor" ]]; then
+                            export CHUMP_FREE_TIER_PROVIDERS="${_live_floor},${CHUMP_FREE_TIER_PROVIDERS}"
+                        fi
+                        : > "$_sub_fail_ctr_file" 2>/dev/null || true
+                        printf '{"backend":"claude","since":"%s","agent":"%s","fail_class":"%s","live_floor":"%s"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$_sub_fail_class" "${_live_floor%%@*}" \
+                            > "$REPO_ROOT/.chump-locks/backend-outage/agent-${AGENT_ID}.json" 2>/dev/null || true
+                        # AC2: unblock gaps this worker auto-blocked while the sub
+                        # was silently failing — a working backend just returned
+                        # (the free-tier cascade), so those cooldowns no longer
+                        # reflect a bad gap, only a dead backend window.
+                        _unblocked_n=$(ls "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null | wc -l | tr -d ' ')
+                        rm -f "$REPO_ROOT/.chump-locks/cooldown/${AGENT_ID}-"*.json 2>/dev/null || true
+                        printf '{"ts":"%s","session":"%s","kind":"fleet_backend_outage_unblock","agent_id":"%s","unblocked_count":%s}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "${_unblocked_n:-0}" \
+                            >> "$_amb_sf" 2>/dev/null || true
+                        log "RESILIENT-575: unblocked ${_unblocked_n:-0} cooldown record(s) for worker $AGENT_ID now that chump-local is active"
+                    fi
                 fi
             else
                 rm -f "$FLEET_LOG_DIR/agent-${AGENT_ID}.sub-outage-fails" 2>/dev/null || true
@@ -2009,6 +2497,30 @@ Operator or sibling worker can rescue this branch via:
                     "$AGENT_ID" "$GAP_ID" "$_cap_fail_class" "${_cl_model:-unknown}" "$rc" \
                     >> "$_amb_cap" 2>/dev/null || true
                 log "ALERT RESILIENT-1007: model capability failure (${_cap_fail_class}) on $GAP_ID at model=${_cl_model:-unknown} — escalating to next CHUMP_MODEL_ESCALATION_LADDER rung, skipping cooldown/auto-block"
+
+                # AC4 (RESILIENT-597): a capability-failed attempt is not a
+                # verified fix — the model can push a branch and have
+                # bot-merge.sh open a PR earlier in the same cycle, then hit
+                # the capability error later and still exit rc=1 overall.
+                # Without this, that PR sits open (or armed for auto-merge)
+                # while the ladder retries on the next rung — a real risk of
+                # shipping an attempt nobody verified. Close it so it can
+                # never merge and is never counted as a real ship; the
+                # escalated rung produces the artifact that actually ships.
+                if command -v gh >/dev/null 2>&1; then
+                    _cap_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+                    _cap_pr="$(gh pr list --head "$_cap_branch" --state open --json number \
+                        --jq '.[0].number // empty' 2>/dev/null || true)"
+                    if [[ -n "$_cap_pr" ]]; then
+                        gh pr close "$_cap_pr" --comment "RESILIENT-597: closing — model capability failure (${_cap_fail_class}) on this attempt, escalating to the next CHUMP_MODEL_ESCALATION_LADDER rung. This artifact was not verified and must not ship." \
+                            >/dev/null 2>&1 || true
+                        printf '{"ts":"%s","session":"%s","event":"ALERT","kind":"model_ladder_artifact_suppressed","agent_id":"%s","gap_id":"%s","pr":%s,"fail_class":"%s"}\n' \
+                            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet-worker-$AGENT_ID}" \
+                            "$AGENT_ID" "$GAP_ID" "$_cap_pr" "$_cap_fail_class" \
+                            >> "$_amb_cap" 2>/dev/null || true
+                        log "ALERT RESILIENT-597: closed PR #$_cap_pr for $GAP_ID (capability failure ${_cap_fail_class}) — suppressing artifact ship"
+                    fi
+                fi
             fi
         fi
 
@@ -2306,22 +2818,10 @@ Operator or sibling worker can rescue this branch via:
         # ready_to_ship in the worktree-local db and no PR was ever created).
         # Evidence, cheapest first: webhook cache by head_ref → canonical-db
         # gap status → gh fallback. No evidence → kind=unverified_ship.
+        # RESILIENT-1449: this ground-truth check is now _detect_ship_evidence,
+        # shared verbatim with the non-zero-rc reclassification below.
         _ship_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
-        _ship_evidence=""
-        _cache_db="${REPO_ROOT}/.chump/github_cache.db"
-        if [ -f "$_cache_db" ]; then
-            _ship_evidence="$(sqlite3 "$_cache_db" \
-                "SELECT number FROM pr_state WHERE head_ref='${_ship_branch}' LIMIT 1" 2>/dev/null || true)"
-        fi
-        if [ -z "$_ship_evidence" ]; then
-            _gap_now="$(CHUMP_REPO="$REPO_ROOT" chump gap show "$GAP_ID" 2>/dev/null \
-                | grep -m1 -oE 'status: *[a-z_]+' | awk '{print $2}' || true)"
-            case "$_gap_now" in ready_to_ship|done|shipped) _ship_evidence="status:$_gap_now" ;; esac
-        fi
-        if [ -z "$_ship_evidence" ]; then
-            _ship_evidence="$(gh pr list --head "$_ship_branch" --state all --json number \
-                --jq '.[0].number // empty' 2>/dev/null || true)"
-        fi
+        _ship_evidence="$(_detect_ship_evidence "$GAP_ID" "$_ship_branch" || true)"
         if [ -n "$_ship_evidence" ]; then
             _cycle_kind="shipped"
             # EFFECTIVE-441: a verified ship clears any accumulated unverified_ship
@@ -2452,6 +2952,32 @@ Operator or sibling worker can rescue this branch via:
     elif [ "$rc" -eq 124 ]; then
         _cycle_kind="timeout"
     fi
+
+    # ── RESILIENT-1449: ground-truth before declaring "failed" ────────────
+    # A non-zero exit is NOT proof the cycle failed. The dominant false
+    # failure: the session shipped correctly (branch pushed, PR created,
+    # auto-merge armed), then sat quietly polling `gh pr view` for its own
+    # PR's merge. That produced no stdout for 120s, so the INFRA-705
+    # stall-detector killed it → rc=143 → classified "failed" — even though
+    # the PR was created and may already have merged (RESILIENT-1123 logged
+    # rc=1 yet PR #4812 MERGED; EFFECTIVE-1015 was stall-killed mid-poll but
+    # PR #4813 was created). Before trusting a "failed" verdict, consult the
+    # authoritative signal: if a PR exists for this cycle's branch, the cycle
+    # SHIPPED. Only reclassify AWAY from failed — never override a
+    # shipped/unverified_ship/wedge/timeout verdict already established above.
+    if [ "$_cycle_kind" = "failed" ] && [ "${CHUMP_SHIP_GROUNDTRUTH_RECHECK:-1}" != "0" ]; then
+        _gt_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+        _gt_ev="$(_detect_ship_evidence "$GAP_ID" "$_gt_branch" || true)"
+        if [ -n "$_gt_ev" ]; then
+            _cycle_kind="shipped"
+            # scanner-anchor: "kind":"cycle_reclassified_shipped"
+            printf '{"ts":"%s","event":"cycle_reclassified_shipped","kind":"cycle_reclassified_shipped","agent":"%s","gap_id":"%s","rc":%d,"evidence":"%s","reason":"post_ship_stall_kill_false_failure"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$rc" "$_gt_ev" \
+                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+            log "RESILIENT-1449: rc=$rc looked failed, but ground truth shows a PR for branch $_gt_branch (evidence=$_gt_ev) — reclassifying shipped (post-ship stall-kill false failure)"
+        fi
+    fi
+
     _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
     printf '{"event":"cycle_end","ts":"%s","agent":"%s","gap_id":"%s","elapsed_s":%d,"rc":%d,"kind":"%s","model":"%s","cycle_log_bytes":%d}\n' \
         "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \

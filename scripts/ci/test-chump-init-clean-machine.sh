@@ -93,6 +93,17 @@ MCP_OUT="$(CHUMP_REPO="$FIXTURE_REPO" CHUMP_BINARY_STALENESS_CHECK=0 \
 # Accept any output — the test is that mcp list doesn't crash.
 pass "Check 5: chump mcp list exits 0 (got $(echo "$MCP_OUT" | wc -l | tr -d ' ') lines)"
 
+# INFRA-1615: verify the seed skill bundle (skills-bundle/*) was tapped into
+# the fresh brain by `chump init` — a new install should start with
+# operator-curated curriculum instead of zero skills.
+info "Running: chump skill list --json (INFRA-1615 seed bundle)"
+SKILL_JSON="$(HOME="$FAKE_HOME" CHUMP_REPO="$FIXTURE_REPO" CHUMP_BINARY_STALENESS_CHECK=0 \
+    "$CHUMP_BIN" skill list --json 2>/dev/null || true)"
+for seed in verify-existence claim-without-collision pre-ship-ci-prediction; do
+    echo "$SKILL_JSON" | grep -q "\"$seed\"" || fail "Check 6: seed skill '$seed' missing from 'chump skill list --json'"
+done
+pass "Check 6: chump skill list --json contains all 3 seed skills post-init"
+
 echo ""
 echo "INFRA-799: all chump init clean-machine checks passed."
 

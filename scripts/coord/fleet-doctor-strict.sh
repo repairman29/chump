@@ -41,15 +41,39 @@
 #                        organ_watchdog_tick or organ_reconcile_applied/noop
 #                        goes stale past its cadence, or has never ticked at
 #                        all while the other has.
+#   16. tracked-config-drift — RESILIENT-1106 (Track A, RESILIENT-1102 /
+#                        docs/design/DESIGN_GAPS_SELF_RUNNING.md): #4593
+#                        pulled worker self-heal policy into tracked
+#                        scripts/setup/*.env files, but a node's hand-deployed,
+#                        git-UNTRACKED launcher (~/node1-worker-run.sh,
+#                        ~/.chump/providers.env) can still hard-set the SAME
+#                        var to a DIFFERENT value and silently win — exactly
+#                        the class of drift #4593 tried to close. FAILs +
+#                        pages (kind=tracked_config_drift) when a live
+#                        untracked file's literal `VAR=value` assignment
+#                        disagrees with the tracked file's canonical value.
+#                        Skips (not fail) when no untracked override files
+#                        are present on this node — nothing outside git to
+#                        drift from.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
 #   DISK_MIN_GB               default 5    — fail if free disk below N GB
+#   DISK_PRESSURE_PCT         default 90   — fail if REPO_ROOT (or any path in
+#                              CHUMP_DISK_PRESSURE_PATHS) is at/above N percent used
+#   CHUMP_DISK_PRESSURE_PATHS default REPO_ROOT — space-separated extra mounts to check
+#                              (e.g. "/ /mnt/cjdata1" on a CJ coordinator node)
 #   DIRTY_PR_HOURS            default 24   — DIRTY PRs older than N hours are flagged
 #   P0_MAX                    default 5    — fail if more than N open P0 gaps
 #   PILLAR_MIN                default 2    — fail if any pillar has fewer than N pickable gaps
 #   SILENT_DEATH_MERGE_HOURS  default 12   — last-merge older than N hours triggers check 1
 #   CHUMP_DOCTOR_AUTOHEAL     default 0    — set 1 to auto-restore missing scripts + bounce daemons
+#   CHUMP_CONFIG_DRIFT_TRACKED_GLOB  default "scripts/setup/*.env" — tracked
+#                              config-as-code files that hold canonical policy
+#   CHUMP_CONFIG_DRIFT_LIVE_GLOB     default "$HOME/*-worker-run.sh
+#                              $HOME/.chump/providers.env
+#                              $HOME/.chump/chumpd.env" — untracked, node-local
+#                              files that may hand-set the same vars
 #
 # Bypass: CHUMP_FLEET_DOCTOR=0 exits 0 (for scripted contexts that want raw signal).
 #
@@ -185,9 +209,32 @@ check_disk() {
         register_check "disk" "fail" \
             "only ${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB)" \
             "bash $REPO_ROOT/scripts/coord/chump-target-reaper.sh --apply  # or manual cleanup"
+        return
+    fi
+
+    # RESILIENT-1444: percentage-based guard — a large filesystem can clear
+    # the absolute-GB floor above while still being critically full (e.g.
+    # 15 GB free on a 115 GB disk is 87% used). Checks REPO_ROOT plus any
+    # extra mounts in CHUMP_DISK_PRESSURE_PATHS (space-separated).
+    local pressure_pct="${DISK_PRESSURE_PCT:-90}"
+    local pressure_paths="${CHUMP_DISK_PRESSURE_PATHS:-$REPO_ROOT}"
+    local path pct worst_path="" worst_pct=0
+    for path in $pressure_paths; do
+        pct="$(df -k "$path" 2>/dev/null | awk 'NR==2 { gsub(/%/,"",$5); print $5 }')"
+        [[ -z "$pct" || ! "$pct" =~ ^[0-9]+$ ]] && continue
+        if [[ "$pct" -gt "$worst_pct" ]]; then
+            worst_pct="$pct"
+            worst_path="$path"
+        fi
+    done
+
+    if [[ -n "$worst_path" && "$worst_pct" -ge "$pressure_pct" ]]; then
+        register_check "disk" "fail" \
+            "$worst_path is ${worst_pct}% used (threshold: <${pressure_pct}%) — RESILIENT-1444 disk-pressure guard" \
+            "bash $REPO_ROOT/scripts/ops/stale-worktree-reaper.sh --execute  # reap abandoned worktrees, then chump-target-reaper.sh --apply"
     else
         register_check "disk" "pass" \
-            "${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB)" \
+            "${free_gb} GB free (threshold: >=${DISK_MIN_GB} GB); ${worst_path:-$REPO_ROOT} at ${worst_pct}% used (threshold: <${pressure_pct}%)" \
             ""
     fi
 }
@@ -656,22 +703,35 @@ check_almanac_freshness() {
 #                         21 days — this makes it RED within hours instead.
 check_backlog_sync_freshness() {
     local max_h="${CHUMP_BACKLOG_SYNC_STALE_HOURS:-24}"
-    local last_epoch
-    last_epoch="$(git -C "$REPO_ROOT" log -1 --format='%ct' origin/main -- .chump/state.sql 2>/dev/null)"
+    local last_epoch reg_ref="origin/main"
+    # Registry privacy: the writer publishes to the private `registry` remote.
+    # Measure freshness THERE when it is configured; origin/main only carries
+    # the legacy (pre-cutover) file. A configured-but-unfetchable registry is a
+    # FAIL, never a quiet fallback to the frozen legacy copy.
+    if git -C "$REPO_ROOT" remote get-url registry >/dev/null 2>&1; then
+        reg_ref="registry/main"
+        if ! git -C "$REPO_ROOT" fetch --quiet registry main 2>/dev/null; then
+            register_check "backlog-sync-freshness" "fail" \
+                "registry remote is configured but could not be fetched — cannot prove the registry is fresh" \
+                "check the node's registry deploy key / network: git -C $REPO_ROOT fetch registry main"
+            return
+        fi
+    fi
+    last_epoch="$(git -C "$REPO_ROOT" log -1 --format='%ct' "$reg_ref" -- .chump/state.sql 2>/dev/null)"
     if [[ -z "$last_epoch" ]]; then
         register_check "backlog-sync-freshness" "fail" \
-            "no commit history for .chump/state.sql on origin/main — backlog-sync writer has never published" \
+            "no commit history for .chump/state.sql on $reg_ref — backlog-sync writer has never published there" \
             "install the writer organ: sudo bash scripts/setup/install-helsinki-atc.sh (see chump-backlog-sync-writer.timer)"
         return
     fi
     local age_h=$(( ( $(date +%s) - last_epoch ) / 3600 ))
     if (( age_h >= max_h )); then
         register_check "backlog-sync-freshness" "fail" \
-            "origin/main .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
+            "$reg_ref .chump/state.sql is ${age_h}h stale (threshold ${max_h}h) — backlog-sync --writer is dead or not installed, registry split-brain risk" \
             "check: systemctl status chump-backlog-sync-writer.timer; re-arm: sudo bash scripts/setup/install-helsinki-atc.sh"
         return
     fi
-    register_check "backlog-sync-freshness" "pass" "origin/main .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
+    register_check "backlog-sync-freshness" "pass" "$reg_ref .chump/state.sql ${age_h}h fresh (threshold ${max_h}h)" ""
 }
 
 #  14. organ-roll-call-live — INFRA-3646 (TREK-20): the static Roll-Call
@@ -709,6 +769,23 @@ _organ_roll_call_is_applicable() {
             dep:*)
                 "$systemctl_bin" is-active --quiet "${rtok#dep:}" 2>/dev/null \
                     || { printf -v "$reason_var" 'missing_dep:%s' "${rtok#dep:}"; return 1; }
+                ;;
+            file:*)
+                # RESILIENT-1436: mirrors organ_is_applicable() in
+                # scripts/ops/lib/organ-manifest-lib.sh — the CJ-legacy
+                # chump-cj-worker/disk-monitor/sync organs declare
+                # requires=...,file:~/cj-*-run.sh (a host-specific asset with
+                # no tracked unit file). Before this case existed, `file:`
+                # fell through to the `*)` unknown-spec branch below, which
+                # marked these organs not-applicable and SKIPped them —
+                # invisible to the live roll-call even when systemd-supervised.
+                local fpath="${rtok#file:}"
+                case "$fpath" in
+                    '~/'*)     fpath="${HOME:-/root}/${fpath#\~/}" ;;
+                    '$HOME/'*) fpath="${HOME:-/root}/${fpath#\$HOME/}" ;;
+                esac
+                [[ -e "$fpath" ]] \
+                    || { printf -v "$reason_var" 'missing_file:%s' "$fpath"; return 1; }
                 ;;
             *)
                 printf -v "$reason_var" 'unknown_requires_spec:%s' "$rtok"; return 1 ;;
@@ -1200,6 +1277,138 @@ print(last_reconcile)
         "organ-watchdog ticked $(( now_ts - last_watchdog ))s ago, organ-reconcile ticked $(( now_ts - last_reconcile ))s ago (thresholds ${watchdog_max_s}s/${reconcile_max_s}s)" ""
 }
 
+#  16. tracked-config-drift — RESILIENT-1106: #4593 moved worker self-heal
+#      policy into tracked scripts/setup/*.env config-as-code files so it
+#      could be reviewed and reproduced in git. But a node's hand-deployed,
+#      git-UNTRACKED launcher (~/node1-worker-run.sh) or machine-local
+#      ~/.chump/providers.env can still hard-set the same var name to a
+#      DIFFERENT literal value and silently win at runtime — the exact
+#      "nothing in git could review, reproduce, or heal the policy" failure
+#      mode #4593 closed for the UNSET case, but not for the OVERRIDDEN case.
+#      This check diffs each tracked file's canonical value against any live
+#      untracked file's literal (non-`:=`) assignment of the same var.
+check_tracked_config_drift() {
+    if ! command -v python3 &>/dev/null; then
+        register_check "tracked-config-drift" "skip" "python3 unavailable — skipping config-drift scan" ""
+        return
+    fi
+
+    local tracked_glob="${CHUMP_CONFIG_DRIFT_TRACKED_GLOB:-$REPO_ROOT/scripts/setup/*.env}"
+    local -a tracked_files=()
+    # shellcheck disable=SC2206
+    tracked_files=( $tracked_glob )
+    if [[ ! -e "${tracked_files[0]:-}" ]]; then
+        register_check "tracked-config-drift" "skip" "no tracked config-as-code files match '$tracked_glob'" ""
+        return
+    fi
+
+    local live_glob="${CHUMP_CONFIG_DRIFT_LIVE_GLOB:-$HOME/*-worker-run.sh $HOME/.chump/providers.env $HOME/.chump/chumpd.env}"
+    local -a live_files=()
+    local pattern
+    for pattern in $live_glob; do
+        # shellcheck disable=SC2206
+        local -a expanded=( $pattern )
+        [[ -e "${expanded[0]:-}" ]] && live_files+=( "${expanded[@]}" )
+    done
+    if [[ "${#live_files[@]}" -eq 0 ]]; then
+        register_check "tracked-config-drift" "skip" \
+            "no untracked live override files present (checked: $live_glob) — nothing outside git to drift from" ""
+        return
+    fi
+
+    local drift_out
+    drift_out="$(python3 -c '
+import re, sys, json
+
+tracked_paths = sys.argv[1].split("\x1e")
+live_paths = sys.argv[2].split("\x1e")
+
+# Canonical values from tracked config-as-code: both plain "VAR=value" and
+# bash default-assignment ": \"${VAR:=value}\"" forms.
+canon = {}
+canon_src = {}
+default_re = re.compile(r"^\s*:\s*\"\$\{(\w+):=([^}]*)\}\"")
+plain_re = re.compile(r"^\s*(?:export\s+)?(\w+)=([^\s#]*)")
+for p in tracked_paths:
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.rstrip("\n")
+                m = default_re.match(line)
+                if not m:
+                    m = plain_re.match(line)
+                if m:
+                    var, val = m.group(1), m.group(2).strip()
+                    canon[var] = val
+                    canon_src[var] = p
+    except OSError:
+        continue
+
+# Live overrides: only HARD assignments (no ":=") count as an override that
+# silently wins over the tracked default. Last assignment in a file wins,
+# mirroring shell semantics.
+live = {}
+live_src = {}
+for p in live_paths:
+    try:
+        with open(p) as f:
+            for line in f:
+                line = line.rstrip("\n")
+                if ":=" in line:
+                    continue
+                m = plain_re.match(line)
+                if m:
+                    var, val = m.group(1), m.group(2).strip()
+                    live[var] = val
+                    live_src[var] = p
+    except OSError:
+        continue
+
+drifted = []
+for var, cval in canon.items():
+    if var in live and live[var] != cval:
+        drifted.append({
+            "var": var, "tracked_value": cval, "live_value": live[var],
+            "tracked_file": canon_src[var], "live_file": live_src[var],
+        })
+
+print(json.dumps({"checked": len(canon), "drifted": drifted}))
+' "$(IFS=$'\x1e'; echo "${tracked_files[*]}")" "$(IFS=$'\x1e'; echo "${live_files[*]}")" 2>/dev/null)"
+
+    if [[ -z "$drift_out" ]]; then
+        register_check "tracked-config-drift" "skip" "config-drift scan produced no output (parse error?)" ""
+        return
+    fi
+
+    local checked_count drift_count
+    checked_count="$(printf '%s' "$drift_out" | python3 -c 'import json,sys; print(json.load(sys.stdin)["checked"])' 2>/dev/null || echo 0)"
+    drift_count="$(printf '%s' "$drift_out" | python3 -c 'import json,sys; print(len(json.load(sys.stdin)["drifted"]))' 2>/dev/null || echo 0)"
+
+    if [[ "$drift_count" -gt 0 ]]; then
+        local detail
+        detail="$(printf '%s' "$drift_out" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)["drifted"]
+parts = []
+for x in d:
+    parts.append("%s: tracked=%r (%s) vs live=%r (%s)" % (x["var"], x["tracked_value"], x["tracked_file"], x["live_value"], x["live_file"]))
+print("; ".join(parts))
+' 2>/dev/null)"
+        local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        local detail_json
+        detail_json="$(printf '%s' "$detail" | python3 -c 'import json,sys; print(json.dumps(sys.stdin.read())[1:-1])' 2>/dev/null \
+            || printf '%s' "$detail" | sed 's/\\/\\\\/g; s/"/\\"/g')"
+        printf '{"ts":"%s","kind":"tracked_config_drift","detail":"%s","source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$detail_json" >> "$amb" 2>/dev/null || true
+        register_check "tracked-config-drift" "fail" "$detail" \
+            "reconcile the live override to match the tracked value, or if the live value is intentional, update the tracked scripts/setup/*.env file and ship it so the policy is reviewable in git"
+        return
+    fi
+
+    register_check "tracked-config-drift" "pass" \
+        "$checked_count tracked var(s) checked against ${#live_files[@]} live file(s) — no drift" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1224,6 +1433,7 @@ check_required_status_checks
 check_ops_defect_selfdiag
 check_auth_probe
 check_self_healer_heartbeat
+check_tracked_config_drift
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then

@@ -24,6 +24,47 @@ skip()  { echo "  SKIP: $1"; SKIP=$((SKIP+1)); }
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 
+# ── CREDIBLE-1078: src/*.rs reference audit (CREDIBLE-237 slice) ───────────────
+# Inventories every hard-coded `src/*.rs` path referenced anywhere under
+# scripts/ci/, classifying each reference by what it actually verifies:
+#   - "behavior-based check"    grep for a fn/struct/const signature inside the file
+#   - "negative location check" asserts the path does NOT exist / is absent
+#   - "positive location check" asserts the path DOES exist (the default —
+#      most references just confirm a file is present at a known location)
+classify_src_path_reference() {
+    local content="$1"
+    if grep -qE "grep[^|]*(pub[[:space:]]+)?(fn|struct|const)[[:space:]]" <<< "$content"; then
+        echo "behavior-based check"
+    elif grep -qiE '! -f |missing|not found|not created|does not exist|absent|orphan' <<< "$content"; then
+        echo "negative location check"
+    else
+        echo "positive location check"
+    fi
+}
+
+audit_src_paths() {
+    local out="$REPO_ROOT/ci_src_path_inventory.txt"
+    : > "$out"
+    local file line_num content src_path classification rel_path
+    while IFS= read -r -d '' file; do
+        rel_path="${file#$REPO_ROOT/}"
+        while IFS=: read -r line_num content; do
+            [[ -z "$line_num" ]] && continue
+            src_path=$(grep -oE 'src/[A-Za-z0-9_/]+\.rs' <<< "$content" | head -1)
+            [[ -z "$src_path" ]] && continue
+            classification=$(classify_src_path_reference "$content")
+            echo "${rel_path}:${line_num}:${src_path}:${classification}" >> "$out"
+        done < <(grep -noE '.*src/[A-Za-z0-9_/]+\.rs.*' "$file" 2>/dev/null)
+    done < <(find "$SCRIPT_DIR" -type f -print0 | sort -z)
+    echo "audit_src_paths: wrote $(wc -l < "$out" | tr -d ' ') reference(s) to $out"
+    return 0
+}
+
+if [[ "${1:-}" == "--audit-src-paths" ]]; then
+    audit_src_paths
+    exit $?
+fi
+
 # ── Binary discovery ──────────────────────────────────────────────────────────
 CHUMP="${REPO_ROOT}/target/debug/chump"
 if [[ ! -x "$CHUMP" ]]; then
@@ -116,12 +157,27 @@ check_json() {
     err="$(mktemp)"
     # Capture stdout only; route stderr to a temp file for diagnostics.
     output=$("$CHUMP" "$@" 2>"$err") || rc=$?
+    # INFRA-1789: when both --help and --format json are among the args,
+    # a stale CLI surface could emit valid-but-structureless JSON (e.g. "{}")
+    # instead of real help content. Require a dict with at least one of the
+    # expected help-shape keys, not just JSON-parseable output.
+    local is_help_json=0
+    if [[ " $* " == *" --help "* && " $* " == *" --format "* && " $* " == *" json "* ]]; then
+        is_help_json=1
+    fi
     if [[ $rc -ne 0 ]]; then
         fail "$desc → exit $rc (expected 0); stderr: $(head -c 120 "$err")"
-    elif echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
-        ok "$desc"
-    else
+    elif ! echo "$output" | python3 -m json.tool >/dev/null 2>&1; then
         fail "$desc → exit 0 but stdout is not valid JSON; got: ${output:0:120}"
+    elif [[ "$is_help_json" -eq 1 ]] && ! echo "$output" | python3 -c '
+import json, sys
+d = json.load(sys.stdin)
+assert isinstance(d, dict)
+assert any(k in d for k in ("usage", "description", "subcommand", "subcommands", "options"))
+' >/dev/null 2>&1; then
+        fail "$desc → --help --format json parsed but missing expected help-shape keys (usage/description/subcommand/options); got: ${output:0:120}"
+    else
+        ok "$desc"
     fi
     rm -f "$err"
 }

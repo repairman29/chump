@@ -135,13 +135,15 @@ CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_ALIVE" \
     CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" \
     CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=95 \
     CHUMP_AMBIENT_LOG="$AMB3" "$WATCHDOG" >/dev/null 2>&1
+rc=$?
+[[ "$rc" -eq 2 ]] || fail "expected exit 2 (CREDIBLE-1174 guard) on coverage-drop path; got $rc"
 grep -q -- "--condition ALMANAC_SUMMARIZE_COVERAGE_DROP" "$RECALL_CALL_LOG" \
     || fail "expected operator-recall.sh --condition ALMANAC_SUMMARIZE_COVERAGE_DROP; calls: $(cat "$RECALL_CALL_LOG")"
 grep -q '"kind":"almanac_summarize_coverage_drop"' "$AMB3" \
     || fail "expected almanac_summarize_coverage_drop emitted; ambient: $(cat "$AMB3")"
 grep -q '"worst_repo":"holler"' "$AMB3" \
     || fail "expected worst_repo=holler in coverage_drop event; ambient: $(cat "$AMB3")"
-pass "coverage below floor -> operator-recall paged + almanac_summarize_coverage_drop emitted"
+pass "coverage below floor -> operator-recall paged + almanac_summarize_coverage_drop emitted + exit 2"
 
 # ── 5. COVERAGE-OK: all served repos >= floor -> no page ───────────────────
 echo "--- 5: coverage-ok path ---"
@@ -160,6 +162,8 @@ CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_ALIVE" \
     CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" \
     CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=95 \
     CHUMP_AMBIENT_LOG="$AMB4" "$WATCHDOG" >/dev/null 2>&1
+rc=$?
+[[ "$rc" -eq 0 ]] || fail "coverage OK must exit 0; got $rc"
 [[ -s "$RECALL_CALL_LOG" ]] && fail "coverage OK must not page; calls: $(cat "$RECALL_CALL_LOG")"
 grep -q '"kind":"almanac_summarize_coverage_drop"' "$AMB4" \
     && fail "coverage OK must not emit almanac_summarize_coverage_drop; ambient: $(cat "$AMB4")"
@@ -178,9 +182,11 @@ CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_DEAD" \
     CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" \
     CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=95 \
     CHUMP_AMBIENT_LOG="$AMB5" "$WATCHDOG" --dry-run >/dev/null 2>&1
+rc=$?
+[[ "$rc" -eq 0 ]] || fail "--dry-run must exit 0 even with a coverage drop present; got $rc"
 [[ -s "$RESTART_CALL_LOG3" ]] && fail "--dry-run must not call the restart command; calls: $(cat "$RESTART_CALL_LOG3")"
 [[ -s "$RECALL_CALL_LOG" ]] && fail "--dry-run must not page operator-recall; calls: $(cat "$RECALL_CALL_LOG")"
-pass "--dry-run reports without restarting or paging"
+pass "--dry-run reports without restarting or paging, exits 0"
 
 # ── 7. MISSING/INVALID pct: entries lacking pct data fail-closed ───────────
 # CREDIBLE-1045: a repo entry with neither "pct" nor "summarized_pct" used to
@@ -202,10 +208,40 @@ CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_ALIVE" \
     CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" \
     CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=95 \
     CHUMP_AMBIENT_LOG="$AMB6" "$WATCHDOG" >/dev/null 2>&1
+rc=$?
+[[ "$rc" -eq 2 ]] || fail "expected exit 2 (CREDIBLE-1174 guard) when a repo is missing pct data; got $rc"
 grep -q -- "--condition ALMANAC_SUMMARIZE_COVERAGE_DROP" "$RECALL_CALL_LOG" \
     || fail "expected missing-pct entry to page operator-recall; calls: $(cat "$RECALL_CALL_LOG")"
 grep -q '"worst_repo":"noreport(missing_pct_field)"' "$AMB6" \
     || fail "expected worst_repo to flag the missing-pct entry; ambient: $(cat "$AMB6")"
-pass "repo entry missing pct field -> treated as coverage violation, not silently 100%"
+pass "repo entry missing pct field -> treated as coverage violation, not silently 100%, exit 2"
+
+# ── 8. FLOOR CLAMP: a below-95 MIN_PCT override cannot weaken the guard ────
+# CREDIBLE-1210: CHUMP_ALMANAC_SUMMARIZE_MIN_PCT must never lower the guard
+# below the 95% mission floor. A repo at 80% would pass an (unclamped) 50%
+# override but must still trip the guard once clamped back to 95%.
+echo "--- 8: MIN_PCT below 95 is clamped to 95 ---"
+COVERAGE_80="$TMP/coverage-80.sh"
+cat > "$COVERAGE_80" <<'EOF'
+#!/usr/bin/env bash
+echo '{"repos":[{"repo":"holler","pct":80.0}]}'
+EOF
+chmod +x "$COVERAGE_80"
+
+AMB7="$TMP/ambient7.jsonl"
+: > "$AMB7"
+: > "$RECALL_CALL_LOG"
+out="$(CHUMP_ALMANAC_WATCHDOG_PGREP_BIN="$PGREP_ALIVE" \
+    CHUMP_ALMANAC_WATCHDOG_COVERAGE_BIN="$COVERAGE_80" \
+    CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT="$RECALL_STUB" \
+    CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=50 \
+    CHUMP_AMBIENT_LOG="$AMB7" "$WATCHDOG" 2>&1)"
+rc=$?
+[[ "$rc" -eq 2 ]] || fail "expected exit 2 — a 50% override must be clamped to the 95% floor; got $rc; output: $out"
+grep -q -- "--condition ALMANAC_SUMMARIZE_COVERAGE_DROP" "$RECALL_CALL_LOG" \
+    || fail "expected clamped floor to still page operator-recall; calls: $(cat "$RECALL_CALL_LOG")"
+grep -q '"floor":95' "$AMB7" \
+    || fail "expected coverage_drop event to record the clamped floor of 95; ambient: $(cat "$AMB7")"
+pass "MIN_PCT override below 95 is clamped to 95 -> guard still trips, floor recorded as 95"
 
 echo "=== all almanac-summarize-watchdog tests passed ==="

@@ -272,13 +272,17 @@ else
 fi
 
 # ---------------------------------------------------------------------------
-# Test 9: refresh-open-prs Phase 1 stub returns 0.
+# Test 9: refresh-open-prs (INFRA-3833 real REST refill) gracefully
+# no-ops against an unresolvable repo. `--repo` pins to a repo that
+# cannot have real open PRs so this assertion stays network-independent
+# — see refill.rs's graceful-degradation contract (any resolution/auth/
+# network failure returns Ok(0), never an error).
 # ---------------------------------------------------------------------------
-OUT="$("$CLI" --db "$DB" refresh-open-prs)"
+OUT="$("$CLI" --db "$DB" refresh-open-prs --repo "chump-ci-smoke/does-not-exist")"
 if [[ "$OUT" == "0" ]]; then
-    ok "refresh-open-prs Phase 1 stub returned '0'"
+    ok "refresh-open-prs gracefully no-op'd for an unresolvable repo"
 else
-    fail "refresh-open-prs stub: got '$OUT', want '0'"
+    fail "refresh-open-prs: got '$OUT', want '0'"
 fi
 
 # ---------------------------------------------------------------------------

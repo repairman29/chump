@@ -17,6 +17,13 @@ TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 PASS=0; FAIL=0
 
+# CREDIBLE-1303: every scenario below is about SOMETHING ELSE — without this,
+# each subshell would fall through to the real $HOME/.almanac/vision-acuity.state
+# (if any) and the almanac_coverage_low check could non-deterministically fire
+# and pollute unrelated assertions. Point at a path that never exists by
+# default; the dedicated almanac tests below override it per-case.
+export CHUMP_BOARD_VITALS_ALMANAC_STATE="$TMP/no-such-almanac.state"
+
 _ok()   { printf '  ok   %s\n' "$1"; PASS=$((PASS+1)); }
 _fail() { printf '  FAIL %s\n' "$1"; FAIL=$((FAIL+1)); }
 _emitted()   { if grep -qE "$3" "$2" 2>/dev/null; then _ok "$1"; else _fail "$1 (no /$3/ in $2)"; fi; }
@@ -55,6 +62,91 @@ dd_count="$(_count "$A" '"board_vitals_page_deduped".*"disk_full"')"
 dryrun_count="$(_count "$A" '"board_vitals_page_dryrun".*"disk_full"')"
 [[ "$dryrun_count" -eq 1 ]] && _ok "disk paged exactly once across two runs" \
     || _fail "disk pages != 1 (got $dryrun_count)"
+
+# ── CREDIBLE-1303: almanac summarized_pct guard ──────────────────────────────
+echo "[test-board-vitals] almanac coverage below floor pages once then dedupes"
+AL="$TMP/almanac.jsonl"; : > "$AL"
+ALSTATE="$TMP/almanac-low.state"; printf '20 68\n' > "$ALSTATE"   # summary_pct=68 <= 95
+SDA="$TMP/state-almanac"
+run_almanac() {
+    ( set -a
+      CHUMP_AMBIENT_LOG="$AL"; CHUMP_BOARD_VITALS_STATE_DIR="$SDA"
+      CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+      CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+      CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+      CHUMP_BOARD_VITALS_ALMANAC_STATE="$ALSTATE"
+      set +a
+      source "$LIB"; board_vitals_check )
+}
+run_almanac >/dev/null 2>&1
+_emitted "68% summarized (<=95 floor) → pages almanac_coverage_low" "$AL" '"board_vitals_page_dryrun".*"almanac_coverage_low"'
+run_almanac >/dev/null 2>&1
+al_pages="$(_count "$AL" '"board_vitals_page_dryrun".*"almanac_coverage_low"')"
+[[ "$al_pages" -eq 1 ]] && _ok "almanac coverage paged exactly once across two runs (dedup)" \
+    || _fail "almanac coverage pages != 1 (got $al_pages)"
+
+echo "[test-board-vitals] almanac coverage above floor never pages"
+AH="$TMP/almanac-healthy.jsonl"; : > "$AH"
+ALSTATE_HEALTHY="$TMP/almanac-healthy.state"; printf '99 97\n' > "$ALSTATE_HEALTHY"  # summary_pct=97 > 95
+( set -a
+  CHUMP_AMBIENT_LOG="$AH"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-almanac-healthy"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_ALMANAC_STATE="$ALSTATE_HEALTHY"
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "97% summarized (>95 floor) → no page" "$AH" '"board_vitals_page_(dryrun|sent)".*"almanac_coverage_low"'
+
+echo "[test-board-vitals] almanac coverage state file missing → unknown, never pages"
+AM="$TMP/almanac-missing.jsonl"; : > "$AM"
+( set -a
+  CHUMP_AMBIENT_LOG="$AM"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-almanac-missing"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_ALMANAC_STATE="$TMP/definitely-does-not-exist.state"
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "missing acuity state → unknown coverage, no page (not treated as 0%)" \
+    "$AM" '"board_vitals_page_(dryrun|sent)".*"almanac_coverage_low"'
+
+# ── CREDIBLE-1340: guard is a strict >95%, not >=95% ────────────────────────
+# The mission floor is "summarized_pct must be >95%" (CREDIBLE-300) — the
+# check in board-vitals.sh is `coverage <= almanac_floor`, so a repo sitting
+# exactly AT 95% must still page. If the guard were ever loosened to `<`
+# (i.e. only strictly-below-floor pages), this is the case that would go
+# silent first and this assertion would fail.
+echo "[test-board-vitals] almanac coverage exactly AT the 95% floor still pages (strict >95% guard)"
+AB="$TMP/almanac-boundary.jsonl"; : > "$AB"
+ALSTATE_BOUNDARY="$TMP/almanac-boundary.state"; printf '50 95\n' > "$ALSTATE_BOUNDARY"  # summary_pct=95, exactly at floor
+( set -a
+  CHUMP_AMBIENT_LOG="$AB"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-almanac-boundary"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_ALMANAC_STATE="$ALSTATE_BOUNDARY"
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "exactly 95% (not >95) → still pages almanac_coverage_low" "$AB" '"board_vitals_page_dryrun".*"almanac_coverage_low"'
+
+# ── CREDIBLE-1476: CHUMP_BOARD_VITALS_ALMANAC_FLOOR is clamped to >=95 ───────
+# A careless/misconfigured env override (e.g. ALMANAC_FLOOR=50) must never
+# weaken the 95% mission floor — mirrors the CREDIBLE-1210 clamp already
+# enforced in almanac-vision-keeper.sh's MIN_SUMMARY_PCT.
+echo "[test-board-vitals] ALMANAC_FLOOR below 95 is clamped to 95, not honored"
+AC="$TMP/almanac-clamp.jsonl"; : > "$AC"
+ALSTATE_CLAMP="$TMP/almanac-clamp.state"; printf '80 80\n' > "$ALSTATE_CLAMP"  # summary_pct=80
+( set -a
+  CHUMP_AMBIENT_LOG="$AC"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-almanac-clamp"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_ALMANAC_STATE="$ALSTATE_CLAMP"
+  CHUMP_BOARD_VITALS_ALMANAC_FLOOR=50   # attempt to weaken the floor below 95
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "80% summarized with FLOOR=50 still pages (clamped to 95)" "$AC" '"board_vitals_page_dryrun".*"almanac_coverage_low"'
 
 # ── clean cycle never pages ──────────────────────────────────────────────────
 echo "[test-board-vitals] clean cycle is phone-quiet"
@@ -265,6 +357,136 @@ BG="$TMP/blocked-green.jsonl"
   source "$LIB"; board_vitals_check ) >/dev/null 2>&1
 _notemitted "5 in-flight PRs + main GREEN → merge_stall still suppressed (unchanged behavior)" \
     "$BG" '"board_vitals_page_(dryrun|sent)".*"merge_stall"'
+
+# ── RESILIENT-1128 (RESILIENT-417 slice): sustained_main_red past 48h ────────
+echo "[test-board-vitals] RESILIENT-1128: sustained_main_red fires past the 48h threshold"
+SR="$TMP/sustained-red.jsonl"
+{
+  echo '{"ts":"2026-08-25T00:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+} > "$SR"
+( set -a
+  CHUMP_AMBIENT_LOG="$SR"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-sr"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999          # isolate: the 30m page is not what's under test
+  CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN=2880  # default (48h), spelled out for clarity
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "58h consecutive real-red span → sustained_main_red emitted" \
+    "$SR" '"kind":"sustained_main_red".*"main_red_span_min":3480'
+
+echo "[test-board-vitals] RESILIENT-1128: no false positive — span under the 48h threshold"
+SR2="$TMP/sustained-red-short.jsonl"
+{
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:40:00Z","kind":"main_red_detected","status":"red"}'
+} > "$SR2"
+( set -a
+  CHUMP_AMBIENT_LOG="$SR2"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-sr2"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "40m red span (well under 48h) → sustained_main_red NOT emitted" \
+    "$SR2" '"kind":"sustained_main_red"'
+
+echo "[test-board-vitals] RESILIENT-1128: no false positive — transient red cleared by a later benign line"
+SR3="$TMP/sustained-red-transient.jsonl"
+{
+  echo '{"ts":"2026-08-20T00:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"green"}'
+} > "$SR3"
+( set -a
+  CHUMP_AMBIENT_LOG="$SR3"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-sr3"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "long-past red span since recovered to green → sustained_main_red NOT emitted" \
+    "$SR3" '"kind":"sustained_main_red"'
+
+# ── RESILIENT-1123 (RESILIENT-416 slice): main_sat_sustained_red past 48h ────
+echo "[test-board-vitals] RESILIENT-1123: main_sat_sustained_red fires past the 48h threshold"
+MS="$TMP/main-sat-red.jsonl"
+{
+  echo '{"ts":"2026-08-25T00:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+} > "$MS"
+( set -a
+  CHUMP_AMBIENT_LOG="$MS"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-ms"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999          # isolate: the 30m page is not what's under test
+  CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN=999999 # isolate: the sibling 1128 signal is not what's under test
+  CHUMP_BOARD_VITALS_MAIN_SAT_RED_MIN=2880        # default (48h), spelled out for clarity
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_emitted "58h consecutive real-red span → main_sat_sustained_red emitted" \
+    "$MS" '"kind":"main_sat_sustained_red".*"main_red_span_min":3480'
+
+echo "[test-board-vitals] RESILIENT-1123: no false positive — span under the 48h threshold"
+MS2="$TMP/main-sat-red-short.jsonl"
+{
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:40:00Z","kind":"main_red_detected","status":"red"}'
+} > "$MS2"
+( set -a
+  CHUMP_AMBIENT_LOG="$MS2"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-ms2"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "40m red span (well under 48h) → main_sat_sustained_red NOT emitted" \
+    "$MS2" '"kind":"main_sat_sustained_red"'
+
+echo "[test-board-vitals] RESILIENT-1123: no false positive — transient red cleared by a later benign line"
+MS3="$TMP/main-sat-red-transient.jsonl"
+{
+  echo '{"ts":"2026-08-20T00:00:00Z","kind":"main_red_detected","status":"red"}'
+  echo '{"ts":"2026-08-27T10:00:00Z","kind":"main_red_detected","status":"green"}'
+} > "$MS3"
+( set -a
+  CHUMP_AMBIENT_LOG="$MS3"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-ms3"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_MAIN_RED_MIN=999999
+  CHUMP_BOARD_VITALS_SUSTAINED_MAIN_RED_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "long-past red span since recovered to green → main_sat_sustained_red NOT emitted" \
+    "$MS3" '"kind":"main_sat_sustained_red"'
+
+echo "[test-board-vitals] CREDIBLE-1113: summarized_pct >95% guard"
+SPG_OUT="$TMP/summarized-pct-guard.out"
+( summarized_pct=94; source "$LIB"; board_vitals_check ) >"$SPG_OUT" 2>&1
+SPG_RC=$?
+[[ "$SPG_RC" -eq 1 ]] && _ok "summarized_pct=94 → exit 1" || _fail "summarized_pct=94 → expected exit 1, got $SPG_RC"
+_emitted "summarized_pct=94 → exact abort message printed" "$SPG_OUT" 'summarized_pct must be >95% – aborting'
+
+SPG_OK_A="$TMP/no-amb.jsonl"; : > "$SPG_OK_A"
+SPG_OUT2="$TMP/summarized-pct-ok.out"
+( set -a
+  summarized_pct=96
+  CHUMP_AMBIENT_LOG="$SPG_OK_A"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-spg-ok"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  set +a
+  source "$LIB"; board_vitals_check ) >"$SPG_OUT2" 2>&1
+SPG_RC2=$?
+[[ "$SPG_RC2" -eq 0 ]] && _ok "summarized_pct=96 → exit 0" || _fail "summarized_pct=96 → expected exit 0, got $SPG_RC2"
+_notemitted "summarized_pct=96 → no abort message printed" "$SPG_OUT2" 'summarized_pct must be >95%'
 
 echo
 echo "[test-board-vitals] PASS=$PASS FAIL=$FAIL"

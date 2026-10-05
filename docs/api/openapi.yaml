@@ -31,7 +31,12 @@ info:
 
 servers:
   - url: http://localhost:3000
-    description: Local development server
+    description: Local development server (chump --web PWA API)
+  - url: http://localhost:7070
+    description: |
+      chump-fleet-server (RESILIENT-1030/1055) — fleet audit + create API +
+      per-node organ-health aggregation. Localhost by default; set
+      `CHUMP_FLEET_SERVER_BIND` to a tailnet IP for cross-machine reach.
 
 components:
   securitySchemes:
@@ -42,6 +47,14 @@ components:
         Set `CHUMP_WEB_TOKEN` to enable auth. Pass the same value as the Bearer
         token. When the env var is unset, auth is disabled and the header is
         ignored.
+    batphoneAuth:
+      type: http
+      scheme: bearer
+      description: |
+        chump-fleet-server (:7070) routes. Fail-closed: set
+        `CHUMP_BATPHONE_TOKEN` on the server and pass the same value as the
+        Bearer token. When the env var is UNSET the route returns **503**
+        (bat-phone disabled); a wrong token returns **401**.
 
   schemas:
     GapQueueItem:
@@ -689,9 +702,134 @@ paths:
               schema:
                 type: string
 
+  /api/sentinel-heartbeat:
+    post:
+      summary: Ingest a per-node fleet-health-sentinel heartbeat
+      description: |
+        **Served by chump-fleet-server (:7070), not the :3000 PWA.**
+
+        Sink for the per-node `fleet-health-sentinel` (RESILIENT-1055). Each
+        node's sentinel POSTs its heartbeat here every pass; the server stores
+        it keyed by `node` (latest wins) so `GET /api/fleet/nodes` can report
+        cross-node organ health as an API read instead of an SSH crawl. The
+        body is the heartbeat JSON — it MUST include a non-empty `node`;
+        `epoch` (seconds) drives staleness and falls back to server
+        receive-time when absent. The full body is stored verbatim, so added
+        fields (`failed_units`, `healers`) surface without a schema change.
+
+        ```bash
+        curl -X POST http://localhost:7070/api/sentinel-heartbeat \
+          -H "Authorization: Bearer $CHUMP_BATPHONE_TOKEN" \
+          -H "content-type: application/json" \
+          --data-binary @~/.chump/fleet-health-sentinel.heartbeat
+        ```
+      operationId: postSentinelHeartbeat
+      tags: [Fleet Health]
+      security:
+        - batphoneAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [node]
+              properties:
+                node: { type: string, example: cuphead }
+                epoch: { type: integer, description: Node-stamped epoch seconds. }
+                failed: { type: integer, description: Count of failed chump units this pass. }
+                failed_units:
+                  type: array
+                  items: { type: string }
+                  example: ["chump-board-cycle.service"]
+                healers:
+                  type: array
+                  items:
+                    type: object
+                    properties:
+                      unit: { type: string }
+                      required: { type: boolean }
+                      active: { type: boolean }
+      responses:
+        "202":
+          description: Heartbeat accepted and stored.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+                  node: { type: string }
+                  epoch: { type: integer }
+        "400":
+          description: Invalid JSON body or missing `node`.
+        "401":
+          description: Wrong bat-phone token.
+        "503":
+          description: Bat-phone disabled (`CHUMP_BATPHONE_TOKEN` unset).
+
+  /api/fleet/nodes:
+    get:
+      summary: Cross-node systemd organ health (aggregated server-side)
+      description: |
+        **Served by chump-fleet-server (:7070), not the :3000 PWA.**
+
+        Returns every node's latest heartbeat (RESILIENT-1055) with
+        server-computed `age_secs` + `stale`, so the operator reads ONE
+        authenticated route instead of SSH-crawling each node — the read that
+        would have made the 33-failed-organ incident an API glance. `health` is
+        the node's raw heartbeat, including which organs are failed
+        (`failed_units`) and each healer's active state (`healers`).
+
+        ```bash
+        curl http://localhost:7070/api/fleet/nodes \
+          -H "Authorization: Bearer $CHUMP_BATPHONE_TOKEN"
+        ```
+      operationId: getFleetNodes
+      tags: [Fleet Health]
+      security:
+        - batphoneAuth: []
+      responses:
+        "200":
+          description: Per-node organ health.
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  generated_ms: { type: integer }
+                  stale_threshold_secs: { type: integer, example: 900 }
+                  node_count: { type: integer }
+                  stale_count: { type: integer }
+                  failed_units_total:
+                    type: integer
+                    description: Sum of `failed` across all reporting nodes.
+                  nodes:
+                    type: array
+                    items:
+                      type: object
+                      properties:
+                        node: { type: string }
+                        epoch: { type: integer }
+                        received_ms: { type: integer }
+                        age_secs: { type: integer }
+                        stale: { type: boolean }
+                        health:
+                          type: object
+                          description: The node's raw heartbeat body (verbatim).
+        "401":
+          description: Wrong bat-phone token.
+        "503":
+          description: Bat-phone disabled (`CHUMP_BATPHONE_TOKEN` unset).
+
 tags:
   - name: Health
     description: Server health and liveness.
+  - name: Fleet Health
+    description: |
+      chump-fleet-server (:7070) per-node organ-health telemetry: sentinel
+      heartbeat ingest + cross-node aggregation. Fail-closed behind
+      `CHUMP_BATPHONE_TOKEN` (batphoneAuth).
   - name: Gap Registry
     description: |
       Gap queue, claim, status, streaming, and autonomous workflow endpoints.

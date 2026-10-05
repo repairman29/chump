@@ -77,6 +77,15 @@ source "$_NODE_REFRESH_DIR/../coord/lib/github.sh" 2>/dev/null || true
 # 2-core node both went unalarmed.
 # shellcheck source=../lib/halt-class-emit.sh
 source "$_NODE_REFRESH_DIR/../lib/halt-class-emit.sh" 2>/dev/null || true
+# RESILIENT-001: the shared jam-proof mirror-converge primitive. Both
+# mirror-advancing organs (this script + scripts/coord/backlog-sync.sh --reader)
+# converge through ONE implementation so neither can regress to a merge-based
+# advance that aborts on an untracked docs/gaps/*.yaml collision.
+# shellcheck source=../coord/lib/converge-mirror.sh
+source "$_NODE_REFRESH_DIR/../coord/lib/converge-mirror.sh" 2>/dev/null || true
+if ! command -v converge_mirror_hard_reset >/dev/null 2>&1; then
+    converge_mirror_hard_reset() { git reset --hard "${1:?}"; }
+fi
 
 # --- RESILIENT-1040: ensure gh is authenticated in THIS context -------------
 # ROOT CAUSE of the 5-gap self-sustain saga (1036-1039): this script is
@@ -126,7 +135,22 @@ fi
 _resolve_target_bin() {
     if [[ -n "${CHUMP_NODE_BIN:-}" ]]; then printf '%s' "$CHUMP_NODE_BIN"; return; fi
     local onpath; onpath="$(command -v chump 2>/dev/null || true)"
-    if [[ -n "$onpath" && "$onpath" != *"/target/release/chump" && "$onpath" != *"/target/debug/chump" ]]; then
+    # RESILIENT-378 follow-up (closetjunky 2026-09-14): `command -v` reflects the
+    # REFRESHER's PATH, which is not always the WORKER's PATH. On closetjunky the
+    # refresh loop runs with ~/.local/bin ahead of ~/.cargo/bin, so `command -v
+    # chump` resolved to ~/.local/bin/chump and the organ kept THAT current every
+    # cycle (artifact-pull succeeded) — while the workers (PATH=~/.cargo/bin
+    # first, and /usr/local/bin/chump -> ~/.cargo/bin/chump) ran a STALE
+    # ~/.cargo/bin/chump for 2 days. The last-resort ~/.local/bin default must
+    # never shadow an existing ~/.cargo/bin/chump (the cargo-install canonical on
+    # Linux nodes, step 3), so drop that on-PATH answer through to step 3 rather
+    # than pinning the refresh to a binary the fleet does not execute.
+    local shadow_rot=0
+    if [[ "$onpath" == "$HOME/.local/bin/chump" && -x "$HOME/.cargo/bin/chump" ]]; then
+        shadow_rot=1
+    fi
+    if [[ -n "$onpath" && "$onpath" != *"/target/release/chump" \
+          && "$onpath" != *"/target/debug/chump" && "$shadow_rot" == "0" ]]; then
         printf '%s' "$onpath"; return
     fi
     if [[ -x "$HOME/.cargo/bin/chump" ]]; then printf '%s' "$HOME/.cargo/bin/chump"; return; fi
@@ -186,6 +210,21 @@ _node_refresh_halt_class() {
 # CHUMP_NODE_ROLE selects which organ set to converge (default: muscle, the
 # class of node — mugman, cuphead — this gap was filed against). Best-effort:
 # a failure here must never fail the binary refresh that already succeeded.
+#
+# RESILIENT-1446: source the node's PERSISTED role from ~/.chump/node.env before
+# falling back to the muscle default. node.env is written by chump-node-install.sh's
+# write_node_env and survives `git reset --hard`, so it is the node's source of
+# truth for role. Without this, a node-refresh run whose environment didn't export
+# CHUMP_NODE_ROLE silently defaulted to `muscle` and re-ran `chump-node-install.sh
+# --role muscle --reconcile-organs-only`, which rewrote the muscle role drop-in and
+# made the recurring reconcile's drift-removal reap a SOLE HUB's entire brain layer
+# (incl. the farmer -> RESILIENT-069 heartbeat-RED -> fleet dark). A sole hub
+# declares CHUMP_NODE_ROLE=all; honoring the persisted value keeps the whole manifest.
+if [[ -z "${CHUMP_NODE_ROLE:-}" ]]; then
+    _nr_node_env="${CHUMP_STATE_DIR:-${HOME:-/root}/.chump}/node.env"
+    [[ -f "$_nr_node_env" ]] && CHUMP_NODE_ROLE="$(grep -E '^(export )?CHUMP_NODE_ROLE=' "$_nr_node_env" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_NODE_ROLE=//; s/^"(.*)"$/\1/')"
+    [[ -z "${CHUMP_NODE_ROLE:-}" ]] && unset CHUMP_NODE_ROLE
+fi
 NODE_ROLE="${CHUMP_NODE_ROLE:-muscle}"
 _reconcile_role_organs() {
     local installer="$REPO_ROOT/scripts/setup/chump-node-install.sh"
@@ -474,7 +513,7 @@ if [[ "${CHUMP_SKIP_NODE_REFRESH:-0}" == "1" ]]; then
     log "BYPASS: CHUMP_SKIP_NODE_REFRESH=1"; exit 0
 fi
 
-if [[ -z "$REPO_ROOT" || ! -d "$REPO_ROOT/.git" ]]; then
+if [[ -z "$REPO_ROOT" ]] || ! git -C "$REPO_ROOT" rev-parse --is-inside-work-tree >/dev/null 2>&1; then
     log "FATAL: no chump mirror checkout found (set CHUMP_NODE_REPO)"
     emit node_binary_refresh_failed "\"reason\":\"no_repo\""
     exit 1
@@ -506,22 +545,33 @@ _check_gh_auth_precondition
 
 # --- fetch + advance the mirror to the last-GREEN main, not raw HEAD --------
 # These nodes are pure BUILD MIRRORS (no operator WIP), so a hard reset to the
-# green pointer is the correct "make current" operation. If a node ever grows
+# green pointer is the correct "make current" operation (RESILIENT-001: the
+# converge MUST be a reset, never a merge — a merge aborts on the untracked
+# docs/gaps/*.yaml mirrors the fleet drops into this tree). If a node ever grows
 # a real working tree, guard this behind a clean-tree check.
 git fetch origin main --quiet 2>>"$LOG" || log "WARN: git fetch failed (offline?); building local main"
 
+# BUILD_PIN_SHA is the sha the BINARY is built/pulled from — the RESILIENT-327
+# green-main pin (never a red HEAD). It is DISTINCT from where the working tree
+# is checked out: RESILIENT-1205 requires the SOURCE tree track origin/main HEAD
+# (so merged bash-organ fixes reach the iron), while the compiled binary stays
+# pinned to green. Conflating the two — resetting the working tree to the green
+# pin — was the merged-!=-deployed keystone bug: whenever green lagged HEAD
+# (e.g. a coherence-sync commit that never gets a build artifact), this script
+# permanently pinned the checkout behind HEAD AND fought chump-node-converge
+# (RESILIENT-1189), which resets the same tree to origin/main every 10 min.
 RAW_HEAD_SHA="$(git rev-parse --short=12 origin/main 2>/dev/null || git rev-parse --short=12 HEAD)"
 GREEN_SHA="$(_find_green_main_sha)"
 if [[ -n "$GREEN_SHA" ]]; then
-    RESET_TARGET="$GREEN_SHA"
+    BUILD_PIN_SHA="$GREEN_SHA"
     MAIN_SHA="$(git rev-parse --short=12 "$GREEN_SHA" 2>/dev/null || echo "${GREEN_SHA:0:12}")"
     log "green-main = $MAIN_SHA  (raw origin/main HEAD = $RAW_HEAD_SHA, repo: $REPO_ROOT)"
     if [[ "$RAW_HEAD_SHA" != "$MAIN_SHA"* ]]; then
-        log "PIN: raw HEAD ($RAW_HEAD_SHA) is ahead of green-main ($MAIN_SHA) — staying pinned at green"
+        log "PIN: raw HEAD ($RAW_HEAD_SHA) is ahead of green-main ($MAIN_SHA) — binary pinned to green, source tree tracks HEAD"
         emit node_refresh_green_pin_behind_head "\"green_sha\":\"$MAIN_SHA\",\"raw_head_sha\":\"$RAW_HEAD_SHA\""
     fi
 else
-    RESET_TARGET="origin/main"
+    BUILD_PIN_SHA="origin/main"
     MAIN_SHA="$RAW_HEAD_SHA"
     log "WARN: no green-main sha found (gh unavailable or no successful $CI_WORKFLOW run); falling back to raw origin/main HEAD = $MAIN_SHA"
     emit node_refresh_green_lookup_failed "\"fallback_sha\":\"$MAIN_SHA\""
@@ -537,26 +587,48 @@ else
         "{\"fallback_sha\":\"$MAIN_SHA\",\"node_repo\":\"$REPO_ROOT\"}"
 fi
 
+# --- RESILIENT-1205: converge the SOURCE TREE to origin/main HEAD ------------
+# Unconditionally (every cycle, before the binary-idempotency skip below) reset
+# the working checkout to origin/main HEAD — the SAME target and shared
+# converge_mirror_hard_reset primitive chump-node-converge (RESILIENT-1189)
+# uses, so the two organs can never race to different tree states. This is what
+# makes a merged BASH-organ fix (which never bumps the binary SHA, so the
+# idempotency skip fires) actually reach the iron. Deferred while a git
+# operation is in progress so it never yanks the tree from under a rebase/merge.
+_git_op_in_progress() {
+    local gd; gd="$(git rev-parse --git-dir 2>/dev/null)" || return 1
+    [[ -d "$gd/rebase-merge" || -d "$gd/rebase-apply" || -f "$gd/MERGE_HEAD" \
+       || -f "$gd/CHERRY_PICK_HEAD" || -f "$gd/BISECT_LOG" ]]
+}
+if _git_op_in_progress; then
+    log "DEFER: git operation in progress — skipping source-tree converge this cycle (will retry next tick)"
+else
+    if converge_mirror_hard_reset origin/main >>"$LOG" 2>&1; then
+        log "converged source tree to origin/main HEAD ($RAW_HEAD_SHA)"
+    else
+        log "FATAL: converge (git reset --hard) of source tree to origin/main failed"
+        emit node_binary_refresh_failed "\"reason\":\"reset_failed\",\"target\":\"origin/main\""
+        exit 1
+    fi
+fi
+
 INSTALLED_SHA="none"
 if [[ -x "$TARGET_BIN" ]]; then
     INSTALLED_SHA="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+) built' | head -1 | sed 's/[( ]//g;s/built//' || echo unknown)"
     log "installed $TARGET_BIN sha = $INSTALLED_SHA"
 fi
 
-# Idempotency: SHAs match → skip (no cargo).
+# Idempotency: binary SHA already matches the green pin → skip the build (no
+# cargo). The SOURCE tree was already converged to origin/main HEAD above, so a
+# skip here still leaves the checkout current — this is precisely the bash-only-
+# merge case (binary unchanged, scripts changed) that must still reach the iron.
 if [[ "$INSTALLED_SHA" == "$MAIN_SHA"* || "$MAIN_SHA" == "$INSTALLED_SHA"* ]] \
    && [[ "$INSTALLED_SHA" != "none" && "$INSTALLED_SHA" != "unknown" ]]; then
-    log "SKIP: binary already current ($INSTALLED_SHA)"
+    log "SKIP: binary already current ($INSTALLED_SHA); source tree already at origin/main HEAD"
     emit node_binary_refresh_skipped "\"reason\":\"already_current\",\"sha\":\"$INSTALLED_SHA\""
     _reconcile_role_organs
     exit 0
 fi
-
-git reset --hard "$RESET_TARGET" >>"$LOG" 2>&1 || {
-    log "FATAL: git reset --hard $RESET_TARGET failed"
-    emit node_binary_refresh_failed "\"reason\":\"reset_failed\",\"target\":\"$RESET_TARGET\""
-    exit 1
-}
 
 # --- INFRA-3593: auto-deploy any changed chump-*.service/.timer organ units --
 # The mirror just landed whatever merged into origin/main, including any
@@ -574,11 +646,15 @@ else
 fi
 
 # --- INFRA-3677: prebuilt-artifact pull (the build-speed payoff) -------------
-# The mirror is now reset to the green sha. Before spending ~30 min on a local
-# cargo build, try to install the binary CI already built for this exact commit.
-# On success we're done — no cargo invoked at all. On any miss/failure we fall
-# through to the local build below (identical to pre-INFRA-3677 behavior).
-FULL_SHA="$(git rev-parse HEAD 2>/dev/null || echo unknown)"
+# Before spending ~30 min on a local cargo build, try to install the binary CI
+# already built for the green pin. On success we're done — no cargo invoked at
+# all. On any miss/failure we fall through to the local build below.
+# RESILIENT-1205: key the artifact/build off the GREEN PIN (BUILD_PIN_SHA), NOT
+# the checked-out HEAD — the working tree now tracks origin/main HEAD, but the
+# binary must stay pinned to the last green sha (RESILIENT-327). Building/pulling
+# from a HEAD that is ahead of green would deploy an unverified (possibly red)
+# binary, the exact regression the green pin exists to prevent.
+FULL_SHA="$(git rev-parse "$BUILD_PIN_SHA" 2>/dev/null || echo unknown)"
 
 # RESILIENT-1037: prefer the nearest ancestor sha that actually has a
 # build-fleet-binaries run (see _find_build_artifact_sha above) — an exact
@@ -638,21 +714,45 @@ if [[ -z "$CARGO" ]]; then
 fi
 log "using cargo: $CARGO"
 
-# Build --release into the repo's OWN (warm) target dir. No detached worktree:
-# unlike the macOS runner, these nodes have no concurrent self-hosted-runner
-# builds racing the tree, and the mirror IS the build tree.
-log "cargo build --release --bin chump (warm target $REPO_ROOT/target) …"
-if ! PATH="$(dirname "$CARGO"):$PATH" "$CARGO" build --release --bin chump >>"$LOG" 2>&1; then
+# RESILIENT-1205: build the GREEN PIN, never the checked-out HEAD. The working
+# tree now tracks origin/main HEAD (so bash organs run current), but RESILIENT-327
+# still requires the compiled binary come from the last green sha. When green ==
+# HEAD (the fallback / no-divergence case) build in place; otherwise build from a
+# DETACHED worktree pinned at the green sha so the main checkout stays at HEAD.
+# Both builds share the repo's warm target dir via CARGO_TARGET_DIR, so a
+# detached-worktree build is no slower than the in-place one.
+CARGO_TARGET_DIR_ABS="$REPO_ROOT/target"
+BUILD_DIR="$REPO_ROOT"
+_BUILD_WT=""
+_PIN_FULL="$(git rev-parse "$BUILD_PIN_SHA" 2>/dev/null || echo "")"
+_HEAD_FULL="$(git rev-parse HEAD 2>/dev/null || echo "")"
+if [[ -n "$_PIN_FULL" && "$_PIN_FULL" != "$_HEAD_FULL" ]]; then
+    _BUILD_WT="$(mktemp -d)"
+    if git worktree add --detach -q "$_BUILD_WT" "$_PIN_FULL" >>"$LOG" 2>&1; then
+        BUILD_DIR="$_BUILD_WT"
+        log "cold-build: building green pin $MAIN_SHA in a detached worktree (main tree stays at origin/main HEAD)"
+    else
+        log "WARN: could not add detached worktree at $BUILD_PIN_SHA; building in place"
+        rm -rf "$_BUILD_WT"; _BUILD_WT=""
+    fi
+fi
+_cleanup_build_wt() { [[ -n "$_BUILD_WT" ]] && { git worktree remove --force "$_BUILD_WT" >>"$LOG" 2>&1 || rm -rf "$_BUILD_WT"; }; _BUILD_WT=""; }
+
+log "cargo build --release --bin chump (warm target $CARGO_TARGET_DIR_ABS, source $BUILD_DIR) …"
+if ! ( cd "$BUILD_DIR" && PATH="$(dirname "$CARGO"):$PATH" CARGO_TARGET_DIR="$CARGO_TARGET_DIR_ABS" "$CARGO" build --release --bin chump ) >>"$LOG" 2>&1; then
     log "FATAL: cargo build failed; see $LOG"
     emit node_binary_refresh_failed "\"reason\":\"cargo_build_failed\""
+    _cleanup_build_wt
     exit 1
 fi
-BUILT_BIN="$REPO_ROOT/target/release/chump"
+BUILT_BIN="$CARGO_TARGET_DIR_ABS/release/chump"
 if [[ ! -x "$BUILT_BIN" ]]; then
     log "FATAL: $BUILT_BIN missing after build"
     emit node_binary_refresh_failed "\"reason\":\"binary_missing_post_build\""
+    _cleanup_build_wt
     exit 1
 fi
+_cleanup_build_wt
 
 # --- atomic install (tempfile + rename); no codesign on Linux ----------------
 log "install $BUILT_BIN → $TARGET_BIN"

@@ -53,4 +53,38 @@ else
     echo "[test] PASS: Helsinki PATH has no Termux leakage"
 fi
 
+# ── REPO_ROOT derivation (RESILIENT-313 residue) ─────────────────────────────
+# The farmer must derive REPO_ROOT from its OWN location, never default to a
+# hardcoded /root/Projects/chump. That helsinki(root)-shaped default made the
+# organ exit 1 every tick on an owned node (User=ubuntu): cd /root/Projects/chump
+# -> Permission denied -> the worker-gate heartbeat this organ keeps fresh went
+# stale. Pin both the regression (no hardcoded /root default) and the behavior
+# (BASH_SOURCE derivation resolves to the repo root and collapses a symlink).
+if grep -qE '^REPO_ROOT="\$\{CHUMP_REPO:-/root/Projects/chump\}"' "$SCRIPT"; then
+    echo "[test] FAIL: REPO_ROOT still hardcodes the /root/Projects/chump default (breaks owned nodes)"; fail=1
+else
+    echo "[test] PASS: REPO_ROOT no longer hardcodes /root/Projects/chump"
+fi
+
+# Behavioral: extract the actual derivation lines from the script and run them
+# from a SYMLINKED checkout path, proving they resolve to the REAL repo root.
+DERIV_DIR="$(grep -E '^_FARMER_SCRIPT_DIR=' "$SCRIPT" | tail -1)"
+DERIV_ROOT="$(grep -E '^REPO_ROOT=' "$SCRIPT" | tail -1)"
+if [[ -n "$DERIV_DIR" && -n "$DERIV_ROOT" ]]; then
+    TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+    mkdir -p "$TMP/realrepo/scripts/dispatch"
+    ln -s "$TMP/realrepo" "$TMP/link"
+    PROBE="$TMP/realrepo/scripts/dispatch/chump-farmer-run.sh"   # same relative depth
+    { printf '%s\n' "$DERIV_DIR" "$DERIV_ROOT" 'printf "%s" "$REPO_ROOT"'; } > "$PROBE"
+    got="$(env -u CHUMP_REPO bash "$TMP/link/scripts/dispatch/chump-farmer-run.sh")"
+    real="$(cd "$TMP/realrepo" && pwd -P)"
+    if [[ "$got" == "$real" ]]; then
+        echo "[test] PASS: REPO_ROOT derives to the real checkout from a symlinked path ($got)"
+    else
+        echo "[test] FAIL: REPO_ROOT derivation gave '$got', expected real checkout '$real'"; fail=1
+    fi
+else
+    echo "[test] FAIL: could not find _FARMER_SCRIPT_DIR / REPO_ROOT derivation lines to test"; fail=1
+fi
+
 [[ "$fail" -eq 0 ]] && echo "[test-chump-farmer-run-path] PASS" || { echo "[test-chump-farmer-run-path] FAIL"; exit 1; }

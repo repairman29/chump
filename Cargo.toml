@@ -3,6 +3,7 @@ members = [
     "chump-tool-macro",
     "desktop/src-tauri",
     "crates/chump-agent-lease",
+    "crates/coord-mesh",
     "crates/chump-xml-adapter",
     "crates/chump-mcp-lifecycle",
     "crates/chump-cancel-registry",
@@ -28,6 +29,7 @@ members = [
     "crates/ambient-cli",
     "crates/chump-paramedic",
     "crates/chump-preflight",
+    "crates/chump-test-helpers",
     "crates/chump-verify",
     "crates/ast-crawler",
     "crates/chump-git-hooks",
@@ -50,6 +52,9 @@ members = [
     "crates/chump-kpi-report",
     "crates/chump-cron",
     "crates/chump-storage",
+    "crates/chump-comprehension-organ",
+    "crates/chump-idea-drop",
+    "workspace-hack",
 ]
 resolver = "2"
 
@@ -140,6 +145,7 @@ dhat = { version = "0.3", optional = true }
 # exist on crates.io at the pinned versions; workspace builds still use `path`.
 chump-tool-macro = { path = "chump-tool-macro", version = "0.2.0" }
 chump-agent-lease = { path = "crates/chump-agent-lease", version = "0.3.0" }
+coord-mesh = { path = "crates/coord-mesh", version = "0.1.0" }
 chump-orchestrator = { path = "crates/chump-orchestrator", version = "0.2.0" }
 chump-planner = { path = "crates/chump-planner", version = "0.1.0" }
 chump-ship = { path = "crates/chump-ship", version = "0.2.0" }
@@ -195,7 +201,7 @@ toml = { version = "1.1", features = ["parse"] }
 base64 = "0.23"
 aes-gcm = "0.11"
 serenity = { version = "0.12", optional = true, default-features = false, features = ["client", "gateway", "model", "http", "utils", "cache", "native_tls_backend"] }
-fastembed = { version = "6", optional = true }
+fastembed = { version = "7", optional = true }
 once_cell = { version = "1.19", optional = true }
 axum = { version = "0.8", features = ["macros", "json", "multipart"] }
 tower = { version = "0.5", features = ["timeout", "util"] }
@@ -207,18 +213,19 @@ tokio-util = { version = "0.7", features = ["rt"] }
 tracing = "0.1"
 tracing-subscriber = { version = "0.3", features = ["env-filter", "json"] }
 patch = { version = "0.7", default-features = false }
-jsonschema = { version = "0.52", default-features = false }
+jsonschema = { version = "0.58", default-features = false }
 serde_yaml = "0.9"
 mistralrs = { version = "0.8.1", optional = true, default-features = false }
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect", "rustls-tls-webpki-roots"] }
 futures-util = "0.3"
 web-push = { version = "0.11", default-features = false, features = ["hyper-client"], optional = true }
 mimalloc = { version = "0.1", default-features = false }
-wasmtime = "48"
-wasmtime-wasi = "48"
+wasmtime = "49"
+wasmtime-wasi = "49"
 wasi-common = "46"
 sha2 = "0.11.0"
 hex = "0.4.3"
+workspace-hack = { version = "0.1", path = "workspace-hack" }
 
 [profile.dev]
 # EFFECTIVE-393 (build-speed): the dev/test/CI profile. Cold builds of the
@@ -303,6 +310,14 @@ openssl = { version = "0.10", features = ["vendored"] }
 # not correctness; the cycle-thrash of force-pushing fixes outweighs the
 # style benefit. If we ever want them back, downgrade to "warn" first to
 # scrub the codebase, then back to "deny".
+# RESILIENT-469: cargo-hakari workspace-hack dedup. Authoritative config
+# lives in .config/hakari.toml (read by `cargo hakari generate`); mirrored
+# here so the hakari setup is visible from the workspace manifest.
+[workspace.metadata.hakari]
+hakari-package = "workspace-hack"
+dep-format-version = "4"
+resolver = "2"
+
 [workspace.lints.clippy]
 # Names verified against clippy 1.95 lint index. Earlier INFRA-664 used
 # 'doc_list_item_overindented' which is unknown; real name is

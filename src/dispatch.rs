@@ -298,6 +298,12 @@ impl<'a> Workspace<'a> {
 /// visibility — INFRA-274 covers cross-host), so the only legitimate
 /// pre-existing worktree at that path is detritus.
 fn create_dispatch_worktree(repo_root: &Path, gap_id: &str) -> Result<PathBuf> {
+    use coord_mesh::MeshBridge;
+    // INFRA-2264: activates the `coord-mesh` crate dependency; the bridge
+    // itself is not yet wired into the worktree-creation flow (that's
+    // follow-on work once the real mesh-bridge substrate lands).
+    let _bridge = MeshBridge::new();
+
     let (worktree_path, branch_name) = dispatch_paths(repo_root, gap_id);
 
     // Idempotent cleanup of any leftover worktree at the target path.
@@ -373,6 +379,44 @@ fn do_work(ws: &Workspace) -> Result<()> {
 /// (the proven cheap-fleet path — native `chump --execute-gap` tools are
 /// scoped to the worktree, not a repo-wide scan).
 const OPENCODE_MAX_TRACKED_FILES: u64 = 5_000;
+
+/// INFRA-2090 slice: default per-subagent token budget (in tokens) used by
+/// the fleet dispatch cost-accounting path. Sub-agents spawned via
+/// [`WorkBackend::Headless`] / `Agent`-tool dispatch are expected to stay
+/// under this ceiling absent an explicit `subagent_token_budget` override.
+/// This constant is the *default*; [`subagent_token_budget`] is the
+/// resolved value once the `CHUMP_SUBAGENT_TOKEN_BUDGET` config key is
+/// taken into account.
+pub const CHOMP_SUBAGENT_TOKEN_BUDGET: u64 = 100_000;
+
+/// Resolve the effective per-subagent token budget: `subagent_token_budget`
+/// config key (via `CHUMP_SUBAGENT_TOKEN_BUDGET` env var) if set and
+/// parseable, else [`CHOMP_SUBAGENT_TOKEN_BUDGET`].
+pub fn subagent_token_budget() -> u64 {
+    std::env::var("CHUMP_SUBAGENT_TOKEN_BUDGET")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(CHOMP_SUBAGENT_TOKEN_BUDGET)
+}
+
+/// INFRA-2090 slice: default per-subagent dollar budget (USD) used by the
+/// fleet dispatch cost-accounting path. Sub-agents spawned via
+/// [`WorkBackend::Headless`] / `Agent`-tool dispatch are expected to stay
+/// under this ceiling absent an explicit `subagent_dollar_budget` override.
+/// This constant is the *default*; [`subagent_dollar_budget`] is the
+/// resolved value once the `CHUMP_SUBAGENT_DOLLAR_BUDGET` config key is
+/// taken into account.
+pub const CHOMP_SUBAGENT_DOLLAR_BUDGET: f64 = 5.0;
+
+/// Resolve the effective per-subagent dollar budget: `subagent_dollar_budget`
+/// config key (via `CHUMP_SUBAGENT_DOLLAR_BUDGET` env var) if set and
+/// parseable, else [`CHOMP_SUBAGENT_DOLLAR_BUDGET`].
+pub fn subagent_dollar_budget() -> f64 {
+    std::env::var("CHUMP_SUBAGENT_DOLLAR_BUDGET")
+        .ok()
+        .and_then(|s| s.parse().ok())
+        .unwrap_or(CHOMP_SUBAGENT_DOLLAR_BUDGET)
+}
 
 /// Count tracked files in `working_dir` and bail if the count exceeds the
 /// threshold where opencode is known to hang at init. Returns `Ok(())`
@@ -883,11 +927,21 @@ fn preflight(ws: &Workspace) -> Result<()> {
     // failed here with "gap-preflight.sh missing". Shell out to our own binary's
     // subcommand — the exact check worker.sh uses.
     let exe = std::env::current_exe().context("resolve chump binary for gap preflight")?;
+    // RESILIENT-1491: cwd for this subprocess is the FRESH worktree (so
+    // worktree-scoped lease files at `<wt>/.chump-locks/` stay visible to
+    // the check), but `.chump/state.db` is gitignored and never populated
+    // in a brand-new worktree — `GapStore::db_path` would otherwise resolve
+    // to `<wt>/.chump/state.db`, an empty/nonexistent file, and preflight
+    // WARNs "not found in state.db" even though the gap is right there in
+    // the main checkout's canonical db. Point it at the main checkout's
+    // state.db explicitly (db_path() checks CHUMP_STATE_DB first).
+    let state_db = opts.repo_root.join(".chump").join("state.db");
     let status = Command::new(&exe)
         .args(["gap", "preflight", opts.gap_id])
         // INFRA-302 blocker (3): run from the worktree so any worktree-scoped
         // state (lease files at `<wt>/.chump-locks/`) is visible to the check.
         .current_dir(ws.working_dir())
+        .env("CHUMP_STATE_DB", &state_db)
         .status()
         .context("invoke chump gap preflight")?;
     if !status.success() {

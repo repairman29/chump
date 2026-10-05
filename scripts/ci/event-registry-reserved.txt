@@ -224,6 +224,10 @@ pr_rebase_failed        # reason: INFRA-1406 pr-rebase-daemon rebase failure
 pr_rebased_auto         # reason: INFRA-1406 pr-rebase-daemon successful auto-rebase
 pr_stuck_cycle_1_rebase_attempted  # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
 pr_stuck_exempt                    # reason: INFRA-1410 emitted via respawn_emit() helper in stale-pr-reaper.sh; variable-kind printf not grep-scannable
+pr_stuck_spared                    # reason: REAPER-SPARE (PR #4589 fix) — stale-pr-reaper.sh respawn_emit() when a BLOCKED PR is classified RECOVERABLE (pending required checks, or blocked-with-no-failing-check) and spared from close; carries reason. variable-kind printf not grep-scannable
+pr_stuck_flake_rearmed             # reason: REAPER-SPARE (PR #4589 fix) — stale-pr-reaper.sh respawn_emit() when a BLOCKED PR is blocked only by a flake-budget-exhausted known flake; the INFRA-304 budget is re-armed and the PR spared (bounded by CHUMP_REAPER_FLAKE_REARM_MAX). Carries attempt, max. variable-kind printf not grep-scannable
+pr_stuck_flake_escalated           # reason: REAPER-SPARE (PR #4589 fix) — stale-pr-reaper.sh respawn_emit() when a flake budget re-exhausts after CHUMP_REAPER_FLAKE_REARM_MAX re-arms; escalates to operator instead of closing (anti-memento). Carries rearmed, reason. variable-kind printf not grep-scannable
+pr_stuck_flake_rerun_prompted      # reason: completes PR #4606 — stale-pr-reaper.sh respawn_emit() when re-arming a flake budget ALSO reruns the PR's CURRENT failing run (gh run rerun) so recovery is immediate instead of deferred to a new run-id. Carries run_ids. Bounded by CHUMP_REAPER_FLAKE_REARM_MAX (only fired inside the re-arm block). variable-kind printf not grep-scannable
 pr_triage_run  # reason: emitted from scripts/coord/chump-pr-triage.sh (shell); not in PROD_PATHS
 pre_commit_ac_test_missing  # reason: emitted by scripts/git-hooks/pre-commit-ac-completeness.sh (INFRA-1401); git-hooks/ outside PROD_PATHS grep scan
 preflight_acgate_bypassed # reason: INFRA-1791 emitted from src/preflight.rs when CHUMP_PREFLIGHT_SKIP_ACGATE=1; allowlist while EVENT_REGISTRY entry catches up (mirrors INFRA-1731 pattern)
@@ -239,6 +243,7 @@ prepush_timeout  # reason: INFRA-5126 emitted from scripts/git-hooks/pre-push _p
 pwa_brief_loaded  # reason: emitted from web/v2/daily-brief.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-078
 pwa_gap_list_filtered  # reason: emitted from web/v2/gap-list.js via sendBeacon (JS not in PROD_PATHS); emit added in PRODUCT-102
 pwa_impact_viewed  # reason: emitted from web/v2/impact.js via sendBeacon (JS, not in PROD_PATHS)
+sse_filter_applied  # reason: INFRA-1559 emitted from web/v2/app.js ChumpAmbientViewer via sendBeacon (JS not in PROD_PATHS)
 queue_health_check_failed # reason: CREDIBLE-068 #2359 same emit pattern as merge_queue_health (printf in monitor-merge-queue.sh, not grep-scannable)
 reaper_run                 # reason: planned for reaper start/stop lifecycle emit
 reaper_safety_gate_triggered  # reason: INFRA-1786 — emitted by reap-orphan-claude-procs.sh when fg_pid=none on non-headless macOS; safety gate refuses reap-all
@@ -866,6 +871,7 @@ systemic_red_scan_started    # reason: RESILIENT-337 emitted by scripts/coord/sy
 systemic_red_scan_completed  # reason: RESILIENT-337 emitted by scripts/coord/systemic-red-detector.sh on scan end; carries result=clean|detected, elapsed_ms, gh_calls; printf-direct JSON not grep-scannable as kind=X literal
 chump_cron_installed    # reason: INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs. Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (per Wizard 2026-05-27 13:27Z, INFRA-2003/2020 lease pattern).
 chump_cron_uninstalled  # reason: INFRA-2045 chump cron lifecycle, emitted by crates/chump-cron/src/lib.rs. Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (per Wizard 2026-05-27 13:27Z, INFRA-2003/2020 lease pattern).
+chump_cron_managed      # reason: META-600/INFRA-2046 chump cron health audit, one event per managed plist/unit, emitted by crates/chump-cron/src/lib.rs cmd_health(). Hold off EVENT_REGISTRY.yaml entry until first runtime fire reveals actual emit shape (same pattern as chump_cron_installed above).
 merge_driver_fallback   # reason: INFRA-1482 emitted by scripts/git/merge-driver-ci-yml-add-row.sh give_up() via the local _emit_ambient() helper (printf with variable kind, not grep-scannable as a "kind":"X" literal); EVENT_REGISTRY.yaml entry added.
 
 # ── RESILIENT-352: almanac-refresh-guard.py per-cycle outcome record ────────
@@ -891,3 +897,15 @@ node_binary_release_miss  # reason: RESILIENT-1044 — emitted by scripts/ops/no
 pixel_build_started  # reason: RESILIENT-1044 — emitted by scripts/ops/build-on-pixel.sh (local emit() helper) when the owned-iron build-offload run begins on the Pixel. Documented in docs/process/PIXEL_BUILD_OFFLOAD.md.
 pixel_build_failed  # reason: RESILIENT-1044 — emitted by scripts/ops/build-on-pixel.sh when the Pixel build/publish orchestration fails (unreachable Pixel, scp/remote-build failure). Documented in docs/process/PIXEL_BUILD_OFFLOAD.md.
 pixel_build_published  # reason: RESILIENT-1044 — emitted by scripts/ops/build-on-pixel.sh when the owned Pixel-built binary is published to the fleet-binaries release. Documented in docs/process/PIXEL_BUILD_OFFLOAD.md.
+
+# ── INFRA-7880: report-only publish guard ───────────────────────────────────
+publish_guard_report  # reason: INFRA-7880 — emitted by scripts/publish-guard/report_only.py (a scanner-anchor comment sits at the emit site). scripts/publish-guard/ is inside the CI coverage scanner's PROD_PATHS but outside the `chump verify` event-registry rule's compiled-in list (src/verify/rules/event_registry.rs), same structural gap as the scripts/lib/ entries above. Reserved so the register-without-emit check does not flag it; drop this line when the rule's list gains the directory.
+
+# ── INFRA-5426 (INFRA-1861 slice): orphan-allowlist auto-rescue daemon ───────
+audit_orphan_landed  # reason: INFRA-5426 — emitted by scripts/coord/orphan-allowlist-daemon.sh via python3 heredoc (dynamic `kind` argument to the local `emit()` helper), not grep-scannable as a "kind":"X" literal in PROD_PATHS.
+orphan_allowlist_pr_opened  # reason: INFRA-5426 — same emit() helper as audit_orphan_landed above; fires once the daemon's rescue phase opens the batch-allowlist PR.
+orphan_allowlist_pr_failed  # reason: INFRA-5426 — same emit() helper as audit_orphan_landed above; fires when the rescue phase's git push or gh pr create fails.
+worker_restarted_on_code_change  # reason: RESILIENT-1453 — emitted by scripts/ops/node-converge.sh via the local emit() helper (dynamic `kind` argument), not a grep-scannable "kind":"X" literal in PROD_PATHS.
+
+# ── INFRA-1563: /api/decisions operator-decision queue — consumer ships before emitters ──
+operator_decision_needed  # reason: INFRA-1563 — GET /api/decisions (src/routes/decisions.rs) is a real, tested consumer of this kind (scans ambient.jsonl, drives the PWA decisions queue). No emitter ships in this PR: wiring orchestrator/picker/bot-merge to actually raise operator_decision_needed is follow-up work tracked in INFRA-7896. Remove this line once that gap lands an emit site.

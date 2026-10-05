@@ -8,6 +8,15 @@
 #
 # Each subcommand: exit 0 on synthetic happy path, exit 2 on bad input
 # (missing required argument / unknown subcommand).
+#
+# INFRA-7923 re-verified the `chump harvest check` AC on 2026-09-30 (INFRA-1823
+# slice): accepting a gap ID or free-form topic string (src/harvester_cli.rs
+# `check` arm), reading `clusters` + `primitives_index` from
+# docs/arsenal/GLOBAL_ARSENAL.json, and printing an overlap report with
+# exact `repo/file:line` citations (scripts/arsenal/harvest.sh `check` arm,
+# `extracted_primitives_by_file` block) were already shipped under
+# INFRA-1823/#3698 and INFRA-6615/#4924. All 16 checks in this file still
+# pass unmodified. No behavior change needed.
 
 set -uo pipefail
 
@@ -47,6 +56,12 @@ echo "using binary: $BIN"
 # ── Fixture repo: isolated CHUMP_REPO so scan/check/brief/deep-scan never
 #    touch the real docs/arsenal/ catalog. ──────────────────────────────────
 FIXTURE="$(mktemp -d)"
+# The harvester keeps the operator's full catalog OUTSIDE the repo (default ~/.chump/arsenal).
+# Point it at the fixture, or this test would read, and `scan` would overwrite, a developer's real
+# private catalog. Same for the exclude list and the curation file.
+export CHUMP_ARSENAL_DIR="$FIXTURE/.private-arsenal"
+export CHUMP_ARSENAL_EXCLUDE_FILE="$FIXTURE/.no-exclude-list"
+export CHUMP_ARSENAL_CURATION="$FIXTURE/.no-curation.json"
 trap 'rm -rf "$FIXTURE"' EXIT
 
 mkdir -p "$FIXTURE/docs/arsenal/raw" "$FIXTURE/docs/arsenal/cross-pollination" "$FIXTURE/scripts/arsenal" "$FIXTURE/.chump-locks"
@@ -142,6 +157,38 @@ else
     bad "scan: rebuilt catalog missing extracted_primitives field"
 fi
 
+RAW_MTIME_BEFORE=$(date -r "$FIXTURE/docs/arsenal/raw/github_repos.json" +%s 2>/dev/null || echo 0)
+sleep 1
+CHUMP_REPO="$FIXTURE" PATH="$SHIM_DIR:$PATH" "$BIN" harvest scan >/dev/null 2>&1
+RAW_MTIME_AFTER=$(date -r "$FIXTURE/docs/arsenal/raw/github_repos.json" +%s 2>/dev/null || echo 0)
+if [ "$RAW_MTIME_AFTER" -gt "$RAW_MTIME_BEFORE" ]; then
+    ok "scan (INFRA-6616 AC1): docs/arsenal/raw/github_repos.json timestamp changes"
+else
+    bad "scan (INFRA-6616 AC1): raw/github_repos.json timestamp did not change"
+fi
+
+echo
+echo "--- scan (INFRA-6616 AC3: high-severity alert -> non-zero exit) ---"
+ALERT_FIXTURE="$(mktemp -d)"
+mkdir -p "$ALERT_FIXTURE/docs/arsenal/raw" "$ALERT_FIXTURE/scripts/arsenal"
+cp "$REPO_ROOT/scripts/arsenal/harvest.sh" "$ALERT_FIXTURE/scripts/arsenal/harvest.sh"
+chmod +x "$ALERT_FIXTURE/scripts/arsenal/harvest.sh"
+cat > "$ALERT_FIXTURE/scripts/arsenal/build.py" <<'PY'
+import json, pathlib
+out = {
+    "metadata": {}, "clusters": {}, "duplications": [],
+    "alerts": [{"severity": "high", "kind": "embedded_token", "action": "rotate"}],
+    "primitives_index": {}, "repos_by_name": {}, "unmatched_local_roots": [],
+}
+pathlib.Path("docs/arsenal/GLOBAL_ARSENAL.json").write_text(json.dumps(out))
+PY
+if CHUMP_REPO="$ALERT_FIXTURE" PATH="$SHIM_DIR:$PATH" "$BIN" harvest scan >/dev/null 2>&1; then
+    bad "scan (INFRA-6616 AC3): expected non-zero exit on high-severity alert"
+else
+    ok "scan (INFRA-6616 AC3): non-zero exit on high-severity alert"
+fi
+rm -rf "$ALERT_FIXTURE"
+
 echo
 echo "--- unknown subcommand ---"
 CHUMP_REPO="$FIXTURE" "$BIN" harvest bogus-subcommand >/dev/null 2>&1
@@ -155,6 +202,26 @@ if CHUMP_REPO="$FIXTURE" "$BIN" harvest help >/dev/null 2>&1; then
 else
     bad "help: expected exit 0"
 fi
+
+echo
+echo "--- INFRA-6615: --help lists subcommands ---"
+HELP_OUT="$(CHUMP_REPO="$FIXTURE" "$BIN" harvest --help 2>&1)"
+HELP_RC=$?
+[ "$HELP_RC" -eq 0 ] && ok "--help: exit 0" || bad "--help: expected exit 0, got $HELP_RC"
+ALL_LISTED=1
+for sub in scan check brief deep-scan; do
+    if ! echo "$HELP_OUT" | grep -q "$sub"; then
+        bad "--help: missing subcommand '$sub' in output"
+        ALL_LISTED=0
+    fi
+done
+[ "$ALL_LISTED" -eq 1 ] && ok "--help: lists scan, check, brief, deep-scan"
+
+echo
+echo "--- INFRA-6615: no subcommand -> usage error, exit 2 ---"
+CHUMP_REPO="$FIXTURE" "$BIN" harvest >/dev/null 2>&1
+rc=$?
+[ "$rc" -eq 2 ] && ok "no subcommand: exit 2" || bad "no subcommand: expected exit 2, got $rc"
 
 echo
 echo "=== $PASS passed, $FAIL failed ==="

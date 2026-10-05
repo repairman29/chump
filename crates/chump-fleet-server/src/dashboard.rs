@@ -5,6 +5,12 @@
 //! - `today_ships` — count of PRs merged in the last 24 h.
 //!   Reads `.chump/github_cache.db` first (cache-first per INFRA-1081);
 //!   falls through to `gh pr list --state merged --json mergedAt` on cold cache.
+//! - `merges_24h` — INFRA-7142 (INFRA-3841 slice): identical value to
+//!   `today_ships`, emitted under the canonical `merges_24h` column name
+//!   shared with `scripts/ops/vital-signs.sh` and
+//!   `scripts/ops/faculty-collector.sh` (both also emit a top-level
+//!   `merges_24h` field). `today_ships` stays for back-compat with existing
+//!   consumers (`web/v2/dashboard-tiles.js`, `scripts/dev/chump-dashboard-tui.sh`).
 //! - `ci_qa_score` — payload of the most recent `kind=ci_qa_score` event from
 //!   `.chump-locks/ambient.jsonl` (INFRA-1872 emit) within the last 24 h. When
 //!   no fresh event exists (the emitter isn't scheduled on this node), falls
@@ -28,6 +34,14 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Serialize)]
 pub struct DashboardSummary {
     pub today_ships: u64,
+    /// INFRA-7142 (INFRA-3841 slice): same value as `today_ships`, emitted
+    /// under the canonical `merges_24h` column name shared with
+    /// `scripts/ops/vital-signs.sh` (top-level `merges_24h`) and
+    /// `scripts/ops/faculty-collector.sh` (top-level `merges_24h`). Kept
+    /// alongside `today_ships` rather than replacing it — `today_ships` is a
+    /// stable public field consumed by `web/v2/dashboard-tiles.js` and
+    /// `scripts/dev/chump-dashboard-tui.sh`.
+    pub merges_24h: u64,
     pub ci_qa_score: Option<CiQaScore>,
     pub active_leases: Vec<ActiveLease>,
     pub window_hours: u32,
@@ -36,12 +50,52 @@ pub struct DashboardSummary {
 /// Payload surfaced from the most-recent `kind=ci_qa_score` ambient event.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct CiQaScore {
-    /// Pass-rate as a percentage (0.0–100.0).
+    /// % of merged PRs that landed WITHOUT a bypass signal (0.0–100.0) —
+    /// see `scripts/ops/ci-qa-score.sh`. Kept for back-compat with existing
+    /// consumers; `ci_clean_landing_pct` below is the distinctly-named twin
+    /// (INFRA-3847, parent INFRA-3841 slice 4/9) so this value is never
+    /// confused with `vital-signs.sh`'s `ci_run_pass_rate` (success/decided
+    /// CI *runs* in 24h — a different metric measuring a different thing).
     pub pct: f64,
+    /// Same value as `pct`, under the canonical distinctly-named column —
+    /// % of merged PRs landed clean (no --no-verify / post-CI rebase /
+    /// flake-rerun bypass signal).
+    pub ci_clean_landing_pct: f64,
     /// Number of CI runs included in the score.
     pub sample_size: u64,
-    /// Human-readable status label (e.g. "healthy", "degraded").
-    pub status: String,
+    /// Canonical status — always one of `green`/`amber`/`red`/`unknown`
+    /// (INFRA-3854). Emitters historically used ad-hoc labels
+    /// (`OK`/`WARN`/`ALERT`/`no_data`, `healthy`/`degraded`); the dashboard
+    /// normalizes whatever arrives via [`CiQaStatus::normalize`] so every
+    /// consumer of this field sees the same 4-value vocabulary already used
+    /// by `scripts/ops/vital-signs.sh`.
+    pub status: CiQaStatus,
+}
+
+/// The single status vocabulary shared across every emitter + the dashboard
+/// (INFRA-3854, parent INFRA-3841 slice). Mirrors the `green|amber|red|unknown`
+/// vocabulary `scripts/ops/vital-signs.sh` already uses.
+#[derive(Debug, Serialize, Deserialize, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum CiQaStatus {
+    Green,
+    Amber,
+    Red,
+    Unknown,
+}
+
+impl CiQaStatus {
+    /// Normalize any raw status label (canonical or legacy) into the
+    /// 4-value vocabulary. Unrecognized labels map to `Unknown` rather than
+    /// erroring, so a stale/foreign emitter never breaks the dashboard.
+    pub fn normalize(raw: &str) -> Self {
+        match raw.to_ascii_lowercase().as_str() {
+            "green" | "ok" | "healthy" | "pass" => CiQaStatus::Green,
+            "amber" | "warn" | "warning" | "degraded" => CiQaStatus::Amber,
+            "red" | "alert" | "critical" | "fail" => CiQaStatus::Red,
+            _ => CiQaStatus::Unknown,
+        }
+    }
 }
 
 /// One active claim lease entry.
@@ -323,8 +377,9 @@ fn extract_ci_qa_score(v: &serde_json::Value) -> Option<CiQaScore> {
         if let (Some(pct), Some(sample_size), Some(status)) = (pct, sample_size, status) {
             return Some(CiQaScore {
                 pct,
+                ci_clean_landing_pct: pct,
                 sample_size,
-                status,
+                status: CiQaStatus::normalize(&status),
             });
         }
     }
@@ -502,8 +557,209 @@ pub fn build_summary(repo_root: &Path) -> DashboardSummary {
 
     DashboardSummary {
         today_ships,
+        merges_24h: today_ships,
         ci_qa_score,
         active_leases,
         window_hours: WINDOW_HOURS,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// INFRA-3854 (INFRA-3841 slice 6/9): every `ci_qa_score` emitter, plus
+    /// the dashboard's own normalization, must resolve onto the same 4-value
+    /// vocabulary already used by `scripts/ops/vital-signs.sh`
+    /// (`green|amber|red|unknown`). `scripts/ops/ci-qa-score.sh` previously
+    /// emitted `OK|WARN|ALERT|no_data` — this test proves both that vocabulary
+    /// and the canonical one normalize onto exactly `{green, amber, red,
+    /// unknown}`, and that garbage input degrades to `unknown` rather than
+    /// erroring.
+    #[test]
+    fn ci_qa_status_normalizes_every_emitter_onto_canonical_vocabulary() {
+        let legacy_ci_qa_score_sh = [("OK", "green"), ("WARN", "amber"), ("ALERT", "red")];
+        for (raw, want) in legacy_ci_qa_score_sh {
+            let got = serde_json::to_value(CiQaStatus::normalize(raw)).unwrap();
+            assert_eq!(
+                got, want,
+                "legacy ci-qa-score.sh status {raw:?} must normalize to {want:?}"
+            );
+        }
+
+        let canonical = [
+            ("green", CiQaStatus::Green),
+            ("amber", CiQaStatus::Amber),
+            ("red", CiQaStatus::Red),
+            ("unknown", CiQaStatus::Unknown),
+        ];
+        for (raw, want) in canonical {
+            assert_eq!(CiQaStatus::normalize(raw), want);
+        }
+
+        // Unrecognized input (e.g. a foreign emitter's own label) must
+        // degrade to `unknown`, never panic or propagate an unbounded string.
+        assert_eq!(CiQaStatus::normalize("no_data"), CiQaStatus::Unknown);
+        assert_eq!(CiQaStatus::normalize("garbage"), CiQaStatus::Unknown);
+
+        // Every possible normalized value serializes to one of exactly the
+        // 4 canonical lowercase strings — the single status vocabulary.
+        for status in [
+            CiQaStatus::Green,
+            CiQaStatus::Amber,
+            CiQaStatus::Red,
+            CiQaStatus::Unknown,
+        ] {
+            let s = serde_json::to_value(status).unwrap();
+            let s = s.as_str().unwrap();
+            assert!(
+                ["green", "amber", "red", "unknown"].contains(&s),
+                "status {s:?} is outside the canonical 4-value vocabulary"
+            );
+        }
+    }
+
+    /// INFRA-7142 (INFRA-3841 slice): the JSON emitted by dashboard.rs must
+    /// carry the canonical `merges_24h` column name — the same name used by
+    /// `scripts/ops/vital-signs.sh` and `scripts/ops/faculty-collector.sh`
+    /// (see `scripts/ci/test-merges-24h-canonical.sh`). Before this change
+    /// `DashboardSummary` only had `today_ships`, so `v["merges_24h"]` was
+    /// `Value::Null` and this assertion failed.
+    #[test]
+    fn dashboard_summary_emits_canonical_merges_24h_column() {
+        let summary = DashboardSummary {
+            today_ships: 7,
+            merges_24h: 7,
+            ci_qa_score: None,
+            active_leases: Vec::new(),
+            window_hours: 24,
+        };
+
+        let v: serde_json::Value = serde_json::to_value(&summary).unwrap();
+
+        assert_eq!(
+            v.get("merges_24h").and_then(|n| n.as_u64()),
+            Some(7),
+            "DashboardSummary must serialize a canonical `merges_24h` column matching today_ships"
+        );
+        assert_eq!(
+            v["merges_24h"], v["today_ships"],
+            "merges_24h must always equal today_ships"
+        );
+    }
+
+    /// INFRA-7400 (INFRA-3841 slice): INFRA-3843/INFRA-7142 already unified
+    /// vital-signs.sh, faculty-collector.sh, and dashboard.rs onto the
+    /// single canonical computation in `scripts/ops/lib/merges-24h.sh` (see
+    /// `scripts/ci/test-merges-24h-canonical.sh`), but that shell-side test
+    /// never exercised dashboard.rs's own code path — it only proved the two
+    /// *bash* callers agreed with each other. This test closes that hole:
+    /// it drives `count_today_ships_from_shared_helper` (dashboard.rs's
+    /// real entry point) against the exact fixture shape used by the shell
+    /// test (5 merges inside the 24h window, 2 outside as a negative
+    /// control) and asserts the Rust path aggregates to the same value.
+    #[test]
+    fn count_today_ships_matches_canonical_fixture() {
+        use std::time::{Duration, SystemTime, UNIX_EPOCH};
+
+        let tmp = std::env::temp_dir().join(format!(
+            "infra-7400-merges24h-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or(Duration::ZERO)
+                .as_nanos()
+        ));
+        let chump_dir = tmp.join(".chump");
+        std::fs::create_dir_all(&chump_dir).expect("create fixture .chump dir");
+        let db_path = chump_dir.join("github_cache.db");
+
+        let now = SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or(Duration::ZERO)
+            .as_secs();
+        let merged_1h_ago = epoch_to_rfc3339(now.saturating_sub(3600));
+        let merged_3d_ago = epoch_to_rfc3339(now.saturating_sub(3 * 86400));
+
+        let conn = Connection::open(&db_path).expect("create fixture cache db");
+        conn.execute_batch(&format!(
+            "CREATE TABLE pr_state (
+                number INTEGER PRIMARY KEY,
+                merged_at TEXT,
+                updated_at_api TEXT NOT NULL DEFAULT '',
+                fetched_at_local TEXT NOT NULL DEFAULT ''
+            );
+            INSERT INTO pr_state (number, merged_at, updated_at_api, fetched_at_local) VALUES
+                (1, '{m1}', '{m1}', '{m1}'),
+                (2, '{m1}', '{m1}', '{m1}'),
+                (3, '{m1}', '{m1}', '{m1}'),
+                (4, '{m1}', '{m1}', '{m1}'),
+                (5, '{m1}', '{m1}', '{m1}'),
+                (6, '{m3d}', '{m3d}', '{m3d}'),
+                (7, '{m3d}', '{m3d}', '{m3d}');",
+            m1 = merged_1h_ago,
+            m3d = merged_3d_ago,
+        ))
+        .expect("seed fixture pr_state rows");
+        drop(conn);
+
+        let via_shared_helper = count_today_ships_from_shared_helper(&tmp, 24);
+        let via_public_api = count_today_ships(&tmp, 24);
+
+        std::fs::remove_dir_all(&tmp).ok();
+
+        assert_eq!(
+            via_shared_helper,
+            Some(5),
+            "dashboard.rs's shared-helper path must aggregate merges_24h the same way \
+             scripts/ci/test-merges-24h-canonical.sh proves vital-signs.sh and \
+             faculty-collector.sh do (5 merges inside the 24h window)"
+        );
+        assert_eq!(
+            via_public_api, 5,
+            "count_today_ships (the DashboardSummary.merges_24h source) must equal \
+             the canonical fixture count"
+        );
+    }
+
+    /// EFFECTIVE-1134: exercises the unified `chump_agent_lease::LeaseStore`
+    /// abstraction end-to-end against its SQLite back-end, proving the
+    /// dashboard crate can depend on the shared lease CRUD surface rather
+    /// than rolling its own.
+    #[test]
+    fn lease_store_crud() {
+        use chump_agent_lease::store::sqlite::SqliteLeaseStore;
+        use chump_agent_lease::{LeaseRecord, LeaseStore};
+
+        let store = SqliteLeaseStore::open(":memory:").expect("open in-memory lease store");
+        let record = LeaseRecord {
+            id: "EFFECTIVE-1134".to_string(),
+            session_id: "dashboard-test-session".to_string(),
+            paths: vec!["crates/chump-fleet-server/src/dashboard.rs".to_string()],
+            expires_at: "2026-01-01T00:00:00Z".to_string(),
+        };
+
+        store.create(&record).expect("create");
+        assert_eq!(
+            store.read(&record.id).expect("read after create"),
+            Some(record.clone()),
+            "read must return exactly what was created"
+        );
+
+        let mut updated = record.clone();
+        updated.session_id = "dashboard-test-session-2".to_string();
+        store.update(&updated).expect("update");
+        assert_eq!(
+            store.read(&record.id).expect("read after update"),
+            Some(updated),
+            "read must reflect the updated session_id"
+        );
+
+        store.delete(&record.id).expect("delete");
+        assert_eq!(
+            store.read(&record.id).expect("read after delete"),
+            None,
+            "read must return None after delete"
+        );
     }
 }

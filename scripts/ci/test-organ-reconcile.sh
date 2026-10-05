@@ -68,12 +68,17 @@ pass "real organ-manifest.txt declares chump-conflict-resolution-consumer.timer 
 
 # ── 2d. INFRA-3642 (TREK-16): owned-node factory organs (worker,
 # coherence-sync, self-hosted gap-store/postgrest) are peer-supervised ─────
-# These ran only as hand-installed units on CJ (chump-worker@1.service,
-# chump-cj-sync.timer, chump-postgrest.service) with no organ-manifest.txt
+# These ran only as hand-installed units on CJ with no organ-manifest.txt
 # line — the same "designed/installed but never wired into the revivable
 # gate" blind spot RESILIENT-366 closed above; without a manifest line a dead
 # unit stays dead forever since organ-reconcile only acts on lines here.
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+# Unit names corrected 2026-08-22 (RESILIENT-1490): the manifest previously
+# declared chump-worker@1.service / chump-cj-sync.timer, neither of which was
+# ever installed on CJ (the real units are chump-cj-worker.service and
+# chump-cj-sync.service, a Type=simple .service not a .timer) — a name
+# mismatch that made merged-not-running read a false red. This test now
+# checks the names that are actually declared in the manifest.
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
     line="$(grep -E "^enabled +${unit//./\\.}" "$REAL_MANIFEST")"
     [[ -n "$line" ]] || fail "real manifest missing enabled line for $unit (INFRA-3642)"
     echo "$line" | grep -q 'role=' || fail "real manifest line for $unit has no role="
@@ -272,7 +277,7 @@ pass "7: expired backoff cooldown retries the organ (not a permanent disable)"
 #       re-enables each one when found inactive ("killed").
 MANIFEST="$TMP/manifest-owned-node.txt"
 : > "$MANIFEST"
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
     grep -E "^enabled +${unit//./\\.}" "$REAL_MANIFEST" >> "$MANIFEST"
 done
 [[ -s "$MANIFEST" ]] || fail "could not extract owned-node organ lines from real manifest for kill-then-reconcile"
@@ -286,12 +291,20 @@ EOF
     chmod +x "$TMP/bins/$bin"
 done
 
+# chump-cj-worker.service / chump-cj-sync.service declare file:~/cj-worker-run.sh
+# and file:~/cj-sync-run.sh requires= (RESILIENT-1490) — organ_is_applicable
+# expands ~/ against the effective HOME, so a fake HOME with those assets
+# present is what makes this node "CJ-shaped" for the applicability check.
+FAKE_HOME="$TMP/fake-home"
+mkdir -p "$FAKE_HOME"
+touch "$FAKE_HOME/cj-worker-run.sh" "$FAKE_HOME/cj-sync-run.sh"
+
 : > "$ACTIVE_FILE"; : > "$ENABLE_FAIL_FILE"; : > "$VERIFY_FAIL_FILE"   # all three start "killed" (inactive)
 rm -rf "$BACKOFF_DIR"
 : > "$AMBIENT"
 
-run_reconcile --apply >/dev/null
-for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.service"; do
+HOME="$FAKE_HOME" run_reconcile --apply >/dev/null
+for unit in "chump-cj-worker.service" "chump-cj-sync.service" "chump-postgrest.service"; do
     grep -q "enable --now $unit" "$CALL_LOG" \
         || fail "kill-then-reconcile: $unit's requires= are satisfied but reconcile never attempted to enable it"
     grep -qxF "$unit" "$ACTIVE_FILE" \
@@ -300,5 +313,68 @@ for unit in "chump-worker@1.service" "chump-cj-sync.timer" "chump-postgrest.serv
         && fail "kill-then-reconcile: $unit should have started cleanly, not backed off"
 done
 pass "8: kill-then-reconcile — worker/coherence-sync/gap-store organs are applicable when their dependency binaries are present and get re-enabled when found inactive (INFRA-3642)"
+
+# ── 9. INFRA-7838: organ_registry_parse / organ_registry_check / the
+#       --check-process-organs CLI mode. These read scripts/ops/organ-registry.txt
+#       (INFRA-7586's generated CJ process-organ registry, launcher=/pgrep=/
+#       heartbeat= format) — a file that was generated and CI-shape-tested but
+#       never actually PARSED by any live loop until this gap.
+REAL_PROCESS_REGISTRY="$REPO_ROOT/scripts/ops/organ-registry.txt"
+[[ -f "$REAL_PROCESS_REGISTRY" ]] || fail "scripts/ops/organ-registry.txt missing — generate via scripts/ops/generate-organ-registry.sh"
+
+# The pgrep pattern must be findable in a real process's argv (pgrep -f
+# matches the command line, not environment variables) — so the "alive"
+# fixture is a uniquely-named throwaway script file, backgrounded via `bash
+# <path>`, whose path itself is the pgrep=/detector pattern.
+MARKER_SCRIPT="$TMP/organ-reconcile-test-marker-$$.sh"
+cat > "$MARKER_SCRIPT" <<'EOF'
+sleep 9999
+EOF
+bash "$MARKER_SCRIPT" &
+SLEEP_PID=$!
+trap 'kill "$SLEEP_PID" 2>/dev/null || true; rm -rf "$TMP"' EXIT
+
+# 9a. A synthetic registry with one ALIVE and one DEAD organ parses without
+#     error and reports each correctly via --check-process-organs.
+FAKE_REGISTRY="$TMP/fake-organ-registry.txt"
+cat > "$FAKE_REGISTRY" <<EOF
+# synthetic registry for test-organ-reconcile.sh section 9
+enabled  fake-alive-organ  launcher=~/.chump/organs/fake-alive-organ.sh  pgrep=$MARKER_SCRIPT  heartbeat=60  # wraps a test fixture
+enabled  fake-dead-organ   launcher=~/.chump/organs/fake-dead-organ.sh   pgrep=organ-reconcile-test-definitely-not-running-$$  heartbeat=60  # wraps a test fixture
+EOF
+
+check_out="$(CHUMP_PROCESS_ORGAN_REGISTRY_FILE="$FAKE_REGISTRY" bash "$RECONCILE" --check-process-organs 2>&1)"
+check_rc=$?
+
+echo "$check_out" | grep -q 'DETECTED-ALIVE: fake-alive-organ' \
+    || fail "organ_registry_check: fake-alive-organ should have been DETECTED-ALIVE — got: $check_out"
+echo "$check_out" | grep -q 'DETECTED-DEAD: fake-dead-organ' \
+    || fail "organ_registry_check: fake-dead-organ should have been DETECTED-DEAD — got: $check_out"
+[[ "$check_rc" -eq 1 ]] || fail "--check-process-organs should exit 1 when any organ is DETECTED-DEAD (got rc=$check_rc)"
+pass "9a: organ_registry_parse/organ_registry_check correctly distinguish alive vs dead organs, --check-process-organs exits 1"
+
+# 9b. A registry with only alive organs exits 0.
+ALL_ALIVE_REGISTRY="$TMP/fake-organ-registry-alive.txt"
+cat > "$ALL_ALIVE_REGISTRY" <<EOF
+enabled  fake-alive-organ  launcher=~/.chump/organs/fake-alive-organ.sh  pgrep=$MARKER_SCRIPT  heartbeat=60  # wraps a test fixture
+EOF
+alive_rc=0
+CHUMP_PROCESS_ORGAN_REGISTRY_FILE="$ALL_ALIVE_REGISTRY" bash "$RECONCILE" --check-process-organs >/dev/null 2>&1 || alive_rc=$?
+[[ "$alive_rc" -eq 0 ]] || fail "--check-process-organs should exit 0 when every organ is DETECTED-ALIVE (got rc=$alive_rc)"
+pass "9b: --check-process-organs exits 0 when every registered organ is alive"
+
+# 9c. Missing registry exits 2, not a hard crash.
+missing_rc=0
+CHUMP_PROCESS_ORGAN_REGISTRY_FILE="$TMP/does-not-exist.txt" bash "$RECONCILE" --check-process-organs >/dev/null 2>&1 || missing_rc=$?
+[[ "$missing_rc" -eq 2 ]] || fail "--check-process-organs should exit 2 for a missing registry (got rc=$missing_rc)"
+pass "9c: --check-process-organs exits 2 for a missing registry file"
+
+# 9d. The REAL organ-registry.txt (generated by generate-organ-registry.sh)
+#     parses without error against the new helper — proves AC5 (no parse
+#     errors) against production content, not just a synthetic fixture.
+real_check_rc=0
+bash "$RECONCILE" --check-process-organs >/dev/null 2>&1 || real_check_rc=$?
+[[ "$real_check_rc" -ne 2 ]] || fail "organ_registry_parse failed to parse the real scripts/ops/organ-registry.txt without error"
+pass "9d: the real scripts/ops/organ-registry.txt parses cleanly via organ_registry_parse (AC5)"
 
 echo "ALL PASS"

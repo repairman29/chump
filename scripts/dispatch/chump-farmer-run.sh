@@ -39,9 +39,23 @@ export USER="${USER:-root}"
 # PATH. On Helsinki (PREFIX unset) the root paths still win first — unchanged.
 export PATH="${PREFIX:+$PREFIX/bin:}$HOME/.cargo/bin:$HOME/.local/bin:/root/.local/bin:/root/.cargo/bin:/root/bin:/usr/local/bin:/usr/bin:/bin${PATH:+:$PATH}"
 
-REPO_ROOT="${CHUMP_REPO:-/root/Projects/chump}"
+# Derive the repo root from this script's OWN location — it lives at
+# <repo>/scripts/dispatch/chump-farmer-run.sh — instead of a hardcoded
+# /root/Projects/chump default. That default was helsinki(root)-shaped: on an
+# owned node (User=ubuntu) it pointed cd at /root/Projects/chump, which the
+# run-user cannot enter -> "Permission denied" -> exit 1 every 30s tick, darking
+# the worker-gate heartbeat this organ exists to keep fresh (RESILIENT-313).
+# BASH_SOURCE + pwd -P is host-agnostic AND resolves the bootstrap symlink to the
+# real checkout, so the farmer runs correctly on helsinki, CJ, Termux, and the
+# Oracle nodes alike. CHUMP_REPO still overrides (the out-of-tree farmer.sh test
+# path in §4 below). On helsinki this yields /root/Projects/chump exactly as
+# before — backward-compatible.
+_FARMER_SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="${CHUMP_REPO:-$(cd "$_FARMER_SCRIPT_DIR/../.." && pwd -P)}"
 LOCK_DIR="$REPO_ROOT/.chump-locks"
-PROVIDERS_ENV="${CHUMP_PROVIDERS_ENV:-/root/.chump/providers.env}"
+# Default providers.env under the run-user's HOME (set by the unit), not a
+# hardcoded /root — same host-portability reason as REPO_ROOT above.
+PROVIDERS_ENV="${CHUMP_PROVIDERS_ENV:-$HOME/.chump/providers.env}"
 TOKEN_FILE="${CHUMP_OAUTH_TOKEN_FILE:-$HOME/.chump/oauth-token.json}"
 STALE_LEASE_MIN="${CHUMP_FARMER_STALE_LEASE_MIN:-30}"
 # Refresh the token file once its mtime is half-way to the 3600s gate, so the

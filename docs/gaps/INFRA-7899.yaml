@@ -1,0 +1,30 @@
+- id: INFRA-7899
+  domain: INFRA
+  title: "chump gap reserve can assign an ID that collides with an existing docs/gaps/<ID>.yaml when the claiming worktree's local state.db is behind"
+  status: open
+  priority: P2
+  effort: s
+  description: |
+    Hit live in the PRODUCT-303 worktree (2026-09-26): the worktree's local `.chump/state.db` had
+    `gap_counters.PRODUCT.next_num = 303` (stale — origin/main's docs/gaps/ already has PRODUCT-303
+    through PRODUCT-309 as yaml-only, not yet imported into this worktree's db). Running
+    `chump gap reserve --domain PRODUCT --title "..."` returned "PRODUCT-306" — it apparently skipped
+    303-305 (found their yaml files) but NOT 306, which also has a real, git-committed yaml file
+    (`[postsub] Move PostSub from Firebase...`, PR #4865). The reserve command wrote a NEW row for
+    id=PRODUCT-306 into the local state.db with the new title, silently shadowing the real gap for any
+    `chump gap show`/claim/ship run from that worktree. The docs/gaps/PRODUCT-306.yaml file on disk in
+    the git-tracked checkout was untouched (state.db is gitignored), so no data was lost, but a
+    `chump gap dump`/`sync --push` from that worktree would have overwritten the real file with the
+    wrong content. Root cause looks like the collision check only scans a prefix range from
+    `next_num` rather than checking every on-disk docs/gaps/<domain>-*.yaml for the exact candidate ID
+    before assigning it.
+  acceptance_criteria:
+    1. chump gap reserve checks every existing docs/gaps/<domain>-N.yaml (not just a next_num-relative range) for the exact candidate ID before assigning it, and skips forward past any collision
+    2. A regression test seeds a worktree-local state.db with a stale next_num and a docs/gaps/ tree containing an ID at exactly that collision point, and asserts reserve does not return that ID
+    3. chump gap sync --check (or an equivalent) is extended to flag "state.db has a gap ID whose title/description diverges from the git-tracked yaml for that same ID" so this class is caught before ship, not discovered by hand
+  notes: |
+    Filed 2026-09-26 from the PRODUCT-303 cuphead session. Worked around locally by UPDATE-ing the bad
+    row's id from PRODUCT-306 to PRODUCT-310 (a genuinely free ID) and bumping gap_counters.next_num
+    directly in the worktree's local state.db before shipping — see the PRODUCT-303 PR for the actual
+    follow-up gap (PRODUCT-310) that resulted. No shared/fleet state.db was touched, this was scoped
+    to one worktree's local db file.

@@ -103,6 +103,9 @@ _ARG_LOCKS_DIR=""
 _ARG_TMUX_SESSION=""
 _FLEET_RESTART=0
 _FLEET_DRY_RUN_ARG=0
+# CREDIBLE-1020: --detect-zero-launchd runs the zero-process launchd-job
+# detector and exits, skipping the rest of the fleet-launcher body.
+_FLEET_DETECT_ZERO_LAUNCHD=0
 _POSITIONAL=()
 while [[ $# -gt 0 ]]; do
     case "$1" in
@@ -122,6 +125,8 @@ while [[ $# -gt 0 ]]; do
             _FLEET_RESTART=1; shift ;;
         --dry-run)
             _FLEET_DRY_RUN_ARG=1; shift ;;
+        --detect-zero-launchd)
+            _FLEET_DETECT_ZERO_LAUNCHD=1; shift ;;
         --help|-h)
             sed -n '2,/^set -/p' "$0" | sed 's/^# \?//' | head -60
             exit 0
@@ -166,6 +171,42 @@ fi
 SCRIPT_DIR="$REPO_ROOT/scripts/dispatch"
 # INFRA-469: route every `chump` invocation through the wedge-heal shim.
 export PATH="$REPO_ROOT/bin:$PATH"
+
+# CREDIBLE-1020 (CREDIBLE-274 slice): reads a launchd plist's Label via
+# PlistBuddy (falls back to a plain grep/sed parse on non-macOS boxes,
+# where /usr/libexec/PlistBuddy doesn't exist — e.g. Linux dev/CI hosts).
+_launchd_plist_label() {
+    local plist="$1"
+    if [[ -x /usr/libexec/PlistBuddy ]]; then
+        /usr/libexec/PlistBuddy -c 'Print :Label' "$plist" 2>/dev/null
+        return
+    fi
+    grep -A1 '<key>Label</key>' "$plist" 2>/dev/null \
+        | grep '<string>' | head -1 \
+        | sed -e 's/.*<string>//' -e 's/<\/string>.*//'
+}
+
+# Walks all .plist files under scripts/launchd and ~/Library/LaunchAgents,
+# extracts each job's Label, and prints the plist path for any job whose
+# label has no matching running process (candidate (a), CREDIBLE-274 slice).
+_detect_zero_launchd_jobs() {
+    local dir plist label
+    for dir in "$REPO_ROOT/scripts/launchd" "$HOME/Library/LaunchAgents"; do
+        [[ -d "$dir" ]] || continue
+        while IFS= read -r -d '' plist; do
+            label="$(_launchd_plist_label "$plist")"
+            [[ -n "$label" ]] || continue
+            if ! pgrep -f "$label" >/dev/null 2>&1; then
+                echo "$plist"
+            fi
+        done < <(find "$dir" -maxdepth 1 -name '*.plist' -print0 2>/dev/null)
+    done
+}
+
+if [[ "$_FLEET_DETECT_ZERO_LAUNCHD" -eq 1 ]]; then
+    _detect_zero_launchd_jobs
+    exit 0
+fi
 
 # INFRA-351: source $REPO_ROOT/.env (if present) so spawned worker panes
 # inherit ANTHROPIC_API_KEY / OPENAI_API_KEY / TOGETHER_API_KEY etc. and
@@ -768,6 +809,21 @@ if [[ "$FLEET_BACKEND" == "claude" ]]; then
             "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
             >> "$_amb_log" 2>/dev/null || true
 
+        # CREDIBLE-130 AC3: credit-exhaustion also gets its own distinct kind
+        # (separate from fleet_auth_misconfigured) so operator-recall and any
+        # other ambient consumer can route on it without needing to parse the
+        # error_class field out of a generically-named auth event. This is the
+        # signal that would have short-circuited the 2026-06-08 misdiagnosis —
+        # a consumer watching for fleet_auth_* kinds alone would still not see
+        # this as an auth problem.
+        if [[ "$_probe_error_class" == "credit-exhausted" ]]; then
+            printf '{"ts":"%s","kind":"fleet_credit_exhausted","auth_mode":"%s","auth_path":"%s","error":"%s"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
+                "$_fleet_auth_mode" "$_fleet_auth_path" \
+                "$(echo "$_auth_probe_error" | sed 's/"/""/g')" \
+                >> "$_amb_log" 2>/dev/null || true
+        fi
+
         if [[ "${CHUMP_FLEET_FORCE_LAUNCH:-0}" != "1" ]]; then
             exit 3
         else
@@ -812,7 +868,11 @@ fi
 # grep -c prints "0" AND exits 1 on zero-match; the old `|| true` then wrote a
 # SECOND "0", yielding "0\n0" and a `((` syntax error (VOA-004). Capture the count
 # as-is and default only if the whole expansion is empty.
-_sql_open=$(git show "origin/main:.chump/state.sql" 2>/dev/null | grep -c "^INSERT.*'open'" 2>/dev/null)
+# Registry privacy: the mirror is published to the private `registry` remote;
+# origin/main only carries it in the legacy (pre-cutover) layout.
+_reg_ref="origin/main"
+git -C "$REPO_ROOT" remote get-url registry >/dev/null 2>&1 && _reg_ref="registry/main"
+_sql_open=$(git -C "$REPO_ROOT" show "${_reg_ref}:.chump/state.sql" 2>/dev/null | grep -c "^INSERT.*'open'" 2>/dev/null)
 _sql_open=${_sql_open:-0}
 if (( _db_open < _sql_open )); then
     echo "[run-fleet] INFRA-465: state.db has $_db_open open gaps, origin/main has $_sql_open — running 'chump gap import'"

@@ -7,7 +7,33 @@ use std::path::{Component, Path, PathBuf};
 use std::sync::Mutex;
 use std::time::Duration;
 
-static CHUMPD_DB_PATH_CACHE: std::sync::OnceLock<Option<PathBuf>> = std::sync::OnceLock::new();
+/// Cached chumpd socket answer: `None` = not yet queried, `Some(answer)` =
+/// queried once (the answer itself may be `None`). A `Mutex` rather than a
+/// `OnceLock` so tests can reset it (INFRA-8042): with a `OnceLock`, whichever
+/// test first resolved `repo_root()` froze the answer for the whole
+/// `cargo test` process, and a later test expecting a fresh daemon lookup
+/// never connected to its fake socket.
+static CHUMPD_DB_PATH_CACHE: Mutex<Option<Option<PathBuf>>> = Mutex::new(None);
+
+fn cached_chumpd_db_path() -> Option<PathBuf> {
+    let mut guard = CHUMPD_DB_PATH_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    if let Some(answer) = guard.as_ref() {
+        return answer.clone();
+    }
+    let answer = try_chumpd_db_path();
+    *guard = Some(answer.clone());
+    answer
+}
+
+/// Forget the cached chumpd answer so the next lookup queries the socket again.
+#[cfg(test)]
+pub(crate) fn reset_chumpd_cache_for_test() {
+    *CHUMPD_DB_PATH_CACHE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner()) = None;
+}
 
 fn try_chumpd_db_path() -> Option<PathBuf> {
     let home = std::env::var("CHUMP_HOME")
@@ -61,7 +87,7 @@ pub fn chumpd_repo_root() -> Option<PathBuf> {
     if std::env::var("CHUMP_REPO").is_ok() || std::env::var("CHUMP_HOME").is_ok() {
         return None;
     }
-    CHUMPD_DB_PATH_CACHE.get_or_init(try_chumpd_db_path).clone()
+    cached_chumpd_db_path()
 }
 
 static WORKING_REPO_OVERRIDE: std::sync::OnceLock<Mutex<Option<PathBuf>>> =

@@ -30,6 +30,16 @@ on:
     branches: [main, master]
   merge_group:
 
+# Least-privilege token scope: read-only. No job in this workflow writes
+# through GITHUB_TOKEN.
+#   pull-requests: read — REQUIRED by dorny/paths-filter in the `changes` job
+#     (lists PR files via the API on pull_request events; the job is
+#     continue-on-error, so a missing scope fails quietly) and by the
+#     cross-PR contract gate (`gh pr list` / `gh pr view --json files`).
+permissions:
+  contents: read
+  pull-requests: read
+
 # INFRA-2516: the per-SHA group above (INFRA-2452 fix) never collided — every push
 # gets a new SHA, so cancel-in-progress:false or :true made no difference; stale
 # audit runs for commits a PR had already moved past just kept running to
@@ -234,6 +244,7 @@ jobs:
           rc=1
           for attempt in 1 2 3; do
             echo "apt attempt $attempt of 3"
+            # shellcheck disable=SC2086  # $apt_opts and $pkgs are space-separated arg lists — word-splitting is intended
             if timeout -k 15 90 sudo apt-get $apt_opts update \
                && timeout -k 15 180 sudo apt-get $apt_opts install -y $pkgs; then
               rc=0
@@ -335,7 +346,8 @@ jobs:
         # runners redirects build output away from $(pwd)/target).
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-domain-summary.sh
 
@@ -343,7 +355,8 @@ jobs:
         if: matrix.shard == 1
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-gap-list-done-format.sh
 
@@ -473,7 +486,8 @@ jobs:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           cargo build --bin chump 2>&1 | tail -3
-          export REPO_ROOT="$(pwd)"
+          REPO_ROOT="$(pwd)"
+          export REPO_ROOT
           source scripts/ci/lib/discover-chump-bin.sh
           bash scripts/ci/test-cross-pr-contract.sh
 
@@ -781,6 +795,10 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-pr-failure-auto-rescue.sh
 
+      - name: Trunk-recovery reviver (RESILIENT-1190)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-trunk-recovery-reviver.sh
+
       - name: PR auto-rescue active audit-handler (INFRA-1618)
         if: matrix.shard == 3
         run: bash scripts/ci/test-pr-rescue-audit-handler.sh
@@ -819,6 +837,14 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-rot-reaper.sh
 
+      # RESILIENT-311 completion: the rot-reaper no longer closes a good PR whose
+      # required `verified` aggregate is red for a recoverable reason (green-
+      # underneath / late-parity / CI-cancel / flake / pending). shard-3: pure
+      # shell, gh/chump stubbed, no binary or live GitHub needed.
+      - name: rot-reaper spares green-underneath verified-red PRs, closes only genuine hard-fails (RESILIENT-311)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-rot-reaper-verified-red-spare.sh
+
       - name: back-pressure breaker can't deadlock — dead-zone escape resumes, 6+ jam still halts (RESILIENT-324)
         if: matrix.shard == 3
         run: bash scripts/ci/test-back-pressure-hysteresis.sh
@@ -841,6 +867,12 @@ jobs:
         if: matrix.shard == 3
         run: bash scripts/ci/test-notify-operator.sh
 
+      # RESILIENT-1096. shard-3: pure shell, no chump binary, and shards 1/4 are
+      # the ones paying the cold cargo build.
+      - name: every CHUMP_NOTIFY_KIND has an escalation-registry verdict (RESILIENT-1096)
+        if: matrix.shard == 3
+        run: bash scripts/ci/test-notify-kind-escalation-coverage.sh
+
       # RESILIENT-266. shard-3: pure shell, no chump binary, and shards 1/4 are
       # the ones paying the cold cargo build.
       - name: discord gateway daemon guard (RESILIENT-266)
@@ -857,6 +889,10 @@ jobs:
       - name: cascade-cancel rollup classification fixture (INFRA-1002)
         if: matrix.shard == 4
         run: bash scripts/ci/test-rollup-cascade-cancel.sh
+
+      - name: cascade-cancellation status description fixture (INFRA-5430)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-cascade-cancellation-status-description.sh
 
       - name: bounced-PR detector fixture (INFRA-781)
         if: matrix.shard == 4
@@ -907,6 +943,14 @@ jobs:
       - name: raw-gh lint gate — no new direct gh calls in hot-path scripts outside lib/ (INFRA-1274)
         if: matrix.shard == 4
         run: bash scripts/ci/test-no-raw-gh-in-hot-paths.sh
+
+      - name: gh-in-ci GH_TOKEN guard — test scripts calling gh api/gh pr must guard (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-in-ci-guarded.sh
+
+      - name: gh-token-guard smoke test — skip-with-WARN when GH_TOKEN unset (RESILIENT-018)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-gh-token-guard.sh
 
       - name: no-new-bypass-env-vars — forbid new CHUMP_*_BYPASS/SKIP/IGNORE_* (INFRA-2429)
         if: matrix.shard == 4
@@ -978,6 +1022,10 @@ jobs:
         run: |
           cargo build --bin chump 2>&1 | tail -3
           bash scripts/ci/test-waste-tally-domain.sh
+
+      - name: organ-manifest unified-BOM integration — parser+renderer+housekeeping-lib agree (INFRA-7768)
+        if: matrix.shard == 4
+        run: bash scripts/ci/test-organ-manifest-bom-integration.sh
 
       - name: "audit-step isolation guard — one test script per step (RESILIENT-044)"
         if: matrix.shard == 4

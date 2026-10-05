@@ -86,8 +86,8 @@ python3 scripts/arsenal/build.py
 | Field | Meaning |
 |---|---|
 | `metadata` | counts: GH repos, local clones, unmatched local roots |
-| `clusters` | repos grouped by name/desc heuristic (`chump-engine`, `smugglers-rpg`, …) |
-| `duplications` | name-pattern collisions (echeo-*, mythseeker-*, …) → DRY violations |
+| `clusters` | repos grouped by name/desc heuristic (`chump-engine`, `game-services`, …) |
+| `duplications` | name-pattern collisions (product-*, game-*, …) → DRY violations |
 | `alerts` | high-priority findings (credential leaks, stale vendored clones, misplaced .git) |
 | `primitives_index` | label → list of repos that own that primitive (auth, payment, chat, …) |
 | `repos_by_name` | full per-repo record (visibility, language, last push, local_clone, primitives) |
@@ -95,9 +95,30 @@ python3 scripts/arsenal/build.py
 | `repos_by_name.*.extracted_primitives_by_file` | structured per-file hits from the automated scanner — `{file, line, primitive, match}` — one entry per (file, primitive, pattern) |
 | `unmatched_local_roots` | git roots on disk that don't map to a known repairman29 repo |
 
+### Coverage-push scope boundary (INFRA-7927, post-INFRA-7881)
+
+`extracted_primitives` entries come from `CHUMP_ARSENAL_CURATION`'s
+`extracted_primitives` map (default `~/.chump/arsenal/curation.json`),
+merged by repo name regardless of `CHUMP_ARSENAL_PUBLIC_ONLY`. That means a
+"coverage push" deep-scan pass has two legitimate destinations, and they are
+**not interchangeable**:
+
+- **Public repos** (`chump harvest check`-visible in the committed
+  `GLOBAL_ARSENAL.json`) — curation entries for these are safe to commit
+  here because the repo names and code are already public. See
+  `scripts/arsenal/curation.json.example` for the shape.
+- **Private repos** — findings go into the operator's own
+  `~/.chump/arsenal/curation.json` (outside every git tree, per INFRA-7881)
+  and into the operator-catalog copy of `HARVEST_ROADMAP.md`. Do **not**
+  recreate private repo names + citations in any file under `docs/arsenal/`
+  — that's exactly the leak INFRA-7881 fixed. A coverage-push gap whose AC
+  cites a fleet-wide repo count (e.g. "45 of 76") is scoped against the
+  operator's private catalog for the private slice, and against the
+  committed catalog only for the public repos within it.
+
 ### Per-file primitive indexing (INFRA-1864)
 
-CP-002 found a Discovery Failure footprint: `echeo/src/shredder.rs` had a
+CP-002 found a Discovery Failure footprint: `<repo>/src/shredder.rs` had a
 tree-sitter AST-extraction primitive sitting in the arsenal the whole time,
 but nothing surfaced it to a gap that needed one — the catalog only indexed
 at the *repo* level (name/description keyword match), not the *file* level.
@@ -234,4 +255,4 @@ Full retrospective: [`docs/process/CURATOR_OPUS_LESSONS_2026-05-23.md`](../proce
 2. Zero commits in last 90 days
 3. No description (or description is template-only)
 
-Any single one — or even two — is insufficient. Wave 2 dropped 6 real Smugglers services as "all dormant" based on uniform `pushed_at` dates. Wave 3 found them. If a repo is in the catalog, it gets a deep-scan read before being declared dormant.
+Any single one — or even two — is insufficient. Wave 2 dropped 6 real services in one product family as "all dormant" based on uniform `pushed_at` dates. Wave 3 found them. If a repo is in the catalog, it gets a deep-scan read before being declared dormant.

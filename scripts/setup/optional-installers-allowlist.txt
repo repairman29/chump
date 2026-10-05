@@ -8,6 +8,8 @@ install-active-target-reaper-launchd.sh
 install-allowlist-audit-launchd.sh
 install-almanac-organ.sh
 install-almanac-summarize-watchdog.sh
+install-index-almanac-timer.sh
+install-fleet-clone-index-timer.sh
 install-ambient-hooks.sh
 install-gap-substrate.sh
 install-ambient-rotate-launchd.sh
@@ -84,6 +86,10 @@ install-stale-gap-lock-reaper-launchd.sh
 install-stale-pr-reaper-launchd.sh
 install-stale-pr-rebase-bot.sh
 install-stale-worktree-reaper-launchd.sh
+# RESILIENT-1444: Linux-node counterpart to install-stale-worktree-reaper-launchd.sh
+# (systemd user timer). Opt-in per Linux coordinator node (e.g. CJ) so abandoned
+# rc=1 worktrees actually get reaped — the launchd-only installer never runs there.
+install-stale-worktree-reaper-systemd.sh
 install-stuck-pr-filer-launchd.sh
 install-syspolicyd-doctor-launchd.sh
 install-system-invariants-launchd.sh
@@ -173,3 +179,21 @@ install-oauth-refresh-systemd.sh
 install-almanac.sh
 # RESILIENT-1052 — anti-Memento fleet-health sentinel --user timer (per-node organ; also lands via chump-node-install common_organs)
 install-fleet-health-sentinel.sh
+# INFRA-7303 (INFRA-6804 / INFRA-3631 slice) — situational PostgREST
+# binary+conf install, called on-demand by install-gap-substrate.sh's
+# broader postgres+postgrest provisioning flow, not a universal
+# fresh-bootstrap requirement.
+install-postgrest.sh
+
+# RESILIENT-1436 — systemd --user supervision for CJ's hand-placed
+# ~/cj-worker-run.sh / cj-disk-monitor-run.sh / cj-sync-run.sh, a
+# host-specific asset per organ-manifest.txt's file: requires= idiom. Skips
+# cleanly (no-op) on any node where those run-scripts don't exist, so it is
+# situational/opt-in, not a universal fresh-bootstrap requirement.
+install-cj-core-organs.sh
+
+# INFRA-1495 — hourly state-db-yaml-sync.sh cadence. Defaults to --dry-run
+# (report-only); the operator opts into --apply once the sweep has run clean
+# for a while (CHUMP_STATE_DB_YAML_SYNC_MODE). Not a universal fresh-bootstrap
+# requirement — YAML mirrors are optional post-INFRA-760.
+install-state-db-yaml-sync-launchd.sh

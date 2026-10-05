@@ -26,9 +26,52 @@ static CACHE: LazyLock<RwLock<Option<RateLimitCache>>> = LazyLock::new(|| RwLock
 /// Poll interval for the background task.
 const POLL_INTERVAL: Duration = Duration::from_secs(60);
 
+/// RESILIENT-018: in a GitHub Actions job that never wired GH_TOKEN/
+/// GITHUB_TOKEN, `gh api rate_limit` fails on every poll (e2e-pwa /
+/// INFRA-1846 precedent). Skip the subprocess entirely in that case and emit
+/// an ambient signal instead of retrying a call that cannot succeed.
+fn gh_token_missing_in_ci() -> bool {
+    std::env::var("GITHUB_ACTIONS")
+        .map(|v| v == "true")
+        .unwrap_or(false)
+        && std::env::var("GH_TOKEN").unwrap_or_default().is_empty()
+        && std::env::var("GITHUB_TOKEN").unwrap_or_default().is_empty()
+}
+
+/// Best-effort write of `kind=ci_gh_token_missing_skip` to ambient.jsonl.
+/// Never panics or blocks the caller on I/O failure.
+fn emit_gh_token_missing_skip() {
+    let path = std::env::var("CHUMP_AMBIENT_LOG").unwrap_or_else(|_| {
+        let root = std::env::var("REPO_ROOT").unwrap_or_else(|_| ".".to_string());
+        format!("{root}/.chump-locks/ambient.jsonl")
+    });
+    let ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+    let workflow_name = std::env::var("GITHUB_WORKFLOW").unwrap_or_else(|_| "unknown".to_string());
+    let job_name = std::env::var("GITHUB_JOB").unwrap_or_else(|_| "unknown".to_string());
+    let line = format!(
+        r#"{{"ts":"{ts}","kind":"ci_gh_token_missing_skip","workflow_name":"{workflow_name}","job_name":"{job_name}"}}"#
+    ) + "\n";
+    let _ = std::fs::OpenOptions::new()
+        .create(true)
+        .append(true)
+        .open(&path)
+        .and_then(|mut f| {
+            use std::io::Write;
+            f.write_all(line.as_bytes())
+        });
+}
+
 /// Fetch `gh api rate_limit` synchronously (blocking). Called from the
 /// background tokio task via `spawn_blocking`.
 fn fetch_rate_limit_blocking() -> serde_json::Value {
+    if gh_token_missing_in_ci() {
+        emit_gh_token_missing_skip();
+        return serde_json::json!({
+            "github_rate_limit": serde_json::Value::Null,
+            "github_rate_limit_error": "skipped: GH_TOKEN/GITHUB_TOKEN not set in GitHub Actions job",
+        });
+    }
+
     // AC4 (INFRA-2484): bypass the chump_gh shim so this telemetry-only poll
     // does not itself trigger rate-recording or exhausted-emit cycles.
     // CHUMP_GH_NO_SHIM=1   — skip the PATH shim's recording path entirely.
@@ -223,6 +266,16 @@ pub fn snapshot_json() -> serde_json::Value {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::{Mutex, MutexGuard, OnceLock};
+
+    /// RESILIENT-018: serializes tests that mutate the GH_TOKEN/GITHUB_TOKEN/
+    /// GITHUB_ACTIONS env vars, mirroring the pattern in budget_tracker.rs.
+    fn env_test_lock() -> MutexGuard<'static, ()> {
+        static LOCK: OnceLock<Mutex<()>> = OnceLock::new();
+        LOCK.get_or_init(|| Mutex::new(()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+    }
 
     #[test]
     fn format_unix_utc_epoch() {
@@ -242,5 +295,64 @@ mod tests {
         let snap = snapshot_json();
         // Before any fetch the error field must be present.
         assert!(snap.get("github_rate_limit_error").is_some());
+    }
+
+    #[test]
+    fn gh_token_missing_in_ci_true_when_actions_and_no_token() {
+        let _guard = env_test_lock();
+        std::env::set_var("GITHUB_ACTIONS", "true");
+        std::env::remove_var("GH_TOKEN");
+        std::env::remove_var("GITHUB_TOKEN");
+        assert!(gh_token_missing_in_ci());
+        std::env::remove_var("GITHUB_ACTIONS");
+    }
+
+    #[test]
+    fn gh_token_missing_in_ci_false_when_token_present() {
+        let _guard = env_test_lock();
+        std::env::set_var("GITHUB_ACTIONS", "true");
+        std::env::set_var("GH_TOKEN", "fake-token");
+        assert!(!gh_token_missing_in_ci());
+        std::env::remove_var("GITHUB_ACTIONS");
+        std::env::remove_var("GH_TOKEN");
+    }
+
+    #[test]
+    fn gh_token_missing_in_ci_false_outside_actions() {
+        let _guard = env_test_lock();
+        std::env::remove_var("GITHUB_ACTIONS");
+        std::env::remove_var("GH_TOKEN");
+        std::env::remove_var("GITHUB_TOKEN");
+        assert!(!gh_token_missing_in_ci());
+    }
+
+    #[test]
+    fn fetch_rate_limit_blocking_skips_when_token_missing_in_ci() {
+        let _guard = env_test_lock();
+        let tmp = tempfile::tempdir().unwrap();
+        let ambient = tmp.path().join("ambient.jsonl");
+        std::env::set_var("GITHUB_ACTIONS", "true");
+        std::env::set_var("GITHUB_WORKFLOW", "ci");
+        std::env::set_var("GITHUB_JOB", "e2e");
+        std::env::set_var("CHUMP_AMBIENT_LOG", ambient.to_str().unwrap());
+        std::env::remove_var("GH_TOKEN");
+        std::env::remove_var("GITHUB_TOKEN");
+
+        let result = fetch_rate_limit_blocking();
+        assert!(result["github_rate_limit"].is_null());
+        assert_eq!(
+            result["github_rate_limit_error"].as_str().unwrap(),
+            "skipped: GH_TOKEN/GITHUB_TOKEN not set in GitHub Actions job"
+        );
+
+        let contents = std::fs::read_to_string(&ambient).unwrap();
+        assert!(contents.contains("\"kind\":\"ci_gh_token_missing_skip\""));
+        assert!(contents.contains("\"workflow_name\":\"ci\""));
+        assert!(contents.contains("\"job_name\":\"e2e\""));
+
+        std::env::remove_var("GITHUB_ACTIONS");
+        std::env::remove_var("GITHUB_WORKFLOW");
+        std::env::remove_var("GITHUB_JOB");
+        std::env::remove_var("CHUMP_AMBIENT_LOG");
     }
 }

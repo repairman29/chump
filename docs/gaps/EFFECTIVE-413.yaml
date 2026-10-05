@@ -1,7 +1,7 @@
 - id: EFFECTIVE-413
   domain: EFFECTIVE
   title: wire ALL inference slots — 25 free tool-capable models unreachable, and a paid sub never loads
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
@@ -12,5 +12,7 @@
     - "WIRE THE 25 FREE ZEN MODELS, all tool_call=true. Highest value: longcat-2.0-free and mimo-v2-pro-free (~1M context, free), grok-code (free, 256K in/out, purpose-built coder), and deepseek-v4-flash-free — the FREE sibling of the uncapped paid slot 14, which should absorb most of its traffic at zero cost"
     - "ALSO WIRE the three providers holding live keys with no slot: xai (a ready template already sits unused in .env.example:430-433), openai-direct, deepseek-direct. And decide on the two disabled slots: together (3) and github-models (7), the latter of which has a literal unexpanded '' as its key"
     - "DEDUPE slot 4 vs slot 8: both declare model=gemini-2.5-flash on the same base at the SAME priority=12, so ordering between them is arbitrary. Slot 4 claims RPD 86400 (~36x the real free quota) and CONTEXT_K=128 for a 1M-context model, and carries no privacy tier while its twin is marked trains. Slot 4 is a stale hand-entry"
+  closed_date: '2026-09-08'
+  closed_pr: 4571
   outcome_id: CHUMPOS
 

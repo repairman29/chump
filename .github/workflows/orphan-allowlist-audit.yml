@@ -1,0 +1,66 @@
+# INFRA-5751 (INFRA-1861 slice): CI-side trigger for the orphan-allowlist
+# daemon (INFRA-5426, scripts/coord/orphan-allowlist-daemon.sh).
+#
+# The daemon's own logic (detect + rescue) already exists and is smoke-tested
+# by scripts/ci/test-orphan-allowlist-daemon.sh — what was missing was a CI
+# run ON MAIN that actually invokes it. The PR-time strict gate
+# (audit.yml's "EVENT_REGISTRY coverage" step) should catch nearly every
+# register-without-emit orphan before it lands, but a merge-queue race,
+# emergency merge, or conflict-resolution clobber can still let one slip
+# through — this workflow is the safety net that watches main itself.
+#
+# On every push to main: runs the daemon in --once mode, which (1) compares
+# EVENT_REGISTRY.yaml's orphan set against scripts/ci/event-registry-reserved.txt
+# (single source of truth via test-event-registry-coverage.sh's report mode —
+# AC1), and (2) emits kind=audit_orphan_landed with {orphan_kind, sha} for any
+# orphan not yet tracked or reserved (AC2), then attempts to open a
+# batch-allowlist PR for it.
+#
+# Needs an App token (not secrets.GITHUB_TOKEN) for the same reason
+# pr-rescue.yml does: a PR opened with GITHUB_TOKEN doesn't fire downstream
+# `pull_request` workflow runs, so the auto-allowlist PR would never get CI
+# and could never auto-merge.
+
+name: orphan-allowlist-audit (INFRA-5751)
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: orphan-allowlist-audit
+  cancel-in-progress: false
+
+jobs:
+  audit:
+    name: detect + rescue EVENT_REGISTRY orphan drift on main
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/create-github-app-token@v3
+        id: app-token
+        with:
+          app-id: ${{ secrets.QUEUE_DRIVER_APP_ID }}
+          private-key: ${{ secrets.QUEUE_DRIVER_APP_PRIVATE_KEY }}
+
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+
+      - name: Run orphan-allowlist-daemon (detect + rescue)
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+        run: bash scripts/coord/orphan-allowlist-daemon.sh --once
+
+      - name: Upload ambient log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: orphan-allowlist-audit-ambient-log
+          path: .chump-locks/ambient.jsonl
+          if-no-files-found: ignore

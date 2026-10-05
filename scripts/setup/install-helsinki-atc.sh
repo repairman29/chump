@@ -74,12 +74,24 @@
 
 set -euo pipefail
 
-SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
-REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+# pwd -P (physical) not the logical pwd: organ-deploy invokes this installer via
+# a symlinked path (the hand-bootstrapped /home/ubuntu/Projects/chump ->
+# /home/ubuntu/chump), and a logical pwd would preserve that symlink in REPO_ROOT
+# — which then gets baked into every organ's WorkingDirectory/ExecStart, keeping
+# the bootstrap symlink permanently load-bearing (RESILIENT-1102 residue). The
+# organ-unit test computes its own REPO_ROOT with pwd -P for the same reason.
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd -P)"
+REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd -P)"
+REPO_ROOT="$(cd "$REPO_ROOT/.." && pwd -P)"
 AMBIENT_LOG="${NODE_AMBIENT:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
 LIB_AMBIENT="$REPO_ROOT/scripts/coord/lib/ambient-write.sh"
 [[ -f "$LIB_AMBIENT" ]] && source "$LIB_AMBIENT"
+# RESILIENT-1055: the ONE host-agnostic unit rewriter, shared with
+# chump-node-install.sh's fresh-node --role placer. Extracted verbatim from the
+# inline rewrite this script used to carry (byte-identical output, guarded by
+# scripts/ci/test-organ-unit-install-lib.sh) so both placers can never drift.
+LIB_ORGAN_UNIT="$REPO_ROOT/scripts/ops/lib/organ-unit-install-lib.sh"
+[[ -f "$LIB_ORGAN_UNIT" ]] && source "$LIB_ORGAN_UNIT"
 
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
@@ -97,14 +109,23 @@ emit() {  # kind, extra-json (no leading/trailing comma)
 SYSTEM_UNITS=(
   chump-pr-lander.service
   chump-pr-lander.timer
-  chump-armed-rebaser.service
-  chump-armed-rebaser.timer
+  # RESILIENT-1054/1055: chump-armed-rebaser is REMOVED from the roster. The
+  # cross-node rebaser swarm (armed-rebaser / armed-pr-rebaser / pr-auto-rebase)
+  # caused the merge-race — multiple nodes rebasing armed PRs reset each other's
+  # `verified`. chump-merge-serializer.timer is the SOLE merge driver now. The
+  # tracked scripts/dispatch/chump-armed-rebaser.{service,timer} files remain in
+  # the tree (nothing references them) but are neither copied nor enabled here.
   chump-board-cycle.service
   chump-board-cycle.timer
   chump-sla-scorecard.service
   chump-sla-scorecard.timer
   chump-organ-watchdog.service
   chump-organ-watchdog.timer
+  # RESILIENT-1098: apex watchdog-of-the-watchdog — cross-node peer heartbeat
+  # check. Watches OTHER nodes, not this one, so a whole-node wedge (this
+  # node's own organ-watchdog/organ-reconcile dead) is still caught by a peer.
+  chump-apex-watchdog.service
+  chump-apex-watchdog.timer
   chump-board-ceo-briefing.service
   chump-board-ceo-briefing.timer
   # RESILIENT-376: the Discord digest organ — twice-daily phone-readable
@@ -127,6 +148,14 @@ SYSTEM_UNITS=(
   # boots a fresh node WITH auto-draining (RUN-INSTALL mission).
   chump-rot-reaper.service
   chump-rot-reaper.timer
+  # RESILIENT-1190: the trunk-recovery reviver — the RECOVERY counterpart to
+  # RESILIENT-1188's systemic-red HOLD. On a trunk RED→GREEN recovery it reopens
+  # the PRs that were reaped as victims of the just-ended trunk-red (closed
+  # in-window, reaper-marked, green-underneath now) and re-arms their
+  # auto-merge. Both-rosters-required: reconcile reaps non-manifest units, so a
+  # SYSTEM_UNITS entry without the matching organ-manifest line would be undone.
+  chump-trunk-recovery-reviver.service
+  chump-trunk-recovery-reviver.timer
   # RESILIENT-318 / INFRA-2130: the Batched Merge Train (chump-integrator) — a
   # Mac-launchd-only organ ported to systemd. Batches up to 5 ready_to_ship gaps
   # through a preflight gate into ONE integration branch so CI runs once per
@@ -200,6 +229,13 @@ SYSTEM_UNITS=(
   # freshness for the almanac fusion-search organ on the Linux factory.
   chump-almanac-liveness.service
   chump-almanac-liveness.timer
+  # META-900 (Mirror in the OS, Phase A): the conversation-bus inbound
+  # ingester — tails Claude Code transcripts into chump_web_messages so the
+  # operator<->fleet conversation is legible from one store on the hub.
+  # Runs as the run-user (reads its ~/.claude, writes the repo db); NOT in
+  # the keep-root set.
+  chump-jeff-bus-ingest.service
+  chump-jeff-bus-ingest.timer
   # RESILIENT-365: wires the INFRA-249 recurring-gap-pattern-detector as a
   # live organ instead of a script only ever run by hand — was DARK/0 units,
   # human-ALERT-only, while 44 symptom PRs shipped in one night with 0 root
@@ -214,8 +250,57 @@ SYSTEM_UNITS=(
   # `gh pr update-branch` by hand. Linux port so every node self-heals.
   chump-cascade-unblock-detector.service
   chump-cascade-unblock-detector.timer
+  # RESILIENT-1058: wires the RESILIENT-1057 gap-store split-brain guard
+  # (scripts/coord/gap-store-single-source-check.sh) into a scheduled organ
+  # instead of a script only ever run by hand.
+  chump-gap-store-single-source-check.service
+  chump-gap-store-single-source-check.timer
+  # RESILIENT-1108 (umbrella RESILIENT-1103): the organ-success verifier — reads
+  # each manifest-enabled organ's last-run systemctl Result/ExecMainStatus and
+  # pages on any FAILED run. Rostered here (AND declared `enabled` in organ-
+  # manifest.txt) so it can never repeat the merged-not-running class it was
+  # built to catch: a unit in only ONE of the two rosters is either never
+  # installed (absent from this list) or never revivable (absent from the
+  # manifest). Both required; the RESILIENT-366 Roll-Call test enforces it.
+  chump-organ-success-verifier.service
+  chump-organ-success-verifier.timer
+  # chump-effect-verifier: RESILIENT-1109, the sibling that catches the
+  # exit-0-but-no-op class (organ-success-verifier only sees exit-FAIL).
+  # Same both-rosters-required discipline applies.
+  chump-effect-verifier.service
+  chump-effect-verifier.timer
+  # chump-node-converge (RESILIENT-1189): the node auto-converge organ — every
+  # 10 min it hard-resets this node's SOURCE checkout to origin/main so a merged
+  # BASH-organ fix actually reaches the iron. THE fix for the #1 systemic wound
+  # (merged != deployed): node-refresh-chump.sh's binary-SHA idempotency skip
+  # never resets the source when the binary is already current, so a bash-only
+  # merge (which never bumps the binary SHA) leaves every `bash scripts/…/foo.sh`
+  # organ running a stale script. Rostered here AND declared `enabled` in
+  # organ-manifest.txt — both-rosters-required (a unit in only ONE is either
+  # never installed or never revivable); the RESILIENT-366 Roll-Call test
+  # enforces it.
+  chump-node-converge.service
+  chump-node-converge.timer
+  # RESILIENT-1508: self-doctor/paramedic/conductor are the fleet's self-rescue
+  # organs — declared `enabled` in organ-manifest.txt (role=brain,
+  # requires=bin:chump) since their systemd port landed, but NEVER added to
+  # THIS roster (the RESILIENT-376 merged-not-running class again: a unit
+  # existing only on disk from a one-off `chump-node-install.sh --role brain`
+  # run as root, never re-deployed by the roster installer every other organ
+  # goes through). On cuphead that stray root run left the unit files pinned
+  # to a /root/.chumpnode checkout that was never actually built (empty bin/),
+  # so every tick hit exec: chump: not found (exit 127) with no self-rescue
+  # path for the fleet. Rostering them here makes this installer the single
+  # place that (re-)host-rewrites them to the box's real run-user + checkout,
+  # same as every other organ.
+  chump-self-doctor.service
+  chump-self-doctor.timer
+  chump-paramedic.service
+  chump-paramedic.timer
+  chump-conductor.service
+  chump-conductor.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
@@ -261,9 +346,83 @@ echo "== installing system units (pr-lander, armed-rebaser, sla-scorecard, board
 # /root/.chump and run as the wrong user (no git/ssh/cargo). Rewrite per-host on
 # copy so the SAME manifest wires correctly everywhere — this is what lets
 # organ-watchdog end the shipped-but-dark disease on any node, not just helsinki.
+#
+# RESILIENT-1446: a hub whose privileged placer/deploy runs as ROOT from a
+# ROOT-OWNED checkout (e.g. an Oracle hub brought up by a root install:
+# /root/.chumpnode/repo) must still emit units shaped for the node's real
+# worker/store identity, NOT root — otherwise the farmer + organs run as root
+# and read /root/.chump while the worker + canonical gap store + oauth token
+# live under the worker user, splitting the node's identity (the farmer writes
+# its heartbeat to /root/.chump, the worker reads /home/<user>/.chump -> gated
+# off RED -> fleet dark, RESILIENT-069). The node declares that identity in
+# ~/.chump/node.env's CHUMP_RUN_USER (chump-node-install.sh's write_node_env);
+# honor it here so a root-run deploy emits run-user-shaped units. An explicit
+# CHUMP_RUN_USER already in the environment still wins (test hook / override).
+if [[ -z "${CHUMP_RUN_USER:-}" ]]; then
+  _node_env="${CHUMP_STATE_DIR:-${HOME:-/root}/.chump}/node.env"
+  [[ -f "$_node_env" ]] && CHUMP_RUN_USER="$(grep -E '^(export )?CHUMP_RUN_USER=' "$_node_env" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_RUN_USER=//; s/^"(.*)"$/\1/')"
+  [[ -z "${CHUMP_RUN_USER:-}" ]] && unset CHUMP_RUN_USER
+fi
 RUN_USER="${CHUMP_RUN_USER:-$(stat -c %U "$REPO_ROOT" 2>/dev/null || echo root)}"
-RUN_HOME="$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6 || true)"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
-echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME"
+# CHUMP_INSTALL_ATC_RUN_HOME_OVERRIDE: test hook (mirrors the SYSTEMD_DIR /
+# SYSTEMCTL_BIN overrides above) so RESILIENT-1452's same-owner node-clone
+# retarget can be exercised hermetically in CI without depending on the real
+# invoking user's actual $HOME layout.
+RUN_HOME="${CHUMP_INSTALL_ATC_RUN_HOME_OVERRIDE:-$(getent passwd "$RUN_USER" 2>/dev/null | cut -d: -f6 || true)}"; [[ -z "$RUN_HOME" ]] && RUN_HOME="/home/$RUN_USER"
+
+# RESILIENT-1102: the repo path baked into every organ's WorkingDirectory/
+# ExecStart. It MUST be this box's REAL checkout — owned nodes live at
+# $HOME/chump (no Projects segment), and the pre-fix rewriter preserved a baked
+# `Projects/chump` suffix that pointed at a non-existent dir, so systemd killed
+# every organ at CHDIR (status=200/CHDIR) before it ran. Normally $REPO_ROOT is
+# exactly right (organ-deploy runs this installer from the persistent checkout).
+# The ONE exception is the INFRA-3598 class: a manual run from an ephemeral
+# .claude/worktrees/<gap>/ dir would bake a path that vanishes at session end,
+# reintroducing the same break — so when $REPO_ROOT looks ephemeral, fall back
+# to a stable on-disk checkout ($HOME/chump, then the legacy $HOME/Projects/chump,
+# then $HOME/chump-host) rather than the worktree.
+UNIT_REPO_ROOT="$REPO_ROOT"
+if [[ "$REPO_ROOT" == *"/.claude/worktrees/"* ]]; then
+  for _cand in "${RUN_HOME%/}/chump" "${RUN_HOME%/}/Projects/chump" "${RUN_HOME%/}/chump-host"; do
+    if [[ -e "$_cand/.git" ]]; then UNIT_REPO_ROOT="$_cand"; break; fi
+  done
+  echo "  NOTE: ephemeral worktree ($REPO_ROOT) — baking stable repo path $UNIT_REPO_ROOT into organ units"
+fi
+# RESILIENT-1446: if the checkout this installer runs from is owned by a
+# DIFFERENT user than the run-user (the split-identity hub: a root deploy from
+# /root/.chumpnode/repo but CHUMP_RUN_USER=<worker>), the run-user cannot cd
+# into that root-owned tree (WorkingDirectory -> 200/CHDIR) and $HOME-based
+# tools would read the wrong ~/.chump. Re-target the baked repo path to the
+# run-user's OWN checkout so every placed unit points at a tree the run-user
+# actually owns. Only re-target to a run-user-owned checkout that exists on
+# disk; a same-user fresh node (owner == run-user) is already correct and is
+# left untouched.
+#
+# RESILIENT-1452: the owner-mismatch guard above misses a SAME-owner variant —
+# a box that is both a chump-node-install.sh node (self-deploy organ runs from
+# $NODE_DIR/repo, default ~/.chumpnode/repo, owned by the run-user) AND the
+# sole hub (a real checkout at $RUN_HOME/chump the operator actually works in,
+# also owned by the run-user). Owner equality made the guard above a no-op, so
+# every organ — including the farmer — got placed shaped for the shadow node
+# clone instead of the hub, and only hand-applied host drop-ins
+# (chump-farmer.service.d/zz-ubuntu-home.conf, chump-farmer.timer.d/zz-refire.conf)
+# pointed it back at the real repo. Detect the node-clone shape by path
+# (".../.chumpnode/repo", chump-node-install.sh's NODE_DIR/repo default) and
+# retarget to the hub checkout even when the owner already matches, so a fresh
+# reconcile reproduces the hand-fixed state with no drop-ins.
+_checkout_owner="$(stat -c %U "$UNIT_REPO_ROOT" 2>/dev/null || echo "")"
+_is_node_clone=0
+[[ "$UNIT_REPO_ROOT" == */.chumpnode/repo ]] && _is_node_clone=1
+if [[ -n "$_checkout_owner" ]] && { [[ "$_checkout_owner" != "$RUN_USER" ]] || [[ "$_is_node_clone" == 1 ]]; }; then
+  for _cand in "${RUN_HOME%/}/chump" "${RUN_HOME%/}/Projects/chump" "${RUN_HOME%/}/chump-host"; do
+    if [[ -e "$_cand/.git" && "$(stat -c %U "$_cand" 2>/dev/null)" == "$RUN_USER" && "$_cand" != "$UNIT_REPO_ROOT" ]]; then
+      echo "  NOTE: checkout $REPO_ROOT owned by $_checkout_owner (node-clone=$_is_node_clone) — baking run-user checkout $_cand into organ units (RESILIENT-1446/RESILIENT-1452)"
+      UNIT_REPO_ROOT="$_cand"
+      break
+    fi
+  done
+fi
+echo "  host-rewrite target: User=$RUN_USER HOME=$RUN_HOME repo=$UNIT_REPO_ROOT"
 mkdir -p "$SYSTEMD_DEST_DIR"
 CHANGED_UNITS=()
 # RESILIENT-374: organs whose JOB is the privileged system-unit deploy itself
@@ -274,9 +433,22 @@ CHANGED_UNITS=()
 # what left CJ's merged organ units DARK (organ-reconcile/organ-watchdog both
 # log "needs root ... skipping" every cycle). Keep this narrow set root; paths
 # are still /root-rewritten so they find the repo on an owned node.
+#
+# RESILIENT-1327: chump-organ-reconcile belongs in this set too.
+# organ-reconcile.sh's own guard (`id -u != 0` -> `organ_reconcile_skipped
+# reason=not_root`) proves it needs root to write /etc/systemd/system, exactly
+# like organ-deploy — but it was missing from this exemption, so the generic
+# host-rewrite demoted it to the run-user on Oracle nodes cuphead/mugman
+# (User=ubuntu). The unit ran every cycle but silently no-op'd instead of
+# converging systemd state to the manifest — a latent enforcement hole masked
+# only because RESILIENT-1309 made the role-aware health-sentinel the actual
+# resurrector on muscle nodes. Fix it at the source so reconcile enforces the
+# manifest again wherever it's deployed.
 declare -A _KEEP_ROOT_ORGANS=(
   [chump-organ-deploy.service]=1
   [chump-organ-deploy.timer]=1
+  [chump-organ-reconcile.service]=1
+  [chump-organ-reconcile.timer]=1
 )
 for unit in "${SYSTEM_UNITS[@]}"; do
   src="$REPO_ROOT/scripts/dispatch/$unit"
@@ -286,60 +458,15 @@ for unit in "${SYSTEM_UNITS[@]}"; do
     exit 1
   fi
   tmp="$(mktemp)"
-  # RESILIENT-353 / INFRA-3647 / RESILIENT-1051 host-rewrite. Tracked units are
-  # NOT all helsinki-shaped (User=root, HOME=/root) — several (e.g.
-  # chump-nba-dispatch.service, chump-gap-drain.service) are CJ-native
-  # (User=jeff, /home/jeff/... paths), and a source machine authoring a NEW
-  # unit could bake in any other user's home (e.g. /home/ubuntu, this box).
-  # A rewrite hardcoded to "/root" only fixes the root-shaped half of the
-  # roster and ships every OTHER source path verbatim onto a third node,
-  # producing a WorkingDirectory/HOME that doesn't exist there -> CHDIR/127
-  # on every cycle. Detect the unit's OWN baked-in source user (its `User=`
-  # line; default root when absent, matching the historical helsinki shape)
-  # and rewrite THAT home, not a hardcoded one, so the same manifest wires
-  # correctly regardless of which machine authored the tracked unit:
-  #   s#$SRC_HOME/#...#g  -> path PREFIXES ($SRC_HOME/Projects, $SRC_HOME/.chump, ...)
-  #   s#=$SRC_HOME$#...#  -> a BARE $SRC_HOME as the WHOLE value of an
-  #                      assignment, the class the prefix rule silently missed.
-  #                      Chiefly `Environment=HOME=/root` (no trailing slash):
-  #                      it survived the prefix sed, so on an owned node HOME
-  #                      stayed /root even as User= flipped to jeff, and every
-  #                      tool read /root/.config/gh, /root/.almanac, cwd=/ and
-  #                      failed CLOSED while reporting fake-perfect ("instruments
-  #                      lie" keystone). Also covers a bare WorkingDirectory=$SRC_HOME.
-  _src_user="$(grep -m1 -E '^User=' "$src" | cut -d= -f2 || true)"
-  [[ -z "$_src_user" ]] && _src_user="root"
-  if [[ "$_src_user" == "root" ]]; then
-    _src_home="/root"
-  else
-    _src_home="$(getent passwd "$_src_user" 2>/dev/null | cut -d: -f6 || true)"
-    [[ -z "$_src_home" ]] && _src_home="/home/$_src_user"
-  fi
-  sed -e "s#${_src_home%/}/#${RUN_HOME%/}/#g" \
-      -e "s#=${_src_home%/}\$#=${RUN_HOME%/}#" \
-      -e "s#^User=${_src_user}\$#User=${RUN_USER}#" "$src" > "$tmp"
-  # Host-agnostic runtime context for EVERY generated organ, applied uniformly
-  # (one pattern, not per-service): run as the repo-owning user (git/ssh/cargo),
-  # with that user's real HOME, ~/.cargo/bin on PATH, and cwd at the repo root,
-  # so cwd-based tools (chump gap, gh repo view) don't run from / and
-  # $HOME-based tools (gh, almanac) read the run-user's config, on any host.
-  if grep -q "^\[Service\]" "$tmp"; then
-    _repo_on_host="${RUN_HOME%/}/Projects/chump"
-    grep -q "^User=" "$tmp"             || sed -i "/^\[Service\]/a User=${RUN_USER}" "$tmp"
-    grep -q "^Environment=HOME=" "$tmp" || sed -i "/^\[Service\]/a Environment=HOME=${RUN_HOME%/}" "$tmp"
-    grep -q "^WorkingDirectory=" "$tmp" || sed -i "/^\[Service\]/a WorkingDirectory=${_repo_on_host}" "$tmp"
-    grep -q "^Environment=PATH=" "$tmp" || sed -i "/^\[Service\]/a Environment=PATH=${RUN_HOME%/}/.cargo/bin:/usr/local/bin:/usr/bin:/bin" "$tmp"
-  fi
-  # RESILIENT-374: re-assert User=root for keep-root organs. The rewrite +
-  # injection above may have flipped/added User=<run-user>; a deploy organ must
-  # stay root. Narrow, explicit, and the ONLY place a unit is forced back to root.
-  if [[ -n "${_KEEP_ROOT_ORGANS[$unit]:-}" ]]; then
-    if grep -q "^User=" "$tmp"; then
-      sed -i "s#^User=.*#User=root#" "$tmp"
-    else
-      sed -i "/^\[Service\]/a User=root" "$tmp"
-    fi
-  fi
+  # RESILIENT-353 / INFRA-3647 / RESILIENT-1051 host-rewrite — now the shared
+  # organ_unit_host_rewrite (scripts/ops/lib/organ-unit-install-lib.sh), the
+  # SAME rewriter chump-node-install.sh's --role placer uses. It detects each
+  # unit's OWN baked-in source user + home, rewrites path prefixes AND a bare
+  # `Environment=HOME=/root` (the "instruments lie" keystone), injects the
+  # uniform host-agnostic runtime context (User/HOME/WorkingDirectory/PATH), and
+  # (for the keep-root deploy organ) re-asserts User=root.
+  _keep_root=0; [[ -n "${_KEEP_ROOT_ORGANS[$unit]:-}" ]] && _keep_root=1
+  organ_unit_host_rewrite "$src" "$tmp" "$RUN_USER" "$RUN_HOME" "$_keep_root" "$UNIT_REPO_ROOT"
   if [[ ! -f "$dest" ]] || ! cmp -s "$tmp" "$dest"; then
     CHANGED_UNITS+=("$unit")
   fi
@@ -390,6 +517,22 @@ fi
 # fails, since an operator running this by hand wants to see the error stop
 # the script rather than have it silently continue.
 for t in "${SYSTEM_TIMERS[@]}"; do
+  # RESILIENT-1508: refuse to enable a timer whose companion .service's
+  # ExecStart binary does not resolve for that unit's own User/PATH — the
+  # exact exit-127 class (cuphead self-doctor/paramedic/conductor, stuck
+  # pointing at an abandoned /root/.chumpnode with no binary ever built
+  # there) that otherwise only surfaces by a human reading the journal.
+  svc_unit="${t%.timer}.service"
+  svc_path="$SYSTEMD_DEST_DIR/$svc_unit"
+  if [[ -f "$svc_path" ]]; then
+    resolve_reason=""
+    if ! organ_unit_execstart_resolves "$svc_path" resolve_reason; then
+      echo "ERROR: $svc_unit ExecStart does not resolve ($resolve_reason) — refusing to enable $t" >&2
+      emit organ_units_deploy_failed "\"reason\":\"execstart_unresolved\",\"unit\":\"$t\",\"detail\":\"$resolve_reason\""
+      [[ "$AUTO" == "1" ]] && continue
+      exit 1
+    fi
+  fi
   if ! "$SYSTEMCTL_BIN" enable --now "$t" 2>&1; then
     echo "ERROR: systemctl enable --now $t failed" >&2
     emit organ_units_deploy_failed "\"reason\":\"systemctl_enable_failed\",\"unit\":\"$t\""

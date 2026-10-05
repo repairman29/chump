@@ -629,6 +629,72 @@ pub fn verdict_from_exit(code: Option<i32>) -> Verdict {
     }
 }
 
+/// Recursively collect `.py` files under `dir`, skipping `.git` and common venv dirs — small,
+/// bounded clones (bootstrap scaffolds), so no need for a walkdir dependency.
+fn collect_py_files(dir: &Path, out: &mut Vec<std::path::PathBuf>) {
+    let Ok(rd) = std::fs::read_dir(dir) else {
+        return;
+    };
+    for entry in rd.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            let name = path.file_name().and_then(|n| n.to_str()).unwrap_or("");
+            if matches!(
+                name,
+                ".git" | "venv" | ".venv" | "__pycache__" | "node_modules"
+            ) {
+                continue;
+            }
+            collect_py_files(&path, out);
+        } else if path.extension().is_some_and(|x| x == "py") {
+            out.push(path);
+        }
+    }
+}
+
+/// EFFECTIVE-351: fail fast on a syntactically-invalid artifact, before spending time on the
+/// (often much slower) acceptance `check:` command — and feed the parser error back in the
+/// score detail. Guards the tool-storm-truncation failure mode seen 2026-08-02: an agent
+/// aborted mid-write during a git_commit storm and shipped rename_photos.py with an unclosed
+/// `print(` paren, which the pytest/venv acceptance command couldn't distinguish from a real
+/// test failure. Only applies to `stack: python` tracks; other stacks return None (no-op).
+fn syntax_precheck(stack: &str, cwd: &Path) -> Option<(Verdict, String)> {
+    if !stack.eq_ignore_ascii_case("python") {
+        return None;
+    }
+    let mut py_files = Vec::new();
+    collect_py_files(cwd, &mut py_files);
+    py_files.sort();
+    for file in &py_files {
+        let output = Command::new("python3")
+            .arg("-m")
+            .arg("py_compile")
+            .arg(file)
+            .output();
+        match output {
+            Ok(o) if !o.status.success() => {
+                let err: String = String::from_utf8_lossy(&o.stderr)
+                    .lines()
+                    .last()
+                    .unwrap_or("")
+                    .chars()
+                    .take(200)
+                    .collect();
+                let rel = file.strip_prefix(cwd).unwrap_or(file).display();
+                return Some((
+                    Verdict::Fail,
+                    format!("syntax pre-check failed: {rel}: {err}"),
+                ));
+            }
+            // Ok(status success) => keep checking remaining files.
+            // Err(_) => python3 unavailable — don't block scoring on a missing interpreter,
+            // fall through to the acceptance command as before.
+            _ => {}
+        }
+    }
+    None
+}
+
 /// Grade a `command` acceptance: run the track's `check` as a shell command in `cwd` (the repo's
 /// local clone). PASS iff it exits 0. These commands come from OUR own in-repo track YAMLs — a
 /// test harness, not untrusted input. UNKNOWN if there's no clone to run in (drive a lap first).
@@ -1587,7 +1653,13 @@ pub fn score_track(track: &Track, drive_verdict: Option<(Verdict, String)>) -> L
         (None, "command") => {
             let d = local_clone_dir(&track.repo);
             let cwd = if d.exists() { Some(d) } else { None };
-            grade_command(&track.acceptance.check, cwd.as_deref())
+            match cwd
+                .as_deref()
+                .and_then(|dir| syntax_precheck(&track.stack, dir))
+            {
+                Some(fail) => fail,
+                None => grade_command(&track.acceptance.check, cwd.as_deref()),
+            }
         }
         (None, other) => (
             Verdict::Unknown,
@@ -2555,5 +2627,46 @@ budget:
         assert_eq!(grade_command("true", None).0, Verdict::Unknown);
         // empty check → UNKNOWN
         assert_eq!(grade_command("   ", Some(&tmp)).0, Verdict::Unknown);
+    }
+
+    /// EFFECTIVE-351: fail fast on a syntactically-invalid python artifact — the
+    /// tool-storm-truncation regression class (unclosed paren from an aborted mid-write).
+    #[test]
+    fn syntax_precheck_catches_invalid_python_before_scoring() {
+        let dir = std::env::temp_dir().join(format!(
+            "chump-bench-syntax-precheck-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+
+        // valid python → no precheck failure, falls through to the acceptance command
+        std::fs::write(dir.join("ok.py"), "print('fine')\n").unwrap();
+        assert_eq!(syntax_precheck("python", &dir), None);
+
+        // truncated print( — the exact failure mode from the 2026-08-02 git_commit storm
+        std::fs::write(dir.join("broken.py"), "print('oops'\n").unwrap();
+        let result = syntax_precheck("python", &dir);
+        assert!(result.is_some(), "unclosed paren must fail the precheck");
+        let (verdict, detail) = result.unwrap();
+        assert_eq!(verdict, Verdict::Fail);
+        assert!(
+            detail.contains("syntax pre-check failed"),
+            "detail should feed the parser error back: {detail}"
+        );
+
+        // non-python stacks are a no-op — precheck only applies where we can compile-check
+        std::fs::write(dir.join("broken.js"), "function( {\n").unwrap();
+        let js_dir = std::env::temp_dir().join(format!(
+            "chump-bench-syntax-precheck-js-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&js_dir);
+        std::fs::create_dir_all(&js_dir).unwrap();
+        std::fs::write(js_dir.join("broken.js"), "function( {\n").unwrap();
+        assert_eq!(syntax_precheck("javascript", &js_dir), None);
+
+        let _ = std::fs::remove_dir_all(&dir);
+        let _ = std::fs::remove_dir_all(&js_dir);
     }
 }

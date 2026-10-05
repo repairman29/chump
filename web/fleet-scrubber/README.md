@@ -17,19 +17,21 @@ bash scripts/dev/chump-fleet-view.sh --fixtures
 open "web/fleet-scrubber/index.html?fixtures=1"
 ```
 
-### Live mode (requires chump-fleet-server INFRA-2175)
+### Live mode (requires chump-fleet-server)
 
 ```bash
-# Start the fleet server (INFRA-2175)
-chump fleet server start   # or however INFRA-2175 exposes this
+# Start the fleet server (crates/chump-fleet-server, default port 7070)
+chump-fleet-server
 
 # Open the scrubber
-chump fleet view
+bash scripts/dev/chump-fleet-view.sh
 # equivalent to: open http://localhost:7070/scrubber
 ```
 
-The server (INFRA-2175) must mount a static-file route at `/scrubber/*` serving
-from `web/fleet-scrubber/`. See INFRA-2176 AC interpretations for details.
+The server mounts this directory as a static-file route at `/scrubber` (see
+`crates/chump-fleet-server/src/routes.rs`, INFRA-2176), served from the same
+origin as the `/api/*` routes the page reads — so no CORS and no separate
+process. Regression-guarded by `crates/chump-fleet-server/tests/scrubber_static.rs`.
 
 ## UI overview
 

@@ -110,6 +110,27 @@ def _ensure_schema(conn: sqlite3.Connection) -> None:
         );
         CREATE INDEX IF NOT EXISTS check_runs_sha
             ON check_runs(head_sha);
+
+        -- INFRA-3833: append-only log of every pr_state write, tagged by
+        -- which receiver wrote it. The Rust chump-webhook-receiver writes
+        -- the same table (source='rust') from
+        -- crates/chump-github-cache/src/webhook.rs. Both receivers write
+        -- the SAME pr_state row during the 14-day parallel-run validation
+        -- window (INFRA-2062 AC1), so only this log preserves each
+        -- receiver's independent view for
+        -- scripts/ops/github-cache-divergence-audit.sh to diff.
+        CREATE TABLE IF NOT EXISTS pr_state_write_log (
+            id                  INTEGER PRIMARY KEY AUTOINCREMENT,
+            number              INTEGER NOT NULL,
+            source              TEXT NOT NULL,
+            mergeable_state     TEXT,
+            auto_merge_enabled  INTEGER NOT NULL DEFAULT 0,
+            draft               INTEGER NOT NULL DEFAULT 0,
+            title               TEXT,
+            written_at          TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS pr_state_write_log_lookup
+            ON pr_state_write_log(number, source, written_at);
         """
     )
     conn.commit()
@@ -191,10 +212,19 @@ def _notify_operator_escalation(kind: str, message: str) -> None:
 
 
 def _extract_gap_ids(pr: dict) -> list[str]:
-    """Extract gap IDs from PR title + body.
+    """Extract gap IDs from the PR title only.
 
-    Looks for patterns like 'INFRA-1234' or 'CREDIBLE-001' anywhere in the
-    PR title or body. Returns a deduped list preserving first-seen order.
+    Looks for patterns like 'INFRA-1234' or 'CREDIBLE-001' in the PR title
+    (an explicit 'Closes: ID' trailer written INTO the title is caught by
+    the same pattern — no separate body scan is needed or performed).
+
+    CREDIBLE-1072: the PR body is never scanned. A gap ID that appears only
+    in the body (prose, an AC cross-reference, a `Closes:` trailer) must NOT
+    be extracted here — that class of over-match previously affected the
+    closure path too (see _extract_gap_ids_for_closure/CREDIBLE-268) and this
+    function is now held to the same title-only discipline.
+
+    Returns a deduped list preserving first-seen order.
 
     Used by _auto_release_sibling_leases (lease release is non-destructive —
     freeing a lease that cites a gap in passing is harmless). NOT used by
@@ -204,14 +234,16 @@ def _extract_gap_ids(pr: dict) -> list[str]:
     import re
 
     pattern = re.compile(r"\b([A-Z][A-Z-]+-\d+)\b")
+
     seen: set[str] = set()
     ordered: list[str] = []
-    for field in ("title", "body"):
-        text = pr.get(field) or ""
-        for match in pattern.findall(text):
-            if match not in seen:
-                seen.add(match)
-                ordered.append(match)
+
+    title = pr.get("title") or ""
+    for match in pattern.findall(title):
+        if match not in seen:
+            seen.add(match)
+            ordered.append(match)
+
     return ordered
 
 
@@ -373,6 +405,9 @@ def _auto_flip_gaps_done(pr: dict, payload: dict) -> int:
     chump_bin = os.environ.get("CHUMP_BIN", "chump")
     flipped = 0
     for gid in gap_ids:
+        log.info("CREDIBLE-1073: invoking 'chump gap ship %s --closed-pr %s' "
+                  "(PROOF-OF-MERGE guard INFRA-1392 applies) for merged PR #%s",
+                  gid, pr_number, pr_number)
         try:
             result = subprocess.run(
                 [chump_bin, "gap", "ship", gid,
@@ -707,6 +742,25 @@ def _upsert_pr(conn: sqlite3.Connection, pr: dict, payload: dict) -> None:
             now,
             json.dumps(payload),
             merge_state_status,
+        ),
+    )
+    # INFRA-3833: record this receiver's view separately from the
+    # canonical row so github-cache-divergence-audit.sh can diff it
+    # against the Rust receiver's writes during the parallel-run
+    # validation window.
+    conn.execute(
+        """
+        INSERT INTO pr_state_write_log
+            (number, source, mergeable_state, auto_merge_enabled, draft, title, written_at)
+        VALUES (?, 'python', ?, ?, ?, ?, ?)
+        """,
+        (
+            pr.get("number"),
+            merge_state_status,
+            1 if pr.get("auto_merge") else 0,
+            1 if pr.get("draft") else 0,
+            pr.get("title"),
+            now,
         ),
     )
     conn.commit()

@@ -14,6 +14,8 @@ metadata: {}
 **I want my claim to be atomic across NATS-KV + file-lock + ambient signals, with race detection that fails fast**,
 **so that two workers never end up editing the same gap and producing conflicting PRs that waste both their cycles plus operator firefighting**.
 
+## When to Use
+
 ## When this skill applies
 
 Trigger this skill whenever you are about to:
@@ -21,6 +23,12 @@ Trigger this skill whenever you are about to:
 - Set up a `.chump/worktrees/<name>` or `.claude/worktrees/<name>` linked worktree
 - Acquire a lease in `.chump-locks/<session>.json`
 - Pick a gap suggested by `chump gap list`, `chump gap pickable`, or planner output
+
+## Quick Reference
+
+Before claiming a gap: run `chump gap preflight`, scan for sibling leases in
+`.chump-locks/*.json` and `ambient.jsonl`, then `chump claim --paths <CSV>`,
+then verify exactly one lease (yours) exists.
 
 ## Procedure
 

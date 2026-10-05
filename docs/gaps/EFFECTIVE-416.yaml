@@ -1,12 +1,14 @@
 - id: EFFECTIVE-416
   domain: EFFECTIVE
   title: "onboard: 'no readable intent documents' on repos that HAVE them (olive has CLAUDE.md/MANIFESTO.md/README.md/docs/*.md) — blocks autonomous scout"
-  status: open
+  status: done
   priority: P2
   effort: m
   acceptance_criteria:
     - "The change described by \"'no readable intent documents' on repos that HAVE them (olive has CLAUDE.md/MANIFESTO.md/README.md/docs/*.md) — blocks autonomous scout\" is implemented in the relevant EFFECTIVE code path(s)."
     - At least one test (cargo test or scripts/ci/test-*.sh) proves the new behavior and fails without the change.
     - cargo fmt + clippy --all-targets -D warnings + check pass; no regression to existing tests.
+  closed_date: '2026-09-08'
+  closed_pr: 4577
   outcome_id: CHUMPOS
 

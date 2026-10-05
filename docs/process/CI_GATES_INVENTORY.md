@@ -26,10 +26,20 @@
 > CHUMP_GENERATE_INVENTORY=docs/process/CI_GATES_GENERATED_INVENTORY.md \
 >   bash scripts/ci/test-preflight-ci-parity.sh
 > ```
-> As of the last regeneration: **339 gate steps scanned, 0 MISSING** (all
+> As of the last regeneration: **369 gate steps scanned, 0 MISSING** (all
 > have a mirror, a Tier-D reason, or an allowlist entry) — see that file's
 > "MISSING preflight equivalents" section for the live AC-2 list. When that
 > section is non-empty, file a gap per entry and add it to Tier C below.
+>
+> **INFRA-5428 verification (2026-09-25).** Re-ran the regeneration command
+> above to confirm the 3 acceptance criteria this gap tracks are still true:
+> `chump preflight --scope all` runs and enumerates every gate (AC1); the
+> generated inventory above cross-references each CI gate step against its
+> preflight mirror, Tier-D entry, or exceptions-file allowlist (AC2); and
+> `scripts/ci/test-preflight-ci-parity.sh` is wired into `ci.yml`'s
+> `fast-checks` job as a strict-fail step, so drift fails CI (AC3). The
+> checked-in generated inventory had drifted (339 → 369 gate steps) since
+> the last regeneration — refreshed in this same change.
 
 ## Reading guide
 
@@ -106,6 +116,7 @@ Documented for completeness; do **not** file follow-ups.
 | commit-msg docs-delta trailer check | INFRA-1969/INFRA-3379 — `test-docs-delta-commit-msg.sh` validates the commit-msg git hook itself; runs as a `commit-msg` hook, not a preflight gate — mirroring would duplicate hook logic rather than test something preflight doesn't already cover |
 | gap-reserve concurrency | INFRA-021/301/INFRA-3379 — `test-gap-reserve-concurrency.sh` requires a freshly `cargo build`-ed `chump` binary on `PATH`; the parallel-claim race it tests only reproduces against the compiled binary, too slow for the preflight fast loop |
 | gap-reserve ID zero-padding | INFRA-080/INFRA-3379 — `test-gap-reserve-padding.sh`, same as above, requires compiled `chump` binary on `PATH` |
+| gap-reserve --acceptance-criteria gate | CREDIBLE-1300/INFRA-3379 — `test-chump-gap-reserve-acceptance-criteria.sh` requires a compiled `chump` binary on `PATH` to exercise the reserve CLI gate; same shape as the sibling gap-reserve functional tests above |
 | gap-ID cross-session collision | CREDIBLE-052/INFRA-3379 — `test-gap-id-cross-session.sh` requires `CHUMP_BIN` pointing at a compiled `chump` binary; cross-session collision fixture needs the real CLI, not source |
 | gap-ID lease uniqueness gate | INFRA-1970/INFRA-3379 — `test-gap-id-lease-uniqueness.sh` requires `CHUMP_BIN`; duplicate-PR race-window guard needs the compiled binary under concurrent invocation |
 | UUID gap-ID compatibility | INFRA-3379 — `test-uuid-gap-id-compat.sh` requires `CHUMP_BIN`; UUID gap-ID compatibility fixture drives the real CLI |
@@ -118,6 +129,7 @@ Documented for completeness; do **not** file follow-ups.
 | `test-review-handoff-smoke.sh` | INFRA-3383 — INFRA-774 end-to-end smoke (synthesizes a CI failure + simulates `review --serve` + telemetry assertions); needs the full CI fixture env |
 | `test-rollup-semantic.sh` | INFRA-3383 — unconditionally runs `cargo test --bin chump rollup_cmd` when `cargo` is available; too slow for the preflight fast loop |
 | `test-research-026-preflight.sh` | INFRA-3383 — eval harness preflight; requires `scripts/eval/` setup not present in a bare preflight run |
+| `Design-pass check` | EFFECTIVE-1159 (design-pass.yml) — stub gate for the new design-pass CI stage; its only step is two `echo` lines that always exit 0 (no design-spec artifact contract exists yet, per EFFECTIVE-358). Nothing to mirror locally until the real check lands; RESILIENT-586 auto-recognition doesn't fire because `get_added_jobs_from_diff` diffs `HEAD` (always empty in a clean CI checkout) instead of the merge-base — separate bug, filed rather than fixed here. |
 
 ## Required-vs-advisory disposition decisions
 

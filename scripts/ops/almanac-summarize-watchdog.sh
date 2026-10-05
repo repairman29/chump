@@ -43,8 +43,13 @@
 #   CHUMP_AMBIENT_LOG                    — override ambient.jsonl path
 #
 # Exit codes:
-#   0  normal (whether or not anything needed healing/paging)
+#   0  normal (coverage at/above floor, or check skipped)
 #   1  internal failure (coverage report unreadable and not a plain skip)
+#   2  CREDIBLE-1174: coverage guard tripped — at least one served repo is
+#      below the summarized-coverage floor (default 95%). The operator page
+#      already fires unconditionally (see below); this non-zero exit lets a
+#      calling supervisor (launchd condition, CI gate, chained script) react
+#      to the guard without having to grep ambient.jsonl.
 
 set -uo pipefail
 
@@ -61,6 +66,13 @@ COVERAGE_BIN="${CHUMP_ALMANAC_WATCHDOG_COVERAGE_BIN:-}"
 ALMANAC_BIN="${CHUMP_ALMANAC_BIN:-$HOME/Projects/almanac/target/release/almanac}"
 RECALL_SCRIPT="${CHUMP_ALMANAC_WATCHDOG_RECALL_SCRIPT:-$REPO_ROOT/scripts/dispatch/operator-recall.sh}"
 MIN_PCT="${CHUMP_ALMANAC_SUMMARIZE_MIN_PCT:-95}"
+# CREDIBLE-1210: the summarized_pct guard's enforced floor must never drop
+# below 95% — clamp here so a misconfigured (or careless) env override can't
+# silently weaken the coverage guard. Float-safe: MIN_PCT may be "97.5".
+if awk -v v="$MIN_PCT" 'BEGIN{exit !(v+0 < 95)}' 2>/dev/null; then
+    echo "[almanac-summarize-watchdog] CHUMP_ALMANAC_SUMMARIZE_MIN_PCT=$MIN_PCT is below the 95% mission floor — clamping to 95"
+    MIN_PCT=95
+fi
 
 mkdir -p "$(dirname "$AMBIENT_LOG")" 2>/dev/null || true
 
@@ -172,10 +184,35 @@ else:
     fi
 fi
 
+# ── 3. Prometheus metric: almanac_coverage_summarized_pct (CREDIBLE-352, CREDIBLE-300 slice) ──
+# Shells out to almanac-census.py --summarize-pct and re-emits its value in
+# Prometheus exposition format (space-separated, no colon) so a scrape
+# target chained after this watchdog gets the metric without re-deriving it.
+CENSUS_SCRIPT="${CHUMP_ALMANAC_CENSUS_SCRIPT:-$REPO_ROOT/scripts/dev/almanac-census.py}"
+if [[ -f "$CENSUS_SCRIPT" ]]; then
+    census_line="$(python3 "$CENSUS_SCRIPT" --summarize-pct 2>/dev/null || true)"
+    summarized_pct_value="$(printf '%s' "$census_line" | sed -n 's/^almanac_coverage_summarized_pct : \(.*\)$/\1/p')"
+    if [[ -n "$summarized_pct_value" ]]; then
+        echo "almanac_coverage_summarized_pct $summarized_pct_value"
+    else
+        echo "[almanac-summarize-watchdog] WARN: almanac-census.py --summarize-pct produced no parseable value" >&2
+    fi
+else
+    echo "[almanac-summarize-watchdog] almanac-census.py not found at $CENSUS_SCRIPT — skipping summarized_pct metric" >&2
+fi
+
 # Heartbeat — always emit so a dead watchdog is itself observable.
 # scanner-anchor: "kind":"almanac_summarize_watchdog_tick"  (RESILIENT-354;
 # emitted every cycle, success or no-op — proof the watchdog itself is alive)
 emit almanac_summarize_watchdog_tick "\"restarted\":$restarted,\"coverage_status\":\"$coverage_status\",\"below_count\":${below_count:-0},\"dry_run\":$DRY_RUN"
 
 echo "[almanac-summarize-watchdog] cycle complete: restarted=$restarted coverage_status=$coverage_status below_count=${below_count:-0} dry_run=$DRY_RUN"
+
+# CREDIBLE-1174: the 95%-floor guard must be enforceable by a caller, not
+# just visible in ambient.jsonl. A non-zero exit here is the "returning an
+# error ... when below this threshold" half of the guard; the operator page
+# above is the "notify" half. Dry-run never enforces (report-only by design).
+if [[ "${below_count:-0}" -gt 0 && "$DRY_RUN" != "1" ]]; then
+    exit 2
+fi
 exit 0
