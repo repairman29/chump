@@ -109,6 +109,20 @@ faculty_canonical="$(printf '%s' "$faculty_json" | jq -r '.merges_24h')"
   && _ok "faculty-collector merges_24h (canonical column) == $EXPECT (got $faculty_canonical)" \
   || _fail "faculty-collector merges_24h (canonical column) expected $EXPECT, got '$faculty_canonical'"
 
+# ── 4. no second merges_24h emitter has been reintroduced (INFRA-3841) ───────
+# INFRA-3843 made lib/merges-24h.sh the sole computation, with vital-signs.sh
+# and faculty-collector.sh sourcing it rather than each running their own
+# `gh pr list` cutoff logic. This guards against either reader silently
+# reverting to an inline/independent computation — exactly how the original
+# 3-way drift (vital-signs/dashboard/faculty) happened.
+for consumer in "$VITAL" "$FACULTY"; do
+  if grep -q 'source.*lib/merges-24h\.sh' "$consumer"; then
+    _ok "$(basename "$consumer") sources the canonical lib/merges-24h.sh helper"
+  else
+    _fail "$(basename "$consumer") no longer sources lib/merges-24h.sh — a reintroduced independent computation re-creates the merges_24h drift risk"
+  fi
+done
+
 echo
 echo "[test-merges-24h-canonical] $PASS passed, $FAIL failed"
 [[ "$FAIL" -eq 0 ]]

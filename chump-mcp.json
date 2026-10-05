@@ -33,7 +33,7 @@
       "enabled": true
     },
     "almanac": {
-      "command": "/Users/jeffadkins/Projects/almanac/target/release/almanac-mcp",
+      "command": "$HOME/Projects/almanac/target/release/almanac-mcp",
       "args": [],
       "env": {
         "ALMANAC_EMBED_URL": "http://100.101.188.30:11434",

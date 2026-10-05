@@ -880,8 +880,11 @@ if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
             # here: prefer nextest, and fail LOUD (never silent) when absent.
             _TEST_RUNNER_CMD=()
             if command -v cargo-nextest &>/dev/null; then
-                echo "[pre-push] CREDIBLE-278: running cargo nextest run --bin chump --tests (full suite; process-isolated, matches CI)..." >&2
-                _TEST_RUNNER_CMD=(cargo nextest run --bin chump --tests --no-fail-fast)
+                # INFRA-8042: --profile prepush (.config/nextest.toml) kills any
+                # single test still running after 4 min, so one hang fails the
+                # gate by name instead of eating the whole timeout budget.
+                echo "[pre-push] CREDIBLE-278: running cargo nextest run --profile prepush --bin chump --tests (full suite; process-isolated, matches CI; per-test timeout)..." >&2
+                _TEST_RUNNER_CMD=(cargo nextest run --profile prepush --bin chump --tests --no-fail-fast)
             else
                 echo "[pre-push] WARN CREDIBLE-278: cargo-nextest not found on PATH — falling back to 'cargo test'." >&2
                 echo "[pre-push] WARN CREDIBLE-278: cargo test THREADS tests in one process and can false-red on env races that nextest (CI's runner) does not hit." >&2

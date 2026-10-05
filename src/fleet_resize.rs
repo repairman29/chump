@@ -87,6 +87,32 @@ pub fn check_queue_empty(repo_root: &Path, current_size: u32) -> Option<ResizeDe
     None
 }
 
+/// MISSION-070 (MISSION-065 slice): pure worker-scaling formula.
+///
+/// Given the current load and the max capacity of the fleet, return the
+/// target number of workers, clamped to `[min_workers, max_workers]`.
+///
+/// target scales linearly between `min_workers` (at zero load) and
+/// `max_workers` (at or above `max_capacity`).
+pub fn calculate_worker_target(
+    current_load: f64,
+    max_capacity: f64,
+    min_workers: u32,
+    max_workers: u32,
+) -> u32 {
+    if current_load <= 0.0 {
+        return min_workers;
+    }
+    if max_capacity <= 0.0 || current_load >= max_capacity {
+        return max_workers;
+    }
+
+    let fraction = current_load / max_capacity;
+    let span = (max_workers - min_workers) as f64;
+    let raw = min_workers as f64 + (span * fraction).ceil();
+    (raw as u32).clamp(min_workers, max_workers)
+}
+
 /// Check condition B: daily cost approaching hard-cap (80%) with < 4h left.
 /// Returns `Some(decision)` if the fleet should shrink.
 pub fn check_cost_cap(repo_root: &Path, current_size: u32) -> Option<ResizeDecision> {
@@ -119,7 +145,7 @@ pub fn check_cost_cap(repo_root: &Path, current_size: u32) -> Option<ResizeDecis
             (spent / budget) * 100.0,
         ),
         current_size,
-        recommended_size: current_size / 2,
+        recommended_size: calculate_worker_target(spent, budget, 1, current_size),
     })
 }
 
@@ -406,5 +432,15 @@ mod tests {
     #[test]
     fn test_target_worker_count_zero_capacity() {
         assert_eq!(target_worker_count(10.0, 0.0, 2, 10), 2);
+    }
+
+    #[test]
+    fn test_worker_scaling_zero_load() {
+        assert_eq!(calculate_worker_target(0.0, 100.0, 1, 10), 1);
+    }
+
+    #[test]
+    fn test_worker_scaling_max_load() {
+        assert_eq!(calculate_worker_target(100.0, 100.0, 1, 10), 10);
     }
 }

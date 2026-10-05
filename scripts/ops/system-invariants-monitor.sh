@@ -45,8 +45,18 @@ log() { if [[ $QUIET -eq 0 ]]; then echo "[$(date -u +%H:%M:%S)] $*"; fi; return
 warn() { log "WARN $*"; return 0; }
 fail() { log "FAIL $*"; return 0; }
 
+# Portable mtime (epoch seconds): GNU stat -c first; BSD/macOS stat -f %m fallback.
+# GNU `stat -f` means "filesystem status" and prints text, which used to crash
+# the arithmetic below under set -e on Linux.
+file_mtime() {
+    stat -c %Y "$1" 2>/dev/null || stat -f %m "$1" 2>/dev/null || echo 0
+}
+
+LAST_DETAILS=""
+
 emit_alert() {
     local inv_id="$1" details="$2"
+    LAST_DETAILS="$details"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     local line="${ts}"  # placeholder
     line="{\"ts\":\"${ts}\",\"kind\":\"invariant_violation\",\"inv\":\"${inv_id}\",\"details\":\"${details}\",\"event\":\"ALERT\"}"
@@ -72,10 +82,21 @@ check_consecutive_failures() {
     count=$((count + 1))
     echo "$count" > "$counter_file"
     if [[ $count -ge 2 ]] && [[ ! -f "$auto_file" ]]; then
-        touch "$auto_file"
-        local title="invariant ${inv_id} broken: consecutive failures"
-        if [[ $DRY_RUN -eq 0 ]]; then
-            log "AUTO-FILE: $title (skipped: dry-run)"
+        local title="invariant ${inv_id} broken: ${LAST_DETAILS:-consecutive failures}"
+        title="${title:0:140}"
+        if [[ $DRY_RUN -eq 1 ]]; then
+            log "AUTO-FILE (dry-run, not filed): $title"
+        elif ! command -v "${CHUMP_BIN:-chump}" >/dev/null 2>&1; then
+            warn "AUTO-FILE skipped (chump not on PATH): $title"
+        elif "${CHUMP_BIN:-chump}" gap reserve --domain INFRA --title "$title" \
+                --effort s --priority P2 \
+                --acceptance-criteria "Clear invariant ${inv_id} (${LAST_DETAILS:-see ambient invariant_violation}); verify: scripts/ops/system-invariants-monitor.sh --inv ${inv_id} logs '${inv_id}: OK'" \
+                >/dev/null 2>&1; then
+            # Only marked filed on success, so a failed reserve retries next tick.
+            touch "$auto_file"
+            log "AUTO-FILE: $title"
+        else
+            warn "AUTO-FILE failed (chump gap reserve): $title"
         fi
     fi
     return 0
@@ -159,7 +180,7 @@ check_inv_3() {
     local stale=0
     for hb in /tmp/chump-reaper-*.heartbeat; do
         [[ -f "$hb" ]] || continue
-        local mtime; mtime=$(stat -f %m "$hb" 2>/dev/null || echo 0)
+        local mtime; mtime=$(file_mtime "$hb")
         local name; name=$(basename "$hb" .heartbeat)
         if [[ $mtime -lt $threshold ]]; then
             local age_hrs=$(( (now - mtime) / 3600 ))
@@ -216,8 +237,15 @@ check_inv_5() {
     local inv="INV-5"
     if [[ -n "${CHUMP_SKIP_INV_5:-}" ]]; then log "$inv: skipped"; return 0; fi
     log "$inv: checking install-path uniqueness..."
+    local agents_dir="${CHUMP_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
+    if [[ ! -d "$agents_dir" ]]; then
+        log "$inv: OK — no launchd agents dir ($agents_dir); nothing to check"
+        reset_counter "$inv"
+        return 0
+    fi
     local dupes
-    dupes=$(grep -roh '/\.chump/worktrees/[^/]*\|/\.claude/worktrees/[^/]*' "$HOME/Library/LaunchAgents/" 2>/dev/null \
+    # grep exits 1 on no match; under pipefail that used to abort the script.
+    dupes=$( { grep -roh '/\.chump/worktrees/[^/]*\|/\.claude/worktrees/[^/]*' "$agents_dir/" 2>/dev/null || true; } \
         | sort | uniq -d)
     if [[ -n "$dupes" ]]; then
         warn "$inv: duplicate worktree paths found in plists"

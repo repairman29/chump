@@ -327,90 +327,105 @@ materialize_creds() {
   fi
 }
 
-# Interactive acquire (INFRA-3688): prompt user for GitHub auth method and
-# run claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN. Writes
-# ~/.chump/providers.env with CHUMP_AUTH_MODE=oauth and the acquired tokens.
-# Never echoes secret values to stdout or logs. File created with mode 0600.
-# Returns 0 on success, non-zero on failure.
-acquire_creds() {
-  [ -f "$CREDS" ] && { ok "creds already exist at $CREDS — skipping acquire"; return 0; }
-  echo
-  printf '\033[1m=== Interactive Credential Acquisition ===\033[0m\n'
-  printf 'No pre-supplied creds found. Two ways to authenticate:\n'
-  printf '  1) GitHub Device Flow (gh auth login) — recommended\n'
-  printf '  2) Paste a GH_TOKEN directly\n'
-  printf '\n'
-  local choice=""
-  while [ -z "$choice" ]; do
-    printf 'Choose method [1/2]: '
-    read -r choice
-    case "$choice" in
-      1|2) ;;
-      *) choice="";;
-    esac
-  done
-
-  local gh_token=""
-  if [ "$choice" = 1 ]; then
-    info ACQUIRE "running gh auth login --hostname github.com --git-protocol https --web"
-    if command -v gh >/dev/null 2>&1; then
-      gh auth login --hostname github.com --git-protocol https --web || {
-        no "gh auth login failed"
-        return 1
-      }
-      gh_token="$(gh auth token 2>/dev/null)" || {
-        no "failed to retrieve GH_TOKEN from gh"
-        return 1
-      }
-    else
-      no "gh CLI not found — install GitHub CLI first, then re-run"
-      return 1
-    fi
-  else
-    printf 'Paste your GitHub personal access token (will not echo): '
-    stty -echo 2>/dev/null
-    read -r gh_token
-    stty echo 2>/dev/null
-    printf '\n'
-    if [ -z "$gh_token" ]; then
-      no "empty token — aborting"
-      return 1
-    fi
-  fi
-
-  local oauth_token=""
-  if command -v claude >/dev/null 2>&1; then
-    info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
-    oauth_token="$(claude setup-token 2>/dev/null)" || true
-    [ -z "$oauth_token" ] && no "claude setup-token failed or returned empty — falling back to manual entry"
-  else
-    no "claude CLI not found — falling back to manual entry"
-  fi
-
-  if [ -z "$oauth_token" ]; then
-    printf 'Paste your CLAUDE_CODE_OAUTH_TOKEN (will not echo): '
-    stty -echo 2>/dev/null
-    read -r oauth_token
-    stty echo 2>/dev/null
-    printf '\n'
-  fi
-
-  if [ -z "$oauth_token" ]; then
-    no "empty CLAUDE_CODE_OAUTH_TOKEN — aborting"
-    return 1
-  fi
-
-  # Write providers.env with mode 0600, never echoing values
+# Writes/updates a single KEY=VALUE pair in $CREDS, preserving every other
+# line already in the file (e.g. a previously-acquired sibling key, or
+# DISCORD_TOKEN) and forcing mode 0600. Never echoes the value.
+write_cred_key() {
+  local key="$1" value="$2"
   mkdir -p "$STATE_DIR"
   (
     umask 077
-    cat > "$CREDS" <<EOF
-CHUMP_AUTH_MODE=oauth
-GH_TOKEN=$gh_token
-CLAUDE_CODE_OAUTH_TOKEN=$oauth_token
-EOF
+    touch "$CREDS"
+    grep -vE "^(export )?${key}=" "$CREDS" > "$CREDS.tmp" 2>/dev/null || true
+    mv "$CREDS.tmp" "$CREDS"
+    printf '%s=%s\n' "$key" "$value" >> "$CREDS"
   )
   chmod 600 "$CREDS" 2>/dev/null || true
+}
+
+# Space-separated subset of $REQUIRED_CRED_KEYS not yet present (with a
+# non-empty value) in $CREDS. Empty output means the required set is
+# already satisfied — the idempotent "nothing to do" case.
+creds_missing_required_keys() {
+  local missing="" k
+  for k in $REQUIRED_CRED_KEYS; do
+    if [ -f "$CREDS" ] && grep -qE "^(export )?$k=.+" "$CREDS"; then :; else missing="$missing $k"; fi
+  done
+  printf '%s' "$missing" | sed -E 's/^ //'
+}
+
+# Interactive acquire (INFRA-3688 / INFRA-3626): prompt the user only for the
+# REQUIRED_CRED_KEYS that are still missing — GitHub auth via `gh auth login`
+# (device flow) or a pasted GH_TOKEN, and CLAUDE_CODE_OAUTH_TOKEN via
+# `claude setup-token` (or manual paste as fallback). Merges each acquired
+# key into $CREDS via write_cred_key so any key the caller already had
+# (zero-touch materialize, a prior partial run, DISCORD_TOKEN, etc.) is left
+# untouched — idempotent. Never echoes secret values to stdout or logs.
+# File ends at mode 0600. Returns 0 on success, non-zero on failure.
+acquire_creds() {
+  local missing
+  missing="$(creds_missing_required_keys)"
+  [ -z "$missing" ] && { ok "creds already satisfy required keys at $CREDS — skipping acquire"; return 0; }
+
+  echo
+  printf '\033[1m=== Interactive Credential Acquisition ===\033[0m\n'
+  printf 'Missing required creds:%s\n' "$missing"
+
+  case " $missing " in
+    *' GH_TOKEN '*)
+      printf '\nTwo ways to authenticate with GitHub:\n'
+      printf '  1) GitHub Device Flow (gh auth login) — recommended\n'
+      printf '  2) Paste a GH_TOKEN directly\n\n'
+      local choice=""
+      while [ -z "$choice" ]; do
+        printf 'Choose method [1/2]: '
+        read -r choice
+        case "$choice" in 1|2) ;; *) choice="";; esac
+      done
+
+      local gh_token=""
+      if [ "$choice" = 1 ]; then
+        command -v gh >/dev/null 2>&1 || { no "gh CLI not found — install GitHub CLI first, then re-run"; return 1; }
+        info ACQUIRE "running gh auth login --hostname github.com --git-protocol https --web"
+        gh auth login --hostname github.com --git-protocol https --web || { no "gh auth login failed"; return 1; }
+        gh_token="$(gh auth token 2>/dev/null)" || { no "failed to retrieve GH_TOKEN from gh"; return 1; }
+      else
+        printf 'Paste your GitHub personal access token (will not echo): '
+        stty -echo 2>/dev/null
+        read -r gh_token
+        stty echo 2>/dev/null
+        printf '\n'
+      fi
+      [ -z "$gh_token" ] && { no "empty GH_TOKEN — aborting"; return 1; }
+      write_cred_key GH_TOKEN "$gh_token"
+      ok "GH_TOKEN acquired (value not logged)"
+      ;;
+  esac
+
+  case " $missing " in
+    *' CLAUDE_CODE_OAUTH_TOKEN '*)
+      local oauth_token=""
+      if command -v claude >/dev/null 2>&1; then
+        info ACQUIRE "running claude setup-token to obtain CLAUDE_CODE_OAUTH_TOKEN..."
+        oauth_token="$(claude setup-token 2>/dev/null)" || true
+        [ -z "$oauth_token" ] && no "claude setup-token failed or returned empty — falling back to manual entry"
+      else
+        no "claude CLI not found — falling back to manual entry"
+      fi
+      if [ -z "$oauth_token" ]; then
+        printf 'Paste your CLAUDE_CODE_OAUTH_TOKEN (will not echo): '
+        stty -echo 2>/dev/null
+        read -r oauth_token
+        stty echo 2>/dev/null
+        printf '\n'
+      fi
+      [ -z "$oauth_token" ] && { no "empty CLAUDE_CODE_OAUTH_TOKEN — aborting"; return 1; }
+      write_cred_key CLAUDE_CODE_OAUTH_TOKEN "$oauth_token"
+      ok "CLAUDE_CODE_OAUTH_TOKEN acquired (value not logged)"
+      ;;
+  esac
+
+  write_cred_key CHUMP_AUTH_MODE oauth
   ok "creds written to $CREDS (mode 600; values not logged)"
   return 0
 }
@@ -418,7 +433,15 @@ EOF
 # ---------- 3b. CREDS CHECK ----------
 check_creds() {
   materialize_creds
-  [ -f "$CREDS" ] || { no "creds missing: $CREDS (supply --creds-file PATH or \$CHUMP_BOOTSTRAP_CREDS)"; return 1; }
+  # INFRA-3626: when required keys are still missing after the zero-touch
+  # sources above, invoke the interactive acquisition step instead of only
+  # failing — but only when attached to a real terminal and not explicitly
+  # suppressed, so an unattended/CI run degrades to the prior fail-loud
+  # behavior rather than blocking on a `read` that will never return.
+  if [ -n "$(creds_missing_required_keys)" ] && [ -t 0 ] && [ "${CHUMP_NODE_NONINTERACTIVE:-0}" != 1 ]; then
+    acquire_creds || true
+  fi
+  [ -f "$CREDS" ] || { no "creds missing: $CREDS (supply --creds-file PATH or \$CHUMP_BOOTSTRAP_CREDS, or run interactively to be prompted)"; return 1; }
   local missing="" k
   for k in $REQUIRED_CRED_KEYS; do
     grep -qE "^(export )?$k=.+" "$CREDS" || missing="$missing $k"
@@ -478,6 +501,12 @@ write_node_env() {
   ( umask 077
     {
       printf 'export CHUMP_STATE_DIR=%s\n' "$STATE_DIR"
+      # INFRA-3632: pin the exact var GapStore::db_path() reads
+      # (crates/chump-gap-store/src/lib.rs) so every shell/organ that sources
+      # this file resolves the ONE canonical state.db instead of falling back
+      # to repo_root().join(".chump/state.db") — the fallback a git worktree's
+      # cwd would otherwise silently hit (split-brain store, INFRA-3632 AC2).
+      printf 'export CHUMP_STATE_DB=%s\n' "$STATE_DB"
       printf 'export CHUMP_TEAM_URL=%s\n' "$team_url"
       printf 'export CHUMP_TEAM_API_KEY=%s\n' "$team_api_key"
       printf 'export CHUMP_STORE_BACKEND=%s\n' "$store_backend"
@@ -496,8 +525,39 @@ write_node_env() {
   # Source now so subsequent phases inherit the canonical settings.
   # shellcheck disable=SC1090
   . "$node_env"
-  export CHUMP_STATE_DIR CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER
+  export CHUMP_STATE_DIR CHUMP_STATE_DB CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER
   ok "node.env written + sourced: $node_env (mode=$CHUMP_NODE_MODE, run-user=$CHUMP_RUN_USER)"
+  install_shell_hook "$node_env"
+}
+
+# ---------- 3d. INTERACTIVE-SHELL HOOK (INFRA-3632 AC1) ----------
+# Without this, an interactive `chump gap list` (or any bare shell invocation
+# of the binary) never sees CHUMP_STATE_DB/CHUMP_TEAM_URL/etc — node.env sits
+# on disk, unread, and the CLI falls back to resolving .chump/state.db off
+# whatever repo the shell's cwd happens to be in (the split-brain this gap
+# exists to close). Idempotent: guarded by a marker comment so re-running
+# install never duplicates the block.
+install_shell_hook() {
+  local node_env="$1"
+  local marker="# chump-node-install: source node.env (INFRA-3632)"
+  # .bashrc is the one file virtually every interactive bash session reads
+  # (directly for non-login shells; via .profile's `. "$HOME/.bashrc"` for
+  # login shells) — create it if a fresh account doesn't have one yet, so the
+  # hook isn't silently skipped on a brand-new user.
+  [ -f "$HOME/.bashrc" ] || : > "$HOME/.bashrc"
+  # .profile is read by plain POSIX sh login shells (Termux may default to
+  # one) — hook it too, but only if it already exists; a bash-only box's
+  # .profile just re-sources .bashrc anyway, so creating one isn't needed.
+  local f
+  for f in "$HOME/.bashrc" "$HOME/.profile"; do
+    [ -f "$f" ] || continue
+    grep -qF "$marker" "$f" 2>/dev/null && continue
+    {
+      printf '\n%s\n' "$marker"
+      printf 'if [ -f "%s" ]; then . "%s"; fi\n' "$node_env" "$node_env"
+    } >> "$f"
+    ok "interactive-shell hook installed: $f sources $node_env"
+  done
 }
 
 # ---------- 4. BINARY ----------
@@ -959,58 +1019,8 @@ reconcile_role_organs() {
 #     self-excludes it) and scopes ITS recurring reconcile to this node's role
 #     via a drop-in, so the timer-driven self-heal converges to the role roster
 #     instead of the whole manifest (which would re-add out-of-role organs).
-# Systemd hosts only; needs root to write /etc/systemd/system (warns + skips
-# non-root, non-fatal — reconcile_role_organs degrades the same way).
-# RESILIENT-1097: break the chicken-and-egg that left ~18 manifest organs
-# un-installable on cuphead. place_role_unit_files() below needs root to
-# write /etc/systemd/system and skips ENTIRELY when the install ran as a
-# non-root user; reconcile_role_organs() (organ-reconcile.sh) also runs as
-# that same non-root user and can only `enable --now` a unit that already
-# has a file on disk, so every role-matched organ backs off forever
-# ("WARN could not enable --now ... +7 more"). chump-organ-deploy.timer
-# (RESILIENT-374, User=root) is the ONE organ built to break exactly this:
-# once it is armed, its OWN root-run cycles call install-helsinki-atc.sh
-# --auto AS ROOT and place the REST of the role roster. So bootstrapping
-# just this one keystone unit via `sudo` (when available) unsticks the
-# whole roster on the very next timer tick — reproducible on any fresh box,
-# no hand-run installer, no full-root re-install required.
-bootstrap_organ_deploy_via_sudo() {
-  local repo="$1" lib_manifest="$2" lib_unit="$3" dispatch="$4"
-  # chump-organ-deploy.timer is role=janitor in the manifest — only brain/all
-  # role-filters include janitor (organ_role_filter), so a muscle-only node
-  # has no business installing it.
-  case "$ROLE" in brain|all) ;; *) return 0;; esac
-  command -v sudo >/dev/null 2>&1 || {
-    info ORGANS "no sudo on PATH — cannot bootstrap chump-organ-deploy.timer, role roster will stay dark until a root install"
-    return 0
-  }
-  if ! sudo -n true 2>/dev/null; then
-    info ORGANS "no passwordless sudo for $(whoami 2>/dev/null || id -un) — cannot bootstrap chump-organ-deploy.timer; grant NOPASSWD sudo for systemctl/install, or run install as root once"
-    return 0
-  fi
-  # shellcheck source=/dev/null
-  . "$lib_manifest"; . "$lib_unit"
-  local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
-  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-/etc/systemd/system}"
-  local tmp; tmp="$(mktemp -d)"
-  local placed=0 f
-  for f in chump-organ-deploy.service chump-organ-deploy.timer; do
-    [ -f "$dispatch/$f" ] || continue
-    if organ_unit_host_rewrite "$dispatch/$f" "$tmp/$f" "$run_user" "$run_home" 1 "$repo" \
-        && sudo mkdir -p "$dest_dir" \
-        && sudo install -m 644 "$tmp/$f" "$dest_dir/$f"; then
-      placed=$((placed + 1))
-    fi
-  done
-  rm -rf "$tmp"
-  if [ "$placed" -gt 0 ]; then
-    sudo systemctl daemon-reload 2>/dev/null || true
-    sudo systemctl enable --now chump-organ-deploy.timer 2>/dev/null || true
-    ok "bootstrapped chump-organ-deploy.timer via sudo ($placed unit file(s) placed) — its own root cycle will place the rest of the role roster"
-  else
-    info ORGANS "chump-organ-deploy unit files not found under $dispatch — cannot bootstrap"
-  fi
-}
+# Systemd hosts only; writes into the invoking user's systemd --user unit dir
+# (INFRA-7895, INFRA-7757 slice) — no root required, no sudo bootstrap dance.
 place_role_unit_files() {
   [ "${HOST_KIND:-}" = "linux-systemd" ] || { info ORGANS "unit-file placement is systemd-only (host=${HOST_KIND:-unset}) — skipping"; return 0; }
   local repo="$NODE_DIR/repo"
@@ -1022,19 +1032,16 @@ place_role_unit_files() {
     info ORGANS "manifest/libs not found under $repo — skipping unit-file placement"
     return 0
   fi
-  if [ "$(id -u)" != "0" ] && [ "${CHUMP_NODE_INSTALL_ALLOW_NONROOT_PLACE:-0}" != "1" ]; then
-    bootstrap_organ_deploy_via_sudo "$repo" "$lib_manifest" "$lib_unit" "$dispatch"
-    no "unit-file placement needs root to write /etc/systemd/system — skipping (re-run install as root/sudo)"
-    return 0
-  fi
-  if [ "$DRY" = 1 ]; then echo "  DRY: place role-matched manifest unit files (role=$ROLE) into /etc/systemd/system"; return 0; fi
+  if [ "$DRY" = 1 ]; then echo "  DRY: place role-matched manifest unit files (role=$ROLE) into \$HOME/.config/systemd/user"; return 0; fi
 
   # shellcheck source=/dev/null
   . "$lib_manifest"; . "$lib_unit"
   local run_user run_home; run_user="$(organ_unit_run_user "$repo")"; run_home="$(organ_unit_run_home "$run_user")"
-  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-/etc/systemd/system}"
+  # INFRA-7895 (INFRA-7757 slice): unconditionally place into the invoking
+  # user's systemd --user unit dir — no root/UID check, no sudo bootstrap.
+  local dest_dir="${CHUMP_NODE_INSTALL_SYSTEMD_DIR:-$HOME/.config/systemd/user}"
   mkdir -p "$dest_dir"
-  info ORGANS "placing role-matched manifest unit files (role=$ROLE, user=$run_user, home=$run_home)"
+  info ORGANS "placing role-matched manifest unit files (role=$ROLE, user=$run_user, home=$run_home, dest=$dest_dir)"
 
   # Make `chump` resolvable on the organs' injected PATH ($RUN_HOME/.cargo/bin).
   if [ -x "$BIN" ]; then
@@ -1090,7 +1097,7 @@ place_role_unit_files() {
     fi
   done
 
-  systemctl daemon-reload 2>/dev/null || true
+  systemctl --user daemon-reload 2>/dev/null || true
 
   # Scope the recurring organ-reconcile timer to THIS node's role (unless --role
   # all) so the timer-driven self-heal converges to the role roster, not the
@@ -1104,7 +1111,7 @@ place_role_unit_files() {
 [Service]
 Environment=CHUMP_ORGAN_RECONCILE_ROLE=$rf
 EOF
-    systemctl daemon-reload 2>/dev/null || true
+    systemctl --user daemon-reload 2>/dev/null || true
   elif [ "$ROLE" = all ]; then
     # RESILIENT-1446: a sole hub (--role all) runs the WHOLE manifest — an empty
     # role-filter makes organ-reconcile enable every organ and reap NOTHING. A
@@ -1116,14 +1123,19 @@ EOF
     # the old scope with no hand-edit.
     if [ -f "$dest_dir/chump-organ-reconcile.service.d/zz-node-role.conf" ]; then
       rm -f "$dest_dir/chump-organ-reconcile.service.d/zz-node-role.conf"
-      systemctl daemon-reload 2>/dev/null || true
+      systemctl --user daemon-reload 2>/dev/null || true
       info ORGANS "role=all: removed stale zz-node-role.conf so the recurring reconcile runs the whole manifest and reaps nothing (RESILIENT-1446)"
     fi
   fi
 
-  # Arm the reconcile beat itself (not a manifest 'enabled' line, so
-  # reconcile_role_organs won't enable it).
-  [ -f "$dest_dir/chump-organ-reconcile.timer" ] && systemctl enable --now chump-organ-reconcile.timer 2>/dev/null || true
+  # INFRA-7895 (INFRA-7757 slice): arm every unit-file just placed, not only
+  # the reconcile beat — reconcile_role_organs (organ-reconcile.sh) still
+  # converges the full manifest afterward, but placement no longer leaves a
+  # freshly-copied unit dark until that separate pass runs.
+  local pf
+  for pf in "${placed[@]}"; do
+    systemctl --user enable --now "$pf" 2>/dev/null || true
+  done
 
   ok "placed ${#placed[@]} role-matched unit file(s): ${placed[*]:-none}"
   [ "${#skipped_nofile[@]}" -gt 0 ] && info ORGANS "role-matched but no tracked file (skipped, guarded by requires=file:): ${skipped_nofile[*]}"
@@ -1566,6 +1578,32 @@ self_test() {
       fi
     else
       no "seed: canonical store empty (0 gaps) — SEED phase may have failed; re-run chump-node-install.sh"
+      fail=1
+    fi
+  fi
+  # INFRA-3632 AC1: interactive-shell hook present (node.env sourced by .bashrc
+  # / .profile), so a bare `chump gap list` from a fresh shell actually sees
+  # CHUMP_STATE_DB instead of silently falling back to cwd-relative resolution.
+  if grep -qF "chump-node-install: source node.env" "$HOME/.bashrc" 2>/dev/null \
+     || grep -qF "chump-node-install: source node.env" "$HOME/.profile" 2>/dev/null; then
+    ok "interactive-shell hook: node.env sourced from .bashrc/.profile"
+  else
+    no "interactive-shell hook missing — re-run chump-node-install.sh to wire .bashrc/.profile"
+    fail=1
+  fi
+  # INFRA-3632 AC2/AC3: the ONE canonical-store contract, verified LIVE with
+  # the actual binary (not just a sqlite3 row-count proxy). A bare
+  # `chump gap list` run from $HOME (no repo context) and from the installed
+  # repo worktree must both resolve to the SAME state.db — the split-brain
+  # this gap exists to close is exactly "cwd silently picks a different file".
+  if [ -x "$BIN" ] && [ -f "$node_env" ]; then
+    local cnt_home cnt_repo
+    cnt_home="$(cd "$HOME" 2>/dev/null && env -i HOME="$HOME" PATH="$PATH" sh -c '. "'"$node_env"'"; "'"$BIN"'" gap list --status open --json' 2>/dev/null | grep -c '"id"')"
+    cnt_repo="$(cd "$NODE_DIR/repo" 2>/dev/null && env -i HOME="$HOME" PATH="$PATH" sh -c '. "'"$node_env"'"; "'"$BIN"'" gap list --status open --json' 2>/dev/null | grep -c '"id"')"
+    if [ -n "$cnt_home" ] && [ "$cnt_home" = "$cnt_repo" ]; then
+      ok "canonical store: \`chump gap list\` from \$HOME and from the repo worktree agree ($cnt_home open gaps)"
+    else
+      no "canonical store MISMATCH: \$HOME resolved $cnt_home open gaps, repo worktree resolved $cnt_repo — two different state.db files in play"
       fail=1
     fi
   fi

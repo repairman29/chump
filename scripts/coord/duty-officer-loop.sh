@@ -12,6 +12,9 @@
 #   duty-officer-loop.sh route <signal>    # route a single named signal (manual/test)
 #   duty-officer-loop.sh heartbeat         # emit kind=duty_officer_heartbeat
 #   duty-officer-loop.sh watch-sentinel    # check/revive/page chump-fleet-health-sentinel.service
+#   duty-officer-loop.sh judgment-tick     # RESILIENT-1497: cadenced Opus peer-mind
+#                                           judgment tick (file gaps/dispatch/
+#                                           reprioritize/digest — non-gated only)
 #   duty-officer-loop.sh status            # print registry coverage summary
 #   duty-officer-loop.sh help
 #
@@ -49,6 +52,15 @@
 #                                         inactive between runs)
 #   CHUMP_DUTY_OFFICER_SYSTEMCTL_CMD     systemctl invocation (default "systemctl --user";
 #                                         override for tests / non-systemd environments)
+#
+# judgment-tick (RESILIENT-1497) env overrides:
+#   CHUMP_PEER_MODEL              model passed to `claude -p` (default "opus")
+#   CHUMP_PEER_EXECUTE            1 = actually invoke `claude -p` (default 0 = dry-run
+#                                  log-only, so CI/local runs never spend real budget)
+#   CHUMP_PEER_BUDGET_USD         per-tick cost cap (default 1.00)
+#   CHUMP_PEER_TIMEOUT_S          wall-clock bound per tick (default 300)
+#   CHUMP_PEER_CLAUDE_BIN         override the `claude` binary (tests stub this)
+#   CHUMP_PEER_MEMORY_DB          override chump_memory.db path (see lib/peer-memory.sh)
 #
 # Rust-First-Bypass: bash glue over existing ambient/registry/notify primitives,
 #   mirrors the observability/fresh-eyes loop shape, no state mutation beyond
@@ -305,6 +317,107 @@ cmd_watch_sentinel() {
     return 0
 }
 
+# RESILIENT-1497: the free Opus peer MIND. Unlike cmd_tick (reactive —
+# fires only when a registered ambient signal appears), judgment-tick is
+# PROACTIVE and cadenced: it wakes on a timer (chump-peer-mind.timer, ~20
+# min) or on an inbound nudge, reads fleet state + ambient + its own running
+# memory, forms a chief-of-staff judgment, and acts on non-gated fleet work
+# (file gaps, dispatch, reprioritize, update the daily digest). Gated
+# actions (repo visibility, spend, credentials, deletes, outward sends) are
+# never in its tool allowlist — see lib/peer-guardrails.sh; the Bash
+# allowlist passed to `claude -p` IS the enforcement, not just a prompt
+# instruction. The peer is never an approver of its own risky actions
+# (META-901).
+cmd_judgment_tick() {
+    local model="${CHUMP_PEER_MODEL:-opus}"
+    local execute="${CHUMP_PEER_EXECUTE:-0}"
+    local budget="${CHUMP_PEER_BUDGET_USD:-1.00}"
+    local timeout_s="${CHUMP_PEER_TIMEOUT_S:-300}"
+    local claude_bin="${CHUMP_PEER_CLAUDE_BIN:-claude}"
+
+    # shellcheck disable=SC1091
+    source "$REPO_ROOT/scripts/coord/lib/peer-memory.sh" 2>/dev/null || true
+    peer_memory_init 2>/dev/null || true
+    local recent_context
+    recent_context="$(peer_memory_recent_episodes 5 2>/dev/null)"
+
+    if [[ "$execute" != "1" ]]; then
+        _emit_action "peer_judgment" 0 skipped "CHUMP_PEER_EXECUTE!=1 (dry-run) — not invoking $model"
+        return 0
+    fi
+
+    if ! command -v "$claude_bin" >/dev/null 2>&1; then
+        _emit_action "peer_judgment" 0 skipped "claude_bin=$claude_bin not found on PATH"
+        return 0
+    fi
+
+    local allowed=(
+        'Bash(git log*)' 'Bash(git status*)' 'Bash(git diff*)' 'Bash(git fetch*)'
+        'Bash(gh pr list*)' 'Bash(gh pr view*)' 'Bash(sqlite3*)'
+        'Bash(chump gap list*)' 'Bash(chump gap view*)' 'Bash(chump gap reserve*)'
+        'Bash(chump gap set*)' 'Bash(chump dispatch*)'
+        'Bash(scripts/coord/broadcast.sh*)' 'Bash(scripts/coord/lib/notify-operator.sh*)'
+        'Bash(tail*)' 'Bash(cat*)' 'Bash(printf*)'
+    )
+
+    local prompt
+    prompt="You are the free Opus peer (RESILIENT-1497) inside ChumpOS — a \
+chief-of-staff MIND, not a gap-worker. This is one cadenced judgment tick, \
+not a loop: read, judge, act on NON-GATED work, then stop.
+
+Recent peer memory (your own running context from prior ticks):
+${recent_context}
+
+1. Read fleet state you need: 'chump gap list --status open', the tail of \
+.chump-locks/ambient.jsonl, open PRs (cache-first per CLAUDE.md).
+2. Form a chief-of-staff judgment: is anything stuck, mis-prioritized, or \
+missing a gap? Act on it ONLY via: 'chump gap reserve', 'chump gap set', \
+'chump dispatch', or 'scripts/coord/broadcast.sh' (A2A proposal) — these are \
+the only mutating commands in your allowlist.
+3. GUARDRAIL (non-negotiable, enforced by your tool allowlist, not just this \
+prompt): you have NO path to repo-visibility changes, spend/billing, \
+credential rotation, deletes, or outward sends. If judgment surfaces one of \
+those as needed, do NOT attempt it — say so in your final notify_operator \
+message so Jeff/first-mate can approve. You are never the approver of your \
+own risky action.
+4. Before stopping, call 'scripts/coord/lib/notify-operator.sh' with a \
+one-line summary of what you judged + did (or chose not to do), via: \
+'CHUMP_NOTIFY_KIND=peer_judgment_tick scripts/coord/lib/notify-operator.sh \"<summary>\"'.
+5. Do not call ScheduleWakeup. Do not loop. One tick, then stop."
+
+    local out rc=0
+    if command -v timeout >/dev/null 2>&1; then
+        out="$(timeout "${timeout_s}s" "$claude_bin" -p "$prompt" \
+            --tools "Read,Grep,Glob,Bash" \
+            --allowedTools "${allowed[@]}" \
+            --disallowedTools "Edit,Write,NotebookEdit" \
+            --permission-mode dontAsk \
+            --max-budget-usd "$budget" \
+            --model "$model" 2>&1)" || rc=$?
+    else
+        out="$("$claude_bin" -p "$prompt" \
+            --tools "Read,Grep,Glob,Bash" \
+            --allowedTools "${allowed[@]}" \
+            --disallowedTools "Edit,Write,NotebookEdit" \
+            --permission-mode dontAsk \
+            --max-budget-usd "$budget" \
+            --model "$model" 2>&1)" || rc=$?
+    fi
+
+    if grep -qiE 'rate.?limit|overloaded|429' <<< "$out"; then
+        _emit_action "peer_judgment" 0 rate_limited "model=$model — backed off, no retry this tick"
+        peer_memory_save_episode "peer judgment tick rate-limited" "model=$model" "peer,rate_limited" "neutral" 2>/dev/null || true
+        return 0
+    fi
+
+    local verdict="healed"
+    [[ "$rc" != 0 ]] && verdict="errored"
+    _emit_action "peer_judgment" 1 "$verdict" "model=$model exit_code=$rc"
+    peer_memory_save_episode "peer judgment tick (${verdict})" "model=${model} exit_code=${rc}" "peer,judgment" \
+        "$([[ "$verdict" == healed ]] && echo neutral || echo frustrating)" 2>/dev/null || true
+    return 0
+}
+
 cmd_status() {
     local n; n="$(_registry_signal_count)"
     echo "PLAYBOOK_REGISTRY.yaml: $REGISTRY"
@@ -327,6 +440,7 @@ main() {
         route)     shift; cmd_route "${1:-}" ;;
         heartbeat) cmd_heartbeat ;;
         watch-sentinel) cmd_watch_sentinel ;;
+        judgment-tick) cmd_judgment_tick ;;
         status)    cmd_status ;;
         help|-h|--help) cmd_help; exit 0 ;;
         *) echo "[duty-officer] unknown subcommand: $sub" >&2; cmd_help >&2; exit 2 ;;

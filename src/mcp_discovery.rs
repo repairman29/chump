@@ -413,8 +413,28 @@ pub fn resolve_config_status(cfg: &ChumpMcpConfig) -> Vec<McpConfigEntry> {
         .collect()
 }
 
+/// Expand a leading `~/`, `$HOME/` or `${HOME}/` in a configured `command`
+/// against the current `$HOME` (INFRA-7759).
+///
+/// Lets the tracked `chump-mcp.json` name per-user binaries (e.g. a locally
+/// built `almanac-mcp`) without baking one operator's absolute home path into
+/// the repo. The raw string is kept in the config, so `chump mcp add/remove`
+/// round-trips it unchanged; expansion happens only at use time. Commands
+/// without such a prefix, or with `$HOME` unset, are returned as-is.
+pub fn expand_command(command: &str) -> String {
+    let rest = ["~/", "$HOME/", "${HOME}/"]
+        .iter()
+        .find_map(|prefix| command.strip_prefix(prefix));
+    match (rest, dirs_home()) {
+        (Some(rest), Some(home)) => home.join(rest).to_string_lossy().into_owned(),
+        _ => command.to_string(),
+    }
+}
+
 /// Check if `command` is an absolute path that exists, or is discoverable on PATH.
 fn command_exists(command: &str) -> bool {
+    let command = expand_command(command);
+    let command = command.as_str();
     let p = std::path::Path::new(command);
     if p.is_absolute() {
         return p.is_file();
@@ -687,6 +707,45 @@ mod tests {
         .unwrap();
         let cfg = read_mcp_config(tmp.path());
         assert!(cfg.mcp_servers["srv"].enabled);
+    }
+
+    #[test]
+    fn expand_command_resolves_home_prefixes() {
+        let home = std::env::var("HOME").expect("HOME set in test env");
+        let want = format!("{home}/Projects/almanac/target/release/almanac-mcp");
+        for raw in [
+            "~/Projects/almanac/target/release/almanac-mcp",
+            "$HOME/Projects/almanac/target/release/almanac-mcp",
+            "${HOME}/Projects/almanac/target/release/almanac-mcp",
+        ] {
+            assert_eq!(expand_command(raw), want, "{raw}");
+        }
+        // Bare names and absolute paths are untouched.
+        assert_eq!(expand_command("chump-mcp-git"), "chump-mcp-git");
+        assert_eq!(expand_command("/usr/local/bin/x"), "/usr/local/bin/x");
+        assert_eq!(expand_command("$HOMEBREW/x"), "$HOMEBREW/x");
+    }
+
+    #[test]
+    fn tracked_chump_mcp_json_has_no_operator_home_path() {
+        // INFRA-7759: the checked-in config must be portable across hosts.
+        let raw = include_str!("../chump-mcp.json");
+        assert!(
+            !raw.contains("/Users/"),
+            "chump-mcp.json hardcodes a macOS home path"
+        );
+        assert!(
+            !raw.contains("/home/"),
+            "chump-mcp.json hardcodes a Linux home path"
+        );
+        let cfg: ChumpMcpConfig = serde_json::from_str(raw).unwrap();
+        let almanac = &cfg.mcp_servers["almanac"];
+        assert!(
+            expand_command(&almanac.command)
+                .ends_with("/Projects/almanac/target/release/almanac-mcp"),
+            "almanac command should resolve under $HOME: {}",
+            almanac.command
+        );
     }
 
     #[test]

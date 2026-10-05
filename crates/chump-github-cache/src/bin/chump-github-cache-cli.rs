@@ -8,7 +8,9 @@
 //! chump-github-cache-cli query-open-prs        → `number\ttitle\thead_ref` per row
 //! chump-github-cache-cli query-open-prs-by-title <SUBSTR>
 //! chump-github-cache-cli query-behind-prs      → one number per line
-//! chump-github-cache-cli refresh-open-prs      → Phase 1 stub, prints 0
+//! chump-github-cache-cli refresh-open-prs [--repo OWNER/REPO]
+//!                                                → real REST bulk refill (INFRA-3833),
+//!                                                  prints the row count written
 //! ```
 //!
 //! Selected by the bash shim at the top of
@@ -57,8 +59,16 @@ enum Cmd {
     },
     /// List PR numbers in BEHIND + auto_merge_enabled state.
     QueryBehindPrs,
-    /// Phase 1 stub: bulk-refill loop deferred. Prints `0`.
-    RefreshOpenPrs,
+    /// Bulk REST refill of open PRs into `pr_state` (INFRA-3833). Prints
+    /// the number of rows written (`0` on any resolution/network failure
+    /// — see `chump_github_cache::refill` for the graceful-degradation
+    /// contract).
+    RefreshOpenPrs {
+        /// Explicit `owner/repo` override. Falls back to `GH_REPO` /
+        /// `GITHUB_REPOSITORY` env, then `gh repo view`.
+        #[arg(long)]
+        repo: Option<String>,
+    },
 }
 
 fn resolve_db_path(arg: Option<PathBuf>) -> PathBuf {
@@ -171,11 +181,9 @@ async fn dispatch(cache: &SqliteCache, cmd: Cmd) -> Result<(), CacheError> {
                 println!("{}", n);
             }
         }
-        Cmd::RefreshOpenPrs => {
-            // Phase 1 stub: real REST bulk refill is deferred to a
-            // follow-up sub-gap. Print 0 (matches the bash helper's
-            // exit-stdout when it has nothing to refill).
-            println!("0");
+        Cmd::RefreshOpenPrs { repo } => {
+            let written = cache.refresh_open_prs(repo.as_deref()).await?;
+            println!("{written}");
         }
     }
     Ok(())

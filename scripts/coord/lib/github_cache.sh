@@ -69,7 +69,10 @@ if [[ "${CHUMP_GITHUB_CACHE_RUST:-0}" = "1" ]]; then
         "$_CHUMP_GH_CACHE_CLI" query-behind-prs
     }
     cache_refresh_open_prs() {
-        # Phase 1 stub — Rust CLI prints `0` (nothing refilled).
+        # INFRA-3833: real REST bulk refill (was a Phase 1 stub printing
+        # `0`). Prints the row count written; `0` on any resolution/auth/
+        # network failure (graceful degradation, not an error — see
+        # crates/chump-github-cache/src/refill.rs).
         "$_CHUMP_GH_CACHE_CLI" refresh-open-prs
     }
     cache_query_pr_queue() {

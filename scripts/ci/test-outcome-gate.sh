@@ -22,6 +22,10 @@ fail() { echo "  FAIL: $1"; FAIL=$((FAIL+1)); }
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
 
+# shellcheck source=scripts/coord/lib/test-sandbox.sh
+# INFRA-2088: canonical sandbox primitive.
+source "$REPO_ROOT/scripts/coord/lib/test-sandbox.sh"
+
 echo "=== MISSION-045 outcome gate test ==="
 echo
 
@@ -37,7 +41,6 @@ fi
 
 # Fixture env mirrors test-gap-rebalance.sh: synthetic DBs, gates that are not
 # under test disabled so a reserve's only remaining gate is the outcome gate.
-export CHUMP_HOME="$(mktemp -d)"
 export CHUMP_ALLOW_MAIN_WORKTREE=1
 export FLEET_029_AMBIENT_GLANCE_SKIP=1
 export CHUMP_RESERVE_NO_AUTOSTAGE=1
@@ -51,7 +54,7 @@ reserve() {  # domain priority effort title [extra-args...]
 }
 
 # ── DB WITH outcomes ─────────────────────────────────────────────────────────
-WITH="$(mktemp -d)"; export CHUMP_REPO="$WITH"
+WITH="$(mktemp -d)"; chump_test_sandbox_setup "$WITH"
 "$BIN" outcome new --id GATEOUT --title "gate fixture outcome" >/dev/null 2>&1
 if "$BIN" outcome list 2>/dev/null | grep -q GATEOUT; then
     ok "fixture outcome GATEOUT created"
@@ -82,7 +85,7 @@ else
 fi
 
 # 4. P0 WITH --no-outcome-required → SUCCEEDS + audited
-AMB4="$CHUMP_REPO/.chump-locks/ambient.jsonl"
+AMB4="$CHUMP_LOCK_DIR/ambient.jsonl"
 if reserve INFRA P0 xs "gate-p0-bypass" --no-outcome-required >/dev/null 2>&1; then
     ok "case 4: P0 with --no-outcome-required succeeds"
     if grep -q '"kind":"outcome_gate_bypassed"' "$AMB4" 2>/dev/null; then
@@ -102,7 +105,8 @@ else
 fi
 
 # ── EMPTY outcomes DB (vacuous-skip) ─────────────────────────────────────────
-EMPTY="$(mktemp -d)"; export CHUMP_REPO="$EMPTY"
+chump_test_sandbox_cleanup "$WITH"
+EMPTY="$(mktemp -d)"; chump_test_sandbox_setup "$EMPTY"
 if "$BIN" outcome list 2>/dev/null | grep -q '\['; then
     fail "case 6 setup: fresh DB unexpectedly has outcomes"
 fi
@@ -112,6 +116,8 @@ if reserve INFRA P0 xs "gate-empty-skip" >/dev/null 2>&1; then
 else
     fail "case 6: empty-outcomes DB should skip the gate"
 fi
+
+chump_test_sandbox_cleanup "$EMPTY"
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="

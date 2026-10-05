@@ -66,6 +66,93 @@ impl StructuredFinding {
     }
 }
 
+/// High-severity marker substrings (case-insensitive) in an organ bullet —
+/// these are the prose cues organ authors already use to flag a real problem
+/// (as opposed to a plain informational observation).
+const HIGH_SEVERITY_MARKERS: [&str; 5] = ["drift", "missing", "not wired", "unwired", "no caller"];
+
+/// Parse a `comprehend`-style organ report (`## ORGAN (coverage)` section
+/// headers, `- ` bullets underneath) into [`StructuredFinding`]s. Pure / no
+/// I/O — this is the bridge between today's prose-only organ output and the
+/// structured shape a filer or verifier can act on (INFRA-3470).
+///
+/// An organ section reporting zero coverage (`(none)`) with no bullets
+/// underneath is itself surfaced as a `High` finding — "we checked and found
+/// nothing" is different from "we never checked."
+pub fn parse_organ_report(raw: &str) -> Vec<StructuredFinding> {
+    let mut findings = Vec::new();
+    let mut current: Option<(FindingCategory, String)> = None;
+    let mut saw_bullet = false;
+
+    for line in raw.lines() {
+        let trimmed = line.trim();
+        if let Some(header) = trimmed.strip_prefix("## ") {
+            flush_zero_coverage(&mut findings, &current, saw_bullet);
+            current = parse_header(header);
+            saw_bullet = false;
+            continue;
+        }
+        let Some(bullet) = trimmed.strip_prefix("- ") else {
+            continue;
+        };
+        let Some((category, _)) = current else {
+            continue;
+        };
+        saw_bullet = true;
+        let severity = if is_high_severity(bullet) {
+            Severity::High
+        } else {
+            Severity::Info
+        };
+        findings.push(StructuredFinding::new(
+            category,
+            bullet.to_string(),
+            severity,
+        ));
+    }
+    flush_zero_coverage(&mut findings, &current, saw_bullet);
+    findings
+}
+
+fn is_high_severity(bullet: &str) -> bool {
+    let lower = bullet.to_lowercase();
+    HIGH_SEVERITY_MARKERS.iter().any(|m| lower.contains(m))
+}
+
+fn flush_zero_coverage(
+    findings: &mut Vec<StructuredFinding>,
+    current: &Option<(FindingCategory, String)>,
+    saw_bullet: bool,
+) {
+    if let Some((category, coverage)) = current {
+        if coverage.eq_ignore_ascii_case("none") && !saw_bullet {
+            findings.push(
+                StructuredFinding::new(*category, format!("{category:?} organ"), Severity::High)
+                    .with_metadata("coverage_status", "none"),
+            );
+        }
+    }
+}
+
+fn parse_header(header: &str) -> Option<(FindingCategory, String)> {
+    let (name, coverage) = match header.split_once('(') {
+        Some((name, rest)) => (
+            name.trim(),
+            rest.trim_end().trim_end_matches(')').trim().to_string(),
+        ),
+        None => (header.trim(), String::new()),
+    };
+    let category = match name.to_uppercase().as_str() {
+        "WIRING" => FindingCategory::Wiring,
+        "GATES" | "GATE" => FindingCategory::Gate,
+        "CONFIG" => FindingCategory::Config,
+        "PROVENANCE" => FindingCategory::Provenance,
+        "TRACE" | "TRACES" => FindingCategory::Trace,
+        _ => return None,
+    };
+    Some((category, coverage))
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -104,5 +191,61 @@ mod tests {
         assert!(Severity::Low < Severity::Medium);
         assert!(Severity::Medium < Severity::High);
         assert!(Severity::High < Severity::Critical);
+    }
+
+    const SAMPLE_REPORT: &str = "\
+## WIRING (full)
+- capability X is live, gated by feature flag Y
+- DRIFT: capability Z claims wired but no caller found
+
+## GATES (partial)
+- pre-commit blocks on fmt
+- MISSING: no CI gate for clippy
+
+## CONFIG (none)
+";
+
+    #[test]
+    fn parses_organ_headers_and_bullets_into_categorized_findings() {
+        let findings = parse_organ_report(SAMPLE_REPORT);
+        assert_eq!(findings.len(), 5);
+        assert_eq!(findings[0].category, FindingCategory::Wiring);
+        assert_eq!(findings[0].severity, Severity::Info);
+        assert_eq!(findings[1].category, FindingCategory::Wiring);
+        assert_eq!(findings[1].severity, Severity::High);
+        assert!(findings[1].location.contains("DRIFT"));
+        assert_eq!(findings[2].category, FindingCategory::Gate);
+        assert_eq!(findings[3].severity, Severity::High);
+    }
+
+    #[test]
+    fn zero_coverage_organ_with_no_bullets_synthesizes_a_high_finding() {
+        let findings = parse_organ_report(SAMPLE_REPORT);
+        let config_finding = findings
+            .iter()
+            .find(|f| f.category == FindingCategory::Config)
+            .expect("CONFIG organ should synthesize a zero-coverage finding");
+        assert_eq!(config_finding.severity, Severity::High);
+        assert_eq!(
+            config_finding
+                .metadata
+                .get("coverage_status")
+                .map(String::as_str),
+            Some("none")
+        );
+    }
+
+    #[test]
+    fn full_coverage_organ_without_markers_has_only_info_findings() {
+        let raw = "## WIRING (full)\n- capability X is live and well-covered\n";
+        let findings = parse_organ_report(raw);
+        assert_eq!(findings.len(), 1);
+        assert_eq!(findings[0].severity, Severity::Info);
+    }
+
+    #[test]
+    fn unrecognized_section_header_is_ignored() {
+        let raw = "## SOMETHING ELSE (full)\n- a bullet under an unknown organ\n";
+        assert!(parse_organ_report(raw).is_empty());
     }
 }

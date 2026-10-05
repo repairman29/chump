@@ -56,6 +56,7 @@
 //! - [`work_board`] — FLEET-008 shared subtask queue (post / claim / complete).
 //! - [`help_request`] — FLEET-010 help-seeking protocol (post / claim / complete).
 //! - [`mission`] — META-164 public Mission / PersistentMission / Replanner surface (INFRA-2247).
+//! - [`rate_limiter`] — INFRA-4246 (INFRA-1319 slice) central token-bucket rate limiter.
 
 pub mod assign;
 pub mod capability;
@@ -65,6 +66,7 @@ pub mod help_request;
 /// META-175: per-role JetStream durable consumers (restart-safe replay building block).
 /// Feature-gated behind CHUMP_FLEET_WIRE_V1=1 + CHUMP_NATS_URL.
 pub mod jetstream_consumer;
+pub mod ledger;
 pub mod mesh;
 pub mod mission;
 /// INFRA-2266: Layer 1a slice 3/4 — NATS-primary JetStream durable consumer.
@@ -72,6 +74,8 @@ pub mod mission;
 /// max_ack_pending, and layer_enabled helpers.
 pub mod nats_primary;
 pub mod presence;
+/// INFRA-4246 (INFRA-1319 slice): central token-bucket rate limiter.
+pub mod rate_limiter;
 pub mod rpc;
 pub mod scratchpad;
 pub mod work_board;

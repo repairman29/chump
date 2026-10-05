@@ -226,6 +226,37 @@ Regression guard: `scripts/ci/test-farmer-check-auth.sh`.
 
 ---
 
+## Case study: the single-transient-error sccache band-aid (CREDIBLE-117)
+
+On 2026-06-05 (~23:35Z) a subagent shipping CREDIBLE-107 (Gate 1 of the
+diagnose-before-file hardening, CREDIBLE-106) hit one `sccache: encountered
+fatal error` during a local build and unblocked itself with `RUSTC_WRAPPER=''`
+— the verbatim band-aid from the sccache incident at the top of this doc, applied
+by the very work meant to prevent it.
+
+**Reality-check (REFUTED):** `sccache --show-stats` over the session showed
+2242 hits / 4175 misses / 8122 requests, and the ambient stream held zero
+fleet-wide sccache failure events in its last 100 lines. sccache was healthy;
+one transient error was promoted to a root-cause theory and "fixed" by
+disabling the tool.
+
+**Why Gate 1 would not have caught it:** Gate 1 (`gap reserve --evidence`)
+guards gap *filings*. This band-aid was a workaround applied in a build/CI
+path, never filed as a gap, so no evidence prompt ever fired.
+
+**Coverage lesson:** the hard-gate set needs two more pieces beyond Gate 1:
+- **Gate 2** (CREDIBLE-108, halt-class-emit wrapper) for alarm-class emitters, and
+- **Gate 4 — workaround-application audit:** applying a known band-aid
+  (`RUSTC_WRAPPER=''`, `--no-verify`, re-run-until-green, disabling a cache) must
+  itself require a recorded diagnosis (stats, logs, a reproduction) or a
+  bypass trailer. Without it, workarounds remain an unguarded surface.
+
+**The lesson:** one error is an observation, not a diagnosis. Before any
+workaround, run the pre-workaround test (above) and check whether the failure
+reproduces and is fleet-wide.
+
+---
+
 ## See also
 
 - [`REALITY_CHECK.md`](./REALITY_CHECK.md) (CREDIBLE-090) — signal ≠ outcome; the

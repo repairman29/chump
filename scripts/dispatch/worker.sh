@@ -353,8 +353,19 @@ trap 'remove_heartbeat_and_daemon; orch_log_end "worker.sh" "$?"' EXIT
 # unless we actively re-read a file that run-fleet.sh's refresher keeps current).
 # Falls back to ANTHROPIC_API_KEY when token file is missing/empty/expired.
 refresh_oauth_token() {
-    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-}"
-    [[ -z "$token_file" ]] && return 0  # api_key mode — nothing to do
+    # RESILIENT-1506: an operator who explicitly forced API-key mode does
+    # not want this function to silently promote OAuth back over it just
+    # because oauth-token.json happens to exist on disk.
+    [[ "${CHUMP_AUTH_MODE:-}" == "api-key" ]] && return 0
+    # RESILIENT-1506: default to the well-known oauth-token.json path when
+    # CHUMP_OAUTH_TOKEN_FILE isn't exported (e.g. providers.env's
+    # CLAUDE_CODE_OAUTH_TOKEN line got stripped, or worker.sh was invoked
+    # outside run-fleet.sh). The refresher daemon
+    # (scripts/coord/oauth-token-refresh.sh) keeps this file current
+    # regardless of what env vars a given launch passed through, so reading
+    # it natively survives a providers.env cleanup that would otherwise
+    # silently skip this whole function.
+    local token_file="${CHUMP_OAUTH_TOKEN_FILE:-${HOME}/.chump/oauth-token.json}"
     local tok=""
     if [[ -f "$token_file" ]]; then
         tok=$(python3 -c "
@@ -593,9 +604,30 @@ fi
 
 # INFRA-686: graceful SIGTERM handler — commit WIP + push + release lease before exit.
 # Reads global vars set by the gap dispatch loop (GAP_ID, branch, wt_path).
+#
+# RESILIENT-1454: when SIGTERM arrives while the worker is blocked deep in an
+# active `claude -p` child (now common via RESILIENT-1453 auto-restart-on-
+# converge), two things used to go wrong: (1) the still-running claude child
+# keeps mutating $wt_path concurrently with the `git add -A && commit` below,
+# racing the checkpoint; (2) bash exits quickly but the orphaned claude child
+# (and its process-tree descendants) stays alive in the systemd cgroup, so
+# the unit doesn't actually stop until systemd's TimeoutStopSec (default 90s)
+# escalates to SIGKILL — hard-killing the in-flight subprocess instead of the
+# checkpoint ever covering it. Reaping the claude-child tree FIRST (bounded,
+# TERM-then-KILL via the existing _kill_cycle_tree helper) fixes both: the
+# worktree is quiescent before the commit, and the cgroup empties within
+# seconds instead of waiting out the full stop timeout.
 _sigterm_wip_checkpoint() {
     log "SIGTERM received — running WIP checkpoint (INFRA-686)"
     local _amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+    # RESILIENT-1454: reap any still-running claude -p child (and its
+    # descendants) BEFORE touching the worktree, so the checkpoint commit
+    # below reflects a quiescent tree and systemd doesn't have to wait out
+    # TimeoutStopSec for an orphaned grandchild to die on its own.
+    if [[ -n "${_claude_pid:-}" ]] && kill -0 "$_claude_pid" 2>/dev/null; then
+        log "RESILIENT-1454: claude -p child ($_claude_pid) still alive at SIGTERM — reaping before checkpoint"
+        _kill_cycle_tree "$_claude_pid"
+    fi
     # Only act if we're mid-gap (GAP_ID and wt_path set by the loop)
     if [[ -n "${GAP_ID:-}" && -n "${wt_path:-}" && -d "${wt_path:-/nonexistent}" ]]; then
         local _has_changes=0
@@ -609,10 +641,14 @@ _sigterm_wip_checkpoint() {
                 printf '{"ts":"%s","kind":"wip_sigterm_checkpoint","agent_id":"%s","gap_id":"%s","branch":"%s"}\n' \
                     "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                     "$AGENT_ID" "$GAP_ID" "${branch:-}" >> "$_amb" 2>/dev/null || true
-                if git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null; then
+                # RESILIENT-1454: bound the push so a hung network/credential
+                # prompt can't itself eat the TimeoutStopSec budget — the
+                # local commit above already preserved the work either way.
+                if (command -v timeout >/dev/null 2>&1 && timeout 20s git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null) \
+                    || (! command -v timeout >/dev/null 2>&1 && git -C "$wt_path" push -u origin "${branch:-chump/${GAP_ID}}" 2>/dev/null); then
                     log "INFRA-686: WIP commit pushed for $GAP_ID → origin/${branch:-}"
                 else
-                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline or no remote)"
+                    log "INFRA-686: WIP commit created but push failed for $GAP_ID (offline, no remote, or push timed out)"
                 fi
             fi
         fi
@@ -973,23 +1009,82 @@ PY
     # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
     # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
     # a gap while a worker is mid-flight (pre-push); the branch covers it after
-    # the PR is pushed but before it merges (when the lease has expired). One
-    # cheap `git ls-remote` per cycle; best-effort (empty on failure/offline so
-    # Layers A+C still hold). The github_cache webhook DB is not authoritative
-    # here (observed sparse/stale — #3795 absent), so origin refs are used.
-    in_progress_gaps="$(
-        git -C "$REPO_ROOT" ls-remote --heads origin 'refs/heads/chump/*' 2>/dev/null \
-        | grep -oE 'refs/heads/chump/.+-fleet-[0-9]' 2>/dev/null \
-        | sed -E 's#refs/heads/chump/(.+)-fleet-[0-9]$#\1#' \
+    # the PR is pushed but before it merges (when the lease has expired).
+    #
+    # RESILIENT-1509 fix: a pushed branch alone is NOT proof of in-progress
+    # work anymore. 1,437 dead wip/*-style branches accumulated on origin
+    # (crashed workers, abandoned claims) and ~91 open gaps whose ONLY
+    # blocker was a stale leftover branch sat permanently unpickable. A
+    # branch now only counts when it has an open PR (cheap local cache
+    # lookup, no gh API call) OR a commit within CHUMP_STALE_BRANCH_HOURS
+    # (default 6h). Best-effort throughout: any failure here just falls
+    # back to the empty set (Layers A+C still hold the anti-spin guarantee).
+    _stale_branch_hours="${CHUMP_STALE_BRANCH_HOURS:-6}"
+    in_progress_gaps=""
+    if git -C "$REPO_ROOT" fetch origin --prune --quiet \
+            'refs/heads/chump/*:refs/remotes/origin/chump/*' 2>/dev/null; then
+        _branch_rows="$(
+            git -C "$REPO_ROOT" for-each-ref \
+                --format='%(refname:short) %(committerdate:unix)' \
+                refs/remotes/origin/chump/ 2>/dev/null
+        )"
+        if [ -n "$_branch_rows" ]; then
+            _cache_db="$REPO_ROOT/.chump/github_cache.db"
+            in_progress_gaps="$(
+                printf '%s\n' "$_branch_rows" \
+                | while IFS=' ' read -r _ref _ts; do
+                    _branch="${_ref#origin/}"
+                    _gid="$(printf '%s' "$_branch" | sed -nE 's#^chump/(.+)-fleet-[0-9]+$#\1#p' | tr '[:lower:]' '[:upper:]')"
+                    [ -z "$_gid" ] && continue
+                    _has_pr=0
+                    if command -v sqlite3 >/dev/null 2>&1 && [ -f "$_cache_db" ]; then
+                        _row="$(sqlite3 "$_cache_db" \
+                            "SELECT 1 FROM pr_state WHERE head_ref='${_branch//\'/\'\'}' AND merged_at IS NULL LIMIT 1" \
+                            2>/dev/null || true)"
+                        [ -n "$_row" ] && _has_pr=1
+                    fi
+                    printf '%s\t%s\t%s\n' "$_gid" "${_ts:-0}" "$_has_pr"
+                done \
+                | python3 "$REPO_ROOT/scripts/dispatch/_in_progress_branches.py" \
+                    "$(date -u +%s)" "$_stale_branch_hours" \
+                | tr '\n' ' '
+            )"
+        fi
+    fi
+
+    # RESILIENT-1510: gaps whose PR already merged into origin/main recently,
+    # but whose gap-store status hasn't flipped to done yet (auto-close lag).
+    # Without this, a worker can re-pick a gap moments after its own PR
+    # merged — cuphead picked RESILIENT-1497 four times on 2026-10-02, two
+    # picks AFTER PR #4983 merged at 08:20Z, because `chump gap list --json`
+    # still showed status=open. Commit subjects on this branch are always
+    # "<GAP-ID>: ... (#NNNN)" (see bot-merge.sh squash-merge format), so a
+    # leading gap-id token on a recent origin/main commit is a reliable
+    # merged-PR signal independent of gap-store propagation lag. Best-effort
+    # (empty on failure/offline — Layers A-C above still hold).
+    merged_recent_gaps="$(
+        git -C "$REPO_ROOT" log origin/main --since="${MERGED_RECENT_GAPS_WINDOW:-60 minutes ago}" --format='%s' 2>/dev/null \
+        | grep -oE '^[A-Z][A-Z-]*-[0-9]+' 2>/dev/null \
         | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
     )"
+    if [ -n "$merged_recent_gaps" ]; then
+        log "RESILIENT-1510: excluding recently-merged gaps from pick (auto-close lag guard): $merged_recent_gaps"
+    fi
 
     # INFRA-415: atomic gap picker+claimer. This picker filters candidates
     # AND claims the gap atomically before returning, preventing concurrent
     # workers from picking the same gap. Uses the same session-ID resolution
     # as chump claim so the lease is scoped to this worker's session.
+    #
+    # RESILIENT-1509: stderr is no longer discarded. A crash, a failed
+    # claim, or an over-broad exclusion all used to look identical to a
+    # genuinely empty queue ("no pickable gap" for 276 cycles on cuphead
+    # while 467 open gaps had no blocker). The claimer now also emits a
+    # JSON per-exclusion-reason dump to stderr on every empty cycle (see
+    # _pick_and_claim_gap.py); surface both here.
     gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
     printf '%s' "$gap_json" > "$gap_json_file"
+    _pick_stderr_file="$(mktemp -t fleet-pick-stderr.XXXXXX)"
     pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
             FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
             FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
@@ -997,13 +1092,19 @@ PY
             EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
             ACTIVE_GAPS="$active_gaps" \
             IN_PROGRESS_GAPS="$in_progress_gaps" \
+            MERGED_RECENT_GAPS="$merged_recent_gaps" \
             GAP_JSON_FILE="$gap_json_file" \
             WORKER_INDEX="$AGENT_ID" \
             WORKER_ID="$AGENT_ID" \
             COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
             FLEET_REQUIRE_TITLE_SUBSTR="${FLEET_REQUIRE_TITLE_SUBSTR:-}" \
-            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>/dev/null || true)"
+            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>"$_pick_stderr_file" || true)"
     rm -f "$gap_json_file"
+    _pick_stderr="$(cat "$_pick_stderr_file" 2>/dev/null || true)"
+    rm -f "$_pick_stderr_file"
+    if [ -n "$_pick_stderr" ]; then
+        log "claimer stderr: $_pick_stderr"
+    fi
 
     if [ -z "$pick" ]; then
         # INFRA-315: increment starvation counter; emit ambient ALERT once
@@ -2193,6 +2294,28 @@ Operator or sibling worker can rescue this branch via:
         chump gap strike "$GAP_ID" >/dev/null 2>&1 || _strike_rc=$?
         [[ "$_strike_rc" -eq 10 ]] || return 0
         log "EFFECTIVE-310: $GAP_ID hit strike threshold on chump-local — frontier decompose"
+
+        # INFRA-8067: root-cause fix for RESILIENT-1437 (gap-store
+        # slice-bloat). Before EVER invoking the real --apply decompose (or
+        # resetting strikes on its success), cheaply check whether $GAP_ID
+        # already has open child slices — e.g. a prior --apply run that
+        # filed slices but was killed/wedged before writing the parent's
+        # status=decomposed marker, leaving it looking "fresh" to this same
+        # reflex on every subsequent strike-threshold hit. `chump gap
+        # decompose --dry-run` hits that guard (new in `chump gap decompose`,
+        # see src/main.rs) before building any provider or calling an LLM —
+        # it's a cheap local SQL check, no API keys/env sourcing needed — and
+        # exits 11 specifically when the parent is already sliced.
+        local _precheck_rc=0
+        chump gap decompose "$GAP_ID" --dry-run >/dev/null 2>>"$cycle_log" || _precheck_rc=$?
+        if [[ "$_precheck_rc" -eq 11 ]]; then
+            log "EFFECTIVE-310: $GAP_ID already has open child slices (INFRA-8067 guard) — skipping re-decompose, leaving strikes in place so this does not silently loop as if resolved"
+            printf '{"ts":"%s","kind":"gap_decompose_refused","source":"worker.sh","agent":"%s","gap_id":"%s","backend":"%s","reason":"already_has_open_slices"}\n' \
+                "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$AGENT_ID" "$GAP_ID" "$FLEET_BACKEND" \
+                >> "${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}" 2>/dev/null || true
+            return 0
+        fi
+
         # EFFECTIVE-512: pin openrouter + deepseek-v4-pro exactly as
         # gap-drain.sh:38-40 does, scoped to THIS decompose call via a subshell
         # so the surrounding worker loop env is untouched.

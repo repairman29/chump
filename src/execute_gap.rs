@@ -346,10 +346,19 @@ struct FreeTierProviderSpec {
 /// (deepseek-v4-flash → -pro, ~$0.01/gap, no rate cap) lead; the free tiers
 /// stay ONLY as a last cheap escalation BEHIND DeepSeek. This default is the
 /// fresh-checkout fallback; each node's providers.env sets the same order.
+///
+/// RESILIENT-1002: Cerebras sits immediately behind the two DeepSeek rungs.
+/// When OpenRouter's balance runs dry, DeepSeek returns HTTP 402 on both
+/// flash and pro — the rotation loop (see `execute_gap`'s free-tier branch)
+/// cascades on `should_cascade_on_error_string`, so a bare DeepSeek-only
+/// floor would run straight out of rungs and surface as
+/// `BillingExhausted` (exit 75). Cerebras is a separate account (its own
+/// `CEREBRAS_API_KEY`), so a DeepSeek 402 never touches it.
 fn parse_free_tier_providers() -> Vec<FreeTierProviderSpec> {
     const DEFAULTS: &str = concat!(
         "deepseek/deepseek-v4-flash@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
         "deepseek/deepseek-v4-pro@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
+        "qwen-3-235b-a22b-instruct-2507@https://api.cerebras.ai/v1:CEREBRAS_API_KEY,",
         "nvidia/nemotron-3-super-120b-a12b:free@https://openrouter.ai/api/v1:OPENROUTER_API_KEY,",
         "openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY"
     );
@@ -1176,8 +1185,17 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
                     if crate::provider_cascade::should_cascade_on_error_string(&e_str)
                         && offset + 1 < total
                     {
+                        // RESILIENT-1002: name the reason code explicitly so a
+                        // DeepSeek 402 -> Cerebras fallback is greppable from
+                        // the cycle log, not just inferable from the raw error.
+                        let reason_code =
+                            if crate::provider_cascade::is_billing_exhausted_error_string(&e_str) {
+                                "402"
+                            } else {
+                                "cascade"
+                            };
                         eprintln!(
-                            "[execute-gap] free-tier rotation: {} exhausted ({e_str:.120}), \
+                            "[execute-gap] free-tier rotation: {} exhausted (reason={reason_code}, {e_str:.120}), \
                              trying next provider",
                             spec.model
                         );
@@ -2148,7 +2166,7 @@ mod tests {
         // under sustained worker load and stall the floor.
         std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
         let specs = parse_free_tier_providers();
-        assert_eq!(specs.len(), 4, "default rotation must have 4 providers");
+        assert_eq!(specs.len(), 5, "default rotation must have 5 providers");
         assert_eq!(
             specs[0].model, "deepseek/deepseek-v4-flash",
             "slot 1 must be deepseek-v4-flash (the DeepSeek floor)"
@@ -2157,10 +2175,51 @@ mod tests {
             specs[1].model, "deepseek/deepseek-v4-pro",
             "slot 2 must be deepseek-v4-pro"
         );
+        // RESILIENT-1002: Cerebras sits immediately behind DeepSeek so a
+        // DeepSeek 402 (OpenRouter balance exhausted) falls to a provider
+        // on a completely separate account, not another OpenRouter model.
+        assert_eq!(
+            specs[2].model, "qwen-3-235b-a22b-instruct-2507",
+            "slot 3 must be Cerebras, directly behind the DeepSeek rungs"
+        );
+        assert_eq!(specs[2].base_url, "https://api.cerebras.ai/v1");
+        assert_eq!(specs[2].api_key_env, "CEREBRAS_API_KEY");
         // Free tiers only AFTER DeepSeek — never ahead of it.
         assert!(
-            specs[2].model.contains(":free"),
+            specs[3].model.contains(":free"),
             "free tiers must sit behind the DeepSeek rungs"
+        );
+    }
+
+    #[test]
+    fn resilient1002_deepseek_402_cascades_toward_cerebras() {
+        // AC1/AC3: a DeepSeek HTTP 402 must be classified as cascade-worthy
+        // (so the rotation loop advances rather than aborting), and the
+        // reason it classifies on is the billing-exhausted (402) class —
+        // the same discriminator the fallback log line reports.
+        let deepseek_402 = "Local API error 402 Payment Required: {\"error\":{\"message\":\"This request requires more credits, or fewer max_tokens.\",\"code\":402}}";
+        assert!(
+            crate::provider_cascade::should_cascade_on_error_string(deepseek_402),
+            "DeepSeek 402 must be cascade-worthy so rotation falls to Cerebras"
+        );
+        assert!(
+            crate::provider_cascade::is_billing_exhausted_error_string(deepseek_402),
+            "DeepSeek 402 must classify as billing-exhausted (reason code 402)"
+        );
+
+        // AC2: Cerebras is reachable as the very next rung behind both
+        // DeepSeek slots in the default rotation (see
+        // effective445_parse_defaults_deepseek_primary for the full order).
+        std::env::remove_var("CHUMP_FREE_TIER_PROVIDERS");
+        let specs = parse_free_tier_providers();
+        let deepseek_last_idx = specs
+            .iter()
+            .rposition(|s| s.model.starts_with("deepseek/"))
+            .expect("default rotation must contain a deepseek slot");
+        assert_eq!(
+            specs[deepseek_last_idx + 1].base_url,
+            "https://api.cerebras.ai/v1",
+            "Cerebras must be the immediate fallback rung after DeepSeek exhausts"
         );
     }
 

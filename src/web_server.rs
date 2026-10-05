@@ -872,6 +872,48 @@ fn prune_expired_lessons(store: &mut Vec<LessonRecord>) {
     store.retain(|l| l.expires_at_ms > now);
 }
 
+/// EFFECTIVE-679: inbound body for `POST /api/drop`.
+#[derive(Debug, serde::Deserialize)]
+struct DropPostRequest {
+    sentence: String,
+    citation: String,
+}
+
+/// EFFECTIVE-679 (EFFECTIVE-392 slice): POST /api/drop — cheap idea-drop
+/// intake. Persists `{sentence, citation}` to the curator's drops queue
+/// file via `chump_gap_store::add_drop`. Idempotent: re-posting the same
+/// `(sentence, citation)` pair returns the existing id with 200 instead of
+/// creating a duplicate record.
+async fn handle_drop_post(
+    headers: HeaderMap,
+    Json(body): Json<DropPostRequest>,
+) -> Result<(StatusCode, Json<serde_json::Value>), (StatusCode, String)> {
+    if !check_auth(&headers) {
+        return Err((StatusCode::UNAUTHORIZED, "auth required".to_string()));
+    }
+    let sentence = body.sentence.trim().to_string();
+    let citation = body.citation.trim().to_string();
+    if sentence.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "sentence must be non-empty".to_string(),
+        ));
+    }
+    let repo_root = repo_path::runtime_base();
+    let (record, created) = gap_store::add_drop(&repo_root, &sentence, &citation).map_err(|e| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("add_drop failed: {e}"),
+        )
+    })?;
+    let status = if created {
+        StatusCode::CREATED
+    } else {
+        StatusCode::OK
+    };
+    Ok((status, Json(serde_json::json!({ "id": record.id }))))
+}
+
 /// META-080: POST /api/lessons — agents publish a lesson to the shared
 /// in-memory store. Lessons expire 24h after publish by default.
 async fn handle_lessons_post(
@@ -4333,6 +4375,60 @@ async fn handle_brain_graph_stats(
     let stats =
         crate::memory_graph_viz::graph_stats().map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
     Ok(Json(stats))
+}
+
+/// GET /api/brain/node/{id} — full record (degree + touching edges) for one node.
+/// Backs the /brain right-pane detail panel (INFRA-1558).
+async fn handle_brain_node(
+    headers: HeaderMap,
+    axum::extract::Path(id): axum::extract::Path<String>,
+) -> Result<Response, StatusCode> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+    let detail =
+        crate::memory_graph_viz::node_detail(&id).map_err(|_| StatusCode::INTERNAL_SERVER_ERROR)?;
+    match detail {
+        Some(d) => Ok(Json(d).into_response()),
+        None => Err(StatusCode::NOT_FOUND),
+    }
+}
+
+/// GET /api/brain/graph/stream — SSE stream that re-pushes the full memory
+/// graph snapshot every 10s so the /brain Cytoscape view can apply incremental
+/// add/remove without a full page reload (INFRA-1558). Polling-based: each
+/// tick re-exports the whole graph; the client diffs against what it already
+/// has rendered rather than this endpoint computing a true delta.
+async fn handle_brain_graph_stream(
+    headers: HeaderMap,
+) -> Result<
+    Sse<impl tokio_stream::Stream<Item = Result<Event, std::convert::Infallible>>>,
+    StatusCode,
+> {
+    if !check_auth(&headers) {
+        return Err(StatusCode::UNAUTHORIZED);
+    }
+
+    let (tx, rx) =
+        tokio::sync::mpsc::unbounded_channel::<Result<Event, std::convert::Infallible>>();
+    tokio::spawn(async move {
+        loop {
+            let data = crate::memory_graph_viz::export_graph_json().unwrap_or_default();
+            if tx
+                .send(Ok(Event::default().event("graph").data(data)))
+                .is_err()
+            {
+                break; // client disconnected
+            }
+            tokio::time::sleep(std::time::Duration::from_secs(10)).await;
+        }
+    });
+
+    Ok(Sse::new(UnboundedReceiverStream::new(rx)).keep_alive(
+        axum::response::sse::KeepAlive::new()
+            .interval(std::time::Duration::from_secs(15))
+            .text("keep-alive"),
+    ))
 }
 
 // ── EFFECTIVE-422: Voice advisor — Siri Shortcut seam into /api/chat ────────
@@ -9426,6 +9522,8 @@ fn build_api_router() -> Router {
             "/api/decisions/{id}/resolve",
             post(routes::decisions::handle_decisions_resolve),
         )
+        // EFFECTIVE-679: cheap idea-drop intake (EFFECTIVE-392 slice).
+        .route("/api/drop", post(handle_drop_post))
         .route("/api/chat", post(handle_chat_with_kill_gate))
         .route("/api/voice/ask", post(handle_voice_ask))
         .route("/api/advisor/ask", post(handle_advisor_ask))
@@ -9557,6 +9655,8 @@ fn build_api_router() -> Router {
         .route("/.well-known/skills/index.json", get(handle_skills_index))
         .route("/api/brain/graph.json", get(handle_brain_graph_json))
         .route("/api/brain/graph/stats", get(handle_brain_graph_stats))
+        .route("/api/brain/graph/stream", get(handle_brain_graph_stream))
+        .route("/api/brain/node/{id}", get(handle_brain_node))
         .route(
             "/api/fleet/workspace_exchange",
             post(handle_fleet_workspace_exchange),
@@ -11173,13 +11273,28 @@ mod api_battle_tests {
         let sock_path = chump_dir.join("chumpd.sock");
 
         let listener = UnixListener::bind(&sock_path).unwrap();
+        // INFRA-8042: bound the fake daemon's wait. A blocking accept() hung
+        // forever (and, via #[serial], every other serial test behind it)
+        // whenever repo_root() never dialled the socket.
+        listener.set_nonblocking(true).unwrap();
         let db_path_reply = db_path.display().to_string();
         let server = std::thread::spawn(move || {
-            if let Ok((mut stream, _)) = listener.accept() {
-                let mut buf = [0u8; 1024];
-                let _ = stream.read(&mut buf);
-                let resp = serde_json::json!({ "db_path": db_path_reply });
-                let _ = stream.write_all(resp.to_string().as_bytes());
+            let deadline = std::time::Instant::now() + std::time::Duration::from_secs(5);
+            while std::time::Instant::now() < deadline {
+                match listener.accept() {
+                    Ok((mut stream, _)) => {
+                        let _ = stream.set_nonblocking(false);
+                        let mut buf = [0u8; 1024];
+                        let _ = stream.read(&mut buf);
+                        let resp = serde_json::json!({ "db_path": db_path_reply });
+                        let _ = stream.write_all(resp.to_string().as_bytes());
+                        return;
+                    }
+                    Err(e) if e.kind() == std::io::ErrorKind::WouldBlock => {
+                        std::thread::sleep(std::time::Duration::from_millis(10));
+                    }
+                    Err(_) => return,
+                }
             }
         });
 
@@ -11191,6 +11306,10 @@ mod api_battle_tests {
         // try_chumpd_db_path() falls back to $HOME when CHUMP_REPO/CHUMP_HOME
         // are unset — point it at our fake daemon's directory.
         std::env::set_var("HOME", daemon_root.path());
+        // INFRA-8042: an earlier test in this process may already have cached
+        // a chumpd answer; start from a clean cache so this call really
+        // queries the fake daemon.
+        crate::repo_path::reset_chumpd_cache_for_test();
 
         let first = crate::repo_path::repo_root();
         server.join().unwrap();
@@ -11222,6 +11341,8 @@ mod api_battle_tests {
             Some(v) => std::env::set_var("HOME", v),
             None => std::env::remove_var("HOME"),
         }
+        // Don't leave this test's (now deleted) daemon root cached for later tests.
+        crate::repo_path::reset_chumpd_cache_for_test();
     }
 }
 
