@@ -2162,7 +2162,8 @@ jobs:
             pkg-config \
             libssl-dev \
             libgtk-3-dev \
-            librsvg2-dev
+            librsvg2-dev \
+            fonts-liberation  # PWA visual snapshots pin "Liberation Sans" (the baselines' font); ARM image default sans differs
 
       - name: Install Rust toolchain
         if: matrix.suite == 'pwa' || matrix.suite == 'golden-path'
