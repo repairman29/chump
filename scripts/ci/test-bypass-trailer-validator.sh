@@ -18,6 +18,7 @@
 #   T10 sanctioned single-line Test-Gate-Bypass: trailer → exit 0          (RESILIENT-150)
 #   T11 test-script FILENAME containing "bypass" in a checklist → exit 0    (INFRA-2448)
 #   T12 genuine Bot-Merge-Bypass: trailer amid filename mentions → exit 1  (INFRA-2448)
+#   T14 doctrine-doc prose mentions bypass/--no-verify/schema filename → exit 0 (CREDIBLE-113)
 
 set -euo pipefail
 
@@ -199,6 +200,20 @@ Checklist:
 - [x] ran scripts/ci/test-no-manual-ship-bypass.sh locally
 
 Bypass-Reason: tooling was broken during the trunk-red window so this gate had to be skipped"
+
+# ─── T14: doctrine-doc prose mentioning bypass/--no-verify/schema filename ──
+# CREDIBLE-113 regression guard: a docs commit that DESCRIBES bypass
+# discipline in prose (mentions "bypass", "--no-verify", and the schema
+# filename BYPASS_TRAILER_SCHEMA.md) but contains no actual schema-key
+# trailer must NOT be rejected. A commit that documents bypass policy is
+# not USING a bypass.
+run_test "T14-doctrine-doc-prose" 0 "docs(CREDIBLE-105): clarify bypass-trailer doctrine
+
+This doc explains the --no-verify rule and how the bypass-trailer schema
+works end to end, per docs/process/BYPASS_TRAILER_SCHEMA.md. The bridge is
+allowed IFF the 4 trailers are present; otherwise the commit-msg hook blocks
+it. No actual bypass trailer is used here — this commit just documents the
+policy."
 
 # ─── Summary ─────────────────────────────────────────────────────────────────
 echo ""
