@@ -604,6 +604,86 @@ pub async fn ask_capability(
     .await
 }
 
+// ── EFFECTIVE-1138: ephemeral loop scheduler ────────────────────────────────
+//
+// chump-coord cannot depend on the root `chump` crate (the dependency runs
+// the other way), so this is a standalone copy of the ephemeral-scheduler
+// logic in `src/agent_loop/iteration_controller.rs::run_ephemeral_loop`
+// specialized for the `loop` RPC method's use case (no CLI arg parsing).
+
+static LOOP_SHUTDOWN_SIGNAL: std::sync::atomic::AtomicI32 = std::sync::atomic::AtomicI32::new(0);
+
+extern "C" fn loop_on_signal(sig: i32) {
+    LOOP_SHUTDOWN_SIGNAL.store(sig, std::sync::atomic::Ordering::SeqCst);
+}
+
+/// Repeatedly spawns `cmd` (argv[0] + args) every `interval_secs` seconds,
+/// printing one JSON line per iteration to stdout with `run`, `status`,
+/// `start_ts`, and `end_ts` fields. Stops after `max_iters` iterations
+/// (if `Some`), or immediately on SIGINT/SIGTERM (returns exit code 0).
+fn run_ephemeral_loop(cmd: &[String], interval_secs: u64, max_iters: Option<u64>) -> i32 {
+    if cmd.is_empty() {
+        return 1;
+    }
+
+    // SAFETY: handler only stores an atomic; async-signal-safe.
+    unsafe {
+        let handler = loop_on_signal as extern "C" fn(i32) as *const () as usize;
+        libc::signal(libc::SIGINT, handler);
+        libc::signal(libc::SIGTERM, handler);
+    }
+
+    let mut run: u64 = 0;
+    loop {
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        run += 1;
+        let start_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+        let status = std::process::Command::new(&cmd[0]).args(&cmd[1..]).status();
+        let end_ts = chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true);
+
+        let status_code = match &status {
+            Ok(s) => s.code().unwrap_or(-1),
+            Err(_) => -1,
+        };
+        println!(
+            "{}",
+            serde_json::json!({
+                "run": run,
+                "status": status_code,
+                "start_ts": start_ts,
+                "end_ts": end_ts,
+            })
+        );
+
+        if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+            return 0;
+        }
+        if let Some(max) = max_iters {
+            if run >= max {
+                return 0;
+            }
+        }
+
+        let mut slept = 0u64;
+        while slept < interval_secs {
+            if LOOP_SHUTDOWN_SIGNAL.load(std::sync::atomic::Ordering::SeqCst) != 0 {
+                return 0;
+            }
+            let chunk = (interval_secs - slept).min(1);
+            std::thread::sleep(std::time::Duration::from_secs(chunk));
+            slept += chunk;
+        }
+    }
+}
+
 // ── Worker integration ────────────────────────────────────────────────────────
 
 /// Register all 5 standard RPC method handlers for a worker session.
@@ -674,6 +754,37 @@ pub async fn register_worker_rpc_handlers(
     // ask-progress stub handler
     serve_rpc_with_nats(Some(nats), session_id, "ask-progress", |_args| {
         Ok(serde_json::json!({"status": "unknown", "pct_complete": 0}))
+    })
+    .await?;
+
+    // loop: EFFECTIVE-1138 ephemeral scheduler RPC handler. Spawns a
+    // background thread running `run_ephemeral_loop` so the RPC call itself
+    // returns immediately rather than blocking the async dispatch task for
+    // the (potentially unbounded) lifetime of the loop.
+    serve_rpc_with_nats(Some(nats), session_id, "loop", |args| {
+        let cmd: Vec<String> = args
+            .get("cmd")
+            .and_then(|v| v.as_array())
+            .map(|a| {
+                a.iter()
+                    .filter_map(|v| v.as_str().map(str::to_string))
+                    .collect::<Vec<_>>()
+            })
+            .unwrap_or_default();
+        if cmd.is_empty() {
+            return Err("loop: \"cmd\" must be a non-empty array of strings".to_string());
+        }
+        let interval_secs = args
+            .get("interval")
+            .and_then(|v| v.as_u64())
+            .ok_or_else(|| "loop: \"interval\" (seconds, u64) is required".to_string())?;
+        let max_iters = args.get("max_iters").and_then(|v| v.as_u64());
+
+        std::thread::spawn(move || {
+            run_ephemeral_loop(&cmd, interval_secs, max_iters);
+        });
+
+        Ok(serde_json::json!({"started": true}))
     })
     .await?;
 
