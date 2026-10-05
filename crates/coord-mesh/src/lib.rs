@@ -29,6 +29,7 @@ mod tests {
     // INFRA-2264: smoke-tests the public surface dispatch.rs's
     // create_dispatch_worktree activates.
     #[test]
+    #[allow(clippy::default_constructed_unit_structs)] // exercises the Default impl on purpose
     fn mesh_bridge_new_and_default_construct() {
         let _ = MeshBridge::new();
         let _ = MeshBridge::default();
