@@ -2804,10 +2804,12 @@ impl GapStore {
         if !verify_proof_of_merge(&self.repo_root, gap_id, closed_pr) {
             bail!(
                 "INFRA-1392 PROOF-OF-MERGE: refusing to flip {gap_id} to status=done — \
-                 no commit on local main carries this gap ID. Either (a) wait for the \
-                 actual merge to land on main, or (b) ensure the merge commit subject \
-                 mentions {gap_id}. Auto-fetch from origin/main already ran; if the \
-                 commit is not yet on main, wait for the merge to land and retry."
+                 no commit on origin/main (or local main if no origin remote) carries \
+                 this gap ID. Either (a) wait for the actual merge to land on main, or \
+                 (b) ensure the merge commit subject mentions {gap_id}. Auto-fetch from \
+                 origin/main already ran (RESILIENT-1512: checked regardless of which \
+                 branch this checkout currently has checked out); if the commit is not \
+                 yet on main, wait for the merge to land and retry."
             );
         }
 
@@ -4752,6 +4754,33 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
     if !repo_root.join(".git").exists() {
         return true;
     }
+    // RESILIENT-1512: prefer `origin/main` over the local `main` branch ref.
+    // ship() already runs a best-effort `git fetch origin main` just before
+    // this check, but when the checkout's CURRENT branch isn't `main` (e.g.
+    // parked on a feature branch with a dirty tree), the follow-up
+    // `git pull --ff-only origin main` silently no-ops — `git pull` updates
+    // whatever branch is checked out, not the local `main` ref — leaving
+    // local `main` stale even though the fetch succeeded and `origin/main`
+    // itself is current. Checking `origin/main` directly makes the fetch
+    // alone sufficient regardless of which branch the worktree sits on.
+    // Falls back to local `main` when no `origin/main` ref exists (offline
+    // fixtures, repos with no remote) to keep existing test fixtures green.
+    let has_origin_main = std::process::Command::new("git")
+        .args([
+            "rev-parse",
+            "--verify",
+            "--quiet",
+            "refs/remotes/origin/main",
+        ])
+        .current_dir(repo_root)
+        .output()
+        .map(|o| o.status.success())
+        .unwrap_or(false);
+    let target_ref = if has_origin_main {
+        "origin/main"
+    } else {
+        "main"
+    };
     // CREDIBLE-218: search the FULL history of main via git's own --grep, not just the
     // last 200 commits. The old `-n 200` window meant a merge that landed more than 200
     // commits ago could not be proven → `ship()` refused → the gap became a permanent
@@ -4761,7 +4790,7 @@ pub fn verify_proof_of_merge(repo_root: &Path, gap_id: &str, closed_pr: Option<i
     // gap ID OR the PR marker `(#N)` proves the merge. `-n 1` stops at the first hit.
     let mut args: Vec<String> = vec![
         "log".into(),
-        "main".into(),
+        target_ref.into(),
         "-i".into(),
         "-F".into(),
         "-n".into(),
@@ -7251,6 +7280,112 @@ mod proof_of_merge_tests {
             dir.path(),
             "INFRA-NO-MATCH",
             Some(9999)
+        ));
+    }
+
+    #[test]
+    fn resilient1512_checks_origin_main_not_local_main_when_parked_on_feature_branch() {
+        // RESILIENT-1512: reproduce the hub-node scenario — a checkout
+        // whose CURRENT branch (and local `main` ref) is stale/parked on a
+        // feature branch, but `origin/main` (a bare remote standing in for
+        // a fetched remote-tracking ref) already carries the gap-mentioning
+        // merge commit. The guard must prove this via `origin/main` even
+        // though local `main` never advanced and HEAD sits elsewhere.
+        let remote_dir = tempdir().unwrap();
+        let init = hermetic_git(
+            remote_dir.path(),
+            &["init", "--bare", "--initial-branch=main", "--quiet"],
+        );
+        if !init.status.success() {
+            return; // older git without --initial-branch
+        }
+
+        let work_dir = tempdir().unwrap();
+        let clone = hermetic_git(
+            work_dir.path(),
+            &["clone", "--quiet", remote_dir.path().to_str().unwrap(), "."],
+        );
+        assert!(
+            clone.status.success(),
+            "clone must succeed: {}",
+            String::from_utf8_lossy(&clone.stderr)
+        );
+        hermetic_git(
+            work_dir.path(),
+            &["config", "user.email", "test@test.local"],
+        );
+        hermetic_git(work_dir.path(), &["config", "user.name", "test"]);
+        // Seed the bare remote's main with an initial commit so `main` and
+        // the eventual feature branch share history, then push it.
+        let seed = hermetic_git(
+            work_dir.path(),
+            &["commit", "--allow-empty", "-m", "chore: seed"],
+        );
+        assert!(seed.status.success());
+        let push = hermetic_git(
+            work_dir.path(),
+            &["push", "-u", "origin", "main", "--quiet"],
+        );
+        assert!(
+            push.status.success(),
+            "initial push must succeed: {}",
+            String::from_utf8_lossy(&push.stderr)
+        );
+
+        // Park the checkout on a feature branch — local `main` never moves
+        // past the seed commit from here on.
+        let checkout = hermetic_git(
+            work_dir.path(),
+            &["checkout", "-b", "fix/some-feature", "--quiet"],
+        );
+        assert!(checkout.status.success());
+
+        // A sibling clone simulates the real merge landing on main upstream
+        // (e.g. via GitHub's squash-merge) without ever touching work_dir's
+        // checked-out branch or local `main` ref.
+        let sibling_dir = tempdir().unwrap();
+        let sibling_clone = hermetic_git(
+            sibling_dir.path(),
+            &["clone", "--quiet", remote_dir.path().to_str().unwrap(), "."],
+        );
+        assert!(sibling_clone.status.success());
+        hermetic_git(
+            sibling_dir.path(),
+            &["config", "user.email", "test@test.local"],
+        );
+        hermetic_git(sibling_dir.path(), &["config", "user.name", "test"]);
+        let merge_commit = hermetic_git(
+            sibling_dir.path(),
+            &[
+                "commit",
+                "--allow-empty",
+                "-m",
+                "feat(RESILIENT-1512): ship the real fix (#9000)",
+            ],
+        );
+        assert!(merge_commit.status.success());
+        let sibling_push = hermetic_git(sibling_dir.path(), &["push", "origin", "main", "--quiet"]);
+        assert!(
+            sibling_push.status.success(),
+            "sibling push must succeed: {}",
+            String::from_utf8_lossy(&sibling_push.stderr)
+        );
+
+        // Before fetching: work_dir's local `main` ref is stale and HEAD is
+        // on the feature branch — the OLD behavior (hardcoded `git log
+        // main`) would fail here even after a fetch, because `git pull`
+        // only advances the checked-out branch, never the un-checked-out
+        // local `main` ref.
+        let fetch = hermetic_git(work_dir.path(), &["fetch", "origin", "main", "--quiet"]);
+        assert!(fetch.status.success());
+        assert!(
+            verify_proof_of_merge(work_dir.path(), "RESILIENT-1512", None),
+            "must prove via origin/main even though local main/HEAD never advanced"
+        );
+        assert!(verify_proof_of_merge(
+            work_dir.path(),
+            "NO-SUCH-GAP",
+            Some(9000)
         ));
     }
 }
