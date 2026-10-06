@@ -687,7 +687,7 @@ if [[ "$_has_rust_staged" -eq 1 ]] && command -v cargo >/dev/null 2>&1; then
         # RESILIENT-065: bound cargo fmt so cargo package-cache lock contention
         # (many fleet cargo procs) can't hang the commit indefinitely. On timeout
         # (124) or fmt failure, fall through to the non-fatal else and still commit.
-        if timeout "${CHUMP_AUTO_FMT_TIMEOUT:-120}" cargo fmt --all 2>&1 | tail -3 >&2; then
+        if timeout "${CHUMP_AUTO_FMT_TIMEOUT:-120}" cargo fmt --all 200>&- 2>&1 | tail -3 >&2; then
             # Re-stage any files cargo fmt touched. If nothing changed, this is a no-op.
             git add -A 2>/dev/null || true
             _amb="${CHUMP_AMBIENT_LOG:-${REPO_ROOT}/.chump-locks/ambient.jsonl}"
@@ -783,4 +783,8 @@ fi
 # inherited and released on git exit — both work — but the non-exec form is
 # cleaner when callers capture the exit code via $?.
 _commit_started=1  # RESILIENT-065: past here the EXIT trap stays silent; a real git-commit failure surfaces its own exit code
-git commit "${GIT_ARGS[@]}"
+# RESILIENT-117: `200>&-` keeps FD 200 (the index mutex) out of git's process tree. Hooks
+# spawn cargo/rustc/sccache, and a long-lived daemon inheriting the flock FD kept the
+# mutex held after this script exited, blocking commits in sibling worktrees. This
+# shell keeps its own FD 200, so the lock is still held for the whole commit.
+git commit "${GIT_ARGS[@]}" 200>&-
