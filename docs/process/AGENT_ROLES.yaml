@@ -90,3 +90,13 @@ roles:
     skills:
       - pr-rescue
       - fleet-triage
+
+  - name: bot-merge
+    description: >
+      The ship pipeline (scripts/coord/bot-merge.sh) re-claiming a gap's lease
+      before it pushes and arms auto-merge. A pipeline operation, not a
+      role-specific lane; registered so its `chump claim --role bot-merge`
+      passes role validation (RESILIENT-1528 static gate).
+    skills:
+      - git
+      - shell
