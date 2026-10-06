@@ -109,6 +109,42 @@ pub struct GapWriteRequest {
     pub skip_obs_acs: Option<bool>,
     #[serde(default)]
     pub session: Option<String>,
+    /// PRODUCT-323: every wire field not modelled above, kept only so an empty
+    /// `op=set` can report which fields the caller actually sent.
+    #[serde(flatten)]
+    pub unrecognised: std::collections::BTreeMap<String, serde_json::Value>,
+}
+
+/// A caller error (bad/empty request) — surfaced as HTTP 400, not 500.
+#[derive(Debug)]
+pub struct InvalidRequest(pub String);
+
+impl std::fmt::Display for InvalidRequest {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(&self.0)
+    }
+}
+
+impl std::error::Error for InvalidRequest {}
+
+/// Message for an `op=set` that changed nothing: names the fields received so
+/// the caller can see which one the server did not recognise.
+fn empty_set_message(req: &GapWriteRequest) -> String {
+    let mut received: Vec<&str> = req.unrecognised.keys().map(String::as_str).collect();
+    received.insert(0, "op");
+    if req.gap_id.is_some() {
+        received.insert(1, "gap_id");
+    }
+    format!(
+        "op=set requires at least one recognised field to update; received fields: [{}]; \
+         unrecognised: [{}]",
+        received.join(", "),
+        req.unrecognised
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>()
+            .join(", ")
+    )
 }
 
 /// Result of a successful gap mutation, serialized back to the caller.
@@ -319,7 +355,7 @@ pub fn execute_gap_write(
             let mut set_args: Vec<String> = vec!["gap".into(), "set".into(), gap_id.to_string()];
             let touched = append_set_args(&mut set_args, &req);
             if !touched {
-                anyhow::bail!("op=set requires at least one field to update");
+                return Err(InvalidRequest(empty_set_message(&req)).into());
             }
             let args_ref: Vec<&str> = set_args.iter().map(String::as_str).collect();
             run_chump(&chump, repo_root, &args_ref)?;
@@ -387,6 +423,21 @@ fn parse_gap_list_json(stdout: &str) -> anyhow::Result<serde_json::Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn empty_set_message_names_received_fields() {
+        let req: GapWriteRequest =
+            serde_json::from_str(r#"{"op":"set","gap_id":"INFRA-1","note":"x","source":"holler"}"#)
+                .unwrap();
+        let mut args = vec![];
+        assert!(!append_set_args(&mut args, &req));
+        let msg = empty_set_message(&req);
+        assert!(
+            msg.contains("received fields: [op, gap_id, note, source]"),
+            "{msg}"
+        );
+        assert!(msg.contains("unrecognised: [note, source]"), "{msg}");
+    }
 
     #[test]
     fn is_valid_op_allows_only_the_three_ops() {
