@@ -48,3 +48,22 @@ Before touching any eval fixture, cognitive-architecture code, or research claim
 - Read `docs/gaps.yaml` for the gap's acceptance criteria.
 - Check `.chump-locks/ambient.jsonl` for recent activity from sibling sessions.
 - Use `CHUMP_GAP_CHECK=0 git push` only when gap IDs in commit bodies cause false positives on the pre-push hook.
+
+## Picker policy: single source (INFRA-8060)
+
+Picker-side policy that also belongs on the Rust `GapBriefing` lives in
+`scripts/dispatch/picker-policy.json`, read by both `src/briefing.rs`
+(`load_sync_overhead_ceiling`) and `scripts/dispatch/_pick_gap.py`
+(`_picker_policy`). An upper-case env var of the same name overrides the file
+for one run (e.g. `SYNC_OVERHEAD_CEILING`). Add new briefing-driven policy to
+that file instead of a new env var plus a mirror field.
+
+Audit of the other env-var policies read by `_pick_gap.py` (no Rust mirror
+field exists for any of them, so there is no drift today; nothing moved):
+
+| Env var | Kind | Verdict |
+|---|---|---|
+| `FLEET_COOLDOWN_THRESHOLD` | numeric policy (default 3) | candidate for `picker-policy.json` if the briefing ever needs it |
+| `CHUMP_MIXED_FLEET_XS_GATE` | feature flag | stays an env flag |
+| `CHUMP_ACTIVE_MISSION` | per-run mission selector | stays an env var (runtime input) |
+| `FLEET_MODEL`, `EXCLUDE_RE`, `ACTIVE_GAPS`, `COOLDOWN_DIR`, `WORKER_*` | per-worker runtime inputs | stay env vars |
