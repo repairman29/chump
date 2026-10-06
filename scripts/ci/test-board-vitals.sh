@@ -488,6 +488,58 @@ SPG_RC2=$?
 [[ "$SPG_RC2" -eq 0 ]] && _ok "summarized_pct=96 → exit 0" || _fail "summarized_pct=96 → expected exit 0, got $SPG_RC2"
 _notemitted "summarized_pct=96 → no abort message printed" "$SPG_OUT2" 'summarized_pct must be >95%'
 
+# ── RESILIENT-1514 AC4: holler-drain staleness ──────────────────────────────
+echo "[test-board-vitals] holler drain ledger missing → unknown, never pages"
+HM="$TMP/holler-missing.jsonl"; : > "$HM"
+( set -a
+  CHUMP_AMBIENT_LOG="$HM"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-holler-missing"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_HOLLER_LEDGER="$TMP/no-such-ledger.json"
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "missing ledger → unknown staleness, no page" \
+    "$HM" '"board_vitals_page_(dryrun|sent)".*"holler_drain_stale"'
+
+echo "[test-board-vitals] holler drain ledger fresh (just touched) → no page"
+HF="$TMP/holler-fresh.jsonl"; : > "$HF"
+HF_LEDGER="$TMP/holler-fresh-ledger.json"; printf '[]' > "$HF_LEDGER"
+( set -a
+  CHUMP_AMBIENT_LOG="$HF"; CHUMP_BOARD_VITALS_STATE_DIR="$TMP/state-holler-fresh"
+  CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+  CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+  CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+  CHUMP_BOARD_VITALS_HOLLER_LEDGER="$HF_LEDGER"
+  CHUMP_BOARD_VITALS_HOLLER_DRAIN_STALE_MIN=180
+  set +a
+  source "$LIB"; board_vitals_check ) >/dev/null 2>&1
+_notemitted "freshly-touched ledger (age ~0m < 180m floor) → no page" \
+    "$HF" '"board_vitals_page_(dryrun|sent)".*"holler_drain_stale"'
+
+echo "[test-board-vitals] holler drain ledger stale past 3h → pages once then dedupes"
+HS="$TMP/holler-stale.jsonl"; : > "$HS"
+HS_LEDGER="$TMP/holler-stale-ledger.json"; printf '[]' > "$HS_LEDGER"
+touch -d '4 hours ago' "$HS_LEDGER" 2>/dev/null || touch -t "$(date -u -v-4H +%Y%m%d%H%M.%S 2>/dev/null)" "$HS_LEDGER" 2>/dev/null || true
+SDH="$TMP/state-holler-stale"
+run_holler_stale() {
+    ( set -a
+      CHUMP_AMBIENT_LOG="$HS"; CHUMP_BOARD_VITALS_STATE_DIR="$SDH"
+      CHUMP_BOARD_VITALS_DRY_RUN=1; CHUMP_BOARD_VITALS_ESCALATE=0
+      CHUMP_BOARD_VITALS_MAIN_RED_LIVE=0
+      CHUMP_BOARD_VITALS_DISK_PCT=100; CHUMP_BOARD_VITALS_DROUGHT_MIN=999999
+      CHUMP_BOARD_VITALS_HOLLER_LEDGER="$HS_LEDGER"
+      CHUMP_BOARD_VITALS_HOLLER_DRAIN_STALE_MIN=180
+      set +a
+      source "$LIB"; board_vitals_check )
+}
+run_holler_stale >/dev/null 2>&1
+_emitted "ledger 4h stale (>180m floor) → pages holler_drain_stale" "$HS" '"board_vitals_page_dryrun".*"holler_drain_stale"'
+run_holler_stale >/dev/null 2>&1
+hs_pages="$(_count "$HS" '"board_vitals_page_dryrun".*"holler_drain_stale"')"
+[[ "$hs_pages" -eq 1 ]] && _ok "holler drain stale paged exactly once across two runs (dedup)" \
+    || _fail "holler drain stale pages != 1 (got $hs_pages)"
+
 echo
 echo "[test-board-vitals] PASS=$PASS FAIL=$FAIL"
 [[ "$FAIL" -eq 0 ]] || exit 1
