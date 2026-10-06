@@ -141,6 +141,19 @@ fi
 GIT_BIN="${CHUMP_ORGAN_WATCHDOG_GIT_BIN:-git}"
 DEPLOY_SCRIPT="${CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT:-$REPO_ROOT/scripts/setup/install-helsinki-atc.sh}"
 
+# RESILIENT-1513: shared ExecStart-resolution + scoped-binary-build helpers
+# (organ_unit_execstart_resolves / organ_try_build_binary), the same lib
+# install-helsinki-atc.sh's RESILIENT-1508 pre-enable check and
+# organ-reconcile.sh's RESILIENT-1513 pre-enable check both use, so "does the
+# binary this unit execs actually exist" is answered identically everywhere.
+LIB_ORGAN_UNIT_INSTALL="$REPO_ROOT/scripts/ops/lib/organ-unit-install-lib.sh"
+[[ -f "$LIB_ORGAN_UNIT_INSTALL" ]] && source "$LIB_ORGAN_UNIT_INSTALL"
+# shellcheck disable=SC1091
+source "$REPO_ROOT/scripts/lib/halt-class-emit.sh" 2>/dev/null || true
+# Overridable (test hook) path to the directory holding the LIVE unit files
+# this watchdog scans — real systemd always keeps them at /etc/systemd/system.
+SYSTEMD_UNIT_DIR="${CHUMP_ORGAN_WATCHDOG_UNIT_DIR:-/etc/systemd/system}"
+
 # RESILIENT-347: share organ-reconcile.sh's backoff registry. Without this,
 # section 1 below (blind reset-failed+restart of ANY failed chump-*.service)
 # resurrects a unit that organ-reconcile just deliberately disabled + backed
@@ -357,6 +370,49 @@ if [[ -n "$FAILED_SERVICES" ]]; then
             # restarted every 5 min and never left `systemctl --failed`)
             emit organ_watchdog_reaped_missing_exec "\"unit\":\"$unit\""
             continue
+        fi
+        # RESILIENT-1513: the unit's ExecStart parses fine but the binary it
+        # execs is missing/not executable — the exit-127 class (binary never
+        # built). organ_exec_target_missing above only catches missing *.sh
+        # scripts; this catches the compiled-binary sibling. Give it ONE
+        # scoped build attempt before giving up; if that fails, STOP
+        # resurrecting (the blind reset-failed+restart below would just
+        # relearn exit 127 every cycle) and raise a named stall page instead.
+        if [[ -r "$SYSTEMD_UNIT_DIR/$unit" ]] && command -v organ_unit_execstart_resolves >/dev/null 2>&1; then
+            _resolve_reason=""
+            if ! organ_unit_execstart_resolves "$SYSTEMD_UNIT_DIR/$unit" _resolve_reason \
+                && [[ "$_resolve_reason" == binary_not_executable:* ]]; then
+                # Only a confidently-diagnosed missing-binary (an absolute/
+                # relative ExecStart path that parsed fine but isn't -x) takes
+                # this branch. Any other reason (unreadable unit file,
+                # unparseable ExecStart, bare command not on PATH) falls
+                # through to the unchanged resurrection path below — this
+                # check must never become a new false-stall surface.
+                _missing_bin="${_resolve_reason#binary_not_executable:}"
+                if organ_try_build_binary "$REPO_ROOT" "$_missing_bin" 2>/dev/null; then
+                    echo "[organ-watchdog]   built missing binary for $unit: $_missing_bin"
+                else
+                    echo "[organ-watchdog] STALL (ExecStart binary missing, not resurrecting): $unit ($_resolve_reason)" >&2
+                    if [[ "$DRY_RUN" == "1" ]]; then
+                        echo "[organ-watchdog]   (dry-run) would disable $unit + page on missing binary"
+                        continue
+                    fi
+                    "$SYSTEMCTL_BIN" disable --now "$unit" 2>/dev/null || true
+                    "$SYSTEMCTL_BIN" reset-failed "$unit" 2>/dev/null || true
+                    mkdir -p "$BACKOFF_DIR" 2>/dev/null || true
+                    printf '{"unit":"%s","since":%d,"reason":"execstart_unresolved:%s"}\n' \
+                        "$unit" "$(date +%s)" "$_resolve_reason" > "$BACKOFF_DIR/${unit}.json" 2>/dev/null || true
+                    # scanner-anchor: "kind":"organ_watchdog_stalled_missing_binary"
+                    # (RESILIENT-1513; fires when the watchdog finds a failed
+                    # organ whose ExecStart binary is missing/not-executable and
+                    # a scoped build attempt could not produce it — it disables
+                    # the unit instead of resurrecting it into perpetual exit 127)
+                    emit organ_watchdog_stalled_missing_binary "\"unit\":\"$unit\",\"reason\":\"$_resolve_reason\""
+                    command -v halt_class_emit >/dev/null 2>&1 && halt_class_emit "organ-stall-$unit" failure \
+                        "organ $unit will not run: missing binary ($_resolve_reason)" "{\"unit\":\"$unit\"}"
+                    continue
+                fi
+            fi
         fi
         echo "[organ-watchdog] FAILED: $unit"
         if [[ "$DRY_RUN" == "1" ]]; then

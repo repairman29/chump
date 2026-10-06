@@ -447,7 +447,19 @@ async fn post_gap(
             .into_response();
     }
 
-    // 4. Execute off the async runtime (it shells out).
+    // 4. RESILIENT-1513: refuse the write if THIS node's own checkout has
+    // gone stale (stopped advancing) instead of silently absorbing it into a
+    // frozen store — 409 so the caller can detect it and resolve the gap API
+    // to whichever node actually holds the canonical, advancing checkout.
+    if let Some(reason) = gap_write::staleness_guard(&s.repo_root) {
+        return (
+            axum::http::StatusCode::CONFLICT,
+            Json(serde_json::json!({"error": reason, "stale": true})),
+        )
+            .into_response();
+    }
+
+    // 5. Execute off the async runtime (it shells out).
     let repo_root = s.repo_root.clone();
     let result =
         tokio::task::spawn_blocking(move || gap_write::execute_gap_write(&repo_root, req)).await;

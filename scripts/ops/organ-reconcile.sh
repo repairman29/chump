@@ -65,6 +65,15 @@ if [[ ! -f "$LIB_ORGAN_MANIFEST" ]]; then
 fi
 source "$LIB_ORGAN_MANIFEST"
 
+# RESILIENT-1513: organ_unit_execstart_resolves + organ_try_build_binary —
+# shared with install-helsinki-atc.sh's RESILIENT-1508 pre-enable check, so
+# "does the binary this unit execs actually exist" is answered identically
+# everywhere a unit gets `enable --now`'d.
+LIB_ORGAN_UNIT_INSTALL="$REPO_ROOT/scripts/ops/lib/organ-unit-install-lib.sh"
+[[ -f "$LIB_ORGAN_UNIT_INSTALL" ]] && source "$LIB_ORGAN_UNIT_INSTALL"
+# shellcheck source=./lib/halt-class-emit.sh
+source "$REPO_ROOT/scripts/lib/halt-class-emit.sh" 2>/dev/null || true
+
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
   local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -572,6 +581,38 @@ for unit in "${ENABLED[@]}"; do
   if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
     clear_backoff "$unit"
     continue
+  fi
+
+  # RESILIENT-1513: never `enable --now` a unit whose ExecStart binary does
+  # not exist — that is the "binary never built, unit restart-looped on exit
+  # 127" class (chump-fleet-server on the canonical store node, 2026-10-02).
+  # Give it ONE build attempt (scoped to this single binary, see
+  # organ_try_build_binary) before falling back to a backoff + a named halt
+  # signal instead of enabling a unit doomed to crash-loop.
+  unit_path="$SYSTEMD_DIR/$unit"
+  if [[ -f "$unit_path" ]] && command -v organ_unit_execstart_resolves >/dev/null 2>&1; then
+    resolve_reason=""
+    if ! organ_unit_execstart_resolves "$unit_path" resolve_reason; then
+      missing_bin=""
+      [[ "$resolve_reason" == binary_not_executable:* ]] && missing_bin="${resolve_reason#binary_not_executable:}"
+      if [[ -n "$missing_bin" ]] && command -v organ_try_build_binary >/dev/null 2>&1 \
+          && organ_try_build_binary "$REPO_ROOT" "$missing_bin"; then
+        echo "  built missing binary for $unit: $missing_bin"
+      else
+        echo "WARN: $unit ExecStart does not resolve ($resolve_reason) — refusing to enable, backing off" >&2
+        # scanner-anchor: "kind":"organ_reconcile_execstart_unresolved" (RESILIENT-1513;
+        # fires when an `enabled` organ's ExecStart binary is missing/not
+        # executable and could not be built — the unit is NOT enabled, closing
+        # the "enabled unit whose ExecStart path is missing" class)
+        emit organ_reconcile_execstart_unresolved "\"unit\":\"$unit\",\"reason\":\"$resolve_reason\""
+        record_backoff "$unit" "execstart_unresolved:$resolve_reason"
+        CHANGED+=("backoff:$unit")
+        emit organ_reconcile_backoff "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"execstart_unresolved\""
+        command -v halt_class_emit >/dev/null 2>&1 && halt_class_emit "organ-enable-$unit" failure \
+          "ExecStart binary missing for $unit: $resolve_reason" "{\"unit\":\"$unit\"}"
+        continue
+      fi
+    fi
   fi
 
   if ! "$SYSTEMCTL_BIN" enable --now "$unit" 2>/dev/null; then

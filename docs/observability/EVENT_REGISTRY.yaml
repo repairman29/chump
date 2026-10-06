@@ -7241,6 +7241,18 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role, reason]
 
+  - kind: organ_reconcile_execstart_unresolved
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1513)
+    trigger: an `enabled` organ's installed unit file execs a binary that does
+      not exist/is not executable, and a scoped `organ_try_build_binary`
+      attempt (cargo build of just that --bin target) could not produce it —
+      the reconcile refuses `enable --now` entirely instead of enabling a
+      unit doomed to crash-loop on exit 127 (the chump-fleet-server-on-the-
+      canonical-store-node incident, 2026-10-02).
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, reason]
+
   - kind: organ_reconcile_backoff
     effect_metric: self
     emitter: scripts/ops/organ-reconcile.sh (RESILIENT-347)
@@ -7299,6 +7311,20 @@ events:
       self-healer-perpetuates-failure loop (VERIFIED on closetjunky 2026-09-07).
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit]
+
+  - kind: organ_watchdog_stalled_missing_binary
+    effect_metric: self
+    emitter: scripts/ops/organ-watchdog.sh (RESILIENT-1513)
+    trigger: a chump-*.service unit is ActiveState=failed, its ExecStart execs a
+      compiled binary (not a *.sh script — see organ_watchdog_reaped_missing_exec
+      for the script case) that is missing/not executable, and a scoped
+      organ_try_build_binary attempt could not produce it. The watchdog disables
+      the unit and records a backoff instead of blindly reset-failed+restart'ing
+      it into perpetual exit 127 (the chump-fleet-server-on-the-canonical-
+      store-node incident, 2026-10-02) — this is the named "stall page" naming
+      the missing binary via the `reason` field.
+    consumers: [fleet-brief, ops-audit, operator-recall]
+    fields_required: [ts, kind, unit, reason]
 
   - kind: organ_binary_healed
     effect_metric: organ_self_heal_rate

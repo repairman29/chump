@@ -1479,6 +1479,35 @@ install_binary_refresh() {
 # --with-fleet-server. The server installer itself only pulls a prebuilt binary
 # (never cargo-builds on a live node); make its absence a hard failure here so
 # an opted-in cockpit is never reported as installed when it cannot serve.
+# RESILIENT-1513: mint CHUMP_BATPHONE_TOKEN on-node into providers.env before
+# the fleet-server's first start, so the bat-phone (POST /api/gap, POST
+# /api/mission) never comes up fail-closed-forever for want of a token nobody
+# provisioned. Minted with 32 random bytes (hex), idempotent (a token already
+# present in $CREDS is left untouched), and the VALUE never touches stdout/
+# logs/ambient — only the fact that a (new|existing) token is present.
+ensure_batphone_token() {
+  if grep -qE '^(export )?CHUMP_BATPHONE_TOKEN=.+' "$CREDS" 2>/dev/null; then
+    ok "CHUMP_BATPHONE_TOKEN already provisioned in $CREDS"
+    return 0
+  fi
+  local token=""
+  if command -v openssl >/dev/null 2>&1; then
+    token="$(openssl rand -hex 32 2>/dev/null)"
+  fi
+  if [ -z "$token" ] && [ -r /dev/urandom ]; then
+    token="$(head -c 32 /dev/urandom | od -An -tx1 | tr -d ' \n')"
+  fi
+  if [ -z "$token" ]; then
+    no "could not mint CHUMP_BATPHONE_TOKEN (no openssl, no /dev/urandom) — bat-phone stays fail-closed"
+    return 1
+  fi
+  mkdir -p "$(dirname "$CREDS")"
+  touch "$CREDS"
+  chmod 600 "$CREDS" 2>/dev/null || true
+  printf 'CHUMP_BATPHONE_TOKEN=%s\n' "$token" >> "$CREDS"
+  ok "minted CHUMP_BATPHONE_TOKEN into $CREDS (value never logged)"
+}
+
 install_fleet_server() {
   [ "$WITH_FLEET_SERVER" = 1 ] || return 0
   [ "$HOST_KIND" = linux-systemd ] || {
@@ -1490,6 +1519,11 @@ install_fleet_server() {
   if [ ! -f "$installer" ]; then
     no "fleet-server installer missing: $installer"
     return 1
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: would ensure CHUMP_BATPHONE_TOKEN is provisioned in $CREDS"
+  else
+    ensure_batphone_token || true
   fi
   local server_bin="$NODE_DIR/bin/chump-fleet-server"
   if [ "$DRY" = 1 ]; then

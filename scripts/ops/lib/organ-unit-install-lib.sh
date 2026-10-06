@@ -210,3 +210,35 @@ organ_unit_run_home() {
   [[ -z "$h" ]] && h="/home/$run_user"
   echo "$h"
 }
+
+# organ_try_build_binary <repo-root> <absolute-binary-path>
+#
+# RESILIENT-1513: a unit whose ExecStart points at a cargo-built workspace
+# binary (target/release/<name> or target/debug/<name>) that hasn't been
+# built yet is exactly the "binary never built, unit restart-looped on exit
+# 127" class (chump-fleet-server on the canonical store node, 2026-10-02).
+# Before any caller refuses/backs off such a unit, give it ONE chance to
+# become real: if the missing path lives under this repo's target/{release,
+# debug}/, build that single binary target with the matching profile.
+# Deliberately scoped (one `--bin <name>`, never a full workspace build) so
+# this never becomes the thing that starves a 2-core node — callers are on
+# an enable/heal path, not an opportunistic full rebuild.
+#
+# Returns 0 if the binary exists (already present, or now built); 1 if the
+# path isn't a recognizable cargo target or the build failed/cargo is
+# unavailable.
+organ_try_build_binary() {
+  local repo_root="$1" bin_path="$2" profile bin_name
+  [[ -x "$bin_path" ]] && return 0
+  case "$bin_path" in
+    */target/release/*) profile="--release" ;;
+    */target/debug/*) profile="" ;;
+    *) return 1 ;; # not a cargo-built path — nothing this helper can build
+  esac
+  command -v cargo >/dev/null 2>&1 || return 1
+  bin_name="$(basename "$bin_path")"
+  echo "[organ_try_build_binary] building missing organ binary: $bin_name (cargo build $profile --bin $bin_name)" >&2
+  # shellcheck disable=SC2086  # $profile is intentionally either empty or a single flag
+  ( cd "$repo_root" && cargo build $profile --bin "$bin_name" ) >/dev/null 2>&1
+  [[ -x "$bin_path" ]]
+}

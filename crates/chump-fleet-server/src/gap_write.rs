@@ -242,6 +242,62 @@ fn append_set_args(args: &mut Vec<String>, req: &GapWriteRequest) -> bool {
     touched
 }
 
+/// Env var: override the max age (seconds) a server's own HEAD commit may
+/// be before it refuses canonical gap writes (RESILIENT-1513).
+pub const STALE_MAX_AGE_ENV: &str = "CHUMP_FLEET_SERVER_STALE_MAX_AGE_S";
+/// Default staleness ceiling: 48h. Main merges many times a day in this
+/// fleet, so a HEAD this old means the node's checkout stopped advancing —
+/// e.g. a dead refresh timer — not that main itself went quiet.
+const DEFAULT_STALE_MAX_AGE_S: u64 = 172_800;
+
+/// Age (seconds) of `repo_root`'s current HEAD commit, or `None` if git is
+/// unavailable/unparseable. Deliberately HEAD-commit-age rather than an
+/// ahead/behind comparison against a cached `origin/main` ref: a node that
+/// stopped fetching days ago has a cached ref that is ALSO stale, so an
+/// ahead/behind count would under-report exactly the condition this guards
+/// against (RESILIENT-1513 — the node whose store froze on 2026-09-29 still
+/// looked "0 behind" against its own last-seen origin/main).
+fn head_commit_age_s(repo_root: &Path) -> Option<u64> {
+    let out = Command::new("git")
+        .current_dir(repo_root)
+        .args(["log", "-1", "--format=%ct"])
+        .output()
+        .ok()?;
+    if !out.status.success() {
+        return None;
+    }
+    let ts: i64 = String::from_utf8_lossy(&out.stdout).trim().parse().ok()?;
+    let now = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .ok()?
+        .as_secs() as i64;
+    Some((now - ts).max(0) as u64)
+}
+
+/// RESILIENT-1513: refuse canonical gap writes when this server's own repo
+/// checkout has gone stale (stopped advancing) rather than silently writing
+/// into a frozen store — the exact failure that let a Mac client's gap
+/// filings land on a node whose store had been frozen since 2026-09-29. A
+/// stale node answers with a clear, named reason instead of a false
+/// success, so the CALLER (or the operator) can resolve the API to whichever
+/// node actually holds the canonical, advancing store.
+///
+/// Pure + unit-testable (no network/HTTP); callers pass a real repo root.
+pub fn staleness_guard(repo_root: &Path) -> Option<String> {
+    let max_age = std::env::var(STALE_MAX_AGE_ENV)
+        .ok()
+        .and_then(|v| v.trim().parse::<u64>().ok())
+        .unwrap_or(DEFAULT_STALE_MAX_AGE_S);
+    match head_commit_age_s(repo_root) {
+        Some(age) if age > max_age => Some(format!(
+            "this fleet-server's checkout is stale (HEAD commit is {age}s old, max {max_age}s) \
+             — refusing canonical gap write; this node may not hold the canonical store, resolve \
+             the gap API to the node whose checkout is current"
+        )),
+        _ => None,
+    }
+}
+
 /// Execute a `reserve|set|ship` gap mutation canonically (blocking; call
 /// from `spawn_blocking`), reusing the exact `Command::new(chump)
 /// .current_dir(repo_root)...` pattern `mission::create_mission_gap` uses
@@ -553,5 +609,37 @@ mod tests {
     fn parse_gap_list_json_rejects_garbage() {
         let err = parse_gap_list_json("not json").unwrap_err();
         assert!(err.to_string().contains("could not parse"));
+    }
+
+    // RESILIENT-1513: a non-git / nonexistent path can't compute a HEAD age,
+    // so the guard fails OPEN (no verdict) rather than refusing every write
+    // on a host where git itself is unavailable.
+    #[test]
+    fn staleness_guard_is_none_when_head_age_unknown() {
+        assert!(staleness_guard(Path::new("/nonexistent/not-a-repo")).is_none());
+    }
+
+    // Both ceilings are exercised in ONE test (rather than two #[test] fns)
+    // because they mutate the same process-global env var — separate tests
+    // would race under the default parallel test runner.
+    #[test]
+    fn staleness_guard_respects_the_configured_ceiling() {
+        let repo_root = Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../..")
+            .canonicalize()
+            .unwrap();
+
+        // This checkout's own HEAD is always far younger than 0 seconds, so a
+        // max-age of 0 deterministically trips the guard without needing a
+        // synthetic stale repo fixture.
+        std::env::set_var(STALE_MAX_AGE_ENV, "0");
+        let reason = staleness_guard(&repo_root).expect("HEAD age must exceed a 0s ceiling");
+        assert!(reason.contains("stale"), "{reason}");
+        assert!(reason.contains("resolve"), "{reason}");
+
+        std::env::set_var(STALE_MAX_AGE_ENV, "999999999");
+        let reason = staleness_guard(&repo_root);
+        std::env::remove_var(STALE_MAX_AGE_ENV);
+        assert!(reason.is_none(), "{reason:?}");
     }
 }
