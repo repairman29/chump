@@ -1064,6 +1064,9 @@ fn print_help() {
     println!();
     println!("GAP MANAGEMENT");
     println!("  gap <sub>  (alias: g)  list, show, reserve, ship, audit-priorities …");
+    println!(
+        "  objective <set|show|progress|done>  set/track the current fleet objective (META-1033)"
+    );
     println!("  claim <GAP-ID>  (alias: c)  atomic worktree + lease + preflight in one call");
     println!(
         "                              [--role ROLE] tag the claiming session with a role hint"
@@ -2523,6 +2526,13 @@ async fn main() -> Result<()> {
     if args.get(1).map(String::as_str) == Some("config") {
         let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
         std::process::exit(commands::config::run(&sub_args));
+    }
+
+    // `chump objective <set|show|progress|done>` (META-1033, META-270 slice) —
+    // set and track the current fleet objective in .chump-locks/current-objective.json.
+    if args.get(1).map(String::as_str) == Some("objective") {
+        let sub_args: Vec<String> = args.iter().skip(2).cloned().collect();
+        std::process::exit(commands::objective::run(&sub_args));
     }
 
     // `chump consensus-tally [--corr-id X | --all] [--since <dur>]` (META-159) —
