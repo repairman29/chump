@@ -1290,6 +1290,8 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // renamed/removed without the help text being updated. Pure local
         // (one subprocess + a string diff), ~0.1s, no network.
         "scripts/ci/test-cli-help-regression.sh",
+        // META-1047: weekly single-verdict composition over the mission organs (fixtures, pure local).
+        "scripts/ci/test-weekly-verdict.sh",
     ];
     candidates
         .iter()

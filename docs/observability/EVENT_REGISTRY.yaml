@@ -6452,6 +6452,21 @@ events:
     consumers: [fleet-brief, ci-failure-digest, operator-recall]
     fields_required: [ts, kind, starved_outcomes, untraced_p0, outcome_drift]
 
+  # ── META-1047: weekly single-verdict composition ───────────────────────────
+  - kind: weekly_verdict
+    effect_metric: self
+    emitter: scripts/coord/weekly-verdict.py (META-1047)
+    trigger: >
+      The weekly composition over mission-grade, roadmap-status,
+      mission-scoreboard and the factory matrix delivered its verdict to
+      FLEET-RADIO (board.log). verdict is APPROVAL (nothing to change) or
+      CHANGES (up to three organ-tagged items). Emitted at most once per ISO
+      week.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, week, verdict, items, organs]
+    expected_min_per_day: 0
+    status: stable
+
   # ── INFRA-1147: weekly roadmap-update LLM agent ────────────────────────────
   - kind: roadmap_update_proposal_cost
     effect_metric: self

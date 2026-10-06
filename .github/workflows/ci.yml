@@ -1515,6 +1515,9 @@ jobs:
       - name: bot-merge health monitoring + hung-process detection (INFRA-119)
         run: bash scripts/ci/test-infra-119-bot-merge-hang.sh
 
+      - name: weekly verdict — single composed verdict over the mission organs (META-1047)
+        run: bash scripts/ci/test-weekly-verdict.sh
+
       - name: Dual-surface coordination smoke (INFRA-032)
         # INFRA-499 (2026-05-06): post-INFRA-498 docs/gaps/*.yaml deleted,
         # so CI's state.db starts empty. Smoke test now reserves a fresh
