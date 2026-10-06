@@ -1290,6 +1290,8 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // renamed/removed without the help text being updated. Pure local
         // (one subprocess + a string diff), ~0.1s, no network.
         "scripts/ci/test-cli-help-regression.sh",
+        // META-1051: state-audit node-last-seen + auth-vs-probe checks (fixtures, pure local).
+        "scripts/ci/test-state-audit-checks.sh",
     ];
     candidates
         .iter()

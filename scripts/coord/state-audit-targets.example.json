@@ -1,0 +1,27 @@
+{
+  "_comment": "Example targets for scripts/coord/state-audit-checks.py. Copy to your own config and point CHUMP_STATE_AUDIT_CONFIG at it; ids/paths/commands below are placeholders — nothing about real nodes or credentials belongs in the repo.",
+  "nodes": [
+    {
+      "id": "node-a",
+      "last_seen": {"type": "ambient", "path": ".chump-locks/ambient.jsonl", "node_field": "node"},
+      "expected_up": {"always": true},
+      "max_silence_secs": 1800
+    },
+    {
+      "id": "node-b",
+      "last_seen": {"type": "file", "path": "/path/to/node-b/heartbeat"},
+      "expected_up": {"windows": [{"days": ["mon", "tue", "wed", "thu", "fri"], "start": "08:00", "end": "18:00"}]},
+      "max_silence_secs": 3600
+    }
+  ],
+  "auth": [
+    {
+      "id": "oauth-primary",
+      "status": {"type": "command", "cmd": "cat /path/to/auth-status"},
+      "ok_values": ["ok", "live"],
+      "dead_values": ["dead", "expired"],
+      "probe_cmd": "/path/to/minimal-auth-probe",
+      "probe_timeout_secs": 20
+    }
+  ]
+}
