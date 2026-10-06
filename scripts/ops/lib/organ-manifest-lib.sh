@@ -66,6 +66,13 @@ organ_manifest_parse() {
     [[ "$state" == \#* ]] && continue
     role="" requires="" platforms=""
     for tok in $rest; do
+      # RESILIENT-1534: a trailing `# ...` comment is NOT part of the directive.
+      # Several rows quote field names in their comments (e.g. "platforms= stays
+      # launchd-only"), and without this break that stray token overwrote the real
+      # field — chump-mission-grade.timer's `platforms=launchd` became `platforms=`
+      # (empty -> default systemd), so the reconcile tried to enable a unit that only
+      # exists at --user scope and the organ sat permanently dark.
+      [[ "$tok" == \#* ]] && break
       case "$tok" in
         role=*)      role="${tok#role=}" ;;
         requires=*)  requires="${tok#requires=}" ;;
@@ -184,6 +191,49 @@ organ_is_applicable() {
     esac
   done
   return 0
+}
+
+# organ_dark_cause <unit> <platforms-csv> <requires> <current-platform> <repo-root> [<systemd-dir>]
+#
+# RESILIENT-1534: name WHY an `enabled` manifest organ is not running, so a dark
+# organ is never an unexplained "no-op". Echoes exactly one token:
+#   active                        systemctl says it is active
+#   scoped-off:platforms=<csv>    manifest scopes it off this platform (EXPECTED dark,
+#                                 e.g. a launchd-only Mac organ on a systemd hub)
+#   unmet-requires:<reason>       a requires= precondition fails (missing_bin:gh, ...)
+#   unit-missing                  no unit file for it in scripts/dispatch/ (never shipped)
+#   unit-not-installed            the repo has the unit, the node's systemd dir does not
+#   exec-missing:<path>           its service's ExecStart script is not in the repo
+#   inactive                      unit + deps all present, still not active (a real fault)
+# Everything except `active` and `scoped-off:*` is an UNEXPECTED dark organ.
+# Uses ${SYSTEMCTL_BIN:-systemctl} (stub-able). <systemd-dir> defaults to
+# /etc/systemd/system.
+organ_dark_cause() {
+  local unit="$1" platforms="$2" requires="$3" current="$4" repo="$5"
+  local sysdir="${6:-/etc/systemd/system}"
+  local systemctl_bin="${SYSTEMCTL_BIN:-systemctl}"
+  if "$systemctl_bin" is-active --quiet "$unit" 2>/dev/null; then echo active; return 0; fi
+  if ! organ_platform_matches "$platforms" "$current"; then
+    echo "scoped-off:platforms=${platforms:-systemd}"; return 0
+  fi
+  local reason=""
+  if ! organ_is_applicable "$unit" "$requires" reason; then
+    echo "unmet-requires:$reason"; return 0
+  fi
+  local unitfile="$repo/scripts/dispatch/$unit"
+  if [[ ! -f "$unitfile" ]]; then echo unit-missing; return 0; fi
+  if [[ ! -f "$sysdir/$unit" ]]; then echo unit-not-installed; return 0; fi
+  # A .timer fires its same-named .service; that is where ExecStart lives.
+  local svc="$unitfile"
+  [[ "$unit" == *.timer ]] && svc="$repo/scripts/dispatch/${unit%.timer}.service"
+  if [[ -f "$svc" ]]; then
+    local exec_path
+    exec_path="$(grep -E '^ExecStart=' "$svc" 2>/dev/null | head -1 | grep -oE '[^ "'"'"']*scripts/[^ "'"'"']+\.(sh|py)' | head -1)"
+    if [[ -n "$exec_path" && ! -f "$repo/scripts/${exec_path#*scripts/}" ]]; then
+      echo "exec-missing:scripts/${exec_path#*scripts/}"; return 0
+    fi
+  fi
+  echo inactive
 }
 
 # organ_role_filter_for <role> -> echoes the comma-separated organ-manifest role=

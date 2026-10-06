@@ -33,14 +33,18 @@
 #   3. Run install-helsinki-atc.sh --auto (install + enable --now + reconcile),
 #      whose own registered ambient kinds (organ_units_deployed / _skipped /
 #      _failed, organ_reconcile_applied) are the observability for the actions.
-#   4. Advisory audit: count manifest `enabled` organs still not is-active after
-#      the deploy and log them (a merged-not-running residue the next cycle, or
-#      a human, should look at). Log-only — no new ambient kinds, no paging.
+#   4. Advisory audit: classify every manifest `enabled` organ after the deploy —
+#      active, scoped off this node (platforms=/requires=), or UNEXPECTED-DARK with
+#      a named root cause (unit-missing / unit-not-installed / exec-missing /
+#      unmet-requires / inactive; RESILIENT-1534). Log-only — no new ambient
+#      kinds, no paging. `organ-deploy.sh --audit-only` runs just this audit (no
+#      root, no installer) and exits 1 while any UNEXPECTED-DARK organ remains.
 #
 # Env / test hooks:
 #   CHUMP_REPO_ROOT                       repo checkout root (default: derived)
 #   CHUMP_ORGAN_DEPLOY_INSTALLER          override install-helsinki-atc.sh path
 #   CHUMP_ORGAN_DEPLOY_SYSTEMCTL_BIN      override `systemctl` (audit stub)
+#   CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR        where installed units live (default /etc/systemd/system)
 #   CHUMP_ORGAN_DEPLOY_ALLOW_NONROOT=1    run the deploy path without root (tests)
 #   CARGO_BIN_DIR                         integrator-binary dir (default: owner ~/.cargo/bin)
 #
@@ -55,6 +59,41 @@ SYSTEMCTL_BIN="${CHUMP_ORGAN_DEPLOY_SYSTEMCTL_BIN:-systemctl}"
 MANIFEST="$REPO_ROOT/scripts/ops/organ-manifest.txt"
 
 log() { printf '[%s] organ-deploy: %s\n' "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$*"; }
+
+# RESILIENT-1534: the post-deploy audit, as a function so `--audit-only` can run it
+# on its own (no root, no installer). It no longer counts an organ the manifest
+# scopes OFF this node (platforms=launchd on a systemd hub) or whose requires= is
+# unmet as a silent "STILL DARK": every non-active organ is classified with a ROOT
+# CAUSE (organ_dark_cause), and only the unexplained-or-faulty ones are
+# UNEXPECTED-DARK. Returns 1 when any UNEXPECTED-DARK organ remains.
+LIB="$SCRIPT_DIR/lib/organ-manifest-lib.sh"
+organ_audit() {
+  [[ -f "$MANIFEST" && -f "$LIB" ]] || return 0
+  # shellcheck disable=SC1090
+  source "$LIB"
+  local _po=() _en=() unit cause current sysdir="${CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR:-/etc/systemd/system}"
+  declare -A _role _req _plat
+  organ_manifest_parse "$MANIFEST" _po _en _role _req _plat || return 0
+  current="$(organ_current_platform)"
+  local total=0 active=0 scoped=0 unexpected=0
+  for unit in "${_en[@]}"; do
+    case "$unit" in *.service|*.timer) : ;; *) continue ;; esac
+    total=$((total + 1))
+    cause="$(organ_dark_cause "$unit" "${_plat[$unit]:-}" "${_req[$unit]:-}" "$current" "$REPO_ROOT" "$sysdir")"
+    case "$cause" in
+      active) active=$((active + 1)) ;;
+      scoped-off:*) scoped=$((scoped + 1)); log "scoped off this node: $unit ($cause)" ;;
+      *) unexpected=$((unexpected + 1)); log "UNEXPECTED-DARK: $unit — $cause" ;;
+    esac
+  done
+  log "post-deploy manifest audit: $active/$total enabled organs active, $scoped scoped off this node (platform=$current), $unexpected UNEXPECTED-DARK"
+  [[ "$unexpected" -eq 0 ]]
+}
+
+if [[ "${1:-}" == "--audit-only" ]]; then
+  organ_audit
+  exit $?
+fi
 
 if [[ "$(id -u)" != "0" && "${CHUMP_ORGAN_DEPLOY_ALLOW_NONROOT:-0}" != "1" ]]; then
   log "not root — the privileged system-unit deploy needs root; nothing to do (non-fatal). This organ's unit runs User=root."
@@ -80,18 +119,7 @@ CHUMP_REPO_ROOT="$REPO_ROOT" bash "$INSTALLER" --auto
 rc=$?
 log "install-helsinki-atc --auto exit=$rc"
 
-# Advisory post-deploy audit (log-only; no new ambient kinds).
-if [[ -f "$MANIFEST" ]]; then
-  dark=0; total=0
-  while read -r state unit _rest; do
-    [[ "$state" == "enabled" ]] || continue
-    case "$unit" in *.service|*.timer) : ;; *) continue ;; esac
-    total=$((total + 1))
-    if ! "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
-      dark=$((dark + 1)); log "STILL DARK after deploy: $unit"
-    fi
-  done < <(grep -E '^enabled[[:space:]]' "$MANIFEST" 2>/dev/null)
-  log "post-deploy manifest audit: $((total - dark))/$total enabled organs active ($dark still dark)"
-fi
+# Advisory post-deploy audit (log-only; no new ambient kinds) — see organ_audit above.
+organ_audit || true
 
 exit "$rc"
