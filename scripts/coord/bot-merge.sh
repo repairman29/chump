@@ -3563,6 +3563,16 @@ if [[ "${CHUMP_RAW_YAML_EDIT_CHECK:-1}" != "0" ]]; then
     fi
 fi
 
+# INFRA-3614: refuse to open a PR whose diff is only docs/gaps/<ID>.yaml
+# mirrors — state.db is canonical, so such a PR has no outcome and becomes a
+# CONFLICTING zombie. Bypass: CHUMP_ALLOW_YAML_ONLY_PR=1.
+if ! bash "$(dirname "${BASH_SOURCE[0]}")/yaml-only-pr-guard.sh" "${REMOTE}/${BASE_BRANCH}"; then
+    red "PR diff touches only docs/gaps/*.yaml mirrors (state.db is canonical) — not opening a PR."
+    red "Bypass: CHUMP_ALLOW_YAML_ONLY_PR=1"
+    _BM_TERMINAL_STATE="yaml_only_pr_refused"
+    _bm_fail "pr_create" 15 "diff is only gap YAML mirrors (INFRA-3614)"
+fi
+
 # ── 6. Open or update PR ─────────────────────────────────────────────────────
 # META-156 AC#1: step=pr_create
 _bm_step_start "pr_create"
