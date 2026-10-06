@@ -5414,7 +5414,7 @@ fn check_disk_space(worktree_base: &Path) -> Result<String, String> {
 //   * Each printed nugget triggers log_nugget_read so the audit trail
 //     (INFRA-1473 AC #6) captures pre-claim reads.
 //   * Top-K defaults to 3; override with CHUMP_CLAIM_NUGGET_TOP_K.
-mod nugget_prefetch {
+pub mod nugget_prefetch {
     use std::path::Path;
 
     /// Entry point — runs the full pre-flight search + print + audit log.
