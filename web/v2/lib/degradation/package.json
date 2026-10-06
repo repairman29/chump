@@ -1,0 +1,18 @@
+{
+  "name": "degradation",
+  "version": "1.0.0",
+  "description": "EFFECTIVE-1181: generic honest-degradation framework (EFFECTIVE-370 slice)",
+  "private": true,
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json",
+    "test": "node --import tsx --test degradation.test.ts"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.3.0",
+    "tsx": "^4.23.12",
+    "typescript": "^7.0.2"
+  }
+}
