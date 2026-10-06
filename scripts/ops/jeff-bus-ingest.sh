@@ -15,4 +15,7 @@ export CHUMP_MEMORY_DB_PATH="${CHUMP_MEMORY_DB_PATH:-$REPO_ROOT/sessions/chump_m
 export CHUMP_TRANSCRIPTS_DIR="${CHUMP_TRANSCRIPTS_DIR:-$HOME/.claude/projects}"
 export CHUMP_BUS_BOT="${CHUMP_BUS_BOT:-claude-code}"
 
-exec python3 "$SCRIPT_DIR/jeff-bus-ingest.py"
+python3 "$SCRIPT_DIR/jeff-bus-ingest.py"
+# META-1029: outbound leg — fleet->operator ambient events into the same bus.
+export CHUMP_AMBIENT_PATH="${CHUMP_AMBIENT_PATH:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+exec python3 "$SCRIPT_DIR/jeff-bus-outbound.py"

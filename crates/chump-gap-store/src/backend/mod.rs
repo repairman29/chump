@@ -13,7 +13,19 @@
 //! rusqlite-direct code path — it exists to prove the interface can be
 //! satisfied by a second storage engine without a full rewrite of the
 //! (9000+ line) production store.
+//!
+//! ## RESILIENT-1057: sqlite is canonical, Postgres/PostgREST is dormant
+//!
+//! `.chump/state.db` (via `GapStore`, not this trait) is the fleet's
+//! **canonical** gap store. The `postgres-backend` feature (this module's
+//! [`postgres`] submodule) and the separate PostgREST surface fronting it
+//! (`shared_gaps`, provisioned by `scripts/setup/install-gap-substrate.sh`)
+//! are an optional, **dormant** second surface — not compiled by default,
+//! not read by any production code path today. See [`guard`] for the
+//! runtime check that catches the second store silently drifting from
+//! sqlite if it's ever brought back to life.
 
+pub mod guard;
 pub mod sqlite;
 
 #[cfg(feature = "postgres-backend")]

@@ -455,6 +455,11 @@ _bm_step_start() {
     local step="$1"
     _BM_NAMED_STEP="$step"
     _BM_NAMED_STEP_T0_MS="$(_bm_ms_now)"
+    # RESILIENT-140: the heartbeat prints the step file, which only stage_start
+    # used to update — so a phase without a stage_start (or a stall between
+    # stages) kept showing the previous stage (e.g. "cargo fmt"). Named steps
+    # now update it too.
+    [[ -n "${_BM_STEP_FILE:-}" ]] && printf '%s' "$step" > "$_BM_STEP_FILE" 2>/dev/null || true
     local ts gap_label ambient
     ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
     gap_label="${GAP_IDS[0]:-${GAP_ID:-unknown}}"
@@ -1244,6 +1249,10 @@ stage_done() {
     local elapsed=$(( $(date +%s) - __STAGE_T0 ))
     local budget="${CHUMP_BOT_MERGE_STAGE_BUDGET_S:-300}"
     info "✓ $__STAGE_LABEL done (${elapsed}s)"
+    # RESILIENT-140: stage finished — fall back to the current named step so
+    # the heartbeat never keeps reporting the completed stage's label.
+    [[ -n "${_BM_STEP_FILE:-}" && -n "${_BM_NAMED_STEP:-}" ]] \
+        && printf '%s' "$_BM_NAMED_STEP" > "$_BM_STEP_FILE" 2>/dev/null || true
     # INFRA-1035: record transition done in the steps log
     _bm_steps_append "done" "$__STAGE_LABEL" "$elapsed"
     # INFRA-1067: emit phase duration to ambient.jsonl so the fleet can

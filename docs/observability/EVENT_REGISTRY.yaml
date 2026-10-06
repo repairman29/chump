@@ -97,6 +97,13 @@ events:
     trigger: any Claude session begins; confirms the URGENT-INBOX polling hook registered and ran, independent of whether unread messages were found
     consumers: [ambient.jsonl audit trail]
 
+  - kind: electrician_reconciled
+    effect_metric: self
+    emitter: scripts/ops/electrician.sh (deterministic fleet-wiring daemon)
+    trigger: each electrician reconcile shift — reconciles DESIRED wiring (the repo's declared timers/services) against the node's actual systemd state, wiring/starting/healing as needed
+    consumers: [operator visibility, ambient.jsonl audit trail]
+    fields_required: [ts, kind, wired, started, healed, active_timers, failed]
+
   - kind: collision_prediction
     effect_metric: self
     emitter: src/collision_prediction.rs (META-076, first implementation of docs/design/COLLISION_PREDICTION_SCHEMA.md)
@@ -9486,6 +9493,20 @@ events:
       case via bash `:=` default-assignment.
     consumers: [ops-audit, fleet-brief]
     fields_required: [ts, kind, source, detail]
+
+  - kind: checkout_parked_off_main
+    effect_metric: resilient
+    emitter: scripts/coord/fleet-doctor-strict.sh (RESILIENT-1512)
+    trigger: >
+      Emitted when check_checkout_parked_off_main finds REPO_ROOT's
+      currently checked-out branch is not `main` and has stayed that way
+      for longer than CHECKOUT_PARKED_STALE_S (default 3600s). Closes the
+      hub-node failure mode where a gap-store checkout sat parked on a
+      feature branch (with thousands of dirty files) for hours, invisible
+      until a `chump gap ship` proof-of-merge check refused to close a
+      gap whose PR had already merged 3h earlier.
+    consumers: [ops-audit, fleet-brief]
+    fields_required: [ts, kind, source, branch, age_s]
 
   - kind: wedge_detected
     effect_metric: resilient
