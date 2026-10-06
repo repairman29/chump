@@ -14,6 +14,12 @@
 # Usage:
 #   scripts/dev/verify-existence.sh <ID-or-symbol>
 #   scripts/dev/verify-existence.sh --json <ID-or-symbol>
+#   scripts/dev/verify-existence.sh --explicit-source-check [--source <ref>] <path-or-symbol>
+#
+# --explicit-source-check (META-113): file/symbol checks read from origin/main
+#   (git ls-tree / git grep), never the local working tree. Exits 3 if
+#   --source names anything other than origin/main, or origin/main cannot be
+#   resolved. Catches accidental stale-checkout "does X exist?" claims.
 #
 # Examples:
 #   scripts/dev/verify-existence.sh INFRA-1296          # shipped gap (reaped from active registry)
@@ -33,10 +39,17 @@ set -uo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 JSON_OUT=0
 QUERY=""
+EXPLICIT_SOURCE=0
+SOURCE_REF="origin/main"
 
 while [[ $# -gt 0 ]]; do
     case "$1" in
         --json) JSON_OUT=1; shift ;;
+        --explicit-source-check) EXPLICIT_SOURCE=1; shift ;;
+        --source)
+            SOURCE_REF="${2:-}"
+            [[ -n "$SOURCE_REF" ]] || { echo "verify-existence: --source needs a ref" >&2; exit 2; }
+            shift 2 ;;
         -h|--help)
             sed -n '2,/^$/p' "$0" | sed 's/^# \?//'
             exit 0
@@ -54,6 +67,17 @@ if [[ -z "$QUERY" ]]; then
 fi
 
 cd "$REPO_ROOT"
+
+if [[ $EXPLICIT_SOURCE -eq 1 ]]; then
+    if [[ "$SOURCE_REF" != "origin/main" ]]; then
+        echo "verify-existence: --explicit-source-check requires source origin/main, got '$SOURCE_REF'" >&2
+        exit 3
+    fi
+    if ! git rev-parse --verify -q origin/main >/dev/null 2>&1; then
+        echo "verify-existence: origin/main not resolvable; run 'git fetch origin main' first" >&2
+        exit 3
+    fi
+fi
 
 # Check 1: Git history for the literal string in commit subjects.
 # Catches shipped + reaped gaps (their feat(<ID>): commit survives).
@@ -90,7 +114,12 @@ fi
 
 # Check 4: file/directory on disk + ast-grep structural search for symbols.
 SYM_HIT=0
-if [[ -e "$QUERY" ]]; then
+if [[ $EXPLICIT_SOURCE -eq 1 ]]; then
+    # Source is origin/main only: never the local working tree.
+    if git ls-tree -r --name-only origin/main -- "$QUERY" 2>/dev/null | grep -q .; then
+        SYM_HIT=1
+    fi
+elif [[ -e "$QUERY" ]]; then
     SYM_HIT=1
 elif command -v ast-grep >/dev/null 2>&1; then
     for pattern in "fn $QUERY" "struct $QUERY" "trait $QUERY" "enum $QUERY"; do
@@ -103,7 +132,11 @@ fi
 
 # Check 5: raw grep fallback across src/ + scripts/ (always available).
 GREP_HIT=0
-if grep -rln -- "$QUERY" src scripts 2>/dev/null | head -1 | grep -q .; then
+if [[ $EXPLICIT_SOURCE -eq 1 ]]; then
+    if git grep -l -F -e "$QUERY" origin/main -- src scripts 2>/dev/null | head -1 | grep -q .; then
+        GREP_HIT=1
+    fi
+elif grep -rln -- "$QUERY" src scripts 2>/dev/null | head -1 | grep -q .; then
     GREP_HIT=1
 fi
 

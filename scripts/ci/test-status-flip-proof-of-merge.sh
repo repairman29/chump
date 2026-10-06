@@ -15,7 +15,7 @@ echo "=== INFRA-1392 status PROOF-OF-MERGE tests ==="
 for sym in \
     "pub fn verify_proof_of_merge" \
     "INFRA-1392 PROOF-OF-MERGE" \
-    "no commit on local main carries this gap ID"; do
+    "no commit on origin/main"; do
     if grep -q "$sym" "$SRC"; then ok "gap_store contains $sym"; else fail "missing $sym"; fi
 done
 # INFRA-2423: CHUMP_BYPASS_PROOF_OF_MERGE is deleted; chump gap ship now

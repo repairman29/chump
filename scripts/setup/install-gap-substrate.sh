@@ -154,6 +154,21 @@ svc_up() {
     *) :;;
   esac
 }
+# RESILIENT-1057: `svc_up`'s `enable --now` is a no-op if the service is
+# already active — it does NOT pick up a changed binary/conf. Left alone,
+# a re-run of this script after fixing role grants or rewriting
+# postgrest.conf leaves the *old* stale process running against the *new*
+# config on disk ("stale postgrest proc on old conf" — the exact class
+# that kept the declared-canonical store broken while everything looked
+# provisioned). Always force a restart so a re-run actually converges.
+svc_restart() {
+  local name="$1"
+  case "$SUPERVISOR" in
+    systemd) run "_sudo systemctl restart 'chump-$name' 2>/dev/null || true";;
+    launchd) run "launchctl kickstart -k 'gui/$(id -u)/com.chump.$name' 2>/dev/null || true";;
+    *) :;;
+  esac
+}
 svc_status() {  # prints "up" or "down"
   local name="$1"
   case "$SUPERVISOR" in
@@ -247,6 +262,24 @@ END
 \$\$;
 GRANT $PG_ANON TO $PG_AUTHENTICATOR;
 SQL
+
+  # RESILIENT-1057: PG16 split role-membership into separate INHERIT and SET
+  # privileges (previously a plain membership grant implied both). A bare
+  # `GRANT chump_anon TO chump_authenticator` on PG16+ can leave
+  # chump_authenticator (NOINHERIT) able to see the grant in \du but unable
+  # to actually `SET ROLE chump_anon` — which is exactly the "42501
+  # permission denied to set role chump_anon" symptom PostgREST hit. Re-run
+  # the grant with an explicit WITH SET TRUE on PG16+ so a stale/partial
+  # grant from an older run (or a hand-provisioned box) gets repaired.
+  # Idempotent: re-granting an already-fully-granted membership is a no-op.
+  local pg_major
+  pg_major="$(psql_admin -d "$DB_NAME" -c "SHOW server_version_num" 2>/dev/null | cut -c1-2)"
+  if [[ "${pg_major:-0}" -ge 16 ]]; then
+    psql_admin -d "$DB_NAME" -c \
+      "GRANT $PG_ANON TO $PG_AUTHENTICATOR WITH INHERIT TRUE, SET TRUE;" \
+      || die "failed to re-grant $PG_ANON to $PG_AUTHENTICATOR WITH SET TRUE (PG16+ SET-membership)"
+    log "PG${pg_major}+: re-asserted WITH INHERIT TRUE, SET TRUE on $PG_ANON -> $PG_AUTHENTICATOR"
+  fi
   log "roles ensured: $PG_ANON (nologin), $PG_AUTHENTICATOR (login)"
 }
 
@@ -361,11 +394,17 @@ write_postgrest_conf() {
     return 0
   fi
   local uri="postgres://${PG_AUTHENTICATOR}:${SUBSTRATE_PW:-REDACTED}@${DB_HOST}:${DB_PORT}/${DB_NAME}"
+  # RESILIENT-1057: bind all interfaces, not just loopback. CHUMP_GAP_STORE_URL
+  # (above) points other machines at this host's tailnet address
+  # ($GAP_STORE_TAILNET_HOST) — a 127.0.0.1-only bind would make the
+  # "canonical" store unreachable from every machine but this one, which is
+  # exactly the "declared canonical but silently unreachable" failure mode
+  # this gap exists to close.
   run "cat > '$POSTGREST_CONF' <<CONF
 db-uri = \"$uri\"
 db-schema = \"public\"
 db-anon-role = \"$PG_ANON\"
-server-host = \"127.0.0.1\"
+server-host = \"*\"
 server-port = $REST_PORT
 CONF"
   run "chmod 600 '$POSTGREST_CONF'"
@@ -376,6 +415,7 @@ CONF"
 install_service() {
   svc_install "postgrest" "$POSTGREST_BIN $POSTGREST_CONF"
   svc_up "postgrest"
+  svc_restart "postgrest"
   if [[ "$DRY" != 1 ]]; then
     for i in $(seq 1 10); do
       [[ "$(svc_status postgrest)" == "up" ]] && break
