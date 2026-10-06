@@ -39,6 +39,14 @@ their `verified` is not reset. Each PR gets a clean pass.
 - **Trunk-RED gate:** skips when `main`'s own `verified` is failing or a
   systemic-red shared-gate wedge is active (serializing can't help a broken gate).
 - **CI gate:** `scripts/ci/test-merge-serializer.sh`.
+- **Green-but-behind PRs (RESILIENT-1537):** under parallel shifts `main` moves fast and armed
+  PRs fall behind and flip BLOCKED on stale-base checks. The serializer, still the sole driver,
+  brings a PR that is BEHIND but already `verified`-green current with GitHub's `update-branch`
+  API (no force-push, no history rewrite) before merging it, and pre-warms the next
+  `CHUMP_MERGE_SERIALIZER_PREWARM_MAX` (default 1) such PRs after its merges. No second process
+  is involved, so the RESILIENT-1054 rebaser-swarm race is not reintroduced; a failed
+  update-branch falls back to the rebase path. Off-switch: `CHUMP_MERGE_SERIALIZER_UPDATE_BRANCH=0`.
+  CI gate: `scripts/ci/test-merge-serializer-update-branch.sh`.
 
 ---
 

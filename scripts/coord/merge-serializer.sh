@@ -38,6 +38,25 @@
 #     wait — the serializer is the sole rebaser), so releasing the lock during the
 #     poll is safe.
 #
+# KEEPING GREEN-BUT-BEHIND PRs CURRENT (RESILIENT-1537)
+# -----------------------------------------------------
+# Under several parallel shifts `main` moves fast, so armed PRs that already hold a
+# green `verified` fall BEHIND and flip BLOCKED on stale-base checks; they used to be
+# hand-`update-branch`ed. The serializer — the SOLE driver — now does it as part of
+# landing, without reintroducing the rebaser-swarm race (RESILIENT-1054):
+#   1. DRIVE: a candidate that is BEHIND but already `verified`-green is brought
+#      current with GitHub's update-branch API (a merge of main into the branch: no
+#      force-push, no history rewrite, no local worktree) instead of the
+#      rebase+force-push path, then verified is awaited on the new head and it is
+#      merged. A failed update-branch (conflict) falls back to the rebase path,
+#      which flags real conflicts for the resolver exactly as before.
+#   2. PRE-WARM: after the run's merges, the NEXT PREWARM_MAX (default 1) not-yet-driven
+#      candidates that are green-but-behind are update-branched too, so their
+#      `verified` is already running on a current head by the time they reach the
+#      front. Bounded and driven by this same single-instance process under the
+#      self-lock — never a second process, never the whole armed set.
+# Both are gated by CHUMP_MERGE_SERIALIZER_UPDATE_BRANCH (default 1).
+#
 # COMPANION CHANGE (important): where the serializer runs, chump-armed-rebaser.timer
 # (the parallel rebase-everyone organ) should be DISABLED — it is the thing that was
 # resetting `verified` on every main move. The serializer supersedes it for the
@@ -64,6 +83,8 @@
 #   CHUMP_MERGE_SERIALIZER_PR_LIMIT       max open PRs to scan (default 60)
 #   CHUMP_MERGE_SERIALIZER_LOCK_WAIT_S    bot-merge.lock acquire wait (default 60)
 #   CHUMP_MERGE_SERIALIZER_TRUNK_GATE=0   disable the trunk-RED gate
+#   CHUMP_MERGE_SERIALIZER_UPDATE_BRANCH=0   disable update-branch of green-but-behind PRs (default 1)
+#   CHUMP_MERGE_SERIALIZER_PREWARM_MAX    next-in-line PRs to pre-warm per run (default 1; 0 = none)
 #   TMPDIR                                worktree scratch root (default honored; NEVER /tmp on CJ)
 #
 # Events emitted to .chump-locks/ambient.jsonl (source=merge_serializer):
@@ -71,6 +92,7 @@
 #   merge_serializer_trunk_red_skip     — reason=verified_failure|systemic_red
 #   merge_serializer_selected           — pr, branch, age_h, mergeStateStatus
 #   merge_serializer_rebase_conflict    — pr, branch  (real conflict; left for resolver)
+#   merge_serializer_update_branch      — pr, phase=drive|prewarm, ok (RESILIENT-1537)
 #   merge_serializer_verify_timeout     — pr, waited_s
 #   merge_serializer_verify_failed      — pr
 #   merge_serializer_merged             — pr, branch, waited_verify_s   (the win)
@@ -93,6 +115,8 @@ POLL_S="${CHUMP_MERGE_SERIALIZER_POLL_S:-30}"
 PR_LIMIT="${CHUMP_MERGE_SERIALIZER_PR_LIMIT:-60}"
 LOCK_WAIT_S="${CHUMP_MERGE_SERIALIZER_LOCK_WAIT_S:-60}"
 TRUNK_GATE="${CHUMP_MERGE_SERIALIZER_TRUNK_GATE:-1}"
+UPDATE_BRANCH="${CHUMP_MERGE_SERIALIZER_UPDATE_BRANCH:-1}"
+PREWARM_MAX="${CHUMP_MERGE_SERIALIZER_PREWARM_MAX:-1}"
 DRY_RUN=0
 
 for a in "$@"; do
@@ -259,6 +283,24 @@ _wait_verified() { # <pr>  -> 0 green, 1 failed, 2 timeout
     done
 }
 
+# ── update-branch a green-but-behind PR (RESILIENT-1537) ────────────────────────
+# GitHub-native merge of main into the PR branch: no force-push, no rewrite, no local
+# worktree. Performed under bot-merge.lock like every other mutation, by the sole
+# driver. returns 0 if the branch was updated.
+_update_branch() { # <pr> <phase>
+    local pr="$1" phase="$2" ok=0
+    _bm_lock_acquire || { echo "[merge-serializer] #$pr: could not acquire bot-merge.lock for update-branch ($phase)"; return 1; }
+    chump_gh api -X PUT "repos/$REPO/pulls/$pr/update-branch" --silent >/dev/null 2>&1 && ok=1
+    _bm_lock_release
+    _emit merge_serializer_update_branch "\"pr\":$pr,\"phase\":\"$phase\",\"ok\":$([[ $ok == 1 ]] && echo true || echo false)"
+    [[ "$ok" == "1" ]]
+}
+
+# green-but-behind: BEHIND main AND its current `verified` is already green.
+_green_but_behind() { # <pr> <mergeStateStatus>
+    [[ "$UPDATE_BRANCH" == "1" && "$2" == "BEHIND" && "$(_verified_state "$1")" == "SUCCESS" ]]
+}
+
 # ── Drive ONE PR: rebase -> wait verified -> squash-merge ───────────────────────
 # returns 0 if merged, 1 if skipped (conflict/fail/timeout), 2 if hard error
 _drive_pr() {
@@ -269,16 +311,31 @@ _drive_pr() {
     git fetch origin "$br" --quiet 2>/dev/null || { echo "[merge-serializer] #$pr fetch $br failed"; return 1; }
 
     if [[ "$DRY_RUN" == "1" ]]; then
-        echo "[merge-serializer] (dry-run) would rebase #$pr ($br) onto origin/main, wait verified, squash-merge"
+        if _green_but_behind "$pr" "$ms"; then
+            echo "[merge-serializer] (dry-run) #$pr is green-but-behind: would update-branch, wait verified, squash-merge"
+        else
+            echo "[merge-serializer] (dry-run) would rebase #$pr ($br) onto origin/main, wait verified, squash-merge"
+        fi
         return 1
     fi
 
+    local rebase_ok=0
+    # ---- RESILIENT-1537: green-but-behind -> update-branch (no force-push) ----
+    if _green_but_behind "$pr" "$ms"; then
+        if _update_branch "$pr" drive; then
+            rebase_ok=1
+            echo "[merge-serializer] #$pr: green-but-behind — brought current via update-branch (no force-push)"
+        else
+            echo "[merge-serializer] #$pr: update-branch failed (conflict?) — falling back to the rebase path"
+        fi
+    fi
+
     # ---- MUTATION 1: rebase + force-push (under bot-merge.lock) ----
+    if [[ "$rebase_ok" != "1" ]]; then
     if ! _bm_lock_acquire; then
         echo "[merge-serializer] could not acquire bot-merge.lock for #$pr rebase — deferring to next tick"
         return 2
     fi
-    local rebase_ok=0
     git worktree remove "$wt" --force 2>/dev/null || true
     # -B forces local ref to the freshly-fetched remote tip so we can only ADD
     # commits from main, never drop commits already on the remote branch (RESILIENT-350).
@@ -300,11 +357,13 @@ _drive_pr() {
         echo "[merge-serializer] #$pr: rebase not clean (real conflict) — flagged for conflict-resolution, skipping"
         return 1
     fi
+    echo "[merge-serializer] #$pr: rebased clean onto latest origin/main + pushed"
+    fi
     # Disable any armed auto-merge so GitHub can't race-merge this PR the instant
     # verified goes green mid-wait — the serializer is the deterministic merger, so
     # the landing is attributable to it and can't slip out from under the wait.
     chump_gh pr merge "$pr" --repo "$REPO" --disable-auto >/dev/null 2>&1 || true
-    echo "[merge-serializer] #$pr: rebased clean onto latest origin/main + pushed — waiting for verified"
+    echo "[merge-serializer] #$pr: current with main — waiting for verified"
 
     # ---- WAIT: verified green on the rebased head (lock RELEASED) ----
     local waited rc
@@ -339,6 +398,28 @@ _drive_pr() {
     return 1
 }
 
+# ── Pre-warm the next-in-line PRs (RESILIENT-1537) ───────────────────────────────
+# After this run's merges, bring the next PREWARM_MAX not-yet-driven candidates current
+# if they are green-but-behind, so their `verified` is already running on a fresh head
+# when their turn comes. State is re-read (main just moved). Bounded; same process,
+# same self-lock — the sole driver, never a swarm.
+_prewarm_next() { # <last-driven-index> <rows...>
+    local last="$1"; shift
+    local rows=("$@") i row pr br ms n=0
+    [[ "$UPDATE_BRANCH" == "1" && "$PREWARM_MAX" -gt 0 && "$DRY_RUN" != "1" ]] || return 0
+    for (( i = last + 1; i < ${#rows[@]} && n < PREWARM_MAX; i++ )); do
+        IFS=$'\t' read -r pr br ms _ <<< "${rows[$i]}"
+        [[ -z "$pr" ]] && continue
+        ms="$(chump_gh pr view "$pr" --repo "$REPO" --json mergeStateStatus --jq '.mergeStateStatus' 2>/dev/null || echo "")"
+        if _green_but_behind "$pr" "$ms"; then
+            if _update_branch "$pr" prewarm; then
+                echo "[merge-serializer] #$pr: pre-warmed (green-but-behind, next in line) via update-branch"
+            fi
+            n=$(( n + 1 ))
+        fi
+    done
+}
+
 # ── Main loop ───────────────────────────────────────────────────────────────────
 main() {
     local start; start="$(date +%s)"
@@ -360,14 +441,16 @@ main() {
         exit 0
     fi
 
-    local merged=0 row pr br ms created ageh
+    local merged=0 row pr br ms created ageh idx=-1 last=-1
     for row in "${rows[@]}"; do
+        idx=$(( idx + 1 ))
         (( merged >= MAX_MERGES )) && break
         IFS=$'\t' read -r pr br ms created <<< "$row"
         [[ -z "$pr" ]] && continue
         ageh="$(_age_h "$created")"
         _emit merge_serializer_selected "\"pr\":$pr,\"branch\":\"$br\",\"age_h\":$ageh,\"mergeStateStatus\":\"$ms\""
         echo "[merge-serializer] selected #$pr ($br) age=${ageh}h ms=$ms"
+        last=$idx
         _drive_pr "$pr" "$br" "$ms"
         case $? in
             0) merged=$(( merged + 1 )) ;;
@@ -375,6 +458,8 @@ main() {
             *) : ;;      # skipped (conflict/fail/timeout) — try next candidate
         esac
     done
+
+    _prewarm_next "$last" "${rows[@]}"
 
     _emit merge_serializer_run_completed "\"merged\":$merged,\"elapsed_s\":$(( $(date +%s) - start ))"
     echo "[merge-serializer] run complete — merged $merged PR(s)"
