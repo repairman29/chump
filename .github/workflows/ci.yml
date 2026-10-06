@@ -703,6 +703,10 @@ jobs:
       - name: Doctrine seam-finder fixture test
         run: bash scripts/ci/test-doctrine-seam-finder.sh
 
+      # META-1041: doctrine missing-thread + frayed-edge detectors fixture test.
+      - name: Doctrine weave detectors fixture test
+        run: bash scripts/ci/test-doctrine-weave-detectors.sh
+
       # INFRA-1541: pre-merge AC coverage gate.
       # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
       # script always exit 0 after emitting `kind=ac_coverage_miss` events
