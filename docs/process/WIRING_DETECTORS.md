@@ -58,6 +58,31 @@ Weak real instances (at the time of writing):
 - **D6** — `gap_supervisor_heartbeat` is registered as expected 1440 times a day and appears zero
   times in the local ambient sample.
 
+## Triage — one decision per finding (ZERO-WASTE-128)
+
+`scripts/ops/wiring-triage.py` turns each finding into **exactly one** of three decisions
+(first match wins):
+
+| Decision | When | Action |
+|---|---|---|
+| `ALLOWLIST-DORMANT` | An allowlist entry matches the artifact (and detector) | Nothing — deliberately dormant. Recorded **who** decided and **why**; later scans do not re-flag it |
+| `ARCHIVE-DEAD` | Zero references outside the artifact itself **and** untouched for `--dead-days` (default 90) | Archive or delete it |
+| `WIRE` | Everything else — alive (referenced or recently touched) but not connected, or age unknown (it never deletes on missing evidence) | Wire it |
+
+```bash
+scripts/ops/wiring-triage.py                              # run the detectors, triage, print actionable findings
+scripts/ops/wiring-triage.py --findings d.jsonl --show-allowlisted
+scripts/ops/wiring-triage.py allow --artifact scripts/coord/x.sh --detector D1 \
+    --by <who> --reason "kept for the manual failover drill"
+```
+
+The reasoned allowlist is `docs/process/wiring-allowlist.jsonl`
+(`{artifact, detector, decided_by, reason, decided_at}` per line). `--by` and `--reason` are
+required, and a hand-edited entry missing either is **not honored** — an owner-less, reason-less
+allowlist is just silent dormancy. The allowlist file itself does not count as a reference to the
+artifact it names. Allowlisted findings are suppressed from the output (but counted in the summary
+on stderr) so a re-scan stays quiet. `scripts/ci/test-wiring-triage.sh` covers all three outcomes.
+
 ## Limits
 
 - Suspects, not verdicts: a script may be scheduled by something outside the repo (a hand-installed

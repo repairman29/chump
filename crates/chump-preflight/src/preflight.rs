@@ -1293,6 +1293,8 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // ZERO-WASTE-126: wiring detectors D1/D2/D4 (built-but-unwired) — fixture
         // test of scripts/ops/wiring-detectors.py. Pure local, ~0.3s, no network.
         "scripts/ci/test-wiring-detectors.sh",
+        // ZERO-WASTE-128: wiring triage engine (WIRE / ALLOWLIST-DORMANT / ARCHIVE-DEAD).
+        "scripts/ci/test-wiring-triage.sh",
     ];
     candidates
         .iter()
