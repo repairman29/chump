@@ -40,9 +40,22 @@ pub enum DiskPlanDecision {
 /// When the binary is absent the function returns `Ok` (graceful fallback so
 /// fleets without INFRA-2196 keep working unchanged).
 pub fn check(action_class: &str, count: u32, repo_root: &Path) -> DiskPlanDecision {
-    let chump_bin = chump_binary_path(repo_root);
+    check_with_bin(
+        &chump_binary_path(repo_root),
+        action_class,
+        count,
+        repo_root,
+    )
+}
 
-    let result = std::process::Command::new(&chump_bin)
+/// `check` against an explicit `chump` binary (the seam tests use to stub the planner).
+fn check_with_bin(
+    chump_bin: &Path,
+    action_class: &str,
+    count: u32,
+    repo_root: &Path,
+) -> DiskPlanDecision {
+    let result = std::process::Command::new(chump_bin)
         .args(["disk", "plan", action_class, "--count", &count.to_string()])
         .stdout(std::process::Stdio::piped())
         .stderr(std::process::Stdio::piped())
@@ -85,6 +98,72 @@ pub fn check(action_class: &str, count: u32, repo_root: &Path) -> DiskPlanDecisi
                 }
             }
         }
+    }
+}
+
+/// Action class (docs/process/DISK_COST_MODEL.yaml) for the worktree a claim provisions.
+pub const CLAIM_ACTION_CLASS: &str = "chump_claim_worktree";
+
+/// What `chump gap claim` should do with a disk-plan decision (INFRA-2360).
+#[derive(Debug, Clone, PartialEq)]
+pub enum ClaimDiskGate {
+    /// Disk is fine (or the planner is unavailable): claim proceeds silently.
+    Proceed,
+    /// Claim proceeds, with this warning printed to stderr.
+    Warn(String),
+    /// Claim must not proceed; the message says why and how to override.
+    Refuse(String),
+}
+
+/// Map a disk-plan decision to the claim-time outcome. A claim provisions one
+/// worktree, so WAIT (headroom low, not exhausted) only warns; REFUSE blocks the
+/// claim so the worker backs off instead of overcommitting the disk. `--force`
+/// (the existing claim override) downgrades a REFUSE to a warning.
+pub fn claim_gate_decision(decision: &DiskPlanDecision, force: bool) -> ClaimDiskGate {
+    match decision {
+        DiskPlanDecision::Ok => ClaimDiskGate::Proceed,
+        DiskPlanDecision::Wait { .. } => ClaimDiskGate::Warn(
+            "disk plan: headroom is low (WAIT) — claiming anyway; reclaim space soon".to_string(),
+        ),
+        DiskPlanDecision::Refuse { .. } if force => ClaimDiskGate::Warn(
+            "disk plan: REFUSE overridden by --force — claiming despite insufficient headroom"
+                .to_string(),
+        ),
+        DiskPlanDecision::Refuse { .. } => ClaimDiskGate::Refuse(
+            "disk plan REFUSES a new claim: not enough free disk for another worktree. \
+             Reclaim space (e.g. orphaned worktree targets) and retry, or pass --force."
+                .to_string(),
+        ),
+    }
+}
+
+/// Run `<bin> disk plan chump_claim_worktree --count 1` and read the verdict.
+///
+/// `chump disk plan` exits 1 both for a real REFUSE and for an internal error
+/// (e.g. no disk inventory has been written yet), so the exit code alone cannot
+/// gate a claim — that would block every claim on a node without an inventory.
+/// A verdict is only trusted when the planner printed it on stdout (errors go to
+/// stderr). Returns `None` when the planner is absent or gave no verdict: the
+/// claim fails open, and the existing disk-floor gate in claim still applies.
+fn claim_plan_with_bin(bin: &Path) -> Option<DiskPlanDecision> {
+    let out = std::process::Command::new(bin)
+        .args(["disk", "plan", CLAIM_ACTION_CLASS, "--count", "1"])
+        .output()
+        .ok()?;
+    let stdout = String::from_utf8_lossy(&out.stdout);
+    match out.status.code()? {
+        0 => Some(DiskPlanDecision::Ok),
+        2 if stdout.contains("→ WAIT") => Some(DiskPlanDecision::Wait { recommended_n: 1 }),
+        1 if stdout.contains("→ REFUSE") => Some(DiskPlanDecision::Refuse { recommended_n: 0 }),
+        _ => None,
+    }
+}
+
+/// Pre-claim disk-plan check for `chump gap claim`.
+pub fn check_for_claim(repo_root: &Path, force: bool) -> ClaimDiskGate {
+    match claim_plan_with_bin(&chump_binary_path(repo_root)) {
+        Some(d) => claim_gate_decision(&d, force),
+        None => ClaimDiskGate::Proceed,
     }
 }
 
@@ -236,5 +315,76 @@ mod tests {
             .map(|n| n as u32)
             .unwrap_or(99);
         assert_eq!(n, 3);
+    }
+
+    // ── INFRA-2360: pre-claim gate ──────────────────────────────────────────
+    #[cfg(unix)]
+    fn stub_planner(
+        dir: &std::path::Path,
+        name: &str,
+        exit_code: i32,
+        stdout: &str,
+    ) -> std::path::PathBuf {
+        use std::os::unix::fs::PermissionsExt;
+        let p = dir.join(name);
+        // Records its argv so the test can assert the claim action class and count.
+        std::fs::write(
+            &p,
+            format!(
+                "#!/bin/sh\necho \"$@\" > \"{}.args\"\necho '{stdout}'\nexit {exit_code}\n",
+                p.display()
+            ),
+        )
+        .unwrap();
+        std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o755)).unwrap();
+        p
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn claim_is_gated_by_the_disk_plan_verdict() {
+        let dir = tempfile::tempdir().unwrap();
+        let claim = |name: &str, code: i32, out: &str, force: bool| {
+            let bin = stub_planner(dir.path(), name, code, out);
+            let d = claim_plan_with_bin(&bin);
+            let args = std::fs::read_to_string(format!("{}.args", bin.display())).unwrap();
+            assert_eq!(
+                args.trim(),
+                "disk plan chump_claim_worktree --count 1",
+                "claim must ask the planner about exactly one claim worktree"
+            );
+            d.map(|d| claim_gate_decision(&d, force))
+        };
+        assert_eq!(
+            claim("ok", 0, "disk plan: x1 → OK", false),
+            Some(ClaimDiskGate::Proceed)
+        );
+        assert!(
+            matches!(claim("wait", 2, "disk plan: x1 → WAIT", false), Some(ClaimDiskGate::Warn(m)) if m.contains("WAIT"))
+        );
+        assert!(
+            matches!(claim("refuse", 1, "disk plan: x1 → REFUSE", false), Some(ClaimDiskGate::Refuse(m)) if m.contains("--force"))
+        );
+        assert!(
+            matches!(claim("forced", 1, "disk plan: x1 → REFUSE", true), Some(ClaimDiskGate::Warn(m)) if m.contains("--force"))
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn planner_errors_do_not_block_a_claim() {
+        // Exit 1 with no verdict on stdout is an internal error (e.g. no inventory),
+        // not a REFUSE — the claim must fail open.
+        let dir = tempfile::tempdir().unwrap();
+        let bin = stub_planner(dir.path(), "err", 1, "");
+        assert_eq!(claim_plan_with_bin(&bin), None);
+        let usage = stub_planner(dir.path(), "usage", 2, "");
+        assert_eq!(claim_plan_with_bin(&usage), None);
+    }
+
+    #[test]
+    fn claim_proceeds_when_the_planner_is_absent() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(claim_plan_with_bin(&dir.path().join("no-such-chump")), None);
     }
 }
