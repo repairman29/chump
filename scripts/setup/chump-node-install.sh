@@ -8,7 +8,7 @@
 # See docs/process/COTG_NODE_INSTALL.md.  RESILIENT-318 / RESILIENT-364.
 #
 # Usage:
-#   chump-node-install.sh --role brain|muscle|all [--home DIR] [--self-test-only] [--dry-run]
+#   chump-node-install.sh --role brain|muscle|all|factory|data|embed [--home DIR] [--self-test-only] [--dry-run]
 #                          [--creds-file PATH] [--control-plane-only] [--with-fleet-server]
 #
 # Zero-touch creds (INFRA-3629, the "bot told to do it" path — no human ever
@@ -59,7 +59,7 @@ while [ $# -gt 0 ]; do
     *) echo "unknown arg: $1" >&2; exit 2;;
   esac
 done
-case "$ROLE" in brain|muscle|all) ;; *) echo "role must be brain|muscle|all" >&2; exit 2;; esac
+case "$ROLE" in brain|muscle|all|factory|data|embed) ;; *) echo "role must be brain|muscle|all|factory|data|embed" >&2; exit 2;; esac
 
 STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}"
 # INFRA-3633: pin the canonical gap store here, once, so every phase below
@@ -513,6 +513,15 @@ write_node_env() {
       # RESILIENT-1083: persist this node's role OUTSIDE the repo so the recurring
       # organ-reconcile can self-scope to it (and survive `git reset --hard`).
       printf 'export CHUMP_NODE_ROLE=%s\n' "$ROLE"
+      # RESILIENT-320: factory nodes size their own worker cap — no hand-placed
+      # caps. clamp(1, cores-1), minus 1 when this node also serves embeds.
+      if [ "$ROLE" = factory ]; then
+        local _cores _emb=0
+        _cores="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
+        if [ -n "${CHUMP_NODE_RUNS_EMBEDS:-}" ]; then _emb="$CHUMP_NODE_RUNS_EMBEDS"
+        elif pgrep -x ollama >/dev/null 2>&1 || pgrep -f llama-server >/dev/null 2>&1; then _emb=1; fi
+        printf 'export CHUMP_ORCH_WORKER_MAX=%s\n' "$(organ_worker_count "$_cores" "$_emb")"
+      fi
       # RESILIENT-1446: persist the node's run-user so a root-run placer/deploy
       # emits run-user-shaped units (see the local run_user derivation above).
       printf 'export CHUMP_RUN_USER=%s\n' "$run_user"
@@ -967,9 +976,22 @@ organ_role_filter() {
   case "$ROLE" in
     brain) echo "brain,data,janitor,trust";;
     muscle) echo "muscle";;
+    # RESILIENT-320: capacity roles; narrowed to a unit roster by
+    # organ_role_units_for (scripts/ops/lib/organ-manifest-lib.sh).
+    factory|data|embed) echo "brain,data,janitor,trust,muscle";;
     all) echo "";;
   esac
 }
+# RESILIENT-320: capacity-role helpers. Thin wrappers that read the single source
+# of truth in organ-manifest-lib.sh (repo clone first, then the script's own tree).
+_organ_lib_call() {
+  local lib="$NODE_DIR/repo/scripts/ops/lib/organ-manifest-lib.sh"
+  [ -f "$lib" ] || lib="$(dirname "$0")/../ops/lib/organ-manifest-lib.sh"
+  [ -f "$lib" ] || return 0
+  ( . "$lib" >/dev/null 2>&1; "$@" )
+}
+organ_role_units() { _organ_lib_call organ_role_units_for "$ROLE"; }
+organ_worker_count() { _organ_lib_call organ_worker_count "$@"; }
 # RESILIENT-746 / RESILIENT-318: the ORGANS phase previously stopped at the
 # two hand-coded organs above (node-heartbeat, process-organ-heal) and NEVER
 # installed the role's real organ set from scripts/ops/organ-manifest.txt —
@@ -992,7 +1014,7 @@ reconcile_role_organs() {
     return 0
   fi
   info ORGANS "reconciling manifest organ set (role=$ROLE, role-filter=[${rf:-all}])..."
-  if CHUMP_ORGAN_RECONCILE_ROLE="$rf" run_timeout "${CHUMP_ORGAN_RECONCILE_TIMEOUT_S:-90}" bash "$reconcile" --apply \
+  if CHUMP_ORGAN_RECONCILE_ROLE="$rf" CHUMP_ORGAN_RECONCILE_UNITS="$(organ_role_units)" run_timeout "${CHUMP_ORGAN_RECONCILE_TIMEOUT_S:-90}" bash "$reconcile" --apply \
        >"$LOG_DIR/organ-reconcile-$(date -u +%Y%m%dT%H%M%SZ).log" 2>&1; then
     ok "manifest organ set reconciled (role=$ROLE)"
   else
@@ -1054,6 +1076,7 @@ place_role_unit_files() {
 
   local rf; rf="$(organ_role_filter)"
   declare -A _want_base    # base-unit-name -> 1 for role-matched units
+  local ua; ua="$(organ_role_units)"
   local unit role tok in_role
   for unit in "${ENABLED[@]}"; do
     role="${ORGAN_ROLE[$unit]:-brain}"
@@ -1064,6 +1087,11 @@ place_role_unit_files() {
       for tok in "${_toks[@]}"; do [ "$tok" = "$role" ] && { in_role=1; break; }; done
     fi
     [ "$in_role" = 1 ] || continue
+    # RESILIENT-320: capacity roles narrow to an exact unit roster.
+    if [ -n "$ua" ]; then
+      in_role=0; for tok in $ua; do [ "$tok" = "$unit" ] && { in_role=1; break; }; done
+      [ "$in_role" = 1 ] || continue
+    fi
     local base="${unit%.service}"; base="${base%.timer}"
     _want_base["$base"]=1
   done
@@ -1110,6 +1138,7 @@ place_role_unit_files() {
 # chump-node-install.sh at bring-up (role=$ROLE).
 [Service]
 Environment=CHUMP_ORGAN_RECONCILE_ROLE=$rf
+Environment=CHUMP_ORGAN_RECONCILE_UNITS=$ua
 EOF
     systemctl --user daemon-reload 2>/dev/null || true
   elif [ "$ROLE" = all ]; then
@@ -1263,10 +1292,10 @@ FHS"
   # that execs the tracked scripts/dispatch/worker.sh (which already loops
   # internally), so a fresh --role muscle install self-starts the worker
   # instead of silently staying loaded-not-active.
-  if [ "$ROLE" = muscle ] || [ "$ROLE" = all ]; then
+  if [ "$ROLE" = muscle ] || [ "$ROLE" = all ] || [ "$ROLE" = factory ]; then
     render_worker_launcher
   fi
-  local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
+  local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle|factory) list="$(muscle_organs; common_organs)";; data|embed) list="$(common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
 
   # INFRA-4351 (INFRA-3641 slice): gate the local svc_install/svc_up organs
   # above against scripts/ops/organ-manifest.txt itself, not just the
@@ -1609,7 +1638,7 @@ self_test() {
   fi
   # each role organ supervised & up (INFRA-3650: common_organs, e.g.
   # process-organ-heal, must be part of the "installed" bar for every role)
-  local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle) list="$(muscle_organs; common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
+  local list; case "$ROLE" in brain) list="$(brain_organs; common_organs)";; muscle|factory) list="$(muscle_organs; common_organs)";; data|embed) list="$(common_organs)";; all) list="$(brain_organs; muscle_organs; common_organs)";; esac
   echo "$list" | while IFS='|' read -r name _; do [ -z "$name" ] && continue
     if [ "$name" = worker ] && ! worker_execution_enabled; then
       info SELF-TEST "worker intentionally stopped (control-plane mode)"
@@ -1640,7 +1669,7 @@ self_test() {
   if [ -f "$recon_script" ]; then
     local recon_rf; recon_rf="$(organ_role_filter)"
     local recon_out
-    if recon_out="$(CHUMP_ORGAN_RECONCILE_ROLE="$recon_rf" bash "$recon_script" --check 2>&1)"; then
+    if recon_out="$(CHUMP_ORGAN_RECONCILE_ROLE="$recon_rf" CHUMP_ORGAN_RECONCILE_UNITS="$(organ_role_units)" bash "$recon_script" --check 2>&1)"; then
       ok "organs: role-matched organ-manifest units up to date (role=$ROLE, role-filter=[${recon_rf:-all}])"
     else
       no "organs: role-matched organ-manifest units DRIFT (role=$ROLE) — $recon_out"

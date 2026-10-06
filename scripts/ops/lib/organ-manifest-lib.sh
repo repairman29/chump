@@ -197,7 +197,42 @@ organ_role_filter_for() {
   case "${1:-}" in
     brain)   echo "brain,data,janitor,trust";;
     muscle)  echo "muscle";;
+    # RESILIENT-320: capacity roles. Tags are broad; organ_role_units_for
+    # narrows to the exact unit roster.
+    factory|data|embed) echo "brain,data,janitor,trust,muscle";;
     all|"")  echo "";;
     *)       echo "";;
   esac
+}
+
+# organ_role_units_for <role> -> space-separated manifest unit names a capacity
+# role (RESILIENT-320: factory|data|embed) installs. Empty for brain/muscle/all
+# (those are scoped by role tag alone). A unit absent from the manifest is simply
+# never matched, so the roster can name organs that only exist on some hosts.
+#   factory = workers + pr-lander + reapers + integrator + orchestrator +
+#             disk-monitor + main-health-watchdog
+#   data    = orchestrator + disk-monitor + main-health-watchdog + postgres(t);
+#             NO pr-lander / PR reapers
+#   embed   = orchestrator + disk-monitor
+organ_role_units_for() {
+  local _common="chump-node-orchestrator.service chump-disk-monitor.service"
+  case "${1:-}" in
+    factory) echo "chump-cj-worker.service chump-pr-lander.timer chump-integrator.timer chump-rot-reaper.timer chump-stale-worktree-reaper.timer chump-cargo-target-reaper.timer chump-worktree-reaper.service chump-main-health-watchdog.service $_common";;
+    data)    echo "$_common chump-main-health-watchdog.service chump-postgrest.service";;
+    embed)   echo "$_common";;
+    *)       echo "";;
+  esac
+}
+
+# organ_worker_count <cores> <runs_embeds 0|1> -> worker count for a factory
+# node: clamp(1, cores-1), minus 1 if the node also runs embeds (floor 1).
+# CJ (4 cores + embeds) -> 2.
+organ_worker_count() {
+  local cores="${1:-1}" embeds="${2:-0}"
+  [ "$cores" -ge 1 ] 2>/dev/null || cores=1
+  local n=$(( cores - 1 ))
+  [ "$n" -lt 1 ] && n=1
+  [ "$embeds" = 1 ] && n=$(( n - 1 ))
+  [ "$n" -lt 1 ] && n=1
+  echo "$n"
 }
