@@ -124,3 +124,6 @@ scripts/ci/shell-test-allowlist.txt merge=union
 scripts/ops/organ-manifest.txt merge=union
 scripts/setup/optional-installers-allowlist.txt merge=union
 scripts/ci/preflight-ci-parity-exceptions.txt merge=union
+
+# RESILIENT-1544: union-merge the preflight overflow list so parallel PR appends never conflict
+scripts/ci/preflight-extra-test-scripts.txt merge=union
