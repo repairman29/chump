@@ -57,6 +57,10 @@ reaper_rotate_log /tmp/chump-stuck-pr-filer.err.log
 trap 'rc=$?; [[ $rc -ne 0 ]] && reaper_finish fail "{\"exit\":$rc}"' EXIT
 
 DRY_RUN=0
+# ZERO-WASTE-014: stuck/CI-red findings are ambient signals by default; they no
+# longer file gaps (make-work inflow). Set CHUMP_NOISE_GAP_FILING=1 to restore
+# the legacy gap-filing behaviour.
+NOISE_GAP_FILING="${CHUMP_NOISE_GAP_FILING:-0}"
 [[ "${1:-}" == "--dry-run" ]] && DRY_RUN=1
 
 REMOTE="${REMOTE:-origin}"
@@ -371,6 +375,20 @@ file_stuck_gap() {
         return
     fi
 
+    if [[ "$NOISE_GAP_FILING" != "1" ]]; then
+        local _zw_amb="${CHUMP_AMBIENT_LOG:-${REAPER_LOCK_DIR:-.chump-locks}/ambient.jsonl}"
+        local _zw_ts
+        _zw_ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+        printf '{"ts":"%s","event":"alert","kind":"stuck_pr","pr":%s,"stuck_class":"%s","reason":"%s"}\n' \
+            "$_zw_ts" "$pr_num" "$stuck_class" "$reason" >> "$_zw_amb" 2>/dev/null || true
+        # Keep the legacy pr_stuck event so the cluster detector still sees it.
+        printf '{"event":"alert","kind":"pr_stuck","ts":"%s","pr":%s,"reason":"%s","gap":"","filed_gap":""}\n' \
+            "$_zw_ts" "$pr_num" "$reason" >> "$_zw_amb" 2>/dev/null || true
+        info "  PR #${pr_num} stuck [${stuck_class}] — emitted ambient stuck_pr (no gap filed)"
+        FILED=$((FILED + 1))
+        return
+    fi
+
     if ! command -v chump >/dev/null 2>&1; then
         warn "chump binary not on PATH — cannot reserve gap; skipping PR #${pr_num}"
         return
@@ -538,6 +556,16 @@ $(git diff "${_last_commit}^" "$_last_commit" -- "$_script_path" 2>/dev/null | h
                 if [[ $DRY_RUN -eq 1 ]]; then
                     dry "would file shared-blocker gap: $_title"
                     dry "  affected PRs ($_count): $_pr_nums"
+                    FILED=$((FILED + 1))
+                    continue
+                fi
+
+                if [[ "$NOISE_GAP_FILING" != "1" ]]; then
+                    local _zw_lock="${REAPER_LOCK_DIR:-.chump-locks}"
+                    printf '{"event":"alert","kind":"shared_ci_blocker","ts":"%s","check_name":"%s","affected_prs":%s,"filed_gap":""}\n' \
+                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_check_name" "$_count" \
+                        >> "$_zw_lock/ambient.jsonl" 2>/dev/null || true
+                    info "  shared-blocker '${_check_name}' emitted ambient (no gap filed)"
                     FILED=$((FILED + 1))
                     continue
                 fi

@@ -1375,6 +1375,14 @@ for p in prs:
           gap_title="PR #${pr_num} failing on ${short_job}"
         fi
         gap_title="${gap_title:0:120}"
+        if [ "${CHUMP_NOISE_GAP_FILING:-0}" != "1" ] && [ -z "$DRY_RUN" ]; then
+          # ZERO-WASTE-014: CI failures are ambient signals, not new gaps.
+          printf '{"ts":"%s","event":"alert","kind":"ci_failure","pr":%s,"job":"%s","fingerprint":"%s","gap":"%s"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr_num" "${short_job//\"/}" "$fingerprint" "$gap_id" >> "$AMBIENT" 2>/dev/null || true
+          _record_filed_gap "$pr_num" "$fingerprint" "AMBIENT" "$fail_job"
+          _emit_pr_action_taken "$pr_num" "ci_failure_ambient" "no_gap_filed" "$gap_id"
+          continue
+        fi
         if [ -n "$DRY_RUN" ]; then
           echo "[pr-shepherd-daemon] DRY_RUN: would file gap for PR #${pr_num} (${gap_id}): ${gap_title}" >&2
           local new_gap_id="DRY-RUN-${fingerprint}"
