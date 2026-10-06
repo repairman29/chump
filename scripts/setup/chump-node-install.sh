@@ -458,6 +458,40 @@ check_creds() {
   [ -n "$opt_missing" ] && info CREDS "optional creds not set:$opt_missing (pager dead without DISCORD_TOKEN — supply via --creds-file/\$CHUMP_BOOTSTRAP_CREDS)"
 }
 
+# ---------- 3b2. BATPHONE TOKEN (RESILIENT-1513) ----------
+# chump-fleet-server's POST /api/gap (and /api/mission) fail CLOSED without
+# CHUMP_BATPHONE_TOKEN (crates/chump-fleet-server/src/routes.rs) — a store
+# node installed without one serves healthz fine but silently rejects every
+# bat-phone gap filing with 401/disabled, discovered only by a human curling
+# the endpoint by hand (verified on the canonical gap-store node 2026-10-02).
+# Mint one on-node the same zero-touch way materialize_creds/write_cred_key
+# already handle every other secret: never echoed to stdout/logs, written
+# straight into $CREDS at mode 0600, idempotent (a token already present —
+# from a prior run or an operator-supplied one — is left untouched).
+ensure_batphone_token() {
+  if [ -f "$CREDS" ] && grep -qE '^(export )?CHUMP_BATPHONE_TOKEN=.+' "$CREDS"; then
+    ok "CHUMP_BATPHONE_TOKEN already present (value not logged)"
+    return 0
+  fi
+  if [ "$DRY" = 1 ]; then
+    echo "  DRY: mint CHUMP_BATPHONE_TOKEN -> $CREDS (mode 600; value never logged)"
+    return 0
+  fi
+  local token=""
+  if command -v openssl >/dev/null 2>&1; then
+    token="$(openssl rand -hex 32 2>/dev/null)"
+  fi
+  if [ -z "$token" ] && [ -r /dev/urandom ]; then
+    token="$(head -c 32 /dev/urandom 2>/dev/null | od -An -tx1 | tr -d ' \n')"
+  fi
+  if [ -z "$token" ]; then
+    no "could not mint CHUMP_BATPHONE_TOKEN — no openssl and no /dev/urandom; bat-phone intake stays disabled"
+    return 1
+  fi
+  write_cred_key CHUMP_BATPHONE_TOKEN "$token"
+  ok "CHUMP_BATPHONE_TOKEN minted on-node + written to $CREDS (mode 600; value not logged)"
+}
+
 # ---------- 3c. NODE ENV (INFRA-3703: canonical store env file) ----------
 # Writes ~/.chump/node.env with the canonical store settings every organ and
 # later step needs, then sources it so subsequent phases (SEED/SUBSTRATE/
@@ -482,6 +516,24 @@ write_node_env() {
   # it as "set to nothing", which is worse than an obviously-fake value.
   team_api_key="${team_api_key:-placeholder-team-api-key}"
   local store_backend="${CHUMP_STORE_BACKEND:-postgrest}"
+  # RESILIENT-1513: resolve CHUMP_GAP_SERVER (src/gap_file.rs's gap-filing
+  # endpoint, defaulting to 127.0.0.1:7070 when unset) to the CANONICAL
+  # store node, not whatever local fleet-server happens to be running. The
+  # 2026-10-02 incident this closes: a client's bat-phone filing path wrote
+  # to a stale, frozen fleet-server simply because nothing pinned it to the
+  # node that actually holds the live gap store. Precedence: explicit env >
+  # providers.env pin (operator override) > derived from CHUMP_GAP_STORE_URL's
+  # host (same node, by convention, serves both the postgREST store on :3000
+  # and the bat-phone fleet-server on :7070).
+  local gap_server="${CHUMP_GAP_SERVER:-}"
+  if [ -z "$gap_server" ] && [ -f "$CREDS" ]; then
+    gap_server="$(grep -E '^(export )?CHUMP_GAP_SERVER=' "$CREDS" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_GAP_SERVER=//; s/^"(.*)"$/\1/')"
+  fi
+  if [ -z "$gap_server" ]; then
+    local _gs_scheme_host
+    _gs_scheme_host="$(printf '%s' "$GAP_STORE_URL" | sed -E 's#^(https?://[^:/]+).*#\1#')"
+    gap_server="${_gs_scheme_host}:7070"
+  fi
   # RESILIENT-1446: the node's real worker/store identity — the user the organs
   # must run as (git/ssh/cargo/oauth) and whose ~/.chump holds the canonical gap
   # store + oauth token + farmer heartbeat. Persist it so a LATER root-privileged
@@ -510,6 +562,10 @@ write_node_env() {
       printf 'export CHUMP_TEAM_URL=%s\n' "$team_url"
       printf 'export CHUMP_TEAM_API_KEY=%s\n' "$team_api_key"
       printf 'export CHUMP_STORE_BACKEND=%s\n' "$store_backend"
+      # RESILIENT-1513: see gap_server derivation above — pins gap-filing
+      # clients (src/gap_file.rs) to the canonical store node instead of a
+      # stale local default.
+      printf 'export CHUMP_GAP_SERVER=%s\n' "$gap_server"
       # RESILIENT-1083: persist this node's role OUTSIDE the repo so the recurring
       # organ-reconcile can self-scope to it (and survive `git reset --hard`).
       printf 'export CHUMP_NODE_ROLE=%s\n' "$ROLE"
@@ -534,7 +590,7 @@ write_node_env() {
   # Source now so subsequent phases inherit the canonical settings.
   # shellcheck disable=SC1090
   . "$node_env"
-  export CHUMP_STATE_DIR CHUMP_STATE_DB CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER
+  export CHUMP_STATE_DIR CHUMP_STATE_DB CHUMP_TEAM_URL CHUMP_TEAM_API_KEY CHUMP_STORE_BACKEND CHUMP_NODE_ROLE CHUMP_NODE_WORK_ENABLED CHUMP_NODE_MODE CHUMP_RUN_USER CHUMP_GAP_SERVER
   ok "node.env written + sourced: $node_env (mode=$CHUMP_NODE_MODE, run-user=$CHUMP_RUN_USER)"
   install_shell_hook "$node_env"
 }
@@ -1735,6 +1791,7 @@ elif [ "$CONTROL_PLANE_ONLY" = 1 ]; then
 else
   info CREDS "provider unavailable — installing a healthy control plane; worker remains stopped until credentials are supplied"
 fi
+ensure_batphone_token
 write_node_env
 ensure_binary || info BINARY "install a binary, then re-run"
 ensure_seed

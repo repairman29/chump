@@ -168,6 +168,12 @@ organ_unit_execstart_resolves() {
   # `/bin/bash -c '...; exec chump ...'` wrapper shape every organ uses) —
   # that's the binary systemd's child process actually becomes. Fall back to
   # the first whitespace token of ExecStart itself for a direct invocation.
+  # RESILIENT-1513: strip a trailing closing quote (`'` or `"`) off the
+  # captured token. When `exec <bin>` is the LAST thing inside a
+  # single-quoted `bash -c '...'` wrapper with no trailing args — exactly the
+  # real chump-fleet-server.service shape, `exec .../chump-fleet-server'` —
+  # the match's `[^ "]+` happily swallows that trailing `'` as part of the
+  # path, so the `-x` test below always fails even once the binary is built.
   bin="$(printf '%s\n' "$exec_line" | grep -oE 'exec "?[^ "]+' | tail -1 | sed -E 's/^exec "?//')"
   if [[ -z "$bin" ]]; then
     bin="$(printf '%s\n' "${exec_line#ExecStart=}" | awk '{print $1}')"
@@ -175,6 +181,14 @@ organ_unit_execstart_resolves() {
   if [[ -z "$bin" ]]; then
     printf -v "$reason_var" 'cannot_parse_execstart'; return 1
   fi
+  # RESILIENT-1513: strip a single trailing closing quote (' or "). When
+  # `exec <bin>` is the LAST thing inside a single-quoted `bash -c '...'`
+  # wrapper with no trailing args — exactly the real chump-fleet-server.service
+  # shape, `exec .../chump-fleet-server'` — the match above happily swallows
+  # that trailing quote as part of the path, so the `-x` test below would
+  # always fail even once the binary is actually built.
+  bin="${bin%\'}"
+  bin="${bin%\"}"
 
   # Absolute or relative (contains a slash): resolve directly, no PATH search.
   if [[ "$bin" == */* ]]; then
