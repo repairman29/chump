@@ -12077,6 +12077,17 @@ async fn main() -> Result<()> {
                     }
                 }
 
+                // INFRA-2360: pre-claim disk-plan check. A claim provisions a worktree
+                // (isolated target dir); REFUSE blocks it, WAIT warns, --force overrides.
+                match disk_plan_gate::check_for_claim(&repo_path::repo_root(), force) {
+                    disk_plan_gate::ClaimDiskGate::Proceed => {}
+                    disk_plan_gate::ClaimDiskGate::Warn(msg) => eprintln!("[claim] {msg}"),
+                    disk_plan_gate::ClaimDiskGate::Refuse(msg) => {
+                        eprintln!("chump gap claim: {msg}");
+                        std::process::exit(1);
+                    }
+                }
+
                 let session_id = flag("--session")
                     .or_else(|| crate::ambient_stream::env_session_id())
                     .unwrap_or_else(|| format!("chump-anon-{}", unix_ts()));
