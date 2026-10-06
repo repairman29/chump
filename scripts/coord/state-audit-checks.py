@@ -26,6 +26,16 @@ prints one glanceable line:
       DIVERGE = done-but-not-running (merged != running). A gap not reported done
       is not a lie, so it AGREEs.
 
+  organ_active_vs_emitted_work  (META-1050)
+      An organ's is-active status vs whether it actually EMITTED WORK in the
+      window. DIVERGE = active-but-silent. A not-active organ is not claiming
+      liveness, so it AGREEs.
+
+  picker_offered_vs_preflight   (META-1050)
+      Gaps the picker OFFERS vs a real preflight on each. DIVERGE = an offered
+      gap that then fails preflight (the picker is advertising work no worker can
+      start). One row per offered gap.
+
 A check that cannot get ground truth reports UNKNOWN — never a false AGREE.
 
 HOST-AGNOSTIC. Nothing about any node or credential is hard-coded: targets come
@@ -51,8 +61,20 @@ scripts/coord/state-audit-targets.example.json for the shape:
                "done_values": ["done", "closed", "shipped"],
                "fix_hash": {"type": "file"|"command", ...},     # the fix commit
                "running_hash": {"type": "file"|"command", ...}, # what is actually running
-               "contains_cmd": "<cmd with {fix} {running}>"}]}  # optional: exit 0 = running has fix
+               "contains_cmd": "<cmd with {fix} {running}>"}],  # optional: exit 0 = running has fix
+   "organs": [{"id": "organ-1",
+               "active": {"type": "file"|"command", ...},       # prints e.g. "active"
+               "active_values": ["active", "running"],
+               "work": {"type": "ambient", "path": "...", "match": {"kind": "x"}, "window_secs": 3600}
+                     | {"type": "command", "cmd": "<prints a count>"}}],
+   "pickers": [{"id": "picker-1",
+                "offered": {"type": "file"|"command", ...},     # gap ids, whitespace/newline or JSON list
+                "preflight_cmd": "<cmd with {gap}>",            # exit 0 = preflight passes
+                "preflight_timeout_secs": 60}]}
 
+  organs.work (ambient): counts events whose fields equal every key in "match"
+                    and whose ts is within window_secs of now; 0 events = silent.
+  pickers: preflight_cmd exit 0 = pass; non-zero = fail; timeout/not-run = UNKNOWN.
   cycles.pr_merged: the source's text is matched against merged_values /
                     not_merged_values (default merged vs open/closed); anything else
                     is UNKNOWN.
@@ -328,10 +350,111 @@ def check_gaps(cfg: dict) -> list[dict]:
     return rows
 
 
+# ── organ_active_vs_emitted_work / picker_offered_vs_preflight (META-1050) ───
+def work_count(src: dict, now: float) -> int | None:
+    kind = (src or {}).get("type")
+    if kind == "command":
+        out = run_shell(src.get("cmd", ""), int(src.get("timeout_secs", 20)))
+        if not out or out[0] != 0:
+            return None
+        try:
+            return int(out[1].strip())
+        except ValueError:
+            return None
+    if kind == "ambient":
+        match = src.get("match", {})
+        window = float(src.get("window_secs", 3600))
+        n = 0
+        try:
+            lines = Path(src["path"]).read_text(errors="replace").splitlines()
+        except (OSError, KeyError):
+            return None
+        for line in lines:
+            try:
+                ev = json.loads(line)
+            except ValueError:
+                continue
+            if not isinstance(ev, dict) or any(ev.get(k) != v for k, v in match.items()):
+                continue
+            ts = parse_ts(str(ev.get("ts", "")))
+            if ts is not None and now - window <= ts <= now:
+                n += 1
+        return n
+    return None
+
+
+def check_organs(cfg: dict, now: float) -> list[dict]:
+    rows = []
+    for o in cfg.get("organs", []):
+        oid = o["id"]
+        text = read_source(o.get("active", {}))
+        active_values = [v.lower() for v in o.get("active_values", ["active"])]
+        n = work_count(o.get("work", {}), now)
+        window = int((o.get("work") or {}).get("window_secs", 3600))
+        if text is None or not text.strip() or n is None:
+            rows.append(verdict_row("organ_active_vs_emitted_work", oid,
+                                    f"status {text.strip() if text and text.strip() else 'unavailable'}",
+                                    "emitted work unavailable" if n is None else f"{n} work event(s)", "UNKNOWN",
+                                    "need both the organ's is-active status and a work count"))
+            continue
+        active = text.strip().lower() in active_values
+        sr, gt = ("active" if active else f"not active ({text.strip().lower()})"), f"{n} work event(s) in {fmt_age(window)}"
+        if active and n == 0:
+            rows.append(verdict_row("organ_active_vs_emitted_work", oid, sr, gt, "DIVERGE",
+                                    "active-but-silent: reported active yet emitted no work in the window"))
+        elif active:
+            rows.append(verdict_row("organ_active_vs_emitted_work", oid, sr, gt, "AGREE",
+                                    "active and emitting work"))
+        else:
+            rows.append(verdict_row("organ_active_vs_emitted_work", oid, sr, gt, "AGREE",
+                                    "not claimed active, so silence is expected"))
+    return rows
+
+
+def offered_gaps(src: dict) -> list[str] | None:
+    text = read_source(src)
+    if text is None:
+        return None
+    t = text.strip()
+    if t.startswith("["):
+        try:
+            return [str(x) for x in json.loads(t)]
+        except ValueError:
+            return None
+    return t.split()
+
+
+def check_pickers(cfg: dict) -> list[dict]:
+    rows = []
+    for p in cfg.get("pickers", []):
+        pid = p["id"]
+        offered = offered_gaps(p.get("offered", {}))
+        cmd = p.get("preflight_cmd", "")
+        if offered is None or not cmd:
+            rows.append(verdict_row("picker_offered_vs_preflight", pid, "offered list unavailable" if offered is None else "offered",
+                                    "no preflight command" if not cmd else "-", "UNKNOWN",
+                                    "need both the offered gaps and a preflight command"))
+            continue
+        for gap in offered:
+            res = run_shell(cmd.replace("{gap}", gap), int(p.get("preflight_timeout_secs", 60)))
+            target = f"{pid}:{gap}"
+            if res is None:
+                rows.append(verdict_row("picker_offered_vs_preflight", target, "offered by picker",
+                                        "preflight did not run", "UNKNOWN", "preflight timed out or could not start"))
+            elif res[0] == 0:
+                rows.append(verdict_row("picker_offered_vs_preflight", target, "offered by picker",
+                                        "preflight passes", "AGREE", "offered gap is startable"))
+            else:
+                rows.append(verdict_row("picker_offered_vs_preflight", target, "offered by picker",
+                                        f"preflight fails (exit {res[0]})", "DIVERGE",
+                                        "offered gap fails preflight: the picker advertises work no worker can start"))
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=os.environ.get("CHUMP_STATE_AUDIT_CONFIG", ""))
-    ap.add_argument("--check", default="all", choices=["nodes", "auth", "cycles", "gaps", "all"])
+    ap.add_argument("--check", default="all", choices=["nodes", "auth", "cycles", "gaps", "organs", "pickers", "all"])
     ap.add_argument("--now", default="", help="ISO-8601 or epoch seconds (tests); default: now")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--strict", action="store_true", help="exit 1 when any check DIVERGEs")
@@ -356,6 +479,10 @@ def main() -> int:
         rows += check_cycles(cfg)
     if a.check in ("gaps", "all"):
         rows += check_gaps(cfg)
+    if a.check in ("organs", "all"):
+        rows += check_organs(cfg, now)
+    if a.check in ("pickers", "all"):
+        rows += check_pickers(cfg)
     if a.json:
         for r in rows:
             print(json.dumps(r, sort_keys=True))

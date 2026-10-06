@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # META-1051/META-1049: state-audit-checks.py — node-last-seen-vs-expected-up,
-# auth-status-vs-real-probe, cycle-kind-vs-PR-merged and gap-done-vs-running-hash. Both divergences are exercised, targets come from
+# auth-status-vs-real-probe, cycle-kind-vs-PR-merged, gap-done-vs-running-hash,
+# organ-active-vs-emitted-work and picker-offered-vs-preflight. Both divergences are exercised, targets come from
 # config (no hard-coded hostnames/IPs), and an unanswerable check is UNKNOWN, never
 # a false AGREE. Pure local; fixtures only.
 set -uo pipefail
@@ -24,6 +25,16 @@ echo done > "$T/gap-done"; echo open > "$T/gap-open"
 FIXH=1111111aaaa2222222bbbb3333333cccc4444dd; OLDH=9999999ffff0000000eeee1111111aaaa2222bb
 echo "$FIXH" > "$T/h-fix"; echo "$OLDH" > "$T/h-old"; echo "${FIXH:0:9}" > "$T/h-fix-short"
 printf '#!/usr/bin/env bash\n[[ "$1" == "$2" ]]\n' > "$T/contains"; chmod +x "$T/contains"
+echo active > "$T/org-active"; echo inactive > "$T/org-inactive"
+python3 - "$T/amb.jsonl" "$NOWE" <<'PY'
+import json, sys
+now = int(sys.argv[2])
+with open(sys.argv[1], "w") as f:
+    for ts, kind in ((now - 600, "work_done"), (now - 300, "work_done"), (now - 90000, "stale_work"), (now - 100, "other")):
+        f.write(json.dumps({"ts": ts, "kind": kind}) + "\n")
+PY
+printf 'GAP-OK GAP-BAD\n' > "$T/offered"; echo '["ONLY-OK"]' > "$T/offered-json"
+printf '#!/usr/bin/env bash\n[[ "$1" != *BAD* ]]\n' > "$T/preflight"; chmod +x "$T/preflight"
 echo "ok-live" > "$T/status-ok"; echo "auth_dead: expired" > "$T/status-dead"; echo "???" > "$T/status-weird"
 
 cat > "$T/cfg.json" <<J
@@ -50,6 +61,19 @@ cat > "$T/cfg.json" <<J
   {"id": "cyc-agree-ship",  "kind": {"type": "file", "path": "$T/kind-ship"}, "pr_merged": {"type": "file", "path": "$T/pr-merged"}},
   {"id": "cyc-agree-wip",   "kind": {"type": "file", "path": "$T/kind-wip"},  "pr_merged": {"type": "file", "path": "$T/pr-open"}},
   {"id": "cyc-no-pr",       "kind": {"type": "file", "path": "$T/kind-ship"}, "pr_merged": {"type": "file", "path": "$T/nope"}}
+ ],
+ "organs": [
+  {"id": "active-silent", "active": {"type": "file", "path": "$T/org-active"},   "work": {"type": "ambient", "path": "$T/amb.jsonl", "match": {"kind": "no_such_work"}, "window_secs": 3600}},
+  {"id": "active-working", "active": {"type": "file", "path": "$T/org-active"},  "work": {"type": "ambient", "path": "$T/amb.jsonl", "match": {"kind": "work_done"}, "window_secs": 3600}},
+  {"id": "active-old-work-only", "active": {"type": "file", "path": "$T/org-active"}, "work": {"type": "ambient", "path": "$T/amb.jsonl", "match": {"kind": "stale_work"}, "window_secs": 3600}},
+  {"id": "inactive-silent", "active": {"type": "file", "path": "$T/org-inactive"}, "work": {"type": "ambient", "path": "$T/amb.jsonl", "match": {"kind": "no_such_work"}, "window_secs": 3600}},
+  {"id": "active-cmd-count", "active": {"type": "file", "path": "$T/org-active"}, "work": {"type": "command", "cmd": "echo 4"}},
+  {"id": "no-work-data", "active": {"type": "file", "path": "$T/org-active"}, "work": {"type": "ambient", "path": "$T/missing.jsonl"}}
+ ],
+ "pickers": [
+  {"id": "pk", "offered": {"type": "file", "path": "$T/offered"}, "preflight_cmd": "$T/preflight {gap}"},
+  {"id": "pj", "offered": {"type": "file", "path": "$T/offered-json"}, "preflight_cmd": "$T/preflight {gap}"},
+  {"id": "pn", "offered": {"type": "file", "path": "$T/missing"}, "preflight_cmd": "$T/preflight {gap}"}
  ],
  "gaps": [
   {"id": "done-not-running", "status": {"type": "file", "path": "$T/gap-done"}, "fix_hash": {"type": "file", "path": "$T/h-fix"}, "running_hash": {"type": "file", "path": "$T/h-old"}},
@@ -97,6 +121,20 @@ out="$(run)"
 [[ "$(v no-running-hash <<<"$out")" == "UNKNOWN" ]] && ok "running hash unavailable -> UNKNOWN, never a false AGREE" || bad "no-running-hash"
 only="$(python3 "$SA" --config "$T/cfg.json" --now "$NOW" --check gaps --json 2>/dev/null | python3 -c "import sys,json; print({json.loads(l)['check'] for l in sys.stdin})")"
 [[ "$only" == "{'gap_done_vs_running_hash'}" ]] && ok "--check gaps runs only the gap check" || bad "gaps selection: $only"
+
+# Organ active vs emitted work (META-1050)
+[[ "$(v active-silent <<<"$out")" == "DIVERGE" ]] && ok "organ active but emitted no work in the window -> DIVERGE (active-but-silent)" || bad "active-silent"
+[[ "$(v active-old-work-only <<<"$out")" == "DIVERGE" ]] && ok "work outside the window does not count -> DIVERGE" || bad "active-old-work-only"
+[[ "$(v active-working <<<"$out")" == "AGREE" && "$(v active-cmd-count <<<"$out")" == "AGREE" ]] && ok "organ active and emitting work (ambient events / command count) -> AGREE" || bad "active-working"
+[[ "$(v inactive-silent <<<"$out")" == "AGREE" ]] && ok "organ not claimed active -> AGREE (silence expected)" || bad "inactive-silent"
+[[ "$(v no-work-data <<<"$out")" == "UNKNOWN" ]] && ok "no work ground truth -> UNKNOWN" || bad "no-work-data"
+
+# Picker offered vs preflight (META-1050)
+[[ "$(v pk:GAP-BAD <<<"$out")" == "DIVERGE" ]] && ok "picker-offered gap that fails preflight -> DIVERGE" || bad "pk:GAP-BAD"
+[[ "$(v pk:GAP-OK <<<"$out")" == "AGREE" && "$(v pj:ONLY-OK <<<"$out")" == "AGREE" ]] && ok "offered gap that passes preflight (whitespace list and JSON list) -> AGREE" || bad "preflight pass"
+[[ "$(v pn <<<"$out")" == "UNKNOWN" ]] && ok "offered list unavailable -> UNKNOWN" || bad "pn"
+only="$(python3 "$SA" --config "$T/cfg.json" --now "$NOW" --check pickers --json 2>/dev/null | python3 -c "import sys,json; print({json.loads(l)['check'] for l in sys.stdin})")"
+[[ "$only" == "{'picker_offered_vs_preflight'}" ]] && ok "--check pickers runs only the picker check" || bad "pickers selection: $only"
 
 # Output contract: one glanceable pipe-separated line, strict exit, check selection
 text="$(python3 "$SA" --config "$T/cfg.json" --now "$NOW" 2>/dev/null)"

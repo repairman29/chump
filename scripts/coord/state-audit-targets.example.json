@@ -42,5 +42,21 @@
       "fix_hash": {"type": "command", "cmd": "/path/to/print-fix-commit"},
       "running_hash": {"type": "command", "cmd": "/path/to/print-running-build-hash"}
     }
+  ],
+  "organs": [
+    {
+      "id": "organ-example",
+      "active": {"type": "command", "cmd": "/path/to/print-organ-status"},
+      "active_values": ["active"],
+      "work": {"type": "ambient", "path": ".chump-locks/ambient.jsonl", "match": {"kind": "example_work_done"}, "window_secs": 3600}
+    }
+  ],
+  "pickers": [
+    {
+      "id": "picker-example",
+      "offered": {"type": "command", "cmd": "/path/to/print-offered-gap-ids"},
+      "preflight_cmd": "/path/to/preflight {gap}",
+      "preflight_timeout_secs": 60
+    }
   ]
 }
