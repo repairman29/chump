@@ -142,5 +142,49 @@ else
     exit 1
 fi
 
+# ── META-1039: honest merge age ───────────────────────────────────────────────
+# The reported "Last merge" age is the true age of origin/main's tip, read from git
+# (the fixture's tip commit is dated 1h before NOW_TS).
+echo "Test 7: Last merge age matches the synthetic git history (~1h)"
+AGE_JSON="$(CHUMP_REPO="$TMP/repo" "$CHUMP_BIN" fleet brief --json 2>/dev/null)"
+AGE_SECS="$(echo "$AGE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['last_merge_age_secs'])")"
+if [[ "$AGE_SECS" -ge 3600 && "$AGE_SECS" -le 3900 ]]; then
+    echo "  PASS (last_merge_age_secs=$AGE_SECS)"
+else
+    echo "  FAIL: last_merge_age_secs=$AGE_SECS, expected 3600..3900"; exit 1
+fi
+if CHUMP_REPO="$TMP/repo" "$CHUMP_BIN" fleet brief 2>/dev/null | grep -qE "^Last merge: 1h [0-9]+m ago$"; then
+    echo "  PASS (text line: 'Last merge: 1h Nm ago', not flagged under the default threshold)"
+else
+    echo "  FAIL: expected an unflagged 'Last merge: 1h Nm ago' line"
+    CHUMP_REPO="$TMP/repo" "$CHUMP_BIN" fleet brief 2>/dev/null | grep -i "merge" | sed 's/^/  /'; exit 1
+fi
+
+echo "Test 8: a merge older than the threshold is flagged explicitly"
+STALE_JSON="$(CHUMP_FLEET_BRIEF_MERGE_AGE_WARN_SECS=1800 CHUMP_REPO="$TMP/repo" "$CHUMP_BIN" fleet brief --json 2>/dev/null)"
+if echo "$STALE_JSON" | python3 -c "import sys,json; d=json.load(sys.stdin); assert d['last_merge_stale'] is True and any('last merge to main' in x for x in d['suggestions'])"; then
+    echo "  PASS (json last_merge_stale=true + suggestion)"
+else
+    echo "  FAIL: expected last_merge_stale=true with a suggestion"; exit 1
+fi
+if CHUMP_FLEET_BRIEF_MERGE_AGE_WARN_SECS=1800 CHUMP_REPO="$TMP/repo" "$CHUMP_BIN" fleet brief 2>/dev/null | grep -qE "^Last merge: .* STALE"; then
+    echo "  PASS (text line carries STALE)"
+else
+    echo "  FAIL: text output missing STALE flag"; exit 1
+fi
+NOSTALE="$(echo "$AGE_JSON" | python3 -c "import sys,json; print(json.load(sys.stdin)['last_merge_stale'])")"
+[[ "$NOSTALE" == "False" ]] && echo "  PASS (not stale under the 6h default)" || { echo "  FAIL: stale under default"; exit 1; }
+
+echo "Test 9: an old tip commit is flagged under the default 6h threshold"
+git init -q "$TMP/old"; git -C "$TMP/old" config user.email ci@chump.test; git -C "$TMP/old" config user.name CI
+mkdir -p "$TMP/old/.chump-locks"
+GIT_AUTHOR_DATE="$OLD_ISO" GIT_COMMITTER_DATE="$OLD_ISO" git -C "$TMP/old" -c commit.gpgsign=false commit -q --allow-empty -m "ancient"
+git -C "$TMP/old" update-ref refs/remotes/origin/main HEAD
+if CHUMP_REPO="$TMP/old" "$CHUMP_BIN" fleet brief 2>/dev/null | grep -qE "^Last merge: [0-9]+d .*STALE"; then
+    echo "  PASS (ancient tip flagged STALE)"
+else
+    echo "  FAIL: ancient tip not flagged"; CHUMP_REPO="$TMP/old" "$CHUMP_BIN" fleet brief 2>/dev/null | grep -i merge | sed 's/^/  /'; exit 1
+fi
+
 echo ""
-echo "All fleet-brief tests passed (6/6)."
+echo "All fleet-brief tests passed (9/9)."

@@ -1048,6 +1048,21 @@ fn chump_init_nudge_if_missing() -> String {
     "tip: run 'chump init' to scaffold ~/.chump/config.toml (one-time setup)\n\n".to_string()
 }
 
+/// META-1039: render an age in seconds as `Xd Yh`, `Xh Ym`, `Xm`, or `Xs` — the
+/// "how long since the last merge to main" figure the fleet brief reports.
+fn fleet_brief_format_age(secs: i64) -> String {
+    let s = secs.max(0);
+    if s >= 86_400 {
+        format!("{}d {}h", s / 86_400, (s % 86_400) / 3600)
+    } else if s >= 3600 {
+        format!("{}h {}m", s / 3600, (s % 3600) / 60)
+    } else if s >= 60 {
+        format!("{}m", s / 60)
+    } else {
+        format!("{s}s")
+    }
+}
+
 fn print_help() {
     print!("{}", chump_init_nudge_if_missing());
     let ver = version::chump_version();
@@ -7317,6 +7332,40 @@ async fn main() -> Result<()> {
                 // INFRA-2013: 1h ship count — leading indicator (not subject to 24h rolling lag)
                 let ships_1h = count_merges_since(cutoff_1h);
                 let ships_measurement_failed = ships.is_none() || ships_1h.is_none();
+                // META-1039: honest merge age — the TRUE age of the most recent
+                // commit on origin/main, read from git on every run (never a
+                // cached value), so agents stop re-folding work that already
+                // landed. `None` = git measurement failed (printed "unavailable",
+                // never a misleading 0). Flagged when older than
+                // CHUMP_FLEET_BRIEF_MERGE_AGE_WARN_SECS (default 6h).
+                let merge_age_warn_secs: i64 =
+                    std::env::var("CHUMP_FLEET_BRIEF_MERGE_AGE_WARN_SECS")
+                        .ok()
+                        .and_then(|v| v.trim().parse().ok())
+                        .unwrap_or(6 * 3600);
+                let last_merge_ts: Option<i64> = {
+                    let main_root = repo_path::main_checkout_root();
+                    let run_git = || -> Option<i64> {
+                        let out = std::process::Command::new("git")
+                            .args([
+                                "-C",
+                                &main_root.to_string_lossy(),
+                                "log",
+                                "-1",
+                                "--format=%ct",
+                                "origin/main",
+                            ])
+                            .output()
+                            .ok()?;
+                        if !out.status.success() {
+                            return None;
+                        }
+                        String::from_utf8_lossy(&out.stdout).trim().parse().ok()
+                    };
+                    run_git().or_else(run_git)
+                };
+                let last_merge_age_secs: Option<i64> = last_merge_ts.map(|t| (now_ts - t).max(0));
+                let last_merge_stale = last_merge_age_secs.is_some_and(|a| a > merge_age_warn_secs);
                 let auto_fixed = count_kind("flake_rerun_queued") + count_kind("lint_auto_fix");
                 let manual_rescues = count_kind("manual_rescue");
                 let fleet_wedges = count_kind("fleet_wedge");
@@ -7455,6 +7504,13 @@ async fn main() -> Result<()> {
                         "🔴 STALLED: 0 merges in last 1h with {pr_stuck} stuck PRs — investigate bot-merge contention now"
                     ));
                 }
+                if let (true, Some(age)) = (last_merge_stale, last_merge_age_secs) {
+                    suggestions.push(format!(
+                        "⚠  last merge to main was {} ago (> {} threshold) — check whether the merge path is stuck",
+                        fleet_brief_format_age(age),
+                        fleet_brief_format_age(merge_age_warn_secs)
+                    ));
+                }
                 if fleet_wedges > 0 {
                     suggestions.push(format!(
                         "⚠  {} fleet_wedge event(s) — drop to 2 workers per CLAUDE.md",
@@ -7509,6 +7565,9 @@ async fn main() -> Result<()> {
                         "ships_24h": ships,
                         "ships_1h": ships_1h,
                         "ships_measurement_failed": ships_measurement_failed,
+                        "last_merge_age_secs": last_merge_age_secs,
+                        "last_merge_stale": last_merge_stale,
+                        "last_merge_warn_secs": merge_age_warn_secs,
                         "fleet_stalled": fleet_stalled,
                         "auto_fixed": auto_fixed,
                         "manual_rescues": manual_rescues,
@@ -7549,6 +7608,16 @@ async fn main() -> Result<()> {
                                 "Ships: unavailable (git log origin/main failed) | last 1h: unavailable"
                             );
                         }
+                    }
+                    // META-1039: honest merge age (from git, not cached).
+                    match last_merge_age_secs {
+                        Some(a) if last_merge_stale => println!(
+                            "Last merge: {} ago  ⚠ STALE (> {})",
+                            fleet_brief_format_age(a),
+                            fleet_brief_format_age(merge_age_warn_secs)
+                        ),
+                        Some(a) => println!("Last merge: {} ago", fleet_brief_format_age(a)),
+                        None => println!("Last merge: unavailable (git log origin/main failed)"),
                     }
                     // INFRA-2013: prominent STALLED banner when condition met
                     if fleet_stalled {
@@ -22721,5 +22790,17 @@ mod tests {
         assert!(!super::is_vague_ac_entry(
             "verify the /health endpoint returns 200 under load"
         ));
+    }
+
+    #[test]
+    fn meta_1039_fleet_brief_format_age_buckets() {
+        assert_eq!(super::fleet_brief_format_age(-5), "0s");
+        assert_eq!(super::fleet_brief_format_age(45), "45s");
+        assert_eq!(super::fleet_brief_format_age(125), "2m");
+        assert_eq!(super::fleet_brief_format_age(3_600 + 5 * 60 + 9), "1h 5m");
+        assert_eq!(
+            super::fleet_brief_format_age(2 * 86_400 + 3 * 3600 + 59),
+            "2d 3h"
+        );
     }
 }
