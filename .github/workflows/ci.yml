@@ -1515,6 +1515,12 @@ jobs:
       - name: bot-merge health monitoring + hung-process detection (INFRA-119)
         run: bash scripts/ci/test-infra-119-bot-merge-hang.sh
 
+      - name: AGENT_ROLES registry covers every chump claim --role in scripts (RESILIENT-1528)
+        run: bash scripts/ci/check-agent-roles-registered.sh
+
+      - name: AGENT_ROLES registry gate self-test (RESILIENT-1528)
+        run: bash scripts/ci/test-check-agent-roles-registered.sh
+
       - name: merge-serializer — update-branch green-but-behind PRs, sole driver preserved (RESILIENT-1537)
         run: bash scripts/ci/test-merge-serializer-update-branch.sh
 
