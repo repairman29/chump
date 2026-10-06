@@ -785,7 +785,7 @@ pass "25: missing target/release/chump triggers node-refresh + organ_binary_heal
 # start/restart. Args: 1=stub 2=log 3=timername 4=next_mono 5=next_real
 # 6=last_trigger 7=timers_monotonic_line
 mk_timer_stub() {
-    local stub="$1" log="$2" tname="$3" nmono="$4" nreal="$5" ltrig="$6" tmono="$7"
+    local stub="$1" log="$2" tname="$3" nmono="$4" nreal="$5" ltrig="$6" tmono="$7" tcal="${8:-}"
     cat > "$stub" <<EOF
 #!/usr/bin/env bash
 echo "\$*" >> "$log"
@@ -802,6 +802,7 @@ case "\$1" in
         printf '%s\n' "NextElapseUSecRealtime=$nreal"
         printf '%s\n' "LastTriggerUSec=$ltrig"
         printf '%s\n' "$tmono"
+        printf '%s\n' "$tcal"
         exit 0 ;;
     start|restart) exit 0 ;;
 esac
@@ -909,6 +910,42 @@ grep -Eq "(restart|start) chump-rot-reaper" "$LOG31" \
 grep -q '"kind":"organ_timer_reanchored"' "$AMB31" \
     && fail "31: must NOT emit re-anchor for a backed-off timer; ambient: $(cat "$AMB31")"
 pass "31: defers to organ-reconcile backoff — a backed-off timer is not re-anchored (same contract as §1)"
+
+# ── 31b/31c. RESILIENT-1514: pure-OnCalendar hourly timer gets a 3h ceiling ──
+# chump-holler-drain.timer fires hourly (*:17:00) with NO OnUnitActiveUSec
+# cadence at all, so _interval_s used to fall straight to DEFAULT_INTERVAL_S
+# (900s) -> a 45min ceiling, misfiring "stale_last_trigger" (and re-anchoring)
+# every cycle near the top of every hour even on a perfectly healthy timer.
+# §2b must now derive the real ~1h cadence from NextElapseUSecRealtime minus
+# LastTriggerUSec, yielding a 3h ceiling that matches this gap's own AC
+# ("the board alarms if the drain has not completed a run in 3h").
+HOLLER_NEXT="$(date -u -d "@$(( NOW_EPOCH + 1 ))" '+%a %Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u '+%a %Y-%m-%d %H:%M:%S UTC')"
+HOLLER_CAL="TimersCalendar={ OnCalendar=*-*-* *:17:00 ; next_elapse=$HOLLER_NEXT }"
+HOLLER_LAST_FRESH="$(date -u -d "@$(( NOW_EPOCH - 49*60 ))" '+%a %Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u '+%a %Y-%m-%d %H:%M:%S UTC')"
+STUB31B="$TMP/systemctl-holler-fresh31b"; LOG31B="$TMP/calls31b.log"
+mk_timer_stub "$STUB31B" "$LOG31B" "chump-holler-drain.timer" "0" "$HOLLER_NEXT" "$HOLLER_LAST_FRESH" "" "$HOLLER_CAL"
+AMB31B="$TMP/ambient31b.jsonl"; : > "$AMB31B"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB31B" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB31B" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-holler-drain.timer" "$LOG31B" \
+    && fail "31b: must NOT re-anchor an hourly OnCalendar timer merely 49min since last trigger; calls: $(cat "$LOG31B")"
+grep -q '"kind":"organ_timer_reanchored"' "$AMB31B" \
+    && fail "31b: must NOT alarm a healthy hourly-cadence timer; ambient: $(cat "$AMB31B")"
+pass "31b: pure-OnCalendar hourly timer at 49min since last trigger is left alone (3h ceiling derived from calendar cadence, not the 45min default)"
+
+HOLLER_LAST_STALE="$(date -u -d "@$(( NOW_EPOCH - 4*3600 ))" '+%a %Y-%m-%d %H:%M:%S UTC' 2>/dev/null || date -u '+%a %Y-%m-%d %H:%M:%S UTC')"
+STUB31C="$TMP/systemctl-holler-stale31c"; LOG31C="$TMP/calls31c.log"
+mk_timer_stub "$STUB31C" "$LOG31C" "chump-holler-drain.timer" "0" "$HOLLER_NEXT" "$HOLLER_LAST_STALE" "" "$HOLLER_CAL"
+AMB31C="$TMP/ambient31c.jsonl"; : > "$AMB31C"
+CHUMP_ORGAN_WATCHDOG_SYSTEMCTL_BIN="$STUB31C" CHUMP_ORGAN_WATCHDOG_DEPLOY_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_ORGAN_WATCHDOG_RECONCILE_SCRIPT="$NOOP_DEPLOY" \
+    CHUMP_AMBIENT_LOG="$AMB31C" "$WATCHDOG" >/dev/null 2>&1
+grep -q "restart chump-holler-drain.timer" "$LOG31C" \
+    || fail "31c: expected re-anchor once genuinely 4h stale (past the 3h ceiling); calls: $(cat "$LOG31C")"
+grep -q '"reason":"stale_last_trigger"' "$AMB31C" \
+    || fail "31c: expected board alarm reason=stale_last_trigger; ambient: $(cat "$AMB31C")"
+pass "31c: pure-OnCalendar hourly timer genuinely 4h stale (past gap AC's 3h bound) alarms + re-anchors"
 
 # ── 32. RESILIENT-413: an injected systemctl stub is NEVER sudo-elevated ────
 # The sudo -n self-elevation must fire ONLY for the real default `systemctl`
