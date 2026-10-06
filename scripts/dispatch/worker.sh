@@ -250,6 +250,67 @@ orch_log_start "worker.sh" "$@"
 
 log() { printf '[worker:%s %s] %s\n' "$AGENT_ID" "$(date -u +%H:%M:%S)" "$*"; orch_log_step "$*"; }
 
+# ── RESILIENT-1013: batphone gap API picker ─────────────────────────────────
+# Distributed workers, central queue. When CHUMP_GAP_API_URL is set, a node
+# with just a local checkout + creds joins the fleet without needing a local
+# gap store (.chump/state.db): it pulls the next pickable gap from the shared
+# gap API (GET /api/gaps/next) and claims it there (POST /api/gap/claim/:id)
+# instead of running the local `chump gap list` + `_pick_and_claim_gap.py`
+# atomic picker. The repo checkout + worktree creation stay entirely local
+# ("build where you compute"); only the work queue is remote.
+#
+# On success: prints the claimed gap id to stdout and sets
+# REMOTE_GAP_JSON (single-gap JSON object) as a side effect via the
+# REMOTE_GAP_JSON_FILE the caller passes in. Prints nothing on failure/empty.
+remote_pick_and_claim_gap() {
+    local api="$CHUMP_GAP_API_URL"
+    local out_file="$1"
+    local auth_hdr=()
+    if [[ -n "${CHUMP_GAP_API_TOKEN:-}" ]]; then
+        auth_hdr=(-H "Authorization: Bearer ${CHUMP_GAP_API_TOKEN}")
+    fi
+
+    local qs="priority=${FLEET_PRIORITY_FILTER}&effort=${FLEET_EFFORT_FILTER}"
+    if [[ -n "${FLEET_DOMAIN_FILTER:-}" ]]; then
+        qs="${qs}&domain=${FLEET_DOMAIN_FILTER}"
+    fi
+
+    local next_resp
+    next_resp="$(curl -fsS --max-time 15 "${auth_hdr[@]}" \
+        "${api%/}/api/gaps/next?${qs}" 2>/dev/null || true)"
+    if [[ -z "$next_resp" ]]; then
+        return 1
+    fi
+
+    local gap_id
+    gap_id="$(printf '%s' "$next_resp" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); g=d.get('gap'); print(g.get('id','') if g else '')" \
+        2>/dev/null || true)"
+    if [[ -z "$gap_id" ]]; then
+        return 1
+    fi
+
+    local claim_resp
+    claim_resp="$(curl -fsS --max-time 15 -X POST "${auth_hdr[@]}" \
+        -H "X-CSRF-Token: worker-${AGENT_ID}" -H "X-Session-ID: ${CHUMP_SESSION_ID}" \
+        "${api%/}/api/gap/claim/${gap_id}" 2>/dev/null || true)"
+    local claim_status
+    claim_status="$(printf '%s' "$claim_resp" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print(d.get('status',''))" \
+        2>/dev/null || true)"
+    if [[ "$claim_status" != "claimed" ]]; then
+        log "RESILIENT-1013: remote claim of $gap_id failed (status=${claim_status:-unknown}); will retry next cycle"
+        return 1
+    fi
+
+    printf '%s' "$next_resp" | python3 -c \
+        "import sys,json; d=json.load(sys.stdin); print(json.dumps({'gaps':[d['gap']]}))" \
+        > "$out_file" 2>/dev/null || printf '{"gaps":[]}' > "$out_file"
+
+    printf '%s' "$gap_id"
+    return 0
+}
+
 # ── INFRA-3832: reap a hung cycle's WHOLE process tree ─────────────────────────
 # The first-output watchdog and stall detector used to `kill $_claude_pid`, but
 # $_claude_pid is the wrapper subshell `( cd …; timeout … claude … ) &`. Killing
@@ -982,14 +1043,23 @@ print(sum(1 for g in gaps if "corrective" in (g.get("title") or "").lower()))
     fi
 
     # ── Pick a gap ────────────────────────────────────────────────────────
-    # We use `chump gap list --json` directly (musher.py has its own cooldown
-    # heuristics; for fleet workers we want the simplest "highest-priority
-    # unclaimed open gap matching filters" semantics so behavior is debuggable).
-    gap_json="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
+    if [[ -n "${CHUMP_GAP_API_URL:-}" ]]; then
+        # RESILIENT-1013: batphone mode — no local gap store required. Pull +
+        # claim against the shared gap API so any owned box with a checkout
+        # + creds + CHUMP_GAP_API_URL can join the fleet as a worker.
+        remote_gap_json_file="$(mktemp -t fleet-gaps-remote.XXXXXX)"
+        pick="$(remote_pick_and_claim_gap "$remote_gap_json_file" || true)"
+        gap_json="$(cat "$remote_gap_json_file" 2>/dev/null || echo '{"gaps":[]}')"
+        rm -f "$remote_gap_json_file"
+    else
+        # We use `chump gap list --json` directly (musher.py has its own cooldown
+        # heuristics; for fleet workers we want the simplest "highest-priority
+        # unclaimed open gap matching filters" semantics so behavior is debuggable).
+        gap_json="$(chump gap list --status open --json 2>/dev/null || echo '[]')"
 
-    # Active leases (so we never try to claim something a sibling has).
-    active_gaps="$(
-        python3 - "$REPO_ROOT/.chump-locks" <<'PY' 2>/dev/null || true
+        # Active leases (so we never try to claim something a sibling has).
+        active_gaps="$(
+            python3 - "$REPO_ROOT/.chump-locks" <<'PY' 2>/dev/null || true
 import glob, json, sys, os
 base = sys.argv[1]
 for f in glob.glob(os.path.join(base, '*.json')):
@@ -1001,109 +1071,110 @@ for f in glob.glob(os.path.join(base, '*.json')):
     if g:
         print(g)
 PY
-    )"
-
-    # RESILIENT-332 (anti-spin, Layer B): compute the set of gaps that already
-    # have an open PR / in-progress branch on origin, so the picker never
-    # re-offers a completed-but-unmerged gap (the RESILIENT-327/#3795 case that
-    # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
-    # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
-    # a gap while a worker is mid-flight (pre-push); the branch covers it after
-    # the PR is pushed but before it merges (when the lease has expired).
-    #
-    # RESILIENT-1509 fix: a pushed branch alone is NOT proof of in-progress
-    # work anymore. 1,437 dead wip/*-style branches accumulated on origin
-    # (crashed workers, abandoned claims) and ~91 open gaps whose ONLY
-    # blocker was a stale leftover branch sat permanently unpickable. A
-    # branch now only counts when it has an open PR (cheap local cache
-    # lookup, no gh API call) OR a commit within CHUMP_STALE_BRANCH_HOURS
-    # (default 6h). Best-effort throughout: any failure here just falls
-    # back to the empty set (Layers A+C still hold the anti-spin guarantee).
-    _stale_branch_hours="${CHUMP_STALE_BRANCH_HOURS:-6}"
-    in_progress_gaps=""
-    if git -C "$REPO_ROOT" fetch origin --prune --quiet \
-            'refs/heads/chump/*:refs/remotes/origin/chump/*' 2>/dev/null; then
-        _branch_rows="$(
-            git -C "$REPO_ROOT" for-each-ref \
-                --format='%(refname:short) %(committerdate:unix)' \
-                refs/remotes/origin/chump/ 2>/dev/null
         )"
-        if [ -n "$_branch_rows" ]; then
-            _cache_db="$REPO_ROOT/.chump/github_cache.db"
-            in_progress_gaps="$(
-                printf '%s\n' "$_branch_rows" \
-                | while IFS=' ' read -r _ref _ts; do
-                    _branch="${_ref#origin/}"
-                    _gid="$(printf '%s' "$_branch" | sed -nE 's#^chump/(.+)-fleet-[0-9]+$#\1#p' | tr '[:lower:]' '[:upper:]')"
-                    [ -z "$_gid" ] && continue
-                    _has_pr=0
-                    if command -v sqlite3 >/dev/null 2>&1 && [ -f "$_cache_db" ]; then
-                        _row="$(sqlite3 "$_cache_db" \
-                            "SELECT 1 FROM pr_state WHERE head_ref='${_branch//\'/\'\'}' AND merged_at IS NULL LIMIT 1" \
-                            2>/dev/null || true)"
-                        [ -n "$_row" ] && _has_pr=1
-                    fi
-                    printf '%s\t%s\t%s\n' "$_gid" "${_ts:-0}" "$_has_pr"
-                done \
-                | python3 "$REPO_ROOT/scripts/dispatch/_in_progress_branches.py" \
-                    "$(date -u +%s)" "$_stale_branch_hours" \
-                | tr '\n' ' '
+
+        # RESILIENT-332 (anti-spin, Layer B): compute the set of gaps that already
+        # have an open PR / in-progress branch on origin, so the picker never
+        # re-offers a completed-but-unmerged gap (the RESILIENT-327/#3795 case that
+        # spun worker 2 on 2026-08-15). Branch convention: chump/<gapid>-fleet-*.
+        # This is complementary to lease-exclusion (ACTIVE_GAPS): the lease covers
+        # a gap while a worker is mid-flight (pre-push); the branch covers it after
+        # the PR is pushed but before it merges (when the lease has expired).
+        #
+        # RESILIENT-1509 fix: a pushed branch alone is NOT proof of in-progress
+        # work anymore. 1,437 dead wip/*-style branches accumulated on origin
+        # (crashed workers, abandoned claims) and ~91 open gaps whose ONLY
+        # blocker was a stale leftover branch sat permanently unpickable. A
+        # branch now only counts when it has an open PR (cheap local cache
+        # lookup, no gh API call) OR a commit within CHUMP_STALE_BRANCH_HOURS
+        # (default 6h). Best-effort throughout: any failure here just falls
+        # back to the empty set (Layers A+C still hold the anti-spin guarantee).
+        _stale_branch_hours="${CHUMP_STALE_BRANCH_HOURS:-6}"
+        in_progress_gaps=""
+        if git -C "$REPO_ROOT" fetch origin --prune --quiet \
+                'refs/heads/chump/*:refs/remotes/origin/chump/*' 2>/dev/null; then
+            _branch_rows="$(
+                git -C "$REPO_ROOT" for-each-ref \
+                    --format='%(refname:short) %(committerdate:unix)' \
+                    refs/remotes/origin/chump/ 2>/dev/null
             )"
+            if [ -n "$_branch_rows" ]; then
+                _cache_db="$REPO_ROOT/.chump/github_cache.db"
+                in_progress_gaps="$(
+                    printf '%s\n' "$_branch_rows" \
+                    | while IFS=' ' read -r _ref _ts; do
+                        _branch="${_ref#origin/}"
+                        _gid="$(printf '%s' "$_branch" | sed -nE 's#^chump/(.+)-fleet-[0-9]+$#\1#p' | tr '[:lower:]' '[:upper:]')"
+                        [ -z "$_gid" ] && continue
+                        _has_pr=0
+                        if command -v sqlite3 >/dev/null 2>&1 && [ -f "$_cache_db" ]; then
+                            _row="$(sqlite3 "$_cache_db" \
+                                "SELECT 1 FROM pr_state WHERE head_ref='${_branch//\'/\'\'}' AND merged_at IS NULL LIMIT 1" \
+                                2>/dev/null || true)"
+                            [ -n "$_row" ] && _has_pr=1
+                        fi
+                        printf '%s\t%s\t%s\n' "$_gid" "${_ts:-0}" "$_has_pr"
+                    done \
+                    | python3 "$REPO_ROOT/scripts/dispatch/_in_progress_branches.py" \
+                        "$(date -u +%s)" "$_stale_branch_hours" \
+                    | tr '\n' ' '
+                )"
+            fi
         fi
-    fi
 
-    # RESILIENT-1510: gaps whose PR already merged into origin/main recently,
-    # but whose gap-store status hasn't flipped to done yet (auto-close lag).
-    # Without this, a worker can re-pick a gap moments after its own PR
-    # merged — cuphead picked RESILIENT-1497 four times on 2026-10-02, two
-    # picks AFTER PR #4983 merged at 08:20Z, because `chump gap list --json`
-    # still showed status=open. Commit subjects on this branch are always
-    # "<GAP-ID>: ... (#NNNN)" (see bot-merge.sh squash-merge format), so a
-    # leading gap-id token on a recent origin/main commit is a reliable
-    # merged-PR signal independent of gap-store propagation lag. Best-effort
-    # (empty on failure/offline — Layers A-C above still hold).
-    merged_recent_gaps="$(
-        git -C "$REPO_ROOT" log origin/main --since="${MERGED_RECENT_GAPS_WINDOW:-60 minutes ago}" --format='%s' 2>/dev/null \
-        | grep -oE '^[A-Z][A-Z-]*-[0-9]+' 2>/dev/null \
-        | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
-    )"
-    if [ -n "$merged_recent_gaps" ]; then
-        log "RESILIENT-1510: excluding recently-merged gaps from pick (auto-close lag guard): $merged_recent_gaps"
-    fi
+        # RESILIENT-1510: gaps whose PR already merged into origin/main recently,
+        # but whose gap-store status hasn't flipped to done yet (auto-close lag).
+        # Without this, a worker can re-pick a gap moments after its own PR
+        # merged — cuphead picked RESILIENT-1497 four times on 2026-10-02, two
+        # picks AFTER PR #4983 merged at 08:20Z, because `chump gap list --json`
+        # still showed status=open. Commit subjects on this branch are always
+        # "<GAP-ID>: ... (#NNNN)" (see bot-merge.sh squash-merge format), so a
+        # leading gap-id token on a recent origin/main commit is a reliable
+        # merged-PR signal independent of gap-store propagation lag. Best-effort
+        # (empty on failure/offline — Layers A-C above still hold).
+        merged_recent_gaps="$(
+            git -C "$REPO_ROOT" log origin/main --since="${MERGED_RECENT_GAPS_WINDOW:-60 minutes ago}" --format='%s' 2>/dev/null \
+            | grep -oE '^[A-Z][A-Z-]*-[0-9]+' 2>/dev/null \
+            | tr '[:lower:]' '[:upper:]' | sort -u | tr '\n' ' '
+        )"
+        if [ -n "$merged_recent_gaps" ]; then
+            log "RESILIENT-1510: excluding recently-merged gaps from pick (auto-close lag guard): $merged_recent_gaps"
+        fi
 
-    # INFRA-415: atomic gap picker+claimer. This picker filters candidates
-    # AND claims the gap atomically before returning, preventing concurrent
-    # workers from picking the same gap. Uses the same session-ID resolution
-    # as chump claim so the lease is scoped to this worker's session.
-    #
-    # RESILIENT-1509: stderr is no longer discarded. A crash, a failed
-    # claim, or an over-broad exclusion all used to look identical to a
-    # genuinely empty queue ("no pickable gap" for 276 cycles on cuphead
-    # while 467 open gaps had no blocker). The claimer now also emits a
-    # JSON per-exclusion-reason dump to stderr on every empty cycle (see
-    # _pick_and_claim_gap.py); surface both here.
-    gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
-    printf '%s' "$gap_json" > "$gap_json_file"
-    _pick_stderr_file="$(mktemp -t fleet-pick-stderr.XXXXXX)"
-    pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
-            FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
-            FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
-            FLEET_MODEL="$FLEET_MODEL" \
-            EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
-            ACTIVE_GAPS="$active_gaps" \
-            IN_PROGRESS_GAPS="$in_progress_gaps" \
-            MERGED_RECENT_GAPS="$merged_recent_gaps" \
-            GAP_JSON_FILE="$gap_json_file" \
-            WORKER_INDEX="$AGENT_ID" \
-            WORKER_ID="$AGENT_ID" \
-            COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
-            FLEET_REQUIRE_TITLE_SUBSTR="${FLEET_REQUIRE_TITLE_SUBSTR:-}" \
-            python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>"$_pick_stderr_file" || true)"
-    rm -f "$gap_json_file"
-    _pick_stderr="$(cat "$_pick_stderr_file" 2>/dev/null || true)"
-    rm -f "$_pick_stderr_file"
-    if [ -n "$_pick_stderr" ]; then
-        log "claimer stderr: $_pick_stderr"
+        # INFRA-415: atomic gap picker+claimer. This picker filters candidates
+        # AND claims the gap atomically before returning, preventing concurrent
+        # workers from picking the same gap. Uses the same session-ID resolution
+        # as chump claim so the lease is scoped to this worker's session.
+        #
+        # RESILIENT-1509: stderr is no longer discarded. A crash, a failed
+        # claim, or an over-broad exclusion all used to look identical to a
+        # genuinely empty queue ("no pickable gap" for 276 cycles on cuphead
+        # while 467 open gaps had no blocker). The claimer now also emits a
+        # JSON per-exclusion-reason dump to stderr on every empty cycle (see
+        # _pick_and_claim_gap.py); surface both here.
+        gap_json_file="$(mktemp -t fleet-gaps.XXXXXX)"
+        printf '%s' "$gap_json" > "$gap_json_file"
+        _pick_stderr_file="$(mktemp -t fleet-pick-stderr.XXXXXX)"
+        pick="$(FLEET_PRIORITY_FILTER="$FLEET_PRIORITY_FILTER" \
+                FLEET_DOMAIN_FILTER="$FLEET_DOMAIN_FILTER" \
+                FLEET_EFFORT_FILTER="$FLEET_EFFORT_FILTER" \
+                FLEET_MODEL="$FLEET_MODEL" \
+                EXCLUDE_RE="$EXCLUDE_PREFIXES_REGEX" \
+                ACTIVE_GAPS="$active_gaps" \
+                IN_PROGRESS_GAPS="$in_progress_gaps" \
+                MERGED_RECENT_GAPS="$merged_recent_gaps" \
+                GAP_JSON_FILE="$gap_json_file" \
+                WORKER_INDEX="$AGENT_ID" \
+                WORKER_ID="$AGENT_ID" \
+                COOLDOWN_DIR="$REPO_ROOT/.chump-locks/cooldown" \
+                FLEET_REQUIRE_TITLE_SUBSTR="${FLEET_REQUIRE_TITLE_SUBSTR:-}" \
+                python3 "$REPO_ROOT/scripts/dispatch/_pick_and_claim_gap.py" 2>"$_pick_stderr_file" || true)"
+        rm -f "$gap_json_file"
+        _pick_stderr="$(cat "$_pick_stderr_file" 2>/dev/null || true)"
+        rm -f "$_pick_stderr_file"
+        if [ -n "$_pick_stderr" ]; then
+            log "claimer stderr: $_pick_stderr"
+        fi
     fi
 
     if [ -z "$pick" ]; then
