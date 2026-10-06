@@ -1,7 +1,8 @@
-# Wiring detectors — "built but never wired" (ZERO-WASTE-126)
+# Wiring detectors — "built but never wired" (ZERO-WASTE-126, ZERO-WASTE-127)
 
-> ZERO-WASTE-036 slice. `scripts/ops/wiring-detectors.py` implements the three **strong**
-> detectors of the wiring sweep: *intent without invocation*. A thing declares that it should
+> ZERO-WASTE-036 slices. `scripts/ops/wiring-detectors.py` implements the three **strong**
+> detectors of the wiring sweep (D1/D2/D4: *intent without invocation*) and three **weak**
+> detectors (D3/D5/D6) that state their own false-positive floor. A thing declares that it should
 > run, and nothing makes it run. Static, deterministic, no network; findings are suspects with
 > their evidence attached, not verdicts.
 
@@ -9,10 +10,11 @@
 scripts/ops/wiring-detectors.py --summary                 # all three, JSONL on stdout
 scripts/ops/wiring-detectors.py --detector D1 --out d1.jsonl
 scripts/ops/wiring-detectors.py --detector D4 --ambient .chump-locks/ambient.jsonl
+scripts/ops/wiring-detectors.py --detector D3,D5,D6 --summary   # weak ones, with their floors
 ```
 
 Each finding is one JSON record:
-`{"detector","name","severity","artifact","detail","evidence":{...}}`.
+`{"detector","name","severity","artifact","detail","evidence":{...},"rank"}`; weak ones add `"tier":"weak"` and `"fp_floor"`.
 
 | Detector | Name | Flags | Not flagged |
 |---|---|---|---|
@@ -33,7 +35,28 @@ Run against this repo, each detector produces a real finding:
 
 These will disappear as they are fixed; `scripts/ci/test-wiring-detectors.sh` keeps the detectors
 honest with fixtures shaped like these instances plus negative controls (wired, transitively wired,
-daemon, test, exercised input, loud runner, non-required tier).
+daemon, test, exercised input, loud runner, non-required tier, used handler, read field, busy kind).
+
+## Weak detectors (ranked below the strong ones)
+
+D3/D5/D6 are lower confidence. In the combined output every weak finding is ranked **below** every
+D1/D2/D4 finding (`rank`), is `info` severity, and carries its **false-positive floor** in `fp_floor`;
+`--summary` prints the floor next to each detector's count.
+
+| Detector | Name | Flags | False-positive floor |
+|---|---|---|---|
+| **D3** | `role-without-caller` | A `pub` Rust type/fn whose doc comment declares a role ("used by", "wired into", "entry point", "dispatcher"...) but whose name appears nowhere else in the Rust sources | Import-edge resolution is partial (re-exports, macros, string/registry dispatch, cross-crate use), so "no caller found" is weak evidence |
+| **D5** | `producer-field-without-consumer` | A field of a `Serialize` struct that is never read: no `.field` access and no quoted `"field"` key anywhere in the repo | The consumer may be external (dashboard, another service, a human reading the JSON) |
+| **D6** | `low-adoption-telemetry` | A registered, stable event kind in `EVENT_REGISTRY.yaml` with `expected_min_per_day >= 1` that appears at most once in the ambient log sample | Silence may only mean the capability runs on a node whose log is not in the sample. Needs `--ambient`/`ambient.jsonl`; without one it is reported as *skipped*, never as "no findings" |
+
+Weak real instances (at the time of writing):
+
+- **D3** — `check_wallclock` in `src/budget_tracker.rs` is documented as "used by" something, but
+  its name is mentioned nowhere else in the Rust sources.
+- **D5** — `WorkEnvelope.delivery_seq` in `crates/chump-coord/src/assign.rs` is a `Serialize` field
+  nothing in the repo reads.
+- **D6** — `gap_supervisor_heartbeat` is registered as expected 1440 times a day and appears zero
+  times in the local ambient sample.
 
 ## Limits
 

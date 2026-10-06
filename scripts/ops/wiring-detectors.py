@@ -29,11 +29,32 @@ a thing declares that it should run, and nothing makes it run.
 Each finding is one machine-readable JSON record (JSONL):
   {"detector","name","severity","artifact","detail","evidence":{...}}
 
+WEAK detectors (ZERO-WASTE-127) — lower confidence, ranked BELOW D1/D2/D4 in the
+combined output, and each states its own false-positive floor (in every record's
+`fp_floor` and in the --summary output):
+
+  D3 role-without-caller
+     A Rust type/fn whose DOC COMMENT declares a role ("used by", "wired into",
+     "entry point", "handler", "dispatcher"...) but whose name appears nowhere else
+     in the Rust sources. Floor: import-edge resolution is partial (re-exports,
+     macros, string/registry dispatch, cross-crate use) so "no caller" is weak evidence.
+
+  D5 producer-field-without-consumer
+     A field of a `Serialize` struct that is never read: no `.field` access, no
+     `"field"` key, anywhere outside its own definition/constructor. Floor: the
+     consumer may be external (a dashboard, another repo, a human reading JSON).
+
+  D6 low-adoption-telemetry
+     A registered, stable ambient event kind that is expected to fire at least once
+     a day (`expected_min_per_day`) but appears at most once in the ambient log
+     sample. Needs --ambient/ambient.jsonl; skipped (loudly) without one. Floor:
+     silence may only mean the capability runs on a node whose log isn't in the sample.
+
 These are SUSPECT detectors, not verdicts: every finding names its evidence so a
 human can confirm in two minutes. Purely static, no network, deterministic.
 
 Usage:
-  scripts/ops/wiring-detectors.py [--repo DIR] [--detector D1,D2,D4]
+  scripts/ops/wiring-detectors.py [--repo DIR] [--detector D1,D2,D3,D4,D5,D6]
                                   [--ambient FILE] [--out FILE] [--summary]
 Exit: 0 always (findings are data); 2 on bad usage.
 """
@@ -286,10 +307,169 @@ def d4_no_telemetry(repo: Repo, ambient: str):
     return out
 
 
+# ── weak detectors (ZERO-WASTE-127) ─────────────────────────────────────────
+FP_FLOOR = {
+    "D3": "import-edge resolution is partial (re-exports, macros, string/registry dispatch, cross-crate use), "
+          "so 'no caller found' is weak evidence of no caller",
+    "D5": "the consumer may be external to this repo (dashboard, other service, a human reading the JSON), "
+          "so 'no reader found' is weak evidence of no consumer",
+    "D6": "silence in one ambient-log sample may only mean the capability runs on a node whose log is not "
+          "in the sample, so low counts are weak evidence of low adoption",
+}
+WEAK = {"D3", "D5", "D6"}
+
+
+def weak_finding(detector, name, artifact, detail, evidence):
+    f = finding(detector, name, "info", artifact, detail, evidence)
+    f["tier"] = "weak"
+    f["fp_floor"] = FP_FLOOR[detector]
+    return f
+
+
+def rust_files(repo: Repo):
+    return [p for p in repo.files if p.suffix == ".rs" and p in repo.text]
+
+
+ROLE = re.compile(
+    r"\b(used by|called by|consumed by|invoked by|wired (in)?to|plugs? into|entry[ -]?point|"
+    r"event handler|dispatcher|orchestrator|supervisor|registry of)\b", re.I)
+RUST_ITEM = re.compile(r"^\s*pub(?:\([^)]*\))?\s+(?:async\s+)?(?:struct|enum|trait|fn)\s+([A-Za-z_][A-Za-z0-9_]*)")
+
+
+def d3_role_without_caller(repo: Repo):
+    root = repo.root
+    rs = rust_files(repo)
+    ident_lines: dict[str, int] = {}
+    ident = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+    # Count, per identifier, the lines that mention it OUTSIDE comments.
+    for p in rs:
+        for line in repo.text[p].splitlines():
+            code = line.split("//", 1)[0]
+            for name in set(ident.findall(code)):
+                ident_lines[name] = ident_lines.get(name, 0) + 1
+    out = []
+    for p in rs:
+        r = rel(root, p)
+        if "/tests/" in r or r.endswith("_test.rs") or "/examples/" in r or "/benches/" in r:
+            continue
+        lines = repo.text[p].splitlines()
+        for i, line in enumerate(lines):
+            m = RUST_ITEM.match(line)
+            if not m:
+                continue
+            name = m.group(1)
+            if name in ("main", "new", "default", "run") or len(name) < 5:
+                continue
+            doc = []
+            j = i - 1
+            while j >= 0 and (lines[j].strip().startswith("///") or lines[j].strip().startswith("#[")):
+                if lines[j].strip().startswith("///"):
+                    doc.append(lines[j].strip()[3:].strip())
+                j -= 1
+            role = ROLE.search(" ".join(reversed(doc)))
+            if not role:
+                continue
+            # 1 mention = the definition itself; anything beyond is a use.
+            if ident_lines.get(name, 0) <= 1:
+                out.append(weak_finding(
+                    "D3", "role-without-caller", f"{r}::{name}",
+                    "doc comment declares a role but the name appears nowhere else in the Rust sources",
+                    {"line": i + 1, "role_phrase": role.group(0), "mentions_outside_definition": 0}))
+    return out
+
+
+FIELD = re.compile(r"^\s*pub\s+([a-z_][a-z0-9_]*)\s*:\s*[^=]")
+
+
+def d5_producer_field_without_consumer(repo: Repo):
+    root = repo.root
+    rs = rust_files(repo)
+    corpus = [(p, t) for p, t in repo.text.items() if p.suffix in {".rs", ".py", ".js", ".ts", ".sh", ".mjs", ".html"}]
+    # Fields read anywhere: `.field` or a quoted key "field".
+    read_names: set[str] = set()
+    tok = re.compile(r"\.([a-z_][a-z0-9_]*)\b|[\"']([a-z_][a-z0-9_]*)[\"']")
+    for p, t in corpus:
+        for m in tok.finditer(t):
+            read_names.add(m.group(1) or m.group(2))
+    out = []
+    for p in rs:
+        r = rel(root, p)
+        if "/tests/" in r:
+            continue
+        lines = repo.text[p].splitlines()
+        i = 0
+        while i < len(lines):
+            line = lines[i]
+            m = re.match(r"^\s*pub\s+struct\s+([A-Za-z0-9_]+)\b[^;{]*\{\s*$", line)
+            if not m:
+                i += 1
+                continue
+            # Is it a Serialize producer? Look at the attribute lines above.
+            k, derives = i - 1, ""
+            while k >= 0 and lines[k].strip().startswith(("#[", "///")):
+                derives += lines[k]
+                k -= 1
+            j = i + 1
+            fields = []
+            while j < len(lines) and not lines[j].startswith("}") and not re.match(r"^\s*}\s*$", lines[j]) or (j < len(lines) and lines[j].startswith("    ") and lines[j].strip() == "}"):
+                fm = FIELD.match(lines[j])
+                if fm:
+                    fields.append((fm.group(1), j + 1))
+                j += 1
+                if j - i > 200:
+                    break
+            if "Serialize" in derives:
+                for fname, ln in fields:
+                    if len(fname) >= 5 and fname not in read_names:
+                        out.append(weak_finding(
+                            "D5", "producer-field-without-consumer", f"{r}::{m.group(1)}.{fname}",
+                            "field of a Serialize struct is never read (no `.field` access, no quoted key) anywhere in the repo",
+                            {"line": ln, "struct": m.group(1), "field": fname}))
+            i = max(j, i + 1)
+    return out
+
+
+REG_KIND = re.compile(r"^\s*-\s+kind:\s*([A-Za-z0-9_.:-]+)\s*$")
+
+
+def d6_low_adoption(repo: Repo, ambient: str):
+    reg = repo.root / "docs" / "observability" / "EVENT_REGISTRY.yaml"
+    if not reg.is_file() or not ambient:
+        return None  # cannot judge without a registry and an ambient sample
+    counts: dict[str, int] = {}
+    for line in ambient.splitlines():
+        m = re.search(r'"kind"\s*:\s*"([^"]+)"', line)
+        if m:
+            counts[m.group(1)] = counts.get(m.group(1), 0) + 1
+    out, kind, expected, status = [], None, None, "stable"
+
+    def flush():
+        if kind and expected is not None and expected >= 1 and status == "stable" and counts.get(kind, 0) <= 1:
+            out.append(weak_finding(
+                "D6", "low-adoption-telemetry", kind,
+                "registered stable event kind expected daily appears at most once in the ambient sample",
+                {"kind": kind, "expected_min_per_day": expected, "observed_in_sample": counts.get(kind, 0),
+                 "sample_events": sum(counts.values())}))
+    for line in read(reg).splitlines():
+        m = REG_KIND.match(line)
+        if m:
+            flush()
+            kind, expected, status = m.group(1), None, "stable"
+            continue
+        m = re.match(r"^\s*expected_min_per_day:\s*(\d+)", line)
+        if m and kind:
+            expected = int(m.group(1))
+        m = re.match(r"^\s*status:\s*(\w+)", line)
+        if m and kind:
+            status = m.group(1)
+    flush()
+    return out
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--repo", default=".")
-    ap.add_argument("--detector", default="D1,D2,D4")
+    ap.add_argument("--detector", default="D1,D2,D3,D4,D5,D6")
     ap.add_argument("--ambient", default="", help="ambient.jsonl for D4 (default <repo>/.chump-locks/ambient.jsonl)")
     ap.add_argument("--out", default="")
     ap.add_argument("--summary", action="store_true", help="print a per-detector count to stderr")
@@ -299,8 +479,8 @@ def main() -> int:
         print(f"wiring-detectors: not a directory: {root}", file=sys.stderr)
         return 2
     want = {d.strip().upper() for d in a.detector.split(",") if d.strip()}
-    if not want or not want <= {"D1", "D2", "D4"}:
-        print("wiring-detectors: --detector must be a subset of D1,D2,D4", file=sys.stderr)
+    if not want or not want <= {"D1", "D2", "D3", "D4", "D5", "D6"}:
+        print("wiring-detectors: --detector must be a subset of D1,D2,D3,D4,D5,D6", file=sys.stderr)
         return 2
     repo = Repo(root)
     amb_path = Path(a.ambient) if a.ambient else root / ".chump-locks" / "ambient.jsonl"
@@ -313,16 +493,35 @@ def main() -> int:
         findings += d2_never_invoked(repo)
     if "D4" in want:
         findings += d4_no_telemetry(repo, ambient)
-    findings.sort(key=lambda f: (f["detector"], f["artifact"]))
+    d6_skipped = False
+    if "D3" in want:
+        findings += d3_role_without_caller(repo)
+    if "D5" in want:
+        findings += d5_producer_field_without_consumer(repo)
+    if "D6" in want:
+        d6 = d6_low_adoption(repo, ambient)
+        if d6 is None:
+            d6_skipped = True
+        else:
+            findings += d6
+    # Strong detectors (D1/D2/D4) first; weak ones (D3/D5/D6) ranked below them.
+    findings.sort(key=lambda f: (1 if f["detector"] in WEAK else 0, f["detector"], f["artifact"]))
+    for rank, f in enumerate(findings, 1):
+        f["rank"] = rank
     lines = "\n".join(json.dumps(f, sort_keys=True) for f in findings)
     if a.out:
         Path(a.out).write_text(lines + ("\n" if lines else ""))
     elif lines:
         print(lines)
     if a.summary:
-        for d in sorted(want):
+        for d in sorted(want, key=lambda d: (d in WEAK, d)):
             n = sum(1 for f in findings if f["detector"] == d)
-            print(f"wiring-detectors: {d}: {n} finding(s)", file=sys.stderr)
+            line = f"wiring-detectors: {d}: {n} finding(s)"
+            if d in WEAK:
+                line += f"  [WEAK — false-positive floor: {FP_FLOOR[d]}]"
+                if d == "D6" and d6_skipped:
+                    line = f"wiring-detectors: D6: skipped (needs docs/observability/EVENT_REGISTRY.yaml and an ambient log; pass --ambient)  [WEAK — false-positive floor: {FP_FLOOR['D6']}]"
+            print(line, file=sys.stderr)
     return 0
 
 
