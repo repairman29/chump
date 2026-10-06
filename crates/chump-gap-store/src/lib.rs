@@ -1383,6 +1383,50 @@ impl GapStore {
         Ok(out)
     }
 
+    /// INFRA-8043: open gaps at `priority` (P0 or P1) that carry no `outcome_id`.
+    pub fn list_unanchored_open(&self, priority: &str) -> Result<Vec<GapRow>> {
+        Ok(self
+            .list(Some("open"))?
+            .into_iter()
+            .filter(|g| {
+                g.priority == priority
+                    && g.outcome_id
+                        .as_deref()
+                        .map(str::trim)
+                        .unwrap_or("")
+                        .is_empty()
+            })
+            .collect())
+    }
+
+    /// INFRA-8043 one-time triage: demote every open P1 with no outcome to P2 and
+    /// append an audit note. Returns the ids demoted (or, with `dry_run`, that
+    /// would be). Idempotent — a second run finds nothing left to demote.
+    pub fn demote_unanchored_p1(&self, dry_run: bool) -> Result<Vec<String>> {
+        let rows = self.list_unanchored_open("P1")?;
+        let mut ids = Vec::with_capacity(rows.len());
+        for g in rows {
+            if !dry_run {
+                let audit = "INFRA-8043: demoted P1->P2 (no outcome; MISSION-045 requires an outcome for P0/P1)";
+                let notes = if g.notes.trim().is_empty() {
+                    audit.to_string()
+                } else {
+                    format!("{}\n{}", g.notes.trim_end(), audit)
+                };
+                self.set_fields(
+                    &g.id,
+                    GapFieldUpdate {
+                        priority: Some("P2".to_string()),
+                        notes: Some(notes),
+                        ..Default::default()
+                    },
+                )?;
+            }
+            ids.push(g.id);
+        }
+        Ok(ids)
+    }
+
     /// Update mutable fields on an existing gap row. Pass None to leave a
     /// field unchanged. Used by `chump gap set` so agents can author
     /// description / acceptance / notes without hand-editing YAML.
@@ -3538,6 +3582,26 @@ impl GapStore {
                 Ok(true)
             }
         }
+    }
+}
+
+/// INFRA-8043 (MISSION-045 parity for every filer): a P0/P1 gap must trace to an
+/// outcome. Filers that cannot supply one (harvest check, scan, decompose) file
+/// at P2 instead, so P1 stays a statement of priority rather than the default.
+/// P2/P3 and anchored P0/P1 pass through unchanged.
+pub fn priority_without_outcome(priority: &str) -> &str {
+    match priority {
+        "P0" | "P1" => "P2",
+        other => other,
+    }
+}
+
+/// [`priority_without_outcome`] when `outcome_id` is absent/blank, else `priority`.
+pub fn effective_filing_priority<'a>(priority: &'a str, outcome_id: Option<&str>) -> &'a str {
+    if outcome_id.map(str::trim).unwrap_or("").is_empty() {
+        priority_without_outcome(priority)
+    } else {
+        priority
     }
 }
 
@@ -11921,5 +11985,69 @@ mod meta555_effect_verify_tests {
     #[test]
     fn empty_verify_command_is_ignored() {
         assert!(extract_verify_commands(r#"["verify:   "]"#).is_empty());
+    }
+}
+
+#[cfg(test)]
+mod infra8043_unanchored_tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn test_store() -> (GapStore, tempfile::TempDir) {
+        // Same opt-out as the main test module: never hit live `gh pr list`.
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        }
+        let dir = tempdir().unwrap();
+        let store = GapStore::open(dir.path()).unwrap();
+        (store, dir)
+    }
+
+    // ── INFRA-8043: unanchored P0/P1 ────────────────────────────────────────
+    #[test]
+    fn priority_without_outcome_demotes_only_p0_p1() {
+        assert_eq!(priority_without_outcome("P0"), "P2");
+        assert_eq!(priority_without_outcome("P1"), "P2");
+        assert_eq!(priority_without_outcome("P2"), "P2");
+        assert_eq!(priority_without_outcome("P3"), "P3");
+        assert_eq!(effective_filing_priority("P1", None), "P2");
+        assert_eq!(effective_filing_priority("P1", Some("  ")), "P2");
+        assert_eq!(effective_filing_priority("P1", Some("MISSION-010")), "P1");
+        assert_eq!(effective_filing_priority("P3", None), "P3");
+    }
+
+    #[test]
+    fn demote_unanchored_p1_triage_is_audited_and_idempotent() {
+        let (store, _dir) = test_store();
+        let bare = store.reserve("INFRA", "no outcome", "P1", "s").unwrap();
+        let anchored = store.reserve("INFRA", "has outcome", "P1", "s").unwrap();
+        store
+            .set_fields(
+                &anchored,
+                GapFieldUpdate {
+                    outcome_id: Some("MISSION-010".into()),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+        let p2 = store.reserve("INFRA", "already p2", "P2", "s").unwrap();
+
+        // dry run changes nothing
+        assert_eq!(
+            store.demote_unanchored_p1(true).unwrap(),
+            vec![bare.clone()]
+        );
+        assert_eq!(store.get(&bare).unwrap().unwrap().priority, "P1");
+
+        assert_eq!(
+            store.demote_unanchored_p1(false).unwrap(),
+            vec![bare.clone()]
+        );
+        let g = store.get(&bare).unwrap().unwrap();
+        assert_eq!(g.priority, "P2");
+        assert!(g.notes.contains("INFRA-8043"));
+        assert_eq!(store.get(&anchored).unwrap().unwrap().priority, "P1");
+        assert_eq!(store.get(&p2).unwrap().unwrap().priority, "P2");
+        assert!(store.demote_unanchored_p1(false).unwrap().is_empty());
     }
 }
