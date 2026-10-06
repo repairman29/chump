@@ -15,6 +15,7 @@
 //!   review-queue [--limit N]                 unreviewed findings, oldest first
 //!   class-stats                              per-class totals + tier + RP ratio
 //!   promote <finding_class>                  tier 0 → 2 (rejects below thresholds)
+//!   retire <id> [--reason "..."]             archive a confirmed-dead low-severity finding (CREDIBLE-358)
 //!   demote <finding_class>                   tier → 0 escape hatch
 //!
 //! All read subcommands support --json.
@@ -22,7 +23,7 @@
 use crate::inventory::{
     self, backfill_artifact_provenance, class_stats, collect_artifacts, collect_prs_v2,
     demote_class, list_findings, meta_counts, pr_dependent_detectors_disabled, promote_class,
-    prune_ledger, recompute_activation_with_provenance, repo_root, review_finding,
+    prune_ledger, recompute_activation_with_provenance, repo_root, retire_finding, review_finding,
     run_detectors_v2, write_rebuild_meta, FindingRow, PrCollectionPath, DETECTOR_CLASSES,
     PR_DEPENDENT_DETECTORS,
 };
@@ -49,6 +50,7 @@ fn print_help() {
     );
     println!("  promote <finding_class>                       tier 0 → 2 (≥10 reviewed, ≥70% RP required)");
     println!("  demote <finding_class>                        tier → 0 escape hatch");
+    println!("  retire <finding-id> [--reason \"...\"]          archive a confirmed-dead low-severity finding (CREDIBLE-358)");
     println!();
     println!("Detector classes ({}):", DETECTOR_CLASSES.len());
     for c in DETECTOR_CLASSES {
@@ -72,6 +74,7 @@ pub fn run(args: &[String]) -> i32 {
         "review-queue" => cmd_review_queue(&args[1..]),
         "class-stats" => cmd_class_stats(&args[1..]),
         "prune-ledger" => cmd_prune_ledger(&args[1..]),
+        "retire" => cmd_retire(&args[1..]),
         "promote" => cmd_promote(&args[1..]),
         "demote" => cmd_demote(&args[1..]),
         "--help" | "-h" | "help" => {
@@ -861,8 +864,8 @@ fn cmd_class_stats(args: &[String]) -> i32 {
     }
     let disabled = pr_dependent_detectors_disabled(&conn);
     println!(
-        "{:<28}  {:<5}  {:<10}  {:<9}  {:<5}  {:<7}  {:<5}  {:<6}  eligible",
-        "class", "tier", "total", "reviewed", "RP%", "live%", "debt", "prune"
+        "{:<28}  {:<5}  {:<10}  {:<9}  {:<5}  {:<7}  {:<5}  {:<6}  {:<7}  eligible",
+        "class", "tier", "total", "reviewed", "RP%", "live%", "debt", "prune", "retired"
     );
     for s in &stats {
         let is_disabled = disabled && PR_DEPENDENT_DETECTORS.contains(&s.finding_class.as_str());
@@ -879,7 +882,7 @@ fn cmd_class_stats(args: &[String]) -> i32 {
             "no".to_string()
         };
         println!(
-            "{:<28}  {:<5}  {:<10}  {:<9}  {:<5.0}  {:<7.1}  {:<5}  {:<6}  {}",
+            "{:<28}  {:<5}  {:<10}  {:<9}  {:<5.0}  {:<7.1}  {:<5}  {:<6}  {:<7}  {}",
             s.finding_class,
             s.current_tier,
             total_col,
@@ -888,6 +891,7 @@ fn cmd_class_stats(args: &[String]) -> i32 {
             s.live_pct * 100.0,
             s.debt,
             s.prune_count,
+            s.retired_count,
             eligible,
         );
     }
@@ -957,6 +961,45 @@ fn cmd_demote(args: &[String]) -> i32 {
         }
         Err(e) => {
             eprintln!("[inventory demote] failed: {e}");
+            1
+        }
+    }
+}
+
+// ─── retire (CREDIBLE-358) ───────────────────────────────────────────────────
+
+fn cmd_retire(args: &[String]) -> i32 {
+    if args.is_empty() {
+        eprintln!("Usage: chump inventory retire <finding-id> [--reason \"...\"]");
+        return 2;
+    }
+    let id = match args[0].parse::<i64>() {
+        Ok(n) => n,
+        Err(_) => {
+            eprintln!("error: <finding-id> must be an integer (got '{}')", args[0]);
+            return 2;
+        }
+    };
+    let reason = parse_str_flag(args, "--reason");
+    let by = std::env::var("CHUMP_OPERATOR")
+        .or_else(|_| std::env::var("USER"))
+        .unwrap_or_else(|_| "operator".to_string());
+    let conn = match inventory::open_db() {
+        Ok(c) => c,
+        Err(e) => {
+            eprintln!("open_db failed: {e}");
+            return 1;
+        }
+    };
+    match retire_finding(&conn, id, &by, reason.as_deref()) {
+        Ok(()) => {
+            println!(
+                "[inventory retire] finding {id} archived — dropped from the debt denominator"
+            );
+            0
+        }
+        Err(e) => {
+            eprintln!("[inventory retire] rejected: {e}");
             1
         }
     }
