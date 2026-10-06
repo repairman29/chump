@@ -102,6 +102,7 @@ cat > "$TMP/atc-cargo-bin/chump-integrator" <<'EOF'
 exit 0
 EOF
 chmod +x "$TMP/atc-cargo-bin/chump-integrator"
+touch "$TMP/atc-fleet-server-stub"; chmod +x "$TMP/atc-fleet-server-stub"
 
 ATC_CALL_LOG="$TMP/atc-calls.log"
 ATC_ENABLE_FAIL_FILE="$TMP/atc-enable-fail.txt"
@@ -113,6 +114,7 @@ ATC_CALL_LOG="$ATC_CALL_LOG" ATC_ENABLE_FAIL_FILE="$ATC_ENABLE_FAIL_FILE" \
     CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/atc-dest" \
     CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/atc-bins/systemctl" \
     CARGO_BIN_DIR="$TMP/atc-cargo-bin" \
+    CHUMP_FLEET_SERVER_BIN_DEST="$TMP/atc-fleet-server-stub" \
     NODE_AMBIENT="$TMP/atc-locks/ambient.jsonl" \
     bash "$SCRIPT" --auto >"$TMP/atc-out.log" 2>&1
 atc_rc=$?
@@ -165,12 +167,14 @@ cat > "$TMP/cj-cargo-bin/chump-integrator" <<'EOF'
 exit 0
 EOF
 chmod +x "$TMP/cj-cargo-bin/chump-integrator"
+touch "$TMP/cj-fleet-server-stub"; chmod +x "$TMP/cj-fleet-server-stub"
 
 CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
     CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/cj-dest" \
     CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/cj-bins/systemctl" \
     CHUMP_RUN_USER=jeff \
     CARGO_BIN_DIR="$TMP/cj-cargo-bin" \
+    CHUMP_FLEET_SERVER_BIN_DEST="$TMP/cj-fleet-server-stub" \
     NODE_AMBIENT="$TMP/cj-locks/ambient.jsonl" \
     bash "$SCRIPT" --auto >"$TMP/cj-out.log" 2>&1
 cj_rc=$?
@@ -269,12 +273,14 @@ cat > "$TMP/ubuntu-cargo-bin/chump-integrator" <<'EOF'
 exit 0
 EOF
 chmod +x "$TMP/ubuntu-cargo-bin/chump-integrator"
+touch "$TMP/ubuntu-fleet-server-stub"; chmod +x "$TMP/ubuntu-fleet-server-stub"
 
 CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
     CHUMP_INSTALL_ATC_SYSTEMD_DIR="$TMP/ubuntu-dest" \
     CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/ubuntu-bins/systemctl" \
     CHUMP_RUN_USER=ubuntu \
     CARGO_BIN_DIR="$TMP/ubuntu-cargo-bin" \
+    CHUMP_FLEET_SERVER_BIN_DEST="$TMP/ubuntu-fleet-server-stub" \
     NODE_AMBIENT="$TMP/ubuntu-locks/ambient.jsonl" \
     bash "$SCRIPT" --auto >"$TMP/ubuntu-out.log" 2>&1
 ubuntu_rc=$?
@@ -324,6 +330,7 @@ cat > "$TMP/ne-cargo-bin/chump-integrator" <<'EOF'
 exit 0
 EOF
 chmod +x "$TMP/ne-cargo-bin/chump-integrator"
+touch "$TMP/ne-fleet-server-stub"; chmod +x "$TMP/ne-fleet-server-stub"
 cat > "$TMP/ne-state/node.env" <<'EOF'
 export CHUMP_NODE_ROLE=all
 export CHUMP_RUN_USER=ubuntu
@@ -335,6 +342,7 @@ env -u CHUMP_RUN_USER \
     CHUMP_INSTALL_ATC_SYSTEMCTL_BIN="$TMP/ne-bins/systemctl" \
     CHUMP_STATE_DIR="$TMP/ne-state" \
     CARGO_BIN_DIR="$TMP/ne-cargo-bin" \
+    CHUMP_FLEET_SERVER_BIN_DEST="$TMP/ne-fleet-server-stub" \
     NODE_AMBIENT="$TMP/ne-locks/ambient.jsonl" \
     bash "$SCRIPT" --auto >"$TMP/ne-out.log" 2>&1
 ne_rc=$?
@@ -389,6 +397,7 @@ cat > "$TMP/nc-cargo-bin/chump-integrator" <<'EOF'
 exit 0
 EOF
 chmod +x "$TMP/nc-cargo-bin/chump-integrator"
+touch "$TMP/nc-fleet-server-stub"; chmod +x "$TMP/nc-fleet-server-stub"
 
 _nc_run_user="$(id -un)"
 CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
@@ -397,6 +406,7 @@ CHUMP_INSTALL_ATC_ALLOW_NONROOT=1 \
     CHUMP_INSTALL_ATC_RUN_HOME_OVERRIDE="$NC_RUNHOME" \
     CHUMP_RUN_USER="$_nc_run_user" \
     CARGO_BIN_DIR="$TMP/nc-cargo-bin" \
+    CHUMP_FLEET_SERVER_BIN_DEST="$TMP/nc-fleet-server-stub" \
     NODE_AMBIENT="$TMP/nc-locks/ambient.jsonl" \
     bash "$NC_NODE_REPO/scripts/setup/install-helsinki-atc.sh" --auto >"$TMP/nc-out.log" 2>&1
 nc_rc=$?
