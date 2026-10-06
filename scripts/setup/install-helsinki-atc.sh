@@ -500,6 +500,22 @@ if [[ ! -x "$INTEGRATOR_BIN_DEST" ]]; then
   fi
 fi
 
+# RESILIENT-1513: chump-fleet-server.service execs
+# "$REPO_ROOT/target/release/chump-fleet-server" directly (see
+# scripts/dispatch/chump-fleet-server.service) — node-refresh-chump.sh never
+# builds it (only refreshes `chump`), so a node whose target/release never saw
+# a release build of this crate enabled a unit pointed at a binary that would
+# never exist: exit 127 on every start, Restart=always resurrecting it forever
+# (verified on the canonical gap-store node, 2026-10-02). Build it here, same
+# best-effort + non-fatal shape as chump-integrator above, so the roster never
+# enables (via organ-reconcile's enable loop, below) a structurally-dead unit.
+FLEET_SERVER_BIN_DEST="${CHUMP_FLEET_SERVER_BIN_DEST:-$REPO_ROOT/target/release/chump-fleet-server}"
+if [[ ! -x "$FLEET_SERVER_BIN_DEST" ]] && command -v cargo >/dev/null 2>&1; then
+  echo "== building chump-fleet-server binary (gap API + bat-phone intake) =="
+  (cd "$REPO_ROOT" && cargo build --release -p chump-fleet-server --bin chump-fleet-server) 2>&1 \
+    || echo "WARN: chump-fleet-server build failed (non-fatal; organ-reconcile's exec-resolve guard keeps the unit backed off until the binary lands)" >&2
+fi
+
 if ! "$SYSTEMCTL_BIN" daemon-reload 2>&1; then
   echo "ERROR: systemctl daemon-reload failed (no systemd bus reachable?)" >&2
   emit organ_units_deploy_failed "\"reason\":\"systemctl_daemon_reload_failed\""
