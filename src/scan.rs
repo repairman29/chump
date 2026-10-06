@@ -226,7 +226,13 @@ fn open_target_store(
 }
 
 fn file_gap(store: &gap_store::GapStore, finding: &Finding) -> anyhow::Result<String> {
-    let id = store.reserve("INFRA", &finding.title, finding.priority, finding.effort)?;
+    // INFRA-8043: scan findings carry no outcome, so P0/P1 files at P2.
+    let id = store.reserve(
+        "INFRA",
+        &finding.title,
+        gap_store::priority_without_outcome(finding.priority),
+        finding.effort,
+    )?;
     let update = gap_store::GapFieldUpdate {
         description: Some(finding.description.clone()),
         acceptance_criteria: Some(finding.acceptance_criteria.clone()),
@@ -533,5 +539,32 @@ fn emit_scan_complete(
     {
         use std::io::Write;
         let _ = writeln!(out, "{payload}");
+    }
+}
+
+#[cfg(test)]
+mod infra8043_tests {
+    use super::*;
+
+    /// INFRA-8043 guard: a filer with no outcome to attach must never write a
+    /// P0/P1 row (MISSION-045); it files at P2 instead.
+    #[test]
+    fn file_gap_never_writes_unanchored_p0_p1() {
+        std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+        let dir = tempfile::tempdir().unwrap();
+        let store = gap_store::GapStore::open(dir.path()).unwrap();
+        for pri in ["P0", "P1"] {
+            let finding = Finding {
+                title: format!("scan finding at {pri}"),
+                description: "d".into(),
+                acceptance_criteria: "[]".into(),
+                priority: pri,
+                effort: "s",
+            };
+            let id = file_gap(&store, &finding).unwrap();
+            assert_eq!(store.get(&id).unwrap().unwrap().priority, "P2");
+        }
+        assert!(store.list_unanchored_open("P0").unwrap().is_empty());
+        assert!(store.list_unanchored_open("P1").unwrap().is_empty());
     }
 }

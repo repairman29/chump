@@ -119,10 +119,15 @@ pub fn spool_path() -> PathBuf {
     home.join(".local/state/chump/gap-spool.jsonl")
 }
 
-/// Normalize a priority to `P0`..`P3`, defaulting to `P2`.
+/// Normalize a priority to `P2`/`P3`, defaulting to `P2`.
+///
+/// INFRA-8043: a finding carries no outcome, and the reserve gate (MISSION-045)
+/// requires one for P0/P1, so P0/P1 are filed as P2 here — the same rule
+/// `chump gap reserve` applies — instead of producing outcome-less P1 gaps
+/// that `gap ship` later refuses to close.
 fn resolve_priority(p: Option<&str>) -> String {
     match p.map(str::trim) {
-        Some(v) if matches!(v, "P0" | "P1" | "P2" | "P3") => v.to_string(),
+        Some("P3") => "P3".to_string(),
         _ => "P2".to_string(),
     }
 }
@@ -418,7 +423,8 @@ mod tests {
         assert_eq!(rb.op, "reserve");
         assert_eq!(rb.domain.as_deref(), Some("PRODUCT")); // non-chump project
         assert_eq!(rb.title.as_deref(), Some("Checkout 500s on empty cart"));
-        assert_eq!(rb.priority.as_deref(), Some("P1"));
+        // INFRA-8043: outcome-less P1 is filed as P2.
+        assert_eq!(rb.priority.as_deref(), Some("P2"));
         assert_eq!(rb.external_repo.as_deref(), Some("repairman29/olive"));
 
         let sb = set_body(&f, "PRODUCT-9001");

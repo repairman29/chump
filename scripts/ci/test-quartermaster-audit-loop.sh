@@ -12,6 +12,7 @@
 # Uses a synthetic git history (temp repo) and a synthetic role-doc tree.
 # Must complete in < 30 seconds. Does NOT call chump gap reserve (mocked).
 
+export CHUMP_NOISE_GAP_FILING=1  # ZERO-WASTE-014: these tests cover the legacy gap-filing path
 set -euo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"

@@ -455,6 +455,14 @@ async fn post_gap(
     match result {
         Ok(Ok(outcome)) => (axum::http::StatusCode::ACCEPTED, Json(outcome)).into_response(),
         Ok(Err(e)) => {
+            // PRODUCT-323: a caller error (e.g. an empty op=set) is a 400, not a 500.
+            if e.downcast_ref::<gap_write::InvalidRequest>().is_some() {
+                return (
+                    axum::http::StatusCode::BAD_REQUEST,
+                    Json(serde_json::json!({"error": e.to_string()})),
+                )
+                    .into_response();
+            }
             tracing::error!("POST /api/gap failed: {e}");
             (
                 axum::http::StatusCode::INTERNAL_SERVER_ERROR,

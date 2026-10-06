@@ -7,6 +7,7 @@
 #   3. Five PRs split across two checks (3+2) → 1 group gap + 2 individual gaps
 #   4. Dedup: matching "CI blocker:" gap already open → not refiled
 
+export CHUMP_NOISE_GAP_FILING=1  # ZERO-WASTE-014: these tests cover the legacy gap-filing path
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
