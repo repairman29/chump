@@ -1,0 +1,4 @@
+{
+  "_comment": "INFRA-8060: single-source picker policy. Read by the Rust GapBriefing (src/briefing.rs) AND the python picker (scripts/dispatch/_pick_gap.py). An env var of the same name (upper-case) overrides a value for one run; the committed value is what both sides enforce by default.",
+  "sync_overhead_ceiling": null
+}
