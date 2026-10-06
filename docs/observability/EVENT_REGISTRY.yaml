@@ -7241,6 +7241,19 @@ events:
     consumers: [fleet-brief, ops-audit]
     fields_required: [ts, kind, unit, role, reason]
 
+  - kind: organ_reconcile_exec_missing
+    effect_metric: self
+    emitter: scripts/ops/organ-reconcile.sh (RESILIENT-1513)
+    trigger: an `enabled` organ's installed unit file's own ExecStart binary
+      does not resolve on disk (organ_unit_execstart_resolves) — the exit-127
+      shape (e.g. chump-fleet-server.service execing a never-cargo-built
+      target/release/chump-fleet-server). The reconcile refuses to
+      `enable --now` it and backs it off immediately instead of enabling it,
+      watching it fail instantly, and relying on a later FAILED-unit scan to
+      rediscover the same fault — names the exact missing binary path.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, unit, role, reason]
+
   - kind: organ_reconcile_backoff
     effect_metric: self
     emitter: scripts/ops/organ-reconcile.sh (RESILIENT-347)

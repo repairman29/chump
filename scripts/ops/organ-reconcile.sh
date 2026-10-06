@@ -36,7 +36,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 MANIFEST="${CHUMP_ORGAN_MANIFEST:-$REPO_ROOT/scripts/ops/organ-manifest.txt}"
-SYSTEMD_DIR="/etc/systemd/system"
+SYSTEMD_DIR="${CHUMP_ORGAN_RECONCILE_SYSTEMD_DIR:-/etc/systemd/system}"
 DROPIN_NAME="zz-organ-reconcile-pager-off.conf"
 LEGACY_DROPIN="zz-autopage-off.conf"   # tonight's host-only snowflake — remove it
 
@@ -64,6 +64,18 @@ if [[ ! -f "$LIB_ORGAN_MANIFEST" ]]; then
   exit 1
 fi
 source "$LIB_ORGAN_MANIFEST"
+
+# RESILIENT-1513: organ_unit_execstart_resolves (RESILIENT-1508) — before this
+# reconcile enables ANY manifest `enabled` unit, prove its installed unit
+# file's ExecStart binary actually resolves on disk. Previously only
+# install-helsinki-atc.sh's TIMER-enable loop ran this check (companion
+# .service only), so a bare `enabled` SERVICE line (e.g.
+# chump-fleet-server.service, whose ExecStart execs a never-built
+# target/release/chump-fleet-server) sailed straight through to `enable
+# --now`, exit 127, and an endless resurrect-and-fail cycle — verified on the
+# canonical gap-store node 2026-10-02.
+LIB_ORGAN_UNIT_INSTALL="$REPO_ROOT/scripts/ops/lib/organ-unit-install-lib.sh"
+[[ -f "$LIB_ORGAN_UNIT_INSTALL" ]] && source "$LIB_ORGAN_UNIT_INSTALL"
 
 emit() {  # kind, extra-json (no leading/trailing comma)
   local kind="$1" extra="${2:-}"
@@ -595,6 +607,33 @@ for unit in "${ENABLED[@]}"; do
   if "$SYSTEMCTL_BIN" is-active --quiet "$unit" 2>/dev/null; then
     clear_backoff "$unit"
     continue
+  fi
+
+  # RESILIENT-1513: refuse to `enable --now` a unit whose OWN installed
+  # ExecStart binary does not resolve on disk — the exit-127 class (binary
+  # never built, e.g. chump-fleet-server.service execing a never-cargo-built
+  # target/release/chump-fleet-server) that previously sailed through this
+  # loop every cycle, got enabled, failed instantly, and relied on
+  # organ-watchdog's separate FAILED-unit scan to rediscover the same fault a
+  # cycle later. Checked only when the unit file is actually installed (a
+  # not-yet-placed unit is a different, already-handled failure mode) and
+  # only when organ_unit_execstart_resolves is available (lib present).
+  unit_file="$SYSTEMD_DIR/$unit"
+  if [[ -f "$unit_file" ]] && declare -F organ_unit_execstart_resolves >/dev/null 2>&1; then
+    exec_reason=""
+    if ! organ_unit_execstart_resolves "$unit_file" exec_reason; then
+      echo "WARN: $unit ExecStart does not resolve ($exec_reason) — refusing to enable, backing off" >&2
+      # scanner-anchor: "kind":"organ_reconcile_exec_missing" (RESILIENT-1513;
+      # fires when an `enabled` unit's own ExecStart binary is missing/not
+      # executable — names the exact missing path/binary instead of letting
+      # the unit flap exit-127 under Restart=always until a human reads the
+      # journal)
+      emit organ_reconcile_exec_missing "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"$exec_reason\""
+      record_backoff "$unit" "exec_missing:$exec_reason"
+      CHANGED+=("backoff:$unit")
+      emit organ_reconcile_backoff "\"unit\":\"$unit\",\"role\":\"$role\",\"reason\":\"exec_missing:$exec_reason\""
+      continue
+    fi
   fi
 
   if ! "$SYSTEMCTL_BIN" enable --now "$unit" 2>/dev/null; then

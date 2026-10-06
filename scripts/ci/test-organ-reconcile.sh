@@ -153,6 +153,7 @@ run_reconcile() {  # mode
     CHUMP_ORGAN_RECONCILE_BACKOFF_COOLDOWN_S=3600 \
     CHUMP_ORGAN_RECONCILE_VERIFY_DELAY_S=0 \
     CHUMP_ORGAN_MANIFEST="$MANIFEST" \
+    CHUMP_ORGAN_RECONCILE_SYSTEMD_DIR="${SYSTEMD_TEST_DIR:-$TMP/no-unit-files-here}" \
     NODE_AMBIENT="$AMBIENT" \
     PATH="$TMP/bins:$PATH" \
     bash "$RECONCILE" "$1"
@@ -376,5 +377,47 @@ real_check_rc=0
 bash "$RECONCILE" --check-process-organs >/dev/null 2>&1 || real_check_rc=$?
 [[ "$real_check_rc" -ne 2 ]] || fail "organ_registry_parse failed to parse the real scripts/ops/organ-registry.txt without error"
 pass "9d: the real scripts/ops/organ-registry.txt parses cleanly via organ_registry_parse (AC5)"
+
+# ── 10. RESILIENT-1513: an `enabled` unit whose installed ExecStart binary is
+#        missing (exit-127 shape, e.g. chump-fleet-server.service execing a
+#        never-built target/release/chump-fleet-server) is NEVER `enable
+#        --now`'d — it is backed off immediately with a reason naming the
+#        missing binary, instead of being enabled, failing instantly, and
+#        relying on a later FAILED-unit scan to rediscover the same fault. ──
+SYSTEMD_TEST_DIR="$TMP/fake-systemd-dir"
+mkdir -p "$SYSTEMD_TEST_DIR"
+cat > "$SYSTEMD_TEST_DIR/chump-fleet-server.service" <<EOF
+[Unit]
+Description=fake fleet-server
+[Service]
+User=ubuntu
+ExecStart=/bin/bash -c 'set -a; source /home/ubuntu/.chump/providers.env 2>/dev/null; set +a; exec $TMP/never-built/chump-fleet-server'
+Restart=always
+EOF
+
+MANIFEST="$TMP/manifest-exec-missing.txt"
+cat > "$MANIFEST" <<'EOF'
+enabled  chump-fleet-server.service  role=data requires=bin:git
+EOF
+cat > "$TMP/bins/git" <<'EOF'
+#!/usr/bin/env bash
+exit 0
+EOF
+chmod +x "$TMP/bins/git"
+: > "$ACTIVE_FILE"; : > "$ENABLE_FAIL_FILE"; : > "$VERIFY_FAIL_FILE"
+rm -rf "$BACKOFF_DIR"
+: > "$AMBIENT"
+
+run_reconcile --apply >/dev/null
+grep -q "enable --now chump-fleet-server.service" "$CALL_LOG" \
+    && fail "reconcile must NEVER attempt enable --now on a unit whose ExecStart binary is missing on disk; calls: $(cat "$CALL_LOG")"
+[[ -f "$BACKOFF_DIR/chump-fleet-server.service.json" ]] \
+    || fail "an exec-missing unit must be recorded in backoff immediately"
+grep -q '"kind":"organ_reconcile_exec_missing"' "$AMBIENT" \
+    || fail "expected organ_reconcile_exec_missing in ambient; got: $(cat "$AMBIENT")"
+grep -q "binary_not_executable:$TMP/never-built/chump-fleet-server" "$BACKOFF_DIR/chump-fleet-server.service.json" \
+    || fail "backoff record must name the exact missing binary path; got: $(cat "$BACKOFF_DIR/chump-fleet-server.service.json")"
+pass "10: unit whose ExecStart binary is missing is never enabled — backed off immediately, reason names the missing binary (RESILIENT-1513)"
+unset SYSTEMD_TEST_DIR
 
 echo "ALL PASS"
