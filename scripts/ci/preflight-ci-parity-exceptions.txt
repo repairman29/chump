@@ -466,3 +466,4 @@ Materialise the pattern file (runner home, mode 0600)       # reason: publish-gu
 Scan diff, commit messages and identities (counts only)     # reason: publish-guard.yml report-only scan of the PR range; same engine runs locally in the git hooks, and it can never fail
 Scan PR title and body (counts only)                        # reason: publish-guard.yml report-only scan of PR text from the event payload; locally bot-merge makes the same call
 Remove the pattern file                                     # reason: publish-guard.yml runner cleanup; GitHub Actions only
+test-iter-agenda.sh  # reason: META-1036 — hermetic fixture test (synthetic gaps/ambient/objective) for the iter-agenda generator and its launchd plist; runs standalone via `bash scripts/ci/test-iter-agenda.sh`.

@@ -53,5 +53,16 @@ ids | grep -q 'queue:refill' && ok "tiny queue adds a refill action" || bad "ref
 run CHUMP_ITER_AGENDA_GAPS_JSON="$T/none.json" CHUMP_AMBIENT_LOG="$T/none.log"
 [[ $? -eq 0 ]] && ok "empty gaps + no ambient: still succeeds" || bad "empty inputs crashed"
 
+# META-1036: launchd schedule — 30-min cadence, RunAtLoad, runs the generator.
+PLIST="$REPO_ROOT/scripts/launchd/com.chump.iter-agenda.plist"
+python3 - "$PLIST" <<'PY' && ok "plist: label, 30-min StartInterval, RunAtLoad=true, runs iter-agenda.sh" || bad "plist schedule wrong"
+import plistlib, sys
+d = plistlib.load(open(sys.argv[1], "rb"))
+assert d["Label"] == "com.chump.iter-agenda", d["Label"]
+assert d["StartInterval"] == 1800, d["StartInterval"]
+assert d["RunAtLoad"] is True
+assert "scripts/coord/iter-agenda.sh" in " ".join(d["ProgramArguments"])
+PY
+
 echo "=== iter-agenda: $pass passed, $fail failed ==="
 [[ $fail -eq 0 ]]
