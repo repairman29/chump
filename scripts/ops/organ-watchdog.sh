@@ -235,6 +235,37 @@ timespan_to_secs() {  # span-string -> secs on stdout
     echo "$total"
 }
 
+# RESILIENT-1514: cadence for a pure-OnCalendar timer (no OnUnitActiveUSec at
+# all — e.g. chump-holler-drain.timer's hourly "*:17:00"). These self-anchor
+# off wall-clock, so NextElapseUSecRealtime always reflects the next future
+# calendar match regardless of how stale LastTriggerUSec is — which means
+# (next_elapse - last_trigger) is NOT a safe proxy for cadence (it inflates
+# exactly when the timer IS stale, the one case we need a correct ceiling
+# for). Parse the OnCalendar spec text itself instead, for the handful of
+# simple forms this fleet's timers actually use:
+#   "*-*-* *:MM:00"        fixed-minute hourly  -> 3600s
+#   "*-*-* *:00/NN:00"     NN-minute step        -> NN*60s
+#   "*-*-* HH:MM:SS [TZ]"  fixed hour (daily)     -> 86400s
+# Unrecognized forms return 0 (caller falls back to DEFAULT_INTERVAL_S).
+calendar_spec_to_interval_secs() {  # spec-string -> secs on stdout
+    local spec="${1:-}" datefield timefield hh mm ss
+    # read (not `set -- $spec`) — the date field is a literal "*-*-*" and
+    # unquoted word-splitting via `set --`/`for` would glob-expand it against
+    # cwd filenames; a herestring into `read` splits on IFS without globbing.
+    read -r datefield timefield _ <<< "$spec"
+    [[ -z "$timefield" ]] && { echo 0; return; }
+    IFS=':' read -r hh mm ss <<< "$timefield"
+    if [[ "$hh" == "*" && "$mm" =~ ^[0-9]+$ && "$ss" == "00" ]]; then
+        echo 3600
+    elif [[ "$hh" == "*" && "$mm" =~ ^00/([0-9]+)$ ]]; then
+        echo $(( ${BASH_REMATCH[1]} * 60 ))
+    elif [[ "$hh" =~ ^[0-9]+$ ]]; then
+        echo 86400
+    else
+        echo 0
+    fi
+}
+
 if ! command -v "$SYSTEMCTL_RAW" >/dev/null 2>&1; then
     echo "[organ-watchdog] systemctl unavailable ($SYSTEMCTL_RAW not found) — no-op (expected off the helsinki node)"
     exit 1
@@ -487,7 +518,7 @@ if [[ -n "$ALL_TIMERS" ]]; then
         # One systemctl show for every property we need.
         _props="$("$SYSTEMCTL_BIN" show "$timer" \
             -p NextElapseUSecMonotonic -p NextElapseUSecRealtime \
-            -p LastTriggerUSec -p TimersMonotonic 2>/dev/null)"
+            -p LastTriggerUSec -p TimersMonotonic -p TimersCalendar 2>/dev/null)"
         _next_mono=""; _next_real=""; _last_trig=""; _interval_s=0
         while IFS= read -r _line; do
             case "$_line" in
@@ -501,6 +532,25 @@ if [[ -n "$ALL_TIMERS" ]]; then
                         _span="${_line#*OnUnitActiveUSec=}"
                         _span="${_span%% ;*}"
                         _interval_s="$(timespan_to_secs "$_span")"
+                    fi
+                    ;;
+                TimersCalendar=*)
+                    # RESILIENT-1514: a pure-OnCalendar timer (no
+                    # OnUnitActiveUSec at all — e.g. chump-holler-drain.timer's
+                    # hourly "*:17:00") left _interval_s at 0 above, which fell
+                    # straight to DEFAULT_INTERVAL_S (900s) -> a 2700s (45min)
+                    # ceiling. For an hourly timer that is tighter than its own
+                    # cadence: LastTriggerUSec legitimately sits 45-60min old
+                    # for half of every hour, so this misfired
+                    # "stale_last_trigger" (and re-anchored) every cycle near
+                    # the top of the hour even though the timer was never
+                    # actually wedged. Only fill in when no monotonic cadence
+                    # was already found (first OnCalendar= entry wins if a
+                    # timer declares several).
+                    if [[ "$_interval_s" -eq 0 && "$_line" == *OnCalendar=* ]]; then
+                        _cal_spec="${_line#*OnCalendar=}"
+                        _cal_spec="${_cal_spec%% ;*}"
+                        _interval_s="$(calendar_spec_to_interval_secs "$_cal_spec")"
                     fi
                     ;;
             esac
