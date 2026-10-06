@@ -78,6 +78,12 @@
 #                                   gate: a red check may be a transient flake a
 #                                   rerun clears, so give the fix/rerun organs
 #                                   more room before declaring the work lost.
+#   CHUMP_ROT_REAPER_FIX_GRACE_MIN  RESILIENT-1526 fix-in-flight grace (minutes,
+#                                   default 60): a required-red PR whose head
+#                                   commit landed within this window, or that has
+#                                   any check still queued/in-progress/pending,
+#                                   is NOT reaped — it is mid-repair. Reaping
+#                                   only happens on a settled post-push red.
 #   CHUMP_ROT_REAPER_ARM_AGE_MIN    min PR age (minutes) before a green-but-
 #                                   UNARMED PR is armed as a backstop to the
 #                                   pr-lander (default 15).
@@ -146,6 +152,9 @@ DRY_RUN=0
 
 MIN_AGE_HOURS="${CHUMP_ROT_REAPER_MIN_AGE_HOURS:-4}"
 REALFAIL_AGE_HOURS="${CHUMP_ROT_REAPER_REALFAIL_AGE_HOURS:-8}"
+# RESILIENT-1526: grace window (minutes) after a push during which a required-red
+# PR is treated as fix-in-flight and never reaped. 0 disables the push-time half.
+FIX_GRACE_MIN="${CHUMP_ROT_REAPER_FIX_GRACE_MIN:-60}"
 ARM_AGE_MIN="${CHUMP_ROT_REAPER_ARM_AGE_MIN:-15}"
 MAX_CLOSE="${CHUMP_ROT_REAPER_MAX:-10}"
 LABEL="${CHUMP_ROT_REAPER_LABEL:-rot-reaped}"
@@ -203,7 +212,7 @@ if [[ -n "${CHUMP_ROT_REAPER_PR_JSON:-}" ]]; then
     info "Using fixture PR list from \$CHUMP_ROT_REAPER_PR_JSON."
 else
     PR_JSON="$(gh pr list --author "$ME" --state open --limit 100 \
-        --json number,title,mergeStateStatus,mergeable,createdAt,headRefName,isDraft,autoMergeRequest,statusCheckRollup \
+        --json number,title,mergeStateStatus,mergeable,createdAt,headRefName,isDraft,autoMergeRequest,statusCheckRollup,commits \
         2>/dev/null || echo '[]')"
 fi
 
@@ -212,8 +221,12 @@ fi
 # requiredFail = "1" iff a branch-protection-REQUIRED check has concluded
 # FAILURE/ERROR/TIMED_OUT (not pending, not skipped) — the "real content gate is
 # red" signal that separates a stuck PR from one merely waiting on CI/approval.
-ROWS="$(printf '%s' "$PR_JSON" | REQ_CHECKS="$REQUIRED_CHECKS" python3 -c '
+ROWS="$(printf '%s' "$PR_JSON" | REQ_CHECKS="$REQUIRED_CHECKS" FIX_GRACE_MIN="$FIX_GRACE_MIN" python3 -c '
 import json, os, sys
+from datetime import datetime, timezone
+fix_grace_min = int(os.environ.get("FIX_GRACE_MIN", "60") or 0)
+PENDING_STATUS = {"QUEUED", "IN_PROGRESS", "PENDING", "WAITING", "REQUESTED"}
+PENDING_STATE = {"PENDING", "EXPECTED"}
 required = {c.strip() for c in os.environ.get("REQ_CHECKS","").split(",") if c.strip()}
 FAIL = {"FAILURE", "ERROR", "TIMED_OUT", "STARTUP_FAILURE", "ACTION_REQUIRED"}
 try:
@@ -240,11 +253,30 @@ for r in rows:
             if name not in fail_checks:
                 fail_checks.append(name)
     head = (r.get("headRefName") or "").replace("\t", " ").replace("\n", " ")
+    # RESILIENT-1526 fix-in-flight grace: a PR whose head commit landed within
+    # the grace window, or that has ANY check still queued/in-progress/pending
+    # (unsettled since the last push), is mid-repair — the reaper must not
+    # decide on the stale red history. Only a settled post-push red may reap.
+    inflight = "0"
+    for c in (r.get("statusCheckRollup") or []):
+        st = (c.get("status") or "").upper()
+        state = (c.get("state") or "").upper()
+        if (st and st != "COMPLETED" and st in PENDING_STATUS) or (not st and state in PENDING_STATE):
+            inflight = "1"
+    commits = r.get("commits") or []
+    if commits and fix_grace_min > 0:
+        last = commits[-1].get("committedDate") or commits[-1].get("authoredDate") or ""
+        try:
+            ldt = datetime.fromisoformat(last.replace("Z", "+00:00"))
+            if (datetime.now(timezone.utc) - ldt).total_seconds() < fix_grace_min * 60:
+                inflight = "1"
+        except Exception:
+            pass
     # req_fail_checks: comma-joined red required gate names (no tabs/commas in
     # our check names). Emitted LAST so it is safe to append without shifting
     # any existing field position in the reader.
     req_fail_checks = ",".join(n.replace("\t", " ").replace(",", " ") for n in fail_checks)
-    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{head}\t{req_fail_checks}")
+    print(f"{num}\t{mrg}\t{made}\t{title}\t{mstate}\t{draft}\t{has_am}\t{req_fail}\t{head}\t{inflight}\t{req_fail_checks}")
 ' 2>/dev/null || true)"
 
 # age_hours ISO8601 — whole hours since createdAt (python, bash-free of `date -d`).
@@ -706,7 +738,7 @@ hold_systemic_red() {  # <pr> <req_fail_checks> <age_h> <title>
     return 0
 }
 
-while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL HEAD REQ_FAIL_CHECKS; do
+while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQFAIL HEAD INFLIGHT REQ_FAIL_CHECKS; do
     [[ -z "$PR_NUM" ]] && continue
 
     # Never self-close a gap-filing PR (belt: also excluded from every class).
@@ -788,6 +820,13 @@ while IFS=$'\t' read -r PR_NUM MERGEABLE CREATED TITLE MSTATE ISDRAFT HASAM REQF
                 : # individually dead → still subject to the SYSTEMIC guard below.
                 ;;
         esac
+        # RESILIENT-1526: never reap a fix in flight — a push inside the grace
+        # window, or checks still unsettled since it, means the red we see is
+        # the pre-fix history. Re-judge on the latest settled post-push run.
+        if [[ "${INFLIGHT:-0}" == "1" ]]; then
+            info "PR #$PR_NUM — required-red ${AGE}h but a fix is IN FLIGHT (push within ${FIX_GRACE_MIN}m or checks unsettled) → leaving until the post-push run settles (RESILIENT-1526)."
+            SKIPPED=$((SKIPPED + 1)); continue
+        fi
         # ── RESILIENT-1188 SYSTEMIC-RED GUARD ────────────────────────────────
         # The per-PR classifier says this PR is an individual hard_fail. But if
         # the trunk-sentinel reports main/trunk RED (within the freshness
