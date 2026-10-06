@@ -1532,6 +1532,9 @@ jobs:
       - name: merge-serializer — update-branch green-but-behind PRs, sole driver preserved (RESILIENT-1537)
         run: bash scripts/ci/test-merge-serializer-update-branch.sh
 
+      - name: organ-deploy dark-organ audit — root cause per organ (RESILIENT-1534)
+        run: bash scripts/ci/test-resilient-1534-organ-dark-audit.sh
+
       - name: Dual-surface coordination smoke (INFRA-032)
         # INFRA-499 (2026-05-06): post-INFRA-498 docs/gaps/*.yaml deleted,
         # so CI's state.db starts empty. Smoke test now reserves a fresh

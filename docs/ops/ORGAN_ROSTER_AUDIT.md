@@ -74,3 +74,48 @@ non-goals section), tracked as visible backlog by each new
 `organ-manifest.txt` line's `# ... Linux port: TODO` comment. It also does
 not resolve the `almanac-code-intel` reconciliation ambiguity noted above —
 filed as a separate follow-up rather than guessed here.
+
+## RESILIENT-1534 — the 14 "dark" enabled organs: root cause per organ
+
+After re-arming the hub guardians, 14 manifest-`enabled` organs would not
+`systemctl start`. Diagnosis (static, from the manifest and the unit tree): none
+of them is a broken systemd unit — **all 14 are `platforms=launchd` rows (Mac
+organs folded in by INFRA-7765) that have no Linux/systemd unit**, so they can
+never be active on a systemd hub. Two defects made them look like faults:
+
+1. **`organ-deploy`'s post-deploy audit counted every `enabled` row**, ignoring
+   `platforms=` and `requires=`, so a correctly-scoped-off Mac organ was logged
+   "STILL DARK" forever. The audit now classifies each organ with
+   `organ_dark_cause` (`scripts/ops/lib/organ-manifest-lib.sh`): `active`,
+   `scoped-off:platforms=…`, or UNEXPECTED-DARK with a named cause
+   (`unmet-requires:…`, `unit-missing`, `unit-not-installed`, `exec-missing:…`,
+   `inactive`). Nothing is skipped silently; `organ-deploy.sh --audit-only` runs
+   just the audit and exits 1 while any UNEXPECTED-DARK organ remains.
+2. **The manifest parser read `# comment` text as fields.** Rows that quote field
+   names in their comment overwrote the real value —
+   `chump-mission-grade.timer`'s `platforms=launchd` was clobbered by the comment's
+   `platforms= stays launchd-only` (empty, so default `systemd`), making the reconcile
+   try to enable a unit that only exists at `--user` scope. `organ_manifest_parse`
+   (and the fleet-doctor roll-call reader) now stop at the first `#` token.
+
+| Organ (`chump-<name>.timer`) | Root cause | Disposition |
+|---|---|---|
+| github-liaison | launchd-only; no Linux unit (port TODO) | scoped off the hub (`platforms=launchd`) |
+| quartermaster-audit | launchd-only; no Linux unit (port TODO) | scoped off |
+| ghost-pr-closer | launchd-only; no Linux unit (port TODO) | scoped off |
+| daemon-activator | launchd-only; no Linux unit (port TODO) | scoped off |
+| main-worktree-drift-detector | launchd-only; no Linux unit (port TODO) | scoped off |
+| planner | launchd-only; no Linux unit; also `requires=bin:chump-plan` | scoped off |
+| stale-branch-reaper | launchd-only; no Linux unit (port TODO) | scoped off |
+| distill-pr-skills | launchd-only; no Linux unit (port TODO) | scoped off |
+| almanac-code-intel | launchd-only in the manifest; Linux self-installs as `systemd --user` via `install-almanac-organ.sh`, untracked | scoped off (reconciliation follow-up noted in the row) |
+| a2a-dead-letter-reaper | launchd-only; no Linux unit (port TODO) | scoped off |
+| decomposition-hint-tracker | launchd-only; no Linux unit (port TODO) | scoped off |
+| refresh-model-prices | launchd-only; no Linux unit (port TODO) | scoped off |
+| fleet-version-skew-detect | launchd-only; no Linux unit (port TODO) | scoped off |
+| mission-grade | cross-platform by design (`chump cron install` renders a `--user` timer on Linux), but the comment mis-parse made the row look `systemd` | scoped off at system scope; parser fixed |
+
+Any organ whose Linux port later ships flips to `platforms=systemd,launchd`
+(or drops the field) in the same PR as its unit, and the audit then holds it to
+"active" like every other organ. `scripts/ci/test-resilient-1534-organ-dark-audit.sh`
+asserts all 14 classify as `scoped-off:platforms=launchd` on a systemd host.
