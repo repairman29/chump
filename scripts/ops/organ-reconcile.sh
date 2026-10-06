@@ -396,6 +396,19 @@ if [[ -n "$ROLE_FILTER" ]]; then
   done
   ENABLED=("${FILTERED_ENABLED[@]}")
 fi
+# RESILIENT-320: capacity roles (factory|data|embed) narrow the tag-filtered set
+# to an exact unit roster. Explicit CHUMP_ORGAN_RECONCILE_UNITS wins; otherwise
+# derive from CHUMP_NODE_ROLE. Empty = no unit-level narrowing.
+UNIT_ALLOW="${CHUMP_ORGAN_RECONCILE_UNITS:-$(organ_role_units_for "${CHUMP_NODE_ROLE:-}")}"
+if [[ -n "$UNIT_ALLOW" && -n "$ROLE_FILTER" ]]; then
+  FILTERED_ENABLED=()
+  for unit in "${ENABLED[@]}"; do
+    for tok in $UNIT_ALLOW; do
+      [[ "$tok" == "$unit" ]] && { FILTERED_ENABLED+=("$unit"); break; }
+    done
+  done
+  ENABLED=("${FILTERED_ENABLED[@]}")
+fi
 
 MODE="${1:---apply}"
 
