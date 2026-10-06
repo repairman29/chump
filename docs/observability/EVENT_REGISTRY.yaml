@@ -13670,3 +13670,12 @@ events:
       (reason=closed-gap). One event per finding.
     consumers: [doctrine-loom]
     fields_required: [ts, kind, reason, from]
+
+  # ── META-1044 (META-256 slice): Doctrine Loom daemon tick ───────────────────
+  - kind: doctrine_weave_tick
+    effect_metric: self
+    emitter: scripts/coord/doctrine-loom-daemon.sh (META-1044)
+    trigger: once per Loom tick (every 30 min via com.chump.doctrine-loom),
+      after the scan, detectors and INDEX/GRAPH regeneration complete.
+    consumers: [doctrine-loom]
+    fields_required: [ts, kind, playbooks, edges, asymmetries, frayed_edges, digest]

@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key>
+  <string>com.chump.doctrine-loom</string>
+
+  <!-- META-1044 (META-256): Doctrine Loom tick every 30 min. Scans playbooks,
+       runs the missing-thread / frayed-edge detectors, regenerates
+       DOCTRINE_INDEX.md + DOCTRINE_GRAPH.md and emits kind=doctrine_weave_tick.
+       Files gaps (CHUMP_LOOM_FILE_GAPS=1) but never pages the operator. -->
+  <key>ProgramArguments</key>
+  <array>
+    <string>/bin/bash</string>
+    <string>-lc</string>
+    <string>cd /Users/jeffadkins/Projects/Chump &amp;&amp; bash scripts/coord/doctrine-loom-daemon.sh --once</string>
+  </array>
+
+  <!-- Every 30 minutes -->
+  <key>StartInterval</key>
+  <integer>1800</integer>
+
+  <key>RunAtLoad</key>
+  <false/>
+
+  <key>StandardOutPath</key>
+  <string>/tmp/chump-doctrine-loom.out.log</string>
+  <key>StandardErrorPath</key>
+  <string>/tmp/chump-doctrine-loom.err.log</string>
+  <key>WorkingDirectory</key>
+  <string>/Users/jeffadkins/Projects/Chump</string>
+
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>HOME</key>
+    <string>/Users/jeffadkins</string>
+    <key>PATH</key>
+    <string>/Users/jeffadkins/.local/bin:/opt/homebrew/bin:/usr/bin:/bin</string>
+    <key>CHUMP_LOOM_FILE_GAPS</key>
+    <string>1</string>
+    <key>CHUMP_SESSION_ID</key>
+    <string>doctrine-loom-cron</string>
+  </dict>
+</dict>
+</plist>

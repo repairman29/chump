@@ -707,6 +707,10 @@ jobs:
       - name: Doctrine weave detectors fixture test
         run: bash scripts/ci/test-doctrine-weave-detectors.sh
 
+      # META-1044: doctrine loom daemon tick emission smoke test.
+      - name: Doctrine loom emission smoke test
+        run: bash scripts/ci/test-doctrine-loom-emission.sh
+
       # INFRA-1541: pre-merge AC coverage gate.
       # ADVISORY-ONLY by default — `CHUMP_AC_GATE_BLOCKING=false` makes the
       # script always exit 0 after emitting `kind=ac_coverage_miss` events
