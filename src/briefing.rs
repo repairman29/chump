@@ -134,9 +134,24 @@ pub struct GapBriefing {
     pub practices_block: String,
     /// CREDIBLE-167: ceiling on the share of recent commits that may be
     /// automated coherence syncs before the picker stops handing out work.
-    /// `None` = no ceiling configured. Compared against
-    /// [`GapBriefing::sync_overhead_ratio`].
+    /// `None` = no ceiling configured. INFRA-8060: loaded from the shared
+    /// `scripts/dispatch/picker-policy.json` (the same file `_pick_gap.py` enforces) by
+    /// [`load_sync_overhead_ceiling`], and compared against
+    /// [`GapBriefing::sync_overhead_ratio`] via
+    /// [`GapBriefing::sync_overhead_exceeded`].
     pub sync_overhead_ceiling: Option<f64>,
+}
+
+/// INFRA-8060: path of the picker policy shared with `_pick_gap.py`.
+pub const PICKER_POLICY_PATH: &str = "scripts/dispatch/picker-policy.json";
+
+/// INFRA-8060: read `sync_overhead_ceiling` (0.0-1.0) from the shared picker
+/// policy under `root`. `None` when the file/key is absent, null, or invalid —
+/// matching the python picker's "unset/invalid = off" rule.
+pub fn load_sync_overhead_ceiling(root: &Path) -> Option<f64> {
+    let text = std::fs::read_to_string(root.join(PICKER_POLICY_PATH)).ok()?;
+    let v: serde_json::Value = serde_json::from_str(&text).ok()?;
+    v.get("sync_overhead_ceiling")?.as_f64()
 }
 
 /// CREDIBLE-167: a commit subject is an automated coherence sync when it
@@ -173,6 +188,15 @@ impl GapBriefing {
             .filter(|s| is_coherence_sync_subject(s))
             .count();
         syncs as f64 / subjects.len() as f64
+    }
+
+    /// INFRA-8060: `Some(ratio)` when a ceiling is configured and the recent
+    /// sync ratio in `repo_path` is strictly above it (the same `>` comparison
+    /// the python picker uses); `None` otherwise.
+    pub fn sync_overhead_exceeded(&self, repo_path: &Path) -> Option<f64> {
+        let ceiling = self.sync_overhead_ceiling?;
+        let ratio = self.sync_overhead_ratio(repo_path);
+        (ratio > ceiling).then_some(ratio)
     }
 }
 
@@ -393,7 +417,7 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
     // CLAUDE.md (read once, then skipped every subsequent session).
     let practices_block = build_practices_block(root, &gap_id, &parsed.title, &parsed.domain);
 
-    GapBriefing {
+    let mut briefing = GapBriefing {
         gap_id,
         gap_title: parsed.title,
         gap_acceptance: parsed.acceptance,
@@ -415,8 +439,17 @@ pub fn build_briefing_at(gap_id: &str, root: &std::path::Path) -> GapBriefing {
         fleet_mode,
         comprehension,
         practices_block,
-        sync_overhead_ceiling: None,
+        sync_overhead_ceiling: load_sync_overhead_ceiling(root),
+    };
+    // INFRA-8060: consume the ceiling — surface a breach where the agent reads.
+    if let Some(ratio) = briefing.sync_overhead_exceeded(root) {
+        briefing.practices_block.push_str(&format!(
+            "\n**Warning:** automated coherence syncs are {:.0}% of the last 50 commits (ceiling {:.0}%); the picker will not hand out new work until this drops.\n",
+            ratio * 100.0,
+            briefing.sync_overhead_ceiling.unwrap_or(0.0) * 100.0
+        ));
     }
+    briefing
 }
 
 /// Collect prompt-injectable scratchpad keys synchronously.
@@ -1842,6 +1875,53 @@ gaps:
         }
         let b = GapBriefing::default();
         assert!((b.sync_overhead_ratio(p) - 0.64).abs() < 1e-9);
+    }
+
+    #[test]
+    fn sync_overhead_ceiling_loads_from_shared_picker_policy() {
+        let dir = tempfile::tempdir().unwrap();
+        assert_eq!(load_sync_overhead_ceiling(dir.path()), None);
+        fs::create_dir_all(dir.path().join("scripts/dispatch")).unwrap();
+        let policy = dir.path().join(PICKER_POLICY_PATH);
+        fs::write(&policy, r#"{"sync_overhead_ceiling": 0.6}"#).unwrap();
+        assert_eq!(load_sync_overhead_ceiling(dir.path()), Some(0.6));
+        fs::write(&policy, r#"{"sync_overhead_ceiling": null}"#).unwrap();
+        assert_eq!(load_sync_overhead_ceiling(dir.path()), None);
+        // The committed policy file must stay parseable by this loader.
+        let real = Path::new(env!("CARGO_MANIFEST_DIR"));
+        assert!(real.join(PICKER_POLICY_PATH).exists());
+    }
+
+    #[test]
+    fn sync_overhead_exceeded_uses_configured_ceiling() {
+        let dir = tempfile::tempdir().unwrap();
+        let p = dir.path();
+        let git = |args: &[&str]| {
+            let st = Command::new("git")
+                .arg("-C")
+                .arg(p)
+                .args(["-c", "user.email=t@t", "-c", "user.name=t"])
+                .args(["-c", "commit.gpgsign=false"])
+                .args(args)
+                .output()
+                .unwrap();
+            assert!(st.status.success(), "git {args:?} failed");
+        };
+        git(&["init", "-q"]);
+        for i in 0..10 {
+            let msg = if i < 7 {
+                "chore: coherence sync"
+            } else {
+                "real work"
+            };
+            git(&["commit", "-q", "--allow-empty", "-m", msg]);
+        }
+        let mut b = GapBriefing::default();
+        assert_eq!(b.sync_overhead_exceeded(p), None, "no ceiling = off");
+        b.sync_overhead_ceiling = Some(0.6);
+        assert!((b.sync_overhead_exceeded(p).unwrap() - 0.7).abs() < 1e-9);
+        b.sync_overhead_ceiling = Some(0.8);
+        assert_eq!(b.sync_overhead_exceeded(p), None);
     }
 
     #[test]
