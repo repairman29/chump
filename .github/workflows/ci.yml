@@ -1521,6 +1521,9 @@ jobs:
       - name: wiring triage — WIRE / ALLOWLIST-DORMANT / ARCHIVE-DEAD (ZERO-WASTE-128)
         run: bash scripts/ci/test-wiring-triage.sh
 
+      - name: wiring file — gap-with-receipt per finding, stable dedupe (ZERO-WASTE-129)
+        run: bash scripts/ci/test-wiring-file.sh
+
       - name: Dual-surface coordination smoke (INFRA-032)
         # INFRA-499 (2026-05-06): post-INFRA-498 docs/gaps/*.yaml deleted,
         # so CI's state.db starts empty. Smoke test now reserves a fresh

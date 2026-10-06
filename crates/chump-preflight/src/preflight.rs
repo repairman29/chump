@@ -1295,6 +1295,8 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         "scripts/ci/test-wiring-detectors.sh",
         // ZERO-WASTE-128: wiring triage engine (WIRE / ALLOWLIST-DORMANT / ARCHIVE-DEAD).
         "scripts/ci/test-wiring-triage.sh",
+        // ZERO-WASTE-129: gap-with-receipt filing + stable dedupe hashes.
+        "scripts/ci/test-wiring-file.sh",
     ];
     candidates
         .iter()

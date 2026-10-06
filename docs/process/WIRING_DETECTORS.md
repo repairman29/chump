@@ -83,6 +83,26 @@ allowlist is just silent dormancy. The allowlist file itself does not count as a
 artifact it names. Allowlisted findings are suppressed from the output (but counted in the summary
 on stderr) so a re-scan stays quiet. `scripts/ci/test-wiring-triage.sh` covers all three outcomes.
 
+## Filing — one gap with a receipt per finding (ZERO-WASTE-129)
+
+`scripts/ops/wiring-file.py` is the last stage: `wiring-detectors.py | wiring-triage.py | wiring-file.py`.
+It files one gap per **actionable** finding (`WIRE` / `ARCHIVE-DEAD`; allowlisted items are never filed)
+through the standard universal filer, `chump gap file <finding.json>` (`src/gap_file.rs`) — the portable
+path that uses the same `finding.json` schema as the holler convention and spools + retries when the
+endpoint is down. `CHUMP_WIRING_FILER` / `--filer-cmd` routes to a different filer (e.g. a holler wrapper).
+
+- **Receipt**: the gap body carries the detector, artifact, evidence JSON, triage decision, the
+  false-positive floor for weak detectors, and how to re-run; acceptance criteria say either "fixed and
+  no longer flagged" or "decision recorded with `wiring-triage.py allow --by --reason`".
+- **Stable dedupe hash**: `wiring:<12 hex of sha256(detector|artifact|decision)>` — derived only from what
+  identifies the standing condition, never from volatile evidence (counts, ages), and written into the
+  title (`[wiring:...]`), the body and the finding's `dedupe_hash`.
+- **Update, don't refile**: a ledger (`.chump-locks/wiring-filed.jsonl`) maps hash to gap. A re-detected
+  condition bumps `last_seen` / `seen_count` and does not call the filer again. A filer failure records
+  nothing, so the next cycle retries. `--max-new` (default 10) caps new gaps per run; `--dry-run` previews.
+
+`scripts/ci/test-wiring-file.sh` asserts the same finding run twice yields one gap, not two.
+
 ## Limits
 
 - Suspects, not verdicts: a script may be scheduled by something outside the repo (a hand-installed
