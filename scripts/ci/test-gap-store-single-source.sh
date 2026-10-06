@@ -43,7 +43,16 @@ fi
 # 3) No crate may silently wire CHUMP_GAP_STORE_URL into the gap-store selection.
 #    The dormant postgrest store is reached (if ever) only by an explicit,
 #    reviewed migration path — not by an env var quietly redirecting reads.
-hits="$(grep -rnE 'CHUMP_GAP_STORE_URL' crates/ 2>/dev/null || true)"
+#    Two legitimate references are NOT store-selection wiring and are excluded:
+#      - the chump-gap-doctor binary READS the var only to probe-and-alarm on a
+#        misconfigured second store (it is the detector FOR this hazard, and never
+#        routes gap operations through it);
+#      - doc comments (//, ///, //!) that merely document the var's meaning.
+#    Any other crate reference still fails this gate.
+hits="$(grep -rnE 'CHUMP_GAP_STORE_URL' crates/ 2>/dev/null \
+  | grep -v '/chump-gap-doctor\.rs:' \
+  | grep -vE ':[0-9]+:[[:space:]]*//' \
+  || true)"
 if [ -n "$hits" ]; then
   echo "$hits"
   bad "CHUMP_GAP_STORE_URL is referenced in crate source — a silent remote-store redirect. Wire the store only via the explicit INFRA-2092 migration + backfill, not an env var."
