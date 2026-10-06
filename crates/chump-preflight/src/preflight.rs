@@ -1290,6 +1290,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // renamed/removed without the help text being updated. Pure local
         // (one subprocess + a string diff), ~0.1s, no network.
         "scripts/ci/test-cli-help-regression.sh",
+        // RESILIENT-1534: organ-deploy post-deploy audit classifies every dark organ with a
+        // root cause (stubbed systemctl, pure local).
+        "scripts/ci/test-resilient-1534-organ-dark-audit.sh",
         // RESILIENT-1528: every `chump claim --role X` in scripts/ must be
         // registered in docs/process/AGENT_ROLES.yaml — static companion to the
         // runtime role validation (INFRA-5773). Pure local grep, ~0.2s.
