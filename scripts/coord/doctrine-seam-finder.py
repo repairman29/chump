@@ -1,0 +1,172 @@
+#!/usr/bin/env python3
+"""doctrine-seam-finder.py — META-1040 (META-256 "Doctrine Loom" stitch 1).
+
+Scans the playbook set, builds a playbook -> playbook cross-reference graph and
+a topic-overlap score per pair, and prints it as JSON for the other Loom
+stitches (missing-thread / frayed-edge / conflict detectors, INDEX/GRAPH
+generators) to consume.
+
+In-scope playbooks (auto-discovered, so new ones join without a code change):
+  docs/process/*.md   AGENTS.md   CLAUDE.md   .claude/agents/*.md
+
+Usage:
+  doctrine-seam-finder.py [--root DIR] [--output FILE] [--min-overlap F]
+
+Output (JSON):
+  {"schema": 1,
+   "playbooks": [{"path", "title", "topics": [...], "outbound": [...],
+                  "inbound_count"}],
+   "edges":   [{"from", "to", "asymmetric": bool}],
+   "overlap": [{"a", "b", "score", "shared": [...], "linked": bool}]}
+
+`overlap` lists pairs with score >= --min-overlap (default 0.2); `linked` says
+whether either playbook references the other, so a high-overlap unlinked pair
+is a candidate seam for the missing-thread detector.
+
+Read-only: never writes into the repo unless --output is given.
+"""
+import argparse
+import glob
+import json
+import os
+import re
+import sys
+
+SCOPE_GLOBS = ["docs/process/*.md", "AGENTS.md", "CLAUDE.md", ".claude/agents/*.md"]
+
+# A reference is a repo-relative path, or a bare playbook filename, ending .md.
+PATH_RE = re.compile(r"(?<![\w./-])((?:[\w.-]+/)*[\w.-]+\.md)(?![\w])")
+LINK_RE = re.compile(r"\]\(([^)#\s]+\.md)(?:#[^)]*)?\)")
+WORD_RE = re.compile(r"[a-z][a-z0-9-]{3,}")
+CODE_FENCE_RE = re.compile(r"```.*?```", re.S)
+
+STOPWORDS = frozenset("""
+this that with from have will when then them they their there which what were
+been also into only more most some such than does done each over under about
+after before should would could must need needs used uses using make makes
+gap gaps file files none true false note notes see per via not any all can
+""".split())
+
+
+def discover(root):
+    found = set()
+    for g in SCOPE_GLOBS:
+        for p in glob.glob(os.path.join(root, g)):
+            if os.path.isfile(p):
+                found.add(os.path.relpath(p, root).replace(os.sep, "/"))
+    return sorted(found)
+
+
+def read(root, rel):
+    with open(os.path.join(root, rel), encoding="utf-8", errors="replace") as fh:
+        return fh.read()
+
+
+def title_of(text, rel):
+    for line in text.splitlines():
+        if line.startswith("# "):
+            return line[2:].strip()
+    return os.path.basename(rel)
+
+
+def topics_of(text, top=15):
+    """Top distinct content words (code fences dropped), by frequency."""
+    prose = CODE_FENCE_RE.sub(" ", text).lower()
+    counts = {}
+    for w in WORD_RE.findall(prose):
+        if w not in STOPWORDS:
+            counts[w] = counts.get(w, 0) + 1
+    ranked = sorted(counts.items(), key=lambda kv: (-kv[1], kv[0]))
+    return [w for w, _ in ranked[:top]]
+
+
+def resolve(ref, src, scope, by_name):
+    """Map a textual .md reference to an in-scope playbook path, else None."""
+    ref = ref.lstrip("./")
+    if ref in scope:
+        return ref
+    rel = os.path.normpath(os.path.join(os.path.dirname(src), ref)).replace(os.sep, "/")
+    if rel in scope:
+        return rel
+    base = os.path.basename(ref)
+    cands = by_name.get(base, [])
+    return cands[0] if len(cands) == 1 else None
+
+
+def build(root, min_overlap=0.2):
+    scope = discover(root)
+    sset = set(scope)
+    by_name = {}
+    for p in scope:
+        by_name.setdefault(os.path.basename(p), []).append(p)
+
+    texts = {p: read(root, p) for p in scope}
+    outbound = {}
+    for p in scope:
+        prose = CODE_FENCE_RE.sub(" ", texts[p])  # fenced examples are not references
+        refs = set(LINK_RE.findall(prose)) | set(PATH_RE.findall(prose))
+        tgt = set()
+        for r in refs:
+            t = resolve(r, p, sset, by_name)
+            if t and t != p:
+                tgt.add(t)
+        outbound[p] = sorted(tgt)
+
+    inbound = {p: 0 for p in scope}
+    for p in scope:
+        for t in outbound[p]:
+            inbound[t] += 1
+
+    topics = {p: topics_of(texts[p]) for p in scope}
+    edges = [
+        {"from": p, "to": t, "asymmetric": p not in outbound.get(t, [])}
+        for p in scope for t in outbound[p]
+    ]
+
+    overlap = []
+    for i, a in enumerate(scope):
+        for b in scope[i + 1:]:
+            sa, sb = set(topics[a]), set(topics[b])
+            union = sa | sb
+            if not union:
+                continue
+            shared = sorted(sa & sb)
+            score = round(len(shared) / len(union), 4)
+            if score >= min_overlap:
+                overlap.append({
+                    "a": a, "b": b, "score": score, "shared": shared,
+                    "linked": b in outbound[a] or a in outbound[b],
+                })
+    overlap.sort(key=lambda o: (-o["score"], o["a"], o["b"]))
+
+    return {
+        "schema": 1,
+        "playbooks": [
+            {"path": p, "title": title_of(texts[p], p), "topics": topics[p],
+             "outbound": outbound[p], "inbound_count": inbound[p]}
+            for p in scope
+        ],
+        "edges": edges,
+        "overlap": overlap,
+    }
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(description=__doc__.split("\n")[0])
+    ap.add_argument("--root", default=os.path.join(os.path.dirname(__file__), "..", ".."))
+    ap.add_argument("--output", help="write JSON here instead of stdout")
+    ap.add_argument("--min-overlap", type=float, default=0.2)
+    args = ap.parse_args(argv)
+    root = os.path.abspath(args.root)
+    graph = build(root, args.min_overlap)
+    out = json.dumps(graph, indent=2, sort_keys=True) + "\n"
+    if args.output:
+        with open(args.output, "w", encoding="utf-8") as fh:
+            fh.write(out)
+    else:
+        sys.stdout.write(out)
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

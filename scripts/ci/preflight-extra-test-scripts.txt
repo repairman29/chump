@@ -1,0 +1,12 @@
+# preflight-extra-test-scripts.txt — RESILIENT-1544
+#
+# Union-merged overflow list for discover_test_scripts() in
+# crates/chump-preflight/src/preflight.rs. ADD NEW local-safe CI test scripts
+# HERE (one repo-relative path per line) instead of the hardcoded `candidates`
+# array — this file is marked `merge=union` in .gitattributes, so parallel PRs
+# each appending a line never conflict (the 2026-10-06 burst DIRTY-treadmill
+# was caused by parallel appends to the `.rs` array).
+#
+# Format: one repo-relative path per line. Blank lines and lines starting with
+# `#` are ignored. A path that is not a file on disk is skipped. Entries are
+# deduped against the hardcoded `candidates` array.

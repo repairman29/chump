@@ -722,12 +722,7 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
     let root = tree.root_node();
     let mut symbols = Vec::new();
     let imports: Vec<String> = Vec::new(); // bash has no formal imports
-    let mut cursor = root.walk();
-    for child in root.named_children(&mut cursor) {
-        if child.kind() == "function_definition" {
-            push_named(child, src, "fn", &mut symbols, "#");
-        }
-    }
+    collect_bash_functions(root, src, &mut symbols);
     Ok(FileShape {
         path: path.to_string(),
         language: "bash".into(),
@@ -735,6 +730,23 @@ fn parse_bash(path: &str, src: &str) -> Result<FileShape> {
         top_level_symbols: symbols,
         imports,
     })
+}
+
+// Bash function definitions are not reliably direct children of `program`:
+// idioms like `[[ guard ]] || { ...; fn() { ...; }; ... }` (sourceable-guard
+// pattern, e.g. scripts/lib/disk-check.sh) nest them inside `list` /
+// `compound_statement` wrapper nodes. Recurse through wrapper nodes to find
+// `function_definition` at any depth, but stop at each one found — its body
+// is not file-scope-visible, so nested fn defs inside it are not top-level.
+fn collect_bash_functions(node: Node, src: &str, out: &mut Vec<Symbol>) {
+    let mut cursor = node.walk();
+    for child in node.named_children(&mut cursor) {
+        if child.kind() == "function_definition" {
+            push_named(child, src, "fn", out, "#");
+        } else {
+            collect_bash_functions(child, src, out);
+        }
+    }
 }
 
 // ── YAML ──────────────────────────────────────────────────────────────────
@@ -997,6 +1009,80 @@ bye() {
             .collect();
         assert!(names.contains(&"hello"), "got {names:?}");
         assert!(names.contains(&"bye"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_extracts_functions_nested_in_guard_and_function_keyword_syntax() {
+        // tests/fixtures/sample.sh has 3 fn defs: `foo()`, `bar() { ... }`,
+        // and `function baz { ... }` — regression fixture for INFRA-1821
+        // (tree-sitter-bash nests function_definition inside wrapper nodes
+        // like `list`/`compound_statement` for idioms such as source guards;
+        // a shallow named_children() scan found 0 in those cases).
+        let fixture = Path::new(env!("CARGO_MANIFEST_DIR")).join("tests/fixtures/sample.sh");
+        let src = std::fs::read_to_string(&fixture).unwrap();
+        let shape = parse_bash(fixture.to_str().unwrap(), &src).unwrap();
+        assert_eq!(
+            shape.top_level_symbols.len(),
+            3,
+            "got {:?}",
+            shape.top_level_symbols
+        );
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(names.contains(&"foo"), "got {names:?}");
+        assert!(names.contains(&"bar"), "got {names:?}");
+        assert!(names.contains(&"baz"), "got {names:?}");
+    }
+
+    #[test]
+    fn bash_does_not_extract_nested_fn_defs_as_top_level() {
+        let td = tempfile::tempdir().unwrap();
+        let body = r#"#!/bin/bash
+outer() {
+    inner() {
+        echo "nested"
+    }
+    inner
+}
+"#;
+        let p = write_tmp(td.path(), "nested.sh", body);
+        let shape = crawl_file(&p).unwrap();
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert_eq!(names, vec!["outer"], "got {names:?}");
+    }
+
+    #[test]
+    fn bash_extracts_functions_nested_in_source_guard() {
+        // Regression for INFRA-1821: `[[ guard ]] || { fn_def(); ... }` idiom
+        // (e.g. scripts/lib/disk-check.sh) nests function_definition inside a
+        // `list` > `compound_statement` wrapper rather than directly under
+        // `program`.
+        let td = tempfile::tempdir().unwrap();
+        let body = r#"#!/bin/bash
+[[ "${_GUARD_LOADED:-0}" == "1" ]] || {
+_GUARD_LOADED=1
+
+guarded_fn() {
+    echo "hi"
+}
+
+}
+"#;
+        let p = write_tmp(td.path(), "guarded.sh", body);
+        let shape = crawl_file(&p).unwrap();
+        let names: Vec<&str> = shape
+            .top_level_symbols
+            .iter()
+            .map(|s| s.name.as_str())
+            .collect();
+        assert!(names.contains(&"guarded_fn"), "got {names:?}");
     }
 
     #[test]

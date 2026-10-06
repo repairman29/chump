@@ -5621,6 +5621,52 @@ pub fn recently_merged_pr_dedupe_candidates(
     scored
 }
 
+/// CREDIBLE-1489: open the local GitHub PR cache read-only. `None` when the
+/// cache is absent/unreadable (callers treat that as "cannot verify").
+fn open_github_cache(repo_root: &std::path::Path) -> Option<rusqlite::Connection> {
+    let db = repo_root.join(".chump").join("github_cache.db");
+    if !db.exists() {
+        return None;
+    }
+    rusqlite::Connection::open_with_flags(&db, rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY).ok()
+}
+
+/// CREDIBLE-1489: does cached PR `pr` reference `gap_id` (case-insensitive) in
+/// its title, head branch, or body payload? `None` when the PR is not in the
+/// cache, so "unknown" is never reported as a mismatch.
+pub fn pr_references_gap(repo_root: &std::path::Path, gap_id: &str, pr: i64) -> Option<bool> {
+    let conn = open_github_cache(repo_root)?;
+    let (title, head_ref, payload): (Option<String>, Option<String>, Option<String>) = conn
+        .query_row(
+            "SELECT title, head_ref, raw_payload_json FROM pr_state WHERE number = ?1",
+            [pr],
+            |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?)),
+        )
+        .ok()?;
+    let needle = gap_id.to_lowercase();
+    Some(
+        [title, head_ref, payload]
+            .iter()
+            .flatten()
+            .any(|f| f.to_lowercase().contains(&needle)),
+    )
+}
+
+/// CREDIBLE-1489: the PR that actually MERGED `branch` (cache `head_ref` match,
+/// most recently merged first). Lets `chump gap ship` stamp the real closing PR
+/// instead of trusting an arbitrary caller-supplied number. `None` when the
+/// cache is absent or has no merged PR for the branch.
+pub fn merged_pr_for_branch(repo_root: &std::path::Path, branch: &str) -> Option<i64> {
+    let conn = open_github_cache(repo_root)?;
+    conn.query_row(
+        "SELECT number FROM pr_state WHERE head_ref = ?1 AND merged_at IS NOT NULL \
+         ORDER BY merged_at DESC LIMIT 1",
+        [branch],
+        |r| r.get::<_, i64>(0),
+    )
+    .ok()
+}
+
 /// INFRA-1411: returns true when `ac_string` either is empty OR every
 /// item is a TODO/TBD/placeholder string. Used by `chump gap show` to
 /// trigger the YAML fallback even when state.db has a row.
@@ -12049,5 +12095,76 @@ mod infra8043_unanchored_tests {
         assert_eq!(store.get(&anchored).unwrap().unwrap().priority, "P1");
         assert_eq!(store.get(&p2).unwrap().unwrap().priority, "P2");
         assert!(store.demote_unanchored_p1(false).unwrap().is_empty());
+    }
+}
+
+#[cfg(test)]
+mod credible1489_closed_pr_tests {
+    use super::*;
+
+    fn cache_with(rows: &[(i64, &str, &str, Option<&str>)]) -> tempfile::TempDir {
+        let dir = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(dir.path().join(".chump")).unwrap();
+        let conn = rusqlite::Connection::open(dir.path().join(".chump/github_cache.db")).unwrap();
+        conn.execute_batch(
+            "CREATE TABLE pr_state (number INTEGER PRIMARY KEY, head_ref TEXT, merged_at TEXT, \
+             title TEXT, raw_payload_json TEXT);",
+        )
+        .unwrap();
+        for (n, title, head, merged) in rows {
+            conn.execute(
+                "INSERT INTO pr_state (number, head_ref, merged_at, title, raw_payload_json) \
+                 VALUES (?1, ?2, ?3, ?4, '{}')",
+                rusqlite::params![n, head, merged, title],
+            )
+            .unwrap();
+        }
+        dir
+    }
+
+    #[test]
+    fn pr_references_gap_matches_title_or_branch_case_insensitively() {
+        let d = cache_with(&[
+            (
+                10,
+                "CREDIBLE-1489: integrity check",
+                "claude/other",
+                Some("2026-10-01"),
+            ),
+            (
+                11,
+                "Discord digest",
+                "chump/credible-1489-fleet-1",
+                Some("2026-10-01"),
+            ),
+            (
+                4326,
+                "Discord digest",
+                "chump/discord-digest",
+                Some("2026-10-01"),
+            ),
+        ]);
+        assert_eq!(pr_references_gap(d.path(), "CREDIBLE-1489", 10), Some(true));
+        assert_eq!(pr_references_gap(d.path(), "CREDIBLE-1489", 11), Some(true));
+        assert_eq!(
+            pr_references_gap(d.path(), "CREDIBLE-1489", 4326),
+            Some(false)
+        );
+        // Not in the cache: unknown, never a mismatch.
+        assert_eq!(pr_references_gap(d.path(), "CREDIBLE-1489", 999), None);
+        // No cache at all.
+        let empty = tempfile::tempdir().unwrap();
+        assert_eq!(pr_references_gap(empty.path(), "X-1", 1), None);
+    }
+
+    #[test]
+    fn merged_pr_for_branch_picks_the_merged_pr_not_an_open_one() {
+        let d = cache_with(&[
+            (20, "t", "claude/x", None),
+            (21, "t", "claude/x", Some("2026-10-02T00:00:00Z")),
+            (22, "t", "claude/y", Some("2026-10-03T00:00:00Z")),
+        ]);
+        assert_eq!(merged_pr_for_branch(d.path(), "claude/x"), Some(21));
+        assert_eq!(merged_pr_for_branch(d.path(), "claude/none"), None);
     }
 }

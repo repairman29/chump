@@ -1290,12 +1290,40 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // renamed/removed without the help text being updated. Pure local
         // (one subprocess + a string diff), ~0.1s, no network.
         "scripts/ci/test-cli-help-regression.sh",
+        // RESILIENT-1528: every `chump claim --role X` in scripts/ must be
+        // registered in docs/process/AGENT_ROLES.yaml — static companion to the
+        // runtime role validation (INFRA-5773). Pure local grep, ~0.2s.
+        "scripts/ci/check-agent-roles-registered.sh",
+        "scripts/ci/test-check-agent-roles-registered.sh",
+        // RESILIENT-1544: do NOT append new test scripts to this array — it is a
+        // hot file that collides when parallel PRs each add a gate (the 2026-10-06
+        // burst DIRTY-treadmill). Add new scripts to the union-merged overflow file
+        // scripts/ci/preflight-extra-test-scripts.txt instead (see below).
     ];
-    candidates
+    let mut out: Vec<std::path::PathBuf> = candidates
         .iter()
         .map(|p| repo_root.join(p))
         .filter(|p| p.is_file())
-        .collect()
+        .collect();
+    // RESILIENT-1544: union-merged overflow — new test scripts append to
+    // scripts/ci/preflight-extra-test-scripts.txt (marked `merge=union` in
+    // .gitattributes), so parallel PRs never conflict on this file. A missing or
+    // malformed file is a safe no-op; entries are deduped against `candidates`.
+    if let Ok(txt) =
+        std::fs::read_to_string(repo_root.join("scripts/ci/preflight-extra-test-scripts.txt"))
+    {
+        for line in txt.lines() {
+            let l = line.trim();
+            if l.is_empty() || l.starts_with('#') {
+                continue;
+            }
+            let p = repo_root.join(l);
+            if p.is_file() && !out.contains(&p) {
+                out.push(p);
+            }
+        }
+    }
+    out
 }
 
 // ── EFFECTIVE-318: --full audit-shard reproduction ──────────────────────────
