@@ -3291,3 +3291,8 @@ CHUMP_DAEMON_CONTRACT_PLIST_DIRS
 # detected in: (standard input)
 CHUMP_ALMANAC_CENSUS_MIN_PCT
 CHUMP_LOCAL_XML_TOOL_TAGS
+
+# INFRA-3784: startup wallclock budget (INFRA-1809 slice) — max ms allowed
+# for chump's startup sequence before tokio::time::timeout trips, dumps
+# diagnostics, and exits 4. Default 5000.
+CHUMP_STARTUP_TIMEOUT_MS
