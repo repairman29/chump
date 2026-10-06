@@ -828,6 +828,7 @@ check_organ_roll_call_live() {
         # role=/requires= parsing mirrors organ-reconcile.sh's manifest reader.
         local role="brain" requires="" tok
         for tok in $rest; do
+            [[ "$tok" == \#* ]] && break   # RESILIENT-1534: a trailing comment is not part of the directive
             case "$tok" in
                 role=*)     role="${tok#role=}" ;;
                 requires=*) requires="${tok#requires=}" ;;
