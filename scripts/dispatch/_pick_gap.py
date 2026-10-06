@@ -421,9 +421,31 @@ def _emit_picker_event(repo_root: str, kind: str, **fields: object) -> None:
         pass
 
 
+def _picker_policy(key: str):
+    """INFRA-8060: read `key` from scripts/dispatch/picker-policy.json — the single-source
+    policy file shared with the Rust GapBriefing (src/briefing.rs
+    load_sync_overhead_ceiling). Looks in CHUMP_REPO first, then in the repo
+    this script lives in. Returns None when absent/null/unreadable. An env var
+    named after the key (upper-case) still overrides it for one run.
+    """
+    roots = []
+    if os.environ.get("CHUMP_REPO"):
+        roots.append(os.environ["CHUMP_REPO"])
+    roots.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", ".."))
+    for root in roots:
+        try:
+            with open(os.path.join(root, "scripts", "dispatch", "picker-policy.json")) as f:
+                return json.load(f).get(key)
+        except (OSError, ValueError, AttributeError):
+            continue
+    return None
+
+
 def _sync_overhead_guard() -> int | None:
     """CREDIBLE-167: refuse to pick when automated coherence syncs crowd the
-    last 50 commits past SYNC_OVERHEAD_CEILING (0.0-1.0; unset/invalid = off).
+    last 50 commits past the ceiling: SYNC_OVERHEAD_CEILING env override, else
+    `sync_overhead_ceiling` in scripts/dispatch/picker-policy.json (0.0-1.0; unset/invalid
+    = off).
 
     Commit subjects come from SYNC_OVERHEAD_LOG_FILE (one subject per line;
     used by tests) or `git log -n 50` in CHUMP_REPO. Mirrors
@@ -431,6 +453,8 @@ def _sync_overhead_guard() -> int | None:
     pick, None to continue.
     """
     raw = os.environ.get("SYNC_OVERHEAD_CEILING", "").strip()
+    if not raw:
+        raw = str(_picker_policy("sync_overhead_ceiling") or "")
     if not raw:
         return None
     try:
