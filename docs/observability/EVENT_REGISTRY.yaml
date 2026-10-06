@@ -13651,3 +13651,22 @@ events:
       killed before the claim-recover flow ran.
     consumers: [fleet-brief, observability]
     fields_required: [ts, kind, gap_id, wedge_detected, killed_pids]
+
+  # ── META-1041 (META-256 slice): Doctrine Loom missing-thread / frayed-edge ──
+  - kind: doctrine_weave_asymmetry
+    effect_metric: self
+    emitter: scripts/coord/doctrine-weave-detectors.py --emit (META-1041)
+    trigger: a playbook references another that never references it back
+      (reason=one-way), or two playbooks overlap heavily on topics with no
+      reference either way (reason=overlap-no-link). One event per finding.
+    consumers: [doctrine-loom]
+    fields_required: [ts, kind, reason, from, to]
+
+  - kind: doctrine_weave_frayed_edge
+    effect_metric: self
+    emitter: scripts/coord/doctrine-weave-detectors.py --emit (META-1041)
+    trigger: a playbook cites a section that no longer exists in its target
+      (reason=missing-section) or mentions a gap ID whose record is closed
+      (reason=closed-gap). One event per finding.
+    consumers: [doctrine-loom]
+    fields_required: [ts, kind, reason, from]
