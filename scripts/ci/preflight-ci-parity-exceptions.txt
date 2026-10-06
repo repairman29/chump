@@ -466,3 +466,5 @@ Materialise the pattern file (runner home, mode 0600)       # reason: publish-gu
 Scan diff, commit messages and identities (counts only)     # reason: publish-guard.yml report-only scan of the PR range; same engine runs locally in the git hooks, and it can never fail
 Scan PR title and body (counts only)                        # reason: publish-guard.yml report-only scan of PR text from the event payload; locally bot-merge makes the same call
 Remove the pattern file                                     # reason: publish-guard.yml runner cleanup; GitHub Actions only
+test-doctrine-seam-finder.sh  # reason: META-1040 — hermetic fixture test for the doctrine seam-finder; runs standalone via `bash scripts/ci/test-doctrine-seam-finder.sh` and is picked up by preflight's scripts-scope test selection when the finder or test changes.
+test-doctrine-weave-detectors.sh  # reason: META-1041 — hermetic fixture test for the doctrine weave detectors; runs standalone via `bash scripts/ci/test-doctrine-weave-detectors.sh`.
