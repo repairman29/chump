@@ -7,6 +7,10 @@
         "hooks": [
           {
             "type": "command",
+            "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/setup/session-start-agent-pointer.sh\" ] && \"$REPO/scripts/setup/session-start-agent-pointer.sh\" 2>/dev/null || true"
+          },
+          {
+            "type": "command",
             "command": "REPO=$(git rev-parse --show-toplevel 2>/dev/null) && [ -x \"$REPO/scripts/setup/session-start-session-id.sh\" ] && \"$REPO/scripts/setup/session-start-session-id.sh\" 2>/dev/null || true"
           },
           {
