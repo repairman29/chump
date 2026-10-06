@@ -1290,6 +1290,9 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // renamed/removed without the help text being updated. Pure local
         // (one subprocess + a string diff), ~0.1s, no network.
         "scripts/ci/test-cli-help-regression.sh",
+        // ZERO-WASTE-126: wiring detectors D1/D2/D4 (built-but-unwired) — fixture
+        // test of scripts/ops/wiring-detectors.py. Pure local, ~0.3s, no network.
+        "scripts/ci/test-wiring-detectors.sh",
     ];
     candidates
         .iter()
