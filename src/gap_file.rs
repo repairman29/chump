@@ -78,6 +78,29 @@ pub struct Finding {
     /// Set => recorded locally by the caller, never filed as a gap.
     #[serde(default)]
     pub parked: Option<String>,
+    /// INFRA-8062: checkpoint written once `reserve` succeeds. A retry (spool
+    /// drain) that finds this set skips `reserve` and only re-runs `set`, so a
+    /// reserve-ok / set-fail never mints a second gap for the same finding.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reserved_gap_id: Option<String>,
+}
+
+/// INFRA-8062: stable idempotency key for a finding — FNV-1a 64 of
+/// `project|title` (the same identity `file-finding.mjs` dedups on), as hex.
+/// Used to collapse duplicate spool entries for one finding.
+pub fn idempotency_key(f: &Finding) -> String {
+    let mut h: u64 = 0xcbf29ce484222325;
+    for b in f
+        .project
+        .trim()
+        .bytes()
+        .chain(std::iter::once(b'|'))
+        .chain(f.title.trim().to_lowercase().bytes())
+    {
+        h ^= u64::from(b);
+        h = h.wrapping_mul(0x100000001b3);
+    }
+    format!("{h:016x}")
 }
 
 /// Resolve the gap-write endpoint URL from the environment.
@@ -191,17 +214,52 @@ pub fn set_body(f: &Finding, gap_id: &str) -> GapMutationBody {
 /// description/AC and opens the gap. Returns the canonical gap id on success.
 /// Either POST failing surfaces as `Err` (the caller spools and retries).
 pub async fn file_finding(url: &str, token: &str, f: &Finding) -> anyhow::Result<String> {
-    let reserved = route_gap_mutation_to_url(url, token, &reserve_body(f)).await?;
-    let gap_id = reserved.gap_id;
-    if gap_id.trim().is_empty() {
-        anyhow::bail!("reserve returned an empty gap id");
-    }
+    file_finding_resumable(url, token, &mut f.clone()).await
+}
+
+/// INFRA-8062: idempotent filing. Records the reserved id on `f` right after
+/// `reserve` succeeds, and skips `reserve` when `f` already carries one — so if
+/// the `set` POST fails, the caller spools the UPDATED finding and the retry
+/// completes the SAME gap instead of reserving a duplicate.
+pub async fn file_finding_resumable(
+    url: &str,
+    token: &str,
+    f: &mut Finding,
+) -> anyhow::Result<String> {
+    let gap_id = match f
+        .reserved_gap_id
+        .as_deref()
+        .filter(|s| !s.trim().is_empty())
+    {
+        Some(id) => id.to_string(),
+        None => {
+            let reserved = route_gap_mutation_to_url(url, token, &reserve_body(f)).await?;
+            let id = reserved.gap_id;
+            if id.trim().is_empty() {
+                anyhow::bail!("reserve returned an empty gap id");
+            }
+            f.reserved_gap_id = Some(id.clone());
+            id
+        }
+    };
     route_gap_mutation_to_url(url, token, &set_body(f, &gap_id)).await?;
     Ok(gap_id)
 }
 
 /// Append one finding to the durable spool (creating parent dirs as needed).
+/// INFRA-8062: a finding with the same [`idempotency_key`] already spooled is
+/// replaced only if the new copy carries a reserved id (never lose the
+/// checkpoint, never queue the same finding twice).
 pub fn append_spool(spool: &Path, f: &Finding) -> std::io::Result<()> {
+    let key = idempotency_key(f);
+    let mut existing = read_spool(spool);
+    if let Some(slot) = existing.iter_mut().find(|e| idempotency_key(e) == key) {
+        if f.reserved_gap_id.is_some() {
+            *slot = f.clone();
+            return rewrite_spool(spool, &existing);
+        }
+        return Ok(());
+    }
     if let Some(dir) = spool.parent() {
         std::fs::create_dir_all(dir)?;
     }
@@ -256,11 +314,13 @@ pub enum FileOutcome {
 /// Try to file `f`; on any error, append it to `spool` so it is retried on the
 /// next invocation. Never loses the finding.
 pub async fn file_or_spool(url: &str, token: &str, spool: &Path, f: &Finding) -> FileOutcome {
-    match file_finding(url, token, f).await {
+    let mut attempt = f.clone();
+    match file_finding_resumable(url, token, &mut attempt).await {
         Ok(gap_id) => FileOutcome::Filed(gap_id),
         Err(e) => {
             let reason = e.to_string();
-            if let Err(spool_err) = append_spool(spool, f) {
+            // `attempt` carries the reserved id if reserve succeeded.
+            if let Err(spool_err) = append_spool(spool, &attempt) {
                 // Could not even spool — surface both failures loudly.
                 return FileOutcome::Spooled(format!(
                     "{reason}; AND spool write failed: {spool_err}"
@@ -280,9 +340,10 @@ pub async fn drain_spool(url: &str, token: &str, spool: &Path) -> (usize, usize)
     }
     let mut remaining = Vec::new();
     let mut filed = 0usize;
-    for f in items {
-        match file_finding(url, token, &f).await {
+    for mut f in items {
+        match file_finding_resumable(url, token, &mut f).await {
             Ok(_) => filed += 1,
+            // `f` keeps any reserved id so the next drain only retries `set`.
             Err(_) => remaining.push(f),
         }
     }
@@ -396,7 +457,102 @@ mod tests {
             domain: None,
             external_repo: None,
             parked: None,
+            reserved_gap_id: None,
         }
+    }
+
+    /// INFRA-8062: reserve succeeds, the follow-up `set` fails (transient blip)
+    /// -> finding is spooled WITH the reserved id; the spool retry completes the
+    /// SAME gap. Exactly one reserve, two set attempts, one gap with full body.
+    #[tokio::test]
+    async fn reserve_ok_set_fail_retry_completes_same_gap() {
+        use std::sync::atomic::{AtomicUsize, Ordering};
+        use std::sync::{Arc, Mutex};
+
+        let reserves = Arc::new(AtomicUsize::new(0));
+        let set_attempts = Arc::new(AtomicUsize::new(0));
+        let stored: Arc<Mutex<Vec<serde_json::Value>>> = Arc::new(Mutex::new(Vec::new()));
+        let (r, s, st) = (reserves.clone(), set_attempts.clone(), stored.clone());
+
+        let server = MockServer::start().await;
+        Mock::given(method("POST"))
+            .and(path_matcher("/api/gap"))
+            .respond_with(move |req: &Request| {
+                let body: serde_json::Value = serde_json::from_slice(&req.body).unwrap();
+                match body["op"].as_str().unwrap_or("") {
+                    "reserve" => {
+                        let n = r.fetch_add(1, Ordering::SeqCst) + 1;
+                        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                            "gap_id": format!("PRODUCT-{}", 9000 + n),
+                            "op": "reserve", "status": "ok", "detail": "d"
+                        }))
+                    }
+                    _ => {
+                        // First `set` fails; later ones succeed and record the gap.
+                        if s.fetch_add(1, Ordering::SeqCst) == 0 {
+                            return ResponseTemplate::new(503);
+                        }
+                        st.lock().unwrap().push(body.clone());
+                        ResponseTemplate::new(200).set_body_json(serde_json::json!({
+                            "gap_id": body["gap_id"], "op": "set", "status": "ok", "detail": "d"
+                        }))
+                    }
+                }
+            })
+            .mount(&server)
+            .await;
+        let url = format!("{}/api/gap", server.uri());
+
+        let dir = tempdir().unwrap();
+        let spool = dir.path().join("gap-spool.jsonl");
+
+        let outcome = file_or_spool(&url, "tok", &spool, &finding()).await;
+        assert!(matches!(outcome, FileOutcome::Spooled(_)));
+        let spooled = read_spool(&spool);
+        assert_eq!(spooled.len(), 1);
+        assert_eq!(spooled[0].reserved_gap_id.as_deref(), Some("PRODUCT-9001"));
+
+        let (filed, remaining) = drain_spool(&url, "tok", &spool).await;
+        assert_eq!((filed, remaining), (1, 0));
+        assert_eq!(
+            reserves.load(Ordering::SeqCst),
+            1,
+            "retry must not re-reserve"
+        );
+        let stored = stored.lock().unwrap();
+        assert_eq!(stored.len(), 1, "exactly one gap completed");
+        assert_eq!(stored[0]["gap_id"], "PRODUCT-9001");
+        assert_eq!(
+            stored[0]["description"],
+            "Repro: POST /checkout with no items -> 500."
+        );
+        assert_eq!(
+            stored[0]["acceptance_criteria"][0],
+            "empty cart returns 400 not 500"
+        );
+    }
+
+    #[test]
+    fn spool_dedups_by_idempotency_key_and_keeps_checkpoint() {
+        let dir = tempdir().unwrap();
+        let spool = dir.path().join("gap-spool.jsonl");
+        append_spool(&spool, &finding()).unwrap();
+        // Same finding again (e.g. agent re-files): not queued twice.
+        append_spool(&spool, &finding()).unwrap();
+        assert_eq!(read_spool(&spool).len(), 1);
+        // A copy that carries the reserved id replaces the bare one.
+        let mut with_id = finding();
+        with_id.reserved_gap_id = Some("PRODUCT-9001".into());
+        append_spool(&spool, &with_id).unwrap();
+        let read = read_spool(&spool);
+        assert_eq!(read.len(), 1);
+        assert_eq!(read[0].reserved_gap_id.as_deref(), Some("PRODUCT-9001"));
+        // A bare copy never wipes the checkpoint.
+        append_spool(&spool, &finding()).unwrap();
+        assert_eq!(
+            read_spool(&spool)[0].reserved_gap_id.as_deref(),
+            Some("PRODUCT-9001")
+        );
     }
 
     #[test]
