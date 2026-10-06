@@ -3290,3 +3290,4 @@ CHUMP_DAEMON_CONTRACT_PLIST_DIRS
 # Replace the AUTO marker with a real description on the next commit.
 # detected in: (standard input)
 CHUMP_ALMANAC_CENSUS_MIN_PCT
+CHUMP_LOCAL_XML_TOOL_TAGS
