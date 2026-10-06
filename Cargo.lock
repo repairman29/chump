@@ -1848,6 +1848,18 @@ dependencies = [
 ]
 
 [[package]]
+name = "chump-mcp-code"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "chump-ast-crawler",
+ "rusqlite",
+ "serde",
+ "serde_json",
+ "tempfile",
+]
+
+[[package]]
 name = "chump-mcp-coord"
 version = "0.1.0"
 dependencies = [

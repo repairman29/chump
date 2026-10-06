@@ -29,6 +29,11 @@ set -euo pipefail
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 EMIT="$REPO_ROOT/scripts/dev/ambient-emit.sh"
 
+# INFRA-8076: incremental code-index refresh (best-effort, backgrounded, never
+# blocks or fails the commit). Runs before the ambient early-exit below.
+[ -x "$REPO_ROOT/scripts/git-hooks/post-commit-code-index.sh" ] \
+    && "$REPO_ROOT/scripts/git-hooks/post-commit-code-index.sh" >/dev/null 2>&1 || true
+
 [ -x "$EMIT" ] || exit 0
 
 SHA="$(git rev-parse --short HEAD 2>/dev/null || true)"

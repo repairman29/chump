@@ -28,6 +28,22 @@ Runs the Chump A/B eval harness and retrieves sweep results.  Demonstrates the *
 
 ---
 
+### `chump-mcp-code`
+
+Symbol search over a tree-sitter code index (Rust, bash, Python) kept in `.chump/code_index.db`,
+updated incrementally by a post-commit hook.
+
+| Tool | Description |
+|---|---|
+| `search_symbols` | Substring match on symbol name, optional `kind` filter |
+| `file_symbols` | Symbols indexed for one repo-relative file |
+| `index_stats` | File/symbol counts per language |
+| `reindex` | Re-index given paths (default: whole repo) |
+
+**Requires:** `CHUMP_REPO`. Index with `chump-mcp-code index --all`. See the crate README.
+
+---
+
 ### `chump-mcp-gaps`
 
 Queries the Chump gap registry (`docs/gaps.yaml`) and claims gaps.

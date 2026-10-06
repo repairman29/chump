@@ -1524,6 +1524,9 @@ jobs:
       - name: chump-mcp-coord tools/list (INFRA-033)
         run: bash scripts/ci/test-mcp-coord-smoke.sh
 
+      - name: chump-mcp-code smoke — server, tree-sitter index, post-commit hook (INFRA-8076)
+        run: bash scripts/ci/test-mcp-code-smoke.sh
+
       - name: env-var coverage — all src/ reads documented or allowlisted (DOC-026)
         run: bash scripts/ci/test-env-var-coverage.sh
 
