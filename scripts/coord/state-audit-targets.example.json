@@ -23,5 +23,24 @@
       "probe_cmd": "/path/to/minimal-auth-probe",
       "probe_timeout_secs": 20
     }
+  ],
+  "cycles": [
+    {
+      "id": "cycle-example",
+      "kind": {"type": "command", "cmd": "cat /path/to/last-cycle-kind"},
+      "shipped_kinds": ["ship", "shipped", "merged"],
+      "pr_merged": {"type": "command", "cmd": "/path/to/print-pr-state"},
+      "merged_values": ["merged"],
+      "not_merged_values": ["open", "closed"]
+    }
+  ],
+  "gaps": [
+    {
+      "id": "GAP-EXAMPLE",
+      "status": {"type": "command", "cmd": "/path/to/print-gap-status"},
+      "done_values": ["done", "closed", "shipped"],
+      "fix_hash": {"type": "command", "cmd": "/path/to/print-fix-commit"},
+      "running_hash": {"type": "command", "cmd": "/path/to/print-running-build-hash"}
+    }
   ]
 }

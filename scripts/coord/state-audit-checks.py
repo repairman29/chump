@@ -16,6 +16,16 @@ prints one glanceable line:
       The REPORTED auth status vs a real minimal auth probe. DIVERGE = false-ok
       (reported ok, probe says dead) or false-dead (reported dead, probe says alive).
 
+  cycle_kind_vs_pr_merged   (META-1049)
+      The REPORTED cycle kind (e.g. "ship") vs whether the PR actually merged.
+      DIVERGE = false-shipped (cycle claims a ship, PR is not merged) or
+      false-unshipped (cycle claims no ship, PR merged).
+
+  gap_done_vs_running_hash  (META-1049)
+      A gap reported done vs whether its fix hash is actually RUNNING.
+      DIVERGE = done-but-not-running (merged != running). A gap not reported done
+      is not a lie, so it AGREEs.
+
 A check that cannot get ground truth reports UNKNOWN — never a false AGREE.
 
 HOST-AGNOSTIC. Nothing about any node or credential is hard-coded: targets come
@@ -30,7 +40,25 @@ scripts/coord/state-audit-targets.example.json for the shape:
    "auth":  [{"id": "oauth-primary",
               "status": {"type": "file"|"command", ...},   # prints/contains the reported status
               "ok_values": ["ok","live"], "dead_values": ["dead","expired"],
-              "probe_cmd": "<cmd>", "probe_timeout_secs": 20}]}
+              "probe_cmd": "<cmd>", "probe_timeout_secs": 20}],
+   "cycles": [{"id": "cycle-1",
+               "kind": {"type": "file"|"command", ...},        # reported cycle kind
+               "shipped_kinds": ["ship", "shipped", "merged"],  # kinds that claim a merge
+               "pr_merged": {"type": "file"|"command", ...},    # ground truth, see below
+               "merged_values": ["merged"], "not_merged_values": ["open", "closed"]}],
+   "gaps":   [{"id": "GAP-1",
+               "status": {"type": "file"|"command", ...},       # reported gap status
+               "done_values": ["done", "closed", "shipped"],
+               "fix_hash": {"type": "file"|"command", ...},     # the fix commit
+               "running_hash": {"type": "file"|"command", ...}, # what is actually running
+               "contains_cmd": "<cmd with {fix} {running}>"}]}  # optional: exit 0 = running has fix
+
+  cycles.pr_merged: the source's text is matched against merged_values /
+                    not_merged_values (default merged vs open/closed); anything else
+                    is UNKNOWN.
+  gaps running check: running_hash/fix_hash agree when one is a prefix of the other
+                    (short vs full SHA), or when contains_cmd exits 0 (e.g. a
+                    `git merge-base --is-ancestor {fix} {running}` wrapper).
 
   last_seen sources:  file    {"path"}                       -> file mtime
                       ambient {"path","node_field"?,"node_value"?} -> newest event ts for that node
@@ -210,10 +238,100 @@ def check_auth(cfg: dict) -> list[dict]:
     return rows
 
 
+# ── cycle_kind_vs_pr_merged / gap_done_vs_running_hash (META-1049) ───────────
+def read_source(src: dict) -> str | None:
+    """Text of a file/command source, or None when unavailable."""
+    return reported_auth(src)
+
+
+def check_cycles(cfg: dict) -> list[dict]:
+    rows = []
+    for c in cfg.get("cycles", []):
+        cid = c["id"]
+        kind_text = read_source(c.get("kind", {}))
+        shipped_kinds = [k.lower() for k in c.get("shipped_kinds", ["ship", "shipped", "merged"])]
+        merged_state = classify_merged(read_source(c.get("pr_merged", {})),
+                                       c.get("merged_values", ["merged"]),
+                                       c.get("not_merged_values", ["open", "closed"]))
+        if kind_text is None or not kind_text.strip() or merged_state == "unknown":
+            rows.append(verdict_row("cycle_kind_vs_pr_merged", cid,
+                                    f"cycle kind {kind_text.strip() if kind_text and kind_text.strip() else 'unavailable'}",
+                                    f"PR merge state {merged_state}", "UNKNOWN",
+                                    "need both a cycle kind and a recognisable PR merge state"))
+            continue
+        kind = kind_text.strip().lower()
+        claims_ship = kind in shipped_kinds
+        sr, gt = f"cycle kind {kind}", f"PR {merged_state}"
+        if claims_ship and merged_state == "not-merged":
+            rows.append(verdict_row("cycle_kind_vs_pr_merged", cid, sr, gt, "DIVERGE",
+                                    "false-shipped: the cycle reports a ship but the PR did not merge"))
+        elif not claims_ship and merged_state == "merged":
+            rows.append(verdict_row("cycle_kind_vs_pr_merged", cid, sr, gt, "DIVERGE",
+                                    "false-unshipped: the PR merged but the cycle does not report a ship"))
+        else:
+            rows.append(verdict_row("cycle_kind_vs_pr_merged", cid, sr, gt, "AGREE",
+                                    "cycle kind matches the PR outcome"))
+    return rows
+
+
+def classify_merged(text: str | None, merged_values: list[str], not_merged_values: list[str]) -> str:
+    if text is None:
+        return "unknown"
+    t = text.strip().lower()
+    if any(v.lower() in t for v in not_merged_values):
+        return "not-merged"
+    if any(v.lower() in t for v in merged_values):
+        return "merged"
+    return "unknown"
+
+
+def hash_running(fix: str, running: str, contains_cmd: str) -> bool | None:
+    """True/False when the fix is/isn't in what is running; None when unanswerable."""
+    if contains_cmd:
+        out = run_shell(contains_cmd.replace("{fix}", fix).replace("{running}", running), 20)
+        return None if out is None else out[0] == 0
+    return fix.startswith(running) or running.startswith(fix)
+
+
+def check_gaps(cfg: dict) -> list[dict]:
+    rows = []
+    for g in cfg.get("gaps", []):
+        gid = g["id"]
+        status = (read_source(g.get("status", {})) or "").strip().lower()
+        done_values = [v.lower() for v in g.get("done_values", ["done", "closed", "shipped"])]
+        if not status:
+            rows.append(verdict_row("gap_done_vs_running_hash", gid, "status unavailable", "-", "UNKNOWN",
+                                    "no reported gap status"))
+            continue
+        if status not in done_values:
+            rows.append(verdict_row("gap_done_vs_running_hash", gid, f"status {status}", "n/a (not reported done)",
+                                    "AGREE", "not claimed done, so there is nothing to contradict"))
+            continue
+        fix = (read_source(g.get("fix_hash", {})) or "").strip()
+        running = (read_source(g.get("running_hash", {})) or "").strip()
+        if not fix or not running:
+            rows.append(verdict_row("gap_done_vs_running_hash", gid, "status done",
+                                    f"fix {fix[:12] or 'unavailable'}, running {running[:12] or 'unavailable'}", "UNKNOWN",
+                                    "need both the fix hash and the running hash"))
+            continue
+        is_running = hash_running(fix, running, g.get("contains_cmd", ""))
+        gt = f"fix {fix[:12]}, running {running[:12]}"
+        if is_running is None:
+            rows.append(verdict_row("gap_done_vs_running_hash", gid, "status done", gt, "UNKNOWN",
+                                    "could not determine whether the running build contains the fix"))
+        elif is_running:
+            rows.append(verdict_row("gap_done_vs_running_hash", gid, "status done", gt, "AGREE",
+                                    "the fix is what is running"))
+        else:
+            rows.append(verdict_row("gap_done_vs_running_hash", gid, "status done", gt, "DIVERGE",
+                                    "done-but-not-running: merged != running"))
+    return rows
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--config", default=os.environ.get("CHUMP_STATE_AUDIT_CONFIG", ""))
-    ap.add_argument("--check", default="all", choices=["nodes", "auth", "all"])
+    ap.add_argument("--check", default="all", choices=["nodes", "auth", "cycles", "gaps", "all"])
     ap.add_argument("--now", default="", help="ISO-8601 or epoch seconds (tests); default: now")
     ap.add_argument("--json", action="store_true")
     ap.add_argument("--strict", action="store_true", help="exit 1 when any check DIVERGEs")
@@ -234,6 +352,10 @@ def main() -> int:
         rows += check_nodes(cfg, now)
     if a.check in ("auth", "all"):
         rows += check_auth(cfg)
+    if a.check in ("cycles", "all"):
+        rows += check_cycles(cfg)
+    if a.check in ("gaps", "all"):
+        rows += check_gaps(cfg)
     if a.json:
         for r in rows:
             print(json.dumps(r, sort_keys=True))
