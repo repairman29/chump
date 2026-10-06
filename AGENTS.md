@@ -538,6 +538,28 @@ applied to the bus.)
 private kit's join step (it installs the bridge, mints the agent's identity, and
 wires the client). Do not add hosts, identities, or setup detail to this repo.
 
+### Runtime verification before a missing-claim (INFRA-8080)
+
+Behaviour 4 above, made mechanical. Before you file a gap, RCA or message that
+says something is **missing / never shipped / reverted / not implemented**, run
+the runtime check that would have found it and cite the result. An empty
+lookup is not evidence of absence — `chump gap show` prints the same "not
+found" for a typo and for a **reaped** gap that long since shipped
+([INFRA-1575](docs/gaps/INFRA-1575.yaml)), and a stale local checkout looks
+like a revert on `origin/main` (INFRA-238).
+
+- Gap id → `code.gap_history <ID>` (`chump-mcp-code`). Only `never_existed`
+  supports "never existed"; `done` / `reaped` return the `shipped_pr` to link.
+- Symbol / feature → `code.find_symbol`, then `code.callers_of` to see if it
+  is wired in.
+- File or state divergence → `git fetch origin main && git show origin/main:<path>`.
+- Tools unavailable → `scripts/dev/verify-existence.sh <ID-or-symbol>`.
+
+Tool surface, response shapes and a worked A2A example:
+[`docs/process/CODE_INTELLIGENCE.md`](./docs/process/CODE_INTELLIGENCE.md).
+`scripts/ci/test-misdiagnosis-prevention.sh` replays the INFRA-1575 scenario in
+CI so this stays enforced.
+
 
 ## Where to find docs
 
@@ -545,6 +567,7 @@ wires the client). Do not add hosts, identities, or setup detail to this repo.
 |---|---|
 | [`docs/architecture/ARCHITECTURE.md`](./docs/architecture/ARCHITECTURE.md) | System map: crates, data flow, key types |
 | [`docs/process/AGENT_COORDINATION.md`](./docs/process/AGENT_COORDINATION.md) | Lease system, branch model, failure modes |
+| [`docs/process/CODE_INTELLIGENCE.md`](./docs/process/CODE_INTELLIGENCE.md) | `chump-mcp-code` tools (`code.find_symbol` / `callers_of` / `gap_history`) and the verify-before-missing-claim rule (INFRA-1583, INFRA-8080) |
 | [`docs/architecture/TEAM_OF_AGENTS.md`](./docs/architecture/TEAM_OF_AGENTS.md) | Multi-agent design and roles |
 | [`docs/design/A2A_ROADMAP.md`](./docs/design/A2A_ROADMAP.md) | Frontier a2a roadmap — six layers (NATS-primary, RPC, capability discovery, shared KV, deliberation, signed provenance) sequenced from today's primitives to world-class fleet coordination (META-061) |
 | [`docs/architecture/A2A_TWO_WAY_COMMS.md`](./docs/architecture/A2A_TWO_WAY_COMMS.md) | Two-way operator ↔ fleet comms: identity model, urgency/severity schema, reach hierarchy (inbox/toast/push/digest), filter rules, correlation_id reply contract (DOC-049) |
@@ -998,10 +1021,12 @@ INFRA-238 is the earlier sibling — claiming origin/main reverted state
 without `git fetch origin main && git show origin/main:<path>`
 verification. Same class.
 
-[INFRA-1583](docs/gaps/INFRA-1583.yaml) (chump-mcp-code MCP server,
-Phase 5) will ship a structured query layer that makes these checks
-one MCP call each, 100× cheaper than file reads. Until then, the
-CLI shortcuts above are the discipline.
+[INFRA-1583](docs/gaps/INFRA-1583.yaml) (chump-mcp-code MCP server)
+provides a structured query layer that makes these checks one MCP call
+each (`code.find_symbol`, `code.callers_of`, `code.gap_history`), 100×
+cheaper than file reads — see
+[`docs/process/CODE_INTELLIGENCE.md`](./docs/process/CODE_INTELLIGENCE.md).
+Where the server is not available, the CLI shortcuts above are the discipline.
 
 **Why these four matter together:** behaviour 1 is the human-in-the-
 loop catch (what the operator just did with the "Did we do any RCA
