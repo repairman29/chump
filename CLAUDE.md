@@ -130,6 +130,11 @@ or `git ls-tree origin/main path/to/X`. Local `ls` lies when your checkout is 40
 commits behind. Full rules + anti-patterns + decision table in
 [`docs/process/FRESHNESS_DISCIPLINE.md`](./docs/process/FRESHNESS_DISCIPLINE.md) (DOC-059 / META-114).
 
+**Verify-existence discipline** (META-113) — before filing or asserting that X is
+missing or present, check `origin/main`, not the local working tree: use the
+`verify-existence` skill (`scripts/dev/verify-existence.sh --explicit-source-check <path-or-symbol>`)
+or `git ls-tree origin/main <path>`. Never a bare `ls`; long sessions drift 40+ commits behind.
+
 The SessionStart hook (INFRA-1150 a2a-inbox-inject) auto-surfaces unread
 peer broadcasts at the top of every session digest under a `Pending
 broadcasts` header. Process + reply per

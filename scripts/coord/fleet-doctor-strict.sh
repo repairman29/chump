@@ -55,6 +55,13 @@
 #                        Skips (not fail) when no untracked override files
 #                        are present on this node — nothing outside git to
 #                        drift from.
+#   17. checkout-parked-off-main — RESILIENT-1512: REPO_ROOT's checked-out
+#                        branch sitting on something other than `main` for
+#                        longer than CHECKOUT_PARKED_STALE_S pages
+#                        (kind=checkout_parked_off_main) — the hub-node
+#                        failure mode where a stale/parked checkout silently
+#                        degrades `gap ship` proof-of-merge and other
+#                        main-relative tooling until someone notices by hand.
 #
 # Thresholds (override via env)
 #   LEASE_STALE_HOURS         default 2    — leases older than N hours are flagged
@@ -74,7 +81,10 @@
 #                              $HOME/.chump/providers.env
 #                              $HOME/.chump/chumpd.env" — untracked, node-local
 #                              files that may hand-set the same vars
+#   CHECKOUT_PARKED_STALE_S   default 3600 — REPO_ROOT checked out on a
+#                              non-main branch for longer than N seconds fails
 #
+
 # Bypass: CHUMP_FLEET_DOCTOR=0 exits 0 (for scripted contexts that want raw signal).
 #
 # Rust-First-Bypass: read-only health aggregator over existing CLI tools; no
@@ -1409,6 +1419,62 @@ print("; ".join(parts))
         "$checked_count tracked var(s) checked against ${#live_files[@]} live file(s) — no drift" ""
 }
 
+#  17. checkout-parked-off-main — RESILIENT-1512: the canonical gap-store
+#      checkout (this REPO_ROOT) was observed sitting on a feature branch
+#      (fix/apex-watchdog-skip-not-always-on) with ~8.9k dirty files while
+#      local main was 17 commits / 21h behind origin — invisible until a
+#      `chump gap ship` refused to close a gap whose PR had already merged.
+#      Tracks a marker file recording (branch, first-seen-ts) so a checkout
+#      that's merely mid-rebase for a few minutes doesn't page, but one
+#      parked off main for over CHECKOUT_PARKED_STALE_S does.
+check_checkout_parked_off_main() {
+    if [[ ! -d "$REPO_ROOT/.git" ]]; then
+        register_check "checkout-parked-off-main" "skip" "no .git under REPO_ROOT" ""
+        return
+    fi
+    local branch
+    branch="$(git -C "$REPO_ROOT" rev-parse --abbrev-ref HEAD 2>/dev/null || echo "HEAD")"
+    local marker="$REPO_ROOT/.chump-locks/checkout-off-main.marker"
+    local stale_s="${CHECKOUT_PARKED_STALE_S:-3600}"
+    local now_ts
+    now_ts="$(date -u +%s)"
+
+    if [[ "$branch" == "main" ]]; then
+        rm -f "$marker" 2>/dev/null || true
+        register_check "checkout-parked-off-main" "pass" "checkout is on main" ""
+        return
+    fi
+
+    mkdir -p "$REPO_ROOT/.chump-locks" 2>/dev/null || true
+    local marker_branch="" marker_ts=0
+    if [[ -f "$marker" ]]; then
+        marker_branch="$(sed -n 1p "$marker" 2>/dev/null)"
+        marker_ts="$(sed -n 2p "$marker" 2>/dev/null)"; marker_ts="${marker_ts:-0}"
+    fi
+
+    if [[ "$marker_branch" != "$branch" ]]; then
+        # Just switched onto this branch (or marker absent) — start the clock.
+        printf '%s\n%s\n' "$branch" "$now_ts" > "$marker" 2>/dev/null || true
+        register_check "checkout-parked-off-main" "pass" \
+            "checkout on '$branch' (just detected — starting ${stale_s}s clock)" ""
+        return
+    fi
+
+    local age=$(( now_ts - marker_ts ))
+    if (( age >= stale_s )); then
+        local amb="${CHUMP_AMBIENT_LOG:-$REPO_ROOT/.chump-locks/ambient.jsonl}"
+        printf '{"ts":"%s","kind":"checkout_parked_off_main","branch":"%s","age_s":%d,"source":"fleet-doctor-strict.sh"}\n' \
+            "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$branch" "$age" >> "$amb" 2>/dev/null || true
+        register_check "checkout-parked-off-main" "fail" \
+            "REPO_ROOT has sat on '$branch' for ${age}s (threshold ${stale_s}s) instead of main — gap ship proof-of-merge and other main-relative tooling degrade on this checkout" \
+            "cd $REPO_ROOT && git status (triage/commit or stash the branch's changes), then git checkout main"
+        return
+    fi
+
+    register_check "checkout-parked-off-main" "pass" \
+        "checkout on '$branch' for ${age}s (threshold ${stale_s}s) — not yet stale" ""
+}
+
 # When sourced for testing (FLEET_DOCTOR_SOURCED=1), stop here — the test
 # harness calls individual check_* functions directly instead of paying for
 # the full (networked) sweep.
@@ -1434,6 +1500,7 @@ check_ops_defect_selfdiag
 check_auth_probe
 check_self_healer_heartbeat
 check_tracked_config_drift
+check_checkout_parked_off_main
 
 # ── Render output ──────────────────────────────────────────────────────────────
 if [[ "$OUTPUT" == "json" ]]; then
