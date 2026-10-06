@@ -66,6 +66,31 @@ grep -q '^export CHUMP_STORE_BACKEND=' "$NODE_ENV_FILE" 2>/dev/null \
   && pass "node.env exports CHUMP_STORE_BACKEND" \
   || fail "node.env missing CHUMP_STORE_BACKEND export"
 
+# ── 1b. RESILIENT-1513: CHUMP_GAP_SERVER pins gap-filing clients
+# (src/gap_file.rs, default 127.0.0.1:7070) to the CANONICAL store node —
+# derived from CHUMP_GAP_STORE_URL's host, not left to default localhost —
+# so a bat-phone filing never silently targets a stale local fleet-server.
+grep -q '^export CHUMP_GAP_SERVER=' "$NODE_ENV_FILE" 2>/dev/null \
+  && pass "node.env exports CHUMP_GAP_SERVER" \
+  || fail "node.env missing CHUMP_GAP_SERVER export"
+
+gap_server_value="$(grep '^export CHUMP_GAP_SERVER=' "$NODE_ENV_FILE" 2>/dev/null | head -1 | cut -d= -f2-)"
+expected_gap_server="$(printf '%s' "$CHUMP_GAP_STORE_URL" | sed -E 's#^(https?://[^:/]+).*#\1#'):7070"
+[ "$gap_server_value" = "$expected_gap_server" ] \
+  && pass "CHUMP_GAP_SERVER derives from CHUMP_GAP_STORE_URL's host at port 7070 ($gap_server_value)" \
+  || fail "CHUMP_GAP_SERVER=$gap_server_value does not match expected $expected_gap_server (derived from CHUMP_GAP_STORE_URL=$CHUMP_GAP_STORE_URL)"
+
+# An explicit operator override must win over the derived default.
+(
+  CHUMP_GAP_SERVER="http://override-host:9999"
+  export CHUMP_GAP_SERVER
+  write_node_env >/dev/null 2>&1
+  grep -q '^export CHUMP_GAP_SERVER=http://override-host:9999$' "$NODE_ENV_FILE"
+) && pass "an explicit CHUMP_GAP_SERVER override wins over the derived default" \
+  || fail "explicit CHUMP_GAP_SERVER override was not honored"
+unset CHUMP_GAP_SERVER
+write_node_env >/dev/null 2>&1
+
 # ── 2. interactive-shell hook: idempotent, sources node.env ────────────────
 MARKER="chump-node-install: source node.env"
 grep -qF "$MARKER" "$FAKE_HOME/.bashrc" 2>/dev/null \
