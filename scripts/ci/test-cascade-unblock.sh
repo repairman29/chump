@@ -11,6 +11,10 @@
 #   4. Safety guard: PR with CHUMP_HOLD label → cascade_unblock_skipped reason=chump_hold_label
 #   5. Safety guard: rebase conflict → cascade_unblock_skipped reason=rebase_conflict
 #   6. Rate limit: more PRs than CHUMP_UNBLOCK_RATE_LIMIT → stops at limit
+#   RESILIENT-1521 generic stale sweep (no wedge_auto_fix label / sibling needed):
+#   7. BLOCKED + DIRTY PRs stale vs main → update-branch'd; real conflict escalated
+#   8. Refreshed PR still BLOCKED but up to date → routed to ci-audit once, no re-loop
+#   9. BLOCKED PR not stale (behind_by=0, never refreshed) → untouched
 
 set -uo pipefail
 
@@ -77,6 +81,15 @@ get_pr_num() {
 ARGS="$*"
 
 case "$ARGS" in
+    *"pr list"*"--state open"*)
+        read_behavior "open_prs" | grep . || printf '[]\n'
+        ;;
+    *"api"*"compare/"*)
+        # head sha encodes the PR: "head<N>" -> behind_by from behavior key behind_<N>
+        head="${ARGS##*...}"; n="${head#head}"
+        b="$(read_behavior "behind_$n")"
+        printf '{"behind_by":%s,"merge_base_commit":{"sha":"mb%s"}}\n' "${b:-0}" "$(read_behavior "main_sha")"
+        ;;
     *"pr list"*"merged"*"wedge_auto_fix"*|*"pr list"*"wedge_auto_fix"*"merged"*)
         override="$(read_behavior "merged_prs")"
         if [[ -n "$override" ]]; then
@@ -303,6 +316,76 @@ if [[ "$RATE_SKIPS" -ge 1 ]]; then
 else
     fail "expected cascade_unblock_skipped reason=rate_limit_reached (ambient: $(cat "$AMBIENT"))"
 fi
+
+# ── RESILIENT-1521 generic stale sweep ───────────────────────────────────────
+STATE="$FAKE/state.tsv"
+open_prs() {  # args: "num:STATE" ...
+    local out="[" first=1 a
+    for a in "$@"; do
+        [[ $first == 1 ]] || out+=","; first=0
+        out+="{\"number\":${a%%:*},\"mergeStateStatus\":\"${a#*:}\",\"baseRefName\":\"main\",\"headRefOid\":\"head${a%%:*}\"}"
+    done
+    printf '%s]' "$out"
+}
+sweep_env() { run_detector CHUMP_UNBLOCK_STATE="$STATE" "$@"; }
+
+echo "--- Test 7: stale BLOCKED/DIRTY PRs update-branch'd without any wedge label ---"
+> "$AMBIENT"; > "$FAKE/update_branch_calls"; rm -f "$STATE"
+{
+    printf 'merged_prs:[]\n'
+    printf 'open_prs:%s\n' "$(open_prs 5112:BLOCKED 5136:BLOCKED 5129:DIRTY 5150:CLEAN)"
+    printf 'behind_5112:3\nbehind_5136:3\nbehind_5129:3\nbehind_5150:3\nmain_sha:A\n'
+    printf 'conflict_pr:5129\n'
+} > "$FAKE/gh_behavior"
+sweep_env >/dev/null || true
+CALLS="$(cat "$FAKE/update_branch_calls")"
+if printf '%s' "$CALLS" | grep -qx 5112 && printf '%s' "$CALLS" | grep -qx 5136 && printf '%s' "$CALLS" | grep -qx 5129; then
+    ok "stale BLOCKED (5112, 5136) and DIRTY (5129) all attempted"
+else
+    fail "expected update-branch for 5112/5136/5129 (calls: $(printf '%s' "$CALLS" | tr '\n' ','))"
+fi
+if printf '%s' "$CALLS" | grep -qx 5150; then fail "CLEAN PR 5150 must not be touched"; else ok "CLEAN PR untouched"; fi
+if grep '"kind":"cascade_unblock_skipped"' "$AMBIENT" | grep '"pr_number":5129' | grep -q '"reason":"rebase_conflict"'; then
+    ok "DIRTY conflict 5129 escalated as rebase_conflict (not force-resolved)"
+else
+    fail "expected rebase_conflict skip for 5129 (ambient: $(cat "$AMBIENT"))"
+fi
+# conflict is not retried until main moves again
+> "$FAKE/update_branch_calls"
+sweep_env >/dev/null || true
+if grep -qx 5129 "$FAKE/update_branch_calls"; then fail "conflicted PR 5129 re-attempted on same base"; else ok "conflict not re-looped on same base"; fi
+
+echo "--- Test 8: refreshed PR still BLOCKED on fresh base → ci-audit once ---"
+> "$AMBIENT"; > "$FAKE/update_branch_calls"
+{
+    printf 'merged_prs:[]\n'
+    printf 'open_prs:%s\n' "$(open_prs 5112:BLOCKED)"
+    printf 'behind_5112:0\nmain_sha:A\n'
+} > "$FAKE/gh_behavior"
+sweep_env >/dev/null || true
+sweep_env >/dev/null || true
+ROUTED="$(grep '"kind":"pr_stuck"' "$AMBIENT" | grep -c '"pr_number":5112')"
+if [[ "$ROUTED" == "1" ]] && grep '"kind":"pr_stuck"' "$AMBIENT" | grep -q 'failing_after_fresh_base'; then
+    ok "5112 routed to ci-audit exactly once (pr_stuck failing_after_fresh_base)"
+else
+    fail "expected exactly one pr_stuck for 5112, got $ROUTED (ambient: $(cat "$AMBIENT"))"
+fi
+if [[ -s "$FAKE/update_branch_calls" ]]; then fail "routed PR must not be re-updated"; else ok "no re-loop after fresh-base failure"; fi
+
+echo "--- Test 9: BLOCKED but not stale and never refreshed → untouched ---"
+> "$AMBIENT"; > "$FAKE/update_branch_calls"; rm -f "$STATE"
+{
+    printf 'merged_prs:[]\n'
+    printf 'open_prs:%s\n' "$(open_prs 7000:BLOCKED)"
+    printf 'behind_7000:0\nmain_sha:A\n'
+} > "$FAKE/gh_behavior"
+sweep_env >/dev/null || true
+if [[ -s "$FAKE/update_branch_calls" ]] || grep -q '"kind":"pr_stuck"' "$AMBIENT"; then
+    fail "non-stale BLOCKED PR should be left alone"
+else
+    ok "non-stale BLOCKED PR untouched"
+fi
+rm -f "$FAKE/gh_behavior"
 
 # ── Summary ────────────────────────────────────────────────────────────────────
 echo ""

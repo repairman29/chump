@@ -13,6 +13,15 @@
 #   4. Call gh pr update-branch on each matched safe PR
 #   5. Emit kind=cascade_unblocked (success) or kind=cascade_unblock_skipped (per-skip)
 #
+# RESILIENT-1521 generic stale sweep (runs every tick, no label / sibling needed):
+#   every open PR whose mergeStateStatus is BLOCKED or DIRTY and whose base has
+#   advanced past its merge-base (compare behind_by > 0) gets gh pr update-branch
+#   so CI re-runs on the fresh base. Real conflicts are escalated, never resolved
+#   (cascade_unblock_skipped reason=rebase_conflict). A PR we already refreshed
+#   that is up to date with base yet still BLOCKED is a REAL failure: it is routed
+#   once to the ci-audit curator (kind=pr_stuck reason=failing_after_fresh_base)
+#   and never re-looped. State: CHUMP_UNBLOCK_STATE (pr<TAB>action<TAB>base_sha).
+#
 # Safety guards (NEVER skip):
 #   a. Operator commented in last 30min → skip with reason=operator_recent_comment
 #   b. PR has CHUMP_HOLD label → skip with reason=chump_hold_label
@@ -27,6 +36,7 @@
 #   CHUMP_UNBLOCK_PR_LOOKBACK_S        how far back to scan pr_failed events (default 7200)
 #   CHUMP_UNBLOCK_OPERATOR_WINDOW_S    operator recency window in seconds (default 1800)
 #   CHUMP_UNBLOCK_RATE_LIMIT           max rebase attempts per run (default 10)
+#   CHUMP_UNBLOCK_STATE                stale-sweep state file (default <ambient dir>/cascade-unblock-state.tsv)
 #   CHUMP_UNBLOCK_SKIP=1               skip env (test/emergency kill-switch)
 #   CHUMP_UNBLOCK_DRY_RUN=1            dry-run mode: log but don't call gh pr update-branch
 #
@@ -51,6 +61,7 @@ PR_LOOKBACK_S="${CHUMP_UNBLOCK_PR_LOOKBACK_S:-7200}"
 OPERATOR_WINDOW_S="${CHUMP_UNBLOCK_OPERATOR_WINDOW_S:-1800}"
 RATE_LIMIT="${CHUMP_UNBLOCK_RATE_LIMIT:-10}"
 DRY_RUN="${CHUMP_UNBLOCK_DRY_RUN:-0}"
+STATE_FILE="${CHUMP_UNBLOCK_STATE:-$(dirname "$AMBIENT")/cascade-unblock-state.tsv}"
 
 # ── Utilities ─────────────────────────────────────────────────────────────────
 
@@ -344,6 +355,127 @@ PY
     return 1  # no hold
 }
 
+# ── Step 3b: Generic stale sweep (RESILIENT-1521) ─────────────────────────────
+#
+# Independent of wedge_auto_fix labels / same-signature siblings: any open PR that
+# is BLOCKED or DIRTY and stale against an advanced base is update-branch'd.
+
+# Prints "<pr>\t<state>\t<behind_by>\t<base_sha>" per open BLOCKED/DIRTY PR.
+find_stale_prs() {
+    local list
+    list="$(CHUMP_GH_CALL_CRITICALITY=background "$GH" pr list --state open \
+        --json number,mergeStateStatus,baseRefName,headRefOid --limit 100 2>/dev/null || true)"
+    [[ -z "$list" ]] && return 0
+    local rows
+    rows="$(python3 - "$list" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    prs = json.loads(sys.argv[1])
+except Exception:
+    sys.exit(0)
+for p in prs:
+    st = (p.get("mergeStateStatus") or "").upper()
+    if st in ("BLOCKED", "DIRTY"):
+        print("%s\t%s\t%s\t%s" % (p.get("number"), st, p.get("baseRefName") or "main", p.get("headRefOid") or ""))
+PY
+)"
+    local num st base head cmp behind
+    while IFS=$'\t' read -r num st base head; do
+        [[ -z "$num" ]] && continue
+        cmp="$(CHUMP_GH_CALL_CRITICALITY=background "$GH" api \
+            "repos/{owner}/{repo}/compare/${base}...${head}" 2>/dev/null || true)"
+        behind="$(python3 - "$cmp" <<'PY' 2>/dev/null || true
+import json, sys
+try:
+    d = json.loads(sys.argv[1])
+    print("%s\t%s" % (int(d.get("behind_by", 0)), (d.get("merge_base_commit") or {}).get("sha", "")))
+except Exception:
+    print("0\t")
+PY
+)"
+        printf '%s\t%s\t%s\t%s\n' "$num" "$st" "${behind%%$'\t'*}" "${behind#*$'\t'}"
+    done <<< "$rows"
+}
+
+state_get() { [[ -f "$STATE_FILE" ]] && awk -F'\t' -v p="$1" '$1==p{v=$2"\t"$3} END{print v}' "$STATE_FILE"; }
+state_set() {
+    mkdir -p "$(dirname "$STATE_FILE")" 2>/dev/null || true
+    { [[ -f "$STATE_FILE" ]] && awk -F'\t' -v p="$1" '$1!=p' "$STATE_FILE"; printf '%s\t%s\t%s\n' "$1" "$2" "$3"; } \
+        > "$STATE_FILE.tmp" 2>/dev/null && mv "$STATE_FILE.tmp" "$STATE_FILE" 2>/dev/null || true
+}
+
+stale_sweep() {
+    local rows attempted=0 ok=0 conflict=0 routed=0 skipped=0
+    rows="$(find_stale_prs)"
+    if [[ -z "$rows" ]]; then
+        log "stale-sweep: no BLOCKED/DIRTY open PRs"
+        return 0
+    fi
+    local num st behind mb prev prev_action prev_mb
+    while IFS=$'\t' read -r num st behind mb; do
+        [[ -z "$num" ]] && continue
+        prev="$(state_get "$num")"
+        prev_action="${prev%%$'\t'*}"; prev_mb="${prev#*$'\t'}"
+
+        if [[ "${behind:-0}" -le 0 ]]; then
+            # Up to date with base. If we already refreshed it and it is still
+            # BLOCKED, the failure is real: hand to ci-audit once, no re-loop.
+            if [[ "$prev_action" == "refreshed" ]]; then
+                emit_ambient "pr_stuck" \
+                    "\"pr_number\":$num,\"reason\":\"failing_after_fresh_base\",\"merge_state\":\"$st\",\"route\":\"ci-audit\""
+                emit_ambient "cascade_unblock_skipped" \
+                    "\"source_pr\":0,\"signature_hash\":\"stale_sweep\",\"pr_number\":$num,\"reason\":\"failing_after_fresh_base\""
+                state_set "$num" "routed" "$mb"
+                routed=$(( routed + 1 ))
+            fi
+            continue
+        fi
+
+        # Stale vs advanced base. A conflict is only retried once the base moves again.
+        if [[ "$prev_action" == "conflict" && "$prev_mb" == "$mb" ]]; then
+            continue
+        fi
+        if [[ "$TOTAL_ATTEMPTED" -ge "$RATE_LIMIT" ]]; then
+            emit_ambient "cascade_unblock_skipped" \
+                "\"source_pr\":0,\"signature_hash\":\"stale_sweep\",\"pr_number\":$num,\"reason\":\"rate_limit_reached\",\"rate_limit\":$RATE_LIMIT"
+            skipped=$(( skipped + 1 )); continue
+        fi
+        if ! operator_commented_recently "$num"; then
+            emit_ambient "cascade_unblock_skipped" \
+                "\"source_pr\":0,\"signature_hash\":\"stale_sweep\",\"pr_number\":$num,\"reason\":\"operator_recent_comment\",\"window_s\":$OPERATOR_WINDOW_S"
+            skipped=$(( skipped + 1 )); continue
+        fi
+        if pr_has_hold_label "$num"; then
+            emit_ambient "cascade_unblock_skipped" \
+                "\"source_pr\":0,\"signature_hash\":\"stale_sweep\",\"pr_number\":$num,\"reason\":\"chump_hold_label\""
+            skipped=$(( skipped + 1 )); continue
+        fi
+
+        TOTAL_ATTEMPTED=$(( TOTAL_ATTEMPTED + 1 )); attempted=$(( attempted + 1 ))
+        if [[ "$DRY_RUN" == "1" ]]; then
+            log "stale-sweep: DRY_RUN — would call: gh pr update-branch $num ($st, behind=$behind)"
+            ok=$(( ok + 1 )); continue
+        fi
+        log "stale-sweep: gh pr update-branch $num ($st, behind=$behind)"
+        if CHUMP_GH_CALL_CRITICALITY=background "$GH" pr update-branch "$num" 2>/dev/null; then
+            state_set "$num" "refreshed" "$mb"
+            ok=$(( ok + 1 ))
+        else
+            state_set "$num" "conflict" "$mb"
+            emit_ambient "cascade_unblock_skipped" \
+                "\"source_pr\":0,\"signature_hash\":\"stale_sweep\",\"pr_number\":$num,\"reason\":\"rebase_conflict\",\"merge_state\":\"$st\""
+            conflict=$(( conflict + 1 ))
+        fi
+    done <<< "$rows"
+
+    (( attempted + routed + skipped + conflict > 0 )) && emit_ambient "cascade_unblocked" \
+        "\"source_pr\":0,\"signature_hash\":\"stale_sweep\",\"matched_pr_numbers\":\"\",\"rebase_attempt_count\":$attempted,\"success_count\":$ok,\"conflict_count\":$conflict,\"skipped_count\":$skipped,\"routed_ci_audit\":$routed"
+    log "stale-sweep: attempted=$attempted ok=$ok conflict=$conflict routed_ci_audit=$routed skipped=$skipped"
+}
+
+TOTAL_ATTEMPTED=0
+stale_sweep
+
 # ── Step 4 + 5: Main cascade-unblock loop ─────────────────────────────────────
 
 FIX_PRS="$(find_fix_prs)"
@@ -355,7 +487,6 @@ fi
 
 log "cascade-unblock: found fix PRs:"$'\n'"$FIX_PRS"
 
-TOTAL_ATTEMPTED=0
 TOTAL_SUCCESS=0
 TOTAL_CONFLICT=0
 TOTAL_SKIPPED=0
