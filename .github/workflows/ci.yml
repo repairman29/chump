@@ -1527,6 +1527,9 @@ jobs:
       - name: chump-mcp-code smoke — server, tree-sitter index, post-commit hook (INFRA-8076)
         run: bash scripts/ci/test-mcp-code-smoke.sh
 
+      - name: chump-mcp-code Phase-1 tools — find_symbol, callers_of, gap_history (INFRA-8077)
+        run: bash scripts/ci/test-mcp-code-phase1.sh
+
       - name: env-var coverage — all src/ reads documented or allowlisted (DOC-026)
         run: bash scripts/ci/test-env-var-coverage.sh
 

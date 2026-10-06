@@ -27,5 +27,28 @@ chump-mcp-code                      # serve JSON-RPC on stdio (also: `serve`)
 | `file_symbols` | `path` | Symbols indexed for one file |
 | `index_stats` | | File / symbol counts and a per-language breakdown |
 | `reindex` | `paths?` | Re-index the given repo-relative paths (default: everything) |
+| `code.find_symbol` | `name`, `kind?` | **Phase 1.** Exact-name existence lookup |
+| `code.callers_of` | `symbol`, `limit?` | **Phase 1.** Call sites of a symbol (definitions/comments excluded) |
+| `code.gap_history` | `gap_id` | **Phase 1.** `open` / `done` / `reaped` / `never_existed` for a gap id |
 
-Smoke test: `scripts/ci/test-mcp-code-smoke.sh`.
+### Phase-1 response shapes
+
+These answer *existence* questions explicitly (never an ambiguous empty list), to prevent the
+"feature missing" misdiagnosis class (INFRA-1575).
+
+```text
+code.find_symbol -> { "symbol", "exists": bool, "count": n,
+                      "matches": [ { "path", "name", "kind", "line", "language", "doc_first_line" } ] }
+code.callers_of  -> { "symbol", "defined": bool, "count": n, "truncated": bool,
+                      "callers": [ { "path", "line", "text", "in_symbol" } ] }
+code.gap_history -> { "gap_id", "status": "open"|"done"|"reaped"|"never_existed", "title",
+                      "shipped_pr": int|null, "closed_date": "YYYY-MM-DD"|null,
+                      "reaped_date": "YYYY-MM-DD"|null }
+```
+
+`callers_of` is a textual call-pattern scan over indexed files (tree-sitter provides definitions,
+not references). `gap_history` reads `.chump/state.db` (override `CHUMP_STATE_DB`); `reaped` means
+the registry row is gone but a commit message in git history still mentions the gap id, so
+`reaped_date` is that commit's date and `shipped_pr` is parsed from its trailing `(#N)`.
+
+Smoke tests: `scripts/ci/test-mcp-code-smoke.sh`, `scripts/ci/test-mcp-code-phase1.sh`.

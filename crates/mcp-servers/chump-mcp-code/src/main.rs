@@ -8,7 +8,8 @@
 //!   chump-mcp-code index --head    index only the files changed by HEAD (post-commit hook)
 //!   chump-mcp-code index --files <rel-path>...
 //!
-//! Methods: tools/list, search_symbols, file_symbols, index_stats, reindex.
+//! Methods: tools/list, search_symbols, file_symbols, index_stats, reindex, plus the
+//! Phase-1 existence queries code.find_symbol, code.callers_of, code.gap_history.
 
 use anyhow::{anyhow, Result};
 use chump_mcp_code as code;
@@ -89,6 +90,29 @@ fn tools_list() -> Value {
             "inputSchema": {"type": "object", "properties": {}}
         },
         {
+            "name": "code.find_symbol",
+            "description": "Does a symbol exist? Exact-name lookup in the index. Returns { symbol, exists, count, matches[] } — never an ambiguous empty list.",
+            "inputSchema": {"type": "object", "properties": {
+                "name": {"type": "string", "description": "Exact symbol name"},
+                "kind": {"type": "string", "description": "Optional kind filter, e.g. fn, struct, class"}
+            }, "required": ["name"]}
+        },
+        {
+            "name": "code.callers_of",
+            "description": "Call sites of a symbol in the indexed files (definitions and comments excluded). Returns { symbol, defined, count, truncated, callers[{path,line,text,in_symbol}] }.",
+            "inputSchema": {"type": "object", "properties": {
+                "symbol": {"type": "string", "description": "Symbol name"},
+                "limit": {"type": "integer", "description": "Max call sites (default 50)"}
+            }, "required": ["symbol"]}
+        },
+        {
+            "name": "code.gap_history",
+            "description": "Status of a gap id: open | done | reaped | never_existed, with shipped_pr and closed/reaped dates. 'reaped' = no registry row but git history proves the gap existed.",
+            "inputSchema": {"type": "object", "properties": {
+                "gap_id": {"type": "string", "description": "Gap id, e.g. INFRA-1575"}
+            }, "required": ["gap_id"]}
+        },
+        {
             "name": "reindex",
             "description": "Re-index the given repo-relative paths (default: the whole repo). Unchanged files are skipped.",
             "inputSchema": {"type": "object", "properties": {
@@ -125,6 +149,29 @@ fn handle_method(method: &str, params: &Value) -> Result<Value> {
         "index_stats" => {
             let (_, conn) = open_index()?;
             code::index_summary(&conn)
+        }
+        "code.find_symbol" | "find_symbol" => {
+            let name = str_param(params, "name")?;
+            let kind = params
+                .get("kind")
+                .and_then(|v| v.as_str())
+                .filter(|s| !s.is_empty());
+            let (_, conn) = open_index()?;
+            code::phase1::find_symbol(&conn, name, kind)
+        }
+        "code.callers_of" | "callers_of" => {
+            let symbol = str_param(params, "symbol")?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50)
+                .clamp(1, 500) as usize;
+            let (root, conn) = open_index()?;
+            code::phase1::callers_of(&conn, &root, symbol, limit)
+        }
+        "code.gap_history" | "gap_history" => {
+            let gap_id = str_param(params, "gap_id")?;
+            code::phase1::gap_history(&repo_dir()?, gap_id)
         }
         "reindex" => {
             let (root, conn) = open_index()?;
@@ -257,7 +304,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn tools_list_has_the_four_tools() {
+    fn tools_list_has_the_expected_tools() {
         let tools = handle_method("tools/list", &json!({})).unwrap();
         let names: Vec<&str> = tools["tools"]
             .as_array()
@@ -267,7 +314,15 @@ mod tests {
             .collect();
         assert_eq!(
             names,
-            ["search_symbols", "file_symbols", "index_stats", "reindex"]
+            [
+                "search_symbols",
+                "file_symbols",
+                "index_stats",
+                "code.find_symbol",
+                "code.callers_of",
+                "code.gap_history",
+                "reindex"
+            ]
         );
     }
 
@@ -281,6 +336,18 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("path"));
+        assert!(handle_method("code.find_symbol", &json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("name"));
+        assert!(handle_method("code.callers_of", &json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("symbol"));
+        assert!(handle_method("code.gap_history", &json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("gap_id"));
         assert!(handle_method("does_not_exist", &json!({}))
             .unwrap_err()
             .to_string()

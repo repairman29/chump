@@ -15,6 +15,8 @@ use serde::Serialize;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
+pub mod phase1;
+
 /// Languages this index covers (the AC set).
 pub const INDEXED_LANGUAGES: [&str; 3] = ["rust", "bash", "python"];
 

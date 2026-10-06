@@ -39,6 +39,7 @@ updated incrementally by a post-commit hook.
 | `file_symbols` | Symbols indexed for one repo-relative file |
 | `index_stats` | File/symbol counts per language |
 | `reindex` | Re-index given paths (default: whole repo) |
+| `code.find_symbol` / `code.callers_of` / `code.gap_history` | Phase-1 existence queries (INFRA-8077) |
 
 **Requires:** `CHUMP_REPO`. Index with `chump-mcp-code index --all`. See the crate README.
 
