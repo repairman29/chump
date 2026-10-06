@@ -3203,6 +3203,18 @@ events:
     trigger: cross-PR CI blocker detected
     consumers: [operator-recall]
 
+  - kind: ci_failure
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh
+    trigger: a PR CI job failed — emitted as an ambient signal instead of filing a new gap (ZERO-WASTE-014)
+    consumers: [ci-audit]
+
+  - kind: stuck_pr
+    effect_metric: self
+    emitter: scripts/ops/stuck-pr-filer.sh
+    trigger: a PR is stuck (e.g. CI red past threshold) — emitted as an ambient signal instead of filing a new gap (ZERO-WASTE-014)
+    consumers: [ci-audit]
+
   - kind: botmerge_wedged
     effect_metric: self
     emitter: scripts/coord/bot-merge.sh stage_start watchdog + stage_done (INFRA-1422)
