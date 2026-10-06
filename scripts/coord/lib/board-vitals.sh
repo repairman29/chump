@@ -36,6 +36,12 @@
 #                   is at or below the 95% mission floor. An unreadable/missing
 #                   state file means "unknown", not "0%" — it never pages (the
 #                   keeper not having run yet is not a coverage regression).
+#   * holler_drain_stale — the holler-to-gap drain (chump-holler-drain.timer,
+#                   RESILIENT-1514) has not completed a run in 3h. Read the same
+#                   way as almanac_coverage_low: the ledger file's mtime is the
+#                   signal, a missing ledger means "unknown" (never ran yet on
+#                   this node, or wrong path) and never pages — only a ledger
+#                   that EXISTS and has gone stale pages.
 # oauth_expired + cost_cap residentize operator-recall.sh's proven signals+bar.
 # The `[board-vitals] tick` proof-of-life line (RESILIENT-410) still prints
 # EVERY beat regardless — that is journal observability, NOT a DM.
@@ -94,6 +100,11 @@
 #                                      the CREDIBLE-1210 clamp in almanac-vision-keeper.sh)
 #   CHUMP_BOARD_VITALS_ESCALATE_MODEL  model for the merge-stall diagnosis (default sonnet)
 #   CHUMP_BOARD_VITALS_ESCALATE        1 enables the LLM diagnosis on merge_stall (default 1)
+#   CHUMP_BOARD_VITALS_HOLLER_LEDGER   holler-to-chump.mjs ledger file whose mtime marks the
+#                                      last COMPLETED drain run (default
+#                                      $HOME/holler-drain/.holler-bridge-ledger.json; test hook)
+#   CHUMP_BOARD_VITALS_HOLLER_DRAIN_STALE_MIN  minutes since the ledger last changed before
+#                                      paging (default 180 = 3h, RESILIENT-1514 AC4)
 #
 # shellcheck shell=bash
 
@@ -306,6 +317,23 @@ _bv_almanac_coverage_pct() {
     local sym sum
     read -r sym sum _ < "$state_file" 2>/dev/null || return 0
     [[ "$sum" =~ ^[0-9]+$ ]] && printf '%s\n' "$sum"
+}
+
+# Age in whole minutes since the holler-drain ledger file last changed, i.e.
+# since the last COMPLETED --apply run (holler-to-chump.mjs rewrites the ledger
+# unconditionally at the end of every apply run, even a 0-gaps-created one —
+# see RESILIENT-1514 notes). Prints an integer on stdout, or nothing if the
+# ledger is missing/unreadable — missing means "unknown" (never ran yet on this
+# node, or the path is wrong), never "infinitely stale", so callers must not
+# treat empty output as an incident.
+_bv_holler_drain_stale_min() {
+    local ledger now mtime
+    ledger="${CHUMP_BOARD_VITALS_HOLLER_LEDGER:-$HOME/holler-drain/.holler-bridge-ledger.json}"
+    [[ -f "$ledger" ]] || return 0
+    mtime="$(stat -c %Y "$ledger" 2>/dev/null || stat -f %m "$ledger" 2>/dev/null)"
+    [[ "$mtime" =~ ^[0-9]+$ ]] || return 0
+    now="$(_bv_now)"
+    printf '%s\n' $(( (now - mtime) / 60 ))
 }
 
 # Resolve notify_operator (source notify-operator.sh; stub if absent so the lib
@@ -606,6 +634,20 @@ board_vitals_check() {
         incidents=$((incidents+1))
         _bv_maybe_page "cost_cap" \
 "💳 **Spend cap hit — the floor can't ship.** ${cost_hits} cost_cap_exceeded event(s) in the last $((floor_window/60))m: sub cap exhausted / credit needed. Topping up is Jeff's to do. (board-vitals.sh)"
+    fi
+
+    # ── 6 · HOLLER DRAIN: hourly drain has not completed a run (RESILIENT-1514 AC4) ─
+    # Ledger mtime is "unknown" (missing file) vs "stale" (file exists, too old).
+    # Unknown never pages — a node that has never hosted the drain, or a
+    # misconfigured path, is not itself an incident; only a REAL regression
+    # (drain ran before, has since gone silent past the floor) pages.
+    local holler_stale_min holler_drain_floor
+    holler_drain_floor="${CHUMP_BOARD_VITALS_HOLLER_DRAIN_STALE_MIN:-180}"
+    holler_stale_min="$(_bv_holler_drain_stale_min)"
+    if [[ "$holler_stale_min" =~ ^[0-9]+$ ]] && (( holler_stale_min >= holler_drain_floor )); then
+        incidents=$((incidents+1))
+        _bv_maybe_page "holler_drain_stale" \
+"🔴 **Holler drain stale.** The holler -> gap drain (chump-holler-drain.timer, RESILIENT-1514) has not completed a run in ${holler_stale_min}m (threshold ${holler_drain_floor}m). Findings filed via holler are piling up in the inbox with nobody draining them — check 'systemctl status chump-holler-drain.timer' / '.service' on the canonical store node. (board-vitals.sh, pages once per $(( ${CHUMP_BOARD_VITALS_WINDOW_S:-7200} / 60 ))m)"
     fi
 
     _bv_emit "board_vitals_tick" \
