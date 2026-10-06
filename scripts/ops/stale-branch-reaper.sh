@@ -15,7 +15,11 @@
 #   2. Skips branches with an OPEN PR (still in flight).
 #   3. For branches with a MERGED or CLOSED PR: deletes if the PR was
 #      merged/closed > CHUMP_BRANCH_REAPER_AGE_DAYS ago.
-#   4. Skips branches with NO associated PR (safety: could be active WIP).
+#   4. RESILIENT-1545: also deletes branches whose gap-ID (from the branch
+#      name) appears in a landed commit subject on main (squash-safe), once
+#      the branch tip is older than the age threshold.
+#   5. Skips branches with NO PR whose gap-ID has not shipped (safety: could be
+#      active WIP) and FLAGS them for review; never deletes them.
 #
 # Usage:
 #   ./scripts/ops/stale-branch-reaper.sh             # dry-run by default
@@ -32,6 +36,27 @@
 #                                (default: "claude/* worktree-*")
 
 set -euo pipefail
+
+# RESILIENT-1545: the repo SQUASH-merges via a batched merge-train, so a merged
+# branch's commits are never reachable from main and never match its patch-ids
+# (git branch --merged / rev-list / cherry all under-count). The squash-safe
+# signal is the gap-ID: every branch name encodes one (claude/infra-2360,
+# chump/resilient-1002-*) and every landed squash subject leads with one.
+# branch_gap_id <branch>  -> "INFRA-2360" (empty if the name encodes none)
+branch_gap_id() {
+    local base="${1##*/}"
+    if [[ "$base" =~ ^([A-Za-z][A-Za-z0-9]*)-([0-9]+)($|[-_.]) ]]; then
+        printf '%s-%s\n' "$(printf '%s' "${BASH_REMATCH[1]}" | tr '[:lower:]' '[:upper:]')" "${BASH_REMATCH[2]}"
+    fi
+}
+# shipped_gap_ids <ref>  -> sorted unique gap-IDs leading commit subjects on <ref>
+shipped_gap_ids() {
+    git log "$1" --format=%s 2>/dev/null \
+        | sed -nE 's/^[[:space:]]*([A-Za-z][A-Za-z0-9]*-[0-9]+)[^0-9A-Za-z].*/\1/p; s/^[[:space:]]*([A-Za-z][A-Za-z0-9]*-[0-9]+)$/\1/p' \
+        | tr '[:lower:]' '[:upper:]' | sort -u
+}
+# Test hook: source just the helpers above.
+[[ "${REAPER_SOURCE_ONLY:-}" == "1" ]] && return 0
 
 # INFRA-120: shared instrumentation (heartbeat + ambient reaper_run event +
 # log rotation). Watchdog reads /tmp/chump-reaper-branch.heartbeat.
@@ -106,6 +131,10 @@ if [[ -z "$CLOSED_PR_LIST" ]]; then
         2>/dev/null || true)
 fi
 
+# RESILIENT-1545: gap-IDs already landed on main (squash-safe shipped signal).
+SHIPPED_IDS="$(shipped_gap_ids "$REMOTE/$BASE" || true)"
+info "Shipped gap-IDs on $REMOTE/$BASE: $(printf '%s\n' "$SHIPPED_IDS" | grep -c . || true)"
+
 NOW_EPOCH=$(date +%s)
 THRESHOLD_SECS=$(( STALE_DAYS_THRESHOLD * 86400 ))
 PR_AGE_THRESHOLD_SECS=$(( CHUMP_BRANCH_REAPER_AGE_DAYS * 86400 ))
@@ -114,6 +143,7 @@ REAPED=0
 SKIPPED_PR=0
 SKIPPED_FRESH=0
 SKIPPED_NO_PR=0
+SKIPPED_FLAGGED=0
 
 # Build the ref-list pattern args for git for-each-ref.
 PATTERN_ARGS=()
@@ -137,11 +167,32 @@ while IFS=$'\t' read -r REFNAME COMMITTERDATE; do
     # Safety: branches with NO associated PR are skipped — they might be
     # active WIP pushed before opening a PR.
     closed_pr_line=$(echo "$CLOSED_PR_LIST" | grep -m1 "^${BRANCH}|" 2>/dev/null || true)
+    shipped_reason=""
     if [[ -z "$closed_pr_line" ]]; then
-        SKIPPED_NO_PR=$((SKIPPED_NO_PR + 1))
-        continue
+        # RESILIENT-1545: no closed/merged PR on record — fall back to the
+        # squash-safe gap-ID signal. A shipped gap-ID is reaped once the branch
+        # tip is older than the age threshold; anything else is flagged, never
+        # deleted (could be the only copy of unique work).
+        gid="$(branch_gap_id "$BRANCH")"
+        if [[ -n "$gid" ]] && printf '%s\n' "$SHIPPED_IDS" | grep -qxF "$gid"; then
+            tip_age=$(( NOW_EPOCH - ${COMMITTERDATE:-0} ))
+            if [[ "${COMMITTERDATE:-0}" -gt 0 && "$tip_age" -ge "$PR_AGE_THRESHOLD_SECS" ]]; then
+                shipped_reason="gap-id $gid shipped on $BASE"
+                close_epoch=$(( COMMITTERDATE ))
+            else
+                info "Fresh: $BRANCH (gap-id $gid shipped but tip < ${CHUMP_BRANCH_REAPER_AGE_DAYS}d old)"
+                SKIPPED_FRESH=$((SKIPPED_FRESH + 1))
+                continue
+            fi
+        else
+            SKIPPED_NO_PR=$((SKIPPED_NO_PR + 1))
+            SKIPPED_FLAGGED=$((SKIPPED_FLAGGED + 1))
+            info "Flag: $BRANCH (no PR, gap-id ${gid:-none} not shipped — keep for review)"
+            continue
+        fi
     fi
 
+    if [[ -z "$shipped_reason" ]]; then
     # Parse the close/merge timestamp and compute age.
     close_ts="${closed_pr_line#*|}"
     close_epoch=$(python3 -c "
@@ -163,6 +214,7 @@ print(int(dt.timestamp()))
         SKIPPED_FRESH=$((SKIPPED_FRESH + 1))
         continue
     fi
+    fi
 
     pr_age_secs=$(( NOW_EPOCH - close_epoch ))
     if [[ "$pr_age_secs" -lt "$PR_AGE_THRESHOLD_SECS" ]]; then
@@ -173,7 +225,7 @@ print(int(dt.timestamp()))
     fi
 
     pr_age_days=$(( pr_age_secs / 86400 ))
-    info "Stale: $BRANCH (PR closed/merged ${pr_age_days}d ago)"
+    info "Stale: $BRANCH (${shipped_reason:-PR closed/merged ${pr_age_days}d ago})"
 
     if [[ $EXECUTE -eq 1 ]]; then
         if git push "$REMOTE" --delete "$BRANCH" 2>/dev/null; then
@@ -199,7 +251,7 @@ done < <(git for-each-ref --format='%(refname)%09%(committerdate:unix)' \
             "${PATTERN_ARGS[@]}" 2>/dev/null)
 
 echo ""
-green "=== reaper done: $REAPED reaped, $SKIPPED_PR skipped (open PR), $SKIPPED_NO_PR skipped (no PR), $SKIPPED_FRESH skipped (fresh) ==="
+green "=== reaper done: $REAPED reaped, $SKIPPED_PR skipped (open PR), $SKIPPED_NO_PR skipped (no PR, $SKIPPED_FLAGGED flagged), $SKIPPED_FRESH skipped (fresh) ==="
 
 # INFRA-120: emit heartbeat + reaper_run event so the watchdog and other
 # agents can see this reaper completed.
