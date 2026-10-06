@@ -14,6 +14,7 @@
 # Network-free: stubs `gh` and `chump` via PATH; the heartbeat / ambient
 # emit is allowed to write under a fresh REAPER_LOCK_DIR temp.
 
+export CHUMP_NOISE_GAP_FILING=1  # ZERO-WASTE-014: these tests cover the legacy gap-filing path
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd)"
