@@ -12531,6 +12531,38 @@ async fn main() -> Result<()> {
                     }
                 }
                 // ── end INFRA-3689 fleet-server routing ──────────────────────────────────
+                // CREDIBLE-1489: closed_pr must be the PR that actually merged this
+                // gap's work. With no --closed-pr, resolve it from the PR cache by
+                // the current branch; with an explicit one, warn when the cached PR
+                // never references the gap (the bogus-closure class: closed_pr
+                // pointing at an unrelated PR). Advisory — never blocks the ship.
+                let closed_pr = match closed_pr {
+                    Some(n) => {
+                        if chump_gap_store::pr_references_gap(&repo_root, &gap_id, n) == Some(false)
+                        {
+                            eprintln!(
+                                "[gap ship] WARNING: PR #{n} does not reference {gap_id} in its title/branch — closed_pr may point at an unrelated PR (run scripts/ops/closed-pr-integrity-check.py)"
+                            );
+                        }
+                        Some(n)
+                    }
+                    None => {
+                        let branch = std::process::Command::new("git")
+                            .args(["rev-parse", "--abbrev-ref", "HEAD"])
+                            .current_dir(&worktree_root)
+                            .output()
+                            .ok()
+                            .filter(|o| o.status.success())
+                            .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string());
+                        let found = branch
+                            .filter(|b| !b.is_empty() && b != "HEAD" && b != "main")
+                            .and_then(|b| chump_gap_store::merged_pr_for_branch(&repo_root, &b));
+                        if let Some(n) = found {
+                            eprintln!("[gap ship] closed_pr resolved from the PR that merged this branch: #{n}");
+                        }
+                        found
+                    }
+                };
                 match store.ship(&gap_id, &session_id, closed_pr) {
                     Ok(()) => {
                         println!("shipped {}", gap_id);

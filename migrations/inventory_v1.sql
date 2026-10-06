@@ -87,7 +87,17 @@ CREATE TABLE IF NOT EXISTS tech_debt_findings (
     operator_note TEXT,
     -- Set by INFRA-2369 tier-2 auto-file machinery when this finding's
     -- class is promoted (current_tier=2). NULL for tier 0/1 findings.
-    auto_fix_filed_gap_id TEXT
+    auto_fix_filed_gap_id TEXT,
+    -- CREDIBLE-358: prune loop. Set by `chump inventory retire` once a
+    -- REAL_POSITIVE-confirmed low-severity finding's capability has been
+    -- archived. Retired rows are excluded from class_stats.total_findings
+    -- and the Debt Index so a prune closes a debt item instead of staying
+    -- in the denominator forever. (The retired_at index is created in
+    -- open_db_at after the backfill ALTERs, so older DBs lacking the
+    -- column don't fail this batch.)
+    retired_at INTEGER,
+    retired_by TEXT,
+    retired_reason TEXT
 );
 CREATE INDEX IF NOT EXISTS idx_finding_class ON tech_debt_findings(finding_class);
 CREATE INDEX IF NOT EXISTS idx_finding_tier ON tech_debt_findings(tier);
