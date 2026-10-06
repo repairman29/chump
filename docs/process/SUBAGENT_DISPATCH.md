@@ -83,6 +83,12 @@ include this checklist for the subagent to run **before** `git push`:
 [ ] Any Usage:/--help strings added? → must be literal command names,
     not templated `{sub}` substitutions. Lint rejects templating.
 
+[ ] About to file a "missing primitive" gap, or claim a file/symbol is
+    missing or present? (META-113) → verify against origin/main, never the
+    local working tree (it can be 40+ commits behind):
+      scripts/dev/verify-existence.sh --explicit-source-check <path-or-symbol>
+    or `git ls-tree origin/main <path>`. Do not file on a bare `ls`.
+
 [ ] `chump preflight` GREEN — fmt + clippy + check + event-registry-audit.
     Don't push without this.
 ```
