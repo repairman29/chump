@@ -34,6 +34,8 @@
 #   node_binary_refreshed         — successful rebuild + install
 #   node_binary_refresh_skipped   — binary already current (no-op)
 #   node_binary_refresh_failed    — build or install error
+#   node_binary_refresh_stalled   — cycle ended with the installed binary still
+#                                   behind the green pin (INFRA-8052)
 #
 # Bypass: CHUMP_SKIP_NODE_REFRESH=1 short-circuits to exit 0.
 #
@@ -226,7 +228,21 @@ if [[ -z "${CHUMP_NODE_ROLE:-}" ]]; then
     [[ -z "${CHUMP_NODE_ROLE:-}" ]] && unset CHUMP_NODE_ROLE
 fi
 NODE_ROLE="${CHUMP_NODE_ROLE:-muscle}"
+# INFRA-8052: "organs reconciled" must never be the only signal of a cycle that
+# left the binary stale. Emit node_binary_refresh_stalled whenever the installed
+# binary is still behind the green pin at the end of a cycle.
+_check_binary_stalled() {
+    local now_sha pin="${MAIN_SHA:-}"
+    [[ -n "$pin" ]] || return 0
+    now_sha="$("$TARGET_BIN" --version 2>/dev/null | grep -oE '\(([a-f0-9]+)' | head -1 | tr -d '(')"
+    if [[ -z "$now_sha" ]] || { [[ "$pin" != "$now_sha"* && "$now_sha" != "$pin"* ]]; }; then
+        log "WARN: cycle ending with binary still behind green pin (installed=${now_sha:-unknown} pin=$pin)"
+        emit node_binary_refresh_stalled "\"installed_sha\":\"${now_sha:-unknown}\",\"main_sha\":\"$pin\""
+    fi
+}
+
 _reconcile_role_organs() {
+    _check_binary_stalled
     local installer="$REPO_ROOT/scripts/setup/chump-node-install.sh"
     if [[ ! -f "$installer" ]]; then
         log "WARN: $installer not found; skipping role-organ reconcile"

@@ -4502,6 +4502,34 @@ events:
     expected_min_per_day: 0
     status: stable
 
+  - kind: node_deploy_heal_futile
+    effect_metric: self
+    emitter: scripts/coord/node-deploy-lag-watchdog.sh (INFRA-8052)
+    trigger: >
+      The deploy-lag watchdog already restarted chump-node-refresh.service
+      CHUMP_NODE_DEPLOY_LAG_MAX_RESTARTS times against the same installed
+      sha and the binary is still behind main — the refresh path itself
+      (artifact miss -> failing cold build) is broken and a restart cannot
+      fix it. The watchdog stops restarting and routes the signal to the
+      duty officer / an owned-iron builder.
+    consumers: [fleet-brief, ops-audit, duty-officer]
+    fields_required: [ts, kind, installed_sha, main_sha, lag_secs, restarts, unit, action]
+    expected_min_per_day: 0
+    status: stable
+
+  - kind: node_binary_refresh_stalled
+    effect_metric: self
+    emitter: scripts/ops/node-refresh-chump.sh (INFRA-8052)
+    trigger: >
+      A node-refresh cycle reached its organ-reconcile step with the
+      installed binary still behind the green pin. Ensures "organs
+      reconciled" is never the only signal of a cycle that left the binary
+      stale.
+    consumers: [fleet-brief, ops-audit]
+    fields_required: [ts, kind, installed_sha, main_sha]
+    expected_min_per_day: 0
+    status: stable
+
   - kind: auto_merge_rearmed
     effect_metric: effective
     emitter: scripts/coord/auto-merge-rearm-daemon.sh (INFRA-2309)
