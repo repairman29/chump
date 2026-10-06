@@ -68,10 +68,10 @@ print(int(dt.timestamp()))
 }
 
 # 1. Timestamp parsing: GitHub ISO format
-test_pr_age_parse "ISO timestamp parse (Z suffix)" "2026-05-01T00:00:00Z" "11"
+test_pr_age_parse "ISO timestamp parse (Z suffix)" "$(date -u -d '11 days ago' +%Y-%m-%dT%H:%M:%SZ)" "11"
 
 # 2. Timestamp parsing: no Z suffix (some gh versions)
-test_pr_age_parse "ISO timestamp parse (no Z)" "2026-05-01T00:00:00" "11"
+test_pr_age_parse "ISO timestamp parse (no Z)" "$(date -u -d '11 days ago' +%Y-%m-%dT%H:%M:%S)" "11"
 
 # 3. CHUMP_BRANCH_REAPER_AGE_DAYS env var is respected
 # Simulate the reaper's age-threshold check logic
@@ -144,6 +144,34 @@ if grep -q 'SKIPPED_NO_PR' "$REAPER"; then
 else
     fail "reaper script missing SKIPPED_NO_PR counter"
 fi
+
+# 9. RESILIENT-1545: squash-safe shipped detection by gap-ID
+TMP="$(mktemp -d)"; trap 'rm -rf "$TMP"' EXIT
+(
+    cd "$TMP" && git init -q -b main . && git config user.email t@t && git config user.name t
+    git commit -q --allow-empty -m "init"
+    git commit -q --allow-empty -m "INFRA-2360: squash-merged work (#10)"
+    git commit -q --allow-empty -m "Resilient-1002: fleet thing"
+    git commit -q --allow-empty -m "no gap id here (#11)"
+) >/dev/null 2>&1
+REAPER_SOURCE_ONLY=1 source "$REAPER"
+ids="$(cd "$TMP" && shipped_gap_ids main)"
+if grep -qx 'INFRA-2360' <<<"$ids" && grep -qx 'RESILIENT-1002' <<<"$ids" && [[ "$(grep -c . <<<"$ids")" == "2" ]]; then
+    ok "shipped_gap_ids extracts leading gap-IDs from main subjects"
+else
+    fail "shipped_gap_ids wrong: $(echo $ids)"
+fi
+for pair in "claude/infra-2360:INFRA-2360" "chump/resilient-1002-fleet-x:RESILIENT-1002" "wip/foo:" "claude/infra-12abc:" "claude/meta-1031:META-1031"; do
+    b="${pair%%:*}"; want="${pair#*:}"; got="$(branch_gap_id "$b")"
+    if [[ "$got" == "$want" ]]; then ok "branch_gap_id $b -> '${got}'"; else fail "branch_gap_id $b -> '$got' want '$want'"; fi
+done
+# squash-merged branch: shipped ID in set, though commits are NOT reachable from main
+gid="$(branch_gap_id claude/infra-2360)"
+if grep -qxF "$gid" <<<"$ids"; then ok "squash-merged branch detected as shipped"; else fail "squash-merged branch not detected"; fi
+gid="$(branch_gap_id claude/infra-9999)"
+if ! grep -qxF "$gid" <<<"$ids"; then ok "unshipped gap-ID branch not treated as shipped"; else fail "unshipped branch wrongly shipped"; fi
+# safety wiring: no-PR unshipped branches are flagged, never deleted
+if grep -q 'SKIPPED_FLAGGED' "$REAPER"; then ok "reaper flags no-PR unshipped branches"; else fail "reaper missing flag path"; fi
 
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
