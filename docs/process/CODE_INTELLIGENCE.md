@@ -25,6 +25,9 @@ as `chump-mcp-gaps`). Set `CHUMP_REPO`, build the index once with
 | `code.find_symbol { name, kind? }` | Does this function/struct/class exist, and where? | `{ symbol, exists, count, matches[{path,name,kind,line,language}] }` |
 | `code.callers_of { symbol, limit? }` | Is it actually used? Who calls it? | `{ symbol, defined, count, truncated, callers[{path,line,text,in_symbol}] }` |
 | `code.gap_history { gap_id }` | Did this gap exist, and did it ship? | `{ gap_id, status, title, shipped_pr, closed_date, reaped_date }` |
+| `code.trait_impls { trait, limit? }` | Who implements this trait? | `{ trait, defined, count, truncated, impls[{path,line,type,kind,language}] }` |
+| `code.symbol_history { symbol, limit? }` | When did this symbol appear / disappear? | `{ symbol, count, truncated, first_seen, last_changed, commits[{sha,date,subject}] }` |
+| `code.dead_code_scan { reasons?, limit? }` | What looks dead? | `{ count, total, truncated, by_reason, findings[{symbol,file,line,location,reason,kind}] }` with `reason` one of `no_callers`, `no_emitters`, `registered_unused_route` (heuristic; verify before deleting) |
 | `search_symbols`, `file_symbols`, `index_stats`, `reindex` | General index queries | see the crate README |
 
 `code.gap_history.status` is one of:

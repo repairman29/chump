@@ -30,6 +30,9 @@ chump-mcp-code                      # serve JSON-RPC on stdio (also: `serve`)
 | `code.find_symbol` | `name`, `kind?` | **Phase 1.** Exact-name existence lookup |
 | `code.callers_of` | `symbol`, `limit?` | **Phase 1.** Call sites of a symbol (definitions/comments excluded) |
 | `code.gap_history` | `gap_id` | **Phase 1.** `open` / `done` / `reaped` / `never_existed` for a gap id |
+| `code.trait_impls` | `trait`, `limit?` | **Phase 3.** Rust `impl Trait for Type` headers and Python subclasses |
+| `code.symbol_history` | `symbol`, `limit?` | **Phase 3.** Commits that added/removed a symbol (git pickaxe), newest first |
+| `code.dead_code_scan` | `reasons?`, `limit?` | **Phase 3.** Likely-dead code, each with a reason |
 
 ### Phase-1 response shapes
 
@@ -51,4 +54,25 @@ not references). `gap_history` reads `.chump/state.db` (override `CHUMP_STATE_DB
 the registry row is gone but a commit message in git history still mentions the gap id, so
 `reaped_date` is that commit's date and `shipped_pr` is parsed from its trailing `(#N)`.
 
-Smoke tests: `scripts/ci/test-mcp-code-smoke.sh`, `scripts/ci/test-mcp-code-phase1.sh`.
+### Phase-3 response shapes
+
+```text
+code.trait_impls    -> { "trait", "defined": bool, "count": n, "truncated": bool,
+                         "impls": [ { "path", "line", "type", "kind": "impl"|"subclass", "language" } ] }
+code.symbol_history -> { "symbol", "count": n, "truncated": bool,
+                         "first_seen": "YYYY-MM-DD"|null, "last_changed": "YYYY-MM-DD"|null,
+                         "commits": [ { "sha", "date", "subject" } ] }       // newest first
+code.dead_code_scan -> { "count": n, "total": n, "truncated": bool, "by_reason": { reason: n },
+                         "findings": [ { "symbol", "file", "line", "location": "file:line",
+                                         "reason", "kind" } ] }
+```
+
+`dead_code_scan` reasons: `no_callers` (an indexed `fn` whose name appears nowhere else in the
+code files; `main`, `test*` and `tests/` are skipped), `no_emitters` (an event kind in
+`docs/observability/EVENT_REGISTRY.yaml` that no code file mentions) and `registered_unused_route`
+(a `.route("/path", ..)` whose path, up to the first parameter segment, nothing else references).
+All three are textual heuristics: treat findings as leads to verify (for example with
+`code.callers_of`), not proof. `trait_impls` sees single-line `impl` headers only.
+
+Smoke tests: `scripts/ci/test-mcp-code-smoke.sh`, `scripts/ci/test-mcp-code-phase1.sh`,
+`scripts/ci/test-mcp-code-phase3.sh`.

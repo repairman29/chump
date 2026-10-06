@@ -469,3 +469,4 @@ Remove the pattern file                                     # reason: publish-gu
 test-mcp-code-smoke.sh  # reason: functional/integration test script; builds + spawns the chump-mcp-code server and a throwaway git repo (exceeds <60s fast-feedback budget); not preflight-shaped
 test-mcp-code-phase1.sh  # reason: functional/integration test script; builds + spawns the chump-mcp-code server against a throwaway git repo (exceeds <60s fast-feedback budget); not preflight-shaped
 test-misdiagnosis-prevention.sh  # reason: functional/integration test script; builds + spawns the chump-mcp-code server against a throwaway git repo (exceeds <60s fast-feedback budget); not preflight-shaped
+test-mcp-code-phase3.sh  # reason: functional/integration test script; builds + spawns the chump-mcp-code server against a throwaway git repo (exceeds <60s fast-feedback budget); not preflight-shaped

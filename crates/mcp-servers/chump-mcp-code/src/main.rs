@@ -113,6 +113,30 @@ fn tools_list() -> Value {
             }, "required": ["gap_id"]}
         },
         {
+            "name": "code.trait_impls",
+            "description": "Implementors of a trait: Rust `impl Trait for Type` headers and Python subclasses. Returns { trait, defined, count, truncated, impls[{ path, line, type, kind, language }] }.",
+            "inputSchema": {"type": "object", "properties": {
+                "trait": {"type": "string", "description": "Trait (or base class) name"},
+                "limit": {"type": "integer", "description": "Max impls (default 50, max 500)"}
+            }, "required": ["trait"]}
+        },
+        {
+            "name": "code.symbol_history",
+            "description": "Commits that added or removed a symbol (git pickaxe), newest first. Returns { symbol, count, truncated, first_seen, last_changed, commits[{ sha, date, subject }] }.",
+            "inputSchema": {"type": "object", "properties": {
+                "symbol": {"type": "string", "description": "Symbol (any text) to trace"},
+                "limit": {"type": "integer", "description": "Max commits (default 20, max 200)"}
+            }, "required": ["symbol"]}
+        },
+        {
+            "name": "code.dead_code_scan",
+            "description": "Likely-dead code with a reason each: no_callers (fn never referenced), no_emitters (registered event kind nothing emits), registered_unused_route (route nothing calls). Returns { count, total, truncated, by_reason, findings[{ symbol, file, line, location, reason, kind }] }.",
+            "inputSchema": {"type": "object", "properties": {
+                "reasons": {"type": "array", "items": {"type": "string", "enum": ["no_callers", "no_emitters", "registered_unused_route"]}, "description": "Restrict to these reasons (default all)"},
+                "limit": {"type": "integer", "description": "Max findings (default 100, max 1000)"}
+            }}
+        },
+        {
             "name": "reindex",
             "description": "Re-index the given repo-relative paths (default: the whole repo). Unchanged files are skipped.",
             "inputSchema": {"type": "object", "properties": {
@@ -172,6 +196,43 @@ fn handle_method(method: &str, params: &Value) -> Result<Value> {
         "code.gap_history" | "gap_history" => {
             let gap_id = str_param(params, "gap_id")?;
             code::phase1::gap_history(&repo_dir()?, gap_id)
+        }
+        "code.trait_impls" | "trait_impls" => {
+            let name = str_param(params, "trait")?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(50)
+                .clamp(1, 500) as usize;
+            let (root, conn) = open_index()?;
+            code::phase3::trait_impls(&conn, &root, name, limit)
+        }
+        "code.symbol_history" | "symbol_history" => {
+            let symbol = str_param(params, "symbol")?;
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(20)
+                .clamp(1, 200) as usize;
+            code::phase3::symbol_history(&repo_dir()?, symbol, limit)
+        }
+        "code.dead_code_scan" | "dead_code_scan" => {
+            let reasons: Vec<String> = params
+                .get("reasons")
+                .and_then(|v| v.as_array())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(String::from))
+                        .collect()
+                })
+                .unwrap_or_default();
+            let limit = params
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(100)
+                .clamp(1, 1000) as usize;
+            let (root, conn) = open_index()?;
+            code::phase3::dead_code_scan(&conn, &root, &reasons, limit)
         }
         "reindex" => {
             let (root, conn) = open_index()?;
@@ -321,6 +382,9 @@ mod tests {
                 "code.find_symbol",
                 "code.callers_of",
                 "code.gap_history",
+                "code.trait_impls",
+                "code.symbol_history",
+                "code.dead_code_scan",
                 "reindex"
             ]
         );
@@ -348,6 +412,14 @@ mod tests {
             .unwrap_err()
             .to_string()
             .contains("gap_id"));
+        assert!(handle_method("code.trait_impls", &json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("trait"));
+        assert!(handle_method("code.symbol_history", &json!({}))
+            .unwrap_err()
+            .to_string()
+            .contains("symbol"));
         assert!(handle_method("does_not_exist", &json!({}))
             .unwrap_err()
             .to_string()

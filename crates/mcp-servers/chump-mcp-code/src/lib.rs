@@ -16,6 +16,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 
 pub mod phase1;
+pub mod phase3;
 
 /// Languages this index covers (the AC set).
 pub const INDEXED_LANGUAGES: [&str; 3] = ["rust", "bash", "python"];
@@ -162,7 +163,7 @@ pub fn index_files(
     Ok(stats)
 }
 
-fn is_skip_dir(name: &str) -> bool {
+pub(crate) fn is_skip_dir(name: &str) -> bool {
     (name.starts_with('.') && name != ".")
         || matches!(
             name,
