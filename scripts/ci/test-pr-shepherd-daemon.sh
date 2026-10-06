@@ -11,6 +11,7 @@
 #     rebase_skipped reason=not_strict) even with N BEHIND PRs; strict=true → rebases
 #     proceed up to MAX_REBASES budget.
 
+export CHUMP_NOISE_GAP_FILING=1  # ZERO-WASTE-014: these tests cover the legacy gap-filing path
 set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"

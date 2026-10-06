@@ -97,6 +97,13 @@ events:
     trigger: any Claude session begins; confirms the URGENT-INBOX polling hook registered and ran, independent of whether unread messages were found
     consumers: [ambient.jsonl audit trail]
 
+  - kind: electrician_reconciled
+    effect_metric: self
+    emitter: scripts/ops/electrician.sh (deterministic fleet-wiring daemon)
+    trigger: each electrician reconcile shift — reconciles DESIRED wiring (the repo's declared timers/services) against the node's actual systemd state, wiring/starting/healing as needed
+    consumers: [operator visibility, ambient.jsonl audit trail]
+    fields_required: [ts, kind, wired, started, healed, active_timers, failed]
+
   - kind: collision_prediction
     effect_metric: self
     emitter: src/collision_prediction.rs (META-076, first implementation of docs/design/COLLISION_PREDICTION_SCHEMA.md)
@@ -3195,6 +3202,18 @@ events:
     emitter: scripts/ops/shared-ci-blocker.sh
     trigger: cross-PR CI blocker detected
     consumers: [operator-recall]
+
+  - kind: ci_failure
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh
+    trigger: a PR CI job failed — emitted as an ambient signal instead of filing a new gap (ZERO-WASTE-014)
+    consumers: [ci-audit]
+
+  - kind: stuck_pr
+    effect_metric: self
+    emitter: scripts/ops/stuck-pr-filer.sh
+    trigger: a PR is stuck (e.g. CI red past threshold) — emitted as an ambient signal instead of filing a new gap (ZERO-WASTE-014)
+    consumers: [ci-audit]
 
   - kind: botmerge_wedged
     effect_metric: self
@@ -10348,6 +10367,9 @@ events:
         chump_hold_label        — PR carries the CHUMP_HOLD label
         rebase_conflict         — gh pr update-branch returned non-zero (conflict or API error)
         rate_limit_reached      — CHUMP_UNBLOCK_RATE_LIMIT exceeded for this run
+        failing_after_fresh_base — (RESILIENT-1521 stale sweep) PR was refreshed onto an advanced
+                                   base and is still BLOCKED; routed once to ci-audit via kind=pr_stuck
+      Stale-sweep events carry source_pr=0 and signature_hash=stale_sweep.
     consumers: [ops-audit]
     fields_required: [ts, kind, source, source_pr, signature_hash, pr_number, reason]
     expected_volume: "0–N per cascade run (N = blocked PRs that hit safety guards)"

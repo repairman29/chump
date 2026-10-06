@@ -301,7 +301,8 @@ cmd_run() {
                     local gap_title="EFFECTIVE: Wire ${artifact} into role ${role_candidate}"
                     local gap_ac="1. Edit the role-doc for ${role_candidate} to reference ${artifact} (shipped in ${gap_id:-commit ${sha:0:12}}) — add it to the Lane scope section or the Cross-references table. 2. Verify with: grep -l '${artifact}' .claude/agents/*.md CLAUDE.md AGENTS.md docs/process/*.md — must return at least one hit. 3. Smoke-test: bash scripts/ci/test-quartermaster-audit-loop.sh."
                     local new_gap_id=""
-                    if command -v chump >/dev/null 2>&1; then
+                    # ZERO-WASTE-014: ambient-only unless CHUMP_NOISE_GAP_FILING=1.
+                    if [[ "${CHUMP_NOISE_GAP_FILING:-0}" == "1" ]] && command -v chump >/dev/null 2>&1; then
                         new_gap_id="$(CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
                             chump gap reserve \
                             --domain EFFECTIVE \
@@ -313,7 +314,7 @@ cmd_run() {
                     fi
                     mark_filed "$artifact"
                     gaps_filed=$(( gaps_filed + 1 ))
-                    echo "  filed gap ${new_gap_id:-?} for shelfware: $artifact (${gap_id:-unknown})"
+                    echo "  shelfware ${new_gap_id:-(ambient only)}: $artifact (${gap_id:-unknown})"
                 else
                     # Overflow to deferred queue.
                     printf '%s\n' "$finding_json" >> "$DEFERRED_FILE"
@@ -374,7 +375,7 @@ cmd_drain_deferred() {
             "\"gap_id\":\"$gap_id\",\"artifact\":\"$artifact\",\"role_candidate\":\"$role_candidate\",\"source\":\"deferred\""
         mark_filed "$artifact"
 
-        if command -v chump >/dev/null 2>&1; then
+        if [[ "${CHUMP_NOISE_GAP_FILING:-0}" == "1" ]] && command -v chump >/dev/null 2>&1; then
             CHUMP_GAP_RESERVE_NO_SIMILARITY=1 \
                 chump gap reserve \
                 --domain EFFECTIVE \

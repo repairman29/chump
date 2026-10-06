@@ -10748,6 +10748,33 @@ async fn main() -> Result<()> {
                 );
                 println!("{}", shares.status_line());
             }
+            // INFRA-8043: one-time triage of open P1 gaps that have no outcome
+            // (MISSION-045 requires one). Demotes them to P2 with an audit note;
+            // dry-run unless --apply. Idempotent.
+            "triage-unanchored" => {
+                let apply = args.iter().any(|a| a == "--apply");
+                match store.demote_unanchored_p1(!apply) {
+                    Ok(ids) => {
+                        let verb = if apply { "demoted" } else { "would demote" };
+                        for id in &ids {
+                            println!("{verb} {id}: P1 -> P2 (no outcome)");
+                        }
+                        println!(
+                            "[triage-unanchored] {} open P1 gap(s) without an outcome {}",
+                            ids.len(),
+                            if apply {
+                                "demoted to P2"
+                            } else {
+                                "(dry-run; pass --apply)"
+                            }
+                        );
+                    }
+                    Err(e) => {
+                        eprintln!("chump gap triage-unanchored failed: {e:#}");
+                        std::process::exit(1);
+                    }
+                }
+            }
             "reserve" => {
                 let has_flag_domain = args.iter().any(|a| a == "--domain");
                 let domain = flag("--domain").or_else(|| {
@@ -15577,6 +15604,15 @@ async fn main() -> Result<()> {
                         } else {
                             "P1".to_string()
                         };
+                        // INFRA-8043: slices inherit the parent's outcome; with none
+                        // they file at P2 (P0/P1 require an outcome, MISSION-045).
+                        let slice_outcome =
+                            parent.outcome_id.clone().filter(|o| !o.trim().is_empty());
+                        let priority = gap_store::effective_filing_priority(
+                            &priority,
+                            slice_outcome.as_deref(),
+                        )
+                        .to_string();
 
                         match store.reserve_verified(
                             &parent.domain,
@@ -15609,6 +15645,7 @@ async fn main() -> Result<()> {
                                         acceptance_criteria: Some(ac_json),
                                         skills_required: skills_update,
                                         notes: notes_update,
+                                        outcome_id: slice_outcome.clone(),
                                         ..Default::default()
                                     },
                                 );
@@ -16744,7 +16781,13 @@ async fn main() -> Result<()> {
                         }
                         skipped.push(full_title.clone());
                     } else {
-                        match store.reserve("INFRA", &full_title, &e.priority, "m") {
+                        // INFRA-8043: harvest-check filings carry no outcome, so P0/P1 files at P2.
+                        match store.reserve(
+                            "INFRA",
+                            &full_title,
+                            gap_store::priority_without_outcome(&e.priority),
+                            "m",
+                        ) {
                             Ok(id) => {
                                 let _ = store.set_fields(
                                     &id,

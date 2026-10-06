@@ -1064,6 +1064,11 @@ the `verify-existence` check — local `ls` lies when the checkout is
 `scripts/coord/freshness-preamble.sh` (META-115) is harness-neutral and
 classifies session-start state as FRESH/STALE/CRITICAL_STALE.
 
+**Verify-existence discipline** (META-113) — before filing or asserting that X is
+missing or present, check `origin/main`, not the local working tree: use the
+`verify-existence` skill or harness equivalent (`scripts/dev/verify-existence.sh --explicit-source-check <path-or-symbol>`)
+or `git ls-tree origin/main <path>`. Never a bare `ls`; long sessions drift 40+ commits behind.
+
 ## Pull request guidelines
 
 - **Branch:** `chump/<short-codename>` (canonical, see "Naming

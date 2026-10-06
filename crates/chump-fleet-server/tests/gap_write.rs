@@ -169,6 +169,22 @@ async fn gap_write_auth_op_validation_and_reserve_with_outcome() {
     );
     assert_eq!(body.get("op").and_then(|v| v.as_str()), Some("reserve"));
 
+    // (e2) PRODUCT-323: an op=set with no recognised field is a 400 (not 500)
+    //      and the error names the fields the caller sent.
+    let (status, body) = post_gap(
+        build_app(&dir),
+        Some("Bearer s3cret-token"),
+        json!({"op": "set", "gap_id": "INFRA-8471", "note": "hello"}),
+    )
+    .await;
+    assert_eq!(
+        status,
+        StatusCode::BAD_REQUEST,
+        "empty set must be 400: {body:?}"
+    );
+    let err = body.get("error").and_then(|e| e.as_str()).unwrap_or("");
+    assert!(err.contains("received fields: [op, gap_id, note]"), "{err}");
+
     // The fake binary logs every invocation; assert BOTH `gap reserve` and a
     // follow-up `gap set ... --outcome MISSION-010` ran — proving the
     // outcome field was forwarded, not silently dropped (INFRA-3686).
