@@ -35,12 +35,12 @@ there returning errors. Three stacked root causes kept the endpoint broken:
    (which *can* set it). PostgREST re-reads `db-uri`/`db-anon-role` only on a
    full restart — a schema reload (SIGUSR2) is not enough.
 3. **Bind scope.** `postgrest.conf` sets `server-host`. Bind the **tailnet**
-   interface (`100.90.52.126`), not `127.0.0.1` (unreachable by the fleet) and
+   interface (`<CJ-TAILNET-IP>`), not `127.0.0.1` (unreachable by the fleet) and
    not `0.0.0.0` (these are public Oracle nodes — don't expose Postgres' REST
    layer on the public IP).
 
 All three were fixed live: restart to pick up the correct role, and
-`server-host = "100.90.52.126"`. The endpoint now serves `shared_gaps` → `[]`
+`server-host = "<CJ-TAILNET-IP>"`. The endpoint now serves `shared_gaps` → `[]`
 HTTP 200 (empty, dormant) over the tailnet instead of 42501.
 
 Full unification onto PostgREST (backfilling ~1900 open gaps and flipping the

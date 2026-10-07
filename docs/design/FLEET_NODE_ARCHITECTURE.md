@@ -128,7 +128,7 @@ hardware:
   arch: x86_64
 network:
   link_class: wifi           # declared, drives the runbook branch
-  tailnet_ip: 100.90.52.126
+  tailnet_ip: <CJ-TAILNET-IP>
   known_aps: [CBCI-D2FB-2.4, Bits]
   public_v6: true            # posture-relevant, changes with location
 security_baseline:

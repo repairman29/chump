@@ -71,15 +71,16 @@ organ_audit() {
   [[ -f "$MANIFEST" && -f "$LIB" ]] || return 0
   # shellcheck disable=SC1090
   source "$LIB"
-  local _po=() _en=() unit cause current sysdir="${CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR:-/etc/systemd/system}"
-  declare -A _role _req _plat
-  organ_manifest_parse "$MANIFEST" _po _en _role _req _plat || return 0
+  local _po=() _en=() unit cause current current_node sysdir="${CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR:-/etc/systemd/system}"
+  declare -A _role _req _plat _node
+  organ_manifest_parse "$MANIFEST" _po _en _role _req _plat _node || return 0
   current="$(organ_current_platform)"
+  current_node="$(organ_current_node)"
   local total=0 active=0 scoped=0 unexpected=0
   for unit in "${_en[@]}"; do
     case "$unit" in *.service|*.timer) : ;; *) continue ;; esac
     total=$((total + 1))
-    cause="$(organ_dark_cause "$unit" "${_plat[$unit]:-}" "${_req[$unit]:-}" "$current" "$REPO_ROOT" "$sysdir")"
+    cause="$(organ_dark_cause "$unit" "${_plat[$unit]:-}" "${_req[$unit]:-}" "$current" "$REPO_ROOT" "$sysdir" "${_node[$unit]:-}" "$current_node")"
     case "$cause" in
       active) active=$((active + 1)) ;;
       scoped-off:*) scoped=$((scoped + 1)); log "scoped off this node: $unit ($cause)" ;;
