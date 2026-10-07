@@ -10,8 +10,11 @@
 #   bash scripts/setup/install-queue-tender.sh check     # exit 0 if installed (and loaded)
 #
 # Test/CI knobs:
-#   CHUMP_QT_LAUNCH_AGENTS_DIR  override ~/Library/LaunchAgents
-#   CHUMP_QT_NO_LAUNCHCTL=1     skip launchctl calls (plist file only)
+#   CHUMP_QT_LAUNCH_AGENTS_DIR     override ~/Library/LaunchAgents
+#   CHUMP_QT_LAUNCHCTL_DISABLED=1  skip launchctl calls (plist file only).
+#                                  On a node without launchctl (CI/Linux) the
+#                                  calls already no-op; this forces that path
+#                                  for a macOS test harness.
 
 set -uo pipefail
 
@@ -22,7 +25,7 @@ TEMPLATE="$REPO_ROOT/scripts/launchd/$LABEL.plist"
 AGENTS_DIR="${CHUMP_QT_LAUNCH_AGENTS_DIR:-$HOME/Library/LaunchAgents}"
 INSTALLED="$AGENTS_DIR/$LABEL.plist"
 LOOP="$REPO_ROOT/scripts/coord/queue-tender-loop.sh"
-NO_LCTL="${CHUMP_QT_NO_LAUNCHCTL:-0}"
+NO_LCTL="${CHUMP_QT_LAUNCHCTL_DISABLED:-0}"
 DOMAIN="gui/$(id -u)"
 
 _lctl() { [[ "$NO_LCTL" == "1" ]] && return 0; command -v launchctl >/dev/null 2>&1 || return 0; launchctl "$@"; }

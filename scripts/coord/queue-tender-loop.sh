@@ -23,7 +23,7 @@
 # Exit codes: 0 ok, 2 bad subcommand.
 #
 # Env:
-#   CHUMP_SKIP_QUEUE_TENDER=1         exit 0 immediately (panic-stop)
+#   CHUMP_QUEUE_TENDER_DISABLED=1     exit 0 immediately (Category B kill-switch)
 #   CHUMP_QUEUE_TENDER_DRY_RUN        1 (default) = log intent only; 0 = act
 #   CHUMP_QUEUE_TENDER_HYSTERESIS_S   min seconds between updates of one PR (default 300)
 #   CHUMP_QUEUE_TENDER_MAX_PER_TICK   max PR updates per tick (default 5)
@@ -34,8 +34,8 @@
 
 set -euo pipefail
 
-if [[ "${CHUMP_SKIP_QUEUE_TENDER:-0}" == "1" ]]; then
-    echo "[queue-tender] CHUMP_SKIP_QUEUE_TENDER=1 — skipping."
+if [[ "${CHUMP_QUEUE_TENDER_DISABLED:-0}" == "1" ]]; then
+    echo "[queue-tender] CHUMP_QUEUE_TENDER_DISABLED=1 — exiting cleanly."
     exit 0
 fi
 

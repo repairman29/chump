@@ -30,11 +30,11 @@ if grep -q '"kind":"queue_tend_tick"' "$AMB" && grep -q '"kind":"queue_tend_hear
     ok "2: tick emits queue_tend_tick, heartbeat emits queue_tend_heartbeat"
 else bad "2: expected events missing"; fi
 
-# 3. CHUMP_SKIP_QUEUE_TENDER=1 exits 0 immediately and emits nothing.
+# 3. CHUMP_QUEUE_TENDER_DISABLED=1 exits 0 immediately and emits nothing.
 AMB3="$TMP/amb3.jsonl"
-if CHUMP_SKIP_QUEUE_TENDER=1 CHUMP_AMBIENT_LOG="$AMB3" bash "$LOOP" tick >/dev/null 2>&1 && [[ ! -s "$AMB3" ]]; then
-    ok "3: CHUMP_SKIP_QUEUE_TENDER=1 exits 0 with no work"
-else bad "3: skip switch did not short-circuit"; fi
+if CHUMP_QUEUE_TENDER_DISABLED=1 CHUMP_AMBIENT_LOG="$AMB3" bash "$LOOP" tick >/dev/null 2>&1 && [[ ! -s "$AMB3" ]]; then
+    ok "3: CHUMP_QUEUE_TENDER_DISABLED=1 exits 0 with no work"
+else bad "3: kill-switch did not short-circuit"; fi
 
 # 4. Dry-run tick sees BEHIND PRs and reports intent (does not need gh).
 printf '7\tBEHIND\n8\tCLEAN\n9\tBEHIND\n' > "$TMP/prs4.txt"
@@ -56,7 +56,7 @@ out="$(CHUMP_AMBIENT_LOG="$TMP/a5b.jsonl" CHUMP_QUEUE_TENDER_PR_FIXTURE="$TMP/pr
 if grep -q 'would update-branch #7' <<<"$out"; then ok "5b: PR eligible again after hysteresis window"; else bad "5b: still held after window: $out"; fi
 
 # 6. Installer install/status/check/uninstall are idempotent (no launchctl).
-export CHUMP_QT_LAUNCH_AGENTS_DIR="$TMP/agents" CHUMP_QT_NO_LAUNCHCTL=1
+export CHUMP_QT_LAUNCH_AGENTS_DIR="$TMP/agents" CHUMP_QT_LAUNCHCTL_DISABLED=1
 r=0
 bash "$INSTALL" check >/dev/null 2>&1 && r=1                       # not installed -> must fail
 bash "$INSTALL" install >/dev/null 2>&1 || r=1
@@ -68,7 +68,7 @@ bash "$INSTALL" uninstall >/dev/null 2>&1 || r=1
 bash "$INSTALL" uninstall >/dev/null 2>&1 || r=1                   # idempotent
 bash "$INSTALL" check >/dev/null 2>&1 && r=1
 if [[ $r -eq 0 ]]; then ok "6: installer install/uninstall/status/check idempotent"; else bad "6: installer behavior wrong"; fi
-unset CHUMP_QT_LAUNCH_AGENTS_DIR CHUMP_QT_NO_LAUNCHCTL
+unset CHUMP_QT_LAUNCH_AGENTS_DIR CHUMP_QT_LAUNCHCTL_DISABLED
 
 # 7. Lane discipline + role files: no admin-bypass merge in source; agent/skill/doctrine exist.
 if ! grep -rEn 'pr merge[^#]*--admin|--admin[^#]*pr merge' "$LOOP" "$INSTALL" "$PLIST" \

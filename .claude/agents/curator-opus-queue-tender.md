@@ -24,5 +24,27 @@ bash scripts/coord/queue-tender-loop.sh heartbeat   # liveness event
 
 - Only update branches of open PRs. Never merge, never bypass branch protection, never close a PR.
 - Respect hysteresis: do not re-update a PR within 5 minutes of the last update.
-- `CHUMP_SKIP_QUEUE_TENDER=1` is the panic-stop; honor it.
+- `CHUMP_QUEUE_TENDER_DISABLED=1` is the panic-stop (Category B operator kill-switch); honor it. Whether the organ runs on a node at all is decided by the launchd roster (`scripts/setup/install-queue-tender.sh`), not a per-organ skip flag.
 - A PR that is stuck for reasons other than BEHIND is the shepherd's; a red CI cluster is ci-audit's. Hand off, don't act.
+
+## Session start (FIRST action — arm the inbox watcher)
+
+**Before** work-your-lane, arm a real-time watcher on this session's inbox so wizard/operator dispatches wake the queue-tender immediately (0s lag) instead of waiting for the next launchd tick. See [`docs/process/INBOX_WATCHER_PATTERN.md`](../../docs/process/INBOX_WATCHER_PATTERN.md) for the harness-agnostic contract.
+
+**Claude Code (this harness)** — arm a Monitor on the inbox file:
+```
+Monitor(
+  description: "Watch curator-opus-queue-tender inbox for new messages",
+  persistent: true,
+  timeout_ms: 3600000,
+  command: "touch .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null; tail -F -n 0 .chump-locks/inbox/<SESSION-ID>.jsonl 2>/dev/null | grep --line-buffered -v '^$'"
+)
+```
+Each new inbox line arrives as a `<task-notification>` that wakes the loop, eliminating the operator-as-messenger antipattern (INFRA-1860/INFRA-1879).
+
+**Other harnesses** (opencode, codex, manual) — spawn an equivalent file-watcher (`inotifywait -m` on Linux, `fswatch` on macOS) on the same `.chump-locks/inbox/<SESSION-ID>.jsonl`, or poll with `scripts/coord/chump-inbox.sh read`. Contract is harness-agnostic; see INBOX_WATCHER_PATTERN.md.
+
+Then run one cycle:
+```bash
+bash scripts/coord/queue-tender-loop.sh tick        # one cycle (dry-run unless CHUMP_QUEUE_TENDER_DRY_RUN=0)
+```

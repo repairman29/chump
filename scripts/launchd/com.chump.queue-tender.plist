@@ -5,7 +5,7 @@
   com.chump.queue-tender.plist — META-243
   Launchd user agent that runs one queue-tender tick every 300 seconds.
   DRY_RUN by default; the operator sets CHUMP_QUEUE_TENDER_DRY_RUN=0 to act.
-  CHUMP_SKIP_QUEUE_TENDER=1 is the panic-stop.
+  CHUMP_QUEUE_TENDER_DISABLED=1 is the panic-stop (Category B kill-switch).
   Install with: bash __REPO_ROOT__/scripts/setup/install-queue-tender.sh install
   Placeholders __REPO_ROOT__ and __HOME__ are substituted by the installer.
 -->
@@ -32,7 +32,7 @@
         <string>__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
         <key>CHUMP_QUEUE_TENDER_DRY_RUN</key>
         <string>1</string>
-        <key>CHUMP_SKIP_QUEUE_TENDER</key>
+        <key>CHUMP_QUEUE_TENDER_DISABLED</key>
         <string>0</string>
     </dict>
     <key>StandardOutPath</key>

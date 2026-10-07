@@ -24,7 +24,7 @@ Each `tick`:
 | Rail | Behavior |
 |---|---|
 | Dry-run default | `CHUMP_QUEUE_TENDER_DRY_RUN=1` logs intent only. The operator sets `0` after reading dry-run output. |
-| Panic-stop | `CHUMP_SKIP_QUEUE_TENDER=1` makes the script exit 0 immediately. |
+| Panic-stop | `CHUMP_QUEUE_TENDER_DISABLED=1` makes the script exit 0 immediately (Category B operator kill-switch). Presence on a node is otherwise controlled by the launchd roster, not a per-organ skip flag. |
 | Hysteresis | A PR updated in the last `CHUMP_QUEUE_TENDER_HYSTERESIS_S` seconds (default 300) is held, not re-updated. Prevents rebase ping-pong that resets CI. |
 | Per-tick cap | At most `CHUMP_QUEUE_TENDER_MAX_PER_TICK` (default 5) updates per tick. |
 
