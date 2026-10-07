@@ -100,6 +100,7 @@ fn unpickable_reason(
 /// parked) AND states a definition of done:
 ///   * no open gap links to it                      -> `no_open_gaps`
 ///   * it has open gaps but all are unpickable      -> `all_unpickable`
+///
 /// Reproduces the 2026-08-07 case where the product lighthouse outcomes held
 /// 0 / 0 / 1 gaps: two empty outcomes and one whose only gap was blocked.
 pub fn analyze_outcome_drift(
