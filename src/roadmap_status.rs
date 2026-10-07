@@ -31,6 +31,18 @@ pub struct PillarCoverage {
     pub zero_waste: usize,
 }
 
+/// META-1045: one outcome-table drift finding (see [`analyze_outcome_drift`]).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct OutcomeDrift {
+    pub outcome_id: String,
+    pub title: String,
+    /// `no_open_gaps` — a live outcome with a stated DoD and zero open gaps;
+    /// `all_unpickable` — it has open gaps, but every one is blocked.
+    pub kind: &'static str,
+    pub detail: String,
+    pub open_children: usize,
+}
+
 #[derive(Debug, Default, Clone)]
 pub struct RoadmapStatusReport {
     pub weeks: Vec<WeekOutcome>,
@@ -41,6 +53,99 @@ pub struct RoadmapStatusReport {
     pub untraced_p0: Vec<String>,
     /// INFRA-1145: per-pillar open gap counts.
     pub pillar_coverage: PillarCoverage,
+    /// META-1045: outcome-TABLE drift — live outcomes with a stated definition of
+    /// done but no open gaps, or whose open gaps are all unpickable.
+    pub outcome_drift: Vec<OutcomeDrift>,
+}
+
+/// Dependency ids named by a gap's `depends_on` (a JSON array of ids, or a
+/// comma/whitespace separated list).
+fn dep_ids(depends_on: &str) -> Vec<String> {
+    let t = depends_on.trim();
+    if t.is_empty() {
+        return Vec::new();
+    }
+    if let Ok(v) = serde_json::from_str::<Vec<String>>(t) {
+        return v.into_iter().filter(|x| !x.trim().is_empty()).collect();
+    }
+    t.split(|c: char| c == ',' || c.is_whitespace())
+        .map(|x| {
+            x.trim()
+                .trim_matches(|c| c == '[' || c == ']' || c == '"' || c == '\'')
+        })
+        .filter(|x| !x.is_empty())
+        .map(String::from)
+        .collect()
+}
+
+/// META-1045: an OPEN gap is unpickable when any dependency is not yet done.
+/// (Only `open` is a pickable status — see GapStore::ship / the fleet picker.)
+fn unpickable_reason(
+    gap: &crate::gap_store::GapRow,
+    done_ids: &std::collections::HashSet<String>,
+) -> Option<String> {
+    let unmet: Vec<String> = dep_ids(&gap.depends_on)
+        .into_iter()
+        .filter(|d| !done_ids.contains(d))
+        .collect();
+    if unmet.is_empty() {
+        None
+    } else {
+        Some(format!("{} blocked by {}", gap.id, unmet.join(",")))
+    }
+}
+
+/// META-1045: extend the roadmap-status drift analysis to the OUTCOME TABLE.
+/// For every outcome that is still live (`status == "open"`, i.e. not done or
+/// parked) AND states a definition of done:
+///   * no open gap links to it                      -> `no_open_gaps`
+///   * it has open gaps but all are unpickable      -> `all_unpickable`
+///
+/// Reproduces the 2026-08-07 case where the product lighthouse outcomes held
+/// 0 / 0 / 1 gaps: two empty outcomes and one whose only gap was blocked.
+pub fn analyze_outcome_drift(
+    outcomes: &[crate::gap_store::OutcomeRow],
+    open_gaps: &[crate::gap_store::GapRow],
+    done_ids: &std::collections::HashSet<String>,
+) -> Vec<OutcomeDrift> {
+    let mut out = Vec::new();
+    for o in outcomes {
+        if o.status != "open" || o.definition_of_done.trim().is_empty() {
+            continue;
+        }
+        let children: Vec<&crate::gap_store::GapRow> = open_gaps
+            .iter()
+            .filter(|g| g.outcome_id.as_deref() == Some(o.id.as_str()))
+            .collect();
+        if children.is_empty() {
+            out.push(OutcomeDrift {
+                outcome_id: o.id.clone(),
+                title: o.title.clone(),
+                kind: "no_open_gaps",
+                detail: "has a stated definition of done but zero open gaps".to_string(),
+                open_children: 0,
+            });
+            continue;
+        }
+        let reasons: Vec<String> = children
+            .iter()
+            .filter_map(|g| unpickable_reason(g, done_ids))
+            .collect();
+        if reasons.len() == children.len() {
+            out.push(OutcomeDrift {
+                outcome_id: o.id.clone(),
+                title: o.title.clone(),
+                kind: "all_unpickable",
+                detail: format!(
+                    "all {} open gap(s) unpickable: {}",
+                    children.len(),
+                    reasons.join("; ")
+                ),
+                open_children: children.len(),
+            });
+        }
+    }
+    out
 }
 
 pub fn parse_roadmap(content: &str) -> Vec<WeekOutcome> {
@@ -132,6 +237,7 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
 
     let mut untraced_p0: Vec<String> = Vec::new();
     let mut pillar_coverage = PillarCoverage::default();
+    let mut outcome_drift: Vec<OutcomeDrift> = Vec::new();
 
     if let Ok(gs) = crate::gap_store::GapStore::open(repo_root) {
         let all_open = gs.list(Some("open")).unwrap_or_default();
@@ -158,6 +264,11 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
         // keeping the ROADMAP.md regex as fallback when outcomes table is empty.
         let outcomes = gs.list_outcomes().unwrap_or_default();
         let use_outcome_join = !outcomes.is_empty();
+
+        // META-1045: outcome-table drift, inside this same command (no parallel checker).
+        let done_ids: std::collections::HashSet<String> =
+            all_done.iter().map(|r| r.id.clone()).collect();
+        outcome_drift = analyze_outcome_drift(&outcomes, &all_open, &done_ids);
 
         // INFRA-1145: collect all gap IDs referenced in the roadmap.
         let all_roadmap_ids: std::collections::HashSet<String> = weeks
@@ -219,6 +330,7 @@ pub fn build_report(repo_root: &Path) -> RoadmapStatusReport {
         starved_outcomes,
         untraced_p0,
         pillar_coverage,
+        outcome_drift,
     }
 }
 
@@ -242,7 +354,9 @@ fn outcome_status_icon(week: &WeekOutcome) -> &'static str {
 impl RoadmapStatusReport {
     /// Returns true when drift is detected (starved outcomes or untraced P0/P1 gaps).
     pub fn has_drift(&self) -> bool {
-        !self.starved_outcomes.is_empty() || !self.untraced_p0.is_empty()
+        !self.starved_outcomes.is_empty()
+            || !self.untraced_p0.is_empty()
+            || !self.outcome_drift.is_empty()
     }
 
     pub fn render_text(&self) -> String {
@@ -341,6 +455,24 @@ impl RoadmapStatusReport {
             }
         }
 
+        // META-1045: outcome-table drift.
+        if self.outcome_drift.is_empty() {
+            out.push_str(
+                "  \u{2705} No outcome-table drift (every live outcome with a DoD has a pickable open gap)\n",
+            );
+        } else {
+            out.push_str(&format!(
+                "  \u{26a0}\u{fe0f}  Outcome-table drift: {} live outcome(s) with a DoD but nothing pickable\n",
+                self.outcome_drift.len()
+            ));
+            for d in &self.outcome_drift {
+                out.push_str(&format!(
+                    "     {} [{}] {} — {}\n",
+                    d.outcome_id, d.kind, d.title, d.detail
+                ));
+            }
+        }
+
         let pc = &self.pillar_coverage;
         out.push_str(&format!(
             "  Pillar coverage (open): EFFECTIVE={} CREDIBLE={} RESILIENT={} ZERO-WASTE={}\n",
@@ -417,13 +549,29 @@ impl RoadmapStatusReport {
             z = pc.zero_waste,
         );
 
+        let outcome_drift_json: Vec<String> = self
+            .outcome_drift
+            .iter()
+            .map(|d| {
+                format!(
+                    r#"{{"outcome_id":"{}","title":"{}","kind":"{}","detail":"{}","open_children":{}}}"#,
+                    escape_json(&d.outcome_id),
+                    escape_json(&d.title),
+                    d.kind,
+                    escape_json(&d.detail),
+                    d.open_children
+                )
+            })
+            .collect();
+
         format!(
-            r#"{{"ts":"{ts}","kind":"roadmap_status","weeks":[{weeks}],"starved_outcomes":[{starved}],"untraced_p0":[{untraced}],"pillar_coverage":{pillar}}}"#,
+            r#"{{"ts":"{ts}","kind":"roadmap_status","weeks":[{weeks}],"starved_outcomes":[{starved}],"untraced_p0":[{untraced}],"pillar_coverage":{pillar},"outcome_drift":[{outcome_drift}]}}"#,
             ts = self.ts,
             weeks = weeks_json.join(","),
             starved = starved_json.join(","),
             untraced = untraced_json.join(","),
             pillar = pillar_json,
+            outcome_drift = outcome_drift_json.join(","),
         )
     }
 }
@@ -632,6 +780,7 @@ mod tests {
             starved_outcomes: vec![],
             untraced_p0: vec![],
             pillar_coverage: PillarCoverage::default(),
+            outcome_drift: vec![],
         };
         assert!(!report.has_drift());
     }
@@ -689,5 +838,141 @@ mod tests {
         let xxx = weeks[1].gaps.iter().find(|g| g.id == "INFRA-XXX").unwrap();
         assert!(xxx.is_placeholder);
         assert_eq!(xxx.status, "not_filed");
+    }
+
+    // ── META-1045: outcome-table drift ─────────────────────────────────────
+
+    fn outcome(id: &str, status: &str, dod: &str) -> crate::gap_store::OutcomeRow {
+        crate::gap_store::OutcomeRow {
+            id: id.to_string(),
+            title: format!("{id} lighthouse"),
+            priority: "P1".to_string(),
+            definition_of_done: dod.to_string(),
+            status: status.to_string(),
+            created_at: 0,
+            closed_at: None,
+            park_reason: None,
+            jtbd_who: None,
+            jtbd_struggling_moment: None,
+            jtbd_done_signal: None,
+        }
+    }
+
+    fn open_gap(id: &str, outcome: &str, depends_on: &str) -> crate::gap_store::GapRow {
+        crate::gap_store::GapRow {
+            id: id.to_string(),
+            domain: "PRODUCT".to_string(),
+            title: "t".to_string(),
+            description: String::new(),
+            priority: "P1".to_string(),
+            effort: "s".to_string(),
+            status: "open".to_string(),
+            acceptance_criteria: String::new(),
+            depends_on: depends_on.to_string(),
+            notes: String::new(),
+            source_doc: String::new(),
+            created_at: 0,
+            closed_at: None,
+            opened_date: String::new(),
+            closed_date: String::new(),
+            closed_pr: None,
+            skills_required: String::new(),
+            preferred_backend: String::new(),
+            preferred_machine: String::new(),
+            estimated_minutes: String::new(),
+            required_model: String::new(),
+            shipped_in: None,
+            outcome_id: Some(outcome.to_string()),
+            evidence: None,
+        }
+    }
+
+    /// The 2026-08-07 case: three product lighthouse outcomes holding 0 / 0 / 1
+    /// gaps. Two are empty; the one gap the third holds is blocked by an open
+    /// dependency, so nothing under any of them is pickable.
+    #[test]
+    fn meta_1045_lighthouse_0_0_1_case_is_flagged() {
+        let outcomes = vec![
+            outcome("PRODUCT-LH-1", "open", "Smuggler loop runs end-to-end"),
+            outcome("PRODUCT-LH-2", "open", "Olive checkout converts"),
+            outcome("PRODUCT-LH-3", "open", "Games site ships a playable demo"),
+        ];
+        let open = vec![
+            open_gap("PRODUCT-101", "PRODUCT-LH-3", "PRODUCT-100"),
+            open_gap("PRODUCT-100", "OTHER-OUTCOME", ""),
+        ];
+        let done: std::collections::HashSet<String> = std::collections::HashSet::new();
+        let drift = analyze_outcome_drift(&outcomes, &open, &done);
+        let got: Vec<(&str, &str)> = drift
+            .iter()
+            .map(|d| (d.outcome_id.as_str(), d.kind))
+            .collect();
+        assert_eq!(
+            got,
+            vec![
+                ("PRODUCT-LH-1", "no_open_gaps"),
+                ("PRODUCT-LH-2", "no_open_gaps"),
+                ("PRODUCT-LH-3", "all_unpickable"),
+            ]
+        );
+        assert_eq!(drift[2].open_children, 1);
+        assert!(drift[2]
+            .detail
+            .contains("PRODUCT-101 blocked by PRODUCT-100"));
+    }
+
+    #[test]
+    fn meta_1045_healthy_parked_done_and_dod_less_outcomes_are_not_flagged() {
+        let outcomes = vec![
+            outcome("O-OK", "open", "has a pickable child"),
+            outcome("O-DONE", "done", "finished"),
+            outcome("O-PARKED", "parked", "deliberately parked"),
+            outcome("O-NO-DOD", "open", "   "),
+            outcome("O-MIXED", "open", "one blocked, one pickable"),
+        ];
+        let open = vec![
+            open_gap("G-1", "O-OK", ""),
+            open_gap("G-2", "O-MIXED", "G-NOT-DONE"),
+            open_gap("G-3", "O-MIXED", "G-FINISHED"),
+        ];
+        let done: std::collections::HashSet<String> =
+            ["G-FINISHED".to_string()].into_iter().collect();
+        assert!(analyze_outcome_drift(&outcomes, &open, &done).is_empty());
+    }
+
+    #[test]
+    fn meta_1045_dependency_forms_and_done_deps() {
+        assert_eq!(dep_ids(""), Vec::<String>::new());
+        assert_eq!(dep_ids(r#"["A-1","B-2"]"#), vec!["A-1", "B-2"]);
+        assert_eq!(dep_ids("A-1, B-2"), vec!["A-1", "B-2"]);
+        // A dependency that is done does not block.
+        let outcomes = vec![outcome("O-1", "open", "dod")];
+        let open = vec![open_gap("G-1", "O-1", "A-1")];
+        let done: std::collections::HashSet<String> = ["A-1".to_string()].into_iter().collect();
+        assert!(analyze_outcome_drift(&outcomes, &open, &done).is_empty());
+    }
+
+    #[test]
+    fn meta_1045_outcome_drift_trips_has_drift_and_renders() {
+        let report = RoadmapStatusReport {
+            ts: "2026-08-07T00:00:00Z".to_string(), // chump-fmt: time-bomb-ok
+            outcome_drift: vec![OutcomeDrift {
+                outcome_id: "O-1".to_string(),
+                title: "Lighthouse".to_string(),
+                kind: "no_open_gaps",
+                detail: "has a stated definition of done but zero open gaps".to_string(),
+                open_children: 0,
+            }],
+            ..Default::default()
+        };
+        assert!(
+            report.has_drift(),
+            "outcome drift alone must count as drift"
+        );
+        assert!(report.render_text().contains("Outcome-table drift: 1"));
+        let json = report.render_json();
+        assert!(json.contains(r#""outcome_drift":[{"outcome_id":"O-1""#));
+        assert!(json.contains(r#""kind":"no_open_gaps""#));
+        assert!(!RoadmapStatusReport::default().has_drift());
     }
 }

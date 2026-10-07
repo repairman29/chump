@@ -6461,10 +6461,12 @@ events:
   - kind: roadmap_drift_detected
     effect_metric: self
     emitter: src/main.rs roadmap-status --exit-on-drift handler (INFRA-1145)
-    trigger: chump roadmap-status --exit-on-drift detects starved outcomes or
-      untraced P0/P1 gaps not referenced in any ROADMAP week.
+    trigger: chump roadmap-status --exit-on-drift detects starved outcomes,
+      untraced P0/P1 gaps not referenced in any ROADMAP week, or (META-1045)
+      outcome-table drift — a live outcome with a definition of done and no
+      open gaps, or whose open gaps are all unpickable.
     consumers: [fleet-brief, ci-failure-digest, operator-recall]
-    fields_required: [ts, kind, starved_outcomes, untraced_p0]
+    fields_required: [ts, kind, starved_outcomes, untraced_p0, outcome_drift]
 
   # ── INFRA-1147: weekly roadmap-update LLM agent ────────────────────────────
   - kind: roadmap_update_proposal_cost
