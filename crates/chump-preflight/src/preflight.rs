@@ -2523,6 +2523,11 @@ pub fn run(argv: &[String]) -> i32 {
             GateKind::Scripts,
         ));
         steps.push(step(
+            "private-topology-guard-smoke",
+            &["bash", "scripts/ci/test-private-topology-guard.sh"],
+            GateKind::Scripts,
+        ));
+        steps.push(step(
             "cross-judge-guard",
             &["bash", "scripts/ci/test-cross-judge-guard.sh"],
             GateKind::Scripts,

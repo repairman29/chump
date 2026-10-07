@@ -2039,4 +2039,10 @@ if [ -x "$GREP_C_ECHO0_HOOK" ]; then
     fi
 fi
 
+# 21. Private node topology guard (RESILIENT-1546) -- INFRA-7881 leak guard, no bypass.
+PRIVATE_TOPOLOGY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-private-topology-guard.sh"
+if [ -x "$PRIVATE_TOPOLOGY_HOOK" ] && ! "$PRIVATE_TOPOLOGY_HOOK"; then
+    exit 1
+fi
+
 exit 0
