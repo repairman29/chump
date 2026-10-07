@@ -188,6 +188,42 @@ else
     fail "bypass env should skip (rc=$RC, out=$OUT)"
 fi
 
+# ── Test 6: CHUMP_BOT_MERGE_IN_PROGRESS=1 → skip (RESILIENT-1550) ──────────
+echo "--- Test 6: bot-merge-initiated push → guard skips, emits ambient event ---"
+echo "// test-pre-push-test-gate.sh synthetic bot-merge-skip change $(date +%s)" >> src/lib.rs
+git add src/lib.rs
+git commit -qm "rs change under bot-merge"
+rm -f .chump-locks/ambient.jsonl
+OUT=$(CHUMP_BOT_MERGE_IN_PROGRESS=1 CHUMP_TEST_GATE_FAKE_RC=101 run_hook)
+RC=$?
+if [[ "$RC" -eq 0 ]] && ! echo "$OUT" | grep -qE "(INFRA-761: running cargo test|CREDIBLE-278: running cargo nextest)"; then
+    ok "bot-merge-in-progress push skipped the full-suite re-run"
+else
+    fail "bot-merge-in-progress push should skip (rc=$RC, out=$OUT)"
+fi
+if grep -q '"kind":"prepush_test_gate_skipped_botmerge"' .chump-locks/ambient.jsonl 2>/dev/null; then
+    ok "ambient event prepush_test_gate_skipped_botmerge recorded with reason"
+else
+    fail "ambient event prepush_test_gate_skipped_botmerge missing"
+fi
+BOTMERGE_TREE_SHA="$(git rev-parse HEAD^{tree})"
+BOTMERGE_MARKER=".chump-locks/test-gate-cache/${BOTMERGE_TREE_SHA}.ok"
+if [[ ! -f "$BOTMERGE_MARKER" ]]; then
+    ok "bot-merge skip path does not write a cache marker (tree-hash cache unchanged)"
+else
+    fail "bot-merge skip path should not write a cache marker"
+fi
+
+# ── Test 7: direct push (no bot-merge env) still runs full suite ───────────
+echo "--- Test 7: direct push without CHUMP_BOT_MERGE_IN_PROGRESS still runs full suite ---"
+OUT=$(CHUMP_TEST_GATE_FAKE_RC=101 run_hook)
+RC=$?
+if [[ "$RC" -ne 0 ]] && echo "$OUT" | grep -qE "(running cargo test|running cargo nextest)"; then
+    ok "direct push still runs the full nextest suite"
+else
+    fail "direct push should still run the full suite (rc=$RC, out=$OUT)"
+fi
+
 # ── Summary ─────────────────────────────────────────────────────────────────
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
