@@ -29,7 +29,7 @@ writes. The coordination organs run **only on CJ**:
 | `chump-nba-dispatch.timer` (next-best-action auto-dispatch consumer) | `brain` | **CJ only** |
 | `chump-next-best-action.timer` (EV-ranked advisory router) | `data` | **CJ only** |
 
-**The Oracle nodes `cuphead` (161.153.42.233) and `mugman` (137.131.14.145) are
+**The Oracle nodes `cuphead` (<FLEET-HUB-PUBLIC-IP>) and `mugman` (<FLEET-NODE-PUBLIC-IP>) are
 NON-coordination** — role `muscle` (worker/spare) pending Jeff's later rethink
 of the Oracle boxes. They stay running; only their coordination organs are
 retired. Do NOT decommission them.
