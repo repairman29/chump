@@ -197,3 +197,8 @@ install-cj-core-organs.sh
 # for a while (CHUMP_STATE_DB_YAML_SYNC_MODE). Not a universal fresh-bootstrap
 # requirement — YAML mirrors are optional post-INFRA-760.
 install-state-db-yaml-sync-launchd.sh
+
+# META-243 — queue-tender curator loop (launchd user agent). Opt-in curator
+# organ like the other curator loops, not a fresh-bootstrap requirement: a
+# checkout without it still functions, the pickable queue just goes untended.
+install-queue-tender.sh

@@ -40,6 +40,14 @@ if [[ "${CHUMP_SKIP_QUEUE_TENDER:-0}" == "1" ]]; then
 fi
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+
+# INFRA-1081/INFRA-1274: route gh reads through the throttled cache-first
+# wrapper rather than calling the gh CLI raw in a hot-path script. Falls back
+# to a bare passthrough if the lib can't be sourced.
+# shellcheck source=/dev/null
+source "${REPO_ROOT}/scripts/coord/lib/github.sh" 2>/dev/null || true
+command -v chump_gh >/dev/null 2>&1 || chump_gh() { gh "$@"; }
+
 _GIT_COMMON="$(git rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then
     MAIN_REPO="$REPO_ROOT"
@@ -74,7 +82,7 @@ _list_open_prs() {
         cat "$CHUMP_QUEUE_TENDER_PR_FIXTURE" 2>/dev/null || true
         return 0
     fi
-    gh pr list --state open --limit 100 --json number,mergeStateStatus \
+    chump_gh pr list --state open --limit 100 --json number,mergeStateStatus \
         --jq '.[] | "\(.number)\t\(.mergeStateStatus)"' 2>/dev/null || true
 }
 
