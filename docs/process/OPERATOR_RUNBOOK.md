@@ -193,3 +193,23 @@ For a full re-installation (new App IDs / installation IDs), re-run Steps 1–6.
 GitHub's API does not permit programmatic App creation — the GitHub Settings UI
 is required for Steps 1–3. There is no `chump` command that automates those
 steps.
+
+## Holding a green PR (INFRA-8047)
+
+The PR lander arms auto-merge on green PRs every ~10 minutes, so
+`gh pr merge N --disable-auto` alone is not a reliable hold.
+
+**The one documented way to hold a PR: add the `hold` label** (`do-not-merge`
+is accepted as a synonym).
+
+```bash
+gh pr edit N --add-label hold      # hold
+gh pr edit N --remove-label hold   # release; the next lander tick arms it
+```
+
+- A labelled PR is never armed, no matter how many ticks pass.
+- As a fallback, a human disarm is also respected: the sweeper remembers each
+  PR it saw armed (head SHA) and, if it later sees it unarmed on the same SHA,
+  records who disabled auto-merge (state file `.chump-locks/auto-arm-state.tsv`)
+  and leaves it alone. It re-arms only after a new push (new head SHA) and only
+  if no hold label is present.
