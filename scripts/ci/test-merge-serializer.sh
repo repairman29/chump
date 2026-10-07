@@ -4,7 +4,7 @@
 #
 # Depth: smoke + structure. Gaps (NOT covered here): the live rebase→verified→merge
 # path (proven once by hand on a real PR at ship time, recorded in the PR), the
-# bot-merge.lock contention path, and the verified-timeout branch.
+# merge-pipeline-driver.lock contention path, and the verified-timeout branch.
 set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
@@ -21,7 +21,7 @@ bash -n "$SER" && ok "bash -n clean (syntax)" || bad "syntax error"
 echo "=== reuse of shared plumbing (mine-before-build) ==="
 grep -q "discover-flock.sh" "$SER"      && ok "reuses discover-flock.sh (FLOCK_BIN)"      || bad "does not source discover-flock.sh"
 grep -q "repo-paths.sh"     "$SER"      && ok "reuses repo-paths.sh (LOCK_DIR)"           || bad "does not source repo-paths.sh"
-grep -q "bot-merge.lock"    "$SER"      && ok "reuses INFRA-860 bot-merge.lock for mutations" || bad "does not reuse bot-merge.lock"
+grep -q "merge-pipeline-driver.lock" "$SER" && ok "reuses RESILIENT-1563 shared merge-pipeline-driver.lock for mutations" || bad "does not reuse merge-pipeline-driver.lock"
 
 echo "=== core behaviors present ==="
 grep -q "sort_by(.created)"          "$SER" && ok "oldest-first selection"        || bad "no oldest-first sort"

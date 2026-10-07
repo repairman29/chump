@@ -795,6 +795,15 @@ jobs:
       - name: Organ role-roster + host-rewrite gate (RESILIENT-1055/1102)
         run: bash scripts/ci/test-resilient-1055-role-roster.sh
 
+      # RESILIENT-1563: exactly-one merge-mutation driver — the shared
+      # merge-pipeline-driver.lock gives mutual exclusion across every
+      # force-push/update-branch/pr-merge path, and merge-mutation-roster-lint.sh
+      # fails on >1 enabled organ. Uses fixture manifests, not the live
+      # organ-manifest.txt, so this gate's verdict is independent of whatever
+      # the real node's current enablement happens to be.
+      - name: Merge-pipeline-driver lock + roster-lint gate (RESILIENT-1563)
+        run: bash scripts/ci/test-resilient-1563-merge-pipeline-driver.sh
+
       # INFRA-3632: node-install pins the canonical-store env (CHUMP_STATE_DB)
       # into node.env, wires it into every generated organ unit's
       # EnvironmentFile=, and installs an interactive-shell hook — so no

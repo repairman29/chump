@@ -3272,7 +3272,13 @@ fi
 # to 60s waiting on a lock it will never need, inflating or timing out preflight.
 if [[ "$DRY_RUN" != "1" && "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
     _bm_lock_dir="${CHUMP_BOT_MERGE_LOCK_DIR:-${LOCK_DIR:-${REPO_ROOT:-.}/.chump-locks}}"
-    _bm_lock_file="${_bm_lock_dir}/bot-merge.lock"
+    # RESILIENT-1563: renamed from bot-merge.lock to the shared
+    # merge-pipeline-driver.lock name so bot-merge's push/merge critical
+    # section contends with every OTHER merge-mutation organ (merge-serializer,
+    # armed-pr-rebaser, keep-mergeable-organ, pr-shepherd-daemon) on the exact
+    # same inode — one flock authority across all mutation paths, not N
+    # independently-named locks that never see each other.
+    _bm_lock_file="${_bm_lock_dir}/merge-pipeline-driver.lock"
     mkdir -p "$_bm_lock_dir" 2>/dev/null || true
     _bm_lock_start=$(date +%s)
     # Use "$FLOCK_BIN" <lockfile> form (bash 3.x compatible; lock held until script exits).

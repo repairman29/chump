@@ -29,9 +29,11 @@ is driving (never the whole armed set), the other open PRs are left untouched an
 their `verified` is not reset. Each PR gets a clean pass.
 
 - **Organ:** `scripts/coord/merge-serializer.sh` (+ `scripts/dispatch/chump-merge-serializer.{service,timer}`, manifest row `chump-merge-serializer.timer role=muscle`).
-- **Lock:** single-instance via `merge-serializer.lock`; reuses the INFRA-860
-  `bot-merge.lock` briefly around each mutating step (rebase+push, merge), released
-  during the `verified` poll so it never starves fleet bot-merge shipping.
+- **Lock:** single-instance via `merge-serializer.lock`; reuses the shared
+  `merge-pipeline-driver.lock` (RESILIENT-1563, formerly INFRA-860's
+  `bot-merge.lock`) briefly around each mutating step (rebase+push, merge),
+  released during the `verified` poll so it never starves fleet bot-merge
+  shipping.
 - **Companion change (required):** where the serializer runs, **disable
   `chump-armed-rebaser.timer`** — the parallel rebase-everyone organ is exactly what
   was resetting `verified` on every main move. Real-conflict PRs are still emitted

@@ -125,6 +125,14 @@ CHUMP_GH_NO_PATH_INJECT=1
 # shellcheck source=scripts/coord/lib/github.sh
 source "$REPO_ROOT/scripts/coord/lib/github.sh"
 
+# RESILIENT-1563: shared merge-pipeline-driver flock — every force-push/
+# update-branch/pr-merge path (this organ, merge-serializer, armed-pr-rebaser,
+# keep-mergeable-organ, bot-merge) must hold this SAME named lock before
+# mutating, or no-op. Prevents the double-driver merge-race RESILIENT-1054 hit
+# once already.
+# shellcheck source=scripts/coord/lib/merge-pipeline-driver-lock.sh
+source "$REPO_ROOT/scripts/coord/lib/merge-pipeline-driver-lock.sh"
+
 emit_tick() {
   local count="$1"
   local ts
@@ -1151,10 +1159,16 @@ for p in prs:
           echo "[pr-shepherd-daemon] DRY_RUN: would admin-merge PR #${pr_num} (author=${author}, ${c})" >&2
           _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
           admin_merge_count=$((admin_merge_count + 1))
+        elif ! merge_pipeline_driver_lock_acquire; then
+          # RESILIENT-1563: shared merge-pipeline-driver.lock contended — no-op
+          # this cycle rather than racing another live merge-mutation organ.
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "driver_lock_contended" "$author" "$c"
+          echo "[pr-shepherd-daemon] admin-merge SKIPPED PR #${pr_num} — merge-pipeline-driver.lock contended" >&2
         else
           echo "[pr-shepherd-daemon] admin-merging PR #${pr_num} (author=${author}, ${c})" >&2
           local merge_exit=0
           chump_gh pr merge "$pr_num" --squash --admin --delete-branch 2>&1 || merge_exit=$?
+          merge_pipeline_driver_lock_release
           if [ "$merge_exit" -eq 0 ]; then
             _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
             admin_merge_count=$((admin_merge_count + 1))
@@ -1285,11 +1299,17 @@ for p in prs:
           echo "[pr-shepherd-daemon] DRY_RUN: would rebase PR #${pr_num} (${gap_id})" >&2
           _emit_pr_action_taken "$pr_num" "rebase" "" "$gap_id"
           rebase_count=$((rebase_count + 1))
+        elif ! merge_pipeline_driver_lock_acquire; then
+          # RESILIENT-1563: shared merge-pipeline-driver.lock contended — no-op
+          # this cycle rather than racing another live merge-mutation organ.
+          echo "[pr-shepherd-daemon] rebase SKIPPED PR #${pr_num} — merge-pipeline-driver.lock contended" >&2
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "driver_lock_contended" "$gap_id"
         else
           echo "[pr-shepherd-daemon] rebasing PR #${pr_num} (${gap_id})" >&2
           local rebase_out rebase_exit
           rebase_exit=0
           rebase_out=$(CHUMP_GH_CALL_CRITICALITY=background gh pr update-branch --rebase "$pr_num" 2>&1) || rebase_exit=$?
+          merge_pipeline_driver_lock_release
 
           if [ "$rebase_exit" -eq 0 ]; then
             _emit_pr_action_taken "$pr_num" "rebase" "" "$gap_id"
@@ -1331,10 +1351,16 @@ for p in prs:
           echo "[pr-shepherd-daemon] DRY_RUN: would arm auto-merge PR #${pr_num} (${gap_id})" >&2
           _emit_pr_action_taken "$pr_num" "arm_auto_merge" "" "$gap_id"
           arm_count=$((arm_count + 1))
+        elif ! merge_pipeline_driver_lock_acquire; then
+          # RESILIENT-1563: shared merge-pipeline-driver.lock contended — no-op
+          # this cycle rather than racing another live merge-mutation organ.
+          echo "[pr-shepherd-daemon] arm SKIPPED PR #${pr_num} — merge-pipeline-driver.lock contended" >&2
+          _emit_pr_action_taken "$pr_num" "arm_auto_merge_skipped" "driver_lock_contended" "$gap_id"
         else
           echo "[pr-shepherd-daemon] arming auto-merge PR #${pr_num} (${gap_id})" >&2
           local arm_exit=0
           chump_gh pr merge "$pr_num" --auto --squash 2>&1 || arm_exit=$?
+          merge_pipeline_driver_lock_release
           if [ "$arm_exit" -eq 0 ]; then
             _emit_pr_action_taken "$pr_num" "arm_auto_merge" "" "$gap_id"
             arm_count=$((arm_count + 1))

@@ -158,7 +158,7 @@ echo "$out" | grep -q "bypass_ok" && ok "CHUMP_BOT_MERGE_LOCK=0 skips mutex" || 
 # ── 9. bot-merge.sh has INFRA-860 section ────────────────────────────────────
 echo
 echo "[9. bot-merge.sh has INFRA-860 mutex section]"
-grep -q "INFRA-860" "$BOT_MERGE" && grep -q "bot-merge.lock" "$BOT_MERGE" && \
+grep -q "INFRA-860" "$BOT_MERGE" && grep -q "merge-pipeline-driver.lock" "$BOT_MERGE" && \
     ok "INFRA-860 mutex section present in bot-merge.sh" || \
     fail "INFRA-860 mutex not found in bot-merge.sh"
 

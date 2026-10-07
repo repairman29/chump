@@ -50,6 +50,13 @@ set -uo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(git -C "$SCRIPT_DIR" rev-parse --show-toplevel 2>/dev/null || (cd "$SCRIPT_DIR/../.." && pwd))"
 
+# RESILIENT-1563: shared merge-pipeline-driver flock — every force-push/
+# update-branch/pr-merge path (this organ, merge-serializer, armed-pr-rebaser,
+# pr-shepherd-daemon, bot-merge) must hold this SAME named lock before mutating,
+# or no-op.
+# shellcheck source=lib/merge-pipeline-driver-lock.sh
+source "$SCRIPT_DIR/lib/merge-pipeline-driver-lock.sh"
+
 _GIT_COMMON="$(git -C "$REPO_ROOT" rev-parse --git-common-dir 2>/dev/null || echo ".git")"
 if [[ "$_GIT_COMMON" == ".git" ]]; then
     MAIN_REPO="$REPO_ROOT"
@@ -229,6 +236,10 @@ while IFS=$'\t' read -r PR BRANCH MSS RUN_IDS; do
 
     # ── DIRTY/BEHIND: rebase onto green main ──────────────────────────────────
     if [[ "$MSS" == "DIRTY" || "$MSS" == "BEHIND" ]]; then
+        if ! merge_pipeline_driver_lock_acquire; then
+            log "  SKIP #$PR — could not acquire merge-pipeline-driver.lock (RESILIENT-1563); retrying next tick"
+            continue
+        fi
         if gh pr update-branch "$PR" >/dev/null 2>&1; then
             log "  OK #$PR — GH-side rebase succeeded."
             emit "keep_mergeable_rebased" "$PR" "\"branch\":\"$BRANCH\",\"method\":\"gh_update_branch\""
@@ -255,6 +266,7 @@ while IFS=$'\t' read -r PR BRANCH MSS RUN_IDS; do
             fi
             rm -rf "$WT" 2>/dev/null || true
         fi
+        merge_pipeline_driver_lock_release
     fi
 
     # ── Stale/failed checks on an otherwise-mergeable PR: rerun ──────────────

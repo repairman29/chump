@@ -132,7 +132,11 @@ source "$(dirname "${BASH_SOURCE[0]}")/../lib/repo-paths.sh" 2>/dev/null || {
 }
 mkdir -p "$LOCK_DIR" 2>/dev/null || true
 AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
-BOT_MERGE_LOCK="${CHUMP_BOT_MERGE_LOCK_DIR:-$LOCK_DIR}/bot-merge.lock"
+# RESILIENT-1563: shared merge-pipeline-driver.lock (formerly bot-merge.lock,
+# INFRA-860) — the ONE named flock every force-push/update-branch/pr-merge path
+# must hold, so bot-merge, merge-serializer, armed-pr-rebaser,
+# keep-mergeable-organ, and pr-shepherd-daemon all contend on the same inode.
+BOT_MERGE_LOCK="${CHUMP_BOT_MERGE_LOCK_DIR:-$LOCK_DIR}/merge-pipeline-driver.lock"
 SELF_LOCK="$LOCK_DIR/merge-serializer.lock"
 
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }

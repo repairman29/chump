@@ -3316,3 +3316,16 @@ CHUMP_ORGAN_MANIFEST_NODE
 CHUMP_FLEET_NODES_CONF
 # detected in: (standard input)
 CHUMP_NODE_REGISTRY_DIR
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_BOT_MERGE_LOCK_DIR
+# detected in: (standard input)
+CHUMP_MERGE_PIPELINE_DRIVER_LOCK_DIR
+# detected in: (standard input)
+CHUMP_MERGE_PIPELINE_DRIVER_LOCK_WAIT
+# detected in: (standard input)
+CHUMP_ROSTER_LINT_KEEP_MERGEABLE_STATE
+# detected in: (standard input)
+CHUMP_ROSTER_LINT_MANIFEST

@@ -18,7 +18,7 @@ Five automation paths in `scripts/coord/` issue `git push --force-with-lease`. E
 
 | Script | Line | What it pushes | Concurrency invariant | Lock |
 |---|---|---|---|---|
-| `bot-merge.sh` | 1454 | Final merged branch → `origin/<branch>` | One bot-merge at a time + per-file lock on hot files | `flock` on `bot-merge.lock` FD 200 + `hot-file-lock.sh` per file listed in `hot-files.yaml` |
+| `bot-merge.sh` | 1454 | Final merged branch → `origin/<branch>` | One bot-merge at a time + per-file lock on hot files | `flock` on `merge-pipeline-driver.lock` (RESILIENT-1563, formerly `bot-merge.lock`) FD 200 + `hot-file-lock.sh` per file listed in `hot-files.yaml` |
 | `queue-driver.sh` | 159, 206 | Rebased-onto-main HEAD → `origin/<branch>` | One queue-driver per host + skip-if-PR-younger-than-10min | Host-singleton (cron `lockfile`); per-PR cooldown |
 | `pr-watch.sh` | 189, 226, 236 | Rebase fixups → `origin/<branch>` | Per-PR advisory cooldown (30 min) | None — relies on rare-event timing |
 | `pr-rescue.sh` | 205 | Rebased HEAD after CI-flake reruns | Once per stuck-PR detection cycle (2h cron) | None — relies on cron cadence |
@@ -28,7 +28,7 @@ Five automation paths in `scripts/coord/` issue `git push --force-with-lease`. E
 
 ### A. Bot-merge global serial lock (INFRA-860)
 
-`bot-merge.sh` acquires an exclusive `flock` on `bot-merge.lock` (FD 200) with a 60s timeout. Held until the script process exits. Only one bot-merge runs per host at a time.
+`bot-merge.sh` acquires an exclusive `flock` on `merge-pipeline-driver.lock` (RESILIENT-1563, formerly `bot-merge.lock`) (FD 200) with a 60s timeout. Held until the script process exits. Only one bot-merge runs per host at a time.
 
 **Why:** `git push --force-with-lease` on the merged branch races with `gh pr merge` (which fetches the ref tip at the moment the API call runs); two bot-merges of different PRs landing simultaneously can interleave the lease ↔ merge sequence and one of them silently no-ops.
 

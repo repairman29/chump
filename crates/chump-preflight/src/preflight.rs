@@ -1293,6 +1293,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // RESILIENT-1534: organ-deploy post-deploy audit classifies every dark organ with a
         // root cause (stubbed systemctl, pure local).
         "scripts/ci/test-resilient-1534-organ-dark-audit.sh",
+        // RESILIENT-1563: exactly-one merge-mutation driver — proves the shared
+        // merge-pipeline-driver.lock gives mutual exclusion (double-driver
+        // cannot arm) and that merge-mutation-roster-lint.sh PASSes at 0/1
+        // enabled organs and FAILs at 2+, using fixture manifests (not the
+        // live organ-manifest.txt). Pure local, no network, ~1s.
+        "scripts/ci/test-resilient-1563-merge-pipeline-driver.sh",
         // RESILIENT-1528: every `chump claim --role X` in scripts/ must be
         // registered in docs/process/AGENT_ROLES.yaml — static companion to the
         // runtime role validation (INFRA-5773). Pure local grep, ~0.2s.

@@ -27,6 +27,13 @@
 # main — never drop commits that already landed on the remote branch.
 set -uo pipefail
 
+# RESILIENT-1563: shared merge-pipeline-driver flock — every force-push/
+# update-branch/pr-merge path (this organ, merge-serializer, keep-mergeable-organ,
+# pr-shepherd-daemon, bot-merge) must hold this SAME named lock before mutating,
+# or no-op. Prevents the double-driver merge-race RESILIENT-1054 hit once already.
+# shellcheck source=lib/merge-pipeline-driver-lock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/merge-pipeline-driver-lock.sh"
+
 REPO="${CHUMP_PR_REPO:-repairman29/chump}"
 ROOT="${CHUMP_REPO_ROOT:-$HOME/Projects/Chump}"
 AMB="$ROOT/.chump-locks/ambient.jsonl"
@@ -67,6 +74,10 @@ while read -r num br mode; do
         cd "$wt" || exit 0
         if git rebase origin/main >/dev/null 2>&1 \
            && [ -z "$(git diff --name-only --diff-filter=U 2>/dev/null)" ]; then
+            if ! merge_pipeline_driver_lock_acquire; then
+                echo "[armed-pr-rebaser] #$num: could not acquire merge-pipeline-driver.lock — no-op this cycle (RESILIENT-1563)"
+                exit 0
+            fi
             if git push origin "$br" --force-with-lease >/dev/null 2>&1; then
                 echo "[armed-pr-rebaser] #$num: rebased clean + pushed → mergeable"
                 if [ "$mode" = "adopt" ]; then
@@ -79,6 +90,7 @@ while read -r num br mode; do
                     fi
                 fi
             fi
+            merge_pipeline_driver_lock_release
         else
             git rebase --abort 2>/dev/null || true
             printf '{"ts":"%s","kind":"armed_pr_needs_conflict_resolution","pr":%s,"branch":"%s"}\n' \
