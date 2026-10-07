@@ -13,7 +13,7 @@
     
     Rough shape: (a) done_check column in state.db + YAML field + `chump gap set --done-check`; (b) `chump gap check <ID>|--all` runs probes with timeout, sandboxed env, no secrets in output; (c) ship path: `chump gap ship` refuses to close a gap whose done_check fails (bypass flag audited); (d) scheduler (launchd/systemd timer, reuse existing cron install path) runs --all hourly over done + open gaps: pass on open gap -> propose close (emit event; auto-close behind a flag), fail on done gap -> reopen via existing heal consumer; (e) `chump gap reserve --priority P0|P1` requires --done-check OR an explicit --done-check-manual "<why this cannot be probed>" (audited), mirroring the outcome/evidence gates; (f) backfill: write done_checks for RESILIENT-314 and PRODUCT-304..308 as the first real users.
     
-    Example done_check (RESILIENT-314): for h in api.postsub.io api.mytrove.app api.playsmuggler.com api.sendpov.xyz; do curl -fsS -m10 https://$h/auth/v1/health >/dev/null || exit 1; done; for p in 5432 8000 3000; do timeout 5 bash -c "</dev/tcp/161.153.42.233/$p" && exit 1; done; exit 0
+    Example done_check (RESILIENT-314): for h in api.postsub.io api.mytrove.app api.playsmuggler.com api.sendpov.xyz; do curl -fsS -m10 https://$h/auth/v1/health >/dev/null || exit 1; done; for p in 5432 8000 3000; do timeout 5 bash -c "</dev/tcp/<FLEET-HUB-PUBLIC-IP>/$p" && exit 1; done; exit 0
     
     Decompose at claim time (chump gap decompose CREDIBLE-1459) if needed.
   acceptance_criteria:
