@@ -35,6 +35,13 @@ set -uo pipefail
 
 REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
 
+# INFRA-1081/INFRA-1274: route gh reads through the throttled cache-first
+# wrapper rather than calling the gh CLI raw in a hot path. Falls back to a
+# bare passthrough if the lib can't be sourced.
+# shellcheck source=/dev/null
+source "${REPO_ROOT}/scripts/coord/lib/github.sh" 2>/dev/null || true
+command -v chump_gh >/dev/null 2>&1 || chump_gh() { gh "$@"; }
+
 DRY=0
 [[ "${1:-}" == "--dry-run" ]] && DRY=1
 [[ "${CHUMP_AUTOARM_SKIP:-0}" == "1" ]] && { echo "[auto-arm] CHUMP_AUTOARM_SKIP=1 — exit"; exit 0; }
@@ -70,7 +77,7 @@ state_set() { # <num> <sha> <status> [who]
         && mv "$tmp" "$STATE_FILE" 2>/dev/null || rm -f "$tmp"
 }
 disarmer_of() { # <num> -> login of the last auto_merge_disabled actor (best effort)
-    gh api "repos/{owner}/{repo}/issues/$1/timeline" --paginate \
+    chump_gh api "repos/{owner}/{repo}/issues/$1/timeline" --paginate \
         --jq '[.[] | select(.event=="auto_merge_disabled")] | last | .actor.login // empty' \
         2>/dev/null | tail -1
 }
