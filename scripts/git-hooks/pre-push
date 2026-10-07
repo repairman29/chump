@@ -839,7 +839,20 @@ if [[ "${CHUMP_TEST_GATE:-1}" == "0" ]]; then
     unset _r014_root _r014_branch _r014_gap _r014_reason _r014_ts
 fi
 
-if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
+if [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && [[ "${CHUMP_BOT_MERGE_IN_PROGRESS:-0}" == "1" ]]; then
+    # RESILIENT-1550: skip the full-suite re-run when the push is bot-merge-
+    # initiated. bot-merge already gates fmt/clippy/test as its own steps
+    # before pushing, and CI re-runs the full matrix authoritatively — so
+    # re-running the ~2899-test nextest suite here is pure double-run. This
+    # extends INFRA-3521 (preflight skip) and INFRA-3524 (clippy skip) to the
+    # test gate. Direct (non-bot-merge) `git push` still runs the full suite
+    # below (tree-hash cache behavior is untouched by this branch).
+    echo "[pre-push] RESILIENT-1550: skipping full-suite test re-run — bot-merge already test-gated this push; CI is authoritative." >&2
+    _amb_1550="$(git rev-parse --show-toplevel 2>/dev/null || pwd)/.chump-locks/ambient.jsonl"
+    printf '{"ts":"%s","kind":"prepush_test_gate_skipped_botmerge","reason":"RESILIENT-1550: bot-merge already test-gated + CI authoritative"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> "$_amb_1550" 2>/dev/null || true
+    unset _amb_1550
+elif [[ "${CHUMP_TEST_GATE:-1}" != "0" ]] && command -v cargo &>/dev/null; then
     REPO_ROOT_T="$(git rev-parse --show-toplevel)"
     CACHE_DIR="$REPO_ROOT_T/.chump-locks/test-gate-cache"
     TREE_SHA="$(git rev-parse HEAD^{tree} 2>/dev/null || echo unknown)"
