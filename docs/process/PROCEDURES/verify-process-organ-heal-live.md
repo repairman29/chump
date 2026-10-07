@@ -51,7 +51,7 @@ Before this session confirmed the host, remote-access attempts from a
 regular (non-CJ) Claude Code worktree all failed, which is still true for
 *other* fleet sessions that are not physically running on CJ:
 
-- `ssh closetjunky` / `ssh 100.90.52.126` → `Permission denied (publickey)` (no key for this box in a non-CJ worktree)
+- `ssh closetjunky` / `ssh <CJ-TAILNET-IP>` → `Permission denied (publickey)` (no key for this box in a non-CJ worktree)
 - `tailscale ssh closetjunky` → fails at host-key verification (CJ's sshd isn't Tailscale-SSH-enabled)
 - `ssh -o ProxyCommand="tailscale nc %h %p" closetjunky` (routes over the tailnet, bypassing the tailscale-ssh wrapper) → still `Permission denied (publickey)` — confirms it's a real auth gap for remote sessions, not a routing issue
 - No GitHub Actions self-hosted runner is registered on CJ (`gh api repos/repairman29/chump/actions/runners` shows only `chumpd-eu-runner`, a different host, and it's offline) — so there's no CI-driven remote path either

@@ -6,17 +6,17 @@ originally filed against and documents the wiring path.
 
 ## Corrected facts
 
-The gap's own diagnostic (`ssh pixel = DNS fail; 100.90.52.126:22
+The gap's own diagnostic (`ssh pixel = DNS fail; <CJ-TAILNET-IP>:22
 unreachable; no Host entry`) was testing the **wrong host and the wrong
 port**:
 
 | Wrong (as filed)              | Correct                                   |
 |--------------------------------|--------------------------------------------|
-| `100.90.52.126`                | `100.84.132.93` — `100.90.52.126` is **CJ's own** tailnet IP (`tailscale status`), not Pixel's |
+| `<CJ-TAILNET-IP>`                | `<PIXEL-TAILNET-IP>` — `<CJ-TAILNET-IP>` is **CJ's own** tailnet IP (`tailscale status`), not Pixel's |
 | port `22`                      | port `8022` — Termux's `sshd` runs unprivileged and cannot bind <1024 |
 | (no user documented)           | `u0_a314` — Termux's Linux-UID alias, not `pixel`/`termux`/`repairman29` |
 
-`tailscale ping pixel-8-pro` and `nc -zv 100.84.132.93 8022` both succeed —
+`tailscale ping pixel-8-pro` and `nc -zv <PIXEL-TAILNET-IP> 8022` both succeed —
 Pixel was never actually off-network; the recorded IP/port were stale.
 
 ## Wiring identity (🤖 scriptable + 🧑 one manual step)
