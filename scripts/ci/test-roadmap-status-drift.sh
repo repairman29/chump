@@ -155,6 +155,35 @@ else
     fail "roadmap_drift_detected missing from EVENT_REGISTRY.yaml"
 fi
 
+# ── Test 11: META-1045 — outcome-table drift lives INSIDE roadmap-status ──────
+# (extension of the existing command, not a parallel checker)
+if "$CHUMP" roadmap-status --json 2>/dev/null | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+assert isinstance(d.get('outcome_drift'), list), 'outcome_drift must be an array'
+for x in d['outcome_drift']:
+    assert x['kind'] in ('no_open_gaps','all_unpickable'), x
+    assert {'outcome_id','title','kind','detail','open_children'} <= set(x), x
+" 2>/dev/null; then
+    ok "META-1045: --json has outcome_drift array (kinds no_open_gaps / all_unpickable)"
+else
+    fail "META-1045: outcome_drift missing or malformed in --json"
+fi
+if "$CHUMP" roadmap-status 2>/dev/null | grep -q "utcome-table drift"; then
+    ok "META-1045: text output reports outcome-table drift status"
+else
+    fail "META-1045: text output missing the outcome-table drift line"
+fi
+if "$CHUMP" roadmap-status --help 2>&1 | grep -q "outcome-table"; then
+    ok "META-1045: --help documents outcome-table drift under --exit-on-drift"
+else
+    fail "META-1045: --help does not mention outcome-table drift"
+fi
+if grep -q "fn analyze_outcome_drift" "$RS" && grep -q "meta_1045_lighthouse_0_0_1_case_is_flagged" "$RS"; then
+    ok "META-1045: analysis is in roadmap_status.rs with the 2026-08-07 (0/0/1 lighthouse) regression test"
+else
+    fail "META-1045: analyze_outcome_drift or its 0/0/1 regression test missing"
+fi
 echo
 echo "=== Results: $PASS passed, $FAIL failed ==="
 [[ "$FAIL" -eq 0 ]]
