@@ -700,11 +700,6 @@ mod tests {
         assert!(helsinki.pass);
         assert_eq!(helsinki.role, "brain");
     }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
 
     /// INFRA-3854 (INFRA-3841 slice 6/9): every `ci_qa_score` emitter, plus
     /// the dashboard's own normalization, must resolve onto the same 4-value
@@ -771,6 +766,7 @@ mod tests {
             ci_qa_score: None,
             active_leases: Vec::new(),
             window_hours: 24,
+            ribbon_acceptance: Vec::new(),
         };
 
         let v: serde_json::Value = serde_json::to_value(&summary).unwrap();
