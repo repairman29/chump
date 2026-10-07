@@ -30,13 +30,23 @@
 # string so a caller can filter ENABLED to units applicable to the CURRENT
 # host (see organ_platform_matches / organ_current_platform below).
 
-# organ_manifest_parse <manifest-file> <paging_off-array-name> <enabled-array-name> <role-assoc-array-name> <requires-assoc-array-name> [<platforms-assoc-array-name>]
+# organ_manifest_parse <manifest-file> <paging_off-array-name> <enabled-array-name> <role-assoc-array-name> <requires-assoc-array-name> [<platforms-assoc-array-name>] [<node-assoc-array-name>]
 #
 # Populates the caller-provided array names (via nameref) from the manifest
 # file. Caller must declare them first (any prior contents are cleared). The
-# 6th (platforms) array name is OPTIONAL — omitting it preserves the original
-# 5-arg call signature verbatim for existing callers. Returns 1 (and prints
-# an error) if the manifest file is missing.
+# 6th (platforms) and 7th (node) array names are OPTIONAL — omitting either
+# preserves the original 5-arg call signature verbatim for existing callers.
+# Returns 1 (and prints an error) if the manifest file is missing.
+#
+# RESILIENT-1535: `enabled` lines may also carry a `node=NAME,NAME,...`
+# token (comma-separated hostnames). Omitted means "any node" — the
+# implicit default every pre-existing line carries, so nothing regresses.
+# This is distinct from `platforms=` (which scopes by OS/supervisor): `node=`
+# scopes an organ to the specific owned machine(s) it is installed on (e.g.
+# CJ's chump-cj-worker.service, or chump-postgrest.service which per
+# RESILIENT-1057 only ever runs on the gap-substrate's host) so a hub node
+# that merely LACKS that organ's node-local binary/file does not report it
+# as an unexplained dark organ (see organ_dark_cause below).
 organ_manifest_parse() {
   local manifest="$1"
   local -n _omp_paging_off="$2"
@@ -49,6 +59,12 @@ organ_manifest_parse() {
     _omp_have_platforms=1
     _omp_platforms=()
   fi
+  local _omp_have_node=0
+  if [[ $# -ge 7 && -n "${7:-}" ]]; then
+    local -n _omp_node="$7"
+    _omp_have_node=1
+    _omp_node=()
+  fi
 
   _omp_paging_off=()
   _omp_enabled=()
@@ -60,11 +76,11 @@ organ_manifest_parse() {
     return 1
   fi
 
-  local state unit rest role requires platforms tok
+  local state unit rest role requires platforms node tok
   while read -r state unit rest; do
     [[ -z "${state:-}" ]] && continue
     [[ "$state" == \#* ]] && continue
-    role="" requires="" platforms=""
+    role="" requires="" platforms="" node=""
     for tok in $rest; do
       # RESILIENT-1534: a trailing `# ...` comment is NOT part of the directive.
       # Several rows quote field names in their comments (e.g. "platforms= stays
@@ -77,6 +93,7 @@ organ_manifest_parse() {
         role=*)      role="${tok#role=}" ;;
         requires=*)  requires="${tok#requires=}" ;;
         platforms=*) platforms="${tok#platforms=}" ;;
+        node=*)      node="${tok#node=}" ;;
       esac
     done
     case "$state" in
@@ -87,6 +104,9 @@ organ_manifest_parse() {
         _omp_requires["$unit"]="$requires"
         if [[ "$_omp_have_platforms" == 1 ]]; then
           _omp_platforms["$unit"]="${platforms:-systemd}"
+        fi
+        if [[ "$_omp_have_node" == 1 ]]; then
+          _omp_node["$unit"]="$node"
         fi
         ;;
       *) echo "WARN: unknown state '$state' for '$unit' in manifest; ignoring" >&2 ;;
@@ -128,6 +148,35 @@ organ_current_platform() {
 organ_platform_matches() {
   local csv="${1:-}" current="${2:-}"
   [[ -z "$csv" ]] && csv="systemd"
+  local IFS=',' tok
+  for tok in $csv; do
+    [[ "$tok" == "$current" ]] && return 0
+  done
+  return 1
+}
+
+# organ_current_node -> echoes this host's short hostname. Shared detection so
+# every caller (organ-reconcile.sh, organ-deploy.sh's audit) agrees on what
+# "this node" means for a manifest `node=` scope (RESILIENT-1535).
+organ_current_node() {
+  # CHUMP_ORGAN_MANIFEST_NODE: explicit override, mainly for tests that need
+  # to exercise node-scoped filtering without actually running on that host.
+  if [[ -n "${CHUMP_ORGAN_MANIFEST_NODE:-}" ]]; then
+    echo "${CHUMP_ORGAN_MANIFEST_NODE}"
+    return 0
+  fi
+  hostname -s 2>/dev/null || hostname 2>/dev/null || echo unknown
+}
+
+# organ_node_matches <node-csv> <current-node>
+#
+# Is <current-node> among the comma-separated <node-csv>? An empty csv means
+# "any node" (the implicit default every node-agnostic line carries) — unlike
+# organ_platform_matches, there is no default-restrict here: node= is an
+# opt-in scope, only entries that NAME a node are restricted to it.
+organ_node_matches() {
+  local csv="${1:-}" current="${2:-}"
+  [[ -z "$csv" ]] && return 0
   local IFS=',' tok
   for tok in $csv; do
     [[ "$tok" == "$current" ]] && return 0
@@ -193,13 +242,18 @@ organ_is_applicable() {
   return 0
 }
 
-# organ_dark_cause <unit> <platforms-csv> <requires> <current-platform> <repo-root> [<systemd-dir>]
+# organ_dark_cause <unit> <platforms-csv> <requires> <current-platform> <repo-root> [<systemd-dir>] [<node-csv>] [<current-node>]
 #
 # RESILIENT-1534: name WHY an `enabled` manifest organ is not running, so a dark
 # organ is never an unexplained "no-op". Echoes exactly one token:
 #   active                        systemctl says it is active
 #   scoped-off:platforms=<csv>    manifest scopes it off this platform (EXPECTED dark,
 #                                 e.g. a launchd-only Mac organ on a systemd hub)
+#   scoped-off:node=<csv>         manifest scopes it to a different owned node (EXPECTED
+#                                 dark on every other node; RESILIENT-1535 — e.g.
+#                                 chump-postgrest.service, dormant-by-design and only
+#                                 ever installed on closetjunky, no longer reads as
+#                                 dark on the hub)
 #   unmet-requires:<reason>       a requires= precondition fails (missing_bin:gh, ...)
 #   unit-missing                  no unit file for it in scripts/dispatch/ (never shipped)
 #   unit-not-installed            the repo has the unit, the node's systemd dir does not
@@ -207,14 +261,21 @@ organ_is_applicable() {
 #   inactive                      unit + deps all present, still not active (a real fault)
 # Everything except `active` and `scoped-off:*` is an UNEXPECTED dark organ.
 # Uses ${SYSTEMCTL_BIN:-systemctl} (stub-able). <systemd-dir> defaults to
-# /etc/systemd/system.
+# /etc/systemd/system. <node-csv> (the manifest's node= scope for this unit,
+# empty if node-agnostic) and <current-node> (defaults to organ_current_node())
+# are both optional so pre-RESILIENT-1535 callers are unaffected.
 organ_dark_cause() {
   local unit="$1" platforms="$2" requires="$3" current="$4" repo="$5"
   local sysdir="${6:-/etc/systemd/system}"
+  local node="${7:-}"
+  local current_node="${8:-$(organ_current_node)}"
   local systemctl_bin="${SYSTEMCTL_BIN:-systemctl}"
   if "$systemctl_bin" is-active --quiet "$unit" 2>/dev/null; then echo active; return 0; fi
   if ! organ_platform_matches "$platforms" "$current"; then
     echo "scoped-off:platforms=${platforms:-systemd}"; return 0
+  fi
+  if [[ -n "$node" ]] && ! organ_node_matches "$node" "$current_node"; then
+    echo "scoped-off:node=${node}"; return 0
   fi
   local reason=""
   if ! organ_is_applicable "$unit" "$requires" reason; then
