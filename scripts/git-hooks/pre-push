@@ -248,8 +248,56 @@ _pp_run_timed() {
 # -----------------------------------------------------------------------
 _HOOK_LOOP_ENTERED=0
 _HOOK_NAME="pre-push"
+
+# -----------------------------------------------------------------------
+# RESILIENT-1552 (child of RESILIENT-1548): pre-push total-duration signal.
+#
+# Parent AC3 requires proving median PR CI wall-clock AND push time dropped
+# materially — assertable, not just asserted. Emits total hook wall-clock
+# keyed by PR class (docs-only / single-crate / full) on every exit
+# (success or guard-blocked), purely advisory: this never changes the
+# hook's exit code (AC4), it only records what already happened.
+# -----------------------------------------------------------------------
+_pp_classify_change_class() {
+    local _base _files
+    _base="$(git merge-base origin/main HEAD 2>/dev/null || echo "")"
+    [[ -z "$_base" ]] && { echo "unknown"; return; }
+    _files="$(git diff --name-only "$_base"..HEAD 2>/dev/null || true)"
+    if [[ -z "$_files" ]]; then
+        echo "unknown"
+        return
+    fi
+    if ! grep -qvE '^docs/|\.md$' <<<"$_files"; then
+        echo "docs-only"
+        return
+    fi
+    local _crate_dirs
+    _crate_dirs="$(grep -oE '^crates/[^/]+/' <<<"$_files" | sort -u)"
+    if [[ -n "$_crate_dirs" ]] && [[ "$(wc -l <<<"$_crate_dirs" | xargs)" -eq 1 ]] \
+        && ! grep -qvE '^crates/[^/]+/' <<<"$_files"; then
+        echo "single-crate"
+        return
+    fi
+    echo "full"
+}
+
+_pp_emit_duration_event() {
+    local _rc="$1"
+    local _now _elapsed _class _amb_root _amb_path
+    _now="$(date +%s)"
+    _elapsed=$(( _now - _PP_HOOK_START_EPOCH ))
+    _class="$(_pp_classify_change_class)"
+    _amb_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _amb_path="${CHUMP_AMBIENT_LOG:-$_amb_root/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_amb_path")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"prepush_hook_duration","duration_s":%d,"pr_class":"%s","exit_code":%d}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_elapsed" "$_class" "$_rc" \
+        >> "$_amb_path" 2>/dev/null || true
+}
+
 _silent_alarm_check_and_emit() {
     local rc="$?"
+    _pp_emit_duration_event "$rc"
     # Skip alarm if we exited non-zero (the hook reported a failure — that's
     # the LOUD path, no alarm needed).
     [[ "$rc" -ne 0 ]] && return "$rc"

@@ -6094,6 +6094,37 @@ events:
       uses a much larger budget (default 600s) because a full test run
       legitimately takes minutes.
 
+  # ── RESILIENT-1552 (child of RESILIENT-1548): CI/push wall-clock signal ──
+  - kind: prepush_hook_duration
+    effect_metric: median duration_s per pr_class, trending down
+    emitter: scripts/git-hooks/pre-push _pp_emit_duration_event (RESILIENT-1552)
+    trigger: every pre-push hook exit (success or guard-blocked) — records
+      total hook wall-clock from hook start to exit
+    consumers: [scripts/dev/ci-wall-clock-report.sh, fleet-brief]
+    fields_required: [ts, kind, duration_s, pr_class, exit_code]
+    docs: |
+      pr_class is one of docs-only / single-crate / full / unknown, derived
+      from `git diff --name-only` against origin/main..HEAD. Advisory only —
+      never gates the push (exit_code reflects the hook's own guards, this
+      event never changes it). Proves RESILIENT-1548 AC3 (push time dropped)
+      off a real signal instead of an assertion.
+
+  - kind: ci_wall_clock
+    effect_metric: median duration_s per pr_class, trending down
+    emitter: scripts/ci/emit-ci-wall-clock.sh, invoked from the `verified`
+      job in .github/workflows/ci.yml (RESILIENT-1552)
+    trigger: the `verified` job (last job on every ci.yml run) always-runs
+      step; measures from the `changes` job's start (first job) to now
+    consumers: [scripts/dev/ci-wall-clock-report.sh, fleet-brief]
+    fields_required: [ts, kind, pr_number, pr_class, duration_s]
+    docs: |
+      pr_class is one of docs-only / scripts-only / full, read directly from
+      the `changes` job's dorny/paths-filter lane outputs. Runs under
+      `if: always()` and never exits non-zero, so it adds no new required
+      check and cannot block a PR (RESILIENT-1548 AC3/AC4). Falls back to a
+      local stats file when CHUMP_AMBIENT_INGEST_URL is unset (GH-hosted
+      runners have no local ambient.jsonl).
+
   # ── INFRA-1372: pre-push HEAD-drift detection ─────────────────────────────
   - kind: prepush_head_drift
     emitter: scripts/git-hooks/pre-push (INFRA-1372)

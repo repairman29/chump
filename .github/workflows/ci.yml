@@ -139,6 +139,10 @@ jobs:
       ci_config_only: ${{ steps.lanes.outputs.ci_config_only }}
       scripts_only: ${{ steps.lanes.outputs.scripts_only }}
       docs_only: ${{ steps.lanes.outputs.docs_only }}
+      # RESILIENT-1552: workflow-run start, used by `verified` to compute
+      # per-PR CI wall-clock (doesn't need a new job — `changes` is always
+      # the first job to run on every ci.yml trigger).
+      job_start_ts: ${{ steps.job-start.outputs.ts }}
     steps:
       - uses: actions/checkout@v7
       - name: Record job start (CREDIBLE-069)
@@ -578,7 +582,7 @@ jobs:
   # protocol smoke test` per docs/baselines/branch-protection-main.json.
   verified:
     name: verified
-    needs: [fast-checks, fast-checks-heavy, clippy, cargo-test, pr-hygiene, test]
+    needs: [changes, fast-checks, fast-checks-heavy, clippy, cargo-test, pr-hygiene, test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -614,6 +618,16 @@ jobs:
             --lane "ACP-smoke=${{ steps.cross.outputs.acp_result }}" \
             --pr "${{ github.event.pull_request.number }}" \
             --sha "${{ github.event.pull_request.head.sha || github.sha }}"
+
+      - name: Emit CI wall-clock (RESILIENT-1552)
+        if: always()
+        env:
+          JOB_START_TS: ${{ needs.changes.outputs.job_start_ts }}
+          DOCS_ONLY: ${{ needs.changes.outputs.docs_only }}
+          SCRIPTS_ONLY: ${{ needs.changes.outputs.scripts_only }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          CHUMP_AMBIENT_INGEST_URL: ${{ env.CHUMP_AMBIENT_INGEST_URL }}
+        run: bash scripts/ci/emit-ci-wall-clock.sh
 
   # ── PR hygiene (CREDIBLE-042/043) ─────────────────────────────────────────
   # Runs on EVERY pull_request regardless of which paths changed. Catches the

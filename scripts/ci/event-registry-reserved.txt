@@ -132,6 +132,8 @@ capabilities_registry_refreshed  # reason: INFRA-1729 emit site is `ambient-emit
 capability_published  # reason: INFRA-1120 / INFRA-1825 — crates/chump-coord/src/capability.rs publish_manifest(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
 capability_heartbeat  # reason: INFRA-1120 — crates/chump-coord/src/capability.rs heartbeat_loop(); scanner-anchor present in source; kind literal in comment block not grep-scannable as "kind":"X" JSON literal
 chump_bin_resolved # reason: registered for INFRA-1618 active-fix flow; emit pending
+ci_wall_clock  # reason: RESILIENT-1552 emitter is scripts/ci/emit-ci-wall-clock.sh, invoked from the `verified` job in .github/workflows/ci.yml; scripts/ci/ is outside PROD_PATHS (excluded as fixtures/templates)
+prepush_hook_duration  # reason: RESILIENT-1552 emitter is scripts/git-hooks/pre-push _pp_emit_duration_event; scripts/git-hooks/ is outside PROD_PATHS (excluded as fixtures/templates)
 chump_claim_force_recover  # reason: emitted via escaped Rust format string in src/atomic_claim.rs (INFRA-1439); regex pattern miss
 force_recover_wip_loss     # reason: INFRA-2235 emitted via escaped Rust format string in src/atomic_claim.rs emit_force_recover_wip_loss; same regex pattern miss as chump_claim_force_recover
 force_recover_wip_discarded  # reason: INFRA-2235 emitted via escaped Rust format string in src/atomic_claim.rs emit_force_recover_wip_discarded; same regex pattern miss as chump_claim_force_recover
