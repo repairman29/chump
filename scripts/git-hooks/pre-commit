@@ -2039,4 +2039,17 @@ if [ -x "$GREP_C_ECHO0_HOOK" ]; then
     fi
 fi
 
+# ------------------------------------------------------------------
+# 21. Private node topology guard (RESILIENT-1546)
+# ------------------------------------------------------------------
+# INFRA-7881 removed docs/fleet/nodes/*.json and scripts/ops/fleet-nodes.conf
+# from this public repo (private operator topology). Fails if either
+# reappears in the index. No bypass trailer — this is a leak guard.
+PRIVATE_TOPOLOGY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-private-topology-guard.sh"
+if [ -x "$PRIVATE_TOPOLOGY_HOOK" ]; then
+    if ! "$PRIVATE_TOPOLOGY_HOOK"; then
+        exit 1
+    fi
+fi
+
 exit 0

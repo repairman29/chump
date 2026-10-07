@@ -1616,6 +1616,12 @@ jobs:
       - name: grep -c || echo 0 idiom guard smoke (RESILIENT-281)
         run: bash scripts/ci/test-grep-c-echo0-guard.sh
 
+      - name: private node topology guard smoke (RESILIENT-1546)
+        run: bash scripts/ci/test-private-topology-guard.sh
+
+      - name: private node topology guard — checked-out PR tree (RESILIENT-1546)
+        run: bash scripts/git-hooks/pre-commit-private-topology-guard.sh
+
       - name: self-hosted-runner-stats emit smoke (CREDIBLE-069)
         run: bash scripts/ci/test-self-hosted-run-stats-emit.sh
 
