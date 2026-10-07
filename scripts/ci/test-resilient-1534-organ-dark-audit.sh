@@ -4,6 +4,14 @@
 # ExecStart target missing, or genuinely inactive — instead of counting every
 # non-active manifest row as an unexplained "STILL DARK". Also proves the 14 organs
 # the gap reported dark are correctly scoped off a systemd hub (platforms=launchd).
+#
+# RESILIENT-1535: extends the same mechanism with a `node=` manifest field —
+# chump-postgrest.service (dormant BY DESIGN, RESILIENT-1057) and the
+# chump-cj-* organs belong on closetjunky, not the hub, and were previously
+# miscounted as UNEXPECTED-DARK via their requires= (missing_bin/missing_file)
+# rather than recognized as expected-dark-elsewhere. Proves the real manifest's
+# node=closetjunky lines read as scoped-off (not UNEXPECTED-DARK) on any other
+# node, so the dark-count the enforcement alarm reads is honest.
 # Stubbed systemctl; pure local.
 set -uo pipefail
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -56,6 +64,22 @@ cause() { # <unit> <platforms> <requires>  (against the fixture repo)
 [[ "$(cause chump-noexec.timer '' '')" == "exec-missing:scripts/coord/gone.sh" ]] && ok "ExecStart script absent -> exec-missing:<path>" || bad "noexec: $(cause chump-noexec.timer '' '')"
 [[ "$(cause chump-sick.timer '' '')" == "inactive" ]] && ok "everything present but not active -> inactive (a real fault)" || bad "sick"
 
+# RESILIENT-1535: node= scoping. organ_dark_cause takes an optional node-csv
+# (arg 7) and current-node (arg 8) — a mismatch must read as scoped-off:node=,
+# BEFORE requires= is even evaluated (a node-scoped organ's unmet requires=
+# is expected, not a fault).
+cause_node() { # <unit> <node-csv> <requires> <current-node>
+  bash -c "source '$LIB'; organ_dark_cause '$1' '' '$3' systemd '$R' '$SD' '$2' '$4'"
+}
+[[ "$(cause_node chump-sick.timer closetjunky '' cuphead)" == "scoped-off:node=closetjunky" ]] \
+  && ok "node=closetjunky organ on a different current-node -> scoped-off:node=<csv> (expected dark elsewhere)" || bad "node-mismatch"
+[[ "$(cause_node chump-sick.timer closetjunky '' closetjunky)" == "inactive" ]] \
+  && ok "node=closetjunky organ ON closetjunky -> evaluated normally (inactive, not scoped)" || bad "node-match"
+[[ "$(cause_node chump-needs-bin.timer closetjunky 'bin:definitely-not-a-real-binary-xyz' cuphead)" == "scoped-off:node=closetjunky" ]] \
+  && ok "node mismatch wins over an unmet requires= — the organ is scoped off, not flagged unmet-requires" || bad "node-mismatch-vs-requires"
+[[ "$(cause_node chump-needs-bin.timer '' 'bin:definitely-not-a-real-binary-xyz' cuphead)" == "unmet-requires:missing_bin:definitely-not-a-real-binary-xyz" ]] \
+  && ok "no node= scope (empty) -> unmet requires= still reported as a real fault (no regression for node-agnostic organs)" || bad "no-node-scope"
+
 # ── The audit: summary line, per-organ causes, exit code ─────────────────────
 out="$(CHUMP_REPO_ROOT="$R" CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR="$SD" bash "$DEPLOY" --audit-only 2>&1)"; rc=$?
 grep -q 'post-deploy manifest audit: 1/7 enabled organs active, 1 scoped off this node (platform=systemd), 5 UNEXPECTED-DARK' <<<"$out" \
@@ -96,6 +120,22 @@ done
 out="$(CHUMP_REPO_ROOT="$ROOT" CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR="$SD" bash "$DEPLOY" --audit-only 2>&1 || true)"
 leak=0; for o in $REPORTED; do grep -q "UNEXPECTED-DARK: chump-$o.timer" <<<"$out" && { echo "    leaked: $o"; leak=1; }; done
 [[ $leak -eq 0 ]] && ok "the real audit no longer reports any of the 14 as UNEXPECTED-DARK" || bad "reported organs still UNEXPECTED-DARK"
+
+# ── RESILIENT-1535: chump-postgrest + chump-cj-* are node=closetjunky-scoped,
+#    excluded from the hub dark-count ─────────────────────────────────────────
+CJ_ONLY="chump-cj-worker.service chump-cj-disk-monitor.service chump-cj-sync.service chump-postgrest.service"
+for u in $CJ_ONLY; do
+  line="$(grep -E "^enabled[[:space:]]+${u//./\\.}([[:space:]]|$)" "$ROOT/scripts/ops/organ-manifest.txt")"
+  [[ "$line" == *"node=closetjunky"* ]] || { echo "    missing node=closetjunky: $u"; bad "$u not scoped"; }
+done
+ok "chump-postgrest.service + chump-cj-* manifest lines carry node=closetjunky"
+
+out_hub="$(CHUMP_REPO_ROOT="$ROOT" CHUMP_ORGAN_DEPLOY_SYSTEMD_DIR="$SD" CHUMP_ORGAN_MANIFEST_NODE=cuphead bash "$DEPLOY" --audit-only 2>&1 || true)"
+leak=0; for u in $CJ_ONLY; do
+  grep -q "UNEXPECTED-DARK: $u" <<<"$out_hub" && { echo "    leaked: $u"; leak=1; }
+  grep -q "scoped off this node: $u (scoped-off:node=closetjunky)" <<<"$out_hub" || { echo "    not reported scoped-off: $u"; leak=1; }
+done
+[[ $leak -eq 0 ]] && ok "on a non-CJ node (cuphead), chump-postgrest.service + chump-cj-* read as scoped-off, never UNEXPECTED-DARK — the dishonest dark-count this gap fixes" || bad "cj-only organs still inflate the hub dark-count"
 
 echo "=== organ dark audit: $pass passed, $fail failed ==="
 [[ $fail -eq 0 ]]
