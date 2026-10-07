@@ -369,7 +369,7 @@ enabled     chump-digest.timer  role=data
 #     installed idempotently by scripts/setup/install-gap-substrate.sh
 #     (INFRA-3631). Node-neutral by construction (systemd unit name is fixed,
 #     not host-suffixed).
-enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file:~/cj-worker-run.sh
+enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file:~/cj-worker-run.sh node=closetjunky
 # RESILIENT-1083 (worker-orphan class, PERMANENT fix — SUPERSEDES #4533, CLOSES
 # RESILIENT-1081 "organ-manifest is CJ-shaped"): a non-CJ
 # muscle node's concrete worker (mugman's chump-node1-worker.service from
@@ -384,9 +384,14 @@ enabled     chump-cj-worker.service  role=muscle requires=bin:chump,bin:git,file
 # reset). The worker is installed by chump-node-install.sh / node-orchestrator
 # (node-local), not this manifest, so it does not belong here. The chump-cj-worker
 # line above is retained only as belt-and-suspenders for the load-bearing CJ node.
-enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df,file:~/cj-disk-monitor-run.sh
-enabled     chump-cj-sync.service  role=data requires=bin:git,file:~/cj-sync-run.sh
-enabled     chump-postgrest.service  role=data requires=bin:postgrest
+enabled     chump-cj-disk-monitor.service  role=janitor requires=bin:df,file:~/cj-disk-monitor-run.sh node=closetjunky
+enabled     chump-cj-sync.service  role=data requires=bin:git,file:~/cj-sync-run.sh node=closetjunky
+# RESILIENT-1535: chump-postgrest.service is dormant BY DESIGN (RESILIENT-1057 —
+# sqlite state.db is canonical, postgrest is a facade only ever installed on
+# the gap-substrate's host). node= scopes it to closetjunky so a hub node that
+# simply lacks the postgrest binary reports "scoped off this node", not an
+# UNEXPECTED-DARK organ — the inflated/dishonest dark-count this gap exists to fix.
+enabled     chump-postgrest.service  role=data requires=bin:postgrest node=closetjunky
 # RESILIENT-318: disk-hygiene reapers on the MUSCLE (worker) nodes. Worker
 # nodes accumulate linked worktrees (.claude/worktrees/*, /tmp/chump-*) and
 # cargo build targets far faster than any other node — they are the ones that
