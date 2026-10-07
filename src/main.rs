@@ -4873,7 +4873,11 @@ async fn main() -> Result<()> {
             println!();
             println!("Options:");
             println!("  --json            output in JSON format");
-            println!("  --exit-on-drift   exit 1 if starved outcomes or untraced P0/P1 gaps found");
+            println!("  --exit-on-drift   exit 1 if starved outcomes, untraced P0/P1 gaps, or outcome-table");
+            println!("                    drift found (META-1045: a live outcome with a definition of done");
+            println!(
+                "                    but no open gaps, or whose open gaps are all unpickable)"
+            );
             println!(
                 "  --top-starved N   limit starved_outcomes output to N entries (default: all)"
             );
@@ -4920,11 +4924,17 @@ async fn main() -> Result<()> {
                     .iter()
                     .map(|id| format!(r#""{id}""#))
                     .collect();
+                let outcome_drift_json: Vec<String> = report
+                    .outcome_drift
+                    .iter()
+                    .map(|d| format!(r#""{}""#, d.outcome_id))
+                    .collect();
                 let event = format!(
-                    r#"{{"ts":"{ts}","kind":"roadmap_drift_detected","starved_outcomes":[{s}],"untraced_p0":[{u}]}}"#,
+                    r#"{{"ts":"{ts}","kind":"roadmap_drift_detected","starved_outcomes":[{s}],"untraced_p0":[{u}],"outcome_drift":[{o}]}}"#,
                     ts = ts_str,
                     s = starved_json.join(","),
                     u = untraced_json.join(","),
+                    o = outcome_drift_json.join(","),
                 );
                 let _ = std::fs::OpenOptions::new()
                     .create(true)
@@ -4945,9 +4955,10 @@ async fn main() -> Result<()> {
 
         if exit_on_drift && report.has_drift() {
             eprintln!(
-                "[roadmap-status] DRIFT: {} starved outcome(s), {} untraced P0/P1 gap(s)",
+                "[roadmap-status] DRIFT: {} starved outcome(s), {} untraced P0/P1 gap(s), {} outcome-table drift(s)",
                 report.starved_outcomes.len(),
-                report.untraced_p0.len()
+                report.untraced_p0.len(),
+                report.outcome_drift.len()
             );
             std::process::exit(1);
         }
