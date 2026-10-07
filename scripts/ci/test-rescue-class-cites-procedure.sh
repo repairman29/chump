@@ -2,7 +2,7 @@
 # test-rescue-class-cites-procedure.sh — META-249 (META-247 slice)
 #
 # Gate: any PR whose title matches a rescue-class pattern (fix(...rescue),
-# fix(...trunk-red), unblock, fix(...allowlist), filed-by-pr-shepherd) must
+# fix(...trunk-red), fix(...unblock), fix(...allowlist), filed-by-pr-shepherd) must
 # cite BOTH '§5' (Failure-surface taxonomy) and '§6' (Cascade impact tables)
 # of docs/process/PR_RESCUE_PROCEDURE.md in the PR body. Rescue work that
 # skips the procedure doc tends to re-diagnose failure surfaces that are
@@ -27,7 +27,7 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 # shellcheck source=lib/gate-emit.sh
 source "$SCRIPT_DIR/lib/gate-emit.sh" 2>/dev/null || true
 
-RESCUE_TITLE_PATTERN='fix\([^)]*rescue[^)]*\)|fix\([^)]*trunk-red[^)]*\)|unblock|fix\([^)]*allowlist[^)]*\)|filed-by-pr-shepherd'
+RESCUE_TITLE_PATTERN='fix\([^)]*rescue[^)]*\)|fix\([^)]*trunk-red[^)]*\)|fix\([^)]*unblock[^)]*\)|fix\([^)]*allowlist[^)]*\)|filed-by-pr-shepherd'
 
 is_rescue_class() {
     echo "$1" | grep -qiE "$RESCUE_TITLE_PATTERN"
@@ -80,7 +80,7 @@ run_self_test() {
 
     # Scenario 2: rescue-class title, missing §6 → FAIL
     rc=0
-    out="$(check_citations 'fix(queue-driver): unblock stuck BEHIND PRs' \
+    out="$(check_citations 'fix(queue-unblock): re-arm stuck BEHIND PRs' \
         'Per PR_RESCUE_PROCEDURE.md §5 (Allowlist drift), rebased and re-armed.' \
         2>&1)" || rc=$?
     if [[ $rc -eq 1 ]] && echo "$out" | grep -q '^FAIL' && echo "$out" | grep -q '§6'; then
@@ -118,6 +118,16 @@ run_self_test() {
         ok "Scenario 5: filed-by-pr-shepherd + both citations → PASS"
     else
         bad "Scenario 5: expected PASS, got (rc=$rc): $out"
+    fi
+
+    # Scenario 6 (EFFECTIVE-1931): FEATURE PR whose title merely mentions 'unblock'
+    # must not be treated as rescue-class (bare substring used to false-positive).
+    rc=0
+    out="$(check_citations 'feat(coord): cascade-unblock detector' 'no citations here' 2>&1)" || rc=$?
+    if [[ $rc -eq 0 ]] && echo "$out" | grep -q '^SKIP'; then
+        ok "Scenario 6: feature PR with 'unblock' in title → SKIP"
+    else
+        bad "Scenario 6: expected SKIP, got (rc=$rc): $out"
     fi
 
     echo
