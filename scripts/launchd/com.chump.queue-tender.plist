@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN"
+    "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<!--
+  com.chump.queue-tender.plist — META-243
+  Launchd user agent that runs one queue-tender tick every 300 seconds.
+  DRY_RUN by default; the operator sets CHUMP_QUEUE_TENDER_DRY_RUN=0 to act.
+  CHUMP_QUEUE_TENDER_DISABLED=1 is the panic-stop (Category B kill-switch).
+  Install with: bash __REPO_ROOT__/scripts/setup/install-queue-tender.sh install
+  Placeholders __REPO_ROOT__ and __HOME__ are substituted by the installer.
+-->
+<plist version="1.0">
+<dict>
+    <key>Label</key>
+    <string>com.chump.queue-tender</string>
+    <key>StartInterval</key>
+    <integer>300</integer>
+    <key>RunAtLoad</key>
+    <false/>
+    <key>ProgramArguments</key>
+    <array>
+        <string>/bin/bash</string>
+        <string>-l</string>
+        <string>-c</string>
+        <string>cd __REPO_ROOT__ &amp;&amp; bash scripts/coord/queue-tender-loop.sh tick</string>
+    </array>
+    <key>EnvironmentVariables</key>
+    <dict>
+        <key>HOME</key>
+        <string>__HOME__</string>
+        <key>PATH</key>
+        <string>__HOME__/.cargo/bin:/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin:/usr/sbin:/sbin</string>
+        <key>CHUMP_QUEUE_TENDER_DRY_RUN</key>
+        <string>1</string>
+        <key>CHUMP_QUEUE_TENDER_DISABLED</key>
+        <string>0</string>
+    </dict>
+    <key>StandardOutPath</key>
+    <string>__HOME__/.chump/logs/queue-tender.out</string>
+    <key>StandardErrorPath</key>
+    <string>__HOME__/.chump/logs/queue-tender.err</string>
+    <key>ThrottleInterval</key>
+    <integer>60</integer>
+</dict>
+</plist>
