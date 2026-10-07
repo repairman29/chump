@@ -235,6 +235,61 @@ _pp_run_timed() {
 # INFRA-5126:END-TIMEOUT-HELPERS
 
 # -----------------------------------------------------------------------
+# RESILIENT-1552 (RESILIENT-1548 slice): pre-push total-duration + PR-class
+# measurement.
+#
+# Parent AC3 (RESILIENT-1548) requires proving the median PR CI wall-clock
+# and pre-push time dropped materially — that needs a durable, queryable
+# signal rather than an assertion. Emits exactly once per hook invocation
+# (from the existing EXIT trap below), regardless of exit code, so both
+# BLOCKED and PASS pushes contribute to the median. Pure measurement: no
+# new gate, no exit-code change.
+#
+# PR class is a coarse heuristic over the push's changed files vs.
+# origin/main — "docs_only" (only *.md/*.txt/docs/** touched), "single_crate"
+# (changes confined to one crates/<name>/ dir, or ≤2 top-level dirs), else
+# "full". Mirrors the bucket names scripts/dev/pr-wallclock-report.sh uses
+# for the CI-side half of the same measurement.
+# -----------------------------------------------------------------------
+_pp_classify_pr_class() {
+    local _files
+    _files="$(git -C "$REPO_ROOT" diff --name-only origin/main...HEAD 2>/dev/null || true)"
+    if [[ -z "$_files" ]]; then
+        echo "unknown"
+        return
+    fi
+    if ! grep -qvE '\.(md|txt)$|(^|/)docs/' <<<"$_files"; then
+        echo "docs_only"
+        return
+    fi
+    local _crate_count _top_count
+    _crate_count="$(grep -oE '^crates/[^/]+' <<<"$_files" | sort -u | wc -l | xargs)"
+    _top_count="$(awk -F/ '{print $1}' <<<"$_files" | sort -u | wc -l | xargs)"
+    if [[ "$_crate_count" -le 1 ]] && [[ "$_top_count" -le 2 ]]; then
+        echo "single_crate"
+    else
+        echo "full"
+    fi
+}
+
+# arg: exit_code of the hook (so a BLOCKED run still contributes a sample).
+_pp_emit_duration_event() {
+    local _rc="${1:-0}"
+    local _now _elapsed _pp_class _pp_root _pp_branch _pp_gap _pp_amb
+    _now="$(date +%s)"
+    _elapsed=$(( _now - _PP_HOOK_START_EPOCH ))
+    _pp_class="$(_pp_classify_pr_class)"
+    _pp_root="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+    _pp_branch="$(git rev-parse --abbrev-ref HEAD 2>/dev/null || echo unknown)"
+    _pp_gap="$(echo "$_pp_branch" | grep -oiE '[A-Za-z]+-[0-9]+' | head -1 | tr '[:lower:]' '[:upper:]' || echo "")"
+    _pp_amb="${CHUMP_AMBIENT_LOG:-$_pp_root/.chump-locks/ambient.jsonl}"
+    mkdir -p "$(dirname "$_pp_amb")" 2>/dev/null || true
+    printf '{"ts":"%s","kind":"prepush_duration","elapsed_s":%s,"pr_class":"%s","exit_code":%s,"branch":"%s","gap_id":"%s"}\n' \
+        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$_elapsed" "$_pp_class" "$_rc" "$_pp_branch" "$_pp_gap" \
+        >> "$_pp_amb" 2>/dev/null || true
+}
+
+# -----------------------------------------------------------------------
 # INFRA-1988 (THE FLOOR Phase 2): silent-noop alarm.
 #
 # If the main Guard 1/2/3 loop NEVER enters its body on a non-trivial push,
@@ -250,6 +305,10 @@ _HOOK_LOOP_ENTERED=0
 _HOOK_NAME="pre-push"
 _silent_alarm_check_and_emit() {
     local rc="$?"
+    # RESILIENT-1552: emit the total-duration/PR-class sample unconditionally
+    # (success AND failure both count toward the median — a push that gets
+    # BLOCKED still spent wall-clock on the guards that ran before it).
+    _pp_emit_duration_event "$rc"
     # Skip alarm if we exited non-zero (the hook reported a failure — that's
     # the LOUD path, no alarm needed).
     [[ "$rc" -ne 0 ]] && return "$rc"

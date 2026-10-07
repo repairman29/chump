@@ -6076,6 +6076,22 @@ events:
     consumers: [fleet-brief, curator]
     fields_required: [ts, kind, gap_id, reason, branch, bypassed_by]
 
+  # ── RESILIENT-1552 (RESILIENT-1548 slice): pre-push duration measurement ──
+  - kind: prepush_duration
+    effect_metric: prepush_wallclock_median_s
+    emitter: scripts/git-hooks/pre-push _pp_emit_duration_event (RESILIENT-1552)
+    trigger: every pre-push hook invocation, on exit (success or BLOCKED),
+      via the existing _silent_alarm_check_and_emit EXIT trap
+    consumers: [scripts/dev/pr-wallclock-report.sh, fleet-brief, curator]
+    fields_required: [ts, kind, elapsed_s, pr_class, exit_code, branch, gap_id]
+    docs: |
+      Pure measurement — adds no gate and cannot block a push. pr_class is a
+      coarse heuristic ("docs_only" / "single_crate" / "full" / "unknown")
+      over the files changed vs. origin/main, computed by
+      _pp_classify_pr_class. Feeds the RESILIENT-1548 parent AC3
+      before/after median comparison via
+      scripts/dev/pr-wallclock-report.sh.
+
   # ── INFRA-5126: pre-push phase + total hard timeout ───────────────────────
   - kind: prepush_timeout
     effect_metric: self
