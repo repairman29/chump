@@ -5,7 +5,7 @@
   priority: P2
   effort: m
   acceptance_criteria:
-    - a data role installs Postgres (pkg/init/service, host-agnostic systemd+runit), binds tailnet-only, creates the fleet DB — reproducing tonights hand Pixel setup (Postgres 18.2 on 100.84.132.93)
+    - a data role installs Postgres (pkg/init/service, host-agnostic systemd+runit), binds tailnet-only, creates the fleet DB — reproducing tonights hand Pixel setup (Postgres 18.2 on <PIXEL-TAILNET-IP>)
     - a factory role installs chump-integrator (batched merge train) DRY-RUN by default, LIVE gated on trunk-green
     - both flow through the role-aware installer; --role data on a fresh box yields a reachable Postgres, --role factory yields the integrator timer
   notes: |
