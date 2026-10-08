@@ -19,7 +19,7 @@ ahash = { version = "0.8", features = ["serde"] }
 aho-corasick = { version = "1" }
 arrayvec = { version = "0.7", features = ["serde"] }
 axum = { version = "0.8", features = ["macros", "multipart", "ws"] }
-bit-set = { version = "0.8" }
+bit-set = { version = "0.11" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 bytemuck = { version = "1", default-features = false, features = ["aarch64_simd", "derive", "extern_crate_alloc", "wasm_simd"] }
 bytes = { version = "1", features = ["serde"] }
@@ -45,7 +45,7 @@ generic-array = { version = "0.14", default-features = false, features = ["more_
 getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng", "wasm_js"] }
-gimli = { version = "0.33", default-features = false, features = ["read", "std", "write"] }
+gimli = { version = "0.34", default-features = false, features = ["read", "std", "write"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15" }
 hashbrown-9067fe90e8c1f593 = { package = "hashbrown", version = "0.17", features = ["serde"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", features = ["serde"] }
@@ -59,9 +59,9 @@ indexmap = { version = "2", features = ["serde"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2", features = ["use_std"] }
 mime_guess = { version = "2" }
-miniz_oxide = { version = "0.8", features = ["simd"] }
+miniz_oxide = { version = "0.9", features = ["simd"] }
 native-tls = { version = "0.2" }
-num-bigint = { version = "0.4" }
+num-bigint = { version = "0.5" }
 num-complex = { version = "0.4", features = ["bytemuck"] }
 num-integer = { version = "0.1", features = ["i128"] }
 num-rational = { version = "0.4", features = ["num-bigint-std"] }
@@ -71,8 +71,8 @@ object-f645eb7eb1285ab4 = { package = "object", version = "0.39", default-featur
 once_cell = { version = "1" }
 parking_lot = { version = "0.12" }
 percent-encoding = { version = "2" }
-phf = { version = "0.13", features = ["macros"] }
-phf_shared = { version = "0.13" }
+phf = { version = "0.14", features = ["macros"] }
+phf_shared = { version = "0.14" }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulley-interpreter = { version = "49", default-features = false, features = ["disas", "interp", "std"] }
@@ -90,7 +90,7 @@ semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "float_roundtrip", "preserve_order", "raw_value", "unbounded_depth"] }
-sha2 = { version = "0.10" }
+sha2 = { version = "0.11" }
 signature = { version = "2", default-features = false, features = ["digest", "rand_core", "std"] }
 simd-adler32 = { version = "0.3" }
 slab = { version = "0.4" }
@@ -113,7 +113,7 @@ typenum = { version = "1", default-features = false, features = ["const-generics
 ureq = { version = "3", features = ["json", "native-tls", "socks-proxy"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["fast-rng", "serde", "v4"] }
-wasm-encoder = { version = "0.258", features = ["wasmparser"] }
+wasm-encoder = { version = "0.260", features = ["wasmparser"] }
 wasmparser-392e55d8254dfa46 = { package = "wasmparser", version = "0.258", default-features = false, features = ["component-model", "features", "hash-collections", "serde", "simd", "std", "validate"] }
 wasmparser-90bcb329d096495 = { package = "wasmparser", version = "0.251", default-features = false, features = ["component-model", "features", "serde", "simd", "std", "validate"] }
 wasmtime-environ-250b128af4f17eb8 = { package = "wasmtime-environ", version = "49", default-features = false, features = ["anyhow", "backtrace", "compile", "component-model", "demangle", "gc-copying", "gc-drc", "gc-null", "stack-switching", "threads"] }
@@ -129,7 +129,7 @@ ahash = { version = "0.8", features = ["serde"] }
 aho-corasick = { version = "1" }
 arrayvec = { version = "0.7", features = ["serde"] }
 axum = { version = "0.8", features = ["macros", "multipart", "ws"] }
-bit-set = { version = "0.8" }
+bit-set = { version = "0.11" }
 bitflags = { version = "2", default-features = false, features = ["std"] }
 bytemuck = { version = "1", default-features = false, features = ["aarch64_simd", "derive", "extern_crate_alloc", "wasm_simd"] }
 bytes = { version = "1", features = ["serde"] }
@@ -157,7 +157,7 @@ generic-array = { version = "0.14", default-features = false, features = ["more_
 getrandom-468e82937335b1c9 = { package = "getrandom", version = "0.3", default-features = false, features = ["std", "wasm_js"] }
 getrandom-6f8ce4dd05d13bba = { package = "getrandom", version = "0.2", default-features = false, features = ["std"] }
 getrandom-9fbad63c4bcf4a8f = { package = "getrandom", version = "0.4", default-features = false, features = ["std", "sys_rng", "wasm_js"] }
-gimli = { version = "0.33", default-features = false, features = ["read", "std", "write"] }
+gimli = { version = "0.34", default-features = false, features = ["read", "std", "write"] }
 hashbrown-3575ec1268b04181 = { package = "hashbrown", version = "0.15" }
 hashbrown-9067fe90e8c1f593 = { package = "hashbrown", version = "0.17", features = ["serde"] }
 hashbrown-986da7b5efc2b80e = { package = "hashbrown", version = "0.16", features = ["serde"] }
@@ -171,9 +171,9 @@ indexmap = { version = "2", features = ["serde"] }
 log = { version = "0.4", default-features = false, features = ["std"] }
 memchr = { version = "2", features = ["use_std"] }
 mime_guess = { version = "2" }
-miniz_oxide = { version = "0.8", features = ["simd"] }
+miniz_oxide = { version = "0.9", features = ["simd"] }
 native-tls = { version = "0.2" }
-num-bigint = { version = "0.4" }
+num-bigint = { version = "0.5" }
 num-complex = { version = "0.4", features = ["bytemuck"] }
 num-integer = { version = "0.1", features = ["i128"] }
 num-rational = { version = "0.4", features = ["num-bigint-std"] }
@@ -183,8 +183,8 @@ object-f645eb7eb1285ab4 = { package = "object", version = "0.39", default-featur
 once_cell = { version = "1" }
 parking_lot = { version = "0.12" }
 percent-encoding = { version = "2" }
-phf = { version = "0.13", features = ["macros"] }
-phf_shared = { version = "0.13" }
+phf = { version = "0.14", features = ["macros"] }
+phf_shared = { version = "0.14" }
 postcard = { version = "1", default-features = false, features = ["use-std"] }
 proc-macro2 = { version = "1", features = ["span-locations"] }
 pulley-interpreter = { version = "49", default-features = false, features = ["disas", "interp", "std"] }
@@ -202,7 +202,7 @@ semver = { version = "1", features = ["serde"] }
 serde = { version = "1", features = ["alloc", "derive", "rc"] }
 serde_core = { version = "1", features = ["alloc", "rc"] }
 serde_json = { version = "1", features = ["alloc", "float_roundtrip", "preserve_order", "raw_value", "unbounded_depth"] }
-sha2 = { version = "0.10" }
+sha2 = { version = "0.11" }
 signature = { version = "2", default-features = false, features = ["digest", "rand_core", "std"] }
 simd-adler32 = { version = "0.3" }
 slab = { version = "0.4" }
@@ -229,7 +229,7 @@ typenum = { version = "1", default-features = false, features = ["const-generics
 ureq = { version = "3", features = ["json", "native-tls", "socks-proxy"] }
 url = { version = "2", features = ["serde"] }
 uuid = { version = "1", features = ["fast-rng", "serde", "v4"] }
-wasm-encoder = { version = "0.258", features = ["wasmparser"] }
+wasm-encoder = { version = "0.260", features = ["wasmparser"] }
 wasmparser-392e55d8254dfa46 = { package = "wasmparser", version = "0.258", default-features = false, features = ["component-model", "features", "hash-collections", "serde", "simd", "std", "validate"] }
 wasmparser-90bcb329d096495 = { package = "wasmparser", version = "0.251", default-features = false, features = ["component-model", "features", "serde", "simd", "std", "validate"] }
 wasmtime-environ-250b128af4f17eb8 = { package = "wasmtime-environ", version = "49", default-features = false, features = ["anyhow", "backtrace", "compile", "component-model", "demangle", "gc-copying", "gc-drc", "gc-null", "stack-switching", "threads"] }
