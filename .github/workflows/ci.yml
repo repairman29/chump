@@ -921,7 +921,7 @@ jobs:
     # Feature-flag fallback: per-lane CHUMP_SELF_HOSTED_FAST_CHECKS=true reverts
     # this single lane to self-hosted if needed for diagnosis.
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
-    container: ${{ vars.CHUMP_SELF_HOSTED_FAST_CHECKS != 'true' && 'ghcr.io/repairman29/chump-rust-builder:latest' }}
+    container: ${{ (vars.CHUMP_CI_CONTAINER == 'true' && vars.CHUMP_SELF_HOSTED_FAST_CHECKS != 'true') && 'ghcr.io/repairman29/chump-rust-builder:latest' || '' }}
     # INFRA-1959: force chump to use per-checkout state.db, never $HOME/.chump.
     # Prevents r2d2 sqlite-lock contention when multiple self-hosted runs are
     # active concurrently (each has its own _work checkout, but a stale system
@@ -1752,7 +1752,7 @@ jobs:
     # ci.yml-only edits don't pay the full build cost.
     if: (needs.changes.outputs.rust == 'true' || github.event_name == 'push' || github.event_name == 'merge_group') && needs.changes.outputs.ci_config_only != 'true'
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-latest' }}
-    container: ${{ vars.CHUMP_SELF_HOSTED_CLIPPY != 'true' && 'ghcr.io/repairman29/chump-rust-builder:latest' }}
+    container: ${{ (vars.CHUMP_CI_CONTAINER == 'true' && vars.CHUMP_SELF_HOSTED_CLIPPY != 'true') && 'ghcr.io/repairman29/chump-rust-builder:latest' || '' }}
     timeout-minutes: 20  # target wall-clock 3-5 min; observed hangs up to 3h before cancellation (INFRA-957)
     # INFRA-2118: /tmp isolation only on self-hosted; GH-hosted uses
     # <workspace>/target so Swatinem caches build artifacts (see fast-checks).
@@ -1868,7 +1868,7 @@ jobs:
     # saturated (4 Macs, 45-PR queue). Expected: cargo-test 15 min → ~4 min once
     # sccache R2 warms (~$0.50/run vs queue-stall cost). Repo var override intact.
     runs-on: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST == 'true' && fromJSON('["self-hosted","macos-arm64","chump-fleet"]') || 'ubuntu-24.04-arm' }}
-    container: ${{ vars.CHUMP_SELF_HOSTED_CARGO_TEST != 'true' && 'ghcr.io/repairman29/chump-rust-builder:latest' }}
+    container: ${{ (vars.CHUMP_CI_CONTAINER == 'true' && vars.CHUMP_SELF_HOSTED_CARGO_TEST != 'true') && 'ghcr.io/repairman29/chump-rust-builder:latest' || '' }}
     timeout-minutes: 30  # target wall-clock 5-8 min; cap leaves headroom for flake-rerun
     # INFRA-1959: per-checkout state.db (see fast-checks comment above).
     env:
