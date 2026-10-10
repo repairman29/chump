@@ -3375,3 +3375,8 @@ CHUMP_GATE_FAIL_NOW
 # detected in: (standard input)
 CHUMP_GATE_FAIL_STATE_FILE
 CHUMP_OAUTH_PIN_SETUP_TOKEN
+
+# AUTO (INFRA-1853): chump-commit.sh detected new CHUMP_* env refs.
+# Replace the AUTO marker with a real description on the next commit.
+# detected in: (standard input)
+CHUMP_CANONICAL_STATE_DB
