@@ -24,7 +24,7 @@
 # rewrites THAT home, then injects a uniform host-agnostic runtime context, so
 # the SAME manifest wires correctly on any host.
 
-# organ_unit_host_rewrite <src-file> <dest-file> <run-user> <run-home> [keep_root] [repo_root]
+# organ_unit_host_rewrite <src-file> <dest-file> <run-user> <run-home> [keep_root] [repo_root] [scope]
 #   Writes the host-rewritten unit from <src-file> to <dest-file>.
 #   run-user / run-home: the box's repo-owning user + that user's real HOME.
 #   keep_root (optional, "1"): force User=root even after the rewrite — for the
@@ -43,9 +43,21 @@
 #     chump-node-install.sh -> $NODE_DIR/repo) so the paths resolve on any node.
 #     Omitting it falls back to the legacy $HOME/Projects/chump assumption, so
 #     pre-existing 5-arg callers keep their exact prior behavior.
+#   scope (optional, default "system"): "user" when the unit is destined for
+#     ~/.config/systemd/user (systemd --user, i.e. chump-node-install.sh). A
+#     user-scope manager runs unprivileged and CANNOT switch identity, so ANY
+#     User=/Group= line makes the unit die at spawn with
+#     "Failed to determine supplementary groups: Operation not permitted" ->
+#     status=216/GROUP, every tick, even when User= names the very user the
+#     manager already runs as (RESILIENT-1571: 44 cuphead organs crash-looped,
+#     incl. pr-shepherd and ci-health-gate, so the OS could not clear its own
+#     stuck-PR backlog). In scope=user the rewriter therefore NEVER emits or
+#     keeps a User=/Group= line, and keep_root is ignored (root cannot be
+#     asserted from a user manager). "system" (install-helsinki-atc.sh, run as
+#     root into /etc/systemd/system) is unchanged.
 #   Returns non-zero if <src-file> is missing.
 organ_unit_host_rewrite() {
-  local src="$1" dest="$2" run_user="$3" run_home="$4" keep_root="${5:-0}" repo_root="${6:-}"
+  local src="$1" dest="$2" run_user="$3" run_home="$4" keep_root="${5:-0}" repo_root="${6:-}" scope="${7:-system}"
   [[ -f "$src" ]] || { echo "organ_unit_host_rewrite: missing src $src" >&2; return 1; }
 
   local repo_on_host="${repo_root:-${run_home%/}/Projects/chump}"
@@ -106,7 +118,9 @@ organ_unit_host_rewrite() {
   # tools (chump gap, gh repo view) don't run from / and $HOME-based tools (gh,
   # almanac) read the run-user's config, on any host.
   if grep -q "^\[Service\]" "$dest"; then
-    grep -q "^User=" "$dest"             || sed -i "/^\[Service\]/a User=${run_user}" "$dest"
+    if [[ "$scope" != "user" ]]; then
+      grep -q "^User=" "$dest"           || sed -i "/^\[Service\]/a User=${run_user}" "$dest"
+    fi
     grep -q "^Environment=HOME=" "$dest" || sed -i "/^\[Service\]/a Environment=HOME=${run_home%/}" "$dest"
     grep -q "^WorkingDirectory=" "$dest" || sed -i "/^\[Service\]/a WorkingDirectory=${repo_on_host}" "$dest"
     grep -q "^Environment=PATH=" "$dest" || sed -i "/^\[Service\]/a Environment=PATH=${run_home%/}/.cargo/bin:/usr/local/bin:/usr/bin:/bin" "$dest"
@@ -116,6 +130,15 @@ organ_unit_host_rewrite() {
     # repo-local .chump/state.db. The leading `-` makes it optional so a box
     # mid-bootstrap (node.env not written yet) doesn't fail unit activation.
     grep -q "^EnvironmentFile=.*node\.env" "$dest" || sed -i "/^\[Service\]/a EnvironmentFile=-${run_home%/}/.chump/node.env" "$dest"
+  fi
+
+  # RESILIENT-1571: a user-scope unit must carry no User=/Group= at all (see
+  # the `scope` doc above). Strip whatever the tracked source baked in, AFTER
+  # the injection block so nothing can re-add it, and BEFORE keep-root so a
+  # keep_root request cannot resurrect it.
+  if [[ "$scope" == "user" ]]; then
+    sed -i -E '/^(User|Group)=/d' "$dest"
+    return 0
   fi
 
   # RESILIENT-374: re-assert User=root for keep-root organs (the deploy organ).
