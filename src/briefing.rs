@@ -1588,6 +1588,95 @@ fn extract_json_field(line: &str, field: &str) -> Option<String> {
     )
 }
 
+/// A single item parsed from a repo's defined backlog file (MISSION-089
+/// slice of MISSION-055). Deliberately minimal — just the title — since
+/// `parse_backlog_file` is a format-detection/parse step, not a gap-filing
+/// step (that's `ingest_backlog::run_import`).
+#[derive(Debug, Clone, PartialEq)]
+pub struct Task {
+    pub title: String,
+}
+
+/// Error returned by [`parse_backlog_file`].
+#[derive(Debug)]
+pub enum BacklogParseError {
+    /// The file couldn't be read (missing, permissions, ...).
+    Io(String),
+    /// The file ends in `.json` but its contents are not valid JSON, or not
+    /// shaped as an array of task objects / `{"tasks": [...]}`.
+    MalformedJson(String),
+}
+
+impl std::fmt::Display for BacklogParseError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            BacklogParseError::Io(msg) => write!(f, "{msg}"),
+            BacklogParseError::MalformedJson(msg) => write!(f, "{msg}"),
+        }
+    }
+}
+
+impl std::error::Error for BacklogParseError {}
+
+/// Read `path` and parse it into a list of [`Task`]s. Format is detected by
+/// extension: `.json` is parsed as a JSON array of task objects (or a
+/// `{"tasks": [...]}` wrapper), anything else is treated as plain text with
+/// one task per non-empty line.
+pub fn parse_backlog_file(path: &Path) -> Result<Vec<Task>, BacklogParseError> {
+    let raw = fs::read_to_string(path)
+        .map_err(|e| BacklogParseError::Io(format!("failed to read {}: {e}", path.display())))?;
+
+    let is_json = path
+        .extension()
+        .map(|ext| ext.eq_ignore_ascii_case("json"))
+        .unwrap_or(false);
+
+    if !is_json {
+        let tasks = raw
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| Task {
+                title: line.to_string(),
+            })
+            .collect();
+        return Ok(tasks);
+    }
+
+    let value: serde_json::Value = serde_json::from_str(&raw).map_err(|e| {
+        BacklogParseError::MalformedJson(format!("malformed JSON in {}: {e}", path.display()))
+    })?;
+
+    let array = value
+        .as_array()
+        .cloned()
+        .or_else(|| value.get("tasks").and_then(|v| v.as_array()).cloned())
+        .ok_or_else(|| {
+            BacklogParseError::MalformedJson(format!(
+                "malformed JSON in {}: expected an array or {{\"tasks\": [...]}}",
+                path.display()
+            ))
+        })?;
+
+    let tasks = array
+        .iter()
+        .filter_map(|item| {
+            let title = item
+                .get("title")
+                .or_else(|| item.get("task"))
+                .or_else(|| item.get("name"))
+                .and_then(|v| v.as_str())
+                .map(str::trim)
+                .filter(|s| !s.is_empty())?;
+            Some(Task {
+                title: title.to_string(),
+            })
+        })
+        .collect();
+
+    Ok(tasks)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -2653,5 +2742,46 @@ gaps:
             ..Default::default()
         };
         assert!(render_json(&absent).contains(r#""comprehension":null"#));
+    }
+
+    #[test]
+    fn parse_backlog_file_valid_beast_mode_json() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".beast-mode-tasks.json");
+        fs::write(&path, r#"[{"title":"Add retries"},{"title":"Fix flake"}]"#).unwrap();
+
+        let tasks = parse_backlog_file(&path).unwrap();
+        assert_eq!(tasks.len(), 2);
+        assert_eq!(tasks[0].title, "Add retries");
+        assert_eq!(tasks[1].title, "Fix flake");
+    }
+
+    #[test]
+    fn parse_backlog_file_valid_plain_text() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join("TODO");
+        let lines = ["Write tests", "Ship feature", "Update docs"];
+        fs::write(&path, lines.join("\n")).unwrap();
+
+        let tasks = parse_backlog_file(&path).unwrap();
+        assert_eq!(tasks.len(), lines.len());
+        for (task, line) in tasks.iter().zip(lines.iter()) {
+            assert_eq!(task.title, *line);
+        }
+    }
+
+    #[test]
+    fn parse_backlog_file_malformed_json_rejected() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(".beast-mode-tasks.json");
+        fs::write(&path, r#"[{"title": "missing closing brace""#).unwrap();
+
+        let err = parse_backlog_file(&path).unwrap_err();
+        match err {
+            BacklogParseError::MalformedJson(msg) => {
+                assert!(msg.contains("malformed"), "msg=\n{msg}");
+            }
+            other => panic!("expected MalformedJson, got {other:?}"),
+        }
     }
 }
