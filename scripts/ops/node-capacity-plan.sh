@@ -45,6 +45,12 @@ PLAN="$STATE_DIR/node-capacity-plan.json"
 AMBIENT="${CHUMP_AMBIENT_LOG:-$REPO/.chump-locks/ambient.jsonl}"
 HEADROOM_PCT="${CHUMP_PLAN_HEADROOM_PCT:-75}"     # keep ~25% core headroom under sustained load
 DISK_BRAKE_PCT="${CHUMP_PLAN_DISK_BRAKE_PCT:-90}" # root% at/above which worker budget is pinned to 1
+# MISSION-123: hard ceiling on load_pct_per_core — above this the box is not just
+# "oversubscribed" (busy-but-tolerable, see posture.load_posture) but in genuine
+# overload, and the planner itself must shed a build rather than wait for
+# node-orchestrator's own SCALE_DN_LOAD pass to catch up next tick.
+HARD_LIMIT_PCT="${CHUMP_PLAN_HARD_LIMIT_PCT:-200}"
+WORKER_UNIT="${CHUMP_ORCH_WORKER_UNIT:-chump-cj-worker}"  # same unit prefix node-orchestrator.sh uses
 # Heavy orchestration organs — presence of >= ORCH_HOST_MIN of these => this box is an
 # orchestration host and reserves a core for them (they are not free).
 ORCH_ORGANS="${CHUMP_PLAN_ORCH_ORGANS:-chump-fleet-server chump-discord-gateway chump-pr-lander chump-node-orchestrator chump-postgrest}"
@@ -78,6 +84,20 @@ compute_worker_budget() {
   [ "$budget" -gt "$cap" ] && budget=$cap
   if [ "$disk_pct" -ge "$DISK_BRAKE_PCT" ] 2>/dev/null && [ "$budget" -gt 1 ]; then budget=1; fi
   echo "$budget"
+}
+
+# shed_target LOAD_PCT HARD_LIMIT_PCT WORKERS_UP — pure function (no I/O), unit-tested
+# by scripts/ci/test-node-capacity-plan.sh. MISSION-123: when current load breaches the
+# hard limit, the planner must shed rather than let the box keep thrashing until
+# node-orchestrator's own hysteresis-gated scale() catches up. Returns "shed" or "none";
+# never sheds the last worker (a dead node helps no one).
+shed_target() {
+  local load_pct="$1" hard_limit="$2" workers_up="$3"
+  if [ "$load_pct" -gt "$hard_limit" ] 2>/dev/null && [ "$workers_up" -gt 1 ] 2>/dev/null; then
+    echo "shed"
+  else
+    echo "none"
+  fi
 }
 
 # gpu_disposition — assigned | reserved-idle(+reason) | none. Computed live so the
@@ -128,8 +148,8 @@ declared_field() {
 emit_ambient() {
   local budget="$1" cores="$2" orch="$3" embed="$4"
   mkdir -p "$(dirname "$AMBIENT")" 2>/dev/null || return 0
-  printf '{"ts":"%s","kind":"node_capacity_plan","node":"%s","cores":%d,"worker_budget":%d,"workers_up":%d,"capacity_sink":%s,"oversubscribed":%s,"gpu":"%s","root_pct":%d}\n' \
-    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NODE" "$cores" "$budget" "${WORKERS_UP:-0}" "${CAPACITY_SINK:-false}" "$OVERSUBSCRIBED" "$GPU_STATE" "$ROOT_PCT" \
+  printf '{"ts":"%s","kind":"node_capacity_plan","node":"%s","cores":%d,"worker_budget":%d,"workers_up":%d,"capacity_sink":%s,"oversubscribed":%s,"gpu":"%s","root_pct":%d,"shed_action":"%s","shed_target":"%s"}\n' \
+    "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$NODE" "$cores" "$budget" "${WORKERS_UP:-0}" "${CAPACITY_SINK:-false}" "$OVERSUBSCRIBED" "$GPU_STATE" "$ROOT_PCT" "${SHED_ACTION:-none}" "${SHED_TARGET:-}" \
     >> "$AMBIENT" 2>/dev/null || true
 }
 
@@ -142,9 +162,11 @@ plan() {
   [ -z "$CORES" ] && CORES="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 1)"
   local declared_src="manifest"; [ -f "$manifest" ] || declared_src="live-introspect"
 
-  # live signals
+  # live signals. CHUMP_PLAN_TEST_LOADPCT is a test-only seam (CI has no way to
+  # drive /proc/loadavg into a hard-limit breach) — unset in production, so
+  # live-sensed load is always used on a real node.
   LOAD1="$(awk '{print $1}' /proc/loadavg 2>/dev/null || uptime | awk -F'load average:' '{print $2}' | awk -F, '{print $1}' | tr -d ' ')"
-  LOADPCT="$(awk -v l="${LOAD1:-0}" -v c="$CORES" 'BEGIN{printf "%d",(l/c)*100}')"
+  LOADPCT="${CHUMP_PLAN_TEST_LOADPCT:-$(awk -v l="${LOAD1:-0}" -v c="$CORES" 'BEGIN{printf "%d",(l/c)*100}')}"
   RAM_AVAIL_MB="$(awk '/MemAvailable/{printf "%d",$2/1024}' /proc/meminfo 2>/dev/null || echo 0)"
   ROOT_PCT="$(df -P / 2>/dev/null | awk 'NR==2{gsub("%","",$5);print $5}')"; ROOT_PCT="${ROOT_PCT:-0}"
 
@@ -167,8 +189,9 @@ plan() {
 
   WORKER_BUDGET="$(compute_worker_budget "$CORES" "$orch_reserve" "$embed_reserve" "$ROOT_PCT")"
 
-  # workers currently up (same accounting node-orchestrator uses)
-  WORKERS_UP="$(systemctl list-units 'chump-*worker*' --state=active --no-legend 2>/dev/null | grep -c '\.service')"
+  # workers currently up (same accounting node-orchestrator uses). CHUMP_PLAN_TEST_WORKERS_UP
+  # is the same test-only seam as CHUMP_PLAN_TEST_LOADPCT above.
+  WORKERS_UP="${CHUMP_PLAN_TEST_WORKERS_UP:-$(systemctl list-units 'chump-*worker*' --state=active --no-legend 2>/dev/null | grep -c '\.service')}"
   WORKERS_UP="${WORKERS_UP:-0}"
 
   # posture — makes REBALANCE visible in both directions, not just "cap the busy box":
@@ -191,6 +214,24 @@ plan() {
   # WORKER_MAX exceeded the derived budget, and fixed organ/embed overhead pegs load).
   OVERSUBSCRIBED=false
   [ "$load_posture" = "saturated" ] && OVERSUBSCRIBED=true
+
+  # MISSION-123: shed on hard-limit breach. The lowest-priority build is the
+  # highest-numbered worker unit — node-orchestrator.sh always grows worker
+  # count sequentially (chump-cj-worker2, worker3, ...), so the highest number
+  # is the most-recently-added, least-entrenched build; shedding it frees real
+  # CPU/RAM back to the box without touching the original worker1.
+  SHED_ACTION="$(shed_target "${LOADPCT:-0}" "$HARD_LIMIT_PCT" "$WORKERS_UP")"
+  SHED_TARGET=""
+  if [ "$SHED_ACTION" = "shed" ]; then
+    SHED_TARGET="${WORKER_UNIT}${WORKERS_UP}"
+    log "auto-size shed triggered: load ${LOADPCT}%/core > hard limit ${HARD_LIMIT_PCT}%/core -> shedding lowest-priority build $SHED_TARGET"
+    if sudo systemctl stop "$SHED_TARGET" 2>/dev/null; then
+      WORKERS_UP=$((WORKERS_UP-1))
+      log "auto-size shed triggered: stopped $SHED_TARGET, resources freed (workers_up now $WORKERS_UP)"
+    else
+      log "auto-size shed triggered: could not stop $SHED_TARGET -> giving up this tick"
+    fi
+  fi
 
   # disk pressure flag
   local disk_flag="ok"
@@ -226,6 +267,11 @@ plan() {
     "load_posture": "$load_posture",
     "oversubscribed": $OVERSUBSCRIBED,
     "capacity_sink": $CAPACITY_SINK
+  },
+  "shed": {
+    "action": "$SHED_ACTION",
+    "target": "$SHED_TARGET",
+    "hard_limit_pct": $HARD_LIMIT_PCT
   },
   "gpu": {
     "disposition": "$GPU_STATE",
