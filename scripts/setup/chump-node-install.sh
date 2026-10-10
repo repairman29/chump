@@ -1189,7 +1189,10 @@ place_role_unit_files() {
       # a WorkingDirectory/ExecStart that exists. The repo-path rewrite now lives
       # in organ_unit_host_rewrite itself (single source of truth), so both this
       # placer and install-helsinki-atc.sh converge identically — no post-hoc sed.
-      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep" "$repo"; then
+      # RESILIENT-1571: dest_dir is the systemd --user dir, so scope=user: no
+      # User=/Group= may be written (a user manager cannot switch identity ->
+      # status=216/GROUP crash-loop on every organ).
+      if organ_unit_host_rewrite "$src" "$dest" "$run_user" "$run_home" "$keep" "$repo" user; then
         placed+=("$f")
       fi
     done
