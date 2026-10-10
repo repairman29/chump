@@ -29,6 +29,7 @@
 # scanner-anchor: "kind":"farmer_pause_lifted"
 # scanner-anchor: "kind":"farmer_daemon_kicked"
 # scanner-anchor: "kind":"farmer_auth_dead"
+# scanner-anchor: "kind":"farmer_auth_halt"
 # scanner-anchor: "kind":"farmer_silent_worker"
 # scanner-anchor: "kind":"farmer_escalated"
 #
@@ -411,6 +412,13 @@ check_auth() {
             else
                 operator_page "AUTH_DEAD" "auth-status.sh validity probe reports BROKEN (oauth path, mode=${auth_mode}) on TWO consecutive probes"
                 emit "farmer_auth_dead" "\"reason\":\"validity_probe_broken\",\"mode\":\"${auth_mode}\",\"via\":\"validity_probe\",\"reprobed\":true"
+                # RESILIENT-1566: green-heartbeat-but-no-auth is silent death — HALT
+                # workers (fleet-paused sentinel) and say so loudly, same tick.
+                if [[ "$DRY_RUN" != "1" ]]; then
+                    printf 'AUTH_DEAD: live probe BROKEN x2 at %s\n' "$(_ts)" > "$SENTINEL" 2>/dev/null || true
+                fi
+                emit "farmer_auth_halt" "\"reason\":\"live_probe_broken\",\"sentinel\":\"${SENTINEL}\""
+                printf '\n*** FARMER RED: AUTH BROKEN (live probe x2) — workers HALTED via %s ***\n\n' "$SENTINEL" >&2
             fi
         fi
         return

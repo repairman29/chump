@@ -1397,6 +1397,16 @@ events:
       a still-good token file. The old file is left in place (with this
       warning event) so downstream fallback paths still see a token.
 
+  - kind: farmer_auth_halt
+    effect_metric: self
+    emitter: scripts/coord/farmer.sh (RESILIENT-1566)
+    trigger: auth-status.sh live probe BROKEN on two consecutive probes; farmer writes the fleet-paused sentinel to halt workers
+    consumers: [audit-log, operator-recall]
+    fields_required: [ts, kind, reason, sentinel]
+    docs: |
+      Green-heartbeat-but-no-auth is silent death; this halts workers the
+      same tick the AUTH_DEAD page fires.
+
   - kind: oauth_refresh_unsupported_platform
     effect_metric: self
     emitter: scripts/coord/oauth-token-refresh.sh (INFRA-1865)
