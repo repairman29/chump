@@ -92,6 +92,8 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+#[cfg(feature = "duty_officer")]
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry + officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -1139,6 +1141,8 @@ fn print_help() {
     println!("  --acp              ACP stdio mode for Zed / JetBrains / VS Code");
     println!("  --discord          Discord gateway bot (requires --features discord)");
     println!("  --telegram         Telegram bot (requires TELEGRAM_BOT_TOKEN)");
+    #[cfg(feature = "duty_officer")]
+    println!("  --duty-officer     Standing duty-officer loop (RESILIENT-445, requires --features duty_officer)");
     println!("  --slack            Slack Socket Mode bot (requires SLACK_BOT_TOKEN)");
     println!("  --rpc              internal JSON-RPC loop (fleet workers)");
     println!();
@@ -19888,6 +19892,33 @@ async fn main() -> Result<()> {
         mcp_bridge::init().await;
         plugin::initialize_discovered(&[]);
         return acp_server::run_acp_stdio().await;
+    }
+
+    // RESILIENT-445: standing duty-officer loop. Loads the real playbook
+    // registry (RESILIENT-443) and routes polled health signals through a
+    // `DutyOfficer` (RESILIENT-444) forever. Feature-gated: the loop +
+    // registry wiring is new and not yet operator-trusted to run
+    // unattended by default.
+    #[cfg(feature = "duty_officer")]
+    {
+        let duty_officer_mode = args.iter().any(|a| a == "--duty-officer");
+        if duty_officer_mode {
+            eprintln!("Chump version {}", version::chump_version());
+            // `load_registry` (RESILIENT-443) parses JSON; the checked-in
+            // docs/process/PLAYBOOK_REGISTRY.yaml is YAML, so there's no
+            // safe default path yet — require the caller to point at a
+            // real JSON registry rather than silently failing to parse one.
+            let registry_path = args
+                .iter()
+                .position(|a| a == "--registry")
+                .and_then(|i| args.get(i + 1))
+                .ok_or_else(|| {
+                    anyhow::anyhow!("--duty-officer requires --registry <path-to-json-registry>")
+                })?;
+            let registry = playbook_registry::load_registry(std::path::Path::new(registry_path))?;
+            let officer = duty_officer::TestDutyOfficer::default();
+            return duty_officer_loop::run_duty_officer_loop(registry, officer).await;
+        }
     }
 
     let web_mode = args.iter().any(|a| a == "--web");
