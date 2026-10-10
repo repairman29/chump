@@ -1846,6 +1846,21 @@ events:
       would otherwise re-assign. skipped_id is the avoided candidate; the reserve
       retries with the next number.
 
+  - kind: gap_id_reused_from_store_avoided
+    effect_metric: self
+    emitter: crates/chump-gap-store/src/lib.rs — gap ID assignment (RESILIENT-1570)
+    trigger: chump gap reserve generated a candidate ID that already has a row in
+      the local gaps table (any status — open/done/wontfix/superseded/closed); the
+      counter is advanced and the already-allocated ID is skipped before any insert
+    consumers: [audit-log]
+    fields_required: [ts, kind, domain, skipped_id]
+    docs: |
+      Authoritative local guard against re-emitting an already-allocated ID after a
+      state.sql restore (or manual edit) drives gap_counters.next_num into the
+      occupied range. Complements gap_id_reused_from_git_history_avoided (which is
+      best-effort and misses wontfix/superseded gaps that never shipped a commit).
+      skipped_id is the avoided candidate; the reserve retries with the next number.
+
   - kind: gap_cooldown_cleared
     effect_metric: self
     emitter: scripts/coord/lib/gap-cooldown.sh via gap_cooldown_clear() (INFRA-1220)
