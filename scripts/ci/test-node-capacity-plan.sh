@@ -49,5 +49,87 @@ check "round-half-up: usable=5 @75% -> 4"    "$(compute_worker_budget 6 1 0 50)"
 # below-half still floors: usable=5 @70% = 3.5 -> 4 is >=.5; use @69% = 3.45 -> 3.
 check "round-half-down: usable=5 @69% -> 3"  "$(compute_worker_budget 6 1 0 50 69)" 3
 
+
+# ── MISSION-123: shed_target() pure-function coverage ───────────────────────
+# args: load_pct hard_limit_pct workers_up
+check "no breach (load=150,hard=200,3 workers) -> none"   "$(shed_target 150 200 3)" "none"
+check "breach (load=250,hard=200,3 workers) -> shed"      "$(shed_target 250 200 3)" "shed"
+check "at hard limit (not over) -> none (strictly >)"     "$(shed_target 200 200 3)" "none"
+check "breach but last worker -> never shed the only one" "$(shed_target 250 200 1)" "none"
+
 if [ "$fail" -ne 0 ]; then echo "node-capacity-plan formula: FAILURES"; exit 1; fi
 echo "node-capacity-plan formula: all cases pass"
+
+# ── MISSION-123: live shed integration (AC1-4) — full plan() run, stubbed
+# systemctl/sudo/pgrep/nvidia-smi so no real daemon or hardware is touched ──
+echo ""
+echo "=== MISSION-123: planner shed-on-breach integration ==="
+INT_TMP="$(mktemp -d)"
+trap 'rm -rf "$INT_TMP"' EXIT
+FAKE_BIN="$INT_TMP/bin"; mkdir -p "$FAKE_BIN"
+STOP_LOG="$INT_TMP/stopped.log"; : > "$STOP_LOG"
+cat > "$FAKE_BIN/systemctl" <<'EOS'
+#!/usr/bin/env bash
+case "$1" in
+  stop) echo "$2" >> "$STOP_LOG"; exit 0 ;;
+  list-units) exit 0 ;;
+  is-active) exit 1 ;;
+  *) exit 0 ;;
+esac
+EOS
+cat > "$FAKE_BIN/sudo" <<'EOS'
+#!/usr/bin/env bash
+exec "$@"
+EOS
+cat > "$FAKE_BIN/pgrep" <<'EOS'
+#!/usr/bin/env bash
+exit 1
+EOS
+cat > "$FAKE_BIN/nvidia-smi" <<'EOS'
+#!/usr/bin/env bash
+exit 1
+EOS
+chmod +x "$FAKE_BIN"/systemctl "$FAKE_BIN"/sudo "$FAKE_BIN"/pgrep "$FAKE_BIN"/nvidia-smi
+
+run_plan() {
+  # args: loadpct workers_up -> writes plan.json, returns stderr log path
+  local loadpct="$1" workers_up="$2" tag="$3"
+  : > "$STOP_LOG"
+  local log_out="$INT_TMP/log.$tag.out" plan_out="$INT_TMP/plan.$tag.json"
+  (
+    export PATH="$FAKE_BIN:$PATH" STOP_LOG
+    export CHUMP_STATE_DIR="$INT_TMP/state" CHUMP_AMBIENT_LOG="$INT_TMP/ambient.jsonl"
+    export CHUMP_PLAN_LIB_ONLY=1
+    export CHUMP_PLAN_TEST_LOADPCT="$loadpct" CHUMP_PLAN_TEST_WORKERS_UP="$workers_up"
+    source "$HERE/ops/node-capacity-plan.sh"
+    plan "$plan_out"
+  ) 2>"$log_out"
+  echo "$log_out:$plan_out"
+}
+
+# AC1/AC2/AC3: load (300%/core) breaches the default hard limit (200%/core) with
+# 3 workers up -> planner must emit the shed action, stop the lowest-priority
+# (highest-numbered) build, and log the explicit required message.
+out=$(run_plan 300 3 breach)
+log_out="${out%%:*}"; plan_out="${out##*:}"
+
+check "AC3: log contains explicit 'auto-size shed triggered'" \
+  "$(grep -c 'auto-size shed triggered' "$log_out" || true)" "2"
+check "AC2: shed stopped the lowest-priority (highest-numbered) build chump-cj-worker3" \
+  "$(cat "$STOP_LOG" 2>/dev/null || true)" "chump-cj-worker3"
+check "AC1: plan.json records the shed action" \
+  "$(grep -o '"action": "shed"' "$plan_out" || true)" '"action": "shed"'
+check "AC2: plan.json names the shed target" \
+  "$(grep -o '"target": "chump-cj-worker3"' "$plan_out" || true)" '"target": "chump-cj-worker3"'
+
+# AC4: normal load (50%/core, well under the hard limit) must NOT shed — the
+# existing capacity math (worker_budget etc.) stays untouched.
+out=$(run_plan 50 3 normal)
+log_out="${out%%:*}"; plan_out="${out##*:}"
+check "AC4: normal load does not trigger a shed" \
+  "$(grep -o '"action": "none"' "$plan_out" || true)" '"action": "none"'
+check "AC4: normal load issues no systemctl stop" \
+  "$([ -s "$STOP_LOG" ] && echo had-stop || echo clean)" "clean"
+
+if [ "$fail" -ne 0 ]; then echo "node-capacity-plan shed integration: FAILURES"; exit 1; fi
+echo "node-capacity-plan shed integration: all cases pass"
