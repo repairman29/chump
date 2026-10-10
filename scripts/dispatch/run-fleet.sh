@@ -25,7 +25,7 @@
 #                           round-robin). Overrides FLEET_DOMAIN_FILTER per-agent.
 #                           "" = all agents use the fleet-wide FLEET_DOMAIN_FILTER.
 #                           (INFRA-206)
-#   FLEET_EFFORT_FILTER     (default "xs,s,m") comma-separated efforts
+#   FLEET_EFFORT_FILTER     (default "xs,s,m,l,xl") comma-separated efforts
 #   FLEET_SESSION           (default "chump-fleet") tmux session name
 #   FLEET_LOG_DIR           (default /tmp/chump-fleet-<sid>) per-agent logs
 #   FLEET_DRY_RUN           (default 0)   if 1, print plan and exit
@@ -349,7 +349,7 @@ fi
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
-FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
+FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m,l,xl}"
 # INFRA-634: --tmux-session flag overrides FLEET_SESSION env var.
 if [[ -n "$_ARG_TMUX_SESSION" ]]; then
     FLEET_SESSION="$_ARG_TMUX_SESSION"

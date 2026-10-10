@@ -106,7 +106,7 @@ fi
 
 # entry_model / entry_effort split "class:effortcsv"
 entry_model()  { printf '%s' "${1%%:*}"; }
-entry_effort() { local e="${1#*:}"; [ "$e" = "$1" ] && e="xs,s,m"; printf '%s' "$e"; }
+entry_effort() { local e="${1#*:}"; [ "$e" = "$1" ] && e="xs,s,m,l,xl"; printf '%s' "$e"; }
 
 render_launcher() { # $1=agent_id $2=model $3=effort  -> writes $ORGAN_DIR/worker-<agent_id>.sh
   local agent_id="$1" model="$2" effort="$3" out="$ORGAN_DIR/worker-$1.sh"

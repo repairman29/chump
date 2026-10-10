@@ -531,7 +531,7 @@ tmux attach -t chump-fleet                                # watch the panes
 Knobs (all env): `FLEET_SIZE`, `FLEET_TIMEOUT_S` (per-agent claude timeout,
 default 1800s), `FLEET_PRIORITY_FILTER` (default `P0,P1`),
 `FLEET_DOMAIN_FILTER` (default any; use for INFRA-206-style domain affinity),
-`FLEET_EFFORT_FILTER` (default `xs,s,m`), `FLEET_SESSION` (tmux session name,
+`FLEET_EFFORT_FILTER` (default `xs,s,m,l,xl`), `FLEET_SESSION` (tmux session name,
 default `chump-fleet`), `FLEET_LOG_DIR` (default `/tmp/chump-fleet-<sid>`),
 `CARGO_TARGET_DIR` (auto-set to a shared `target/` per INFRA-210 to avoid
 per-worktree multi-GB rebuilds).

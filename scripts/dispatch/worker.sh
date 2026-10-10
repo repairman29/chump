@@ -21,7 +21,7 @@
 #   FLEET_TIMEOUT_S         per-claude-call timeout (default 1800)
 #   FLEET_PRIORITY_FILTER   default P0,P1
 #   FLEET_DOMAIN_FILTER     default "" = any
-#   FLEET_EFFORT_FILTER     default xs,s,m
+#   FLEET_EFFORT_FILTER     default xs,s,m,l,xl (no gap-size limit)
 #   FLEET_BACKEND           default claude — runs `claude -p` (AUTO-013 path,
 #                           Anthropic API, haiku by default). "chump-local"
 #                           fans calls through the free-tier cascade (INFRA-259)
@@ -129,7 +129,7 @@ fi
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
 FLEET_AGENT_DOMAINS="${FLEET_AGENT_DOMAINS:-}"
-FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
+FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m,l,xl}"
 # INFRA-738 + INFRA-1717: auto-detect backend by checking all claude auth paths.
 # Pre-INFRA-1717 only ANTHROPIC_API_KEY was checked, so OAUTH-subscription
 # sessions (token in env CLAUDE_CODE_OAUTH_TOKEN or refreshed to
@@ -1199,6 +1199,9 @@ PY
             elif [ "$_suggest_effort" = "xs,s,m" ]; then
                 _suggest_effort="xs,s,m,l"
                 _suggest_action="bump FLEET_EFFORT_FILTER → $_suggest_effort"
+            elif [ "$_suggest_effort" = "xs,s,m,l" ]; then
+                _suggest_effort="xs,s,m,l,xl"
+                _suggest_action="bump FLEET_EFFORT_FILTER → $_suggest_effort"
             elif [ "$_suggest_prio" = "P0,P1" ] || [ "$_suggest_prio" = "P0" ] || [ "$_suggest_prio" = "P1" ]; then
                 _suggest_prio="P0,P1,P2"
                 _suggest_action="bump FLEET_PRIORITY_FILTER → $_suggest_prio"
@@ -1253,12 +1256,12 @@ PY
             _stand_down_reason=""
             if [ -n "$FLEET_DOMAIN_FILTER" ]; then
                 _stand_down_reason="filter=DOMAIN=${FLEET_DOMAIN_FILTER} exhausted; try dropping domain restriction"
-            elif [ "$FLEET_EFFORT_FILTER" != "xs,s,m,l" ]; then
+            elif [ "$FLEET_EFFORT_FILTER" != "xs,s,m,l,xl" ]; then
                 _stand_down_reason="filter=EFFORT=${FLEET_EFFORT_FILTER} exhausted; try expanding to include larger efforts"
             elif [ "$FLEET_PRIORITY_FILTER" != "P0,P1,P2,P3" ]; then
                 _stand_down_reason="filter=PRIORITY=${FLEET_PRIORITY_FILTER} exhausted; try expanding to include lower priorities"
             else
-                _stand_down_reason="filters maximally relaxed (prio=P0-P3, effort=xs-l, domain=any); backlog truly empty"
+                _stand_down_reason="filters maximally relaxed (prio=P0-P3, effort=xs-xl, domain=any); backlog truly empty"
             fi
 
             _ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -2587,7 +2590,10 @@ Operator or sibling worker can rescue this branch via:
                 # never merge and is never counted as a real ship; the
                 # escalated rung produces the artifact that actually ships.
                 if command -v gh >/dev/null 2>&1; then
-                    _cap_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+                    # RESILIENT-1583: use the REAL branch this cycle pushed (set at worktree
+                    # creation: chump/<gap>-fleet-<AGENT_ID>-<sid>), not a fabricated
+                    # chump/<gap>-claim name that never matches a real PR head_ref.
+                    _cap_branch="$branch"
                     _cap_pr="$(gh pr list --head "$_cap_branch" --state open --json number \
                         --jq '.[0].number // empty' 2>/dev/null || true)"
                     if [[ -n "$_cap_pr" ]]; then
@@ -2899,7 +2905,10 @@ Operator or sibling worker can rescue this branch via:
         # gap status → gh fallback. No evidence → kind=unverified_ship.
         # RESILIENT-1449: this ground-truth check is now _detect_ship_evidence,
         # shared verbatim with the non-zero-rc reclassification below.
-        _ship_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+        # RESILIENT-1583: use the REAL branch this cycle pushed (set at worktree
+        # creation: chump/<gap>-fleet-<AGENT_ID>-<sid>), not a fabricated
+        # chump/<gap>-claim name that never matches a real PR head_ref.
+        _ship_branch="$branch"
         _ship_evidence="$(_detect_ship_evidence "$GAP_ID" "$_ship_branch" || true)"
         if [ -n "$_ship_evidence" ]; then
             _cycle_kind="shipped"
@@ -3045,7 +3054,10 @@ Operator or sibling worker can rescue this branch via:
     # SHIPPED. Only reclassify AWAY from failed — never override a
     # shipped/unverified_ship/wedge/timeout verdict already established above.
     if [ "$_cycle_kind" = "failed" ] && [ "${CHUMP_SHIP_GROUNDTRUTH_RECHECK:-1}" != "0" ]; then
-        _gt_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+        # RESILIENT-1583: use the REAL branch this cycle pushed (set at worktree
+        # creation: chump/<gap>-fleet-<AGENT_ID>-<sid>), not a fabricated
+        # chump/<gap>-claim name that never matches a real PR head_ref.
+        _gt_branch="$branch"
         _gt_ev="$(_detect_ship_evidence "$GAP_ID" "$_gt_branch" || true)"
         if [ -n "$_gt_ev" ]; then
             _cycle_kind="shipped"
