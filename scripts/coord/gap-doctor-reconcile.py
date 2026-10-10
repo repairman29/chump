@@ -597,13 +597,28 @@ def open_gap_ids(state_db: Path) -> list:
     return [r[0] for r in rows]
 
 
+# Practically-unbounded cap for "scan ALL merged PRs". gh paginates internally,
+# returning min(available, limit), so this simply means "every merged PR there
+# is" without a stale hardcoded repo-size guess. The repo already has ~5,200
+# merged PRs; the previous default of 300 meant any gap shipped before
+# ~PR#4900 never auto-closed and got re-picked forever (EFFECTIVE-1543 ghost
+# thrash). limit<=0 selects this full scan.
+_ALL_MERGED_PRS = 1_000_000
+
+
 def merged_pr_gap_map(repo: str, limit: int) -> dict:
-    """gap-id -> (pr_number, merged_at) from recent MERGED PRs whose title leads
-    with '<GAP-ID>:'. Newest PR wins (gh list is newest-first). Filing PRs and
-    [no-close] PRs are skipped (never close on a gap-filing commit)."""
+    """gap-id -> (pr_number, merged_at) from MERGED PRs whose title leads with
+    '<GAP-ID>:'. Newest PR wins (gh list is newest-first). Filing PRs and
+    [no-close] PRs are skipped (never close on a gap-filing commit).
+
+    `limit <= 0` scans the FULL merged-PR history (see _ALL_MERGED_PRS); a
+    positive limit caps the scan to the most-recent N merged PRs (debug/bounded
+    runs). gh pr list paginates under the hood, so a large effective limit walks
+    the entire history in one invocation."""
+    effective = limit if (limit and limit > 0) else _ALL_MERGED_PRS
     r = subprocess.run(
         ["gh", "pr", "list", "--repo", repo, "--state", "merged",
-         "--limit", str(limit), "--json", "number,title,mergedAt"],
+         "--limit", str(effective), "--json", "number,title,mergedAt"],
         capture_output=True, text=True,
     )
     if r.returncode != 0:
@@ -633,12 +648,16 @@ def merged_pr_gap_map(repo: str, limit: int) -> dict:
 
 
 def check_closed_pr_titles(state_db: Path, ambient_path: Path, dry_run: bool,
-                           limit: int = 300) -> int:
+                           limit: int = 0) -> int:
     """Close open gaps whose gap-ID leads a MERGED PR title. Returns count closed.
 
     HIGH confidence: the PR is verified merged (gh --state merged) AND its title
     leads with the exact gap-ID. Writes status=done + closed_pr + closed_date +
     evidence to the canonical state.db and emits kind=gap_closed_from_merged_pr.
+
+    `limit <= 0` (the default) scans the FULL merged-PR history so a gap shipped
+    at any point in the repo's ~5,200-PR history still auto-closes; a positive
+    limit bounds the scan to the most-recent N merged PRs.
     """
     from datetime import datetime, timezone
 
@@ -651,11 +670,12 @@ def check_closed_pr_titles(state_db: Path, ambient_path: Path, dry_run: bool,
     if not open_ids:
         print("merged-pr-titles: no open gaps — nothing to drain")
         return 0
+    scope = f"last {limit} merged PRs" if (limit and limit > 0) else "all merged PRs"
     pr_map = merged_pr_gap_map(repo, limit)
     ghosts = {gid: pr_map[gid] for gid in open_ids if gid in pr_map}
     if not ghosts:
         print(f"merged-pr-titles: scanned {len(open_ids)} open gap(s) against "
-              f"last {limit} merged PRs — no merged-but-open ghosts, clean")
+              f"{scope} — no merged-but-open ghosts, clean")
         return 0
     print(f"merged-pr-titles: {len(ghosts)} open gap(s) have a MERGED PR titled "
           f"with their ID — draining")
@@ -721,8 +741,11 @@ def main():
              "already-satisfied both miss); writes canonical state.db",
     )
     ap.add_argument(
-        "--merged-pr-limit", type=int, default=300,
-        help="how many recent merged PRs to scan for --check-merged-pr-titles",
+        "--merged-pr-limit", type=int, default=0,
+        help="how many recent merged PRs to scan for --check-merged-pr-titles; "
+             "0 (default) scans the FULL merged-PR history so gaps shipped "
+             "anywhere in the repo's ~5,200-PR history still auto-close (the "
+             "old default of 300 left pre-~PR#4900 ships as re-pickable ghosts)",
     )
     args = ap.parse_args()
 
