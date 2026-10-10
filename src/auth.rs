@@ -324,6 +324,13 @@ fn now_secs() -> u64 {
 /// `fleet_auth_fallback`) BEFORE the spawn happens, rather than waiting for
 /// it to fail live. Cache miss (unknown / stale / no prior observation)
 /// behaves exactly like `detect_and_resolve()` — optimistic, fail-open.
+///
+/// RESILIENT-1104: also runs a cheap, local, no-network expiry check on the
+/// selected OAUTH token (via [`crate::improve::token_expires_at`], sourced
+/// from the same `~/.chump/oauth-token.json` RESILIENT-1105 persists
+/// `expires_at` into) — an already-expired token falls back to the
+/// ANTHROPIC_API_KEY floor before the spawn, same as a cached-dead result.
+/// No expiry data (missing file/field) is NOT treated as expired — fail-open.
 pub fn resolve_for_spawn(ambient_path: Option<&Path>) -> ActiveAuth {
     let auth = detect_and_resolve();
     let cred_value = match auth.mode {
@@ -331,10 +338,32 @@ pub fn resolve_for_spawn(ambient_path: Option<&Path>) -> ActiveAuth {
         ActiveMode::OAuth => auth.creds.oauth_token.as_str(),
         ActiveMode::None => return auth,
     };
+    if auth.mode == ActiveMode::OAuth && oauth_token_is_expired() {
+        return auth.on_auth_failure(ambient_path).unwrap_or(auth);
+    }
     match cached_validation(&auth.mode, cred_value) {
         Some(false) => auth.on_auth_failure(ambient_path).unwrap_or(auth),
         _ => auth,
     }
+}
+
+/// True when `~/.chump/oauth-token.json`'s persisted `expires_at` (epoch
+/// millis, RESILIENT-1105) says the OAUTH token has already expired.
+/// Missing file or missing field => `false` (fail-open — no evidence of
+/// expiry, proceed optimistically, same posture as a cache miss).
+fn oauth_token_is_expired() -> bool {
+    match crate::improve::token_expires_at() {
+        Some(expires_at_ms) => now_ms() >= expires_at_ms,
+        None => false,
+    }
+}
+
+fn now_ms() -> i64 {
+    use std::time::{SystemTime, UNIX_EPOCH};
+    SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_millis() as i64)
+        .unwrap_or(0)
 }
 
 // ── Detection ──────────────────────────────────────────────────────────────
@@ -1363,6 +1392,56 @@ mod tests {
                     "expected fleet_auth_fallback event, got: {log}"
                 );
                 assert!(log.contains("\"fallback_mode\":\"apikey\""));
+
+                std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
+            },
+        );
+    }
+
+    /// RESILIENT-1104 AC4: an expired OAUTH token (per `~/.chump/oauth-token.json`'s
+    /// persisted `expires_at`, RESILIENT-1105) is caught by the cheap local
+    /// expiry check and `resolve_for_spawn` pre-emptively returns the
+    /// ANTHROPIC_API_KEY floor — no live `claude -p` call, so no 401 is ever
+    /// raised for this spawn.
+    #[test]
+    fn expired_oauth_token_falls_back_to_api_key_floor_before_spawn() {
+        let dir = tempfile::tempdir().unwrap();
+        let chump_dir = dir.path().join(".chump");
+        std::fs::create_dir_all(&chump_dir).unwrap();
+        let token_path = chump_dir.join("oauth-token.json");
+        // expires_at in the past (epoch millis) => already expired.
+        std::fs::write(
+            &token_path,
+            r#"{"token":"sk-ant-oat01-expired","expires_at":1}"#,
+        )
+        .unwrap();
+
+        with_env(
+            &[
+                ("ANTHROPIC_API_KEY", "sk-ant-key"),
+                ("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat01-expired"),
+                ("HOME", dir.path().to_str().unwrap()),
+            ],
+            &["CHUMP_AUTH_MODE", "CHUMP_OAUTH_TOKEN_FILE"],
+            || {
+                let cache_dir = tempfile::tempdir().unwrap();
+                let cache = cache_dir.path().join("auth-validation-cache.tsv");
+                let ambient = cache_dir.path().join("ambient.jsonl");
+                std::env::set_var("CHUMP_AUTH_VALIDATION_CACHE", &cache);
+
+                // Sanity: without the expiry signal, auto mode picks OAuth.
+                assert_eq!(detect_and_resolve().mode, ActiveMode::OAuth);
+
+                let auth = resolve_for_spawn(Some(&ambient));
+                assert_eq!(
+                    auth.mode,
+                    ActiveMode::ApiKey,
+                    "expired OAuth token must fall back to the API-key floor before spawn"
+                );
+                assert_eq!(auth.creds.api_key, "sk-ant-key");
+
+                let log = std::fs::read_to_string(&ambient).unwrap_or_default();
+                assert!(log.contains("\"kind\":\"fleet_auth_fallback\""));
 
                 std::env::remove_var("CHUMP_AUTH_VALIDATION_CACHE");
             },

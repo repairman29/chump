@@ -4029,7 +4029,6 @@ fn read_oauth_token_file_full() -> Option<OauthTokenFile> {
 
 /// RESILIENT-1105: the OAUTH token's claimed expiry (epoch millis) from
 /// `~/.chump/oauth-token.json`, or `None` if the file/field is unavailable.
-#[allow(dead_code)]
 pub(crate) fn token_expires_at() -> Option<i64> {
     read_oauth_token_file_full().and_then(|f| f.expires_at)
 }
