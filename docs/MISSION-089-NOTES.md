@@ -29,3 +29,13 @@ gap was never closed in `state.db` even though the branch merged):
 Closing MISSION-089 rather than re-landing a second copy of the same
 function in the same file — the registry record (`state.db`) just hadn't
 been marked closed after PR #5235 merged.
+
+## Re-closure (third time, 2026-10-10)
+
+The gap resurfaced again as a fresh claim-and-dispatch (`chump gap preflight`
+reported it as "open and unclaimed" after re-syncing from `state.sql`), even
+though it had already been closed twice before (PR #5235's own close, then
+PR #5237's duplicate-closure note above). `src/briefing.rs` is unchanged
+since the last closure — `parse_backlog_file`, `Task`, `BacklogParseError`,
+and all three required tests are still present verbatim at the lines cited
+above. No code change needed; closing again with the same rationale.
