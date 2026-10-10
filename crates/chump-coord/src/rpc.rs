@@ -827,7 +827,44 @@ pub async fn register_worker_rpc_handlers(
     })
     .await?;
 
+    // adjust_storage_bounds: adaptive TTL + cargo-sweep cap from observed growth rate
+    // (RESILIENT-472, RESILIENT-323 slice). args: {"growth_rate": f64}
+    serve_rpc_with_nats(Some(nats), session_id, "adjust_storage_bounds", |args| {
+        let growth_rate = args
+            .get("growth_rate")
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| {
+                "adjust_storage_bounds: \"growth_rate\" (number) is required".to_string()
+            })?;
+        let (ttl_seconds, sweep_cap_bytes) = compute_storage_bounds(growth_rate);
+        eprintln!(
+            "Adjusted TTL to {} seconds, sweep cap to {} bytes",
+            ttl_seconds, sweep_cap_bytes
+        );
+        Ok(serde_json::json!({"ttl_seconds": ttl_seconds, "sweep_cap_bytes": sweep_cap_bytes}))
+    })
+    .await?;
+
     Ok(serde_json::json!({"registered": true, "session_id": session_id}))
+}
+
+/// Compute adaptive `(ttl_seconds, sweep_cap_bytes)` from an observed storage
+/// growth rate (MiB/hour). Faster growth shortens the TTL and tightens the cap.
+pub fn compute_storage_bounds(growth_rate: f64) -> (u64, u64) {
+    const BASE_TTL_SECS: f64 = 86_400.0;
+    const MIN_TTL_SECS: f64 = 3_600.0;
+    const BASE_CAP_BYTES: f64 = 10.0 * 1024.0 * 1024.0 * 1024.0;
+    const MIN_CAP_BYTES: f64 = 1024.0 * 1024.0 * 1024.0;
+    let g = if growth_rate.is_finite() {
+        growth_rate.max(0.0)
+    } else {
+        0.0
+    };
+    let factor = 1.0 / (1.0 + g / 100.0);
+    (
+        (BASE_TTL_SECS * factor).max(MIN_TTL_SECS) as u64,
+        (BASE_CAP_BYTES * factor).max(MIN_CAP_BYTES) as u64,
+    )
 }
 
 /// Like [`register_worker_rpc_handlers`] but also registers this worker's

@@ -242,6 +242,13 @@ _notify_rate_over_ceiling() {
 }
 
 notify_operator() {
+    if [[ "${1:-}" == "--storage-update" ]]; then
+        shift
+        local _ttl="${1:-}" _cap="${2:-}"
+        set -- "Storage bounds updated : ttl=${_ttl}s sweep_cap=${_cap}B"
+        echo "$1"
+        CHUMP_NOTIFY_KIND="${CHUMP_NOTIFY_KIND:-storage_bounds_updated}"
+    fi
     local content="${1:-}"
     [[ -n "${content//[[:space:]]/}" ]] || return 0
 
