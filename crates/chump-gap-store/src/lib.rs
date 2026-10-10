@@ -2023,6 +2023,52 @@ impl GapStore {
                     |r| r.get(0),
                 )?;
                 let candidate = format!("{}{:03}", prefix, num);
+                // RESILIENT-1570: authoritative local guard — never hand out an
+                // ID that already has a row in the gaps table, regardless of its
+                // status (open/done/wontfix/superseded/closed). This is the fix
+                // for the reused-ID regression (2026-10-10): after a state.sql
+                // restore reset `gap_counters.next_num` into a range of
+                // already-allocated IDs, the counter walked across live rows and
+                // reserve re-emitted them. The two pre-existing guards were both
+                // insufficient on their own:
+                //   - `existing_max` seeding only lifts the counter ABOVE MAX(id);
+                //     it does nothing if the counter is later driven into the
+                //     occupied range by a restore/manual edit, and does not fill
+                //     holes.
+                //   - `git_id_referenced` is best-effort: it returns `false` on
+                //     any git error, is opt-out via CHUMP_RESERVE_GIT_HISTORY_CHECK=0,
+                //     and crucially never matches a wontfix/superseded gap that
+                //     was closed without ever shipping a commit carrying its ID.
+                // Without this check a collision slipped through to the final
+                // INSERT and either aborted reserve on the PRIMARY KEY UNIQUE
+                // constraint or (on an older binary) returned the reused ID. The
+                // SELECT is a cheap indexed PK lookup on the local DB.
+                let id_exists: bool = self
+                    .conn
+                    .query_row(
+                        "SELECT EXISTS(SELECT 1 FROM gaps WHERE id=?1)",
+                        params![candidate],
+                        |r| r.get(0),
+                    )
+                    .unwrap_or(false);
+                if id_exists {
+                    let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
+                    let ts = unix_to_iso_full(unix_now());
+                    // scanner-anchor: "kind":"gap_id_reused_from_store_avoided" (registered in docs/observability/EVENT_REGISTRY.yaml, RESILIENT-1570)
+                    let line = format!(
+                        "{{\"ts\":\"{ts}\",\"kind\":\"gap_id_reused_from_store_avoided\",\
+                         \"domain\":\"{domain_upper}\",\"skipped_id\":\"{candidate}\"}}\n"
+                    );
+                    use std::io::Write as _;
+                    if let Ok(mut f) = std::fs::OpenOptions::new()
+                        .create(true)
+                        .append(true)
+                        .open(&amb)
+                    {
+                        let _ = f.write_all(line.as_bytes());
+                    }
+                    continue;
+                }
                 if git_id_referenced(&self.repo_root, &candidate) {
                     let amb = self.repo_root.join(".chump-locks").join("ambient.jsonl");
                     let ts = unix_to_iso_full(unix_now());
@@ -2047,8 +2093,8 @@ impl GapStore {
             if new_id.is_empty() {
                 bail!(
                     "reserve({domain}) failed: {MAX_GIT_HISTORY_SKIPS} consecutive candidate \
-                     IDs were all found referenced in git history — investigate \
-                     CHUMP_RESERVE_GIT_HISTORY_CHECK or the domain counter."
+                     IDs were all already present in the gaps table or referenced in git \
+                     history — investigate CHUMP_RESERVE_GIT_HISTORY_CHECK or the domain counter."
                 );
             }
             // INFRA-1611: stamp opened_date at original-reservation time (not
@@ -10127,6 +10173,80 @@ meta:
 
         let id = store.reserve("FRESHDOM", "brand new", "P1", "s").unwrap();
         assert_eq!(id, "FRESHDOM-001");
+    }
+
+    /// RESILIENT-1570: regression for the reused-ID allocator bug (2026-10-10).
+    /// A `state.sql` restore reset `gap_counters.next_num` into a range of
+    /// IDs that are ALREADY allocated in the gaps table (including done /
+    /// wontfix / superseded rows). The git-history guard alone was
+    /// insufficient (a wontfix/superseded gap never ships a commit carrying
+    /// its ID, and the check is disabled here). reserve() MUST walk past every
+    /// occupied ID and return a genuinely-unused one — and the returned ID
+    /// must exist as a fresh `open` row so `gap set` works and it is pickable.
+    #[test]
+    fn reserve_never_returns_id_already_in_store_after_counter_reset() {
+        // No git history dependence for this test — exercise the pure
+        // store-level guard so we prove it stands on its own.
+        unsafe {
+            std::env::set_var("CHUMP_RESERVE_SCAN_OPEN_PRS", "0");
+            std::env::set_var("CHUMP_RESERVE_GIT_HISTORY_CHECK", "0");
+        }
+        let (store, _dir) = test_store();
+
+        // Seed existing rows at 1446..=1451 across mixed statuses, mirroring the
+        // live incident where every handed-out ID collided with a real gap.
+        let statuses = ["done", "done", "wontfix", "superseded", "done", "open"];
+        for (i, st) in (1446..=1451).zip(statuses) {
+            store
+                .conn
+                .execute(
+                    "INSERT INTO gaps(id,domain,title,status,created_at) \
+                     VALUES(?1,'RESILIENT','pre-existing',?2,0)",
+                    params![format!("RESILIENT-{i:03}"), st],
+                )
+                .unwrap();
+        }
+        // Simulate the state.sql restore that reset the per-domain counter back
+        // into the occupied range (the root trigger of the regression).
+        store
+            .conn
+            .execute(
+                "INSERT INTO gap_counters(domain,next_num) VALUES('RESILIENT',1446) \
+                 ON CONFLICT(domain) DO UPDATE SET next_num=1446",
+                [],
+            )
+            .unwrap();
+
+        let id = store
+            .reserve("RESILIENT", "brand new work", "P2", "m")
+            .unwrap();
+
+        // Must NOT be any of the pre-existing IDs.
+        for i in 1446..=1451 {
+            assert_ne!(
+                id,
+                format!("RESILIENT-{i:03}"),
+                "reserve re-handed-out an already-allocated ID: {id}"
+            );
+        }
+        // Must be strictly past the occupied range (1452+).
+        let num: i64 = id.split('-').next_back().unwrap().parse().unwrap();
+        assert!(num >= 1452, "expected ID past the occupied range, got {id}");
+
+        // The returned ID must exist as a fresh pickable `open` row so that a
+        // follow-up `gap set` / claim works (the "gap set not found" symptom).
+        let row = store.get(&id).unwrap();
+        assert!(row.is_some(), "reserve did not persist a row for {id}");
+        assert_eq!(
+            row.unwrap().status,
+            "open",
+            "reserved gap must be created with status=open so it is pickable"
+        );
+
+        unsafe {
+            std::env::remove_var("CHUMP_RESERVE_SCAN_OPEN_PRS");
+            std::env::remove_var("CHUMP_RESERVE_GIT_HISTORY_CHECK");
+        }
     }
 
     /// CREDIBLE-292: reproduces the registry split-brain collision pattern
