@@ -4,7 +4,23 @@ owner_gap: INFRA-201
 last_audited: 2026-05-01
 ---
 
-## Update 2026-08-22 (RESILIENT-372): native queue confirmed unavailable — merge-serializer is the substitute
+## Update 2026-10-07 (RESILIENT-1564, RATIFIED, operator Jeff): merge-serializer decommissioned permanently
+
+**The RESILIENT-372 section immediately below is RETIRED and documents a
+strict=true fallback ONLY — it does not describe the current live setup.**
+Under the current branch-protection mode (`strict=false`, per INFRA-201 below),
+a BEHIND PR merges without needing a clean rebase, so the serializer's entire
+reason for existing — drive ONE PR's rebase→verified→merge without resetting
+siblings' `verified` — no longer applies. `chump-merge-serializer.timer` is
+stopped + masked and its `zz-shepherd-disable.conf` drop-in removed (redundant
+once masked). **pr-shepherd-daemon (RESILIENT-081, strict-aware) is the sole
+merge driver**; GitHub's own armed auto-merge (`gh pr merge --auto --squash`)
+is the native serializer under `strict=false`. If branch protection is ever
+switched back to `strict=true`, re-read the RESILIENT-372 section below before
+re-enabling `chump-merge-serializer.timer` — it remains the correct fallback
+for that mode, not for today's.
+
+## Update 2026-08-22 (RESILIENT-372, RETIRED 2026-10-07 — strict=true fallback only, see above): native queue confirmed unavailable — merge-serializer is the substitute
 
 **Native GitHub merge queue is still NOT available on this plan.** Re-confirmed
 2026-08-22: `repairman29/chump` is a personal-account repo; the merge-queue feature

@@ -23,7 +23,6 @@ writes. The coordination organs run **only on CJ**:
 
 | Organ (systemd unit) | Manifest role | Runs on |
 |---|---|---|
-| `chump-merge-serializer.timer` (RESILIENT-372 native-merge-queue substitute) | `brain` | **CJ only** |
 | `chump-duty-officer.timer` (RESILIENT-274 health-signal router / pager) | `brain` | **CJ only** |
 | `chump-board-cycle.timer` (board tick + paging) | `brain` | **CJ only** |
 | `chump-nba-dispatch.timer` (next-best-action auto-dispatch consumer) | `brain` | **CJ only** |
@@ -33,6 +32,14 @@ writes. The coordination organs run **only on CJ**:
 NON-coordination** — role `muscle` (worker/spare) pending Jeff's later rethink
 of the Oracle boxes. They stay running; only their coordination organs are
 retired. Do NOT decommission them.
+
+**`chump-merge-serializer.timer` (RESILIENT-372) is DECOMMISSIONED permanently
+(RESILIENT-1564, RATIFIED 2026-10-07)** — removed from the table above on
+purpose, not an omission. `pr-shepherd-daemon` (RESILIENT-081) is the sole
+merge driver under the current `strict=false` branch-protection mode; GitHub's
+armed auto-merge is the native serializer. See
+[`MERGE_QUEUE_SETUP.md`](../process/MERGE_QUEUE_SETUP.md) for the strict=true
+fallback-only doc.
 
 ### Why (RESILIENT-1309, split-brain confirmed 2026-09-16)
 

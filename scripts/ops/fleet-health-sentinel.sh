@@ -126,7 +126,10 @@ WATCHED_HEALERS="${CHUMP_SENTINEL_WATCHED_HEALERS:-organ-watchdog.timer organ-re
 # absent → skip (the manifest/install organ owns provisioning — we never invent
 # a unit); present-but-inactive OR present-but-DEAD (active with no scheduled
 # next fire) → re-arm.
-SYSTEM_ORGANS="${CHUMP_SENTINEL_SYSTEM_ORGANS:-chump-organ-reconcile.timer chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer chump-merge-serializer.timer}"
+# RESILIENT-1564 (RATIFIED 2026-10-07): chump-merge-serializer.timer is
+# decommissioned permanently — removed from the watch/heal roster below so the
+# sentinel never re-arms a unit that is intentionally stopped+masked.
+SYSTEM_ORGANS="${CHUMP_SENTINEL_SYSTEM_ORGANS:-chump-organ-reconcile.timer chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer}"
 # Force-push/rebaser organs. A node is meant to run AT MOST ONE. Two or more
 # active at once is the force-push race that quietly clobbered ~2000 PRs — the
 # operator neuters all-but-one with drop-ins on purpose, so if ≥2 come back
@@ -156,7 +159,7 @@ SUDO="${CHUMP_SENTINEL_SUDO-sudo -n}"
 _SENTINEL_NODE_ENV="${CHUMP_STATE_DIR:-$HOME/.chump}/node.env"
 # shellcheck disable=SC1090
 [[ -f "$_SENTINEL_NODE_ENV" ]] && . "$_SENTINEL_NODE_ENV" 2>/dev/null || true
-COORDINATION_ORGANS="${CHUMP_SENTINEL_COORDINATION_ORGANS:-chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer chump-merge-serializer.timer chump-next-best-action.timer}"
+COORDINATION_ORGANS="${CHUMP_SENTINEL_COORDINATION_ORGANS:-chump-board-cycle.timer chump-nba-dispatch.timer chump-duty-officer.timer chump-next-best-action.timer}"
 _sentinel_is_coordination_role() {  # brain / all / empty = coordination home
   case "${1:-}" in brain|all|"") return 0 ;; *) return 1 ;; esac
 }
