@@ -101,3 +101,29 @@ described above:
 RESILIENT-1215 is closed `superseded` (same disposition as its sibling
 RESILIENT-1214, superseded by RESILIENT-1207) rather than re-implemented, to
 avoid duplicating RESILIENT-1208's (#5224) already-shipped work.
+
+## RESILIENT-1216 (another re-decomposition slice) — closed as duplicate
+
+A third re-decomposition pass filed RESILIENT-1216 ("Enable installation and
+fire step on CJ"), restating the same three acceptance criteria as
+RESILIENT-1215 in install/fire terms. Verified against current `main`:
+
+1. *Install command triggered after a successful organ merge on CJ* —
+   `node-refresh-chump.sh`'s `_reconcile_role_organs()` (lines 229-243) calls
+   `chump-node-install.sh --reconcile-organs-only` immediately after every
+   converge/refresh path (idempotent-skip, artifact-pull, release-pull, and
+   the local-build path all call it before `exit 0`), logging
+   `"OK: role-organ reconcile complete"` and emitting
+   `kind=node_organs_reconciled`.
+2. *Fire step runs and reports success in CJ logs* — `chump-node-install.sh`
+   (line 198) fires each organ with `systemctl enable --now 'chump-$name'`,
+   i.e. install and start are the same call; `--reconcile-organs-only`'s
+   final log line (`"organs reconciled (role=$ROLE, ...)"`, line 1822) is the
+   success report that lands in the CJ refresh log.
+3. *No regression in existing install-fire tests* — unchanged;
+   `scripts/ci/test-node-refresh-green-main.sh` (RESILIENT-1209, #5226) and
+   `scripts/ci/test-resilient-1215-converge-reconciles-organs.sh` (#5227)
+   already cover this path and continue to pass.
+
+RESILIENT-1216 is closed `superseded`, same disposition as RESILIENT-1214
+and RESILIENT-1215, rather than re-implementing already-shipped wiring.
