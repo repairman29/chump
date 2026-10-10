@@ -146,6 +146,27 @@ else
     fail "non-Darwin platform did not emit oauth_refresh_unsupported_platform"
 fi
 
+# ── RESILIENT-1566: stable setup-token is pinned over the keychain token ──
+printf '{"token":"sk-ant-oat01-stable","written_at":"x","source":"setup-token"}\n' > "$TOKEN_FILE"
+printf 'sk-ant-api-rotating-new' > "$SANDBOX/fake-token"
+printf 'valid' > "$SANDBOX/fake-validation"
+run_refresh >/dev/null 2>&1 || true
+if grep -q 'sk-ant-oat01-stable' "$TOKEN_FILE"; then
+    pass "stable setup-token pinned over keychain token"
+else
+    fail "stable setup-token was clobbered"
+fi
+
+# ── RESILIENT-1566: post-write probe failure rolls back ──
+printf '{"token":"sk-ant-oat01-stable","written_at":"x","source":"setup-token"}\n' > "$TOKEN_FILE"
+printf 'invalid' > "$SANDBOX/fake-validation"
+run_refresh >/dev/null 2>&1 && rc=0 || rc=$?
+if [ "$rc" -ne 0 ] && grep -q 'sk-ant-oat01-stable' "$TOKEN_FILE"; then
+    pass "invalid pinned refresh rolls back / keeps working token"
+else
+    fail "invalid refresh not rolled back (rc=$rc)"
+fi
+
 # ── Summary ────────────────────────────────────────────────────────────────
 
 echo ""
