@@ -61,10 +61,14 @@
 #   CHUMP_AMBIENT_LOG            — override ambient.jsonl path
 #
 # Exit codes:
-#   0  normal (whether or not anything needed healing)
-#   1  internal failure only (never for "binary absent, build failed" — that's
-#      logged and left for the next cycle, same non-fatal posture as
-#      almanac-summarize-watchdog.sh)
+#   0  normal (binary present and index fresh, whether or not healing ran)
+#   1  internal failure (reserved)
+#   2  RESILIENT-405: binary still missing after the build attempt above, or
+#      the index marker is still stale beyond CHUMP_ALMANAC_STALE_FLOOR_S —
+#      the same "attempt self-heal, then page on failure" posture as
+#      almanac-summarize-watchdog.sh's CREDIBLE-1174 coverage guard. A
+#      calling supervisor (launchd/systemd OnFailure=, CI gate, chained
+#      script) can alert on this without grepping ambient.jsonl.
 
 set -uo pipefail
 
@@ -280,4 +284,20 @@ emit almanac_health "\"indexed_files\":$indexed_files,\"last_index_age_s\":$last
 emit almanac_liveness_refresh_tick "\"built\":$built,\"stale\":$stale,\"marker_age_s\":${marker_age:-null},\"reindexed\":$reindexed,\"dry_run\":$DRY_RUN"
 
 echo "[almanac-liveness-refresh] cycle complete: built=$built stale=$stale marker_age_s=${marker_age:-n/a} reindexed=$reindexed dry_run=$DRY_RUN"
+
+# RESILIENT-405: alert-triggering exit — the self-heal attempts above
+# (rebuild on missing/drifted binary, reindex on empty/stale fleet index)
+# already ran this cycle; this is the "still broken after trying" signal a
+# supervisor pages on. Dry-run never enforces (report-only by design, same
+# as almanac-summarize-watchdog.sh's posture).
+if [[ "$DRY_RUN" != "1" ]]; then
+    if [[ "$binary_present" != "1" ]]; then
+        echo "[almanac-liveness-refresh] ALERT: almanac binary still missing at $ALMANAC_BIN after build attempt" >&2
+        exit 2
+    fi
+    if [[ "$stale" == "1" ]]; then
+        echo "[almanac-liveness-refresh] ALERT: index marker still stale (${marker_age}s > floor ${STALE_FLOOR_S}s)" >&2
+        exit 2
+    fi
+fi
 exit 0
