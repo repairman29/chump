@@ -103,6 +103,35 @@ LOG_DIR="${CHUMP_NODE_CONVERGE_LOGDIR:-$HOME/.chump/node-converge-logs}"
 mkdir -p "$LOG_DIR" 2>/dev/null || true
 LOG="$LOG_DIR/converge-$(date -u +%Y%m%dT%H%M%SZ).log"
 
+# RESILIENT-1215: role-organ reconcile, wired the same way node-refresh-chump.sh
+# wires it (RESILIENT-1035/1205) — this organ is the FIRST hop to actually land
+# a merge on the source tree, so it is also the earliest point a newly-merged
+# organ (manifest line + installer roster entry) can reach the installer. Without
+# this, a node whose binary SHA is unchanged (bash-only merge) waits on the
+# separate, slower chump-organ-reconcile.timer cadence instead of picking up the
+# organ the instant this tick's converge lands it.
+if [[ -z "${CHUMP_NODE_ROLE:-}" ]]; then
+    _nc_node_env="${CHUMP_STATE_DIR:-${HOME:-/root}/.chump}/node.env"
+    [[ -f "$_nc_node_env" ]] && CHUMP_NODE_ROLE="$(grep -E '^(export )?CHUMP_NODE_ROLE=' "$_nc_node_env" 2>/dev/null | tail -1 | sed -E 's/^(export )?CHUMP_NODE_ROLE=//; s/^"(.*)"$/\1/')"
+    [[ -z "${CHUMP_NODE_ROLE:-}" ]] && unset CHUMP_NODE_ROLE
+fi
+NODE_ROLE="${CHUMP_NODE_ROLE:-muscle}"
+_reconcile_role_organs() {
+    local installer="$REPO_ROOT/scripts/setup/chump-node-install.sh"
+    if [[ ! -f "$installer" ]]; then
+        log "WARN: $installer not found; skipping role-organ reconcile"
+        return 0
+    fi
+    if CHUMP_NODE_REPO="$REPO_ROOT" CHUMP_STATE_DIR="${CHUMP_STATE_DIR:-$HOME/.chump}" \
+         bash "$installer" --role "$NODE_ROLE" --reconcile-organs-only >>"$LOG" 2>&1; then
+        log "OK: role-organ reconcile complete (role=$NODE_ROLE)"
+        emit node_organs_reconciled "\"role\":\"$NODE_ROLE\""
+    else
+        log "WARN: chump-node-install.sh --reconcile-organs-only exited non-zero (non-fatal, role=$NODE_ROLE)"
+        emit node_organs_reconcile_failed "\"role\":\"$NODE_ROLE\""
+    fi
+}
+
 emit() {
     local kind="$1" extra="${2:-}"
     local ts; ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
@@ -243,6 +272,12 @@ fi
 NEW_SHA="$(git rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
 log "OK: $REPO_ROOT now at $NEW_SHA (was $HEAD_SHA, ref $CONVERGE_REF)"
 emit node_converged "\"prev_sha\":\"$HEAD_SHA\",\"new_sha\":\"$NEW_SHA\",\"ref\":\"$CONVERGE_REF\",\"behind\":$BEHIND"
+
+# RESILIENT-1215: the tree just landed whatever merged into $CONVERGE_REF,
+# including any organ-manifest / installer-roster changes — reconcile the
+# role's organ set now instead of waiting on the slower
+# chump-organ-reconcile.timer cadence.
+_reconcile_role_organs
 
 # RESILIENT-1453: if the reset just changed worker.sh out from under a running
 # worker, bounce the service onto the new code now (definitive signal — no stamp
