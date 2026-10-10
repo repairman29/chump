@@ -137,6 +137,10 @@ discord = ["dep:serenity"]
 #   cargo build --release --no-default-features --features encrypted-db,...
 # (You must list all other features you want since we disable defaults.)
 encrypted-db = []
+# RESILIENT-445: standing duty-officer loop (RESILIENT-274 slice). Off by
+# default until the real signal sources (ambient.jsonl, ship-rate, disk,
+# auth, wedges) replace the mock sources in src/duty_officer_loop.rs.
+duty_officer = []
 
 [dependencies]
 console-subscriber = { version = "0.5", optional = true }

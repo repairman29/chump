@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry + officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -1457,6 +1458,26 @@ async fn main() -> Result<()> {
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
+    // RESILIENT-445: standing duty-officer loop, opt-in behind the
+    // `duty_officer` feature flag until real signal sources replace the
+    // mocks in src/duty_officer_loop.rs. Registry load failure (file
+    // missing/malformed) must not block startup — log and skip.
+    #[cfg(feature = "duty_officer")]
+    {
+        let registry_path = std::path::Path::new("docs/process/PLAYBOOK_REGISTRY.json");
+        match playbook_registry::load_registry(registry_path) {
+            Ok(registry) => {
+                tokio::spawn(duty_officer_loop::run_duty_officer_loop(
+                    registry,
+                    duty_officer::TestDutyOfficer::default(),
+                ));
+            }
+            Err(err) => {
+                eprintln!("duty_officer: skipping standing loop, registry load failed: {err:#}");
+            }
+        }
     }
 
     // EFFECTIVE-411: inject per-model pricing into the extracted waste-tally
