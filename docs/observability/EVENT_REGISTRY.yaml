@@ -2080,6 +2080,28 @@ events:
     consumers: [flake-auto-quarantine --report, waste-tally, operator-audit]
     fields_required: [ts, kind, checks_evaluated, quarantined_count, gaps_filed_count, window_hours, pr_threshold, dry_run]
 
+  - kind: pr_gate_fail_action
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (RESILIENT-1560)
+    purpose: >
+      A PR's required `verified` check has been FAILURE > N hours; the shepherd
+      classified it deterministic vs flake and rerun / routed the fix to a worker /
+      blocked the gap.
+    trigger: gate-fail lane in pr-shepherd-daemon tick
+    consumers: [fleet-brief, operator-audit]
+    fields_required: [ts, kind, pr, action, classification, gap_id, age_hours, dry_run]
+    volume_estimate: "~0-3/h; each action fires once per PR head SHA"
+
+  - kind: pr_gate_fail_alarm
+    effect_metric: self
+    emitter: scripts/coord/pr-shepherd-daemon.sh (RESILIENT-1560)
+    purpose: >
+      Count of open PRs stuck on a failing required gate exceeded the threshold.
+    trigger: gate-fail lane; debounced 1h
+    consumers: [fleet-brief, operator-recall]
+    fields_required: [ts, kind, count, dry_run]
+    volume_estimate: "<=1/h"
+
   - kind: pr_wedged
     effect_metric: self
     emitter: scripts/coord/pr-shepherd-daemon.sh (INFRA-2346)
