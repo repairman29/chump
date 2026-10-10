@@ -62,3 +62,32 @@ hard_rules_doc_name() {
             ;;
     esac
 }
+
+# hard_rules_inject — RESILIENT-1166 (RESILIENT-259 slice)
+#
+# Claude Code auto-loads CLAUDE.md as project instructions before a `claude -p`
+# spawn ever sees a prompt — that's why the claude-p briefing above only needs
+# to *name* the doc. Non-Claude harnesses (opencode, codex) have no such
+# auto-load: AGENTS.md only reaches the agent if the prompt carries it. This
+# prints the full-text injection block for non-claude-p modes, and nothing for
+# claude-p (AC2 — existing Claude behavior stays a name-reference, unchanged).
+#
+# Args: mode (HARNESS_SPAWN_MODE), wt_path (worktree, checked first), repo_root
+#       (fallback)
+# Output: the injection block (doc header + full file content), or empty.
+hard_rules_inject() {
+    local mode="${1:-claude-p}" wt="${2:-}" root="${3:-}"
+    [[ "$mode" == "claude-p" ]] && return 0
+    local doc
+    doc="$(hard_rules_doc_name "$mode")"
+    local doc_path=""
+    if [[ -n "$wt" && -f "$wt/$doc" ]]; then
+        doc_path="$wt/$doc"
+    elif [[ -n "$root" && -f "$root/$doc" ]]; then
+        doc_path="$root/$doc"
+    else
+        return 0
+    fi
+    printf '\n══ %s (full operating rules — injected; this harness has no auto-load) ══\n%s\n' \
+        "$doc" "$(cat "$doc_path")"
+}
