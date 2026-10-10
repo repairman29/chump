@@ -1154,6 +1154,12 @@ fn discover_test_scripts(repo_root: &std::path::Path) -> Vec<std::path::PathBuf>
         // well-formed + set-u clean (catches the $_TO unbound + missing-`run`
         // class). Pure shell, ~1s; live spawn skips without opencode/auth.
         "scripts/ci/test-opencode-harness-smoke.sh",
+        // RESILIENT-1166: non-Claude harnesses (opencode/codex) have no
+        // auto-load of AGENTS.md the way Claude Code auto-loads CLAUDE.md —
+        // proves worker.sh concatenates the real file content into the
+        // briefing for them while leaving claude-p untouched. Pure shell,
+        // ~1s, no network.
+        "scripts/ci/test-agents-md-injection.sh",
         // EFFECTIVE-320: born-wired — install-opencode-harness.sh wires
         // opencode.json's mcp.almanac idempotently without clobbering config.
         // Fully stubbed, ~1s, no network.
