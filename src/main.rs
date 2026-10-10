@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry -> officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -19895,6 +19896,39 @@ async fn main() -> Result<()> {
     let telegram_mode = args.iter().any(|a| a == "--telegram");
     let slack_mode = args.iter().any(|a| a == "--slack");
     let chump_mode = args.get(1).map(|s| s == "--chump").unwrap_or(false);
+    let duty_officer_loop_mode = args.iter().any(|a| a == "--duty-officer-loop");
+
+    // RESILIENT-445 (RESILIENT-274 slice): standing loop that polls health
+    // signal sources, looks each up in the PlaybookRegistry (RESILIENT-443),
+    // and routes it through a DutyOfficer (RESILIENT-444). Compile-time
+    // opt-in via `--features duty_officer` since no production DutyOfficer
+    // impl exists yet (TestDutyOfficer stands in as a placeholder route).
+    if duty_officer_loop_mode {
+        #[cfg(not(feature = "duty_officer"))]
+        {
+            return Err(anyhow::anyhow!(
+                "--duty-officer-loop requires building with `--features duty_officer`."
+            ));
+        }
+        #[cfg(feature = "duty_officer")]
+        {
+            eprintln!("Chump version {}", version::chump_version());
+            let registry_path = env::var("CHUMP_DUTY_OFFICER_REGISTRY")
+                .unwrap_or_else(|_| "tests/fixtures/registry_example.json".to_string());
+            let registry = playbook_registry::load_registry(std::path::Path::new(&registry_path))?;
+            let officer = duty_officer::TestDutyOfficer::default();
+            let source = duty_officer_loop::MockSignalSource::new(vec![]);
+            duty_officer_loop::run_duty_officer_loop(
+                registry,
+                officer,
+                source,
+                std::time::Duration::from_secs(30),
+                usize::MAX,
+            )
+            .await?;
+            return Ok(());
+        }
+    }
 
     // COMP-004b / AGT-004: Telegram bot. Long-poll loop reading TELEGRAM_BOT_TOKEN
     // from .env. Mirrors --discord but uses the new MessagingAdapter
