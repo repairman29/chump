@@ -6,7 +6,7 @@
 #
 # Detection rules:
 #   1. STUCK LEASE: .chump-locks/claim-<gap>-*.json taken > CHUMP_STUCK_LEASE_S
-#      seconds ago AND no commit on chump/<gap-lower>-claim since heartbeat.
+#      seconds ago AND no commit on any chump/<gap-lower>-* branch since heartbeat.
 #   2. STUCK PR: gh pr open > CHUMP_STUCK_PR_S seconds with failing checks
 #      and no new commits.
 #
@@ -147,10 +147,15 @@ except: print('')
       continue
     fi
     # Lease is old. Has the branch had commits since heartbeat?
-    local branch="chump/$(echo "$gap_id" | tr '[:upper:]' '[:lower:]')-claim"
+    # RESILIENT-1583: workers/bot-merge push chump/<gap-lower>-fleet-<AGENT_ID>-<sid>,
+    # never chump/<gap-lower>-claim, so an exact "-claim" ref never exists. The
+    # lease carries no branch name, so match every origin/chump/<gap-lower>-*
+    # ref (still covers a legacy -claim branch) and take the newest commit.
+    local branch_glob="refs/remotes/origin/chump/$(echo "$gap_id" | tr '[:upper:]' '[:lower:]')-*"
     local last_commit_ts=""
     if command -v git &>/dev/null; then
-      last_commit_ts=$(git -C "$REPO_ROOT" log -1 --format='%cI' "origin/$branch" 2>/dev/null || echo "")
+      last_commit_ts=$(git -C "$REPO_ROOT" for-each-ref --sort=-committerdate --count=1 \
+        --format='%(committerdate:iso-strict)' "$branch_glob" 2>/dev/null || echo "")
     fi
     # If no branch or last commit older than heartbeat → stalled.
     if [[ -z "$last_commit_ts" || "$last_commit_ts" < "$effective_ts" ]]; then
@@ -187,7 +192,7 @@ for p in prs:
     rollup = p.get('statusCheckRollup', '')
     if rollup not in ('FAILURE', 'ERROR'):
         continue
-    # Derive gap_id from branch name (chump/<gap>-claim) or title (PREFIX-NNN).
+    # Derive gap_id from branch name (chump/<gap>-fleet-<agent>-<sid>) or title (PREFIX-NNN).
     branch = p.get('headRefName', '') or ''
     m = re.search(r'chump/([a-z]+-\d+)', branch)
     gap_id = m.group(1).upper() if m else ''
