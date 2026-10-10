@@ -92,6 +92,8 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+#[cfg(feature = "duty_officer")]
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry -> officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -19933,6 +19935,22 @@ async fn main() -> Result<()> {
         let adapter = slack::SlackAdapter::from_env().await?.with_queue(tx);
         adapter.start().await?;
         return Ok(());
+    }
+
+    // RESILIENT-445: standing duty-officer loop (RESILIENT-274 slice). Off
+    // by default — build with `--features duty_officer` and pass
+    // `--duty-officer` to run it. Wiring only; the registry + officer wired
+    // here are the skeleton from RESILIENT-443/RESILIENT-444 — real signal
+    // sourcing and a production DutyOfficer are follow-up work.
+    #[cfg(feature = "duty_officer")]
+    {
+        let duty_officer_mode = args.iter().any(|a| a == "--duty-officer");
+        if duty_officer_mode {
+            eprintln!("Chump version {}", version::chump_version());
+            let registry = playbook_registry::PlaybookRegistry::default();
+            let officer = duty_officer::TestDutyOfficer::default();
+            return duty_officer_loop::run_duty_officer_loop(registry, officer).await;
+        }
     }
 
     if web_mode && !discord_mode {
