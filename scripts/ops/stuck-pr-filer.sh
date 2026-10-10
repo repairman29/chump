@@ -50,6 +50,7 @@ fi
 
 # shellcheck source=../lib/reaper-instrumentation.sh
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
+source "$(dirname "$0")/../lib/safe-reopen-gap.sh"
 reaper_setup stuck-pr
 reaper_check_disk_headroom  # INFRA-453: exit 0 + ALERT if <5% free
 reaper_rotate_log /tmp/chump-stuck-pr-filer.out.log
@@ -181,7 +182,7 @@ PYEOF
             fi
 
             if [[ "$status" != "open" ]]; then
-                chump gap set "$gid" --status open >/dev/null 2>&1 \
+                safe_reopen_gap "$gid" \
                     || printf '\033[0;33m  WARN: chump gap set %s --status open failed\033[0m\n' "$gid"
             fi
             chump gap set "$gid" --add-note "$note" >/dev/null 2>&1 \

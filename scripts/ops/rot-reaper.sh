@@ -133,6 +133,7 @@ set -uo pipefail
 # ── shared reaper instrumentation (heartbeat + reaper_run event + log rotate) ─
 # shellcheck source=../lib/reaper-instrumentation.sh
 source "$(dirname "$0")/../lib/reaper-instrumentation.sh"
+source "$(dirname "$0")/../lib/safe-reopen-gap.sh"
 reaper_setup rot
 reaper_rotate_log /tmp/chump-rot-reaper.out.log
 reaper_rotate_log /tmp/chump-rot-reaper.err.log
@@ -537,8 +538,8 @@ requeue_gaps() {  # <pr_num> <age_h> <reason_short> <title>
 
         note="rot-reaper: PR #${pr} auto-closed (${reason}, ${age}h) $(date -u +%Y-%m-%d); re-attempt on fresh main."
         if [[ $DRY_RUN -eq 1 ]]; then dry "would re-queue $gid (status=$status) + note"; continue; fi
-        [[ "$status" != "open" ]] && { chump gap set "$gid" --status open >/dev/null 2>&1 \
-            || warn "chump gap set $gid --status open failed"; }
+        [[ "$status" != "open" ]] && { safe_reopen_gap "$gid" \
+            || warn "reopen of $gid refused or failed (operator block?)"; }
         chump gap set "$gid" --add-note "$note" >/dev/null 2>&1 \
             || warn "chump gap set $gid --add-note failed"
         info "  re-queued $gid (was $status)"
