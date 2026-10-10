@@ -97,10 +97,46 @@ except Exception:
 # so the real validation code path is what's under test.
 _validate_token() {
     local token="$1"
-    command -v claude >/dev/null 2>&1 || return 0   # can't validate without the CLI; don't block
+    if ! command -v claude >/dev/null 2>&1; then
+        # RESILIENT-1566: fail CLOSED when it would replace a different on-disk token
+        # (an unvalidated rewrite is how a bad token clobbered a working one).
+        [[ -n "$(_current_token)" && "$(_current_token)" != "$token" ]] && return 1
+        return 0
+    fi
     (cd /tmp && CLAUDE_CODE_OAUTH_TOKEN="$token" ANTHROPIC_API_KEY= \
         timeout "${CHUMP_OAUTH_VALIDATE_TIMEOUT_S:-60}" claude -p "Reply with exactly: PONG" \
         --model haiku 2>/dev/null | grep -q PONG)
+}
+
+# RESILIENT-1566: stable `claude setup-token` tokens (sk-ant-oat*, ~1yr) are pinned —
+# never replaced by an expiring keychain/env token. Opt out: CHUMP_OAUTH_PIN_SETUP_TOKEN=0.
+_is_stable_token() { [[ "$1" == sk-ant-oat* ]]; }
+_pinned_stable_token() {
+    [[ "${CHUMP_OAUTH_PIN_SETUP_TOKEN:-1}" == "1" ]] || return 1
+    local cur; cur="$(_current_token)"
+    _is_stable_token "$cur"
+}
+
+# RESILIENT-1566: atomically publish a token, then re-probe the WRITTEN file;
+# on failure restore the previous file so a bad refresh never leaves us dark.
+# args: token json_line prev_age
+_publish_token_verified() {
+    local token="$1" json="$2" prev_age="$3"
+    local tmp="${TOKEN_FILE}.tmp.$$" bak="${TOKEN_FILE}.last-good"
+    mkdir -p "$(dirname "$TOKEN_FILE")"
+    chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
+    [[ -f "$TOKEN_FILE" ]] && cp -p "$TOKEN_FILE" "$bak" 2>/dev/null || true
+    printf '%s\n' "$json" > "$tmp"
+    chmod 600 "$tmp"
+    mv "$tmp" "$TOKEN_FILE"
+    if ! _validate_token "$(_current_token)"; then
+        if [[ -f "$bak" ]]; then mv "$bak" "$TOKEN_FILE"; else rm -f "$TOKEN_FILE"; fi
+        _emit_ambient "oauth_token_invalid" \
+            ",\"reason\":\"post_write_probe_failed_rolled_back\",\"prev_age_seconds\":${prev_age}"
+        echo "[oauth-refresh] WARN: written token failed post-write probe; rolled back $TOKEN_FILE" >&2
+        return 1
+    fi
+    return 0
 }
 
 # scanner-anchor: "kind":"oauth_token_refreshed"
@@ -164,6 +200,10 @@ cmd_refresh_once_linux() {
         return 1
     fi
 
+    if _pinned_stable_token && ! _is_stable_token "$token"; then
+        token="$(_current_token)"   # keep the stable setup-token; just refresh mtime
+    fi
+
     # Validate ONLY when the value changed vs disk — a long-lived token that
     # hasn't changed was already good; skip the per-cycle claude -p cost.
     local _new_hash _cur_hash
@@ -179,13 +219,9 @@ cmd_refresh_once_linux() {
     fi
 
     # Always rewrite to refresh mtime (the freshness heuristic) even when unchanged.
-    mkdir -p "$(dirname "$TOKEN_FILE")"
-    chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
-    local tmp="${TOKEN_FILE}.tmp.$$"
-    printf '{"token":"%s","written_at":"%s","source":"systemd-refresher-linux"}\n' \
-        "$token" "$(_ts)" > "$tmp"
-    chmod 600 "$tmp"
-    mv "$tmp" "$TOKEN_FILE"
+    _publish_token_verified "$token" \
+        "$(printf '{"token":"%s","written_at":"%s","source":"systemd-refresher-linux"}' "$token" "$(_ts)")" \
+        "$prev_age" || return 1
 
     _emit_ambient "oauth_token_refreshed" \
         ",\"source\":\"systemd-refresher-linux\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}"
@@ -241,6 +277,18 @@ cmd_refresh_once() {
                 ",\"reason\":\"auto_mode_with_api_key_present\",\"prev_age_seconds\":${prev_age}"
             return 0
         fi
+    fi
+
+    # RESILIENT-1566: a stable setup-token on disk wins over the expiring keychain token.
+    if _pinned_stable_token; then
+        local _st; _st="$(_current_token)"
+        _publish_token_verified "$_st" \
+            "$(printf '{"token":"%s","written_at":"%s","source":"setup-token-pinned"}' "$_st" "$(_ts)")" \
+            "$prev_age" || return 1
+        _emit_ambient "oauth_refresh_not_applicable" \
+            ",\"reason\":\"stable_setup_token_pinned\",\"prev_age_seconds\":${prev_age}"
+        echo "[oauth-refresh] PINNED: stable setup-token kept; keychain token ignored"
+        return 0
     fi
 
     # 1. Extract the credential blob from keychain
@@ -310,14 +358,10 @@ except Exception:
         return 1
     fi
 
-    # 5. Atomic write to TOKEN_FILE
-    mkdir -p "$(dirname "$TOKEN_FILE")"
-    chmod 700 "$(dirname "$TOKEN_FILE")" 2>/dev/null || true
-    local tmp="${TOKEN_FILE}.tmp.$$"
-    printf '{"token":"%s","written_at":"%s","source":"launchd-refresher","expires_at":"%s"}\n' \
-        "$token" "$(_ts)" "$expires_at" > "$tmp"
-    chmod 600 "$tmp"
-    mv "$tmp" "$TOKEN_FILE"
+    # 5. Atomic write + post-write probe/rollback
+    _publish_token_verified "$token" \
+        "$(printf '{"token":"%s","written_at":"%s","source":"launchd-refresher","expires_at":"%s"}' "$token" "$(_ts)" "$expires_at")" \
+        "$prev_age" || return 1
 
     _emit_ambient "oauth_token_refreshed" \
         ",\"source\":\"launchd-refresher\",\"prev_age_seconds\":${prev_age},\"new_age_seconds\":0,\"token_len\":${#token}"
