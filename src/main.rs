@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring signals -> registry -> officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -1457,6 +1458,19 @@ async fn main() -> Result<()> {
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
+    // RESILIENT-445: standing duty-officer loop (RESILIENT-274 slice), off by
+    // default. RESILIENT-444 shipped only the `DutyOfficer` trait + a test
+    // mock (no production routing impl yet), so this spawns the mock officer
+    // against an empty registry — a real wiring-complete loop, just with
+    // stub signal sources and a stub officer until those land as follow-ups.
+    #[cfg(feature = "duty_officer")]
+    {
+        tokio::spawn(duty_officer_loop::run_duty_officer_loop(
+            playbook_registry::PlaybookRegistry::default(),
+            duty_officer::TestDutyOfficer::default(),
+        ));
     }
 
     // EFFECTIVE-411: inject per-model pricing into the extracted waste-tally

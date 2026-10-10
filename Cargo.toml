@@ -137,6 +137,11 @@ discord = ["dep:serenity"]
 #   cargo build --release --no-default-features --features encrypted-db,...
 # (You must list all other features you want since we disable defaults.)
 encrypted-db = []
+# RESILIENT-445: standing duty-officer loop (RESILIENT-274 slice). Off by
+# default — RESILIENT-444 only shipped the DutyOfficer trait + a test mock,
+# no production routing implementation exists yet. Enable once a real
+# DutyOfficer lands to start the background signal -> registry -> officer loop.
+duty_officer = []
 
 [dependencies]
 console-subscriber = { version = "0.5", optional = true }
