@@ -1271,11 +1271,11 @@ render_worker_launcher() {
   local skills="${CHUMP_WORKER_SKILLS:-}"
   local domain="${CHUMP_WORKER_DOMAIN_FILTER:-}"
   # INFRA-471: model class + effort band for this launcher. Defaults preserve
-  # the pre-existing single-worker behavior (sonnet; xs,s,m). scripts/dispatch/
+  # the pre-existing single-worker behavior (sonnet; xs,s,m,l,xl). scripts/dispatch/
   # spawn-worker-fleet.sh renders ADDITIONAL launchers with different classes
   # (e.g. a haiku/xs instance that eats the xs backlog a sonnet worker refuses).
   local model="${CHUMP_WORKER_MODEL:-sonnet}"
-  local effort="${CHUMP_WORKER_EFFORT:-xs,s,m}"
+  local effort="${CHUMP_WORKER_EFFORT:-xs,s,m,l,xl}"
 
   if [ ! -f "$template" ]; then
     info ORGANS "worker-launcher.template.sh not found in checkout — falling back to minimal inline launcher"

@@ -280,7 +280,7 @@ After you start the fleet:
 | `FLEET_PRIORITY_FILTER` | `P0,P1` | Comma-separated priorities to pick |
 | `FLEET_DOMAIN_FILTER` | (all) | Comma-separated domains (e.g., `INFRA,DOC`) |
 | `FLEET_AGENT_DOMAINS` | (all) | Assign domains round-robin to agents (overrides `FLEET_DOMAIN_FILTER`) |
-| `FLEET_EFFORT_FILTER` | `xs,s,m` | Comma-separated effort sizes |
+| `FLEET_EFFORT_FILTER` | `xs,s,m,l,xl` | Comma-separated effort sizes |
 | `FLEET_SESSION` | `chump-fleet` | Tmux session name |
 | `FLEET_LOG_DIR` | `/tmp/chump-fleet-<sid>` | Directory for per-agent logs |
 | `FLEET_DRY_RUN` | 0 | If 1, print plan and exit |
