@@ -1463,6 +1463,44 @@ ENVIRONMENT
             }
         }
 
+        // ── adjust-storage ───────────────────────────────────────────────────
+        // RESILIENT-472 (RESILIENT-323 slice): local, no-NATS-required front
+        // end to the adjust_storage_bounds RPC's computation so operators/CI
+        // can sanity-check the adaptive TTL + sweep-cap math from the CLI.
+        "adjust-storage" => {
+            let mut node_id: Option<String> = None;
+            let mut growth_rate: Option<f64> = None;
+            let mut i = 2;
+            while i < args.len() {
+                match args[i].as_str() {
+                    "--node-id" => {
+                        node_id = args.get(i + 1).cloned();
+                        i += 2;
+                    }
+                    "--growth-rate" => {
+                        growth_rate = args.get(i + 1).and_then(|s| s.parse::<f64>().ok());
+                        i += 2;
+                    }
+                    _ => i += 1,
+                }
+            }
+            let node_id = node_id.unwrap_or_else(|| {
+                eprintln!("Usage: chump-coord adjust-storage --node-id <id> --growth-rate <f64>");
+                std::process::exit(2);
+            });
+            let growth_rate = growth_rate.unwrap_or_else(|| {
+                eprintln!("Usage: chump-coord adjust-storage --node-id <id> --growth-rate <f64>");
+                std::process::exit(2);
+            });
+
+            let (ttl_seconds, sweep_cap_bytes) =
+                chump_coord::rpc::compute_storage_bounds(growth_rate);
+            println!(
+                "[chump-coord] node={} Adjusted TTL to {} seconds, sweep cap to {} bytes",
+                node_id, ttl_seconds, sweep_cap_bytes
+            );
+        }
+
         // ── help / default ────────────────────────────────────────────────────
         _ => {
             eprintln!(

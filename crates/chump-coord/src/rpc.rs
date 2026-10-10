@@ -827,7 +827,50 @@ pub async fn register_worker_rpc_handlers(
     })
     .await?;
 
+    // adjust_storage_bounds: RESILIENT-472 (RESILIENT-323 slice). Accepts an
+    // observed `growth_rate` metric and returns an adaptively-computed TTL +
+    // cargo-sweep cap so storage pressure can be relieved without an
+    // operator manually tuning constants.
+    serve_rpc_with_nats(Some(nats), session_id, "adjust_storage_bounds", |args| {
+        let growth_rate = args
+            .get("growth_rate")
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| {
+                "adjust_storage_bounds: \"growth_rate\" (f64) is required".to_string()
+            })?;
+        let (ttl_seconds, sweep_cap_bytes) = compute_storage_bounds(growth_rate);
+        Ok(serde_json::json!({
+            "ttl_seconds": ttl_seconds,
+            "sweep_cap_bytes": sweep_cap_bytes,
+        }))
+    })
+    .await?;
+
     Ok(serde_json::json!({"registered": true, "session_id": session_id}))
+}
+
+/// Compute an adaptive TTL and cargo-sweep cap from an observed growth-rate
+/// metric (RESILIENT-472, RESILIENT-323 slice). Higher growth rates shrink
+/// the TTL and sweep cap so storage is reclaimed faster; the result is
+/// clamped to sane floors/ceilings so a bad input can't produce a
+/// pathologically small or unbounded value.
+pub fn compute_storage_bounds(growth_rate: f64) -> (u64, u64) {
+    const BASE_TTL_SECONDS: f64 = 86_400.0; // 24h
+    const MIN_TTL_SECONDS: u64 = 3_600; // 1h floor
+    const MAX_TTL_SECONDS: u64 = 86_400; // 24h ceiling
+
+    const BASE_SWEEP_CAP_BYTES: f64 = 10_000_000_000.0; // 10GB
+    const MIN_SWEEP_CAP_BYTES: u64 = 500_000_000; // 500MB floor
+    const MAX_SWEEP_CAP_BYTES: u64 = 10_000_000_000; // 10GB ceiling
+
+    let growth_rate = growth_rate.max(0.0);
+    let damp = 1.0 / (1.0 + growth_rate);
+
+    let ttl_seconds = ((BASE_TTL_SECONDS * damp) as u64).clamp(MIN_TTL_SECONDS, MAX_TTL_SECONDS);
+    let sweep_cap_bytes =
+        ((BASE_SWEEP_CAP_BYTES * damp) as u64).clamp(MIN_SWEEP_CAP_BYTES, MAX_SWEEP_CAP_BYTES);
+
+    (ttl_seconds, sweep_cap_bytes)
 }
 
 /// Like [`register_worker_rpc_handlers`] but also registers this worker's

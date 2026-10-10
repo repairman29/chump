@@ -243,6 +243,17 @@ _notify_rate_over_ceiling() {
 
 notify_operator() {
     local content="${1:-}"
+
+    # RESILIENT-472 (RESILIENT-323 slice): adaptive-optimizer storage-bounds
+    # update notice. Callers pass `--storage-update <ttl_seconds> <sweep_cap_bytes>`
+    # instead of a free-form message when the adjust_storage_bounds RPC
+    # (crates/chump-coord/src/rpc.rs) recomputes TTL/sweep-cap values.
+    if [[ "$content" == "--storage-update" ]]; then
+        local _ttl="${2:-}" _cap="${3:-}"
+        content="Storage bounds updated : ttl=${_ttl}s sweep_cap=${_cap} bytes"
+        echo "[notify-operator] ${content}" >&2
+    fi
+
     [[ -n "${content//[[:space:]]/}" ]] || return 0
 
     # Escalation gate — suppress known-playbook'd routine before touching Discord.
