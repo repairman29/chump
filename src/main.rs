@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry -> officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -19888,6 +19889,23 @@ async fn main() -> Result<()> {
         mcp_bridge::init().await;
         plugin::initialize_discovered(&[]);
         return acp_server::run_acp_stdio().await;
+    }
+
+    // RESILIENT-445: standing duty-officer loop, opt-in via `--features
+    // duty_officer`. Scaffolding slice of RESILIENT-274 — wires
+    // PlaybookRegistry (RESILIENT-443) to a DutyOfficer (RESILIENT-444);
+    // `TestDutyOfficer` stands in until a production officer impl lands.
+    #[cfg(feature = "duty_officer")]
+    if args.iter().any(|a| a == "--duty-officer-loop") {
+        let registry_path = env::var("CHUMP_PLAYBOOK_REGISTRY_JSON").map_err(|_| {
+            anyhow::anyhow!(
+                "--duty-officer-loop requires CHUMP_PLAYBOOK_REGISTRY_JSON \
+                 (path to a PlaybookRegistry JSON file; see src/playbook_registry.rs)"
+            )
+        })?;
+        let registry = playbook_registry::load_registry(std::path::Path::new(&registry_path))?;
+        let officer = duty_officer::TestDutyOfficer::default();
+        return duty_officer_loop::run_duty_officer_loop(registry, officer).await;
     }
 
     let web_mode = args.iter().any(|a| a == "--web");
