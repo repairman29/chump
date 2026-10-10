@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry -> officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -1457,6 +1458,43 @@ async fn main() -> Result<()> {
     #[cfg(unix)]
     unsafe {
         libc::signal(libc::SIGPIPE, libc::SIG_DFL);
+    }
+
+    // RESILIENT-445: standing duty-officer loop (RESILIENT-274 slice).
+    // Compile-time opt-in via `--features duty_officer`; runtime opt-in via
+    // CHUMP_DUTY_OFFICER_LOOP=1 so a duty_officer build still defaults to
+    // not spawning the loop on every invocation (e.g. one-shot CLI calls).
+    // The registry path is required because there is no built-in default —
+    // deployments own their own playbook JSON (RESILIENT-443).
+    #[cfg(feature = "duty_officer")]
+    {
+        let loop_enabled = env::var("CHUMP_DUTY_OFFICER_LOOP")
+            .map(|v| v.trim() == "1")
+            .unwrap_or(false);
+        if loop_enabled {
+            if let Ok(registry_path) = env::var("CHUMP_DUTY_OFFICER_REGISTRY") {
+                let registry =
+                    playbook_registry::load_registry(std::path::Path::new(&registry_path))?;
+                // MockSignalSource is the only SignalSource today (AC2); a
+                // real ambient.jsonl/ship-rate/disk/auth/wedge tailer is a
+                // follow-up slice. TestDutyOfficer is likewise the only
+                // DutyOfficer impl until a production officer lands.
+                let source = duty_officer_loop::MockSignalSource::new(vec![]);
+                let officer = duty_officer::TestDutyOfficer::default();
+                tokio::spawn(duty_officer_loop::run_duty_officer_loop(
+                    registry,
+                    officer,
+                    source,
+                    usize::MAX,
+                    std::time::Duration::from_secs(60),
+                ));
+            } else {
+                eprintln!(
+                    "CHUMP_DUTY_OFFICER_LOOP=1 requires CHUMP_DUTY_OFFICER_REGISTRY \
+                     to point at a playbook registry JSON file; skipping loop start."
+                );
+            }
+        }
     }
 
     // EFFECTIVE-411: inject per-model pricing into the extracted waste-tally

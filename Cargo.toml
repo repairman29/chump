@@ -137,6 +137,11 @@ discord = ["dep:serenity"]
 #   cargo build --release --no-default-features --features encrypted-db,...
 # (You must list all other features you want since we disable defaults.)
 encrypted-db = []
+# RESILIENT-445: standing duty-officer loop (RESILIENT-274 slice). Opt-in —
+# wires PlaybookRegistry -> DutyOfficer against real health signals; off by
+# default until a real (non-mock) SignalSource lands. See
+# `src/duty_officer_loop.rs` and `docs/design/DUTY_OFFICER.md`.
+duty_officer = []
 
 [dependencies]
 console-subscriber = { version = "0.5", optional = true }
