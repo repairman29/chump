@@ -13799,3 +13799,21 @@ events:
       (reason=closed-gap). One event per finding.
     consumers: [doctrine-loom]
     fields_required: [ts, kind, reason, from]
+
+  - kind: binary_swap_ok
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/atomic-binary-swap.sh (RESILIENT-493)
+    emitter_paths: [scripts/ops/atomic-binary-swap.sh]
+    trigger: new organ binary was atomically renamed over the target path; previous binary retained as <target>.prev
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, target]
+
+  - kind: binary_swap_failed
+    status: active
+    effect_metric: resilient
+    emitter: scripts/ops/atomic-binary-swap.sh (RESILIENT-493)
+    emitter_paths: [scripts/ops/atomic-binary-swap.sh]
+    trigger: staging or renaming the new binary failed; the previous binary was left in place and executable
+    consumers: [ambient, fleet-brief]
+    fields_required: [ts, kind, target, reason]
