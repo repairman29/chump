@@ -63,7 +63,12 @@ import time
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from _dep_resolution import MalformedDepList, parse_dep_list, unresolved_deps  # noqa: E402
+from _dep_resolution import (  # noqa: E402
+    MalformedDepList,
+    PICKABLE_STATUSES,
+    parse_dep_list,
+    unresolved_deps,
+)
 
 PRIO_RANK = {"P0": 0, "P1": 1, "P2": 2, "P3": 3, "": 9}
 EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
@@ -77,13 +82,10 @@ EFFORT_RANK = {"xs": 0, "s": 1, "m": 2, "l": 3, "xl": 4, "": 9}
 # status is open/ready AND it carries NO linked PR (closed_pr) and NO shipped_in
 # marker. Anything already done/shipped/closed/in-flight is excluded here so a
 # lying status field can never resurrect done work.
-PICKABLE_STATUSES = {"open", "ready"}
-_DONE_LIKE_STATUSES = {
-    "already_satisfied", "done", "shipped", "superseded", "closed",
-    "closed_not_a_bug", "duplicate", "wont_fix", "wontfix", "blocked",
-    "in_progress", "in-progress", "in_review", "in_flight", "perpetual",
-    "ready_to_ship",
-}
+#
+# PICKABLE_STATUSES and _DONE_LIKE_STATUSES are imported from _dep_resolution
+# (the shared picker module) so this file, _pick_and_claim_gap.py, and the
+# dependency resolver all share ONE definition and cannot drift.
 
 
 def _is_pickable_open(g: dict) -> bool:
