@@ -827,7 +827,42 @@ pub async fn register_worker_rpc_handlers(
     })
     .await?;
 
+    // adjust_storage_bounds: adaptive TTL / cargo-sweep cap from observed growth rate.
+    // args: {"growth_rate": f64 (bytes/sec)}
+    serve_rpc_with_nats(Some(nats), session_id, "adjust_storage_bounds", |args| {
+        let growth_rate = args
+            .get("growth_rate")
+            .and_then(|v| v.as_f64())
+            .ok_or_else(|| {
+                "adjust_storage_bounds: \"growth_rate\" (number) is required".to_string()
+            })?;
+        let (ttl_seconds, sweep_cap_bytes) = compute_storage_bounds(growth_rate);
+        eprintln!(
+            "Adjusted TTL to {} seconds, sweep cap to {} bytes",
+            ttl_seconds, sweep_cap_bytes
+        );
+        Ok(serde_json::json!({"ttl_seconds": ttl_seconds, "sweep_cap_bytes": sweep_cap_bytes}))
+    })
+    .await?;
+
     Ok(serde_json::json!({"registered": true, "session_id": session_id}))
+}
+
+/// Derive adaptive `(ttl_seconds, sweep_cap_bytes)` from an observed growth rate.
+/// Faster growth shortens the TTL (floor 1h, ceiling 7d) and lowers the sweep cap
+/// (floor 1 GiB, ceiling 20 GiB).
+pub fn compute_storage_bounds(growth_rate: f64) -> (u64, u64) {
+    const MIN_TTL: f64 = 3600.0;
+    const MAX_TTL: f64 = 604_800.0;
+    const GIB: f64 = 1_073_741_824.0;
+    let g = if growth_rate.is_finite() && growth_rate > 0.0 {
+        growth_rate
+    } else {
+        0.0
+    };
+    let ttl = (MAX_TTL / (1.0 + g)).clamp(MIN_TTL, MAX_TTL);
+    let cap = (20.0 * GIB / (1.0 + g / 10.0)).clamp(GIB, 20.0 * GIB);
+    (ttl as u64, cap as u64)
 }
 
 /// Like [`register_worker_rpc_handlers`] but also registers this worker's
@@ -1182,5 +1217,18 @@ mod tests {
 
         std::env::remove_var("CHUMP_AMBIENT_LOG");
         let _ = std::fs::remove_dir_all(&tmp);
+    }
+}
+
+#[cfg(test)]
+mod storage_bounds_tests {
+    use super::compute_storage_bounds;
+
+    #[test]
+    fn faster_growth_tightens_bounds() {
+        let (t0, c0) = compute_storage_bounds(0.0);
+        let (t1, c1) = compute_storage_bounds(10.0);
+        assert!(t1 < t0 && c1 < c0);
+        assert!(t1 >= 3600 && c1 >= 1_073_741_824);
     }
 }

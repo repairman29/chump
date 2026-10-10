@@ -242,6 +242,12 @@ _notify_rate_over_ceiling() {
 }
 
 notify_operator() {
+    # RESILIENT-472: --storage-update <ttl_seconds> <sweep_cap_bytes>
+    if [[ "${1:-}" == "--storage-update" ]]; then
+        local _ttl="${2:-?}" _cap="${3:-?}"
+        echo "Storage bounds updated : ttl=${_ttl} sweep_cap=${_cap}"
+        set -- "Storage bounds updated : ttl=${_ttl} sweep_cap=${_cap}"
+    fi
     local content="${1:-}"
     [[ -n "${content//[[:space:]]/}" ]] || return 0
 
