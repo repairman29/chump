@@ -132,6 +132,19 @@ organ_unit_host_rewrite() {
     grep -q "^EnvironmentFile=.*node\.env" "$dest" || sed -i "/^\[Service\]/a EnvironmentFile=-${run_home%/}/.chump/node.env" "$dest"
   fi
 
+  # Operator-ordered organ oneshot timeout (2026-10-10): systemd gives a
+  # Type=oneshot unit NO start timeout by default (TimeoutStartSec=infinity), so
+  # one hung script wedged chump-organ-watchdog + the outcome-verify heal
+  # consumer for 20+ min each, blocking the fleet's stay-on enforcement, and the
+  # timer never re-fired (a timer cannot re-trigger a unit still "activating").
+  # Every generated oneshot organ that does not already pin its OWN
+  # TimeoutStartSec gets a bounded default here, so systemd kills a hung run and
+  # the timer re-fires cleanly. Units with an explicit value (builds, drains)
+  # keep it. Override the default with CHUMP_ORGAN_ONESHOT_TIMEOUT_S.
+  if grep -q "^Type=oneshot" "$dest" && ! grep -q "^TimeoutStartSec=" "$dest"; then
+    sed -i "/^\[Service\]/a TimeoutStartSec=${CHUMP_ORGAN_ONESHOT_TIMEOUT_S:-600}" "$dest"
+  fi
+
   # RESILIENT-1571: a user-scope unit must carry no User=/Group= at all (see
   # the `scope` doc above). Strip whatever the tracked source baked in, AFTER
   # the injection block so nothing can re-add it, and BEFORE keep-root so a
