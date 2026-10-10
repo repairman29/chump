@@ -850,6 +850,58 @@ with open(path, 'w') as f:
 PYEOF
 }
 
+# RESILIENT-1560: gate-fail fix-or-close lane. PRs whose required `verified`
+# check has been FAILURE > N hours are classified deterministic vs flake;
+# flake => one rerun, deterministic => route fix to worker / block gap after M cycles.
+# scanner-anchor: kind=pr_gate_fail_action
+# scanner-anchor: kind=pr_gate_fail_alarm
+_gate_fail_lane() {
+  local prs_json="$1"
+  local state="${CHUMP_GATE_FAIL_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-gate-fail-state.json}"
+  local actions ts dry
+  actions=$(printf '%s' "$prs_json" | python3 "$REPO_ROOT/scripts/coord/lib/pr-gate-fail-lane.py" "$state" 2>/dev/null) || return 0
+  [ -n "$actions" ] || return 0
+  ts="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+  if [ -n "$DRY_RUN" ]; then dry="true"; else dry="false"; fi
+  local line action pr gap checks cls hrs
+  while IFS= read -r line; do
+    [ -n "$line" ] || continue
+    action=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['action'])")
+    if [ "$action" = "alarm" ]; then
+      local cnt
+      cnt=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['count'])")
+      printf '{"ts":"%s","kind":"pr_gate_fail_alarm","count":%d,"dry_run":%s}\n' "$ts" "$cnt" "$dry" >> "$AMBIENT"
+      [ -n "$DRY_RUN" ] || bash "$REPO_ROOT/scripts/coord/broadcast.sh" ALERT pr-gate-fail \
+        "${cnt} open PRs have a deterministic/persistent required-gate failure (verified) — fix or close them" >/dev/null 2>&1 || true
+      continue
+    fi
+    pr=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['pr'])")
+    gap=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['gap_id'])")
+    checks=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['failed_checks'])")
+    cls=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['classification'])")
+    hrs=$(printf '%s' "$line" | python3 -c "import json,sys; print(json.load(sys.stdin)['age_hours'])")
+    printf '{"ts":"%s","kind":"pr_gate_fail_action","pr":%d,"action":"%s","classification":"%s","gap_id":"%s","age_hours":%d,"dry_run":%s}\n' \
+      "$ts" "$pr" "$action" "$cls" "$gap" "$hrs" "$dry" >> "$AMBIENT"
+    [ -z "$DRY_RUN" ] || continue
+    case "$action" in
+      rerun)
+        local run_id
+        run_id=$(chump_gh run list --branch "$(gh pr view "$pr" --json headRefName -q .headRefName 2>/dev/null)" \
+          --limit 1 --json databaseId -q '.[0].databaseId' 2>/dev/null || true)
+        [ -z "$run_id" ] || chump_gh run rerun "$run_id" --failed >/dev/null 2>&1 || true
+        ;;
+      route_fix)
+        chump gap set "$gap" --status open --add-note "RESILIENT-1560: PR #${pr} fails deterministic gate(s) [${checks}] for ${hrs}h — worker must fix the PR branch" >/dev/null 2>&1 || true
+        bash "$REPO_ROOT/scripts/coord/broadcast.sh" WARN pr-gate-fail \
+          "PR #${pr} (${gap}) fails deterministic gate(s): ${checks} for ${hrs}h — fix on the PR branch" >/dev/null 2>&1 || true
+        ;;
+      block_gap)
+        chump gap set "$gap" --status blocked --add-note "RESILIENT-1560: PR #${pr} failed deterministic gate(s) [${checks}] across repeated cycles; blocked for human/redesign" >/dev/null 2>&1 || true
+        ;;
+    esac
+  done <<< "$actions"
+}
+
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
   # META-184: also fetch headRefOid (head SHA) for debounce keying.
@@ -1462,6 +1514,8 @@ print(m.group(0) if m else '')
   if [ "$admin_merge_skipped_trunk_red" -gt 0 ]; then
     _emit_pr_queue_skipped_trunk_red "$admin_merge_skipped_trunk_red"
   fi
+
+  _gate_fail_lane "$prs_json" || true
 
   echo "[pr-shepherd-daemon] tick — classified $count PRs, rebase=${rebase_count}, arm=${arm_count}, gap=${gap_file_count}, admin_merge=${admin_merge_count}, flake_rerun=${flake_rerun_count}, wedged=${wedged_signal_count}, dry_run: ${DRY_RUN:-false}" >&2
 }
