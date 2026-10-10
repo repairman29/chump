@@ -27,6 +27,7 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+source "$REPO_ROOT/scripts/lib/safe-reopen-gap.sh"
 cd "$REPO_ROOT"
 
 CHUMP_BIN="$(command -v chump || true)"
@@ -58,7 +59,7 @@ for gap_id in "${gap_ids[@]:-}"; do
     if printf '%s' "$gap_json" | grep -q '"closed_pr":[0-9]'; then
         closed=$((closed + 1))
     else
-        "$CHUMP_BIN" gap set "$gap_id" --status open >/dev/null 2>&1 || true
+        CHUMP_BIN="$CHUMP_BIN" safe_reopen_gap "$gap_id" || true
         reopened=$((reopened + 1))
     fi
 done

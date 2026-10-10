@@ -57,6 +57,7 @@ PR_TERMINAL_FRESHNESS_MIN="${PR_TERMINAL_FRESHNESS_MIN:-10}"
 CHECK_PR="${CHECK_PR:-}"   # set to a PR number to dry-run the terminal check on it and exit
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+source "$REPO_ROOT/scripts/lib/safe-reopen-gap.sh"
 # RESILIENT-263: operator escalation to the phone (Discord DM). Sourced, not
 # required — if the helper is missing this daemon must still run, so define a
 # no-op fallback rather than let a missing notifier take down PR automation.
@@ -460,7 +461,7 @@ else:
     if ! gh pr close "$pr" --repo repairman29/chump --comment "$body" >/dev/null 2>&1; then
         say "  terminal: gh pr close failed for #$pr"; return 1
     fi
-    [[ -n "$gap" ]] && chump gap set "$gap" --status open >/dev/null 2>&1 || true
+    [[ -n "$gap" ]] && { safe_reopen_gap "$gap" || true; }
     say "  → TERMINAL: closed PR #$pr (red[$red] ${age}h) + reopened gap ${gap:-<none>}"
     log_rescue "$pr" "terminal_dispose" "closed_refiled"
     emit_event "pr_auto_rescue_invoked" "\"pr\":$pr,\"handler\":\"terminal_dispose\",\"outcome\":\"closed_refiled\",\"gap\":\"${gap}\",\"age_h\":${age}"
