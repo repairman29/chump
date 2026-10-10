@@ -2886,6 +2886,85 @@ impl GapStore {
                         }
 
                         eprintln!("cargo build --release completed with exit code 0");
+
+                        // RESILIENT-493: atomically swap the freshly built
+                        // binary into the path this `chump` organ is actually
+                        // running from, so RESILIENT-492's rebuild reaches the
+                        // process executing it, not just target/release/ on
+                        // disk. Write-to-temp + rename is atomic on the same
+                        // filesystem: any failure (missing build artifact,
+                        // cross-filesystem rename, permission error) leaves
+                        // the previous binary at the target path untouched
+                        // and executable — the organ keeps serving the OLD
+                        // binary rather than a half-written one.
+                        let built_bin = self.repo_root.join("target").join("release").join("chump");
+                        if let (Ok(target_bin), true) =
+                            (std::env::current_exe(), built_bin.exists())
+                        {
+                            // Never swap a binary onto itself (e.g. running
+                            // directly out of target/release/chump in a dev
+                            // checkout) — that's a no-op, not a failure.
+                            let same_binary = std::fs::canonicalize(&built_bin)
+                                .ok()
+                                .zip(std::fs::canonicalize(&target_bin).ok())
+                                .is_some_and(|(a, b)| a == b);
+                            if !same_binary {
+                                let tmp_bin = target_bin.with_extension("new");
+                                let swap_result =
+                                    std::fs::copy(&built_bin, &tmp_bin).and_then(|_| {
+                                        #[cfg(unix)]
+                                        {
+                                            use std::os::unix::fs::PermissionsExt as _;
+                                            std::fs::set_permissions(
+                                                &tmp_bin,
+                                                std::fs::Permissions::from_mode(0o755),
+                                            )?;
+                                        }
+                                        std::fs::rename(&tmp_bin, &target_bin)
+                                    });
+
+                                match swap_result {
+                                    Ok(()) => {
+                                        eprintln!(
+                                            "RESILIENT-493: atomic binary swap OK — {} \
+                                             now running the freshly built binary",
+                                            target_bin.display()
+                                        );
+                                    }
+                                    Err(e) => {
+                                        // Best-effort cleanup of the temp
+                                        // file; the rename either never
+                                        // happened or already consumed it, so
+                                        // target_bin (the previous binary) is
+                                        // still intact and executable — AC #3.
+                                        let _ = std::fs::remove_file(&tmp_bin);
+                                        use std::io::Write as _;
+                                        let ts = unix_to_iso_full(unix_now());
+                                        let err_escaped = e.to_string().replace('"', "'");
+                                        let line = format!(
+                                            "{{\"ts\":\"{ts}\",\"kind\":\"binary_swap_failed\",\
+                                             \"gap_id\":\"{gap_id}\",\"error\":\"{err_escaped}\"}}\n"
+                                        );
+                                        let amb = self
+                                            .repo_root
+                                            .join(".chump-locks")
+                                            .join("ambient.jsonl");
+                                        if let Ok(mut f) = std::fs::OpenOptions::new()
+                                            .create(true)
+                                            .append(true)
+                                            .open(&amb)
+                                        {
+                                            let _ = f.write_all(line.as_bytes());
+                                        }
+                                        eprintln!(
+                                            "RESILIENT-493: atomic binary swap FAILED ({e}) — \
+                                             {} remains the previous binary, unaffected",
+                                            target_bin.display()
+                                        );
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
             }
