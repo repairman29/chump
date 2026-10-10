@@ -135,6 +135,14 @@ AMBIENT="${CHUMP_AMBIENT_LOG:-$LOCK_DIR/ambient.jsonl}"
 BOT_MERGE_LOCK="${CHUMP_BOT_MERGE_LOCK_DIR:-$LOCK_DIR}/bot-merge.lock"
 SELF_LOCK="$LOCK_DIR/merge-serializer.lock"
 
+# RESILIENT-1563: shared merge-pipeline-driver.lock — every force-push/
+# update-branch/pr-merge path acquires this ONE lock or no-ops, so this
+# organ can never race another merge-mutation organ on the same branch.
+# Distinct from SELF_LOCK above (that one is a single-instance guard against
+# an overlapping copy of THIS script; this one is the cross-organ authority).
+# shellcheck source=lib/merge-pipeline-lock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/merge-pipeline-lock.sh"
+
 _ts() { date -u +%Y-%m-%dT%H:%M:%SZ; }
 _emit() { # _emit <kind> [extra-json-without-braces]
     local kind="$1" extra="${2:-}" line
@@ -273,9 +281,17 @@ _drive_pr() {
         return 1
     fi
 
-    # ---- MUTATION 1: rebase + force-push (under bot-merge.lock) ----
+    # ---- MUTATION 1: rebase + force-push (under merge-pipeline-driver.lock + bot-merge.lock) ----
+    # RESILIENT-1563: merge-pipeline-driver.lock is the cross-ORGAN authority
+    # (acquired first); bot-merge.lock below remains the pre-existing
+    # intra-bot-merge-pipeline guard. No-op (defer to next tick) if either is held.
+    if ! merge_pipeline_lock_acquire; then
+        echo "[merge-serializer] merge-pipeline-driver.lock held elsewhere for #$pr rebase — no-op (RESILIENT-1563)"
+        return 2
+    fi
     if ! _bm_lock_acquire; then
         echo "[merge-serializer] could not acquire bot-merge.lock for #$pr rebase — deferring to next tick"
+        merge_pipeline_lock_release
         return 2
     fi
     local rebase_ok=0
@@ -294,6 +310,7 @@ _drive_pr() {
     fi
     git worktree remove "$wt" --force 2>/dev/null || true
     _bm_lock_release
+    merge_pipeline_lock_release
 
     if [[ "$rebase_ok" != "1" ]]; then
         _emit merge_serializer_rebase_conflict "\"pr\":$pr,\"branch\":\"$br\""
@@ -314,9 +331,14 @@ _drive_pr() {
         2) _emit merge_serializer_verify_timeout "\"pr\":$pr,\"waited_s\":${waited:-0}"; echo "[merge-serializer] #$pr: verified TIMEOUT (${waited}s) — skipping"; return 1 ;;
     esac
 
-    # ---- MUTATION 2: squash-merge (under bot-merge.lock) ----
+    # ---- MUTATION 2: squash-merge (under merge-pipeline-driver.lock + bot-merge.lock) ----
+    if ! merge_pipeline_lock_acquire; then
+        echo "[merge-serializer] #$pr: merge-pipeline-driver.lock held elsewhere — no-op, will retry next tick (RESILIENT-1563)"
+        return 2
+    fi
     if ! _bm_lock_acquire; then
         echo "[merge-serializer] #$pr: verified green but could not acquire bot-merge.lock to merge — will retry next tick"
+        merge_pipeline_lock_release
         return 2
     fi
     local merged=0
@@ -329,6 +351,7 @@ _drive_pr() {
         [[ "$state" == "MERGED" ]] && merged=1
     fi
     _bm_lock_release
+    merge_pipeline_lock_release
 
     if [[ "$merged" == "1" ]]; then
         _emit merge_serializer_merged "\"pr\":$pr,\"branch\":\"$br\",\"waited_verify_s\":${waited:-0}"

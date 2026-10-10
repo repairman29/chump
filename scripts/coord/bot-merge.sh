@@ -3320,6 +3320,27 @@ if [[ "$DRY_RUN" != "1" && "${CHUMP_BOT_MERGE_LOCK:-1}" != "0" ]]; then
         printf '{"ts":"%s","kind":"bot_merge_contention_avoided","branch":"%s","wait_s":%d}\n' \
             "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$BRANCH" "$_bm_wait" >> "$_bm_amb" 2>/dev/null || true
     fi
+
+    # RESILIENT-1563: shared merge-pipeline-driver.lock — the cross-ORGAN
+    # authority (bot-merge.lock above is bot-merge's own single-instance
+    # mutex; this one is shared with merge-serializer/armed-rebaser/
+    # keep-mergeable/pr-shepherd so no two merge-mutation organs can ever
+    # force-push/update-branch/pr-merge the same branch concurrently).
+    # Held for the remainder of this process, mirroring bot-merge.lock's
+    # own held-until-exit model.
+    # Other merge-mutation organs (merge-serializer/armed-rebaser/keep-mergeable/
+    # pr-shepherd) hold this lock only for the duration of ONE mutation, so a
+    # short bounded wait (default 30s) avoids spurious no-ops from fleeting
+    # contention while still guaranteeing exactly one driver at a time. Must be
+    # set BEFORE sourcing the lib — it reads this env once, at source time.
+    : "${CHUMP_MERGE_PIPELINE_LOCK_WAIT_SECS:=30}"
+    export CHUMP_MERGE_PIPELINE_LOCK_WAIT_SECS
+    # shellcheck source=scripts/coord/lib/merge-pipeline-lock.sh
+    source "$(dirname "${BASH_SOURCE[0]}")/lib/merge-pipeline-lock.sh" 2>/dev/null || true
+    if ! merge_pipeline_lock_acquire; then
+        red "[RESILIENT-1563] merge-pipeline-driver.lock held elsewhere — no-op, not force-pushing/merging this run."
+        exit 2
+    fi
 fi
 # FD 200 stays open; "$FLOCK_BIN" released automatically when the script process exits.
 

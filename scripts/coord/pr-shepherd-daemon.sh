@@ -125,6 +125,13 @@ CHUMP_GH_NO_PATH_INJECT=1
 # shellcheck source=scripts/coord/lib/github.sh
 source "$REPO_ROOT/scripts/coord/lib/github.sh"
 
+# RESILIENT-1563: shared merge-pipeline-driver.lock — every force-push/
+# update-branch/pr-merge path acquires this ONE lock or no-ops, so this
+# organ (the "shepherd-with-merge" tier A admin-merge path) can never race
+# another merge-mutation organ (serializer/armed-rebaser/keep-mergeable).
+# shellcheck source=scripts/coord/lib/merge-pipeline-lock.sh
+source "$REPO_ROOT/scripts/coord/lib/merge-pipeline-lock.sh"
+
 emit_tick() {
   local count="$1"
   local ts
@@ -1151,6 +1158,11 @@ for p in prs:
           echo "[pr-shepherd-daemon] DRY_RUN: would admin-merge PR #${pr_num} (author=${author}, ${c})" >&2
           _emit_pr_queue_auto_action "$pr_num" "admin_merge" "trusted_author" "$author" "$c"
           admin_merge_count=$((admin_merge_count + 1))
+        elif ! merge_pipeline_lock_acquire; then
+          # RESILIENT-1563: merge-pipeline-driver.lock held elsewhere — no-op
+          # rather than racing another merge-mutation organ on this PR.
+          _emit_pr_queue_auto_action "$pr_num" "admin_merge_skipped" "merge_pipeline_lock_held" "$author" "$c"
+          echo "[pr-shepherd-daemon] #${pr_num}: merge-pipeline-driver.lock held elsewhere — no-op (RESILIENT-1563)" >&2
         else
           echo "[pr-shepherd-daemon] admin-merging PR #${pr_num} (author=${author}, ${c})" >&2
           local merge_exit=0
@@ -1164,6 +1176,7 @@ for p in prs:
             _emit_pr_queue_auto_action "$pr_num" "admin_merge_failed" "gh_exit_${merge_exit}" "$author" "$c"
             echo "[pr-shepherd-daemon] admin-merge FAILED PR #${pr_num} (exit ${merge_exit})" >&2
           fi
+          merge_pipeline_lock_release
         fi
         # Don't run further actions for this PR this tick — it was merged (or attempted).
         continue
@@ -1285,6 +1298,10 @@ for p in prs:
           echo "[pr-shepherd-daemon] DRY_RUN: would rebase PR #${pr_num} (${gap_id})" >&2
           _emit_pr_action_taken "$pr_num" "rebase" "" "$gap_id"
           rebase_count=$((rebase_count + 1))
+        elif ! merge_pipeline_lock_acquire; then
+          # RESILIENT-1563: no-op rather than race another merge-mutation organ.
+          echo "[pr-shepherd-daemon] #${pr_num}: merge-pipeline-driver.lock held elsewhere — no-op (RESILIENT-1563)" >&2
+          _emit_pr_action_taken "$pr_num" "rebase_skipped" "merge_pipeline_lock_held" "$gap_id"
         else
           echo "[pr-shepherd-daemon] rebasing PR #${pr_num} (${gap_id})" >&2
           local rebase_out rebase_exit
@@ -1304,6 +1321,7 @@ for p in prs:
             _emit_pr_action_taken "$pr_num" "rebase_failed" "" "$gap_id"
             rebase_count=$((rebase_count + 1))
           fi
+          merge_pipeline_lock_release
         fi
 
       # META-186: BLOCKED_GREEN → arm auto-merge (idempotent)

@@ -32,6 +32,12 @@ ROOT="${CHUMP_REPO_ROOT:-$HOME/Projects/Chump}"
 AMB="$ROOT/.chump-locks/ambient.jsonl"
 cd "$ROOT" 2>/dev/null || exit 1
 command -v gh >/dev/null 2>&1 || exit 0
+
+# RESILIENT-1563: shared merge-pipeline-driver.lock — every force-push/
+# update-branch/pr-merge path acquires this ONE lock or no-ops, so this
+# organ can never race another merge-mutation organ on the same branch.
+# shellcheck source=scripts/coord/lib/merge-pipeline-lock.sh
+source "$(dirname "${BASH_SOURCE[0]}")/lib/merge-pipeline-lock.sh"
 git fetch origin main --quiet 2>/dev/null || true
 
 prs="$(gh pr list --repo "$REPO" --state open \
@@ -67,6 +73,10 @@ while read -r num br mode; do
         cd "$wt" || exit 0
         if git rebase origin/main >/dev/null 2>&1 \
            && [ -z "$(git diff --name-only --diff-filter=U 2>/dev/null)" ]; then
+            if ! merge_pipeline_lock_acquire; then
+                echo "[armed-pr-rebaser] #$num: merge-pipeline-driver.lock held elsewhere — no-op (RESILIENT-1563)"
+                exit 0
+            fi
             if git push origin "$br" --force-with-lease >/dev/null 2>&1; then
                 echo "[armed-pr-rebaser] #$num: rebased clean + pushed → mergeable"
                 if [ "$mode" = "adopt" ]; then
@@ -79,6 +89,7 @@ while read -r num br mode; do
                     fi
                 fi
             fi
+            merge_pipeline_lock_release
         else
             git rebase --abort 2>/dev/null || true
             printf '{"ts":"%s","kind":"armed_pr_needs_conflict_resolution","pr":%s,"branch":"%s"}\n' \
