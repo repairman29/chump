@@ -2587,7 +2587,10 @@ Operator or sibling worker can rescue this branch via:
                 # never merge and is never counted as a real ship; the
                 # escalated rung produces the artifact that actually ships.
                 if command -v gh >/dev/null 2>&1; then
-                    _cap_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+                    # RESILIENT-1583: use the REAL branch this cycle pushed (set at worktree
+                    # creation: chump/<gap>-fleet-<AGENT_ID>-<sid>), not a fabricated
+                    # chump/<gap>-claim name that never matches a real PR head_ref.
+                    _cap_branch="$branch"
                     _cap_pr="$(gh pr list --head "$_cap_branch" --state open --json number \
                         --jq '.[0].number // empty' 2>/dev/null || true)"
                     if [[ -n "$_cap_pr" ]]; then
@@ -2899,7 +2902,10 @@ Operator or sibling worker can rescue this branch via:
         # gap status → gh fallback. No evidence → kind=unverified_ship.
         # RESILIENT-1449: this ground-truth check is now _detect_ship_evidence,
         # shared verbatim with the non-zero-rc reclassification below.
-        _ship_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+        # RESILIENT-1583: use the REAL branch this cycle pushed (set at worktree
+        # creation: chump/<gap>-fleet-<AGENT_ID>-<sid>), not a fabricated
+        # chump/<gap>-claim name that never matches a real PR head_ref.
+        _ship_branch="$branch"
         _ship_evidence="$(_detect_ship_evidence "$GAP_ID" "$_ship_branch" || true)"
         if [ -n "$_ship_evidence" ]; then
             _cycle_kind="shipped"
@@ -3045,7 +3051,10 @@ Operator or sibling worker can rescue this branch via:
     # SHIPPED. Only reclassify AWAY from failed — never override a
     # shipped/unverified_ship/wedge/timeout verdict already established above.
     if [ "$_cycle_kind" = "failed" ] && [ "${CHUMP_SHIP_GROUNDTRUTH_RECHECK:-1}" != "0" ]; then
-        _gt_branch="chump/$(printf '%s' "$GAP_ID" | tr '[:upper:]' '[:lower:]')-claim"
+        # RESILIENT-1583: use the REAL branch this cycle pushed (set at worktree
+        # creation: chump/<gap>-fleet-<AGENT_ID>-<sid>), not a fabricated
+        # chump/<gap>-claim name that never matches a real PR head_ref.
+        _gt_branch="$branch"
         _gt_ev="$(_detect_ship_evidence "$GAP_ID" "$_gt_branch" || true)"
         if [ -n "$_gt_ev" ]; then
             _cycle_kind="shipped"
