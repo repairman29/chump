@@ -1242,8 +1242,14 @@ EOF
   # converges the full manifest afterward, but placement no longer leaves a
   # freshly-copied unit dark until that separate pass runs.
   local pf
+  # --no-block: `enable --now` on a Type=oneshot .service otherwise waits for the
+  # WHOLE run to finish. Run from chump-organ-watchdog -> node-refresh -> here,
+  # that wedged the watchdog forever whenever the named oneshot was already
+  # mid-run (a start job on an "activating" oneshot never completes) — the
+  # 2026-10-10 organ-watchdog / heal-consumer deadlock. The job is still queued;
+  # we just don't wait on it.
   for pf in "${placed[@]}"; do
-    systemctl --user enable --now "$pf" 2>/dev/null || true
+    systemctl --user enable --now --no-block "$pf" 2>/dev/null || true
   done
 
   ok "placed ${#placed[@]} role-matched unit file(s): ${placed[*]:-none}"

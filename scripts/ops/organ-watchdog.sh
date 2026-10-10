@@ -849,7 +849,9 @@ if [[ "${CHUMP_ORGAN_WATCHDOG_BINARY_HEAL:-0}" == "1" ]]; then
         if [[ "$DRY_RUN" == "1" ]]; then
             echo "[organ-watchdog]   (dry-run) would run: $NODE_REFRESH_SCRIPT"
         elif [[ -x "$NODE_REFRESH_SCRIPT" ]]; then
-            if NODE_AMBIENT="$AMBIENT_LOG" CHUMP_NODE_REPO="$REPO_ROOT" "$NODE_REFRESH_SCRIPT" >/dev/null 2>&1; then
+            # Bounded (kept under the unit's TimeoutStartSec=600): an unbounded
+            # inline refresh wedged the whole watchdog for 20+ min on 2026-10-10.
+            if NODE_AMBIENT="$AMBIENT_LOG" CHUMP_NODE_REPO="$REPO_ROOT" timeout -k 10 "${CHUMP_ORGAN_WATCHDOG_REFRESH_TIMEOUT_S:-480}" "$NODE_REFRESH_SCRIPT" >/dev/null 2>&1; then
                 echo "[organ-watchdog]   binary refresh triggered ($BIN_STALE_REASON)"
                 # scanner-anchor: "kind":"organ_binary_healed"  (INFRA-3651;
                 # fires when the watchdog detects a missing/stale release
