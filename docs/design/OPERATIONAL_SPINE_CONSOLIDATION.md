@@ -58,6 +58,30 @@ daemon** that owns three things, in-process, typed, and tested:
 node comes up with its recovery layer already inside one process, not ssh'd in
 after the fact (the RESILIENT-289 / "Mac-only daemons" wound).
 
+### Organ restart after atomic swap (RESILIENT-345 slice)
+
+After the binary at the organ's install path is atomically swapped (rename of the
+new binary over the old, with the prior binary retained as `<path>.prev`), the
+supervisor restarts the organ process using this protocol:
+
+1. **Graceful stop.** Send `SIGTERM` to the organ's recorded PID and wait for exit
+   (bounded grace period, default 10s; `SIGKILL` only after it elapses). Record the
+   old PID.
+2. **Re-exec from the swapped path.** Spawn the organ via the same install path
+   that was swapped (never a cached/old inode path or a stale argv[0]), so the new
+   binary is the one executed. Record the new PID.
+3. **Verification window (30s).** Within 30 seconds of the spawn the supervisor
+   must observe (a) a PID that differs from the old PID and is still alive, and
+   (b) a passing health check (the organ's health probe/heartbeat reports ready).
+   Both must hold; failing either, or exceeding 30s, is a restart failure.
+4. **Automatic rollback.** On restart failure the supervisor atomically swaps the
+   `<path>.prev` binary back into place, stops the failed process, re-execs the
+   prior binary, and re-runs the same PID + health verification.
+5. **Failure logging.** Every failure and rollback is logged (supervisor log and an
+   `ambient.jsonl` event carrying organ name, old/new PID, failure reason, and
+   whether rollback succeeded). If the rollback itself fails the organ is marked
+   degraded and the failure escalates through the normal quiet-gate path.
+
 ## Strangler-fig migration (measurable, reversible)
 
 - **Phase 1 — absorb the daemons.** Move the ~36 recovery daemons into
