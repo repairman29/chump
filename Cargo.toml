@@ -107,6 +107,11 @@ tokio-console = ["dep:console-subscriber", "tokio/tracing"]
 # Telegram messaging adapter. V1 send-only over reqwest needs no extra deps; the
 # feature flag exists so V2 (long-poll/webhook) can opt into a richer client.
 telegram = []
+# RESILIENT-445: standing duty-officer loop (`chump duty-officer-loop`) that
+# wires the playbook registry (RESILIENT-443) to the DutyOfficer trait
+# (RESILIENT-444). Off by default — the loop is still mock-signal-sourced
+# (RESILIENT-274 slice), not yet a supported runtime surface.
+duty_officer = []
 # Browser automation. V1 is empty (scaffold only — see src/browser.rs and
 # docs/operations/BROWSER_AUTOMATION.md). V2 will pull in chromiumoxide / thirtyfour and
 # enable the real `browser` tool backend.

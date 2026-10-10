@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry + officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -1534,6 +1535,35 @@ async fn main() -> Result<()> {
     // so `reset --hard` stops being unrecoverable even when it is correct.
     if args.get(1).map(String::as_str) == Some("wip-snapshot") {
         std::process::exit(git_safety::run_snapshot_cli(&args));
+    }
+
+    // RESILIENT-445: `chump duty-officer-loop --registry <path>` starts the
+    // standing health-signal loop (RESILIENT-274 slice). Gated behind the
+    // `duty_officer` Cargo feature since the registry/officer wiring is
+    // still mock-sourced (RESILIENT-443/444) — not yet a supported runtime
+    // surface for default builds.
+    if args.get(1).map(String::as_str) == Some("duty-officer-loop") {
+        #[cfg(not(feature = "duty_officer"))]
+        {
+            return Err(anyhow::anyhow!(
+                "duty-officer-loop requires building with `--features duty_officer`."
+            ));
+        }
+        #[cfg(feature = "duty_officer")]
+        {
+            let registry_path = args
+                .iter()
+                .position(|a| a == "--registry")
+                .and_then(|i| args.get(i + 1))
+                .map(std::path::PathBuf::from)
+                .ok_or_else(|| {
+                    anyhow::anyhow!("duty-officer-loop requires --registry <path-to-registry.json>")
+                })?;
+            let registry = playbook_registry::load_registry(&registry_path)?;
+            let officer = duty_officer::TestDutyOfficer::default();
+            duty_officer_loop::run_duty_officer_loop(registry, officer).await?;
+            return Ok(());
+        }
     }
 
     // INFRA-1649 (re-do of INFRA-1598): `chump verify-claim-branch [--json]`
