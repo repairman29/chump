@@ -310,15 +310,16 @@ enabled     chump-gap-closure-reconcile.timer  role=janitor requires=bin:gh
 # (RESILIENT-372, below) is the SOLE merge driver. Do NOT re-add this line.
 # disabled    chump-armed-rebaser.timer  role=muscle requires=bin:gh
 
-# chump-merge-serializer.timer: RESILIENT-372 native-merge-queue substitute.
-# Native GitHub merge queue is Team/Enterprise-only and unavailable on this
-# personal-account repo (docs/process/MERGE_QUEUE_SETUP.md). This serializes the
-# FINAL merge step: rebase the OLDEST viable armed PR onto latest origin/main,
-# wait for ITS `verified` to go green undisturbed, squash-merge, loop. It rebases
-# only the ONE PR it drives, so other PRs verified is not reset (the aging cure).
-# Supersedes armed-rebaser for the clean-rebase case; where BOTH run, prefer
-# disabling chump-armed-rebaser.timer so it stops resetting verified on main moves.
-enabled     chump-merge-serializer.timer  role=brain requires=bin:gh
+# RESILIENT-1564 (RATIFIED 2026-10-07, operator Jeff, architecture-coach option
+# C): chump-merge-serializer.timer is DECOMMISSIONED PERMANENTLY. Under
+# strict=false (current branch-protection mode) a BEHIND PR merges without
+# needing a clean rebase, so the serializer's whole reason for existing — drive
+# ONE PR's rebase->verified->merge without resetting siblings — no longer
+# applies. pr-shepherd-daemon (RESILIENT-081, strict-aware) is the sole driver;
+# GitHub's own armed auto-merge is the native serializer. Do NOT re-enable this
+# line — see docs/process/MERGE_QUEUE_SETUP.md for the strict=true fallback-only
+# doc and RESILIENT-372 (retired).
+# disabled    chump-merge-serializer.timer  role=brain requires=bin:gh
 enabled     chump-board-cycle.timer  role=brain
 # RESILIENT-274: the duty-officer — reads firing health signals, routes
 # T1 auto-heal / T2 runbook / T3 page (the no-human incident responder).

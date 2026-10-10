@@ -112,9 +112,12 @@ SYSTEM_UNITS=(
   # RESILIENT-1054/1055: chump-armed-rebaser is REMOVED from the roster. The
   # cross-node rebaser swarm (armed-rebaser / armed-pr-rebaser / pr-auto-rebase)
   # caused the merge-race — multiple nodes rebasing armed PRs reset each other's
-  # `verified`. chump-merge-serializer.timer is the SOLE merge driver now. The
-  # tracked scripts/dispatch/chump-armed-rebaser.{service,timer} files remain in
-  # the tree (nothing references them) but are neither copied nor enabled here.
+  # `verified`. pr-shepherd-daemon (RESILIENT-081) is the sole merge driver now
+  # under strict=false; chump-merge-serializer.timer (RESILIENT-372) was its
+  # predecessor and is DECOMMISSIONED permanently by RESILIENT-1564 (RATIFIED
+  # 2026-10-07). The tracked scripts/dispatch/chump-armed-rebaser.{service,timer}
+  # files remain in the tree (nothing references them) but are neither copied
+  # nor enabled here.
   chump-board-cycle.service
   chump-board-cycle.timer
   chump-sla-scorecard.service
@@ -180,7 +183,7 @@ SYSTEM_UNITS=(
   # Nobody was watching the tape; this organ is the tape.
   chump-race-control.service
   chump-race-control.timer
-  # RESILIENT-376: the two merge-flow organs were declared `enabled` in
+  # RESILIENT-376: these merge-flow organs were declared `enabled` in
   # scripts/ops/organ-manifest.txt but NEVER added to this installer roster (nor
   # given any Linux systemd installer), so on an owned node the unit files were
   # never copied into /etc/systemd/system and organ-reconcile's `enable --now`
@@ -188,12 +191,12 @@ SYSTEM_UNITS=(
   # The Roll-Call test only guarded installer->manifest, so the manifest->installer
   # gap went unseen. conflict-resolution-consumer (RESILIENT-360): drains
   # real-conflict DIRTY PRs (Linux port of the Mac-only launchd installer).
-  # merge-serializer (RESILIENT-372): native-merge-queue substitute that
-  # serializes the final merge so each PR gets a clean `verified` pass.
+  # merge-serializer (RESILIENT-372) was rostered here; DECOMMISSIONED
+  # permanently by RESILIENT-1564 (RATIFIED 2026-10-07) — pr-shepherd-daemon
+  # (RESILIENT-081) is the sole merge driver under strict=false, GitHub's armed
+  # auto-merge is the native serializer. Do NOT re-add chump-merge-serializer.
   chump-conflict-resolution-consumer.service
   chump-conflict-resolution-consumer.timer
-  chump-merge-serializer.service
-  chump-merge-serializer.timer
   # gap-drain (EFFECTIVE-464): the DRAIN LOOP — enriches thin gaps + decomposes
   # broad ones into surgical, flash-landable specs so the cheap DeepSeek floor
   # (EFFECTIVE-445) always has landable work. Both LLM calls route to
@@ -300,7 +303,7 @@ SYSTEM_UNITS=(
   chump-conductor.service
   chump-conductor.timer
 )
-SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-merge-serializer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
+SYSTEM_TIMERS=(chump-pr-lander.timer chump-board-cycle.timer chump-duty-officer.timer chump-sla-scorecard.timer chump-organ-watchdog.timer chump-apex-watchdog.timer chump-board-ceo-briefing.timer chump-organ-reconcile.timer chump-pr-approval.timer chump-farmer.timer chump-rot-reaper.timer chump-trunk-recovery-reviver.timer chump-integrator.timer chump-backlog-sync-writer.timer chump-race-control.timer chump-conflict-resolution-consumer.timer chump-gap-drain.timer chump-gap-closure-reconcile.timer chump-nba-dispatch.timer chump-digest.timer chump-almanac-liveness.timer chump-rca-reflex.timer chump-cascade-unblock-detector.timer chump-gap-store-single-source-check.timer chump-organ-success-verifier.timer chump-effect-verifier.timer chump-node-converge.timer chump-self-doctor.timer chump-paramedic.timer chump-conductor.timer)
 
 # ── --check mode ─────────────────────────────────────────────────────────────
 if [[ "${1:-}" == "--check" ]]; then
