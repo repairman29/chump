@@ -66,6 +66,12 @@ STRIKES_DIR="${CHUMP_KEEP_MERGEABLE_STRIKES_DIR:-$LOCK_DIR/keep-mergeable-strike
 BROADCAST_SCRIPT="${CHUMP_KEEP_MERGEABLE_BROADCAST_SCRIPT:-$REPO_ROOT/scripts/coord/broadcast.sh}"
 mkdir -p "$STRIKES_DIR"
 
+# RESILIENT-1563: shared merge-pipeline-driver.lock — every force-push/
+# update-branch/pr-merge path acquires this ONE lock or no-ops, so this
+# organ can never race another merge-mutation organ on the same branch.
+# shellcheck source=scripts/coord/lib/merge-pipeline-lock.sh
+source "$SCRIPT_DIR/lib/merge-pipeline-lock.sh"
+
 DRY_RUN=0
 for _a in "$@"; do
     case "$_a" in
@@ -229,12 +235,15 @@ while IFS=$'\t' read -r PR BRANCH MSS RUN_IDS; do
 
     # ── DIRTY/BEHIND: rebase onto green main ──────────────────────────────────
     if [[ "$MSS" == "DIRTY" || "$MSS" == "BEHIND" ]]; then
-        if gh pr update-branch "$PR" >/dev/null 2>&1; then
+        if ! merge_pipeline_lock_acquire; then
+            log "  SKIP #$PR — merge-pipeline-driver.lock held elsewhere — no-op (RESILIENT-1563)"
+        elif gh pr update-branch "$PR" >/dev/null 2>&1; then
             log "  OK #$PR — GH-side rebase succeeded."
             emit "keep_mergeable_rebased" "$PR" "\"branch\":\"$BRANCH\",\"method\":\"gh_update_branch\""
             rm -f "$SFILE"
             REBASED=$((REBASED + 1))
             resolved=1
+            merge_pipeline_lock_release
         else
             WT="$(mktemp -d -t chump-keep-mergeable-XXXXXX)"
             git -C "$REPO_ROOT" fetch origin "$BRANCH" --quiet 2>/dev/null || true
@@ -254,6 +263,7 @@ while IFS=$'\t' read -r PR BRANCH MSS RUN_IDS; do
                 git -C "$REPO_ROOT" worktree remove "$WT" --force >/dev/null 2>&1 || true
             fi
             rm -rf "$WT" 2>/dev/null || true
+            merge_pipeline_lock_release
         fi
     fi
 
