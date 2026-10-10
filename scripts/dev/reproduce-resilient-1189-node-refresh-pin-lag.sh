@@ -25,7 +25,7 @@
 set -uo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/../.." && pwd -P)"
-PRE_FIX_COMMIT="c9c9a81d4^"   # parent of the RESILIENT-1205 fix commit
+PRE_FIX_COMMIT="f7ecc113a^"   # parent of the RESILIENT-1205 fix commit
 FIXED_SCRIPT="$REPO_ROOT/scripts/ops/node-refresh-chump.sh"
 
 RUN_DIR="$(mktemp -d)"
