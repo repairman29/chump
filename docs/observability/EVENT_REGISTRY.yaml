@@ -5878,6 +5878,14 @@ events:
     trigger: a gap hits the chump-local strike threshold but 'chump gap decompose --dry-run' reports the parent already has >=1 open child slice (exit 11) — root-cause fix for RESILIENT-1437 (gap-store slice-bloat from the same parent being re-sliced repeatedly); the reflex skips the real --apply call and does NOT reset strikes, so a resolved/healthy gap is never mistaken for one still stuck in this loop
     consumers: [ambient glance, RESILIENT-1437 slice-bloat audit]
     fields_required: [ts, kind, source, agent, gap_id, backend, reason]
+  - kind: gap_flow_gauge
+    status: active
+    effect_metric: self
+    emitter: scripts/dev/gap-flow-gauge.sh (RESILIENT-1437 AC5)
+    emitter_paths: [scripts/dev/gap-flow-gauge.sh]
+    trigger: operator/cron runs gap-flow-gauge.sh; publishes open-gap count and created-per-day vs closed-per-day over a trailing window so slice-bloat regressions are visible
+    consumers: [RESILIENT-1437 slice-bloat audit, ambient glance]
+    fields_required: [ts, kind, source, window_days, open, open_slices, created_per_day, closed_per_day]
   - kind: decompose_provider_selected
     status: active
     effect_metric: self
