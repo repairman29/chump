@@ -1140,6 +1140,29 @@ events:
     consumers: [node-orchestrator, fleet-brief, audit-log]
     fields_required: [ts, kind, node, cores, worker_budget, workers_up, capacity_sink, oversubscribed, gpu, root_pct]
 
+  # ── MISSION-125: auto-discovery & auto-adopt (MISSION-105 slice) ─────────
+  - kind: discover
+    effect_metric: self
+    emitter: various node watchdogs (new-binary / new-MCP-server / new-tool
+      detectors); consumed by scripts/ops/auto-adopt.sh
+    trigger: >
+      A watchdog notices a new capability is available to the node (a binary
+      dropped on PATH, a new MCP server registered, a new tool manifest) but
+      not yet integrated into the node's runtime.
+    consumers: [auto-adopt]
+    fields_required: [ts, kind, capability]
+
+  - kind: capability_auto_adopted
+    effect_metric: self
+    emitter: scripts/ops/auto-adopt.sh (MISSION-125)
+    trigger: >
+      auto-adopt.sh processed a kind=discover event, fetched any missing
+      required_tools, and recorded the capability as adopted in
+      $CHUMP_STATE_DIR/auto-adopt-capabilities.jsonl so the node's runtime
+      can use it without human intervention.
+    consumers: [fleet-brief, audit-log]
+    fields_required: [ts, kind, capability, required_tools]
+
   # ── FLEET-054: waste-spike auto-pause ─────────────────────────────────────
   - kind: waste_spike_detected
     effect_metric: self
