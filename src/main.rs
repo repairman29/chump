@@ -92,6 +92,7 @@ mod disk_plan_gate; // INFRA-2198: disk-aware gate for fleet up + auto-scale (ME
 mod dispatch;
 mod doctor;
 mod duty_officer; // RESILIENT-444: DutyOfficer trait contract (RESILIENT-274 slice)
+mod duty_officer_loop; // RESILIENT-445: standing loop wiring registry + officer (RESILIENT-274 slice)
 mod ego_tool;
 mod env_flags;
 mod episode_db;
@@ -19891,6 +19892,7 @@ async fn main() -> Result<()> {
     }
 
     let web_mode = args.iter().any(|a| a == "--web");
+    let duty_officer_mode = args.iter().any(|a| a == "--duty-officer");
     let discord_mode = args.iter().any(|a| a == "--discord");
     let telegram_mode = args.iter().any(|a| a == "--telegram");
     let slack_mode = args.iter().any(|a| a == "--slack");
@@ -19955,6 +19957,39 @@ async fn main() -> Result<()> {
     config_validation::validate_config();
     mcp_bridge::init().await;
     plugin::initialize_discovered(&[]);
+
+    if duty_officer_mode {
+        // RESILIENT-445: standing duty-officer loop is opt-in at compile
+        // time. Real signal sources (ambient.jsonl tail, ship-rate, disk,
+        // auth, wedges) and a production DutyOfficer are a follow-up slice
+        // of RESILIENT-274 — today's wiring proves the loop can run to
+        // completion against the registry + officer contracts.
+        #[cfg(not(feature = "duty_officer"))]
+        {
+            return Err(anyhow::anyhow!(
+                "Duty-officer mode requires building with `--features duty_officer`. \
+                 Rebuild with `cargo build --release --features duty_officer`."
+            ));
+        }
+
+        #[cfg(feature = "duty_officer")]
+        {
+            // Real registry JSON + production DutyOfficer + real signal
+            // sources land in a follow-up RESILIENT-274 slice. `--duty-officer`
+            // today proves the loop runs end-to-end against the contracts.
+            let registry = match env::var("CHUMP_PLAYBOOK_REGISTRY_PATH") {
+                Ok(path) => playbook_registry::load_registry(std::path::Path::new(&path))?,
+                Err(_) => playbook_registry::PlaybookRegistry::default(),
+            };
+            let officer = duty_officer::TestDutyOfficer::default();
+            let mut source = duty_officer_loop::VecSignalSource::new(vec![]);
+            let routed =
+                duty_officer_loop::run_duty_officer_loop(&registry, &officer, &mut source, 1)
+                    .await?;
+            eprintln!("duty-officer loop: routed {routed} signal(s)");
+            return Ok(());
+        }
+    }
 
     if discord_mode {
         // SECURITY-004 Path B: Discord gateway is opt-in at compile-time.
