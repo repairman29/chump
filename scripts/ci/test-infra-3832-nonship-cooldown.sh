@@ -138,21 +138,22 @@ _escalate() {  # base offense max -> echo capped cooldown
 [ "$(_escalate 3600 9 14400)" = "14400" ] && ok "Layer 2a: offense 9 timeout → capped at 4h ceiling" || fail "Layer 2a: escalation cap"
 
 # ── Layer 2b: auto-block chronic offenders ───────────────────────────────────
-if grep -q "CHUMP_AUTO_BLOCK_OFFENDERS" "$WORKER" \
-   && grep -q "CHUMP_AUTO_BLOCK_THRESHOLD" "$WORKER" \
-   && grep -Fq 'chump gap set "$GAP_ID" \' "$WORKER" \
-   && grep -Fq -e '--status blocked --add-note' "$WORKER"; then
+LEDGER="$REPO_ROOT/scripts/dispatch/lib/offense-ledger.sh"
+if grep -q "CHUMP_AUTO_BLOCK_OFFENDERS" "$LEDGER" \
+   && grep -q "CHUMP_AUTO_BLOCK_THRESHOLD" "$LEDGER" \
+   && grep -Fq 'gap set "$gap"' "$LEDGER" \
+   && grep -Fq -e '--status blocked --add-note' "$LEDGER"; then
     ok "Layer 2b: auto-block sets status=blocked, env-guarded + threshold-tunable"
 else
     fail "Layer 2b: auto-block wiring (env guard / threshold / gap set) missing"
 fi
-if grep -q 'gap_auto_blocked' "$WORKER"; then
+if grep -q 'gap_auto_blocked' "$LEDGER"; then
     ok "Layer 2b: auto-block emits a gap_auto_blocked ambient ALERT"
 else
     fail "Layer 2b: auto-block does not emit an ambient alert"
 fi
 # Offense ledger is wiped on a clean cycle (no stale strikes).
-if grep -q 'rm -f "\$REPO_ROOT/.chump-locks/offense/\${GAP_ID}.count"' "$WORKER"; then
+if grep -q 'offense_clear "\$GAP_ID"' "$WORKER"; then
     ok "Layer 2b: clean cycle resets the offense ledger"
 else
     fail "Layer 2b: clean cycle does not reset the offense ledger"
