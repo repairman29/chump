@@ -1997,6 +1997,16 @@ fi
 # CI-rot class per docs/strategy/CI_REVIEW_2026-05-29.md Lever 4.
 # Bypass: CHUMP_PREFLIGHT_PARITY_CHECK=0 (with reason).
 
+# RESILIENT-587 (RESILIENT-545 slice): auto-append an allowlist entry for
+# any newly-added, unclassified gate in the staged ci.yml diff BEFORE the
+# parity smoke runs, so a brand-new gate never blocks the commit outright.
+PREFLIGHT_AUTOAPPEND_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-preflight-exceptions-autoappend.sh"
+if [ -x "$PREFLIGHT_AUTOAPPEND_HOOK" ]; then
+    if ! "$PREFLIGHT_AUTOAPPEND_HOOK"; then
+        exit 1
+    fi
+fi
+
 PREFLIGHT_PARITY_HOOK="$REPO_ROOT/scripts/git-hooks/pre-commit-preflight-ci-parity.sh"
 if [ -x "$PREFLIGHT_PARITY_HOOK" ]; then
     if ! "$PREFLIGHT_PARITY_HOOK"; then
