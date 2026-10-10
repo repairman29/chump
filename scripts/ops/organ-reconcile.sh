@@ -636,7 +636,10 @@ for unit in "${ENABLED[@]}"; do
     fi
   fi
 
-  if ! "$SYSTEMCTL_BIN" enable --now "$unit" 2>/dev/null; then
+  # Bounded: `enable --now` on a oneshot .service blocks until that run finishes
+  # (forever if it is already wedged "activating"). The job keeps going if the
+  # client is cut off; we just back the unit off and move on.
+  if ! timeout "${CHUMP_ORGAN_RECONCILE_ENABLE_TIMEOUT_S:-120}" "$SYSTEMCTL_BIN" enable --now "$unit" 2>/dev/null; then
     echo "WARN: could not enable --now $unit" >&2
     # scanner-anchor: "kind":"organ_reconcile_unit_failed" (RESILIENT-305; an
     # organ the manifest marks `enabled` could not be enable --now'd)

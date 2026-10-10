@@ -110,6 +110,10 @@ start_line=1
 if [[ -f "$CURSOR_FILE" ]]; then
     last="$(cat "$CURSOR_FILE" 2>/dev/null || echo 0)"
     [[ "$last" =~ ^[0-9]+$ ]] || last=0
+    # Log rotation (ambient.jsonl -> ambient.jsonl.1) shrinks the line count
+    # below the saved cursor; without this reset every new event would be
+    # skipped until the fresh log re-grew past the old cursor.
+    (( last > total_lines )) && last=0
     start_line=$((last + 1))
 fi
 
@@ -118,7 +122,14 @@ paged=0
 suppressed=0
 
 if [[ "$start_line" -le "$total_lines" ]]; then
-    new_lines="$(sed -n "${start_line},${total_lines}p" "$AMB" 2>/dev/null || true)"
+    # Pre-filter with grep so only the two kinds we handle reach the per-line
+    # python3 parsing below. With no cursor yet (first run / state wiped) the
+    # window is the WHOLE log; at 2 python3 spawns per line a ~10 MB ambient log
+    # took ~1 line/sec and never finished (24+ min CPU, killed before the cursor
+    # was ever written, so it restarted from line 1 every time — the 2026-10-10
+    # wedge). grep keeps it O(file) in one process; python still validates.
+    new_lines="$(sed -n "${start_line},${total_lines}p" "$AMB" 2>/dev/null \
+        | grep -E '"kind"[[:space:]]*:[[:space:]]*"(outcome_probe_failed|ac_coverage_proof_miss)"' || true)"
     while IFS= read -r line; do
         [[ -z "$line" ]] && continue
         kind="$(printf '%s' "$line" | python3 -c 'import sys,json
@@ -176,7 +187,7 @@ print(ev.get("note") or ev.get("detail") or "")' 2>/dev/null)"
         # (never closed, or already held) still gets the note so the trail
         # is visible even when the status transition itself is a no-op.
         note_text="HELD: ${kind} — ${note:-live verification failed}"
-        "$GAP_BIN" gap set "$gap" --status open --add-note "$note_text" >/dev/null 2>&1
+        timeout 60 "$GAP_BIN" gap set "$gap" --status open --add-note "$note_text" >/dev/null 2>&1
         held_rc=$?
 
         # Page the duty officer — AC1. Unlisted in operator-escalation-
