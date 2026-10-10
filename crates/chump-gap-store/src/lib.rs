@@ -421,6 +421,11 @@ impl GapStore {
             repo_root: repo_root.to_path_buf(),
         };
         store.migrate()?;
+        if let Ok(canon) = std::env::var("CHUMP_CANONICAL_STATE_DB") {
+            if !canon.is_empty() && Path::new(&canon) != path.as_path() {
+                let _ = store.reconcile_terminal_from(Path::new(&canon));
+            }
+        }
         Ok(store)
     }
 
@@ -964,6 +969,34 @@ impl GapStore {
         self.conn
             .query_row("SELECT COUNT(*) FROM gaps", [], |r| r.get(0))
             .map_err(anyhow::Error::from)
+    }
+
+    /// RESILIENT-1578: replay terminal statuses from a canonical peer store onto
+    /// this store so per-checkout state.db copies can't keep serving gaps that
+    /// were already superseded/done elsewhere. Only rows that are `open` locally
+    /// and terminal in the canonical store are touched. Returns rows updated.
+    pub fn reconcile_terminal_from(&self, canonical_db: &Path) -> Result<usize> {
+        if !canonical_db.is_file() {
+            return Ok(0);
+        }
+        let uri = format!("file:{}?mode=ro", canonical_db.display());
+        self.conn
+            .execute("ATTACH DATABASE ?1 AS canon", [&uri])
+            .or_else(|_| {
+                self.conn.execute(
+                    "ATTACH DATABASE ?1 AS canon",
+                    [canonical_db.to_string_lossy().as_ref()],
+                )
+            })?;
+        let res = self.conn.execute(
+            "UPDATE gaps SET status = (SELECT c.status FROM canon.gaps c WHERE c.id = gaps.id)
+             WHERE status = 'open' AND id IN (
+                SELECT id FROM canon.gaps
+                WHERE status IN ('done','superseded','decomposed','already_satisfied','closed'))",
+            [],
+        );
+        let _ = self.conn.execute("DETACH DATABASE canon", []);
+        Ok(res?)
     }
 
     /// If the DB has zero rows and docs/gaps/ contains YAML files, auto-import.
@@ -12286,5 +12319,41 @@ mod credible1489_closed_pr_tests {
         ]);
         assert_eq!(merged_pr_for_branch(d.path(), "claude/x"), Some(21));
         assert_eq!(merged_pr_for_branch(d.path(), "claude/none"), None);
+    }
+}
+
+#[cfg(test)]
+mod reconcile_terminal_tests {
+    use super::*;
+
+    #[test]
+    fn reconcile_replays_terminal_status_from_canonical() {
+        let a = tempfile::tempdir().unwrap();
+        let b = tempfile::tempdir().unwrap();
+        let canon = GapStore::open(a.path()).unwrap();
+        let local = GapStore::open(b.path()).unwrap();
+        for (store, st) in [(&canon, "superseded"), (&local, "open")] {
+            store
+                .conn_for_test()
+                .execute(
+                    "INSERT INTO gaps (id, domain, title, status) VALUES ('X-1','X','t',?1)",
+                    [st],
+                )
+                .unwrap();
+        }
+        local
+            .conn_for_test()
+            .execute(
+                "INSERT INTO gaps (id, domain, title, status) VALUES ('X-2','X','t','open')",
+                [],
+            )
+            .unwrap();
+        drop(canon);
+        let n = local
+            .reconcile_terminal_from(&GapStore::db_path(a.path()))
+            .unwrap();
+        assert_eq!(n, 1);
+        assert_eq!(local.get("X-1").unwrap().unwrap().status, "superseded");
+        assert_eq!(local.get("X-2").unwrap().unwrap().status, "open");
     }
 }
