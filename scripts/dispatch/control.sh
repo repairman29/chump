@@ -16,7 +16,7 @@ FLEET_SIZE="${FLEET_SIZE:-?}"
 REFRESH_S="${REFRESH_S:-5}"
 FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1}"
 FLEET_DOMAIN_FILTER="${FLEET_DOMAIN_FILTER:-}"
-FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m}"
+FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-xs,s,m,l,xl}"
 
 cd "$REPO_ROOT"
 
@@ -113,7 +113,7 @@ gaps = json.loads("""$_queue_json""")
 today = date.today()
 
 prio_filter = [p.strip().upper() for p in os.environ.get("FLEET_PRIORITY_FILTER", "P0,P1").split(",") if p.strip()]
-effort_filter = [e.strip().lower() for e in os.environ.get("FLEET_EFFORT_FILTER", "xs,s,m").split(",") if e.strip()]
+effort_filter = [e.strip().lower() for e in os.environ.get("FLEET_EFFORT_FILTER", "xs,s,m,l,xl").split(",") if e.strip()]
 domain_filter = [d.strip().lower() for d in os.environ.get("FLEET_DOMAIN_FILTER", "").split(",") if d.strip()]
 
 pickable = 0

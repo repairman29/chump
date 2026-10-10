@@ -6439,7 +6439,7 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| "sonnet".to_string());
                 let effort = flag("--effort")
                     .or_else(|| cfg("effort"))
-                    .unwrap_or_else(|| "xs,s,m".to_string());
+                    .unwrap_or_else(|| "xs,s,m,l,xl".to_string());
                 let domain = flag("--domain")
                     .or_else(|| cfg("domain"))
                     .unwrap_or_default();
@@ -7646,7 +7646,10 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| "P0,P1".to_string());
 
                 // Widen effort by appending next tier; widen priority by adding P2.
-                let suggested_effort = if current_effort.contains('m') {
+                let suggested_effort = if current_effort.contains("xl") {
+                    // Already unrestricted (no gap-size limit): nothing larger to add.
+                    current_effort.clone()
+                } else if current_effort.contains('m') {
                     format!("{},l", current_effort.trim_end_matches(",l"))
                 } else if current_effort.contains('s') {
                     format!("{},m", current_effort.trim_end_matches(",m"))
@@ -8648,7 +8651,7 @@ async fn main() -> Result<()> {
                     .unwrap_or_else(|| "sonnet".to_string());
                 let effort = flag("--effort")
                     .or_else(|| cfg("effort"))
-                    .unwrap_or_else(|| "xs,s,m".to_string());
+                    .unwrap_or_else(|| "xs,s,m,l,xl".to_string());
                 let domain = flag("--domain")
                     .or_else(|| cfg("domain"))
                     .unwrap_or_default();

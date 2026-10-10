@@ -56,6 +56,11 @@ export FLEET_PRIORITY_FILTER="${FLEET_PRIORITY_FILTER:-P0,P1,P2}"
 # re-render; the rendered defaults are what systemd starts the instance with.
 export FLEET_MODEL="${FLEET_MODEL:-__FLEET_MODEL__}"
 export FLEET_EFFORT_FILTER="${FLEET_EFFORT_FILTER:-__FLEET_EFFORT_FILTER__}"
+# Pin the `sonnet` alias to Sonnet 5.5. Without this the alias resolves to
+# claude-sonnet-5 (verified 2026-10-10 on cuphead + CJ). FLEET_MODEL stays the
+# class name "sonnet" (pickers/routing key on it); only what the alias resolves
+# to changes. ":-" so providers.env or a one-off run can still override.
+export ANTHROPIC_DEFAULT_SONNET_MODEL="${ANTHROPIC_DEFAULT_SONNET_MODEL:-claude-sonnet-5-5}"
 
 cd "__REPO_ROOT__" || exit 1
 exec bash scripts/dispatch/worker.sh

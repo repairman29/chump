@@ -238,7 +238,7 @@ fn spawn_worker(cfg: &Config, agent_id: usize) -> std::io::Result<Child> {
     let (fleet_model, effort_filter) = if backend == "chump-local" {
         ("haiku", "xs,s")
     } else {
-        ("sonnet", "xs,s,m")
+        ("sonnet", "xs,s,m,l,xl")
     };
 
     command
