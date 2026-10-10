@@ -298,6 +298,29 @@ fn is_free_tier_model() -> bool {
         .unwrap_or(false)
         || std::env::var("CHUMP_FREE_TIER_MODE").as_deref() == Ok("1")
     {
+        // RESILIENT (CJ silent-bail root cause): a free-tier rotation is only
+        // *usable* if at least one of its providers actually has an API key in
+        // the environment. The repo-committed model-escalation-ladder manifest
+        // (scripts/setup/model-escalation-ladder.env) is sourced by EVERY
+        // worker on EVERY node, so CHUMP_FREE_TIER_PROVIDERS is set even on
+        // nodes deliberately configured for the Anthropic subscription
+        // (CHUMP_AUTH_MODE=oauth, FLEET_MODEL=sonnet, a valid
+        // CLAUDE_CODE_OAUTH_TOKEN) that carry NO OpenRouter/Groq keys. Letting
+        // the mere presence of the list force free-tier made such a node pick
+        // the slim free-tier profile upfront, skip every keyless provider, and
+        // bail in ~5s every cycle — never once trying the sub it was told to
+        // use. When no free-tier key is present but a valid Anthropic sub
+        // credential IS, fall through to the normal sub agent instead
+        // (honoring FLEET_MODEL/oauth). Nodes that actually have free-tier
+        // keys, or that have no sub credential at all, are unaffected.
+        if !free_tier_has_usable_key() && anthropic_sub_available() {
+            eprintln!(
+                "[execute-gap] free-tier configured (CHUMP_FREE_TIER_PROVIDERS/MODE) but no \
+                 provider key is present; a valid Anthropic sub credential IS present — \
+                 routing to the subscription (e.g. sonnet via oauth), NOT a keyless free-tier"
+            );
+            return false;
+        }
         return true;
     }
     let model = std::env::var("OPENAI_MODEL")
@@ -322,6 +345,35 @@ fn is_free_tier_model() -> bool {
         || base.contains("hyperbolic.xyz");
 
     is_non_claude && is_cloud_endpoint
+}
+
+/// True when at least one configured free-tier provider has a usable API key in
+/// the environment. Mirrors the per-provider `has_key` check in the rotation
+/// loop (see `execute_gap`) EXACTLY so the up-front free-tier decision and the
+/// loop agree on what "usable" means — a provider whose key env is set (to any
+/// value), or a non-empty generic `OPENAI_API_KEY`.
+fn free_tier_has_usable_key() -> bool {
+    if std::env::var("OPENAI_API_KEY")
+        .map(|k| !k.is_empty())
+        .unwrap_or(false)
+    {
+        return true;
+    }
+    parse_free_tier_providers()
+        .iter()
+        .any(|spec| std::env::var(&spec.api_key_env).is_ok())
+}
+
+/// True when an Anthropic subscription / API credential is available for the
+/// normal (non-free-tier) dispatch path — i.e. the worker can transact with
+/// the sub even though no free-tier provider key is configured.
+fn anthropic_sub_available() -> bool {
+    std::env::var("CLAUDE_CODE_OAUTH_TOKEN")
+        .map(|t| !t.trim().is_empty())
+        .unwrap_or(false)
+        || std::env::var("ANTHROPIC_API_KEY")
+            .map(|k| !k.trim().is_empty())
+            .unwrap_or(false)
 }
 
 // ──────────────────────────────────────────────────────────────────────
@@ -1059,6 +1111,31 @@ pub async fn execute_gap(gap_id: &str) -> Result<String> {
     };
 
     if free_tier {
+        // RESILIENT (CJ silent-bail root cause): FAIL LOUD when free-tier was
+        // selected but NO provider has a usable key. Reaching here means
+        // `is_free_tier_model()` already declined to route to the sub — so
+        // there is no key AND no Anthropic sub credential. That is a worker
+        // MISCONFIGURATION (it can do no work at all), not a transient
+        // provider exhaustion, and the old path swallowed it as a generic
+        // ~5s rc=1 bail that hot-looped every cycle. Surface it explicitly
+        // with an actionable message so the condition is unmistakable in the
+        // worker log / journal instead of masquerading as "providers
+        // exhausted".
+        if !free_tier_has_usable_key() {
+            eprintln!(
+                "[execute-gap] ALERT: no usable inference provider for gap {gap_id} — \
+                 free-tier dispatch was selected (CHUMP_FREE_TIER_PROVIDERS/MODE set) but \
+                 none of its providers has an API key in the environment, AND no Anthropic \
+                 sub credential (CLAUDE_CODE_OAUTH_TOKEN/ANTHROPIC_API_KEY) is present. \
+                 This worker cannot transact. Fix: set a provider key, or configure the sub \
+                 (CHUMP_AUTH_MODE=oauth + a valid CLAUDE_CODE_OAUTH_TOKEN)."
+            );
+            return Err(anyhow!(
+                "no usable inference provider for gap {gap_id}: free-tier selected but no \
+                 provider key present and no Anthropic sub credential available \
+                 (worker misconfiguration — not a transient exhaustion)"
+            ));
+        }
         // EFFECTIVE-002: rotate through Groq → Cerebras → NVIDIA on 429/exhaustion.
         let providers = parse_free_tier_providers();
         // Start from the provider already configured (match by base URL), or index 0.
@@ -2049,6 +2126,91 @@ mod tests {
         restore_env_var("CHUMP_FREE_TIER_MODE", prev_ftmode);
         restore_env_var("CHUMP_FREE_TIER_PROVIDERS", prev_ftprov);
         assert!(!result, "Local Ollama is not a free-tier cloud endpoint");
+    }
+
+    // ──────────────────────────────────────────────────────────────────
+    // RESILIENT — CJ silent-bail root cause: a free-tier list with no keys
+    // must NOT hijack a node that has a valid Anthropic sub credential.
+    // ──────────────────────────────────────────────────────────────────
+
+    /// Snapshot + clear every env var these tests touch, returning a restorer.
+    fn snapshot_dispatch_env() -> Vec<(&'static str, Option<String>)> {
+        let keys = [
+            "CHUMP_FREE_TIER_PROVIDERS",
+            "CHUMP_FREE_TIER_MODE",
+            "OPENAI_API_KEY",
+            "OPENAI_MODEL",
+            "OPENAI_API_BASE",
+            "GROQ_API_KEY",
+            "OPENROUTER_API_KEY",
+            "CLAUDE_CODE_OAUTH_TOKEN",
+            "ANTHROPIC_API_KEY",
+        ];
+        let snap: Vec<(&'static str, Option<String>)> =
+            keys.iter().map(|k| (*k, std::env::var(k).ok())).collect();
+        for k in keys {
+            std::env::remove_var(k);
+        }
+        snap
+    }
+
+    fn restore_dispatch_env(snap: Vec<(&'static str, Option<String>)>) {
+        for (k, v) in snap {
+            restore_env_var(k, v);
+        }
+    }
+
+    const TEST_FT_CASCADE: &str = "openai/gpt-oss-20b@https://api.groq.com/openai/v1:GROQ_API_KEY";
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn resilient_free_tier_no_key_with_sub_routes_to_sub() {
+        let snap = snapshot_dispatch_env();
+        // Free-tier list configured (as every node gets from the ladder
+        // manifest), but NO provider key present, and a valid sub token IS.
+        std::env::set_var("CHUMP_FREE_TIER_PROVIDERS", TEST_FT_CASCADE);
+        std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test-token");
+        let result = is_free_tier_model();
+        restore_dispatch_env(snap);
+        assert!(
+            !result,
+            "free-tier list with no key but a valid sub credential must route to the sub, \
+             not keyless free-tier (CJ silent-bail root cause)"
+        );
+    }
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn resilient_free_tier_no_key_no_sub_stays_free_tier() {
+        let snap = snapshot_dispatch_env();
+        // No provider key AND no sub credential → stay free-tier so the
+        // caller hits the explicit loud-fail guard (not a routing change).
+        std::env::set_var("CHUMP_FREE_TIER_PROVIDERS", TEST_FT_CASCADE);
+        let result = is_free_tier_model();
+        restore_dispatch_env(snap);
+        assert!(
+            result,
+            "with neither a provider key nor a sub credential, free-tier stays selected \
+             so execute_gap can fail loud on the misconfiguration"
+        );
+    }
+
+    #[test]
+    #[serial(openai_model_env)]
+    fn resilient_free_tier_with_key_stays_free_tier_even_with_sub() {
+        let snap = snapshot_dispatch_env();
+        // A real free-tier key present → an explicit operator free-tier
+        // instruction still wins, even when a sub credential also exists.
+        std::env::set_var("CHUMP_FREE_TIER_PROVIDERS", TEST_FT_CASCADE);
+        std::env::set_var("GROQ_API_KEY", "gsk-test-key");
+        std::env::set_var("CLAUDE_CODE_OAUTH_TOKEN", "sk-ant-oat-test-token");
+        let result = is_free_tier_model();
+        restore_dispatch_env(snap);
+        assert!(
+            result,
+            "a configured free-tier provider WITH a key must remain free-tier even when a \
+             sub credential is also present"
+        );
     }
 
     /// Integration test: mock OpenAI-compat server → native tool_call for
