@@ -2432,10 +2432,8 @@ Operator or sibling worker can rescue this branch via:
         _dispatch_fail_count=0
         # EFFECTIVE-310: clean cycle wipes the strike slate for this gap.
         chump gap strike "$GAP_ID" --reset >/dev/null 2>&1 || true
-        # INFRA-3832: a clean cycle also wipes the chronic-offender ledger so a
-        # gap that once wedged/timed-out but now runs clean is not auto-blocked
-        # on stale strikes.
-        rm -f "$REPO_ROOT/.chump-locks/offense/${GAP_ID}.count" 2>/dev/null || true
+        # RESILIENT-1584: offense ledger is NOT wiped here — rc=0 can still be
+        # unverified_ship; the wipe lives in the verified-ship path below.
     else
         # ── INFRA-3832: ONE non-ship branch so cooldown fires uniformly ──────
         # Pre-fix, rc==124 (timeout / wedge) had its own `elif` branch that ran
@@ -2713,13 +2711,8 @@ Operator or sibling worker can rescue this branch via:
             # repeat multiplies the cooldown (bounded by CHUMP_MAX_COOLDOWN_S) so a
             # gap that keeps failing backs off harder instead of re-looping at a
             # fixed interval. Reset to 0 on any clean cycle (see the rc==0 branch).
-            _offense_dir="$REPO_ROOT/.chump-locks/offense"
-            mkdir -p "$_offense_dir" 2>/dev/null || true
-            _offense_file="$_offense_dir/${GAP_ID}.count"
-            _offense_n=0
-            [ -f "$_offense_file" ] && _offense_n=$(tr -cd '0-9' < "$_offense_file" 2>/dev/null || echo 0)
-            _offense_n=$(( ${_offense_n:-0} + 1 ))
-            printf '%d\n' "$_offense_n" > "$_offense_file" 2>/dev/null || true
+            source "${BASH_SOURCE[0]%/*}/lib/offense-ledger.sh"
+            _offense_n="$(offense_bump "$GAP_ID")"
             _max_cooldown_s="${CHUMP_MAX_COOLDOWN_S:-14400}"  # hard ceiling, 4h
             cooldown_s=$(( cooldown_s * _offense_n ))
             [ "$cooldown_s" -gt "$_max_cooldown_s" ] && cooldown_s="$_max_cooldown_s"
@@ -2768,21 +2761,7 @@ Operator or sibling worker can rescue this branch via:
             # it wedged all night. Guard: CHUMP_AUTO_BLOCK_OFFENDERS=0 restores the
             # old cooldown-only behavior. Best-effort: a failed `gap set` leaves the
             # cooldown in place, so the loop is still broken for the backoff window.
-            _auto_block_threshold="${CHUMP_AUTO_BLOCK_THRESHOLD:-3}"
-            if [ "${CHUMP_AUTO_BLOCK_OFFENDERS:-1}" != "0" ] \
-               && [ "${_offense_n:-0}" -ge "$_auto_block_threshold" ]; then
-                _blk_note="INFRA-3832 auto-block: ${_offense_n} consecutive non-ship cycles (last kind=${_cooldown_kind}, rc=${rc}, cycle_log=${_cycle_log_size}B). Worker kept re-picking + looping; blocked to leave the pick pool. Un-block after fixing the spec / decomposing."
-                if CHUMP_REPO="$REPO_ROOT" chump gap set "$GAP_ID" \
-                        --status blocked --add-note "$_blk_note" >/dev/null 2>&1; then
-                    log "INFRA-3832: auto-blocked $GAP_ID after ${_offense_n} non-ship cycles (kind=${_cooldown_kind})"
-                    printf '{"event":"ALERT","kind":"gap_auto_blocked","ts":"%s","session":"%s","agent":"%s","gap_id":"%s","offenses":%d,"last_kind":"%s","rc":%d}\n' \
-                        "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "${CHUMP_SESSION_ID:-fleet}" "$AGENT_ID" "$GAP_ID" "$_offense_n" "$_cooldown_kind" "$rc" \
-                        >> "$_amb" 2>/dev/null || true
-                    rm -f "$_offense_file" 2>/dev/null || true
-                else
-                    log "INFRA-3832: WARN could not auto-block $GAP_ID (chump gap set failed); cooldown still applied"
-                fi
-            fi
+            offense_maybe_block "$GAP_ID" "$_offense_n" "$_cooldown_kind" "$rc" "${_cycle_log_size:-0}"
 
             # INFRA-826 / FLEET-043: circuit breaker on consecutive non-ship cycles.
             # After CHUMP_DISPATCH_FAIL_THRESHOLD (default 3) consecutive wedge/fail/
@@ -2918,6 +2897,9 @@ Operator or sibling worker can rescue this branch via:
             # required_model and the next attempt succeeded).
             python3 "$REPO_ROOT/scripts/dispatch/_unverified_ship_escalation.py" \
                 clear "$REPO_ROOT/.chump-locks/cooldown" "$GAP_ID" 2>/dev/null || true
+            # RESILIENT-1584: verified ship is the only place the INFRA-3832 ledger resets.
+            source "${BASH_SOURCE[0]%/*}/lib/offense-ledger.sh"
+            offense_clear "$GAP_ID"
         else
             _cycle_kind="unverified_ship"
             log "CREDIBLE-154: rc=0 but NO ship evidence (branch=${_ship_branch}, no PR in cache/gh, gap not ready_to_ship) — classifying unverified_ship"
@@ -2980,6 +2962,10 @@ Operator or sibling worker can rescue this branch via:
             mkdir -p "$_cd_dir" 2>/dev/null || true
             _cd_until=$(( $(date +%s) + ${CHUMP_UNVERIFIED_SHIP_COOLDOWN_S:-1800} ))
             if [ "$_autoclose_done" -eq 0 ]; then
+                # RESILIENT-1584: count rc=0 unverified_ship in the INFRA-3832 ledger.
+                source "${BASH_SOURCE[0]%/*}/lib/offense-ledger.sh"
+                _uv_offense_n="$(offense_bump "$GAP_ID")"
+                offense_maybe_block "$GAP_ID" "$_uv_offense_n" "unverified_ship" "$rc" "${_cycle_log_size:-0}"
                 printf '{"gap_id":"%s","until":%d,"agent":"%s","ts":"%s","reason":"unverified_ship"}\n' \
                     "$GAP_ID" "$_cd_until" "$AGENT_ID" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
                     > "$_cd_dir/${AGENT_ID}-${GAP_ID}.json" 2>/dev/null || true
