@@ -850,6 +850,102 @@ with open(path, 'w') as f:
 PYEOF
 }
 
+# RESILIENT-1560: gate-fail fix-or-close lane. A PR whose checks have been in
+# FAILURE for > GATE_FAIL_HOURS and whose failing checks are not known flakes
+# is a DETERMINISTIC gate failure (rerun never clears it). Each tick that still
+# sees it counts one cycle: cycle 1 routes the fix back to the worker (WARN DM
+# + gap note); at GATE_FAIL_MAX_CYCLES the gap is blocked and the PR closed
+# with a reason. Alarm when the deterministic-fail PR count >= GATE_FAIL_ALARM.
+GATE_FAIL_HOURS="${CHUMP_GATE_FAIL_HOURS:-2}"
+GATE_FAIL_MAX_CYCLES="${CHUMP_GATE_FAIL_MAX_CYCLES:-12}"
+GATE_FAIL_ALARM="${CHUMP_GATE_FAIL_ALARM_THRESHOLD:-3}"
+GATE_FAIL_STATE_FILE="${CHUMP_GATE_FAIL_STATE_FILE:-$REPO_ROOT/.chump-locks/pr-gate-fail-state.json}"
+
+# _gate_fail_candidates — stdin: gh pr list JSON. stdout: pr<TAB>gap<TAB>fail_names<TAB>age_h<TAB>head_sha
+_gate_fail_candidates() {
+  python3 -c "
+import json, re, sys
+from datetime import datetime, timezone
+hours = float(sys.argv[1])
+now = datetime.now(timezone.utc)
+for p in json.load(sys.stdin):
+    fails = [c for c in (p.get('statusCheckRollup') or [])
+             if (c.get('conclusion') or '').upper() in ('FAILURE', 'TIMED_OUT')]
+    if not fails:
+        continue
+    ages = []
+    for c in fails:
+        t = c.get('completedAt') or ''
+        try:
+            ages.append((now - datetime.fromisoformat(t.replace('Z', '+00:00'))).total_seconds() / 3600)
+        except Exception:
+            pass
+    if not ages or min(ages) < hours:
+        continue
+    names = ','.join(sorted({c.get('name') or c.get('context') or '?' for c in fails}))
+    m = re.search(r'(?:INFRA|META|CREDIBLE|RESILIENT|EFFECTIVE|FLEET|DOC|MEM|VOA|SCALE|MISSION|ZERO-WASTE)-\d+', p.get('title', ''))
+    print('%s\t%s\t%s\t%.1f\t%s' % (p['number'], m.group(0) if m else '', names, min(ages), p.get('headRefOid', '')))
+" "$GATE_FAIL_HOURS"
+}
+
+# _gate_fail_bump — increment per-PR deterministic-fail cycle count (keyed pr:sha).
+# Args: $1=pr $2=head_sha. Prints the new count.
+_gate_fail_bump() {
+  python3 - "$GATE_FAIL_STATE_FILE" "$1:$2" << 'PYEOF'
+import json, os, sys
+path, key = sys.argv[1], sys.argv[2]
+try:
+    d = json.load(open(path))
+except Exception:
+    d = {}
+d[key] = d.get(key, 0) + 1
+os.makedirs(os.path.dirname(path), exist_ok=True)
+json.dump(d, open(path, 'w'))
+print(d[key])
+PYEOF
+}
+
+_gate_fail_lane() {
+  local prs_json="$1"
+  local cands det=0 pr gap names age_h head_sha cycles dry=false
+  [ -n "$DRY_RUN" ] && dry=true
+  cands=$(printf '%s' "$prs_json" | _gate_fail_candidates 2>/dev/null || true)
+  [ -z "$cands" ] && return 0
+  while IFS=$'\t' read -r pr gap names age_h head_sha; do
+    [ -z "$pr" ] && continue
+    # Known flake: handled by the existing one-rerun tier, not this lane.
+    if _is_blocked_flake "$names"; then continue; fi
+    det=$((det + 1))
+    cycles=$(_gate_fail_bump "$pr" "$head_sha")
+    printf '{"ts":"%s","kind":"pr_gate_fail_deterministic","pr":%s,"gap_id":"%s","failing_checks":"%s","age_hours":%s,"cycles":%s,"dry_run":%s}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$pr" "$gap" "${names//\"/}" "$age_h" "$cycles" "$dry" >> "$AMBIENT" 2>/dev/null || true
+    if [ -n "$DRY_RUN" ]; then
+      echo "[pr-shepherd-daemon] DRY_RUN: gate-fail PR #${pr} (${gap}) cycles=${cycles}" >&2
+      continue
+    fi
+    if [ "$cycles" -eq 1 ] && [ -n "$gap" ]; then
+      bash "$REPO_ROOT/scripts/coord/broadcast.sh" --urgency WARN STUCK "$gap" \
+        "PR #${pr} fails deterministic gate(s) [${names}] for ${age_h}h — fix on the PR branch (rerun will not clear it) or the gap will be blocked." \
+        >/dev/null 2>&1 || true
+      chump gap set "$gap" --add-note "RESILIENT-1560: PR #${pr} failing deterministic gate(s) [${names}] ${age_h}h; fix routed to worker" >/dev/null 2>&1 || true
+    elif [ "$cycles" -ge "$GATE_FAIL_MAX_CYCLES" ]; then
+      if [ -n "$gap" ]; then
+        chump gap set "$gap" --status blocked \
+          --add-note "RESILIENT-1560: PR #${pr} failed deterministic gate(s) [${names}] for ${cycles} cycles; blocked" >/dev/null 2>&1 || true
+      fi
+      gh pr close "$pr" --comment "RESILIENT-1560: closing — deterministic gate failure [${names}] persisted ${cycles} shepherd cycles (${age_h}h). Gap ${gap:-n/a} blocked; re-claim and fix." >/dev/null 2>&1 || true
+      _emit_pr_action_taken "$pr" "gate_fail_close" "cycles_${cycles}" "$gap"
+    fi
+  done <<< "$cands"
+  if [ "$det" -ge "$GATE_FAIL_ALARM" ]; then
+    printf '{"ts":"%s","kind":"pr_gate_fail_alarm","count":%d,"threshold":%d}\n' \
+      "$(date -u +%Y-%m-%dT%H:%M:%SZ)" "$det" "$GATE_FAIL_ALARM" >> "$AMBIENT" 2>/dev/null || true
+    [ -z "$DRY_RUN" ] && bash "$REPO_ROOT/scripts/coord/broadcast.sh" --urgency CRIT STUCK RESILIENT-1560 \
+      " ${det} open PRs failing deterministic gates >${GATE_FAIL_HOURS}h (threshold ${GATE_FAIL_ALARM})" >/dev/null 2>&1 || true
+  fi
+  return 0
+}
+
 cmd_tick() {
   # META-183: fetch full PR details with mergeStateStatus + autoMergeRequest for classification.
   # META-184: also fetch headRefOid (head SHA) for debounce keying.
@@ -1457,6 +1553,8 @@ print(m.group(0) if m else '')
       fi
     done <<< "$classified"
   fi
+
+  _gate_fail_lane "$prs_json"
 
   # INFRA-2346: single trunk-red rollup event when admin-merges were blocked.
   if [ "$admin_merge_skipped_trunk_red" -gt 0 ]; then
