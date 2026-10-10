@@ -160,10 +160,10 @@ if [[ "$DRY_RUN" -eq 1 ]]; then
 else
     if command -v chump >/dev/null 2>&1; then
         _log "Resetting $GAP_ID status to open"
-        chump gap set "$GAP_ID" status open 2>/dev/null || \
+        chump gap set "$GAP_ID" --status open 2>/dev/null || \
             _log "WARN: could not reset gap status (chump gap set failed)"
         NOTE="Rolled back on $(_ts) by rollback-gap.sh. Re-pick after diagnosing failure."
-        chump gap set "$GAP_ID" notes "$NOTE" 2>/dev/null || true
+        chump gap set "$GAP_ID" --add-note "$NOTE" 2>/dev/null || true
     else
         _log "WARN: chump not found — skipping gap status reset"
     fi
