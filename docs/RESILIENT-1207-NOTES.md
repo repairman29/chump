@@ -81,3 +81,23 @@ covers the sibling organ's `converge_mirror_hard_reset` behavior.
 Fix is live on `main`. This note exists so the analysis remains a durable
 reference rather than only a PR description — see RESILIENT-1206 for the
 reproducible local harness that exercises this failure mode.
+
+## RESILIENT-1215 (re-decomposition slice) — closed as duplicate
+
+A later re-decomposition of the RESILIENT-1205 umbrella filed RESILIENT-1215
+("wire organ merge into the auto-converge code path") as a fresh slice. On
+investigation, its 3 acceptance criteria are already satisfied by the fix
+described above:
+
+1. *Organ merge correctly invoked during auto-converge* — `node-refresh-chump.sh`
+   lines 589-611 unconditionally call `converge_mirror_hard_reset origin/main`
+   every cycle, before the binary-idempotency skip, deferring only when a git
+   operation (`rebase-merge`/`MERGE_HEAD`/etc.) is already in progress.
+2. *Compiles with no new warnings* — no Rust surface was touched by the
+   original fix; it's a bash wiring change already on `main`.
+3. *Merge step executes without panics* — `scripts/ci/test-node-refresh-green-main.sh`
+   (added for RESILIENT-1209, #5226) exercises exactly this path and passes.
+
+RESILIENT-1215 is closed `superseded` (same disposition as its sibling
+RESILIENT-1214, superseded by RESILIENT-1207) rather than re-implemented, to
+avoid duplicating RESILIENT-1208's (#5224) already-shipped work.
